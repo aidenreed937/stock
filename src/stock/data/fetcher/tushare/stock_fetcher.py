@@ -5,7 +5,7 @@ from datetime import date
 import polars as pl
 
 from stock.data.fetcher.tushare.client import TuShareClient
-from stock.data.fetcher.tushare.registry import TUSHARE_API_REGISTRY
+from stock.data.fetcher.tushare.registry import EndpointMeta, TUSHARE_API_REGISTRY
 from stock.models.market import DailyBar
 
 
@@ -21,28 +21,38 @@ class TuShareStockFetcher:
         self.client = client or TuShareClient()
 
     def fetch_daily_bars_df(
-        self, symbol: str, start_date: date, end_date: date
+        self, symbol: str, start_date: date, end_date: date, endpoint: str = "daily"
     ) -> pl.DataFrame:
-        """抓取指定股票在给定日期范围内的日 K 线原始行情数据。
+        """抓取指定股票或全市场在给定日期范围内的行情/基本面原始数据。
 
         Args:
-            symbol: 股票代码（如 600000.SH 或 600000）。
+            symbol: 股票代码（若为空字符串，则表示抓取全市场指定交易日的数据）。
             start_date: 开始日期。
             end_date: 结束日期。
+            endpoint: API 接口名称（默认 daily）。
 
         Returns:
-            pl.DataFrame: 包含 TuShare 原始日线字段的 Polars DataFrame。
+            pl.DataFrame: 包含 TuShare 原始响应字段的 Polars DataFrame。
         """
-        meta = TUSHARE_API_REGISTRY["daily"]
+        meta = TUSHARE_API_REGISTRY.get(
+            endpoint, EndpointMeta(api_name=endpoint, description=endpoint)
+        )
         start_str = start_date.strftime("%Y%m%d")
         end_str = end_date.strftime("%Y%m%d")
 
-        pandas_df = self.client.query(
-            meta.api_name,
-            ts_code=symbol,
-            start_date=start_str,
-            end_date=end_str,
-        )
+        query_kwargs: dict[str, str] = {}
+        if symbol:
+            query_kwargs["ts_code"] = symbol
+            query_kwargs["start_date"] = start_str
+            query_kwargs["end_date"] = end_str
+        else:
+            if start_date == end_date:
+                query_kwargs["trade_date"] = start_str
+            else:
+                query_kwargs["start_date"] = start_str
+                query_kwargs["end_date"] = end_str
+
+        pandas_df = self.client.query(meta.api_name, **query_kwargs)
 
         if pandas_df.empty:
             return pl.DataFrame()

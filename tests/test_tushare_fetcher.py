@@ -76,3 +76,25 @@ def test_tushare_fetcher_with_mock_api(mock_set_token: MagicMock, mock_pro_api: 
     assert not df.is_empty()
     assert "ts_code" in df.columns
     assert df["ts_code"][0] == "600000.SH"
+
+
+@patch("tushare.pro_api")
+@patch("tushare.set_token")
+def test_tushare_fetcher_dynamic_endpoint_routing(
+    mock_set_token: MagicMock, mock_pro_api: MagicMock
+) -> None:
+    mock_pro = MagicMock()
+    mock_pro_api.return_value = mock_pro
+    mock_pro.query.return_value = pd.DataFrame(
+        [{"ts_code": "000001.SZ", "pe": 12.5, "trade_date": "20260812"}]
+    )
+
+    fetcher = TuShareDataFetcher(token="mock_token_123")
+
+    # 1. 测试全市场单日回填路由 (symbol="", trade_date="20260812")
+    df = fetcher.fetch_daily_bars_df(
+        "", date(2026, 8, 12), date(2026, 8, 12), endpoint="daily_basic"
+    )
+    mock_pro.query.assert_called_with("daily_basic", trade_date="20260812")
+    assert not df.is_empty()
+    assert "pe" in df.columns

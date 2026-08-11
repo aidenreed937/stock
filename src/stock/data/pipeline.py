@@ -87,7 +87,9 @@ class MarketDataPipeline:
 
         # 2. 未命中或强制刷新时从 Fetcher 拉取
         if raw_df is None:
-            raw_df = self.fetcher.fetch_daily_bars_df(symbol, start_date, end_date)
+            raw_df = self.fetcher.fetch_daily_bars_df(
+                symbol, start_date, end_date, endpoint=self.endpoint
+            )
             if raw_df.is_empty():
                 logger.warning(f"数据源未返回数据 [{symbol}]")
                 return raw_df

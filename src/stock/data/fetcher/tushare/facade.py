@@ -32,10 +32,12 @@ class TuShareDataFetcher(BaseDataFetcher):
         return self.stock_fetcher.fetch_daily_bars(symbol, start_date, end_date)
 
     def fetch_daily_bars_df(
-        self, symbol: str, start_date: date, end_date: date
+        self, symbol: str, start_date: date, end_date: date, endpoint: str = "daily"
     ) -> pl.DataFrame:
-        """抓取日 K 线并返回 Polars 数据帧。"""
-        return self.stock_fetcher.fetch_daily_bars_df(symbol, start_date, end_date)
+        """抓取行情或基本面数据，并返回 Polars 数据帧。"""
+        return self.stock_fetcher.fetch_daily_bars_df(
+            symbol, start_date, end_date, endpoint=endpoint
+        )
 
     def fetch_trade_cal(
         self, start_date: date, end_date: date
