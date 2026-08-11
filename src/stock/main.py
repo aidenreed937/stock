@@ -8,6 +8,7 @@ from stock.utils.logger import logger, setup_logger
 
 
 def main() -> None:
+    """应用程序主入口点，执行全流程示范。"""
     # 1. 初始化设置与日志
     settings.setup_directories()
     setup_logger()

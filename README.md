@@ -14,27 +14,25 @@
 ### 1. 安装与同步依赖
 
 ```bash
-uv sync
+make install
 ```
 
 ### 2. 运行主示范程序
 
 ```bash
-uv run python -m stock.main
+make run
 ```
 
 ### 3. 代码检查与自动化测试
 
 ```bash
-# 代码规范检查 (Linter / Formatter)
-uv run ruff check .
-
-# 静态类型检查
-uv run mypy src
-
-# 单元测试与覆盖率报告
-uv run pytest
+# 格式化、代码规范检查与单测验证 (建议在提交前执行)
+make check
 ```
+
+## 开发指南
+
+想要参与贡献或了解如何扩展策略与指标，请阅读 [贡献指南 (CONTRIBUTING.md)](CONTRIBUTING.md)。
 
 ## 模块说明
 

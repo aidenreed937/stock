@@ -4,17 +4,13 @@ import polars as pl
 def calculate_sma(df: pl.DataFrame, window: int = 5, column: str = "close") -> pl.DataFrame:
     """计算简单移动平均线 (Simple Moving Average)"""
     sma_col_name = f"sma_{window}"
-    return df.with_columns(
-        pl.col(column).rolling_mean(window_size=window).alias(sma_col_name)
-    )
+    return df.with_columns(pl.col(column).rolling_mean(window_size=window).alias(sma_col_name))
 
 
 def calculate_ema(df: pl.DataFrame, window: int = 12, column: str = "close") -> pl.DataFrame:
     """计算指数移动平均线 (Exponential Moving Average)"""
     ema_col_name = f"ema_{window}"
-    return df.with_columns(
-        pl.col(column).ewm_mean(span=window, adjust=False).alias(ema_col_name)
-    )
+    return df.with_columns(pl.col(column).ewm_mean(span=window, adjust=False).alias(ema_col_name))
 
 
 def calculate_rsi(df: pl.DataFrame, window: int = 14, column: str = "close") -> pl.DataFrame:

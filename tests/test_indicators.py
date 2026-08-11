@@ -20,4 +20,5 @@ def test_calculate_indicators(mock_fetcher: MockDataFetcher) -> None:
     assert "rsi_14" in df_rsi.columns
     # RSI 值应该在 0 到 100 之间
     valid_rsi = df_rsi["rsi_14"].drop_nulls()
-    assert (valid_rsi >= 0).all() and (valid_rsi <= 100).all()
+    assert (valid_rsi >= 0).all()
+    assert (valid_rsi <= 100).all()

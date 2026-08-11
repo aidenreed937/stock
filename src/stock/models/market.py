@@ -18,6 +18,7 @@ class DailyBar(BaseModel):
     @field_validator("high")
     @classmethod
     def validate_high(cls, v: float, info: ValidationInfo) -> float:
+        """验证最高价不低于开盘价和最低价。"""
         open_price = info.data.get("open")
         low_price = info.data.get("low")
         if open_price and v < open_price:
