@@ -1,0 +1,28 @@
+# 双均线交叉与 RSI 组合策略样例配置文件
+strategy:
+  name: "Double_SMA_RSI_Cross"
+  version: "1.0.0"
+  description: "基于 5 日与 20 日均线金叉死叉，结合 RSI 超买超卖过滤的策略配置"
+
+  # 标的配置
+  universe:
+    symbols:
+      - "600000.SH" # 浦发银行
+      - "000001.SZ" # 平安银行
+      - "AAPL"      # 苹果公司
+
+  # 技术指标计算参数
+  indicators:
+    sma:
+      fast_period: 5   # 快线周期（天）
+      slow_period: 20  # 慢线周期（天）
+    rsi:
+      period: 14       # RSI 计算周期（天）
+      oversold: 30.0   # 超卖阈值（低于此值视为超卖）
+      overbought: 70.0 # 超买阈值（高于此值视为超买）
+
+  # 风控管理参数
+  risk_management:
+    max_position_per_symbol: 0.2  # 单个标的最大持仓比例上限 (20%)
+    stop_loss_pct: 0.05            # 固定止损比例 (5%)
+    take_profit_pct: 0.15          # 目标止盈比例 (15%)

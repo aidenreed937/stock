@@ -6,13 +6,13 @@ from pydantic import BaseModel, Field, ValidationInfo, field_validator
 class DailyBar(BaseModel):
     """单日 K 线数据结构模型与基本约束"""
 
-    symbol: str = Field(..., description="股票或标的代码，例如 600000.SH 或 AAPL")
-    trade_date: date = Field(..., description="交易日期")
-    open: float = Field(..., gt=0, description="开盘价")
-    high: float = Field(..., gt=0, description="最高价")
-    low: float = Field(..., gt=0, description="最低价")
-    close: float = Field(..., gt=0, description="收盘价")
-    volume: float = Field(..., ge=0, description="成交量")
+    symbol: str = Field(description="股票或标的代码，例如 600000.SH 或 AAPL")
+    trade_date: date = Field(description="交易日期")
+    open: float = Field(gt=0, description="开盘价")
+    high: float = Field(gt=0, description="最高价")
+    low: float = Field(gt=0, description="最低价")
+    close: float = Field(gt=0, description="收盘价")
+    volume: float = Field(ge=0, description="成交量")
     amount: float = Field(default=0.0, ge=0, description="成交额")
 
     @field_validator("high")
