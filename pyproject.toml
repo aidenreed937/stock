@@ -1,0 +1,90 @@
+[project]
+name = "stock"
+version = "0.1.0"
+description = "Financial & Stock Analysis Scaffold with uv, Polars, DuckDB and Pydantic"
+readme = "README.md"
+authors = [
+    { name = "aidenreed937", email = "aidenreed937@gmail.com" }
+]
+requires-python = ">=3.12"
+dependencies = [
+    "duckdb>=1.5.5",
+    "loguru>=0.7.3",
+    "pandas>=3.0.5",
+    "polars>=1.43.2",
+    "pyarrow>=25.0.1",
+    "pydantic>=2.13.4",
+    "pydantic-settings>=2.15.0",
+    "requests>=2.34.2",
+]
+
+[dependency-groups]
+dev = [
+    "mypy>=1.15.0",
+    "pre-commit>=4.1.0",
+    "pytest>=8.3.5",
+    "pytest-cov>=6.0.0",
+    "ruff>=0.9.10",
+]
+
+[build-system]
+requires = ["uv_build>=0.11.17,<0.12.0"]
+build-backend = "uv_build"
+
+[tool.ruff]
+line-length = 100
+target-version = "py312"
+
+# 明确只对本项目源码及测试路径进行规则约束
+src = ["src", "tests"]
+
+# 排除第三方包、虚拟环境及数据/缓存目录，绝不扫描第三方依赖
+exclude = [
+    ".venv",
+    "venv",
+    "data",
+    "build",
+    "dist",
+    "notebooks",
+    "*.egg-info",
+]
+
+[tool.ruff.lint]
+select = [
+    "E", "F", "I", "N", "W", "UP", 
+    "C90", "PLR", "B", "SIM", 
+    "T20", "PTH", "ERA", "RET", "RUF", "S"
+]
+# PLR2004: 魔数, S311: random 随机数, RUF001/RUF002/RUF003: 中文标点符号在注释和日志中属于正常使用
+ignore = ["PLR2004", "S311", "RUF001", "RUF002", "RUF003"]
+
+[tool.ruff.lint.per-file-ignores]
+"tests/*" = ["S101"]  # 测试文件中允许使用 assert 语法
+
+[tool.ruff.lint.mccabe]
+max-complexity = 10  # 圈复杂度上限 10
+
+[tool.ruff.lint.pylint]
+max-args = 5          # 方法参数上限 5
+max-branches = 12     # 分支数上限 12
+max-returns = 6       # return 语句上限 6
+max-statements = 50   # 语句数上限 50
+max-public-methods = 15 # 类公共方法上限 15
+
+[tool.mypy]
+python_version = "3.12"
+files = ["src"]                    # 仅强约束本项目 src 目录
+strict = true                      # 开启 Mypy 严格模式
+ignore_missing_imports = true      # 忽略第三方无类型存根包的干扰，只关注本项目代码
+warn_return_any = true
+warn_unused_configs = true
+disallow_untyped_defs = true
+disallow_incomplete_defs = true
+warn_redundant_casts = true
+warn_unused_ignores = true
+
+[tool.pytest.ini_options]
+minversion = "8.0"
+addopts = "-ra -q --cov=src/stock --cov-fail-under=75"
+testpaths = ["tests"]
+pythonpath = ["src"]

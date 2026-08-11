@@ -1,0 +1,48 @@
+# Byte-compiled / optimized files
+__pycache__/
+*.py[cod]
+*$py.class
+
+# Environments & Virtual Envs
+.venv/
+env/
+venv/
+ENV/
+.python-version
+
+# Distribution / packaging
+build/
+dist/
+*.egg/
+*.egg-info/
+
+# Unit test & coverage reports
+.pytest_cache/
+.coverage
+.coverage.*
+htmlcov/
+.mypy_cache/
+.ruff_cache/
+
+# Financial Data & Local Cache & Databases (全量排除大文件与本地数据)
+data/
+*.parquet
+*.feather
+*.db
+*.duckdb
+*.sqlite
+*.sqlite3
+*.log
+
+# Sensitive Environment Variables (环境变量与密钥绝不提交)
+.env
+.env.local
+.env.*.local
+!.env.example
+
+# IDEs & System files
+.vscode/
+.idea/
+*.swp
+*.swo
+.DS_Store
