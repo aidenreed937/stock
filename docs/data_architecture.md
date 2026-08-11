@@ -97,7 +97,18 @@ TUSHARE_MAX_WORKERS=4
 
 ---
 
-## 6. 常用操作指令 (Cheat Sheet)
+## 6. 全市场历史数据回填器 (HistoricalBackfiller)
+
+- **严格交易日历对齐**：必须要求 Fetcher 提供 `fetch_trade_cal` 接口获取精确开市交易日，严禁粗暴按周一至周五推算（若缺乏日历接口则主动抛出 `DataFetchError` 拦截）。
+- **断点续传与无损跳过**：回填前自动检索 `data/raw/` 时间分区，若已存在当天的 RAW 文件且未开启 `force_refresh` 则自动跳过，保障任务随时中断与恢复。
+- **命令行快捷调用**：
+  ```bash
+  make backfill START=2026-08-01 END=2026-08-12
+  ```
+
+---
+
+## 7. 常用操作指令 (Cheat Sheet)
 
 ```bash
 # 1. 运行完整代码规范检查、类型检查与单元测试
@@ -106,6 +117,9 @@ make check
 # 2. 手动初始化数据目录结构
 uv run python -c "from stock.config.settings import settings; settings.setup_directories()"
 
-# 3. 执行主项目入口与 YAML 驱动测试
+# 3. 运行历史数据回填任务
+make backfill START=2026-08-01 END=2026-08-12
+
+# 4. 执行主项目入口与 YAML 驱动测试
 make run
 ```

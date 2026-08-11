@@ -36,3 +36,9 @@ class TuShareDataFetcher(BaseDataFetcher):
     ) -> pl.DataFrame:
         """抓取日 K 线并返回 Polars 数据帧。"""
         return self.stock_fetcher.fetch_daily_bars_df(symbol, start_date, end_date)
+
+    def fetch_trade_cal(
+        self, start_date: date, end_date: date
+    ) -> list[date]:
+        """获取 A 股有效开市交易日列表。"""
+        return self.stock_fetcher.fetch_trade_cal(start_date, end_date)

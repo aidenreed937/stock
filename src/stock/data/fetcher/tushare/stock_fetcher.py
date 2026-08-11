@@ -94,3 +94,37 @@ class TuShareStockFetcher:
                 )
             )
         return bars
+
+    def fetch_trade_cal(
+        self, start_date: date, end_date: date
+    ) -> list[date]:
+        """获取指定日期范围内的 A 股有效开市交易日列表。
+
+        Args:
+            start_date: 开始日期。
+            end_date: 结束日期。
+
+        Returns:
+            list[date]: 开市交易日列表（按升序排列）。
+        """
+        start_str = start_date.strftime("%Y%m%d")
+        end_str = end_date.strftime("%Y%m%d")
+
+        pandas_df = self.client.query(
+            "trade_cal",
+            exchange="",
+            start_date=start_str,
+            end_date=end_str,
+            is_open="1",
+        )
+
+        if pandas_df.empty or "cal_date" not in pandas_df.columns:
+            return []
+
+        open_dates: list[date] = []
+        for d_str in pandas_df["cal_date"].to_list():
+            if isinstance(d_str, str) and len(d_str) == 8:
+                open_dates.append(
+                    date(int(d_str[:4]), int(d_str[4:6]), int(d_str[6:8]))
+                )
+        return sorted(open_dates)

@@ -36,11 +36,13 @@ make check
 
 - 想要参与贡献或了解如何扩展策略与指标，请阅读 [贡献指南 (CONTRIBUTING.md)](CONTRIBUTING.md)。
 - 详细的数据架构设计与分层规范说明，请阅读 [系统架构文档 (docs/architecture.md)](docs/architecture.md) 与 [数据存储指南 (docs/data_architecture.md)](docs/data_architecture.md)。
+- 命令行 CLI 与历史数据回填指南，请阅读 [CLI 命令行指南 (docs/cli_guide.md)](docs/cli_guide.md)。
 
 ## 模块说明
 
 - `docs/architecture.md`: 系统架构设计、模块分层与 5 大数据流动原则说明文档
 - `docs/data_architecture.md`: RAW + Curated 两层数据存储、时间分区归档规范与并发限频指南
+- `docs/cli_guide.md`: CLI 命令行使用指南与历史数据回填参数说明
 - `config/`: YAML 策略与业务配置文件目录
 - `src/stock/config`: 环境配置管理 (`settings.py`) 与 YAML 配置加载器 (`loader.py`)
 - `src/stock/constants.py`: 全局常量定义（默认指标周期、存储目录常量等）

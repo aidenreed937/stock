@@ -56,3 +56,15 @@ class MockDataFetcher(BaseDataFetcher):
 
         data_dicts = [bar.model_dump() for bar in bars]
         return pl.DataFrame(data_dicts)
+
+    def fetch_trade_cal(
+        self, start_date: date, end_date: date
+    ) -> list[date]:
+        """模拟交易日历：过滤周六与周日。"""
+        curr = start_date
+        open_dates: list[date] = []
+        while curr <= end_date:
+            if curr.weekday() < 5:
+                open_dates.append(curr)
+            curr += timedelta(days=1)
+        return open_dates
