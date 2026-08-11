@@ -17,6 +17,7 @@ dependencies = [
     "pydantic-settings>=2.15.0",
     "pyyaml>=6.0.2",
     "requests>=2.34.2",
+    "tushare>=1.4.0",
 ]
 
 [dependency-groups]
@@ -67,7 +68,7 @@ ignore = ["PLR2004", "S311", "RUF001", "RUF002", "RUF003", "D100", "D104", "D400
 convention = "google"
 
 [tool.ruff.lint.per-file-ignores]
-"tests/*" = ["S101", "D"]  # 测试文件中允许使用 assert，且不强制要求 docstring
+"tests/*" = ["S101", "S105", "S106", "D"]  # 测试文件中允许使用 assert、硬编码测试 token，且不强制要求 docstring
 
 [tool.ruff.lint.mccabe]
 max-complexity = 10  # 圈复杂度上限 10

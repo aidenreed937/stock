@@ -17,14 +17,21 @@ class Settings(BaseSettings):
     log_level: str = "INFO"
 
     data_dir: Path = Path("./data")
+    raw_data_dir: Path = Path("./data/raw")
+    curated_data_dir: Path = Path("./data/curated")
     cache_dir: Path = Path("./data/cache")
 
     tushare_token: str = ""
+    tushare_url: str = "http://api.tushare.pro"
+    tushare_rate_limit_per_min: int = 200
+    tushare_max_workers: int = 4
     akshare_proxy: str = ""
 
     def setup_directories(self) -> None:
         """确保数据与缓存目录存在"""
         self.data_dir.mkdir(parents=True, exist_ok=True)
+        self.raw_data_dir.mkdir(parents=True, exist_ok=True)
+        self.curated_data_dir.mkdir(parents=True, exist_ok=True)
         self.cache_dir.mkdir(parents=True, exist_ok=True)
 
 

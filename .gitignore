@@ -24,8 +24,12 @@ htmlcov/
 .mypy_cache/
 .ruff_cache/
 
-# Financial Data & Local Cache & Databases (全量排除大文件与本地数据)
-data/
+# Financial Data & Local Cache & Databases (排除本地数据文件，保留目录结构)
+data/*
+!data/raw/
+!data/curated/
+!data/cache/
+!data/**/.gitkeep
 *.parquet
 *.feather
 *.db
