@@ -4,6 +4,7 @@ import time
 import pandas as pd
 import yfinance as yf
 
+from stock.config.loader import load_data_config
 from stock.config.settings import settings
 from stock.utils.logger import logger
 
@@ -64,11 +65,12 @@ class YFinanceClient:
             proxy: HTTP/HTTPS 代理服务器地址。若为 None，使用 settings.yfinance_proxy。
             rate_limit_per_min: 每分钟最大请求次数限制。若为 None，使用 settings.yfinance_rate_limit_per_min。
         """
+        data_cfg = load_data_config()
         self.proxy = proxy if proxy is not None else settings.yfinance_proxy
         rate_limit = (
             rate_limit_per_min
             if rate_limit_per_min is not None
-            else settings.yfinance_rate_limit_per_min
+            else data_cfg.rate_limits.yfinance_per_min
         )
         self.rate_limiter = RateLimiter(max_requests=rate_limit)
 

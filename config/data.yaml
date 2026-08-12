@@ -4,6 +4,9 @@ data:
   default_source_mode: "tushare"           # 默认主数据源 (tushare / lixinger / yfinance / mock)
 
   rate_limits:
-    tushare_per_min: 180
+    tushare_per_min: 200
     yfinance_per_min: 60
-    lixinger_per_min: 30
+    lixinger_per_min: 1000
+
+  concurrency:
+    tushare_max_workers: 4

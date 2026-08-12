@@ -26,14 +26,10 @@ class Settings(BaseSettings):
 
     tushare_token: str = ""
     tushare_url: str = "http://api.tushare.pro"
-    tushare_rate_limit_per_min: int = 200
-    tushare_max_workers: int = 4
     akshare_proxy: str = ""
     yfinance_proxy: str = ""
-    yfinance_rate_limit_per_min: int = 60
     lixinger_token: str = ""
     lixinger_url: str = "https://open.lixinger.com"
-    lixinger_rate_limit_per_min: int = 1000
     lxr_token: str = ""
     lxr_url: str = ""
     data_source_mode: Literal["tushare", "mock", "yfinance", "lixinger"] = "tushare"

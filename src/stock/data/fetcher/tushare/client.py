@@ -5,6 +5,7 @@ from typing import Any
 import pandas as pd
 import tushare as ts
 
+from stock.config.loader import load_data_config
 from stock.config.settings import settings
 from stock.exceptions import DataFetchError
 from stock.utils.logger import logger
@@ -75,17 +76,18 @@ class TuShareClient:
             max_limit_threshold: 警告单次返回达到服务器截断上限的阈值条数 (默认 6000)。
             paginate_threshold: 触发自动分页的条数阈值 (默认 2000)。
         """
+        data_cfg = load_data_config()
         self.token = token if token is not None else settings.tushare_token
         self.url = url if url is not None else settings.tushare_url
         self.rate_limit_per_min = (
             rate_limit_per_min
             if rate_limit_per_min is not None
-            else settings.tushare_rate_limit_per_min
+            else data_cfg.rate_limits.tushare_per_min
         )
         self.max_workers = (
             max_workers
             if max_workers is not None
-            else settings.tushare_max_workers
+            else data_cfg.concurrency.tushare_max_workers
         )
         self.max_limit_threshold = max_limit_threshold
         self.paginate_threshold = paginate_threshold

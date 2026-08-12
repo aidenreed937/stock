@@ -64,6 +64,20 @@ class StrategyConfigFile(BaseModel):
     strategy: StrategyConfig
 
 
+class RateLimitsConfig(BaseModel):
+    """数据源限频配置。"""
+
+    tushare_per_min: int = Field(default=200, gt=0, description="TuShare 每分钟最大请求数")
+    yfinance_per_min: int = Field(default=60, gt=0, description="YFinance 每分钟最大请求数")
+    lixinger_per_min: int = Field(default=1000, gt=0, description="理杏仁每分钟最大请求数")
+
+
+class ConcurrencyConfig(BaseModel):
+    """数据源并发数配置。"""
+
+    tushare_max_workers: int = Field(default=4, gt=0, description="TuShare 抓取最大并发线程数")
+
+
 class DataConfig(BaseModel):
     """数据源与基准配置模型。"""
 
@@ -71,6 +85,8 @@ class DataConfig(BaseModel):
         default="000001", description="交易日历基准指数代码 (上证指数)"
     )
     default_source_mode: str = Field(default="tushare", description="默认主数据源")
+    rate_limits: RateLimitsConfig = Field(default_factory=RateLimitsConfig)
+    concurrency: ConcurrencyConfig = Field(default_factory=ConcurrencyConfig)
 
 
 class DataConfigFile(BaseModel):
