@@ -128,4 +128,32 @@ TUSHARE_API_REGISTRY: dict[str, EndpointMeta] = {
         primary_keys=["ts_code", "trade_date"],
         rate_limit_per_min=100,
     ),
+    "margin": EndpointMeta(
+        api_name="margin",
+        description="融资融券交易汇总",
+        group="market_indicators",
+        primary_keys=["trade_date", "exchange_id"],
+        rate_limit_per_min=100,
+    ),
+    "margin_detail": EndpointMeta(
+        api_name="margin_detail",
+        description="融资融券交易明细",
+        group="market_data",
+        primary_keys=["ts_code", "trade_date"],
+        rate_limit_per_min=100,
+    ),
+    "moneyflow_hsgt": EndpointMeta(
+        api_name="moneyflow_hsgt",
+        description="沪深港通资金流向",
+        group="money_flow",
+        primary_keys=["trade_date"],
+        rate_limit_per_min=100,
+    ),
+    "hsgt_top10": EndpointMeta(
+        api_name="hsgt_top10",
+        description="沪深港通十大成交股",
+        group="money_flow",
+        primary_keys=["trade_date", "ts_code", "market_type"],
+        rate_limit_per_min=100,
+    ),
 }
