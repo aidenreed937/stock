@@ -97,7 +97,16 @@ class RawDataStorage:
         if not file_path.exists():
             return None
         try:
-            return pl.read_parquet(file_path)
+            df = pl.read_parquet(file_path)
+            if df.is_empty():
+                return None
+            symbol = key.instrument_slug
+            if symbol:
+                symbol_col = next((c for c in ["symbol", "ts_code", "stockCode", "code"] if c in df.columns), None)
+                if symbol_col:
+                    filtered = df.filter(pl.col(symbol_col) == symbol)
+                    return filtered if not filtered.is_empty() else None
+            return df
         except Exception as e:
             logger.error(f"读取 RAW 请求缓存失败 [{file_path}]: {e}")
             return None

@@ -72,8 +72,10 @@ class DuckDBMarketStore:
         partition_dir = self._get_partition_dir(endpoint, target_date)
         return partition_dir / "data.parquet"
 
-    def has_curated(self, endpoint: str, target_date: date) -> bool:
-        """检查某天的数据是否已被精炼并落盘。"""
+    def has_curated(
+        self, endpoint: str, target_date: date, symbol: str | None = None
+    ) -> bool:
+        """检查某天（及可选指定股票）的数据是否已被精炼并落盘。"""
         data_source = self._require_data_source()
         if endpoint == "daily":
             endpoint = "daily_bar"
@@ -93,6 +95,10 @@ class DuckDBMarketStore:
                         or date_str_hyphen in dates
                         or date_str_plain in dates
                     ):
+                        if symbol and "symbol" in df.columns:
+                            symbols = set(df["symbol"].unique().to_list())
+                            if symbol not in symbols:
+                                continue
                         return True
             except Exception as e:
                 logger.warning(f"忽略无效 Curated 缓存 [{file_path}]: {e}")
@@ -134,8 +140,18 @@ class DuckDBMarketStore:
                 )
 
         file_path.parent.mkdir(parents=True, exist_ok=True)
-        df.write_parquet(file_path)
-        logger.info(f"精炼数据落盘成功 [{endpoint}] -> {file_path} ({len(df)} 行)")
+        merged = pl.concat([existing, df], how="diagonal") if not existing.is_empty() else df
+        dedup_cols = [
+            c for c in ["market", "symbol", "stockCode", "ts_code", "code", "trade_date", "date", "adjustment"] if c in merged.columns
+        ]
+        if dedup_cols:
+            merged = merged.unique(subset=dedup_cols, keep="last")
+        if "trade_date" in merged.columns and "symbol" in merged.columns:
+            merged = merged.sort(["trade_date", "symbol"])
+        temp_path = file_path.with_suffix(".tmp.parquet")
+        merged.write_parquet(temp_path)
+        temp_path.replace(file_path)
+        logger.info(f"精炼数据落盘成功 [{endpoint}] -> {file_path} ({len(merged)} 行)")
         return file_path
 
     def save_dataset(self, key: DatasetKey, df: pl.DataFrame) -> Path:
@@ -155,13 +171,14 @@ class DuckDBMarketStore:
                     f"Curated 文件 schema 不匹配 [{file_path}]: "
                     f"已有列 {existing.columns}，新数据列 {df.columns}"
                 )
-        merged = pl.concat([existing, df]) if not existing.is_empty() else df
-        if not merged.is_empty() and all(
-            column in merged.columns for column in ("market", "symbol", "trade_date", "adjustment")
-        ):
-            merged = merged.unique(
-                subset=["market", "symbol", "trade_date", "adjustment"], keep="last"
-            ).sort(["trade_date", "symbol"])
+        merged = pl.concat([existing, df], how="diagonal") if not existing.is_empty() else df
+        dedup_cols = [
+            c for c in ["market", "symbol", "stockCode", "ts_code", "code", "trade_date", "date", "adjustment"] if c in merged.columns
+        ]
+        if dedup_cols:
+            merged = merged.unique(subset=dedup_cols, keep="last")
+        if "trade_date" in merged.columns and "symbol" in merged.columns:
+            merged = merged.sort(["trade_date", "symbol"])
         file_path.parent.mkdir(parents=True, exist_ok=True)
         temp_path = file_path.with_suffix(".tmp.parquet")
         merged.write_parquet(temp_path)

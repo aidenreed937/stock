@@ -117,8 +117,8 @@ class HistoricalBackfiller:
         todo_dates = []
         for idx, trade_date in enumerate(open_dates, 1):
             # 检查断点续传：只有在精炼层（Curated Store）存在数据时，才认为该日真正完成
-            has_curated = getattr(self.pipeline.store, "has_curated", lambda e, d: False)(
-                self.endpoint, trade_date
+            has_curated = getattr(self.pipeline.store, "has_curated", lambda e, d, s=None: False)(
+                self.endpoint, trade_date, self.symbol
             )
             if has_curated and not force_refresh:
                 logger.debug(
