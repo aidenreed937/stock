@@ -5,7 +5,7 @@ from datetime import date
 import polars as pl
 
 from stock.data.cleaner.bar_cleaner import BarDataCleaner
-from stock.data.fetcher.example import MockDataFetcher
+from stock.data.fetcher.mock import MockDataFetcher
 from stock.data.normalizer.bar_normalizer import BarDataNormalizer
 from stock.data.pipeline import MarketDataPipeline
 from stock.data.storage.duckdb_store import DuckDBMarketStore

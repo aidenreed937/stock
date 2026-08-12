@@ -2,7 +2,7 @@ from datetime import date
 
 import pytest
 
-from stock.data.fetcher.example import MockDataFetcher
+from stock.data.fetcher.mock import MockDataFetcher
 from stock.models.market import DailyBar
 
 

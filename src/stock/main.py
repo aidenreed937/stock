@@ -4,7 +4,6 @@ from pathlib import Path
 from stock.analytics.indicators import calculate_rsi, calculate_sma
 from stock.config.loader import load_strategy_config
 from stock.config.settings import settings
-from stock.data.fetcher.example import MockDataFetcher
 from stock.data.pipeline import MarketDataPipeline
 from stock.utils.logger import logger, setup_logger
 
@@ -30,8 +29,17 @@ def main() -> None:
     end_date = date.today()
     start_date = end_date - timedelta(days=DEFAULT_LOOKBACK_DAYS)
 
-    fetcher = MockDataFetcher()
-    pipeline = MarketDataPipeline(fetcher=fetcher)
+    if settings.data_source_mode == "mock":
+        from stock.data.fetcher.mock import MockDataFetcher
+
+        fetcher = MockDataFetcher()
+        pipeline = MarketDataPipeline(fetcher=fetcher)
+    elif settings.data_source_mode == "tushare":
+        from stock.data.fetcher.tushare.factory import create_tushare_pipeline
+
+        pipeline = create_tushare_pipeline(endpoint="daily")
+    else:
+        raise ValueError(f"不支持的数据源模式: {settings.data_source_mode}")
     bars_df = pipeline.sync_daily_bars(symbol, start_date, end_date)
 
     # 4. 使用 DuckDB SQL 查询回检

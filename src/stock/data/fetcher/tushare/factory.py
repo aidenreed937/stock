@@ -1,3 +1,4 @@
+from stock.data.cleaner.base import BaseDataCleaner
 from stock.data.fetcher.tushare.facade import TuShareDataFetcher
 from stock.data.fetcher.tushare.registry import TUSHARE_API_REGISTRY
 from stock.data.cleaner.generic_cleaner import GenericCleaner
@@ -7,6 +8,7 @@ from stock.data.pipeline import MarketDataPipeline
 def create_tushare_pipeline(endpoint: str = "daily") -> MarketDataPipeline:
     """为给定的 TuShare 接口创建装配好的 MarketDataPipeline 实例。"""
     fetcher = TuShareDataFetcher()
+    cleaner: BaseDataCleaner
     if endpoint == "daily":
         cleaner = BarDataCleaner()
     else:

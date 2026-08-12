@@ -1,7 +1,7 @@
 from datetime import date
 
 from stock.analytics.indicators import calculate_ema, calculate_rsi, calculate_sma
-from stock.data.fetcher.example import MockDataFetcher
+from stock.data.fetcher.mock import MockDataFetcher
 
 
 def test_calculate_indicators(mock_fetcher: MockDataFetcher) -> None:

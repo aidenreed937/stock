@@ -5,7 +5,7 @@ from datetime import date
 import pytest
 
 from stock.data.backfill import HistoricalBackfiller
-from stock.data.fetcher.example import MockDataFetcher
+from stock.data.fetcher.mock import MockDataFetcher
 from stock.data.pipeline import MarketDataPipeline
 from stock.data.storage.duckdb_store import DuckDBMarketStore
 from stock.data.storage.raw_store import RawDataStorage

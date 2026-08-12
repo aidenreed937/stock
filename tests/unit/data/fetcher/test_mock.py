@@ -1,5 +1,5 @@
 from datetime import date
-from stock.data.fetcher.example import MockDataFetcher
+from stock.data.fetcher.mock import MockDataFetcher
 
 def test_mock_fetcher(mock_fetcher: MockDataFetcher) -> None:
     start = date(2026, 1, 1)

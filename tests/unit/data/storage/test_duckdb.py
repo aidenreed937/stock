@@ -1,7 +1,7 @@
 from datetime import date
 import polars as pl
 from stock.data.storage.duckdb_store import DuckDBMarketStore
-from stock.data.fetcher.example import MockDataFetcher
+from stock.data.fetcher.mock import MockDataFetcher
 
 def test_duckdb_store(tmp_path, mock_fetcher: MockDataFetcher) -> None:
     store = DuckDBMarketStore(storage_dir=tmp_path)
