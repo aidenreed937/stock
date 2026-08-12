@@ -107,4 +107,25 @@ TUSHARE_API_REGISTRY: dict[str, EndpointMeta] = {
         primary_keys=["index_code", "con_code", "trade_date"],
         rate_limit_per_min=100,
     ),
+    "index_classify": EndpointMeta(
+        api_name="index_classify",
+        description="申万行业分类",
+        group="basic_info",
+        primary_keys=["index_code"],
+        rate_limit_per_min=100,
+    ),
+    "index_member": EndpointMeta(
+        api_name="index_member",
+        description="申万行业成分股",
+        group="basic_info",
+        primary_keys=["index_code", "con_code"],
+        rate_limit_per_min=100,
+    ),
+    "sw_daily": EndpointMeta(
+        api_name="sw_daily",
+        description="申万行业日线行情",
+        group="market_data",
+        primary_keys=["ts_code", "trade_date"],
+        rate_limit_per_min=100,
+    ),
 }
