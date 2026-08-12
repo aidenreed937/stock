@@ -315,7 +315,18 @@ if __name__ == "__main__":
             data_cfg.concurrency.default_max_workers,
         )
 
-    target_symbols = [args.symbol] if args.symbol else getattr(data_cfg.watchlists, args.data_source, [])
+    wl = getattr(data_cfg.watchlists, args.data_source, None)
+    if wl is not None:
+        if hasattr(wl, "all_symbols"):
+            raw_symbols = wl.all_symbols
+        elif isinstance(wl, list):
+            raw_symbols = wl
+        else:
+            raw_symbols = []
+    else:
+        raw_symbols = []
+
+    target_symbols = [args.symbol] if args.symbol else raw_symbols
     if not target_symbols:
         target_symbols = [""]
 

@@ -4,9 +4,55 @@ from pydantic import BaseModel, Field
 
 
 class UniverseConfig(BaseModel):
-    """标的范围配置。"""
+    """标的范围配置（支持股票与指数解耦）。"""
 
-    symbols: list[str] = Field(min_length=1, description="股票或标的代码列表")
+    stocks: list[str] = Field(default_factory=list, description="股票代码列表")
+    indices: list[str] = Field(default_factory=list, description="指数代码列表")
+    symbols: list[str] = Field(default_factory=list, description="合并标的代码列表")
+
+
+class SourceWatchlistConfig(BaseModel):
+    """单数据源按股票与指数解耦的观察池配置。"""
+
+    stocks: list[str] = Field(default_factory=list, description="股票代码列表")
+    indices: list[str] = Field(default_factory=list, description="指数代码列表")
+
+    @property
+    def all_symbols(self) -> list[str]:
+        """合并并去重返回全量标的代码列表。"""
+        seen: set[str] = set()
+        result: list[str] = []
+        for item in self.stocks + self.indices:
+            if item not in seen:
+                seen.add(item)
+                result.append(item)
+        return result
+
+
+class WatchlistsConfig(BaseModel):
+    """数据源默认重点观察与拉取标的列表。"""
+
+    yfinance: SourceWatchlistConfig = Field(
+        default_factory=lambda: SourceWatchlistConfig(
+            stocks=["AAPL", "MSFT", "NVDA", "GOOGL", "AMZN", "META", "TSLA"],
+            indices=["^GSPC", "^IXIC", "^DJI"],
+        ),
+        description="yfinance 外盘重点观察标的代码列表 (股票与指数解耦)",
+    )
+    tushare: SourceWatchlistConfig = Field(
+        default_factory=lambda: SourceWatchlistConfig(
+            stocks=["600519.SH", "000001.SZ"],
+            indices=["000001.SH", "399001.SZ"],
+        ),
+        description="tushare 重点观察代码列表",
+    )
+    lixinger: SourceWatchlistConfig = Field(
+        default_factory=lambda: SourceWatchlistConfig(
+            stocks=["600519", "000001"],
+            indices=[],
+        ),
+        description="理杏仁重点观察代码列表",
+    )
 
 
 class SMAIndicatorConfig(BaseModel):
@@ -79,34 +125,6 @@ class ConcurrencyConfig(BaseModel):
     lixinger_max_workers: int = Field(default=4, gt=0, description="理杏仁抓取最大并发线程数")
     yfinance_max_workers: int = Field(default=4, gt=0, description="YFinance 抓取最大并发线程数")
     default_max_workers: int = Field(default=4, gt=0, description="默认通用抓取最大并发线程数")
-
-
-class WatchlistsConfig(BaseModel):
-    """数据源默认重点观察与拉取标的列表。"""
-
-    yfinance: list[str] = Field(
-        default_factory=lambda: [
-            "AAPL",
-            "MSFT",
-            "NVDA",
-            "GOOGL",
-            "AMZN",
-            "META",
-            "TSLA",
-            "^GSPC",
-            "^IXIC",
-            "^DJI",
-        ],
-        description="yfinance 外盘重点观察标的代码列表",
-    )
-    tushare: list[str] = Field(
-        default_factory=lambda: ["600519.SH", "000001.SZ"],
-        description="tushare 重点观察代码列表",
-    )
-    lixinger: list[str] = Field(
-        default_factory=lambda: ["600519", "000001"],
-        description="理杏仁重点观察代码列表",
-    )
 
 
 class DataConfig(BaseModel):

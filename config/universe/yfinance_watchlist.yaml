@@ -1,6 +1,6 @@
-# yfinance 外盘重点观察股票与指数池配置
+# yfinance 外盘重点观察池配置 (按股票与指数解耦)
 universe:
-  symbols:
+  stocks:
     - "AAPL"   # 苹果
     - "MSFT"   # 微软
     - "NVDA"   # 英伟达
@@ -8,6 +8,19 @@ universe:
     - "AMZN"   # 亚马逊
     - "META"   # Meta
     - "TSLA"   # 特斯拉
-    - "^GSPC"  # 标普500指数
+  indices:
+    - "^GSPC"  # 标普 500 指数
     - "^IXIC"  # 纳斯达克指数
-    - "^DJI"   # 道琼斯指数
+    - "^DJI"   # 道琼斯工业指数
+  # 全量组合列表
+  symbols:
+    - "AAPL"
+    - "MSFT"
+    - "NVDA"
+    - "GOOGL"
+    - "AMZN"
+    - "META"
+    - "TSLA"
+    - "^GSPC"
+    - "^IXIC"
+    - "^DJI"
