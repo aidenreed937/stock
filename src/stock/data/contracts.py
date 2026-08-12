@@ -179,7 +179,19 @@ def instrument_for_symbol(symbol: str, provider: str) -> InstrumentId | None:
         if ext.isalpha() and 2 <= len(ext) <= 4:
             return InstrumentId(symbol, ext, f"{ext}_EXCHANGE", "LOCAL_CURRENCY", provider)
 
-    # 6. 全球/美股通用指数 (以 ^ 开头，如 ^GSPC 标普500, ^IXIC 纳指, ^VIX 恐慌指数)
+    # 6. 全球重点指数识别
+    if symbol_upper == "^N225":
+        return InstrumentId(symbol, "JP", "INDEX", "JPY", provider)
+    if symbol_upper == "^KS11":
+        return InstrumentId(symbol, "KR", "INDEX", "KRW", provider)
+    if symbol_upper == "^HSI":
+        return InstrumentId(symbol, "HK", "INDEX", "HKD", provider)
+    if symbol_upper == "^TWII":
+        return InstrumentId(symbol, "TW", "INDEX", "TWD", provider)
+    if symbol_upper == "^STI":
+        return InstrumentId(symbol, "SG", "INDEX", "SGD", provider)
+    if symbol_upper == "^AXJO":
+        return InstrumentId(symbol, "AU", "INDEX", "AUD", provider)
     if symbol_upper.startswith("^"):
         return InstrumentId(symbol, "US", "INDEX", "USD", provider)
 

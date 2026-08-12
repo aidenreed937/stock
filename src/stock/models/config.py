@@ -35,7 +35,7 @@ class WatchlistsConfig(BaseModel):
     yfinance: SourceWatchlistConfig = Field(
         default_factory=lambda: SourceWatchlistConfig(
             stocks=["AAPL", "MSFT", "NVDA", "GOOGL", "AMZN", "META", "TSLA"],
-            indices=["^GSPC", "^IXIC", "^DJI"],
+            indices=["^GSPC", "^IXIC", "^DJI", "^N225", "^KS11", "^HSI", "^TWII"],
         ),
         description="yfinance 外盘重点观察标的代码列表 (股票与指数解耦)",
     )

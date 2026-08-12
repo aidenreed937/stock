@@ -9,9 +9,17 @@ universe:
     - "META"   # Meta
     - "TSLA"   # 特斯拉
   indices:
+    # 美股三大指数
     - "^GSPC"  # 标普 500 指数
     - "^IXIC"  # 纳斯达克指数
     - "^DJI"   # 道琼斯工业指数
+    # 亚太重点指数
+    - "^N225"  # 日经 225 指数 (日本)
+    - "^KS11"  # 韩国 KOSPI 指数 (韩国)
+    - "^HSI"   # 恒生指数 (香港)
+    - "^TWII"  # 台湾加权指数 (台湾)
+    - "^STI"   # 新加坡海峡时报指数 (新加坡)
+    - "^AXJO"  # 澳大利亚 S&P/ASX 200 指数 (澳洲)
   # 全量组合列表
   symbols:
     - "AAPL"
@@ -24,3 +32,9 @@ universe:
     - "^GSPC"
     - "^IXIC"
     - "^DJI"
+    - "^N225"
+    - "^KS11"
+    - "^HSI"
+    - "^TWII"
+    - "^STI"
+    - "^AXJO"
