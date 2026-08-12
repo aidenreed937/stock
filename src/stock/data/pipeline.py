@@ -14,7 +14,6 @@ from stock.utils.logger import logger
 
 
 from stock.data.cleaner.generic_cleaner import GenericCleaner
-from stock.data.fetcher.tushare.registry import TUSHARE_API_REGISTRY
 
 
 class MarketDataPipeline:
@@ -58,9 +57,7 @@ class MarketDataPipeline:
         elif endpoint == "daily":
             self.cleaner = BarDataCleaner()
         else:
-            meta = TUSHARE_API_REGISTRY.get(endpoint)
-            p_keys = meta.primary_keys if meta else None
-            self.cleaner = GenericCleaner(primary_keys=p_keys)
+            self.cleaner = GenericCleaner()
 
         self.normalizer = normalizer if normalizer is not None else BarDataNormalizer()
         self.store = store if store is not None else DuckDBMarketStore()
