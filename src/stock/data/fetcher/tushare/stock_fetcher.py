@@ -77,7 +77,11 @@ class TuShareStockFetcher:
         if pandas_df.empty:
             return pl.DataFrame()
 
-        return pl.from_pandas(pandas_df)
+        pl_df = pl.from_pandas(pandas_df)
+        if "symbol" not in pl_df.columns:
+            sym_val = symbol or endpoint.upper()
+            pl_df = pl_df.with_columns(pl.lit(sym_val).alias("symbol"))
+        return pl_df
 
     def fetch_daily_bars(
         self, symbol: str, start_date: date, end_date: date

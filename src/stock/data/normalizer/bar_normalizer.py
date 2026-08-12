@@ -85,9 +85,12 @@ class BarDataNormalizer(BaseDataNormalizer):
 
 
 def infer_market_exchange_currency(
-    col_ref: pl.Expr,
+    col_ref: pl.Expr, data_source: str = "tushare"
 ) -> tuple[pl.Expr, pl.Expr, pl.Expr]:
-    """根据证券代码前缀/后缀动态推算市场 (market)、交易所 (exchange) 与交易货币 (currency)。"""
+    """根据证券代码前缀/后缀及数据源动态推算市场 (market)、交易所 (exchange) 与交易货币 (currency)。"""
+    default_m = "CN" if data_source.lower() in ("tushare", "lixinger") else "US"
+    default_cur = "CNY" if data_source.lower() in ("tushare", "lixinger") else "USD"
+
     market_expr = (
         pl.when(
             col_ref.str.to_uppercase().str.ends_with(".SH")
@@ -98,7 +101,7 @@ def infer_market_exchange_currency(
         .then(pl.lit("CN"))
         .when(col_ref.str.to_uppercase().str.ends_with(".HK"))
         .then(pl.lit("HK"))
-        .otherwise(pl.lit("US"))
+        .otherwise(pl.lit(default_m))
     )
     exchange_expr = (
         pl.when(

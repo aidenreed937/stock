@@ -133,7 +133,21 @@ class TuShareClient:
         self.rate_limiter.acquire()
         try:
             logger.debug(f"TuShare 请求: api_name={api_name}, kwargs={kwargs}")
-            df: pd.DataFrame = self.pro.query(api_name, **kwargs)
+            try:
+                df: pd.DataFrame = self.pro.query(api_name, **kwargs)
+            except Exception as ssl_e:
+                if "SSL" in str(ssl_e) or "SSLEOFError" in str(ssl_e):
+                    logger.warning(f"TuShare HTTPS 请求异常 [{ssl_e}]，降级使用 HTTP 协议重试 [{api_name}]...")
+                    current_url = getattr(self.pro, "_DataApi__http_url", "")
+                    if current_url.startswith("https://"):
+                        http_url = "http://" + current_url[8:]
+                        setattr(self.pro, "_DataApi__http_url", http_url)
+                        df = self.pro.query(api_name, **kwargs)
+                    else:
+                        raise
+                else:
+                    raise
+
             if df is None or df.empty:
                 return pd.DataFrame()
 

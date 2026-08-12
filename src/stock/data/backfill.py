@@ -207,10 +207,22 @@ class HistoricalBackfiller:
         total_days = (end_date - start_date).days + 1
         freq = self.frequency
 
-        # 对于非日频接口（如月频 CPI/利率、季频财报 GDP、事件驱动），自动识别并执行单次全区间精准同步，彻底避免按交易日开市重复拉取
-        if freq != "daily":
+        macro_single_sync_eps = {
+            "moneyflow_hsgt",
+            "hsgt_top10",
+            "margin",
+            "margin_detail",
+            "cn_gdp",
+            "cn_cpi",
+            "cn_ppi",
+            "cn_pmi",
+            "cn_m",
+            "shibor_lpr",
+        }
+        # 对于非日频接口（如月频 CPI/利率、季频财报 GDP、事件驱动及宏观全区间接口），自动识别并执行单次全区间精准同步，彻底避免按交易日开市重复拉取
+        if freq != "daily" or self.endpoint in macro_single_sync_eps:
             logger.info(
-                f"识别到接口 [{self.data_source}/{self.endpoint}] 注册更新频次为 [{freq}]，执行单次区间精准同步 ({start_date} ~ {end_date})..."
+                f"识别到接口 [{self.data_source}/{self.endpoint}] 执行单次全区间超高速同步 ({start_date} ~ {end_date})..."
             )
             sym_code = self.symbol or self.endpoint
             df = self.pipeline.sync_daily_bars(
@@ -592,7 +604,20 @@ def main() -> None:
     else:
         raw_symbols = []
 
-    if symbol == "all" and endpoint not in per_symbol_eps:
+    market_macro_eps = {
+        "moneyflow_hsgt",
+        "hsgt_top10",
+        "margin",
+        "cn_gdp",
+        "cn_cpi",
+        "cn_ppi",
+        "cn_pmi",
+        "cn_m",
+        "shibor_lpr",
+    }
+    if endpoint in market_macro_eps and not symbol:
+        target_symbols = [""]
+    elif symbol == "all" and endpoint not in per_symbol_eps:
         target_symbols = [""]
     else:
         target_symbols = [symbol] if (symbol and symbol not in ("all", "watchlist")) else raw_symbols
