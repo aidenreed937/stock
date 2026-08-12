@@ -26,6 +26,8 @@ class DuckDBMarketStore:
         self.storage_dir = self._get_source_dir()
         self.storage_dir.mkdir(parents=True, exist_ok=True)
         self.conn = duckdb.connect(database=":memory:")
+        self._batch_mode = False
+        self._write_buffer: dict[Path, list[pl.DataFrame]] = {}
 
     def _get_source_dir(self) -> Path:
         """返回当前数据源专属的 Curated 目录。"""
@@ -47,6 +49,53 @@ class DuckDBMarketStore:
             raise DataValidationError(
                 f"Curated 存储数据源不匹配: 已绑定 [{self.data_source}]，收到 [{data_source}]"
             )
+
+    def enable_batch_mode(self) -> None:
+        """开启内存攒批写入模式，避免循环单日/单标的追加写入造成的 O(N^2) 写放大。"""
+        self._batch_mode = True
+        self._write_buffer = {}
+        logger.info("DuckDBMarketStore 已开启攒批写入模式 (Micro-batching)")
+
+    def commit(self) -> None:
+        """提交并刷新所有攒批缓存到本地 Parquet，执行合并去重。"""
+        if not getattr(self, "_batch_mode", False):
+            return
+
+        if not getattr(self, "_write_buffer", {}):
+            self._batch_mode = False
+            return
+
+        logger.info(f"开始提交攒批数据，共涉及 {len(self._write_buffer)} 个目标文件分区...")
+        for file_path, dfs in self._write_buffer.items():
+            if not dfs:
+                continue
+
+            existing = pl.read_parquet(file_path) if file_path.exists() else pl.DataFrame()
+
+            # 由于 df 在存入前已经做过 contract 校验，这里直接合并
+            merged = pl.concat([existing] + dfs, how="diagonal")
+
+            dedup_cols = [
+                c for c in ["market", "symbol", "stockCode", "ts_code", "code", "trade_date", "date", "adjustment"] if c in merged.columns
+            ]
+            if dedup_cols:
+                merged = merged.unique(subset=dedup_cols, keep="last")
+            if "trade_date" in merged.columns and "symbol" in merged.columns:
+                merged = merged.sort(["trade_date", "symbol"])
+
+            file_path.parent.mkdir(parents=True, exist_ok=True)
+            temp_path = file_path.with_suffix(".tmp.parquet")
+            merged.write_parquet(temp_path)
+            temp_path.replace(file_path)
+
+            if hasattr(self, "_curated_cache") and file_path in self._curated_cache:
+                del self._curated_cache[file_path]
+
+            logger.info(f"攒批合并落盘成功 -> {file_path} (合并后共 {len(merged)} 行)")
+
+        self._write_buffer.clear()
+        self._batch_mode = False
+        logger.info("攒批提交完成，已自动关闭攒批模式。")
 
     def _validate_frame_source(self, df: pl.DataFrame, data_source: str, context: str) -> None:
         """校验数据帧的血统元数据。"""
@@ -90,9 +139,16 @@ class DuckDBMarketStore:
             return False
         date_str_hyphen = target_date.strftime("%Y-%m-%d")
         date_str_plain = target_date.strftime("%Y%m%d")
+
+        if not hasattr(self, "_curated_cache"):
+            self._curated_cache: dict[Path, pl.DataFrame] = {}
+
         for file_path in matching_files:
             try:
-                df = pl.read_parquet(file_path)
+                if file_path not in self._curated_cache:
+                    self._curated_cache[file_path] = pl.read_parquet(file_path)
+                df = self._curated_cache[file_path]
+
                 self._validate_frame_source(df, data_source, f"Curated 文件 [{file_path}]")
                 if "trade_date" in df.columns:
                     dates = set(df["trade_date"].unique().to_list())
@@ -143,6 +199,14 @@ class DuckDBMarketStore:
         self._validate_frame_source(df, source, f"Curated 数据 [{file_path}]")
         if endpoint in {"daily", "daily_bar"}:
             DAILY_BAR_CONTRACT.validate(df)
+
+        if getattr(self, "_batch_mode", False):
+            if file_path not in getattr(self, "_write_buffer", {}):
+                self._write_buffer[file_path] = []
+            self._write_buffer[file_path].append(df)
+            logger.debug(f"已加入攒批写入缓存 [{endpoint}] -> {file_path}")
+            return file_path
+
         existing = pl.read_parquet(file_path) if file_path.exists() else pl.DataFrame()
         if not existing.is_empty():
             self._validate_frame_source(existing, source, f"已有 Curated 文件 [{file_path}]")
@@ -164,19 +228,37 @@ class DuckDBMarketStore:
         temp_path = file_path.with_suffix(".tmp.parquet")
         merged.write_parquet(temp_path)
         temp_path.replace(file_path)
+
+        if hasattr(self, "_curated_cache") and file_path in self._curated_cache:
+            del self._curated_cache[file_path]
+
         logger.info(f"精炼数据落盘成功 [{endpoint}] -> {file_path} ({len(merged)} 行)")
         return file_path
 
     def save_dataset(self, key: DatasetKey, df: pl.DataFrame) -> Path:
         """按数据集和业务日期幂等合并保存标准数据。"""
         self.bind_data_source(key.provider)
-        market_code = key.instrument.market if (key.instrument and key.instrument.market) else "MULTI"
+        market_code = "MULTI"
+        if key.instrument and key.instrument.market:
+            market_code = key.instrument.market
+        elif "market" in df.columns and not df.is_empty():
+            m_values = set(df.get_column("market").drop_nulls().unique().to_list())
+            if len(m_values) == 1:
+                market_code = next(iter(m_values))
         file_path = self.get_parquet_path(key.dataset, key.end_date, market=market_code)
         if df.is_empty():
             return file_path
         self._validate_frame_source(df, key.provider, f"Curated 数据 [{file_path}]")
         if key.dataset == "daily_bar":
             DAILY_BAR_CONTRACT.validate(df)
+
+        if getattr(self, "_batch_mode", False):
+            if file_path not in getattr(self, "_write_buffer", {}):
+                self._write_buffer[file_path] = []
+            self._write_buffer[file_path].append(df)
+            logger.debug(f"已加入攒批写入缓存 [{key.dataset}] -> {file_path}")
+            return file_path
+
         existing = pl.read_parquet(file_path) if file_path.exists() else pl.DataFrame()
         if not existing.is_empty():
             self._validate_frame_source(existing, key.provider, f"已有 Curated 文件 [{file_path}]")
@@ -197,6 +279,10 @@ class DuckDBMarketStore:
         temp_path = file_path.with_suffix(".tmp.parquet")
         merged.write_parquet(temp_path)
         temp_path.replace(file_path)
+
+        if hasattr(self, "_curated_cache") and file_path in self._curated_cache:
+            del self._curated_cache[file_path]
+
         return file_path
 
     def query_dataset(

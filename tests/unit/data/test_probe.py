@@ -68,3 +68,42 @@ def test_global_probe_all():
     )
     results = probe.probe_all()
     assert len(results) == 10
+
+
+def test_probe_empty_and_error_branches():
+    """测试 probe 结果为 EMPTY 与 ERROR/FAILED 时的结果包装。"""
+    mock_ts = MagicMock()
+    mock_ts.fetch_daily_bars_df.return_value = pl.DataFrame()
+
+    mock_yf = MagicMock()
+    mock_yf.fetch_daily_bars_df.side_effect = Exception("API Key Error")
+
+    probe = GlobalDataProbe(tushare_fetcher=mock_ts, yfinance_fetcher=mock_yf)
+    results_ts = probe.probe_tushare()
+    assert results_ts[0]["status"] == "EMPTY"
+
+    results_yf = probe.probe_yfinance()
+    assert results_yf[0]["status"] == "FAILED"
+    assert "API Key Error" in results_yf[0]["error"]
+
+
+def test_probe_main_cli(capsys):
+    """测试 probe main CLI 函数能正常打印不同状态输出。"""
+    from unittest.mock import patch
+    from stock.data.probe import main as probe_main
+
+    mock_probe = MagicMock()
+    mock_probe.probe_all.return_value = [
+        {"source": "tushare", "endpoint": "daily_bar", "freq": "daily", "status": "SUCCESS", "latency_ms": 12.3, "rows": 100, "cols": 5},
+        {"source": "yfinance", "endpoint": "macro", "freq": "daily", "status": "EMPTY", "latency_ms": 50.0},
+        {"source": "fred", "endpoint": "cpi", "freq": "monthly", "status": "FAILED", "latency_ms": 5.0, "error": "Unauthorized Token"},
+    ]
+
+    with patch("stock.data.probe.GlobalDataProbe", return_value=mock_probe):
+        probe_main()
+
+    captured = capsys.readouterr().out
+    assert "全数据源 (TuShare, yfinance, FRED, 理杏仁) 健康度与连通性验证报告" in captured
+    assert "[OK]   [tushare ] daily_bar" in captured
+    assert "[WARN] [yfinance] macro" in captured
+    assert "[INFO] [fred    ] cpi" in captured

@@ -133,3 +133,129 @@ def test_store_rejects_schema_mismatch(tmp_path) -> None:
 
     with pytest.raises(DataValidationError, match="schema 不匹配"):
         store.save_dataset(key, incomplete_df)
+
+
+def test_duckdb_store_extra_branches(tmp_path) -> None:
+    store = DuckDBMarketStore(storage_dir=tmp_path, data_source="mock")
+
+    # Test bind_data_source mismatch
+    with pytest.raises(DataValidationError, match="Curated 存储数据源不匹配"):
+        store.bind_data_source("other_source")
+
+    # Test save empty DataFrame
+    file_path = store.save_market_data("daily", date(2026, 1, 15), pl.DataFrame())
+    assert not file_path.exists()
+
+    key = DatasetKey(
+        provider="mock",
+        dataset="daily_bar",
+        endpoint="daily",
+        start_date=date(2026, 1, 15),
+        end_date=date(2026, 1, 15),
+        instrument=instrument_for_symbol("TEST.SH", "mock"),
+    )
+    empty_dataset_path = store.save_dataset(key, pl.DataFrame())
+    assert not empty_dataset_path.exists()
+
+    # Save data for query tests
+    df = pl.DataFrame(
+        {
+            "symbol": ["TEST.SH", "TEST.SH"],
+            "trade_date": [date(2026, 1, 14), date(2026, 1, 15)],
+            "open": [10.0, 20.0],
+            "high": [11.0, 21.0],
+            "low": [9.0, 19.0],
+            "close": [10.5, 20.5],
+            "volume": [1000.0, 2000.0],
+            "amount": [10500.0, 41000.0],
+            "pre_close": [10.0, 10.5],
+            "change": [0.5, 10.0],
+            "pct_chg": [5.0, 48.78],
+            "data_source": ["mock", "mock"],
+            "market": ["CN", "CN"],
+            "exchange": ["SSE", "SSE"],
+            "currency": ["CNY", "CNY"],
+            "adjustment": ["raw", "raw"],
+            "schema_version": ["v1", "v1"],
+        }
+    )
+    store.save_market_data("custom_endpoint", date(2026, 1, 15), df)
+
+    # Test query_daily_bars with min_price
+    filtered_df = store.query_daily_bars("TEST.SH", endpoint="custom_endpoint", min_price=15.0)
+    assert len(filtered_df) == 1
+    assert filtered_df["close"][0] == 20.5
+
+    # Test query_history with custom endpoint
+    hist_df = store.query_history(
+        endpoint="custom_endpoint",
+        start_date=date(2026, 1, 14),
+        end_date=date(2026, 1, 15),
+        symbols=["TEST.SH"],
+    )
+    assert len(hist_df) == 2
+
+
+def test_duckdb_store_batch_mode(tmp_path) -> None:
+    store = DuckDBMarketStore(storage_dir=tmp_path, data_source="mock")
+    store.enable_batch_mode()
+
+    df1 = pl.DataFrame(
+        {
+            "symbol": ["TEST.SH"],
+            "trade_date": [date(2026, 1, 14)],
+            "open": [10.0],
+            "high": [11.0],
+            "low": [9.0],
+            "close": [10.5],
+            "volume": [1000.0],
+            "amount": [10500.0],
+            "pre_close": [10.0],
+            "change": [0.5],
+            "pct_chg": [5.0],
+            "data_source": ["mock"],
+            "market": ["CN"],
+            "exchange": ["SSE"],
+            "currency": ["CNY"],
+            "adjustment": ["raw"],
+            "schema_version": ["v1"],
+        }
+    )
+    df2 = pl.DataFrame(
+        {
+            "symbol": ["TEST.SH"],
+            "trade_date": [date(2026, 1, 15)],
+            "open": [11.0],
+            "high": [12.0],
+            "low": [10.5],
+            "close": [11.5],
+            "volume": [1500.0],
+            "amount": [17250.0],
+            "pre_close": [10.5],
+            "change": [1.0],
+            "pct_chg": [9.52],
+            "data_source": ["mock"],
+            "market": ["CN"],
+            "exchange": ["SSE"],
+            "currency": ["CNY"],
+            "adjustment": ["raw"],
+            "schema_version": ["v1"],
+        }
+    )
+
+    file_path1 = store.save_market_data("daily", date(2026, 1, 14), df1)
+    file_path2 = store.save_market_data("daily", date(2026, 1, 15), df2)
+
+    # In batch mode, file should NOT exist yet
+    assert not file_path1.exists()
+
+    # Commit batch
+    store.commit()
+
+    # File should now exist and contain merged data
+    assert file_path1.exists()
+    queried = store.query_daily_bars("TEST.SH")
+    assert len(queried) == 2
+
+    # Calling commit again when empty should be safe
+    store.commit()

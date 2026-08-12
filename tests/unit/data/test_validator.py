@@ -1,7 +1,7 @@
 """OfflineDataValidator 单元测试。"""
 
 from datetime import date
-from unittest.mock import MagicMock
+from unittest.mock import MagicMock, patch
 
 import polars as pl
 from stock.data.validator import OfflineDataValidator
@@ -73,3 +73,26 @@ def test_validator_main(monkeypatch):
     monkeypatch.setattr(sys, "argv", ["validator"])
     monkeypatch.setattr("stock.data.validator.DuckDBMarketStore", lambda: mock_store)
     main()
+
+
+def test_validator_main_empty(monkeypatch, capsys):
+    import sys
+    from stock.data.validator import main
+
+    mock_store = MagicMock()
+    mock_store.query_history.return_value = pl.DataFrame()
+
+    monkeypatch.setattr(sys, "argv", ["validator", "--endpoint", "daily"])
+    monkeypatch.setattr("stock.data.validator.DuckDBMarketStore", lambda: mock_store)
+    main()
+
+    captured = capsys.readouterr().out
+    assert "[WARN] 未检测到任何本地落盘数据！" in captured
+
+
+def test_validator_entrypoint(monkeypatch):
+    import runpy
+
+    with patch("stock.data.validator.main") as mock_main:
+        runpy.run_module("stock.data.validator", run_name="__main__")
+        mock_main.assert_called_once()

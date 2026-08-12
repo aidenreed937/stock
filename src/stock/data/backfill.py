@@ -246,76 +246,125 @@ class HistoricalBackfiller:
         synced_count = 0
         failed_count = 0
 
-        # 将待处理交易日按月打成分组批次 (Monthly Batch Range Packing)
-        month_batches: dict[tuple[int, int], list[date]] = {}
-        for d in todo_dates:
-            month_batches.setdefault((d.year, d.month), []).append(d)
+        if not self.symbol:
+            # 全市场数据回填模式：必须按日同步（TuShare 限制全市场拉取必须传单个 trade_date）
+            logger.info(f"全市场数据回填模式激活，将按日并发同步共 {len(todo_dates)} 个交易日...")
 
-        def _sync_month_batch(batch_dates: list[date]) -> int:
-            b_start = min(batch_dates)
-            b_end = max(batch_dates)
-            try:
-                df = self.pipeline.sync_daily_bars(
-                    symbol=self.symbol,
-                    start_date=b_start,
-                    end_date=b_end,
-                    use_raw_cache=not force_refresh,
-                    force_refresh=force_refresh,
-                )
-                return len(batch_dates) if not df.is_empty() else 0
-            except Exception as e:
-                logger.error(f"月度批次 [{b_start} ~ {b_end}] 回填异常: {e}")
-                return 0
+            def _sync_single_day_task(trade_date: date) -> bool:
+                try:
+                    df = self.pipeline.sync_daily_bars(
+                        symbol="",
+                        start_date=trade_date,
+                        end_date=trade_date,
+                        use_raw_cache=not force_refresh,
+                        force_refresh=force_refresh,
+                    )
+                    return not df.is_empty()
+                except Exception as e:
+                    logger.error(f"全市场交易日 [{trade_date}] 同步异常: {e}")
+                    return False
 
-        batch_items = list(month_batches.items())
-        if batch_items:
-            from concurrent.futures import ThreadPoolExecutor, as_completed
+            if todo_dates:
+                from concurrent.futures import ThreadPoolExecutor, as_completed
+                # 全市场日频拉取，适当调高并发度
+                workers = min(max_workers, 8) if max_workers > 1 else 1
+                if workers > 1 and len(todo_dates) > 1:
+                    logger.info(f"使用 ThreadPoolExecutor 逐日并发回填，线程数: {workers}")
+                    with ThreadPoolExecutor(max_workers=workers) as executor:
+                        futures = {executor.submit(_sync_single_day_task, d): d for d in todo_dates}
+                        for idx, fut in enumerate(as_completed(futures), 1):
+                            d = futures[fut]
+                            try:
+                                success = fut.result()
+                                if success:
+                                    synced_count += 1
+                                    logger.info(f"[{idx}/{len(todo_dates)}] 交易日 [{d}] 全市场数据回填成功")
+                                else:
+                                    failed_count += 1
+                                    logger.warning(f"[{idx}/{len(todo_dates)}] 交易日 [{d}] 全市场数据回填失败")
+                            except Exception as e:
+                                logger.error(f"[{idx}/{len(todo_dates)}] 交易日 [{d}] 抛出异常: {e}")
+                                failed_count += 1
+                else:
+                    for idx, d in enumerate(todo_dates, 1):
+                        success = _sync_single_day_task(d)
+                        if success:
+                            synced_count += 1
+                            logger.info(f"[{idx}/{len(todo_dates)}] 交易日 [{d}] 全市场数据回填成功")
+                        else:
+                            failed_count += 1
+        else:
+            # 单只股票/指数回填模式：按月合并批次同步，减少 API 调用
+            # 将待处理交易日按月打成分组批次 (Monthly Batch Range Packing)
+            month_batches: dict[tuple[int, int], list[date]] = {}
+            for d in todo_dates:
+                month_batches.setdefault((d.year, d.month), []).append(d)
 
-            workers = min(max_workers, 4) if max_workers > 1 else 1
+            def _sync_month_batch(batch_dates: list[date]) -> int:
+                b_start = min(batch_dates)
+                b_end = max(batch_dates)
+                try:
+                    df = self.pipeline.sync_daily_bars(
+                        symbol=self.symbol,
+                        start_date=b_start,
+                        end_date=b_end,
+                        use_raw_cache=not force_refresh,
+                        force_refresh=force_refresh,
+                    )
+                    return len(batch_dates) if not df.is_empty() else 0
+                except Exception as e:
+                    logger.error(f"月度批次 [{b_start} ~ {b_end}] 回填异常: {e}")
+                    return 0
 
-            if workers > 1 and len(batch_items) > 1:
-                logger.info(
-                    f"使用 ThreadPoolExecutor 进行按月多线程回填，月批次数: {len(batch_items)}, 线程数: {workers}"
-                )
-                with ThreadPoolExecutor(max_workers=workers) as executor:
-                    futures = {
-                        executor.submit(_sync_month_batch, dates): (ym, dates)
-                        for ym, dates in batch_items
-                    }
-                    for idx, fut in enumerate(as_completed(futures), 1):
-                        (ym, dates) = futures[fut]
-                        try:
-                            count = fut.result()
-                            if count > 0:
-                                synced_count += count
-                                logger.info(
-                                    f"[{idx}/{len(batch_items)}] 月度批次 [{ym[0]}-{ym[1]:02d}] "
-                                    f"回填成功 (成功包含 {count} 个交易日)"
+            batch_items = list(month_batches.items())
+            if batch_items:
+                from concurrent.futures import ThreadPoolExecutor, as_completed
+
+                workers = min(max_workers, 4) if max_workers > 1 else 1
+
+                if workers > 1 and len(batch_items) > 1:
+                    logger.info(
+                        f"使用 ThreadPoolExecutor 进行按月多线程回填，月批次数: {len(batch_items)}, 线程数: {workers}"
+                    )
+                    with ThreadPoolExecutor(max_workers=workers) as month_executor:
+                        month_futures = {
+                            month_executor.submit(_sync_month_batch, dates): (ym, dates)
+                            for ym, dates in batch_items
+                        }
+                        for idx, month_fut in enumerate(as_completed(month_futures), 1):
+                            (ym, dates) = month_futures[month_fut]
+                            try:
+                                count = month_fut.result()
+                                if count > 0:
+                                    synced_count += count
+                                    logger.info(
+                                        f"[{idx}/{len(batch_items)}] 月度批次 [{ym[0]}-{ym[1]:02d}] "
+                                        f"回填成功 (成功包含 {count} 个交易日)"
+                                    )
+                                else:
+                                    failed_count += len(dates)
+                                    logger.warning(
+                                        f"[{idx}/{len(batch_items)}] 月度批次 [{ym[0]}-{ym[1]:02d}] 回填失败"
+                                    )
+                            except Exception as e:
+                                logger.error(
+                                    f"[{idx}/{len(batch_items)}] 月度批次 [{ym[0]}-{ym[1]:02d}] 抛出异常: {e}"
                                 )
-                            else:
                                 failed_count += len(dates)
-                                logger.warning(
-                                    f"[{idx}/{len(batch_items)}] 月度批次 [{ym[0]}-{ym[1]:02d}] 回填失败"
-                                )
-                        except Exception as e:
-                            logger.error(
-                                f"[{idx}/{len(batch_items)}] 月度批次 [{ym[0]}-{ym[1]:02d}] 抛出异常: {e}"
+                else:
+                    for idx, (ym, dates) in enumerate(batch_items, 1):
+                        count = _sync_month_batch(dates)
+                        if count > 0:
+                            synced_count += count
+                            logger.info(
+                                f"[{idx}/{len(batch_items)}] 月度批次 [{ym[0]}-{ym[1]:02d}] "
+                                f"回填成功 (成功包含 {count} 个交易日)"
                             )
+                        else:
                             failed_count += len(dates)
-            else:
-                for idx, (ym, dates) in enumerate(batch_items, 1):
-                    count = _sync_month_batch(dates)
-                    if count > 0:
-                        synced_count += count
-                        logger.info(
-                            f"[{idx}/{len(batch_items)}] 月度批次 [{ym[0]}-{ym[1]:02d}] "
-                            f"回填成功 (成功包含 {count} 个交易日)"
-                        )
-                    else:
-                        failed_count += len(dates)
-                        logger.warning(
-                            f"[{idx}/{len(batch_items)}] 月度批次 [{ym[0]}-{ym[1]:02d}] 回填失败"
-                        )
+                            logger.warning(
+                                f"[{idx}/{len(batch_items)}] 月度批次 [{ym[0]}-{ym[1]:02d}] 回填失败"
+                            )
 
         summary = {
             "total_days": total_days,
@@ -357,7 +406,7 @@ def _parse_args() -> argparse.Namespace:
     return parser.parse_args()
 
 
-if __name__ == "__main__":
+def main() -> None:
     args = _parse_args()
     start_d = datetime.strptime(args.start, "%Y-%m-%d").date()
     end_d = datetime.strptime(args.end, "%Y-%m-%d").date()
@@ -384,9 +433,12 @@ if __name__ == "__main__":
     else:
         raw_symbols = []
 
-    target_symbols = [args.symbol] if args.symbol else raw_symbols
-    if not target_symbols:
+    if args.symbol == "all":
         target_symbols = [""]
+    else:
+        target_symbols = [args.symbol] if args.symbol else raw_symbols
+        if not target_symbols:
+            target_symbols = [""]
 
     if len(target_symbols) > 1 or (len(target_symbols) == 1 and target_symbols[0]):
         if not args.symbol:
@@ -395,12 +447,36 @@ if __name__ == "__main__":
                 f"(共 {len(target_symbols)} 个标的): {target_symbols}"
             )
 
-    for sym in target_symbols:
-        if sym:
-            logger.info(f"===> 开始处理数据源 [{args.data_source}] 标的 [{sym}]...")
-        backfiller = HistoricalBackfiller(
-            data_source=args.data_source, endpoint=args.endpoint, symbol=sym
-        )
-        backfiller.backfill_range(
-            start_d, end_d, force_refresh=args.force_refresh, max_workers=workers
-        )
+    from stock.data.storage.duckdb_store import DuckDBMarketStore
+    shared_store = DuckDBMarketStore(data_source=args.data_source)
+    if hasattr(shared_store, "enable_batch_mode"):
+        shared_store.enable_batch_mode()
+
+    try:
+        for idx, sym in enumerate(target_symbols, 1):
+            if sym:
+                logger.info(f"===> 开始处理数据源 [{args.data_source}] 标的 [{sym}] ({idx}/{len(target_symbols)})...")
+            backfiller = HistoricalBackfiller(
+                data_source=args.data_source, endpoint=args.endpoint, symbol=sym
+            )
+
+            # 注入共享的批量存储引擎，解决写放大问题
+            backfiller.pipeline.store = shared_store
+
+            backfiller.backfill_range(
+                start_d, end_d, force_refresh=args.force_refresh, max_workers=workers
+            )
+
+            # 每回填完 50 个股票，定期落盘一次，防止撑爆内存
+            if idx % 50 == 0:
+                if hasattr(shared_store, "commit"):
+                    shared_store.commit()
+                    shared_store.enable_batch_mode()
+    finally:
+        # 确保进程退出前或全部执行完毕后最后一次提交落盘
+        if hasattr(shared_store, "commit"):
+            shared_store.commit()
+
+
+if __name__ == "__main__":
+    main()

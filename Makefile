@@ -9,6 +9,8 @@ help:
 	@echo "  make check    - Run format, lint, and test (recommended before commit)"
 	@echo "  make run      - Run the main application"
 	@echo "  make backfill - Backfill historical data (e.g., make backfill START=2026-08-01 END=2026-08-12)"
+	@echo "  make probe    - Run global data source connectivity probe"
+	@echo "  make validate - Run offline data quality validator"
 
 install:
 	uv sync
@@ -32,3 +34,9 @@ run:
 
 backfill:
 	uv run python -m stock.data.backfill --start $(START) --end $(END)
+
+probe:
+	uv run python -m stock.data.probe
+
+validate:
+	uv run python -m stock.data.validator --endpoint $(or $(ENDPOINT),daily)

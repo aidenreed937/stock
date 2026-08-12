@@ -130,13 +130,58 @@ class MarketDataPipeline:
 
         # 注入数据血统元数据 (Data Lineage)
         if not normalized_df.is_empty():
+            if instrument:
+                market_expr = pl.lit(instrument.market)
+                exchange_expr = pl.lit(instrument.exchange)
+                currency_expr = pl.lit(instrument.currency)
+            else:
+                # 动态从 symbol 列推断市场、交易所和币种 (用于全市场同步时的单行推断)
+                market_expr = (
+                    pl.when(
+                        pl.col("symbol").str.to_uppercase().str.ends_with(".SH")
+                        | pl.col("symbol").str.to_uppercase().str.ends_with(".SS")
+                        | pl.col("symbol").str.to_uppercase().str.ends_with(".SZ")
+                        | pl.col("symbol").str.to_uppercase().str.ends_with(".BJ")
+                    )
+                    .then(pl.lit("CN"))
+                    .when(pl.col("symbol").str.to_uppercase().str.ends_with(".HK"))
+                    .then(pl.lit("HK"))
+                    .otherwise(pl.lit("US"))
+                )
+                exchange_expr = (
+                    pl.when(
+                        pl.col("symbol").str.to_uppercase().str.ends_with(".SH")
+                        | pl.col("symbol").str.to_uppercase().str.ends_with(".SS")
+                    )
+                    .then(pl.lit("SSE"))
+                    .when(pl.col("symbol").str.to_uppercase().str.ends_with(".SZ"))
+                    .then(pl.lit("SZSE"))
+                    .when(pl.col("symbol").str.to_uppercase().str.ends_with(".BJ"))
+                    .then(pl.lit("BSE"))
+                    .when(pl.col("symbol").str.to_uppercase().str.ends_with(".HK"))
+                    .then(pl.lit("HKEX"))
+                    .otherwise(pl.lit("US_EXCHANGE"))
+                )
+                currency_expr = (
+                    pl.when(
+                        pl.col("symbol").str.to_uppercase().str.ends_with(".SH")
+                        | pl.col("symbol").str.to_uppercase().str.ends_with(".SS")
+                        | pl.col("symbol").str.to_uppercase().str.ends_with(".SZ")
+                        | pl.col("symbol").str.to_uppercase().str.ends_with(".BJ")
+                    )
+                    .then(pl.lit("CNY"))
+                    .when(pl.col("symbol").str.to_uppercase().str.ends_with(".HK"))
+                    .then(pl.lit("HKD"))
+                    .otherwise(pl.lit("USD"))
+                )
+
             normalized_df = normalized_df.with_columns(
                 [
                     pl.lit(self.data_source).alias("data_source"),
                     pl.lit(datetime.now()).alias("updated_at"),
-                    pl.lit(instrument.market if instrument else "MULTI").alias("market"),
-                    pl.lit(instrument.exchange if instrument else "MULTI").alias("exchange"),
-                    pl.lit(instrument.currency if instrument else "MULTI").alias("currency"),
+                    market_expr.alias("market"),
+                    exchange_expr.alias("exchange"),
+                    currency_expr.alias("currency"),
                     pl.lit("raw").alias("adjustment"),
                     pl.lit("v1").alias("schema_version"),
                 ]

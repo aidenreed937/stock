@@ -55,7 +55,38 @@ uv run python -m stock.data.backfill --start 2026-08-01 --end 2026-08-12 --endpo
 
 ---
 
-## 2. 主示范程序 CLI
+## 2. 全局数据源探测工具 (Global Data Probe CLI)
+
+用于快速检测各大数据源（TuShare, yfinance, FRED, 理杏仁）的连通性、响应时延与 Schema 契约状态。
+
+```bash
+# 通过 Makefile 快捷执行
+make probe
+
+# 或直接运行 Python 模块
+uv run python -m stock.data.probe
+```
+
+---
+
+## 3. 离线数据质量审计工具 (Offline Data Validator CLI)
+
+用于对本地 DuckDB 归档数据执行完整性与准确性规则校验（如：空值检查、主键重复、物理逻辑错误、断点检测等）。
+
+```bash
+# 默认审计日线数据 (daily)
+make validate
+
+# 指定审计其他接口 (通过 Makefile)
+make validate ENDPOINT=daily_basic
+
+# 完整参数调用
+uv run python -m stock.data.validator --endpoint daily
+```
+
+---
+
+## 4. 主示范程序 CLI
 
 运行 YAML 策略驱动的主流程测试：
 
@@ -69,7 +100,7 @@ uv run python -m stock.main
 
 ---
 
-## 3. 代码质量与环境检查 CLI
+## 5. 代码质量与环境检查 CLI
 
 在提交代码或发布前，运行全量代码规范与单测检查：
 
