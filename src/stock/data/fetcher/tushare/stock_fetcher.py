@@ -1,6 +1,7 @@
 """TuShare 股票行情与基本面数据 Fetcher 实现。"""
 
 from datetime import date
+from typing import Any
 
 import polars as pl
 
@@ -40,7 +41,7 @@ class TuShareStockFetcher:
         start_str = start_date.strftime("%Y%m%d")
         end_str = end_date.strftime("%Y%m%d")
 
-        query_kwargs: dict[str, str] = {}
+        query_kwargs: dict[str, Any] = {}
         if symbol:
             query_kwargs["ts_code"] = symbol
             query_kwargs["start_date"] = start_str

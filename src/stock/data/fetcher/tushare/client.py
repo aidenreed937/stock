@@ -112,11 +112,12 @@ class TuShareClient:
             )
         return self._pro_api
 
-    def query(self, api_name: str, **kwargs: Any) -> pd.DataFrame:
-        """调用指定 TuShare 接口并返回 Pandas DataFrame (自动做滑动窗口限频)。
+    def query(self, api_name: str, *, auto_paginate: bool = False, **kwargs: Any) -> pd.DataFrame:
+        """调用指定 TuShare 接口并返回 Pandas DataFrame (自动做滑动窗口限频与截断防护)。
 
         Args:
             api_name: TuShare API 接口名（如 daily, fina_indicator）。
+            auto_paginate: 是否自动执行 limit/offset 游标分页翻页。
             **kwargs: 传给 API 的查询参数。
 
         Returns:
@@ -129,8 +130,34 @@ class TuShareClient:
         try:
             logger.debug(f"TuShare 请求: api_name={api_name}, kwargs={kwargs}")
             df: pd.DataFrame = self.pro.query(api_name, **kwargs)
-            if df is None:
+            if df is None or df.empty:
                 return pd.DataFrame()
+
+            # 截断告警防护：如果单次返回条数达到 6000 边界，触发日志警告
+            if len(df) >= 6000 and not auto_paginate:
+                logger.warning(
+                    f"TuShare 接口 [{api_name}] 单次返回 {len(df)} 条记录，可能已触发服务器 6000 条截断上限！"
+                    f"建议传参 auto_paginate=True 或缩小查询范围。"
+                )
+
+            # 如果启用自动分页翻页 (Cursor Pagination)
+            if auto_paginate and len(df) >= 2000:
+                pages = [df]
+                limit = len(df)
+                offset = limit
+                while True:
+                    self.rate_limiter.acquire()
+                    kwargs["limit"] = limit
+                    kwargs["offset"] = offset
+                    page_df: pd.DataFrame = self.pro.query(api_name, **kwargs)
+                    if page_df is None or page_df.empty:
+                        break
+                    pages.append(page_df)
+                    if len(page_df) < limit:
+                        break
+                    offset += limit
+                df = pd.concat(pages, ignore_index=True)
+
             return df
         except Exception as e:
             logger.error(f"TuShare API 请求失败 [{api_name}]: {e}")
