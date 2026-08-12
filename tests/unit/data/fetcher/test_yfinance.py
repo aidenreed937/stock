@@ -1,0 +1,60 @@
+from datetime import date
+from unittest.mock import MagicMock, patch
+
+import pandas as pd
+
+from stock.data.fetcher.yfinance import YFinanceDataFetcher
+
+
+def test_yfinance_fetcher() -> None:
+    # 构造模拟的 pandas DataFrame 返回值
+    mock_df = pd.DataFrame(
+        {
+            "Open": [100.0, 101.0],
+            "High": [102.0, 103.0],
+            "Low": [99.0, 100.0],
+            "Close": [101.0, 102.0],
+            "Volume": [1000.0, 2000.0],
+        },
+        index=pd.to_datetime(["2026-01-01", "2026-01-02"]),
+    )
+
+    fetcher = YFinanceDataFetcher(proxy="http://mock-proxy")
+
+    with patch("yfinance.Ticker") as mock_ticker_class:
+        mock_ticker_instance = MagicMock()
+        mock_ticker_instance.history.return_value = mock_df
+        mock_ticker_class.return_value = mock_ticker_instance
+
+        bars = fetcher.fetch_daily_bars("^GSPC", date(2026, 1, 1), date(2026, 1, 2))
+
+        # 验证调用参数
+        mock_ticker_class.assert_called_once_with("^GSPC")
+        mock_ticker_instance.history.assert_called_once_with(
+            start="2026-01-01",
+            end="2026-01-03",  # end_date + 1 天 (不含)
+            interval="1d",
+            proxy="http://mock-proxy",
+        )
+
+        # 验证结果解析
+        assert len(bars) == 2
+        assert bars[0].close == 101.0
+        assert bars[0].trade_date == date(2026, 1, 1)
+        assert bars[1].volume == 2000.0
+        assert bars[1].amount == 204000.0  # 2000 * 102.0
+
+
+def test_yfinance_fetcher_empty() -> None:
+    fetcher = YFinanceDataFetcher()
+
+    with patch("yfinance.Ticker") as mock_ticker_class:
+        mock_ticker_instance = MagicMock()
+        mock_ticker_instance.history.return_value = pd.DataFrame()
+        mock_ticker_class.return_value = mock_ticker_instance
+
+        bars = fetcher.fetch_daily_bars("^GSPC", date(2026, 1, 1), date(2026, 1, 2))
+        assert len(bars) == 0
+
+        df = fetcher.fetch_daily_bars_df("^GSPC", date(2026, 1, 1), date(2026, 1, 2))
+        assert df.is_empty()

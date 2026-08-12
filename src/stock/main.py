@@ -32,12 +32,16 @@ def main() -> None:
     if settings.data_source_mode == "mock":
         from stock.data.fetcher.mock import MockDataFetcher
 
-        fetcher = MockDataFetcher()
-        pipeline = MarketDataPipeline(fetcher=fetcher)
+        pipeline = MarketDataPipeline(fetcher=MockDataFetcher())
     elif settings.data_source_mode == "tushare":
         from stock.data.fetcher.tushare.factory import create_tushare_pipeline
 
         pipeline = create_tushare_pipeline(endpoint="daily")
+    elif settings.data_source_mode == "yfinance":
+        from stock.data.fetcher.yfinance import YFinanceDataFetcher
+
+        proxy = settings.yfinance_proxy if settings.yfinance_proxy else None
+        pipeline = MarketDataPipeline(fetcher=YFinanceDataFetcher(proxy=proxy))
     else:
         raise ValueError(f"不支持的数据源模式: {settings.data_source_mode}")
     bars_df = pipeline.sync_daily_bars(symbol, start_date, end_date)

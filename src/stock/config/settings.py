@@ -28,6 +28,7 @@ class Settings(BaseSettings):
     tushare_rate_limit_per_min: int = 200
     tushare_max_workers: int = 4
     akshare_proxy: str = ""
+    yfinance_proxy: str = ""
     data_source_mode: str = "mock"
 
     def setup_directories(self) -> None:
