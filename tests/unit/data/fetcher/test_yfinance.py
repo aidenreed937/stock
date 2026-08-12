@@ -154,3 +154,33 @@ def test_fetch_extended_endpoints() -> None:
         fast_df = fetcher.fetch_fast_info_df("AAPL")
         assert not fast_df.is_empty()
         assert fast_df["last_price"][0] == 245.0
+
+
+def test_fetch_macro_indicators() -> None:
+    client = YFinanceClient()
+    fetcher = YFinanceDataFetcher(client=client)
+
+    mock_df = pd.DataFrame(
+        {
+            "Open": [4.5],
+            "High": [4.6],
+            "Low": [4.4],
+            "Close": [4.55],
+            "Volume": [0.0],
+        },
+        index=pd.to_datetime(["2026-08-10"]),
+    )
+
+    with patch("yfinance.Ticker") as mock_ticker_class:
+        mock_ticker_instance = MagicMock()
+        mock_ticker_instance.history.return_value = mock_df
+        mock_ticker_class.return_value = mock_ticker_instance
+
+        macro_df = fetcher.fetch_macro_indicators_df(
+            start_date=date(2026, 8, 10),
+            end_date=date(2026, 8, 11),
+            symbols=["^TNX"],
+        )
+        assert not macro_df.is_empty()
+        assert len(macro_df) == 1
+        assert macro_df["symbol"][0] == "^TNX"

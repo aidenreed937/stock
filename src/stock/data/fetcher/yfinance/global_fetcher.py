@@ -240,3 +240,38 @@ class YFinanceDataFetcher(BaseDataFetcher):
         except Exception as e:
             logger.error(f"YFinance 抓取极速快照失败 [{symbol}]: {e}")
             return pl.DataFrame()
+
+    def fetch_batch_daily_bars_df(
+        self, symbols: list[str], start_date: date, end_date: date
+    ) -> pl.DataFrame:
+        """批量同步并合并多个标的（股票/指数/宏观资产）的日线 K 线行情。"""
+        frames: list[pl.DataFrame] = []
+        for sym in symbols:
+            df = self.fetch_daily_bars_df(sym, start_date, end_date)
+            if not df.is_empty():
+                frames.append(df)
+
+        if not frames:
+            return pl.DataFrame()
+
+        return pl.concat(frames, how="diagonal_relaxed")
+
+    def fetch_macro_indicators_df(
+        self,
+        start_date: date,
+        end_date: date,
+        symbols: list[str] | None = None,
+    ) -> pl.DataFrame:
+        """一行代码批量同步全球核心宏观指标 (美债收益率、美元指数、汇率、大宗商品、VIX)。"""
+        default_macro_symbols = [
+            "^TNX",  # 美国 10 年期国债收益率
+            "^IRX",  # 美国 3 个月期国债收益率
+            "DX-Y.NYB",  # 美元指数
+            "CNH=X",  # 离岸人民币 (USD/CNH)
+            "GC=F",  # 黄金期货
+            "CL=F",  # 原油期货
+            "HG=F",  # 铜期货
+            "^VIX",  # 恐慌指数
+        ]
+        target_symbols = symbols or default_macro_symbols
+        return self.fetch_batch_daily_bars_df(target_symbols, start_date, end_date)
