@@ -472,17 +472,27 @@ def main() -> None:
             data_cfg.concurrency.default_max_workers,
         )
 
+    if data_source == "yfinance" and endpoint in ("daily", "history"):
+        endpoint = "history"
+
     per_symbol_eps = set(
         getattr(
             getattr(data_cfg, "endpoint_symbol_modes", None),
             "per_symbol_endpoints",
-            ["index_daily", "index_dailybasic", "index_weight", "global_index_daily", "fund_daily"],
+            [
+                "index_daily",
+                "index_dailybasic",
+                "index_weight",
+                "global_index_daily",
+                "fund_daily",
+                "history",
+            ],
         )
     )
 
     wl = getattr(data_cfg.watchlists, data_source, None)
     if wl is not None:
-        if endpoint in per_symbol_eps and hasattr(wl, "indices") and wl.indices:
+        if endpoint in per_symbol_eps and endpoint not in ("history", "daily") and hasattr(wl, "indices") and wl.indices:
             raw_symbols = wl.indices
             supports = (
                 getattr(data_cfg, "source_endpoint_supports", {})

@@ -71,6 +71,7 @@ data:
       - "index_weight"
       - "global_index_daily"
       - "fund_daily"
+      - "history"
     per_day_endpoints:
       - "daily"
       - "daily_basic"

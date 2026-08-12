@@ -150,6 +150,7 @@ class EndpointSymbolModesConfig(BaseModel):
             "index_weight",
             "global_index_daily",
             "fund_daily",
+            "history",
         ],
         description="按标的按时间段采集的接口列表",
     )

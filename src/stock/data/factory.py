@@ -22,9 +22,12 @@ def create_pipeline(data_source: str, endpoint: str = "daily") -> "MarketDataPip
 
         return create_tushare_pipeline(endpoint=endpoint)
     elif data_source_lower == "yfinance":
+        from stock.config.settings import settings
         from stock.data.fetcher.yfinance.factory import create_yfinance_pipeline
 
-        return create_yfinance_pipeline(endpoint=endpoint)
+        yf_endpoint = "history" if endpoint == "daily" else endpoint
+        proxy = settings.yfinance_proxy if settings.yfinance_proxy else None
+        return create_yfinance_pipeline(endpoint=yf_endpoint, proxy=proxy)
     elif data_source_lower == "lixinger":
         from stock.data.fetcher.lixinger.factory import create_lixinger_pipeline
 
