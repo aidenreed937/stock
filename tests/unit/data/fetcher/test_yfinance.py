@@ -3,7 +3,9 @@ from unittest.mock import MagicMock, patch
 
 import pandas as pd
 
-from stock.data.fetcher.yfinance import YFinanceDataFetcher
+from stock.data.fetcher.yfinance.client import YFinanceClient
+from stock.data.fetcher.yfinance.global_fetcher import YFinanceDataFetcher
+from stock.data.fetcher.yfinance.factory import create_yfinance_pipeline
 
 
 def test_yfinance_fetcher() -> None:
@@ -19,7 +21,8 @@ def test_yfinance_fetcher() -> None:
         index=pd.to_datetime(["2026-01-01", "2026-01-02"]),
     )
 
-    fetcher = YFinanceDataFetcher(proxy="http://mock-proxy")
+    client = YFinanceClient(proxy="http://mock-proxy")
+    fetcher = YFinanceDataFetcher(client=client)
 
     with patch("yfinance.Ticker") as mock_ticker_class:
         mock_ticker_instance = MagicMock()
@@ -46,7 +49,8 @@ def test_yfinance_fetcher() -> None:
 
 
 def test_yfinance_fetcher_empty() -> None:
-    fetcher = YFinanceDataFetcher()
+    client = YFinanceClient()
+    fetcher = YFinanceDataFetcher(client=client)
 
     with patch("yfinance.Ticker") as mock_ticker_class:
         mock_ticker_instance = MagicMock()
@@ -58,3 +62,11 @@ def test_yfinance_fetcher_empty() -> None:
 
         df = fetcher.fetch_daily_bars_df("^GSPC", date(2026, 1, 1), date(2026, 1, 2))
         assert df.is_empty()
+
+
+def test_create_yfinance_pipeline() -> None:
+    pipeline = create_yfinance_pipeline(proxy="http://some-proxy")
+    assert pipeline.data_source == "yfinance"
+    assert pipeline.endpoint == "history"
+    assert isinstance(pipeline.fetcher, YFinanceDataFetcher)
+    assert pipeline.fetcher.client.proxy == "http://some-proxy"

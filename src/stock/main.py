@@ -38,10 +38,10 @@ def main() -> None:
 
         pipeline = create_tushare_pipeline(endpoint="daily")
     elif settings.data_source_mode == "yfinance":
-        from stock.data.fetcher.yfinance import YFinanceDataFetcher
+        from stock.data.fetcher.yfinance.factory import create_yfinance_pipeline
 
         proxy = settings.yfinance_proxy if settings.yfinance_proxy else None
-        pipeline = MarketDataPipeline(fetcher=YFinanceDataFetcher(proxy=proxy))
+        pipeline = create_yfinance_pipeline(proxy=proxy)
     else:
         raise ValueError(f"不支持的数据源模式: {settings.data_source_mode}")
     bars_df = pipeline.sync_daily_bars(symbol, start_date, end_date)
