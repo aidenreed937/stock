@@ -1,5 +1,6 @@
 from abc import ABC, abstractmethod
 from typing import Any
+
 import polars as pl
 
 class BaseValidationRule(ABC):
@@ -8,7 +9,7 @@ class BaseValidationRule(ABC):
     @abstractmethod
     def audit(self, df: pl.DataFrame) -> dict[str, Any]:
         """执行具体审计校验，并返回结果指标。
-        
+
         返回的字典中应当包含 "passed" (bool) 指明该规则校验是否通过。
         """
         pass
@@ -44,7 +45,7 @@ class PrimaryKeyRule(BaseValidationRule):
         # 确保 keys 都在 df 中才进行校验
         missing_keys = [k for k in self.keys if k not in df.columns]
         if missing_keys:
-            return {"duplicate_records": 0, "passed": True}
+            return {"duplicate_records": 0, "missing_keys": missing_keys, "passed": False}
 
         total_records = len(df)
         dup_count = total_records - len(df.unique(subset=self.keys))
@@ -61,7 +62,8 @@ class OhlcLogicRule(BaseValidationRule):
         # 检查是否包含必要的 OHLC 字段
         required = ["open", "high", "low", "close"]
         if not all(col in df.columns for col in required):
-            return {"physical_errors": 0, "passed": True}
+            missing = [col for col in required if col not in df.columns]
+            return {"physical_errors": 0, "missing_ohlc_columns": missing, "passed": False}
 
         physical_errors = df.filter(
             (pl.col("open") <= 0)
@@ -104,12 +106,11 @@ class VolatilityRule(BaseValidationRule):
         if "turnover_rate" in df.columns:
             turnover_fault_count = len(df.filter(pl.col("turnover_rate") > 300.0))
 
-        # 注意：依据原逻辑，calc_diff_errors 并不影响最终 passed 的布尔值，但 spike 和 turnover 会影响
         return {
             "calc_diff_errors": calc_diff_count,
             "spike_faults": spike_fault_count,
             "turnover_faults": turnover_fault_count,
-            "passed": spike_fault_count == 0 and turnover_fault_count == 0,
+            "passed": calc_diff_count == 0 and spike_fault_count == 0 and turnover_fault_count == 0,
         }
 
 
@@ -126,17 +127,16 @@ class CompletenessRule(BaseValidationRule):
                 "truncated_dates_count": 0,
                 "anomaly_dates_count": 0,
                 "daily_distribution": pl.DataFrame(),
-                "passed": True,
+                "passed": False,
             }
 
         date_counts = df.group_by("trade_date").agg(pl.count("symbol").alias("count")).sort("trade_date")
         anomaly_dates = date_counts.filter((pl.col("count") < self.min_count) | (pl.col("count") >= self.max_count))
         truncated_dates = date_counts.filter(pl.col("count") >= self.max_count)
 
-        # 依据原逻辑，passed 判断中仅要求无截断天数（即数据量过大异常），若有异常天数（量少）仅报警
         return {
             "truncated_dates_count": len(truncated_dates),
             "anomaly_dates_count": len(anomaly_dates),
             "daily_distribution": date_counts,
-            "passed": len(truncated_dates) == 0,
+            "passed": len(truncated_dates) == 0 and len(anomaly_dates) == 0,
         }

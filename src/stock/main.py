@@ -1,10 +1,12 @@
 from datetime import date, timedelta
 from pathlib import Path
 
-from stock.analytics.indicators import calculate_rsi, calculate_sma
+import polars as pl
+
 from stock.config.loader import load_strategy_config
 from stock.config.settings import settings
 from stock.data.pipeline import MarketDataPipeline
+from stock.strategy.runner import StrategyRunner
 from stock.utils.logger import logger, setup_logger
 
 # 默认行情回溯天数常量
@@ -25,14 +27,13 @@ def main() -> None:
     logger.info(f"成功加载策略配置: [{strategy_cfg.name}] v{strategy_cfg.version}")
 
     # 3. 使用 ETL 管道执行完整数据入库流 (Extract -> Clean -> Normalize -> Load)
-    symbol = strategy_cfg.universe.symbols[0]
     end_date = date.today()
     start_date = end_date - timedelta(days=DEFAULT_LOOKBACK_DAYS)
 
     if settings.data_source_mode == "mock":
         from stock.data.fetcher.mock import MockDataFetcher
 
-        pipeline = MarketDataPipeline(fetcher=MockDataFetcher())
+        pipeline = MarketDataPipeline(fetcher=MockDataFetcher(), data_source="mock")
     elif settings.data_source_mode == "tushare":
         from stock.data.fetcher.tushare.factory import create_tushare_pipeline
 
@@ -44,27 +45,20 @@ def main() -> None:
         pipeline = create_yfinance_pipeline(proxy=proxy)
     else:
         raise ValueError(f"不支持的数据源模式: {settings.data_source_mode}")
-    bars_df = pipeline.sync_daily_bars(symbol, start_date, end_date)
+    frames = [
+        pipeline.sync_daily_bars(symbol, start_date, end_date)
+        for symbol in strategy_cfg.universe.symbols
+    ]
+    bars_df = pl.concat(frames, how="diagonal_relaxed")
 
     # 4. 使用 DuckDB SQL 查询回检
     store = pipeline.store
-    query_res = store.query_daily_bars(symbol)
+    query_res = store.query_history(endpoint="daily", symbols=strategy_cfg.universe.symbols)
     logger.info(f"DuckDB SQL 查询结果: 共 {len(query_res)} 条缓存记录")
 
     # 5. 技术指标计算 (由 YAML 配置参数驱动)
-    sma_period = strategy_cfg.indicators.sma.fast_period
-    rsi_period = strategy_cfg.indicators.rsi.period
-
-    df_with_indicators = calculate_sma(bars_df, window=sma_period)
-    df_with_indicators = calculate_rsi(df_with_indicators, window=rsi_period)
-
-    sma_col = f"sma_{sma_period}"
-    rsi_col = f"rsi_{rsi_period}"
-
-    logger.info(
-        f"指标计算完成 ({sma_col.upper()} & {rsi_col.upper()})。最新行情预览:\n"
-        f"{df_with_indicators.select(['trade_date', 'close', sma_col, rsi_col]).tail(5)}"
-    )
+    report = StrategyRunner(strategy_cfg, pipeline.data_source).run(bars_df)
+    logger.info(f"研究信号报告: {report.to_dict()}")
 
     logger.info("金融脚手架全流程示范运行完毕！")
 

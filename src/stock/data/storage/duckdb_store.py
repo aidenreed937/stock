@@ -5,6 +5,7 @@ import duckdb
 import polars as pl
 
 from stock.config.settings import settings
+from stock.data.contracts import DatasetKey
 from stock.utils.logger import logger
 
 
@@ -33,6 +34,8 @@ class DuckDBMarketStore:
 
     def has_curated(self, endpoint: str, target_date: date) -> bool:
         """检查某天的数据是否已被精炼并落盘。"""
+        if endpoint == "daily":
+            endpoint = "daily_bar"
         return self.get_parquet_path(endpoint, target_date).exists()
 
     def save_market_data(self, endpoint: str, target_date: date, df: pl.DataFrame) -> Path:
@@ -47,6 +50,50 @@ class DuckDBMarketStore:
         logger.info(f"精炼数据落盘成功 [{endpoint}] -> {file_path} ({len(df)} 行)")
         return file_path
 
+    def save_dataset(self, key: DatasetKey, df: pl.DataFrame) -> Path:
+        """按数据集和业务日期幂等合并保存标准数据。"""
+        file_path = self.get_parquet_path(key.dataset, key.end_date)
+        existing = pl.read_parquet(file_path) if file_path.exists() else pl.DataFrame()
+        merged = pl.concat([existing, df], how="diagonal_relaxed") if not existing.is_empty() else df
+        if not merged.is_empty() and all(
+            column in merged.columns for column in ("market", "symbol", "trade_date", "adjustment")
+        ):
+            merged = merged.unique(
+                subset=["market", "symbol", "trade_date", "adjustment"], keep="last"
+            ).sort(["trade_date", "symbol"])
+        file_path.parent.mkdir(parents=True, exist_ok=True)
+        temp_path = file_path.with_suffix(".tmp.parquet")
+        merged.write_parquet(temp_path)
+        temp_path.replace(file_path)
+        return file_path
+
+    def query_dataset(
+        self,
+        dataset: str = "daily_bar",
+        symbol: str | None = None,
+        start_date: date | None = None,
+        end_date: date | None = None,
+    ) -> pl.DataFrame:
+        """查询标准数据集，兼容旧 endpoint 查询入口。"""
+        dataset_dir = self.storage_dir / dataset
+        search_pattern = str(dataset_dir / "*" / "*" / "*.parquet")
+        if not dataset_dir.exists() or not list(dataset_dir.rglob("*.parquet")):
+            return pl.DataFrame()
+        conditions: list[str] = []
+        if symbol:
+            conditions.append(f"symbol = '{symbol}'")
+        if start_date:
+            conditions.append(f"trade_date >= '{start_date:%Y-%m-%d}'")
+        if end_date:
+            conditions.append(f"trade_date <= '{end_date:%Y-%m-%d}'")
+        where_clause = f" WHERE {' AND '.join(conditions)}" if conditions else ""
+        sql = f"SELECT * FROM '{search_pattern}'{where_clause} ORDER BY trade_date ASC, symbol ASC"  # noqa: S608
+        try:
+            return self.query_by_sql(sql)
+        except Exception as e:
+            logger.error(f"DuckDB 数据集查询异常: {e}")
+            return pl.DataFrame()
+
     def query_by_sql(self, sql_query: str) -> pl.DataFrame:
         """执行通用 SQL 查询并返回 Polars DataFrame"""
         arrow_table = self.conn.execute(sql_query).to_arrow_table()
@@ -56,6 +103,8 @@ class DuckDBMarketStore:
         self, symbol: str, endpoint: str = "daily", min_price: float | None = None
     ) -> pl.DataFrame:
         """使用 DuckDB SQL 快速检索全量分区数据中的单只股票。"""
+        if endpoint == "daily" and (self.storage_dir / "daily_bar").exists():
+            return self.query_dataset(dataset="daily_bar", symbol=symbol)
         search_pattern = str(self.storage_dir / endpoint / "*" / "*" / "*.parquet")
         # 简单检查是否存在文件（不精确，仅确保 duckdb 不报找不到文件错）
         if not list(self.storage_dir.rglob("*.parquet")):
@@ -81,6 +130,14 @@ class DuckDBMarketStore:
         symbols: list[str] | None = None,
     ) -> pl.DataFrame:
         """检索全量或部分标的在指定时间段内的历史数据切片。"""
+        if endpoint == "daily":
+            return self.query_dataset(
+                dataset="daily_bar",
+                start_date=start_date,
+                end_date=end_date,
+            ).filter(
+                pl.col("symbol").is_in(symbols) if symbols else pl.lit(True)
+            )
         search_pattern = str(self.storage_dir / endpoint / "*" / "*" / "*.parquet")
         if not list(self.storage_dir.rglob("*.parquet")):
             logger.warning(f"本地无 {endpoint} 分区 Parquet 缓存文件")
@@ -103,4 +160,3 @@ class DuckDBMarketStore:
         except Exception as e:
             logger.error(f"DuckDB 面板查询异常: {e}")
             return pl.DataFrame()
-

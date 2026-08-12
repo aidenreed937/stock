@@ -14,6 +14,7 @@ from stock.utils.logger import logger
 
 
 from stock.data.cleaner.generic_cleaner import GenericCleaner
+from stock.data.contracts import DAILY_BAR_CONTRACT, DatasetKey, dataset_for_endpoint, instrument_for_symbol
 
 
 class MarketDataPipeline:
@@ -86,12 +87,20 @@ class MarketDataPipeline:
         logger.info(f"开始 2-Tier ETL 管道同步 [{symbol}] (范围: {start_date} ~ {end_date})...")
 
         raw_df: pl.DataFrame | None = None
+        dataset = dataset_for_endpoint(self.endpoint)
+        instrument = instrument_for_symbol(symbol, self.data_source)
+        key = DatasetKey(
+            provider=self.data_source,
+            dataset=dataset,
+            endpoint=self.endpoint,
+            start_date=start_date,
+            end_date=end_date,
+            instrument=instrument,
+        )
 
         # 1. 检查 RAW 离线缓存
         if use_raw_cache and not force_refresh:
-            raw_df = self.raw_store.load_raw(
-                self.data_source, self.endpoint, end_date
-            )
+            raw_df = self.raw_store.load_dataset(key)
             if raw_df is not None and not raw_df.is_empty():
                 logger.info(f"命中 RAW 离线时间分区缓存 [{symbol}]，跳过网络请求")
 
@@ -104,9 +113,7 @@ class MarketDataPipeline:
                 logger.warning(f"数据源未返回数据 [{symbol}]")
                 return raw_df
             # 保存到 RAW 离线归档层
-            self.raw_store.save_raw(
-                self.data_source, self.endpoint, end_date, raw_df
-            )
+            self.raw_store.save_dataset(key, raw_df)
 
         # 3. 清洗 (Clean)
         cleaned_df = self.cleaner.clean(raw_df)
@@ -120,11 +127,17 @@ class MarketDataPipeline:
                 [
                     pl.lit(self.data_source).alias("data_source"),
                     pl.lit(datetime.now()).alias("updated_at"),
+                    pl.lit(instrument.market if instrument else "MULTI").alias("market"),
+                    pl.lit(instrument.exchange if instrument else "MULTI").alias("exchange"),
+                    pl.lit(instrument.currency if instrument else "MULTI").alias("currency"),
+                    pl.lit("raw").alias("adjustment"),
+                    pl.lit("v1").alias("schema_version"),
                 ]
             )
 
         # 5. 精炼落盘 (Load to Curated Store)
-        self.store.save_market_data(self.endpoint, end_date, normalized_df)
+        DAILY_BAR_CONTRACT.validate(normalized_df)
+        self.store.save_dataset(key, normalized_df)
 
         logger.info(
             f"2-Tier ETL 管道同步成功完成 [{symbol}] -> 精炼落盘 {len(normalized_df)} 条记录"

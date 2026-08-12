@@ -136,6 +136,5 @@ def test_completeness_rule() -> None:
         "symbol": [f"S_{i}" for i in range(3)]
     })
     res_low = rule.audit(df_low)
-    # 按原逻辑，数据少只会增加 anomaly_dates_count，不会导致 passed=False
-    assert res_low["passed"] is True
+    assert res_low["passed"] is False
     assert res_low["anomaly_dates_count"] == 1

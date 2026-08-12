@@ -60,7 +60,7 @@ class OfflineDataValidator:
         unique_dates = df["trade_date"].unique().to_list() if "trade_date" in df.columns else []
         unique_symbols = df["symbol"].unique().to_list() if "symbol" in df.columns else []
 
-        report = {
+        report: dict[str, Any] = {
             "total_records": total_records,
             "unique_dates_count": len(unique_dates),
             "unique_symbols_count": len(unique_symbols),

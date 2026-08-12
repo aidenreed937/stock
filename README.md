@@ -1,13 +1,13 @@
 # Stock Finance Project Scaffold
 
-基于 `uv` 构建的高能金融/股票数据分析与策略开发脚手架。
+基于 `uv` 构建的金融/股票数据分析与研究信号脚手架。当前不包含回测、撮合或实盘执行能力。
 
 ## 核心特性
 
 - **完整 ETL 数据管道**: 规范分层的 `Fetcher (采集) ➔ Cleaner (清洗) ➔ Normalizer (标准化) ➔ Storage (存储)` 架构。
 - **YAML 策略配置驱动**: 基于 `Pydantic` 校验 YAML 强类型配置文件，实现零硬编码解耦。
-- **数据分析引擎**: 使用 `Polars` 进行高效向量化计算（SMA, EMA, RSI）。
-- **极速持久化**: 基于 `DuckDB + Parquet` 实现本地行情列式存储与 SQL 快速查询。
+- **数据分析与研究信号**: 使用 `Polars` 计算 SMA、EMA、RSI、MACD，并输出配置驱动的结构化信号报告。
+- **极速持久化**: 基于 `DuckDB + Parquet` 实现带数据集身份、版本和原子写入的本地行情列式存储。
 - **结构化校验**: 基于 `Pydantic` 校验行情数据（OHLCV 逻辑与约束）。
 - **统一工具链与编码规范**: 基于 `uv` 依赖管理，集成 `Ruff`, `Mypy` (strict), `Pytest`, `.editorconfig` 及 Git Pre-commit 拦截。
 
@@ -52,6 +52,8 @@ make check
 - `src/stock/data/normalizer`: 异构列名别名对齐与数据类型标准化模块
 - `src/stock/data/storage`: DuckDB + Parquet 本地极速存储层
 - `src/stock/data/pipeline.py`: ETL 流水线管道编排核心
+- `src/stock/data/contracts.py`: 标的身份、数据集身份与日线 Schema 契约
 - `src/stock/models`: Pydantic 行情与策略配置结构模型
-- `src/stock/analytics`: 技术指标（移动平均线、RSI）计算逻辑
+- `src/stock/analytics`: 技术指标（移动平均线、RSI、MACD）计算逻辑
+- `src/stock/strategy/runner.py`: 配置驱动的研究策略运行与信号报告
 - `src/stock/utils`: Loguru 结构化日志工具

@@ -6,6 +6,7 @@ from pathlib import Path
 import polars as pl
 
 from stock.config.settings import settings
+from stock.data.contracts import DatasetKey
 from stock.utils.logger import logger
 
 
@@ -67,6 +68,34 @@ class RawDataStorage:
         )
         return file_path
 
+    def save_dataset(self, key: DatasetKey, df: pl.DataFrame) -> Path:
+        """按完整请求身份保存 RAW 数据，避免不同请求共享文件。"""
+        file_path = self._get_dataset_path(key)
+        if df.is_empty():
+            return file_path
+        file_path.parent.mkdir(parents=True, exist_ok=True)
+        temp_path = file_path.with_suffix(".tmp.parquet")
+        df.write_parquet(temp_path)
+        temp_path.replace(file_path)
+        return file_path
+
+    def load_dataset(self, key: DatasetKey) -> pl.DataFrame | None:
+        """按完整请求身份读取 RAW 数据。"""
+        file_path = self._get_dataset_path(key)
+        if not file_path.exists():
+            return None
+        try:
+            return pl.read_parquet(file_path)
+        except Exception as e:
+            logger.error(f"读取 RAW 请求缓存失败 [{file_path}]: {e}")
+            return None
+
+    def _get_dataset_path(self, key: DatasetKey) -> Path:
+        """计算带请求指纹的 RAW 缓存路径。"""
+        partition_dir = self.base_dir / key.provider / key.dataset / f"year={key.end_date.year:04d}" / f"month={key.end_date.month:02d}"
+        filename = f"{key.endpoint}_{key.instrument_slug}_{key.start_date:%Y%m%d}_{key.end_date:%Y%m%d}_{key.request_id}.parquet"
+        return partition_dir / filename
+
     def load_raw(
         self, data_source: str, endpoint: str, target_date: date
     ) -> pl.DataFrame | None:
@@ -95,4 +124,8 @@ class RawDataStorage:
         self, data_source: str, endpoint: str, target_date: date
     ) -> bool:
         """判断本地是否存在指定日期的 RAW 归档数据。"""
-        return self._get_file_path(data_source, endpoint, target_date).exists()
+        legacy_path = self._get_file_path(data_source, endpoint, target_date)
+        if legacy_path.exists():
+            return True
+        dataset_dir = self.base_dir / data_source / "daily_bar" / f"year={target_date.year:04d}" / f"month={target_date.month:02d}"
+        return any(dataset_dir.glob(f"*_{target_date:%Y%m%d}_*.parquet")) if dataset_dir.exists() else False
