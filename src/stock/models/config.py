@@ -25,37 +25,49 @@ class UniverseConfig(BaseModel):
 
 
 class SourceWatchlistConfig(BaseModel):
-    """单数据源按股票与指数解耦的观察池配置。"""
+    """单数据源观察池配置。"""
 
-    stocks: list[str] = Field(default_factory=list, description="股票代码列表")
-    indices: list[str] = Field(default_factory=list, description="指数代码列表")
+    stocks: list[str] = Field(default_factory=list)
+    indices: list[str] = Field(default_factory=list)
+    macro_series: list[str] = Field(default_factory=list)
 
     @property
     def all_symbols(self) -> list[str]:
-        """合并并去重返回全量标的代码列表。"""
+        """按配置顺序去重返回该数据源包含的所有标的代码。"""
         seen: set[str] = set()
-        result: list[str] = []
-        for item in self.stocks + self.indices:
-            if item not in seen:
-                seen.add(item)
-                result.append(item)
-        return result
+        res: list[str] = []
+        for s in self.stocks + self.indices + self.macro_series:
+            if s not in seen:
+                seen.add(s)
+                res.append(s)
+        return res
 
 
 class WatchlistsConfig(BaseModel):
-    """数据源默认重点观察与拉取标的列表。"""
+    """数据源观察池总体配置。"""
 
     yfinance: SourceWatchlistConfig = Field(
         default_factory=lambda: SourceWatchlistConfig(
             stocks=["AAPL", "MSFT", "NVDA", "GOOGL", "AMZN", "META", "TSLA"],
-            indices=["^GSPC", "^IXIC", "^DJI", "^N225", "^KS11", "^HSI", "^TWII"],
+            indices=["^GSPC", "^IXIC", "^DJI", "^SOX", "^RUT", "^N225", "^KS11", "^HSI", "^TWII"],
         ),
-        description="yfinance 外盘重点观察标的代码列表 (股票与指数解耦)",
+        description="yfinance 重点观察代码列表",
     )
     tushare: SourceWatchlistConfig = Field(
         default_factory=lambda: SourceWatchlistConfig(
             stocks=["600519.SH", "000001.SZ"],
-            indices=["000001.SH", "399001.SZ"],
+            indices=[
+                "000001.SH",
+                "399001.SZ",
+                "000300.SH",
+                "000905.SH",
+                "000852.SH",
+                "399006.SZ",
+                "399102.SZ",
+                "000985.CSI",
+                "000922.CSI",
+                "000688.SH",
+            ],
         ),
         description="tushare 重点观察代码列表",
     )
@@ -65,6 +77,20 @@ class WatchlistsConfig(BaseModel):
             indices=[],
         ),
         description="理杏仁重点观察代码列表",
+    )
+    fred: SourceWatchlistConfig = Field(
+        default_factory=lambda: SourceWatchlistConfig(
+            macro_series=[
+                "FEDFUNDS",
+                "CPIAUCSL",
+                "UNRATE",
+                "PAYEMS",
+                "GDP",
+                "T10Y2Y",
+                "WALCL",
+            ],
+        ),
+        description="FRED 重点观察宏观指标列表",
     )
 
 

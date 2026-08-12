@@ -33,10 +33,19 @@ def create_pipeline(data_source: str, endpoint: str = "daily") -> "MarketDataPip
 
         return create_lixinger_pipeline(endpoint=endpoint)
     elif data_source_lower == "fred":
+        from stock.config.settings import settings
+        from stock.data.cleaner.generic_cleaner import GenericCleaner
         from stock.data.fetcher.fred import create_fred_fetcher
+        from stock.data.normalizer.generic_normalizer import GenericNormalizer
 
+        fred_endpoint = "macro_indicators" if endpoint in ("daily", "history") else endpoint
+        proxy = getattr(settings, "fred_proxy", None)
         return MarketDataPipeline(
-            fetcher=create_fred_fetcher(), data_source=data_source, endpoint=endpoint
+            fetcher=create_fred_fetcher(proxy=proxy),
+            cleaner=GenericCleaner(),
+            normalizer=GenericNormalizer(),
+            data_source=data_source,
+            endpoint=fred_endpoint,
         )
     elif data_source_lower == "mock":
         from stock.data.fetcher.mock import MockDataFetcher

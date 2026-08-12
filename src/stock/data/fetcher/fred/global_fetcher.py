@@ -58,7 +58,27 @@ class FredDataFetcher(BaseDataFetcher):
         pl_df = pl_df.filter(
             (pl.col("trade_date") >= start_date) & (pl.col("trade_date") <= end_date)
         )
-        return pl_df.select(["symbol", "trade_date", "value", "description", "units", "data_source"])
+        return pl_df.with_columns(
+            pl.col("value").alias("close"),
+            pl.col("value").alias("open"),
+            pl.col("value").alias("high"),
+            pl.col("value").alias("low"),
+            pl.lit(0.0).alias("volume"),
+            pl.lit(0.0).alias("amount"),
+        ).select([
+            "symbol",
+            "trade_date",
+            "value",
+            "close",
+            "open",
+            "high",
+            "low",
+            "volume",
+            "amount",
+            "description",
+            "units",
+            "data_source",
+        ])
 
     def fetch_macro_indicators_df(
         self,
