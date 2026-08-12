@@ -68,6 +68,27 @@ class TuShareStockFetcher:
             else:
                 if start_date == end_date:
                     query_kwargs["trade_date"] = start_str
+                elif (end_date - start_date).days > 300:
+                    from datetime import timedelta
+                    cur_d = start_date
+                    frames: list[pl.DataFrame] = []
+                    while cur_d <= end_date:
+                        next_d = min(cur_d + timedelta(days=300), end_date)
+                        sub_df = self.fetch_daily_bars_df(
+                            symbol=symbol,
+                            start_date=cur_d,
+                            end_date=next_d,
+                            endpoint=endpoint,
+                        )
+                        if not sub_df.is_empty():
+                            frames.append(sub_df)
+                        cur_d = next_d + timedelta(days=1)
+                    if not frames:
+                        return pl.DataFrame()
+                    merged = pl.concat(frames, how="diagonal_relaxed")
+                    if "trade_date" in merged.columns:
+                        merged = merged.unique(subset=["trade_date"]).sort("trade_date")
+                    return merged
                 else:
                     query_kwargs["start_date"] = start_str
                     query_kwargs["end_date"] = end_str
