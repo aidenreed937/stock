@@ -1,8 +1,9 @@
 # 历史回填策略单独配置文件
 backfill:
-  # 默认回填的时间段（2025-08-12 ~ 2026-08-12 最近一年）
-  default_start_date: "2025-08-12"
-  default_end_date: "2026-08-12"
+  # 默认回填的时间段（支持动态今天 "today" 或具体日期如 "2025-08-12"）
+  # 同时也支持天数偏移，例如 "today-365d" 代表今天往前 365 天
+  default_start_date: "today-365d"
+  default_end_date: "today"
 
   # 默认数据源与数据接口
   default_data_source: "tushare"

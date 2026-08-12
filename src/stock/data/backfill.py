@@ -412,6 +412,21 @@ def _parse_args() -> argparse.Namespace:
     return parser.parse_args()
 
 
+def _parse_date_str(date_str: str) -> date:
+    date_str = date_str.strip().lower()
+    if date_str == "today":
+        return date.today()
+    if date_str.startswith("today"):
+        offset_str = date_str[5:].replace(" ", "")
+        if offset_str.endswith("d"):
+            try:
+                days = int(offset_str[:-1])
+                return date.today() + timedelta(days=days)
+            except ValueError:
+                pass
+    return datetime.strptime(date_str, "%Y-%m-%d").date()
+
+
 def main() -> None:
     import sys
     import yaml
@@ -442,8 +457,8 @@ def main() -> None:
         )
         sys.exit(1)
 
-    start_d = datetime.strptime(start_str, "%Y-%m-%d").date()
-    end_d = datetime.strptime(end_str, "%Y-%m-%d").date()
+    start_d = _parse_date_str(start_str)
+    end_d = _parse_date_str(end_str)
 
     data_source = args.data_source or yaml_config.get("default_data_source") or "tushare"
     endpoint = args.endpoint or yaml_config.get("default_endpoint") or "daily"
