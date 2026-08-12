@@ -50,11 +50,13 @@ class BarDataCleaner(BaseDataCleaner):
 
         cleaned_df = cleaned_df.filter(filter_expr)
 
-        # 3. 过滤最高价 < 最低价 或 最高价 < 开盘价/收盘价 的非法物理数据
+        # 3. 过滤 OHLC 物理逻辑错误数据 (High 必须为最高，Low 必须为最低)
         cleaned_df = cleaned_df.filter(
             (pl.col("high") >= pl.col("low"))
             & (pl.col("high") >= pl.col("open"))
             & (pl.col("high") >= pl.col("close"))
+            & (pl.col("low") <= pl.col("open"))
+            & (pl.col("low") <= pl.col("close"))
         )
 
         # 4. 按交易日与标的代码去重
