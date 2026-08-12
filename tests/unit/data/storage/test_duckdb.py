@@ -259,3 +259,75 @@ def test_duckdb_store_batch_mode(tmp_path) -> None:
 
     # Calling commit again when empty should be safe
     store.commit()
+
+
+def test_duckdb_store_has_curated_whole_market(tmp_path) -> None:
+    store = DuckDBMarketStore(storage_dir=tmp_path, data_source="mock")
+    # 1. 初始状态：无任何文件归档，应返回 False
+    assert not store.has_curated("daily", date(2026, 1, 14), symbol=None)
+    assert not store.has_curated("daily", date(2026, 1, 14), symbol="")
+    assert not store.has_curated("daily", date(2026, 1, 14), symbol="TEST.SH")
+
+    # 2. 保存极个别股票的数据（小于 1000 只，如 2 只）
+    df_small = pl.DataFrame(
+        {
+            "symbol": ["TEST1.SH", "TEST2.SH"],
+            "trade_date": [date(2026, 1, 14), date(2026, 1, 14)],
+            "open": [10.0, 11.0],
+            "high": [11.0, 12.0],
+            "low": [9.0, 10.0],
+            "close": [10.5, 11.5],
+            "volume": [1000.0, 1500.0],
+            "amount": [10500.0, 17250.0],
+            "pre_close": [10.0, 11.0],
+            "change": [0.5, 0.5],
+            "pct_chg": [5.0, 4.5],
+            "data_source": ["mock", "mock"],
+            "market": ["CN", "CN"],
+            "exchange": ["SSE", "SSE"],
+            "currency": ["CNY", "CNY"],
+            "adjustment": ["raw", "raw"],
+            "schema_version": ["v1", "v1"],
+        }
+    )
+    store.save_market_data("daily", date(2026, 1, 14), df_small)
+
+    # 3. 校验 has_curated 的表现：
+    # - 针对特定个股查询（如 TEST1.SH），由于它已被拉取，应返回 True
+    # - 针对全市场查询（symbol=None / symbol=""），由于股票数极少 (< 1000)，不判定为全市场已归档，应返回 False
+    assert store.has_curated("daily", date(2026, 1, 14), symbol="TEST1.SH")
+    assert not store.has_curated("daily", date(2026, 1, 14), symbol=None)
+    assert not store.has_curated("daily", date(2026, 1, 14), symbol="")
+
+    # 4. 保存大量股票的数据（例如 1005 只）
+    symbols_large = [f"STK_{i:04d}.SH" for i in range(1005)]
+    df_large = pl.DataFrame(
+        {
+            "symbol": symbols_large,
+            "trade_date": [date(2026, 1, 14)] * 1005,
+            "open": [10.0] * 1005,
+            "high": [11.0] * 1005,
+            "low": [9.0] * 1005,
+            "close": [10.5] * 1005,
+            "volume": [1000.0] * 1005,
+            "amount": [10500.0] * 1005,
+            "pre_close": [10.0] * 1005,
+            "change": [0.5] * 1005,
+            "pct_chg": [5.0] * 1005,
+            "data_source": ["mock"] * 1005,
+            "market": ["CN"] * 1005,
+            "exchange": ["SSE"] * 1005,
+            "currency": ["CNY"] * 1005,
+            "adjustment": ["raw"] * 1005,
+            "schema_version": ["v1"] * 1005,
+        }
+    )
+    store.save_market_data("daily", date(2026, 1, 14), df_large)
+
+    # 清空缓存使 has_curated 从磁盘重载文件
+    if hasattr(store, "_curated_cache"):
+        delattr(store, "_curated_cache")
+
+    # 5. 再次校验全市场查询，股票数 > 1000，应判定为已归档，返回 True
+    assert store.has_curated("daily", date(2026, 1, 14), symbol=None)
+    assert store.has_curated("daily", date(2026, 1, 14), symbol="")

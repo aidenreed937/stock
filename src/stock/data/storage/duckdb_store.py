@@ -161,6 +161,24 @@ class DuckDBMarketStore:
                             symbols = set(df["symbol"].unique().to_list())
                             if symbol not in symbols:
                                 continue
+                        elif (
+                            not symbol
+                            and "symbol" in df.columns
+                            and any(ep in str(file_path) for ep in ["daily_bar", "stock_daily_bar"])
+                        ):
+                            # 全市场日线行情回填时，如果当前文件中的该日期含有的个股数少于 1000 只，不判定为已归档
+                            matched_val: date | str | None = None
+                            if target_date in dates:
+                                matched_val = target_date
+                            elif date_str_hyphen in dates:
+                                matched_val = date_str_hyphen
+                            elif date_str_plain in dates:
+                                matched_val = date_str_plain
+
+                            if matched_val is not None:
+                                day_df = df.filter(pl.col("trade_date") == matched_val)
+                                if len(day_df["symbol"].unique()) < 1000:
+                                    continue
                         return True
             except Exception as e:
                 logger.warning(f"忽略无效 Curated 缓存 [{file_path}]: {e}")
