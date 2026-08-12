@@ -86,4 +86,25 @@ TUSHARE_API_REGISTRY: dict[str, EndpointMeta] = {
         primary_keys=["ts_code", "trade_date"],
         rate_limit_per_min=100,
     ),
+    "index_basic": EndpointMeta(
+        api_name="index_basic",
+        description="指数基本信息",
+        group="basic_info",
+        primary_keys=["ts_code"],
+        rate_limit_per_min=100,
+    ),
+    "index_dailybasic": EndpointMeta(
+        api_name="index_dailybasic",
+        description="指数每日估值与指标",
+        group="market_indicators",
+        primary_keys=["ts_code", "trade_date"],
+        rate_limit_per_min=100,
+    ),
+    "index_weight": EndpointMeta(
+        api_name="index_weight",
+        description="指数成分股权重",
+        group="basic_info",
+        primary_keys=["index_code", "con_code", "trade_date"],
+        rate_limit_per_min=100,
+    ),
 }
