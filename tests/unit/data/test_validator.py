@@ -55,6 +55,7 @@ def test_audit_daily_bars_with_nulls_and_calc_diff():
     mock_store.query_history.return_value = mock_df
 
 def test_validator_main(monkeypatch):
+    import sys
     from stock.data.validator import main
     mock_store = MagicMock()
     mock_df = pl.DataFrame({
@@ -69,5 +70,6 @@ def test_validator_main(monkeypatch):
     })
     mock_store.query_history.return_value = mock_df
 
+    monkeypatch.setattr(sys, "argv", ["validator"])
     monkeypatch.setattr("stock.data.validator.DuckDBMarketStore", lambda: mock_store)
     main()

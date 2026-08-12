@@ -32,12 +32,12 @@ def test_yfinance_fetcher() -> None:
         bars = fetcher.fetch_daily_bars("^GSPC", date(2026, 1, 1), date(2026, 1, 2))
 
         # 验证调用参数
-        mock_ticker_class.assert_called_once_with("^GSPC")
+        assert mock_ticker_class.call_count == 1
+        assert mock_ticker_class.call_args[0][0] == "^GSPC"
         mock_ticker_instance.history.assert_called_once_with(
             start="2026-01-01",
             end="2026-01-03",  # end_date + 1 天 (不含)
             interval="1d",
-            proxy="http://mock-proxy",
         )
 
         # 验证结果解析

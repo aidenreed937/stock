@@ -1,6 +1,8 @@
 import threading
 import time
 
+from typing import Any
+
 import pandas as pd
 import yfinance as yf
 
@@ -74,6 +76,25 @@ class YFinanceClient:
         )
         self.rate_limiter = RateLimiter(max_requests=rate_limit)
 
+    def _get_session(self) -> Any:
+        """创建具备 Chrome TLS 指纹伪装与代理支持的 Session。"""
+        try:
+            from curl_cffi import requests as curl_requests
+
+            c_session: Any = curl_requests.Session(impersonate="chrome")
+            if self.proxy:
+                c_session.proxies = {"http": self.proxy, "https": self.proxy}
+            return c_session
+        except Exception as e:
+            logger.debug(f"未能使用 curl_cffi 伪装指纹: {e}")
+
+        import requests
+
+        r_session = requests.Session()
+        if self.proxy:
+            r_session.proxies = {"http": self.proxy, "https": self.proxy}
+        return r_session
+
     def query_history(
         self, symbol: str, start_date_str: str, end_date_str: str
     ) -> pd.DataFrame:
@@ -85,11 +106,20 @@ class YFinanceClient:
             end_date_str: 结束日期字符串 (YYYY-MM-DD)。
         """
         self.rate_limiter.acquire()
+        session = self._get_session()
+
+        try:
+            ticker = yf.Ticker(symbol, session=session)
+            df = ticker.history(start=start_date_str, end=end_date_str, interval="1d")
+            if not df.empty:
+                return df
+        except Exception as e:
+            logger.warning(f"Yahoo Finance Session 抓取异常 ({e})，尝试无 Session 直连...")
+
         ticker = yf.Ticker(symbol)
         df = ticker.history(
             start=start_date_str,
             end=end_date_str,
             interval="1d",
-            proxy=self.proxy,
         )
         return df
