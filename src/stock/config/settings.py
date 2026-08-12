@@ -15,6 +15,8 @@ class Settings(BaseSettings):
     app_name: str = "StockFinanceApp"
     environment: str = "development"
     log_level: str = "INFO"
+    log_retention_days: int = 14
+    log_rotation_size: str = "10 MB"
 
     data_dir: Path = Path("./data")
     raw_data_dir: Path = Path("./data/raw")
