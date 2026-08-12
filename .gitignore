@@ -29,6 +29,8 @@ htmlcov/
 
 # uv 本地缓存
 .uv-cache/
+.uv_cache/
+.uv_python/
 
 # Financial Data & Local Cache & Databases (排除本地数据文件，保留目录结构)
 data/*
