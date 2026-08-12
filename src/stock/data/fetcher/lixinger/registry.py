@@ -81,3 +81,8 @@ LIXINGER_API_REGISTRY: dict[str, EndpointMeta] = {
         code_param_name="stockCodes",
     ),
 }
+
+# 增加 CLI 常用短别名映射
+LIXINGER_API_REGISTRY["sw_2021_constituents"] = LIXINGER_API_REGISTRY["cn/industry/constituents/sw_2021"]
+LIXINGER_API_REGISTRY["sw_2021_fundamental"] = LIXINGER_API_REGISTRY["cn/industry/fundamental/sw_2021"]
+LIXINGER_API_REGISTRY["index_fundamental"] = LIXINGER_API_REGISTRY["cn/index/fundamental"]

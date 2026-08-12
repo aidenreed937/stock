@@ -140,9 +140,22 @@ data:
         - "index_valuation"
         - "macro_indicators"
         - "cn_index_fundamental"
+        - "sw_2021_constituents"
+        - "sw_2021_fundamental"
 
-  # TuShare 未回填接口全量回填目标池与参数分配配置
+  # TuShare / 理杏仁 未回填接口全量回填目标池与参数分配配置
   backfill_targets:
+    lixinger:
+      - api_name: "sw_2021_constituents"
+        description: "申万 2021 版行业成分股列表"
+        fetch_mode: "event"
+        default_start_date: "2024-01-01"
+        enabled: true
+      - api_name: "sw_2021_fundamental"
+        description: "申万 2021 版行业基本面估值数据"
+        fetch_mode: "event"
+        default_start_date: "2014-08-01"
+        enabled: true
     tushare:
       # 高优先级：行情与估值指标类
       - api_name: "daily_basic"
