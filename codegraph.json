@@ -1,0 +1,10 @@
+{
+  "exclude": [
+    ".agents/",
+    ".github/",
+    "data/",
+    "docs/",
+    "AGENTS.md",
+    "GEMINI.md"
+  ]
+}

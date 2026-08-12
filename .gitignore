@@ -24,6 +24,9 @@ htmlcov/
 .mypy_cache/
 .ruff_cache/
 
+# CodeGraph 本地索引
+.codegraph/
+
 # Financial Data & Local Cache & Databases (排除本地数据文件，保留目录结构)
 data/*
 !data/raw/
