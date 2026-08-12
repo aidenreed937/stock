@@ -1,4 +1,4 @@
-# yfinance 外盘重点观察池配置 (按股票与指数解耦)
+# yfinance 外盘重点观察池配置 (股票与指数解耦)
 universe:
   stocks:
     - "AAPL"   # 苹果
@@ -20,21 +20,3 @@ universe:
     - "^TWII"  # 台湾加权指数 (台湾)
     - "^STI"   # 新加坡海峡时报指数 (新加坡)
     - "^AXJO"  # 澳大利亚 S&P/ASX 200 指数 (澳洲)
-  # 全量组合列表
-  symbols:
-    - "AAPL"
-    - "MSFT"
-    - "NVDA"
-    - "GOOGL"
-    - "AMZN"
-    - "META"
-    - "TSLA"
-    - "^GSPC"
-    - "^IXIC"
-    - "^DJI"
-    - "^N225"
-    - "^KS11"
-    - "^HSI"
-    - "^TWII"
-    - "^STI"
-    - "^AXJO"

@@ -67,6 +67,6 @@ class StrategyRunner:
             strategy_version=self.config.version,
             generated_at=datetime.now(),
             data_source=self.data_source,
-            symbols=tuple(self.config.universe.symbols),
+            symbols=tuple(self.config.universe.all_symbols),
             signals=tuple(signals),
         )

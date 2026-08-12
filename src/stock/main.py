@@ -47,13 +47,13 @@ def main() -> None:
         raise ValueError(f"不支持的数据源模式: {settings.data_source_mode}")
     frames = [
         pipeline.sync_daily_bars(symbol, start_date, end_date)
-        for symbol in strategy_cfg.universe.symbols
+        for symbol in strategy_cfg.universe.all_symbols
     ]
     bars_df = pl.concat(frames, how="diagonal_relaxed")
 
-    # 4. 使用 DuckDB SQL 查询回检
+    # 4. 执行 DuckDB SQL 面板检索与策略信号生成
     store = pipeline.store
-    query_res = store.query_history(endpoint="daily", symbols=strategy_cfg.universe.symbols)
+    query_res = store.query_history(endpoint="daily", symbols=strategy_cfg.universe.all_symbols)
     logger.info(f"DuckDB SQL 查询结果: 共 {len(query_res)} 条缓存记录")
 
     # 5. 技术指标计算 (由 YAML 配置参数驱动)

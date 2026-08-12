@@ -16,6 +16,6 @@ def test_load_strategy_config() -> None:
     config_path = Path("config/strategy/double_sma_rsi.yaml")
     cfg = load_strategy_config(config_path)
     assert cfg.name == "Double_SMA_RSI_Cross"
-    assert len(cfg.universe.symbols) > 0
+    assert len(cfg.universe.all_symbols) > 0
     assert cfg.indicators.sma.fast_period == 5
     assert cfg.indicators.rsi.period == 14

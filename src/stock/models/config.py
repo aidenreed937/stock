@@ -8,7 +8,20 @@ class UniverseConfig(BaseModel):
 
     stocks: list[str] = Field(default_factory=list, description="股票代码列表")
     indices: list[str] = Field(default_factory=list, description="指数代码列表")
-    symbols: list[str] = Field(default_factory=list, description="合并标的代码列表")
+    symbols: list[str] = Field(default_factory=list, description="兼容旧配置的单列表")
+
+    @property
+    def all_symbols(self) -> list[str]:
+        """合并并去重返回全量标的代码列表。"""
+        if self.symbols:
+            return self.symbols
+        seen: set[str] = set()
+        result: list[str] = []
+        for item in self.stocks + self.indices:
+            if item not in seen:
+                seen.add(item)
+                result.append(item)
+        return result
 
 
 class SourceWatchlistConfig(BaseModel):
