@@ -69,18 +69,30 @@ class RawDataStorage:
         return file_path
 
     def save_dataset(self, key: DatasetKey, df: pl.DataFrame) -> Path:
-        """按完整请求身份保存 RAW 数据，避免不同请求共享文件。"""
+        """按数据集和月份幂等合并保存 RAW 归档数据。"""
         file_path = self._get_dataset_path(key)
         if df.is_empty():
             return file_path
         file_path.parent.mkdir(parents=True, exist_ok=True)
+        if file_path.exists():
+            try:
+                existing = pl.read_parquet(file_path)
+                if not existing.is_empty():
+                    df = pl.concat([existing, df], how="diagonal")
+                    dedup_cols = [
+                        c for c in ["symbol", "stockCode", "ts_code", "code", "trade_date", "date"] if c in df.columns
+                    ]
+                    if dedup_cols:
+                        df = df.unique(subset=dedup_cols, keep="last")
+            except Exception as e:
+                logger.warning(f"读取合并原有 RAW 文件失败 [{file_path}]: {e}")
         temp_path = file_path.with_suffix(".tmp.parquet")
         df.write_parquet(temp_path)
         temp_path.replace(file_path)
         return file_path
 
     def load_dataset(self, key: DatasetKey) -> pl.DataFrame | None:
-        """按完整请求身份读取 RAW 数据。"""
+        """按数据集和月份读取 RAW 归档数据。"""
         file_path = self._get_dataset_path(key)
         if not file_path.exists():
             return None
@@ -91,7 +103,7 @@ class RawDataStorage:
             return None
 
     def _get_dataset_path(self, key: DatasetKey) -> Path:
-        """计算 RAW 缓存路径。"""
+        """计算 RAW 缓存路径（按月份统一为一个 data.parquet）。"""
         partition_dir = (
             self.base_dir
             / key.provider
@@ -99,11 +111,7 @@ class RawDataStorage:
             / f"year={key.end_date.year:04d}"
             / f"month={key.end_date.month:02d}"
         )
-        if key.instrument_slug:
-            filename = f"{key.instrument_slug}.parquet"
-        else:
-            filename = f"all_market_{key.end_date:%Y%m}.parquet"
-        return partition_dir / filename
+        return partition_dir / "data.parquet"
 
     def load_raw(
         self, data_source: str, endpoint: str, target_date: date
