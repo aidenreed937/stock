@@ -229,9 +229,21 @@ TUSHARE_API_REGISTRY: dict[str, EndpointMeta] = {
         group="market_data",
         primary_keys=["ts_code", "trade_date"],
     ),
+    "fund_adj": EndpointMeta(
+        api_name="fund_adj",
+        description="场内基金复权因子",
+        group="market_data",
+        primary_keys=["ts_code", "trade_date"],
+    ),
     "fund_share": EndpointMeta(
         api_name="fund_share",
         description="基金份额规模",
+        group="market_indicators",
+        primary_keys=["ts_code", "trade_date"],
+    ),
+    "etf_share_size": EndpointMeta(
+        api_name="etf_share_size",
+        description="ETF 基金份额与资产规模",
         group="market_indicators",
         primary_keys=["ts_code", "trade_date"],
     ),

@@ -94,6 +94,9 @@ data:
       - "moneyflow"
       - "adj_factor"
       - "sw_daily"
+      - "fund_daily"
+      - "fund_adj"
+      - "etf_share_size"
 
   # 接口历史最早数据起始日校准表 (自动将更早的无意义请求截断提升至真实上线首日)
   endpoint_start_date_overrides:
@@ -227,7 +230,24 @@ data:
         default_start_date: "2024-01-01"
         enabled: true
 
-      # 宏观指标类
+      # 基金与 ETF 行情规模类
+      - api_name: "fund_daily"
+        description: "基金/ETF日线行情"
+        fetch_mode: "per_day"
+        default_start_date: "2014-08-01"
+        enabled: true
+      - api_name: "fund_adj"
+        description: "场内基金复权因子"
+        fetch_mode: "per_day"
+        default_start_date: "2014-08-01"
+        enabled: true
+      - api_name: "etf_share_size"
+        description: "ETF基金份额与资产规模"
+        fetch_mode: "per_day"
+        default_start_date: "2014-08-01"
+        enabled: true
+
+      # 宏观经济数据
       - api_name: "cn_ppi"
         description: "工业生产者出厂价格指数 PPI"
         fetch_mode: "event"
