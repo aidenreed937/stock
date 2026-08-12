@@ -153,6 +153,16 @@ def dataset_for_endpoint(endpoint: str, symbol: str = "") -> str:
     """
     if endpoint in {"index_valuation", "etf_valuation", "us/index/fundamental"}:
         return "index_valuation"
+    if endpoint in {"financials", "balance_sheet", "cashflow"}:
+        return f"financial_{endpoint}"
+    if endpoint in {"dividends", "splits"}:
+        return f"action_{endpoint}"
+    if endpoint in {"analyst_price_target", "recommendations"}:
+        return f"analyst_{endpoint}"
+    if endpoint in {"institutional_holders", "insider_transactions"}:
+        return f"holder_{endpoint}"
+    if endpoint == "fast_info":
+        return "fast_quote_snapshot"
     if endpoint in {"daily", "daily_bar", "history", "cn/company/candlestick", "cn/index/candlestick"}:
         if endpoint == "cn/index/candlestick" or symbol.startswith("^"):
             return "index_daily_bar"

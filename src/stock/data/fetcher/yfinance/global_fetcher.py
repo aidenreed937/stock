@@ -148,3 +148,95 @@ class YFinanceDataFetcher(BaseDataFetcher):
         if not vals:
             return pl.DataFrame()
         return pl.DataFrame([v.model_dump() for v in vals])
+
+    def fetch_financials_df(
+        self, symbol: str, statement_type: str = "financials", freq: str = "quarterly"
+    ) -> pl.DataFrame:
+        """抓取上市公司财务报表 (利润表/资产负债表/现金流量表)。"""
+        import yfinance as yf
+
+        session = self.client._get_session()
+        try:
+            ticker = yf.Ticker(symbol, session=session)
+            attr_name = f"{freq}_{statement_type}" if freq == "quarterly" else statement_type
+            df_raw = getattr(ticker, attr_name, None)
+            if df_raw is None or df_raw.empty:
+                return pl.DataFrame()
+
+            # yfinance 返回的报表列是日期，索引是科目
+            reset_df = df_raw.T.reset_index()
+            reset_df = reset_df.rename(columns={"index": "asOfDate", "Date": "asOfDate"})
+            reset_df["symbol"] = symbol
+            return pl.from_pandas(reset_df)
+        except Exception as e:
+            logger.error(f"YFinance 抓取财务报表失败 [{symbol}/{statement_type}]: {e}")
+            return pl.DataFrame()
+
+    def fetch_actions_df(self, symbol: str, action_type: str = "dividends") -> pl.DataFrame:
+        """抓取公司历史分红派息或拆股记录。"""
+        import yfinance as yf
+
+        session = self.client._get_session()
+        try:
+            ticker = yf.Ticker(symbol, session=session)
+            series_raw = getattr(ticker, action_type, None)
+            if series_raw is None or series_raw.empty:
+                return pl.DataFrame()
+
+            df_raw = series_raw.reset_index()
+            df_raw.columns = ["Date", action_type]
+            df_raw["symbol"] = symbol
+            return pl.from_pandas(df_raw)
+        except Exception as e:
+            logger.error(f"YFinance 抓取分红/拆股失败 [{symbol}/{action_type}]: {e}")
+            return pl.DataFrame()
+
+    def fetch_analyst_target_df(self, symbol: str) -> pl.DataFrame:
+        """抓取分析师目标价 (最高、最低、均值、中位数)。"""
+        import yfinance as yf
+
+        session = self.client._get_session()
+        try:
+            ticker = yf.Ticker(symbol, session=session)
+            targets = ticker.analyst_price_target
+            if not targets or not isinstance(targets, dict):
+                return pl.DataFrame()
+
+            record = {
+                "symbol": symbol,
+                "trade_date": date.today(),
+                "target_high": targets.get("high"),
+                "target_low": targets.get("low"),
+                "target_mean": targets.get("mean"),
+                "target_median": targets.get("median"),
+                "current_price": targets.get("current"),
+            }
+            return pl.DataFrame([record])
+        except Exception as e:
+            logger.error(f"YFinance 抓取分析师目标价失败 [{symbol}]: {e}")
+            return pl.DataFrame()
+
+    def fetch_fast_info_df(self, symbol: str) -> pl.DataFrame:
+        """抓取极速盘前盘后行情快照。"""
+        import yfinance as yf
+
+        session = self.client._get_session()
+        try:
+            ticker = yf.Ticker(symbol, session=session)
+            fi = ticker.fast_info
+            record = {
+                "symbol": symbol,
+                "trade_date": date.today(),
+                "last_price": getattr(fi, "last_price", None),
+                "previous_close": getattr(fi, "previous_close", None),
+                "open_price": getattr(fi, "open", None),
+                "day_high": getattr(fi, "day_high", None),
+                "day_low": getattr(fi, "day_low", None),
+                "year_high": getattr(fi, "year_high", None),
+                "year_low": getattr(fi, "year_low", None),
+                "market_cap": getattr(fi, "market_cap", None),
+            }
+            return pl.DataFrame([record])
+        except Exception as e:
+            logger.error(f"YFinance 抓取极速快照失败 [{symbol}]: {e}")
+            return pl.DataFrame()

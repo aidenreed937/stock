@@ -97,3 +97,60 @@ def test_fetch_index_valuations() -> None:
         assert df["target_index"][0] == "^GSPC"
         assert df["trailing_pe"][0] == 25.5
         assert df["dividend_yield"][0] == 1.2
+
+
+def test_fetch_extended_endpoints() -> None:
+    client = YFinanceClient()
+    fetcher = YFinanceDataFetcher(client=client)
+
+    with patch("yfinance.Ticker") as mock_ticker_class:
+        mock_ticker_instance = MagicMock()
+
+        # Mock quarterly financials
+        mock_fin_df = pd.DataFrame({"2026-06-30": [100.0]}, index=["Total Revenue"])
+        mock_ticker_instance.quarterly_financials = mock_fin_df
+
+        # Mock dividends
+        mock_div_series = pd.Series([0.25], index=pd.to_datetime(["2026-08-10"]))
+        mock_ticker_instance.dividends = mock_div_series
+
+        # Mock analyst target
+        mock_ticker_instance.analyst_price_target = {
+            "high": 300.0,
+            "low": 200.0,
+            "mean": 250.0,
+            "median": 250.0,
+            "current": 240.0,
+        }
+
+        # Mock fast info
+        mock_fast_info = MagicMock()
+        mock_fast_info.last_price = 245.0
+        mock_fast_info.previous_close = 240.0
+        mock_fast_info.open = 242.0
+        mock_fast_info.day_high = 246.0
+        mock_fast_info.day_low = 241.0
+        mock_fast_info.year_high = 250.0
+        mock_fast_info.year_low = 180.0
+        mock_fast_info.market_cap = 3000000000000.0
+        mock_ticker_instance.fast_info = mock_fast_info
+
+        mock_ticker_class.return_value = mock_ticker_instance
+
+        # Test financials
+        fin_df = fetcher.fetch_financials_df("AAPL", statement_type="financials", freq="quarterly")
+        assert not fin_df.is_empty()
+
+        # Test dividends
+        div_df = fetcher.fetch_actions_df("AAPL", action_type="dividends")
+        assert not div_df.is_empty()
+
+        # Test analyst target
+        target_df = fetcher.fetch_analyst_target_df("AAPL")
+        assert not target_df.is_empty()
+        assert target_df["target_high"][0] == 300.0
+
+        # Test fast info
+        fast_df = fetcher.fetch_fast_info_df("AAPL")
+        assert not fast_df.is_empty()
+        assert fast_df["last_price"][0] == 245.0
