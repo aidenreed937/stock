@@ -125,12 +125,17 @@ class DuckDBMarketStore:
                 merged = merged.sort(["trade_date", "symbol"])
 
             file_path.parent.mkdir(parents=True, exist_ok=True)
-        temp_path = file_path.with_suffix(".tmp.parquet")
-        merged.write_parquet(temp_path)
-        temp_path.replace(file_path)
+            temp_path = file_path.with_suffix(".tmp.parquet")
+            merged.write_parquet(temp_path)
+            temp_path.replace(file_path)
 
-        if hasattr(self, "_curated_cache") and file_path in self._curated_cache:
-            del self._curated_cache[file_path]
+            # 同步更新 LRU 内存缓存并限制容量上限 <= 128
+            if hasattr(self, "_curated_cache"):
+                if len(self._curated_cache) > 128:
+                    # 超过 128 个缓存文件句柄时剔除最早插入的项
+                    first_key = next(iter(self._curated_cache))
+                    del self._curated_cache[first_key]
+                self._curated_cache[file_path] = merged
 
         return merged
 

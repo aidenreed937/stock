@@ -12,46 +12,7 @@ from stock.config.settings import settings
 from stock.data.fetcher.lixinger.registry import LIXINGER_API_REGISTRY
 from stock.exceptions import DataFetchError
 from stock.utils.logger import logger
-
-
-class RateLimiter:
-    """基于滑动时间窗口的线程安全速率限制器。"""
-
-    def __init__(
-        self, max_requests: int = 1000, time_window_seconds: float = 60.0
-    ) -> None:
-        """初始化速率限制器。
-
-        Args:
-            max_requests: 窗口内最大请求次数。
-            time_window_seconds: 时间窗口长度（单位：秒）。
-        """
-        self.max_requests = max_requests
-        self.time_window = time_window_seconds
-        self._requests: list[float] = []
-        self._lock = threading.Lock()
-
-    def acquire(self) -> None:
-        """申请一次请求配额。若超过限制，则阻塞休眠直到解禁。"""
-        if self.max_requests <= 0:
-            return
-
-        with self._lock:
-            now = time.monotonic()
-            # 清除窗口期之外的旧请求记录
-            self._requests = [t for t in self._requests if now - t < self.time_window]
-
-            if len(self._requests) >= self.max_requests:
-                sleep_time = self.time_window - (now - self._requests[0])
-                if sleep_time > 0:
-                    logger.warning(
-                        f"触发理杏仁 API 频次限制 ({self.max_requests}次/分)，自动休眠 {sleep_time:.2f} 秒..."
-                    )
-                    time.sleep(sleep_time)
-                now = time.monotonic()
-                self._requests = [t for t in self._requests if now - t < self.time_window]
-
-            self._requests.append(now)
+from stock.utils.rate_limiter import RateLimiter
 
 
 class LixingerClient:

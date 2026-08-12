@@ -30,8 +30,13 @@ class MACDCrossStrategy(BaseStrategy):
         if len(data) < 35:
             return []
 
-        # 提取当前标的名称
+        # 保证时间序列严格按交易日升序排列
+        if "trade_date" in data.columns:
+            data = data.sort("trade_date")
+
+        # 提取当前标的名称与最新 Bar 交易时间戳
         symbol = data["symbol"].tail(1).item()
+        bar_timestamp = data["trade_date"].tail(1).item() if "trade_date" in data.columns else None
 
         # 1. 调用数据分析层，为 DataFrame 追加 MACD 指标列
         df = calculate_macd(data)
@@ -51,6 +56,7 @@ class MACDCrossStrategy(BaseStrategy):
                     direction=SignalDirection.BUY,
                     target_weight=self.target_weight,
                     reason="MACD_GOLDEN_CROSS",
+                    timestamp=bar_timestamp,
                 )
             )
         # 死叉：昨天的柱子是正的，今天是负的（MACD线下穿Signal线）
@@ -61,6 +67,7 @@ class MACDCrossStrategy(BaseStrategy):
                     direction=SignalDirection.SELL,
                     target_weight=0.0,  # 目标仓位 0 代表建议全部清仓
                     reason="MACD_DEAD_CROSS",
+                    timestamp=bar_timestamp,
                 )
             )
 

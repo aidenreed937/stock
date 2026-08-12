@@ -23,6 +23,9 @@ def calculate_rsi(
     df: pl.DataFrame, window: int = DEFAULT_RSI_WINDOW, column: str = "close"
 ) -> pl.DataFrame:
     """计算相对强弱指标 (RSI)"""
+    if "trade_date" in df.columns:
+        df = df.sort("trade_date")
+
     diff = pl.col(column).diff()
     gain = pl.when(diff > 0).then(diff).otherwise(0.0)
     loss = pl.when(diff < 0).then(-diff).otherwise(0.0)
@@ -31,7 +34,8 @@ def calculate_rsi(
     avg_loss = loss.ewm_mean(span=window, adjust=False)
 
     rs = avg_gain / (avg_loss + 1e-10)
-    rsi = 100 - (100 / (1 + rs))
+    # 当连续平盘 (avg_gain == 0 且 avg_loss == 0) 时，RSI 应为中性值 50.0
+    rsi = pl.when((avg_gain == 0) & (avg_loss == 0)).then(50.0).otherwise(100 - (100 / (1 + rs)))
 
     return df.with_columns(rsi.alias(f"rsi_{window}"))
 
