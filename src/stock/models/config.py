@@ -62,3 +62,18 @@ class StrategyConfigFile(BaseModel):
     """YAML 文件顶层包装模型。"""
 
     strategy: StrategyConfig
+
+
+class DataConfig(BaseModel):
+    """数据源与基准配置模型。"""
+
+    default_benchmark_index_code: str = Field(
+        default="000001", description="交易日历基准指数代码 (上证指数)"
+    )
+    default_source_mode: str = Field(default="tushare", description="默认主数据源")
+
+
+class DataConfigFile(BaseModel):
+    """数据 YAML 文件顶层包装模型。"""
+
+    data: DataConfig

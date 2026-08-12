@@ -5,7 +5,7 @@ from typing import Any
 
 import polars as pl
 
-from stock.config.settings import settings
+from stock.config.loader import load_data_config
 from stock.data.fetcher.lixinger.client import LixingerClient
 from stock.data.fetcher.lixinger.registry import EndpointMeta, LIXINGER_API_REGISTRY
 from stock.models.market import DailyBar
@@ -134,9 +134,10 @@ class LixingerStockFetcher:
 
         # 使用基准指数 K线查询实际开市日期
         try:
+            data_cfg = load_data_config()
             pandas_df = self.client.query(
                 "cn/index/candlestick",
-                stockCode=settings.default_benchmark_index_code,
+                stockCode=data_cfg.default_benchmark_index_code,
                 type="normal",
                 startDate=start_str,
                 endDate=end_str,

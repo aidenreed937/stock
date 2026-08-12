@@ -5,7 +5,7 @@ from pathlib import Path
 import yaml
 
 from stock.exceptions import DataValidationError
-from stock.models.config import StrategyConfig, StrategyConfigFile
+from stock.models.config import DataConfig, DataConfigFile, StrategyConfig, StrategyConfigFile
 
 
 def load_strategy_config(config_path: Path | str) -> StrategyConfig:
@@ -63,3 +63,29 @@ def load_strategy_config(config_path: Path | str) -> StrategyConfig:
         return validated_file.strategy
     except Exception as e:
         raise DataValidationError(f"策略配置文件解析/校验失败 [{path}]: {e}") from e
+
+
+def load_data_config(config_path: Path | str = "config/data.yaml") -> DataConfig:
+    """从指定 YAML 文件加载并校验数据业务配置。
+
+    Args:
+        config_path: 配置文件路径。
+
+    Returns:
+        DataConfig: 强类型数据配置对象。
+    """
+    path = Path(config_path)
+    if not path.exists():
+        return DataConfig()
+
+    try:
+        with path.open("r", encoding="utf-8") as f:
+            raw_data = yaml.safe_load(f)
+
+        if not raw_data or "data" not in raw_data:
+            return DataConfig()
+
+        validated_file = DataConfigFile(**raw_data)
+        return validated_file.data
+    except Exception as e:
+        raise DataValidationError(f"数据配置文件解析/校验失败 [{path}]: {e}") from e
