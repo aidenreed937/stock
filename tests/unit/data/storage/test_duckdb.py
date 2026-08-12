@@ -26,7 +26,8 @@ def test_duckdb_store(tmp_path, mock_fetcher: MockDataFetcher) -> None:
 
     file_path = store.save_market_data("daily", date(2026, 1, 15), df)
     assert file_path.exists()
-    assert file_path.parent.parent.parent.parent == tmp_path / "mock"
+    assert "market=CN" in str(file_path)
+    assert file_path.relative_to(tmp_path / "mock").parts[0] == "market=CN"
 
     queried_df = store.query_daily_bars("TEST.SH")
     assert len(queried_df) == len(df)

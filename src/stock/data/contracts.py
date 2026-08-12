@@ -42,6 +42,13 @@ class DatasetKey:
         return sha256(payload.encode("utf-8")).hexdigest()[:20]
 
     @property
+    def market_slug(self) -> str:
+        """返回用于 Hive 目录划分的市场标识。"""
+        if self.instrument and self.instrument.market:
+            return f"market={self.instrument.market.upper()}"
+        return "market=MULTI"
+
+    @property
     def instrument_slug(self) -> str:
         """返回可安全用于路径的标的名称。"""
         if self.instrument is None:
@@ -103,11 +110,45 @@ def dataset_for_endpoint(endpoint: str) -> str:
 
 
 def instrument_for_symbol(symbol: str, provider: str) -> InstrumentId | None:
-    """根据当前支持的代码约定推断标的身份。空代码表示全市场快照。"""
+    """根据当前支持的代码约定推断跨市场标的身份。空代码表示全市场快照。"""
     if not symbol:
         return None
-    if symbol.endswith(".SH"):
+
+    symbol_upper = symbol.upper()
+
+    # 1. 中国 A 股 (CN) 涵盖: 上交所 (.SH, .SS)、深交所 (.SZ)、北交所 (.BJ)
+    if symbol_upper.endswith((".SH", ".SS")):
         return InstrumentId(symbol, "CN", "SSE", "CNY", provider)
-    if symbol.endswith(".SZ"):
+    if symbol_upper.endswith(".SZ"):
         return InstrumentId(symbol, "CN", "SZSE", "CNY", provider)
-    return InstrumentId(symbol, "US", "NASDAQ", "USD", provider)
+    if symbol_upper.endswith(".BJ"):
+        return InstrumentId(symbol, "CN", "BSE", "CNY", provider)
+
+    # 2. 港股 (HK)
+    if symbol_upper.endswith(".HK"):
+        return InstrumentId(symbol, "HK", "HKEX", "HKD", provider)
+
+    # 3. 台股 (TW)
+    if symbol_upper.endswith((".TW", ".TWO")):
+        return InstrumentId(symbol, "TW", "TWSE", "TWD", provider)
+
+    # 4. 常见其他国际市场特定后缀
+    if symbol_upper.endswith(".T"):
+        return InstrumentId(symbol, "JP", "TSE", "JPY", provider)
+    if symbol_upper.endswith(".L"):
+        return InstrumentId(symbol, "UK", "LSE", "GBP", provider)
+    if symbol_upper.endswith(".PA"):
+        return InstrumentId(symbol, "FR", "EURONEXT", "EUR", provider)
+    if symbol_upper.endswith(".DE"):
+        return InstrumentId(symbol, "DE", "XETRA", "EUR", provider)
+    if symbol_upper.endswith((".TO", ".V")):
+        return InstrumentId(symbol, "CA", "TSX", "CAD", provider)
+
+    # 5. 通用泛化动态后缀处理 (针对任何未显式列出的国家/地区后缀，如 .KS 韩国、.SG 新加坡等)
+    if "." in symbol_upper:
+        ext = symbol_upper.rsplit(".", 1)[1]
+        if ext.isalpha() and 2 <= len(ext) <= 4:
+            return InstrumentId(symbol, ext, f"{ext}_EXCHANGE", "LOCAL_CURRENCY", provider)
+
+    # 6. 默认无后缀及美股标的/通用指数 (US)
+    return InstrumentId(symbol, "US", "US_EXCHANGE", "USD", provider)

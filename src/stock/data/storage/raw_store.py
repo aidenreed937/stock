@@ -112,10 +112,11 @@ class RawDataStorage:
             return None
 
     def _get_dataset_path(self, key: DatasetKey) -> Path:
-        """计算 RAW 缓存路径（按月份统一为一个 data.parquet）。"""
+        """计算 RAW 缓存路径（按市场 market=XX 与月份归档为 data.parquet）。"""
         partition_dir = (
             self.base_dir
             / key.provider
+            / key.market_slug
             / key.dataset
             / f"year={key.end_date.year:04d}"
             / f"month={key.end_date.month:02d}"
@@ -154,7 +155,8 @@ class RawDataStorage:
         if legacy_path.exists():
             return True
         dataset_name = "daily_bar" if endpoint in {"daily", "daily_bar"} else endpoint.replace("/", "_")
-        dataset_dir = self.base_dir / data_source / dataset_name / f"year={target_date.year:04d}" / f"month={target_date.month:02d}"
-        if not dataset_dir.exists():
-            return False
-        return any(dataset_dir.glob("*.parquet"))
+        year_month_path = f"year={target_date.year:04d}/month={target_date.month:02d}"
+        for p in self.base_dir.glob(f"{data_source}/**/{dataset_name}/{year_month_path}/*.parquet"):
+            if p.exists():
+                return True
+        return False

@@ -61,15 +61,16 @@ class DuckDBMarketStore:
                 f"{context}数据源不匹配: 期望 [{data_source}]，实际 [{sorted(sources)}]"
             )
 
-    def _get_partition_dir(self, endpoint: str, target_date: date) -> Path:
-        """根据接口名与日期计算 Hive 时间分区目录路径。"""
+    def _get_partition_dir(self, endpoint: str, target_date: date, market: str = "MULTI") -> Path:
+        """根据接口名与日期计算 Hive 时间与市场分区目录路径。"""
+        market_slug = f"market={market.upper()}"
         year_str = f"year={target_date.year:04d}"
         month_str = f"month={target_date.month:02d}"
-        return self.storage_dir / endpoint / year_str / month_str
+        return self.storage_dir / market_slug / endpoint / year_str / month_str
 
-    def get_parquet_path(self, endpoint: str, target_date: date) -> Path:
-        """计算归档文件路径（按月份统一为 data.parquet）。"""
-        partition_dir = self._get_partition_dir(endpoint, target_date)
+    def get_parquet_path(self, endpoint: str, target_date: date, market: str = "MULTI") -> Path:
+        """计算归档文件路径（按市场与月份统一为 data.parquet）。"""
+        partition_dir = self._get_partition_dir(endpoint, target_date, market=market)
         return partition_dir / "data.parquet"
 
     def has_curated(
@@ -79,12 +80,13 @@ class DuckDBMarketStore:
         data_source = self._require_data_source()
         if endpoint == "daily":
             endpoint = "daily_bar"
-        partition_dir = self._get_partition_dir(endpoint, target_date)
-        if not partition_dir.exists():
+        year_month_path = f"year={target_date.year:04d}/month={target_date.month:02d}"
+        matching_files = list(self.storage_dir.glob(f"**/{endpoint}/{year_month_path}/*.parquet"))
+        if not matching_files:
             return False
         date_str_hyphen = target_date.strftime("%Y-%m-%d")
         date_str_plain = target_date.strftime("%Y%m%d")
-        for file_path in partition_dir.glob("*.parquet"):
+        for file_path in matching_files:
             try:
                 df = pl.read_parquet(file_path)
                 self._validate_frame_source(df, data_source, f"Curated 文件 [{file_path}]")
@@ -113,8 +115,15 @@ class DuckDBMarketStore:
         data_source: str | None = None,
     ) -> Path:
         """保存精炼数据到指定的时间分区。"""
+        if endpoint == "daily":
+            endpoint = "daily_bar"
+        market_code = "MULTI"
+        if "market" in df.columns and not df.is_empty():
+            m_values = set(df.get_column("market").drop_nulls().unique().to_list())
+            if len(m_values) == 1:
+                market_code = next(iter(m_values))
         if df.is_empty():
-            file_path = self.get_parquet_path(endpoint, target_date)
+            file_path = self.get_parquet_path(endpoint, target_date, market=market_code)
             logger.warning(f"数据帧为空，跳过精炼存储 [{endpoint}]")
             return file_path
 
@@ -126,7 +135,7 @@ class DuckDBMarketStore:
         if source is None:
             raise DataValidationError("Curated 数据缺少数据源，拒绝写入未绑定来源的数据")
         self.bind_data_source(source)
-        file_path = self.get_parquet_path(endpoint, target_date)
+        file_path = self.get_parquet_path(endpoint, target_date, market=market_code)
         self._validate_frame_source(df, source, f"Curated 数据 [{file_path}]")
         if endpoint in {"daily", "daily_bar"}:
             DAILY_BAR_CONTRACT.validate(df)
@@ -157,7 +166,8 @@ class DuckDBMarketStore:
     def save_dataset(self, key: DatasetKey, df: pl.DataFrame) -> Path:
         """按数据集和业务日期幂等合并保存标准数据。"""
         self.bind_data_source(key.provider)
-        file_path = self.get_parquet_path(key.dataset, key.end_date)
+        market_code = key.instrument.market if (key.instrument and key.instrument.market) else "MULTI"
+        file_path = self.get_parquet_path(key.dataset, key.end_date, market=market_code)
         if df.is_empty():
             return file_path
         self._validate_frame_source(df, key.provider, f"Curated 数据 [{file_path}]")
@@ -194,9 +204,8 @@ class DuckDBMarketStore:
     ) -> pl.DataFrame:
         """查询标准数据集，兼容旧 endpoint 查询入口。"""
         data_source = self._require_data_source()
-        dataset_dir = self.storage_dir / dataset
-        search_pattern = str(dataset_dir / "*" / "*" / "*.parquet")
-        if not dataset_dir.exists() or not list(dataset_dir.rglob("*.parquet")):
+        search_pattern = str(self.storage_dir / "**" / dataset / "*" / "*" / "*.parquet")
+        if not list(self.storage_dir.rglob("*.parquet")):
             return pl.DataFrame()
         conditions: list[str] = []
         if symbol:
@@ -224,10 +233,9 @@ class DuckDBMarketStore:
     ) -> pl.DataFrame:
         """使用 DuckDB SQL 快速检索全量分区数据中的单只股票。"""
         data_source = self._require_data_source()
-        if endpoint == "daily" and (self.storage_dir / "daily_bar").exists():
+        if endpoint == "daily":
             return self.query_dataset(dataset="daily_bar", symbol=symbol)
-        search_pattern = str(self.storage_dir / endpoint / "*" / "*" / "*.parquet")
-        # 简单检查是否存在文件（不精确，仅确保 duckdb 不报找不到文件错）
+        search_pattern = str(self.storage_dir / "**" / endpoint / "*" / "*" / "*.parquet")
         if not list(self.storage_dir.rglob("*.parquet")):
             logger.warning(f"本地无 {endpoint} 分区 Parquet 缓存文件")
             return pl.DataFrame()
@@ -262,7 +270,7 @@ class DuckDBMarketStore:
                 result = result.filter(pl.col("symbol").is_in(symbols))
             return result
         data_source = self._require_data_source()
-        search_pattern = str(self.storage_dir / endpoint / "*" / "*" / "*.parquet")
+        search_pattern = str(self.storage_dir / "**" / endpoint / "*" / "*" / "*.parquet")
         if not list(self.storage_dir.rglob("*.parquet")):
             logger.warning(f"本地无 {endpoint} 分区 Parquet 缓存文件")
             return pl.DataFrame()
