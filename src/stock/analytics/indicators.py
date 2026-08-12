@@ -34,3 +34,26 @@ def calculate_rsi(
     rsi = 100 - (100 / (1 + rs))
 
     return df.with_columns(rsi.alias(f"rsi_{window}"))
+
+
+def calculate_macd(
+    df: pl.DataFrame,
+    fast: int = 12,
+    slow: int = 26,
+    signal: int = 9,
+    column: str = "close",
+) -> pl.DataFrame:
+    """计算 MACD 指标 (平滑异同移动平均线)。"""
+    fast_ema = pl.col(column).ewm_mean(span=fast, adjust=False)
+    slow_ema = pl.col(column).ewm_mean(span=slow, adjust=False)
+    macd = fast_ema - slow_ema
+    macd_signal = macd.ewm_mean(span=signal, adjust=False)
+    macd_hist = macd - macd_signal
+
+    return df.with_columns(
+        [
+            macd.alias("macd"),
+            macd_signal.alias("macd_signal"),
+            macd_hist.alias("macd_hist"),
+        ]
+    )

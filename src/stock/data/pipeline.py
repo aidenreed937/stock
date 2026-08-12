@@ -13,6 +13,10 @@ from stock.data.storage.raw_store import RawDataStorage
 from stock.utils.logger import logger
 
 
+from stock.data.cleaner.generic_cleaner import GenericCleaner
+from stock.data.fetcher.tushare.registry import TUSHARE_API_REGISTRY
+
+
 class MarketDataPipeline:
     """行情数据 ETL 处理管道 (包含 RAW 离线时间分区归档与 Curated 标准化精炼)。
 
@@ -38,7 +42,7 @@ class MarketDataPipeline:
 
         Args:
             fetcher: 数据抓取器。
-            cleaner: 数据清洗器，默认 BarDataCleaner。
+            cleaner: 数据清洗器，默认根据 endpoint 动态匹配。
             normalizer: 数据标准化器，默认 BarDataNormalizer。
             store: 精炼存储引擎，默认 DuckDBMarketStore。
             raw_store: 原始归档存储引擎，默认 RawDataStorage。
@@ -46,12 +50,21 @@ class MarketDataPipeline:
             endpoint: 接口名称（如 daily, income）。
         """
         self.fetcher = fetcher
-        self.cleaner = cleaner if cleaner is not None else BarDataCleaner()
+        self.data_source = data_source
+        self.endpoint = endpoint
+
+        if cleaner is not None:
+            self.cleaner = cleaner
+        elif endpoint == "daily":
+            self.cleaner = BarDataCleaner()
+        else:
+            meta = TUSHARE_API_REGISTRY.get(endpoint)
+            p_keys = meta.primary_keys if meta else None
+            self.cleaner = GenericCleaner(primary_keys=p_keys)
+
         self.normalizer = normalizer if normalizer is not None else BarDataNormalizer()
         self.store = store if store is not None else DuckDBMarketStore()
         self.raw_store = raw_store if raw_store is not None else RawDataStorage()
-        self.data_source = data_source
-        self.endpoint = endpoint
 
     def sync_daily_bars(
         self,
@@ -114,7 +127,7 @@ class MarketDataPipeline:
             )
 
         # 5. 精炼落盘 (Load to Curated Store)
-        self.store.save_daily_bars(symbol, normalized_df)
+        self.store.save_market_data(self.endpoint, end_date, normalized_df)
 
         logger.info(
             f"2-Tier ETL 管道同步成功完成 [{symbol}] -> 精炼落盘 {len(normalized_df)} 条记录"

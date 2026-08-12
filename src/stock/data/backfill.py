@@ -110,14 +110,12 @@ class HistoricalBackfiller:
         failed_count = 0
 
         for idx, trade_date in enumerate(open_dates, 1):
-            # 1. 检查 RAW 时间分区缓存（断点续传）
-            has_raw = self.pipeline.raw_store.has_raw(
-                self.data_source, self.endpoint, trade_date
-            )
-            if has_raw and not force_refresh:
+            # 1. 检查断点续传：只有在精炼层（Curated Store）存在数据时，才认为该日真正完成
+            has_curated = getattr(self.pipeline.store, "has_curated", lambda e, d: False)(self.endpoint, trade_date)
+            if has_curated and not force_refresh:
                 skipped_count += 1
                 logger.debug(
-                    f"[{idx}/{len(open_dates)}] 命中离线 RAW 归档 [{trade_date}]，断点续传自动跳过"
+                    f"[{idx}/{len(open_dates)}] 命中精炼层归档 [{trade_date}]，断点续传自动跳过"
                 )
                 continue
 

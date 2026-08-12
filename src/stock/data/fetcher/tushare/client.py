@@ -11,7 +11,13 @@ from stock.utils.logger import logger
 
 
 class RateLimiter:
-    """基于滑动时间窗口的线程安全速率限制器。"""
+    """基于滑动时间窗口的线程安全全局速率限制器。
+    
+    使用类变量存储请求状态，确保跨多个实例甚至多线程依然能够遵守全局并发与限流。
+    """
+    
+    _requests: list[float] = []
+    _lock = threading.Lock()
 
     def __init__(
         self, max_requests: int = 200, time_window_seconds: float = 60.0
@@ -24,30 +30,28 @@ class RateLimiter:
         """
         self.max_requests = max_requests
         self.time_window = time_window_seconds
-        self.requests: list[float] = []
-        self._lock = threading.Lock()
 
     def acquire(self) -> None:
         """申请一次请求配额。若超过限制，则阻塞休眠直到解禁。"""
         if self.max_requests <= 0:
             return
 
-        with self._lock:
+        with RateLimiter._lock:
             now = time.monotonic()
             # 清除窗口期之外的旧请求记录
-            self.requests = [t for t in self.requests if now - t < self.time_window]
+            RateLimiter._requests = [t for t in RateLimiter._requests if now - t < self.time_window]
 
-            if len(self.requests) >= self.max_requests:
-                sleep_time = self.time_window - (now - self.requests[0])
+            if len(RateLimiter._requests) >= self.max_requests:
+                sleep_time = self.time_window - (now - RateLimiter._requests[0])
                 if sleep_time > 0:
                     logger.warning(
-                        f"触发 TuShare 频次限制 ({self.max_requests}次/分)，自动休眠 {sleep_time:.2f} 秒..."
+                        f"触发 TuShare 全局频次限制 ({self.max_requests}次/分)，自动休眠 {sleep_time:.2f} 秒..."
                     )
                     time.sleep(sleep_time)
                 now = time.monotonic()
-                self.requests = [t for t in self.requests if now - t < self.time_window]
+                RateLimiter._requests = [t for t in RateLimiter._requests if now - t < self.time_window]
 
-            self.requests.append(now)
+            RateLimiter._requests.append(now)
 
 
 class TuShareClient:
@@ -71,8 +75,8 @@ class TuShareClient:
             rate_limit_per_min: 每分钟最大请求次数限制。若为 None，则从 settings.tushare_rate_limit_per_min 读取。
             max_workers: 并发采集 Worker 线程数。若为 None，则从 settings.tushare_max_workers 读取。
         """
-        self.token = token or settings.tushare_token
-        self.url = url or settings.tushare_url
+        self.token = token if token is not None else settings.tushare_token
+        self.url = url if url is not None else settings.tushare_url
         self.rate_limit_per_min = (
             rate_limit_per_min
             if rate_limit_per_min is not None
@@ -101,7 +105,7 @@ class TuShareClient:
                 )
             ts.set_token(self.token)
             if self.url:
-                self._pro_api = ts.pro_api(server=self.url)
+                self._pro_api = ts.pro_api(env=self.url)
             else:
                 self._pro_api = ts.pro_api()
             logger.debug(

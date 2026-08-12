@@ -43,6 +43,7 @@ src = ["src", "tests"]
 
 # 排除第三方包、虚拟环境及数据/缓存目录，绝不扫描第三方依赖
 exclude = [
+    ".agents",
     ".venv",
     "venv",
     "data",
