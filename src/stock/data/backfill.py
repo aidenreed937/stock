@@ -49,6 +49,13 @@ class HistoricalBackfiller:
             self.fetcher = create_yfinance_pipeline(endpoint=endpoint).fetcher
         elif data_source == "lixinger":
             self.fetcher = create_lixinger_pipeline(endpoint=endpoint).fetcher
+        elif data_source == "fred":
+            from stock.data.fetcher.fred import create_fred_fetcher
+
+            self.fetcher = create_fred_fetcher()
+            self.pipeline = MarketDataPipeline(
+                fetcher=self.fetcher, data_source=data_source, endpoint=endpoint
+            )
         else:
             self.fetcher = TuShareDataFetcher()
         if pipeline is not None:
@@ -59,6 +66,8 @@ class HistoricalBackfiller:
             self.pipeline = create_yfinance_pipeline(endpoint=endpoint)
         elif data_source == "lixinger":
             self.pipeline = create_lixinger_pipeline(endpoint=endpoint)
+        elif data_source == "fred":
+            pass
         else:
             self.pipeline = MarketDataPipeline(
                 fetcher=self.fetcher, data_source=data_source, endpoint=endpoint
@@ -66,6 +75,31 @@ class HistoricalBackfiller:
         self.data_source = data_source
         self.endpoint = endpoint
         self._calendar_cache: dict[tuple[date, date], list[date]] = {}
+
+    @property
+    def frequency(self) -> str:
+        """自动在注册表中识别并获取当前 endpoint 的更新频次 (daily | monthly | quarterly | event)。"""
+        registry_map = {
+            "tushare": "stock.data.fetcher.tushare.registry",
+            "yfinance": "stock.data.fetcher.yfinance.registry",
+            "fred": "stock.data.fetcher.fred.registry",
+        }
+        module_path = registry_map.get(self.data_source)
+        if module_path:
+            import importlib
+
+            try:
+                mod = importlib.import_module(module_path)
+                reg_dict = (
+                    getattr(mod, "TUSHARE_API_REGISTRY", None)
+                    or getattr(mod, "YFINANCE_API_REGISTRY", None)
+                    or getattr(mod, "FRED_API_REGISTRY", None)
+                )
+                if reg_dict and self.endpoint in reg_dict:
+                    return getattr(reg_dict[self.endpoint], "frequency", "daily")
+            except Exception:
+                pass
+        return "daily"
 
     def _get_open_trading_dates(
         self, start_date: date, end_date: date, use_cache: bool = True
@@ -174,6 +208,30 @@ class HistoricalBackfiller:
             dict[str, Any]: 包含回填统计信息的字典。
         """
         total_days = (end_date - start_date).days + 1
+        freq = self.frequency
+
+        # 对于非日频接口（如月频 CPI/利率、季频财报 GDP、事件驱动），自动识别并执行单次全区间精准同步，彻底避免按交易日开市重复拉取
+        if freq != "daily":
+            logger.info(
+                f"识别到接口 [{self.data_source}/{self.endpoint}] 注册更新频次为 [{freq}]，执行单次区间精准同步 ({start_date} ~ {end_date})..."
+            )
+            sym_code = self.symbol or self.endpoint
+            df = self.pipeline.sync_daily_bars(
+                symbol=sym_code,
+                start_date=start_date,
+                end_date=end_date,
+                use_raw_cache=not force_refresh,
+                force_refresh=force_refresh,
+            )
+            count = len(df) if not df.is_empty() else 0
+            return {
+                "total_days": total_days,
+                "open_days": 1,
+                "synced_days": count,
+                "skipped_days": 0,
+                "failed_days": 0 if count > 0 else 1,
+            }
+
         open_dates = self._get_open_trading_dates(
             start_date, end_date, use_cache=not force_refresh
         )
