@@ -150,5 +150,9 @@ def instrument_for_symbol(symbol: str, provider: str) -> InstrumentId | None:
         if ext.isalpha() and 2 <= len(ext) <= 4:
             return InstrumentId(symbol, ext, f"{ext}_EXCHANGE", "LOCAL_CURRENCY", provider)
 
-    # 6. 默认无后缀及美股标的/通用指数 (US)
+    # 6. 全球/美股通用指数 (以 ^ 开头，如 ^GSPC 标普500, ^IXIC 纳指, ^VIX 恐慌指数)
+    if symbol_upper.startswith("^"):
+        return InstrumentId(symbol, "US", "INDEX", "USD", provider)
+
+    # 7. 默认无后缀及美股标的 (US)
     return InstrumentId(symbol, "US", "US_EXCHANGE", "USD", provider)
