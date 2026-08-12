@@ -7,7 +7,7 @@ import polars as pl
 from stock.data.fetcher.base import BaseDataFetcher
 from stock.data.fetcher.yfinance.client import YFinanceClient
 from stock.data.fetcher.yfinance.registry import YFINANCE_API_REGISTRY
-from stock.models.market import DailyBar
+from stock.models.market import DailyBar, IndexValuation
 
 logger = logging.getLogger(__name__)
 
@@ -94,3 +94,57 @@ class YFinanceDataFetcher(BaseDataFetcher):
 
         data_dicts = [bar.model_dump() for bar in bars]
         return pl.DataFrame(data_dicts)
+
+    def fetch_index_valuations(
+        self, etf_map: dict[str, str] | None = None, target_date: date | None = None
+    ) -> list[IndexValuation]:
+        """使用核心追踪 ETF (SPY/QQQ/DIA 等) 提取美股指数级实时估值指标。"""
+        import yfinance as yf
+
+        mapping = etf_map or {
+            "SPY": "^GSPC",
+            "QQQ": "^IXIC",
+            "DIA": "^DJI",
+            "SOXX": "^SOX",
+            "IWM": "^RUT",
+        }
+        val_date = target_date or date.today()
+        results: list[IndexValuation] = []
+
+        session = self.client._get_session()
+        for etf_symbol, target_index in mapping.items():
+            try:
+                ticker = yf.Ticker(etf_symbol, session=session)
+                info = ticker.info or {}
+                raw_yield = info.get("yield")
+                div_yield = round(float(raw_yield) * 100, 4) if raw_yield is not None else None
+
+                val = IndexValuation(
+                    symbol=etf_symbol,
+                    target_index=target_index,
+                    trade_date=val_date,
+                    trailing_pe=info.get("trailingPE"),
+                    forward_pe=info.get("forwardPE"),
+                    price_to_book=info.get("priceToBook"),
+                    price_to_sales=info.get("priceToSalesTrailing12Months"),
+                    dividend_yield=div_yield,
+                    market_cap=info.get("totalAssets") or info.get("marketCap"),
+                )
+                results.append(val)
+                logger.info(
+                    f"YFinance 成功提取 ETF 指数估值 [{etf_symbol} -> {target_index}]: "
+                    f"PE-TTM={val.trailing_pe}, Forward-PE={val.forward_pe}, PB={val.price_to_book}"
+                )
+            except Exception as e:
+                logger.error(f"提取 ETF 指数估值失败 [{etf_symbol}]: {e}")
+
+        return results
+
+    def fetch_index_valuations_df(
+        self, etf_map: dict[str, str] | None = None, target_date: date | None = None
+    ) -> pl.DataFrame:
+        """抓取 ETF 指数估值数据并返回 Polars DataFrame。"""
+        vals = self.fetch_index_valuations(etf_map=etf_map, target_date=target_date)
+        if not vals:
+            return pl.DataFrame()
+        return pl.DataFrame([v.model_dump() for v in vals])

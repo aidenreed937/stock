@@ -70,3 +70,30 @@ def test_create_yfinance_pipeline() -> None:
     assert pipeline.endpoint == "history"
     assert isinstance(pipeline.fetcher, YFinanceDataFetcher)
     assert pipeline.fetcher.client.proxy == "http://some-proxy"
+
+
+def test_fetch_index_valuations() -> None:
+    client = YFinanceClient()
+    fetcher = YFinanceDataFetcher(client=client)
+
+    mock_info = {
+        "trailingPE": 25.5,
+        "forwardPE": 22.0,
+        "priceToBook": 1.8,
+        "priceToSalesTrailing12Months": 3.2,
+        "yield": 0.012,
+        "totalAssets": 500000000.0,
+    }
+
+    with patch("yfinance.Ticker") as mock_ticker_class:
+        mock_ticker_instance = MagicMock()
+        mock_ticker_instance.info = mock_info
+        mock_ticker_class.return_value = mock_ticker_instance
+
+        df = fetcher.fetch_index_valuations_df(etf_map={"SPY": "^GSPC"}, target_date=date(2026, 8, 12))
+        assert not df.is_empty()
+        assert len(df) == 1
+        assert df["symbol"][0] == "SPY"
+        assert df["target_index"][0] == "^GSPC"
+        assert df["trailing_pe"][0] == 25.5
+        assert df["dividend_yield"][0] == 1.2

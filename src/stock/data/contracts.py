@@ -123,6 +123,26 @@ INDEX_DAILY_BAR_CONTRACT = DatasetContract(
     units={"price": "quote_currency", "volume": "shares", "amount": "quote_currency"},
 )
 
+INDEX_VALUATION_CONTRACT = DatasetContract(
+    name="index_valuation",
+    required_columns=(
+        "symbol",
+        "target_index",
+        "trade_date",
+        "trailing_pe",
+        "forward_pe",
+        "price_to_book",
+        "price_to_sales",
+        "dividend_yield",
+        "market_cap",
+        "data_source",
+        "market",
+        "schema_version",
+    ),
+    primary_keys=("market", "symbol", "trade_date"),
+    units={"pe": "ratio", "pb": "ratio", "yield": "percentage"},
+)
+
 DAILY_BAR_CONTRACT = STOCK_DAILY_BAR_CONTRACT
 
 
@@ -131,6 +151,8 @@ def dataset_for_endpoint(endpoint: str, symbol: str = "") -> str:
 
     个股 K 线归档为 stock_daily_bar，指数 K 线归档为 index_daily_bar。
     """
+    if endpoint in {"index_valuation", "etf_valuation", "us/index/fundamental"}:
+        return "index_valuation"
     if endpoint in {"daily", "daily_bar", "history", "cn/company/candlestick", "cn/index/candlestick"}:
         if endpoint == "cn/index/candlestick" or symbol.startswith("^"):
             return "index_daily_bar"
