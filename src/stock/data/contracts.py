@@ -212,13 +212,15 @@ def instrument_for_symbol(symbol: str, provider: str) -> InstrumentId | None:
 
     symbol_upper = symbol.upper()
 
-    # 1. 中国 A 股 (CN) 涵盖: 上交所 (.SH, .SS)、深交所 (.SZ)、北交所 (.BJ)
+    # 1. 中国 A 股与中证指数 (CN) 涵盖: 上交所 (.SH, .SS)、深交所 (.SZ)、北交所 (.BJ)、中证指数 (.CSI)
     if symbol_upper.endswith((".SH", ".SS")):
         return InstrumentId(symbol, "CN", "SSE", "CNY", provider)
     if symbol_upper.endswith(".SZ"):
         return InstrumentId(symbol, "CN", "SZSE", "CNY", provider)
     if symbol_upper.endswith(".BJ"):
         return InstrumentId(symbol, "CN", "BSE", "CNY", provider)
+    if symbol_upper.endswith(".CSI"):
+        return InstrumentId(symbol, "CN", "CSI", "CNY", provider)
 
     # 2. 港股 (HK)
     if symbol_upper.endswith(".HK"):

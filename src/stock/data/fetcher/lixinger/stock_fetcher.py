@@ -88,6 +88,12 @@ class LixingerStockFetcher:
                 query_kwargs["stockCode"] = raw_code
             else:
                 query_kwargs["stockCodes"] = [raw_code]
+        elif not query_kwargs.get("stockCodes") and not query_kwargs.get("stockCode"):
+            if endpoint == "cn/index/fundamental":
+                data_conf = load_data_config()
+                lx_indices = data_conf.watchlists.lixinger.indices
+                default_code = lx_indices[0] if lx_indices else "000985"
+                query_kwargs["stockCodes"] = [default_code]
 
         # 调用方传入的自定义参数覆盖默认配置
         query_kwargs.update(kwargs)

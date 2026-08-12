@@ -27,7 +27,12 @@ class TuShareStockFetcher:
         self.client = client or TuShareClient()
 
     def fetch_daily_bars_df(
-        self, symbol: str, start_date: date, end_date: date, endpoint: str = "daily"
+        self,
+        symbol: str,
+        start_date: date,
+        end_date: date,
+        endpoint: str = "daily",
+        **extra_kwargs: Any,
     ) -> pl.DataFrame:
         """抓取指定股票或全市场在给定日期范围内的行情/基本面原始数据。
 
@@ -36,6 +41,7 @@ class TuShareStockFetcher:
             start_date: 开始日期。
             end_date: 结束日期。
             endpoint: API 接口名称（默认 daily）。
+            extra_kwargs: 额外的 API 查询参数 (如 exchange_id)。
 
         Returns:
             pl.DataFrame: 包含 TuShare 原始响应字段的 Polars DataFrame。
@@ -49,20 +55,68 @@ class TuShareStockFetcher:
                 f"TuShare index_dailybasic 接口不支持指数 [{symbol}]，自动跳过请求以节省流量和额度"
             )
             return pl.DataFrame()
+
+        # 最外层防御性拦截：针对 margin 接口自动按交易所拆分与最早上线首日过滤
+        if endpoint == "margin" and "exchange_id" not in extra_kwargs:
+            from stock.config.loader import load_data_config
+            from stock.utils.logger import logger
+
+            data_cfg = load_data_config()
+            ex_dates = getattr(getattr(data_cfg, "exchange_start_dates", None), "margin", {})
+
+            dfs: list[pl.DataFrame] = []
+            for ex in ["SSE", "SZSE", "BSE"]:
+                min_start_str = (
+                    getattr(ex_dates, ex, None)
+                    if hasattr(ex_dates, ex)
+                    else (ex_dates.get(ex) if isinstance(ex_dates, dict) else None)
+                )
+                if min_start_str:
+                    min_start_d = date.fromisoformat(min_start_str)
+                    if end_date < min_start_d:
+                        logger.info(
+                            f"接口 [margin] 自动拦截跳过交易所 [{ex}]: 请求终止日 [{end_date}] 早于官方上线首日 [{min_start_d}]"
+                        )
+                        continue
+                    sub_start_d = max(start_date, min_start_d)
+                else:
+                    sub_start_d = start_date
+
+                sub_df = self.fetch_daily_bars_df(
+                    symbol=symbol,
+                    start_date=sub_start_d,
+                    end_date=end_date,
+                    endpoint=endpoint,
+                    exchange_id=ex,
+                )
+                if not sub_df.is_empty():
+                    dfs.append(sub_df)
+
+            if not dfs:
+                return pl.DataFrame()
+            merged = pl.concat(dfs, how="diagonal_relaxed")
+            return merged
+
         start_str = start_date.strftime("%Y%m%d")
         end_str = end_date.strftime("%Y%m%d")
 
-        query_kwargs: dict[str, Any] = {}
+        query_kwargs: dict[str, Any] = dict(extra_kwargs)
         is_real_symbol = symbol and (symbol != endpoint)
 
         if meta.frequency == "event":
             if is_real_symbol:
-                query_kwargs["ts_code"] = symbol
+                if endpoint in ("index_weight", "index_classify", "index_member"):
+                    query_kwargs["index_code"] = symbol
+                else:
+                    query_kwargs["ts_code"] = symbol
             if endpoint == "stock_basic" and not is_real_symbol:
                 query_kwargs["list_status"] = "L"
         else:
             if is_real_symbol:
-                query_kwargs["ts_code"] = symbol
+                if endpoint in ("index_weight", "index_classify", "index_member"):
+                    query_kwargs["index_code"] = symbol
+                else:
+                    query_kwargs["ts_code"] = symbol
                 query_kwargs["start_date"] = start_str
                 query_kwargs["end_date"] = end_str
             else:
@@ -79,6 +133,7 @@ class TuShareStockFetcher:
                             start_date=cur_d,
                             end_date=next_d,
                             endpoint=endpoint,
+                            **extra_kwargs,
                         )
                         if not sub_df.is_empty():
                             frames.append(sub_df)

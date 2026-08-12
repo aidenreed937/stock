@@ -131,52 +131,76 @@ class TuShareClient:
             DataFetchError: 接口请求异常或 Token 无效时抛出。
         """
         self.rate_limiter.acquire()
-        try:
-            logger.debug(f"TuShare 请求: api_name={api_name}, kwargs={kwargs}")
+        max_retries = 3
+        for attempt in range(1, max_retries + 1):
             try:
-                df: pd.DataFrame = self.pro.query(api_name, **kwargs)
-            except Exception as ssl_e:
-                if "SSL" in str(ssl_e) or "SSLEOFError" in str(ssl_e):
-                    logger.warning(f"TuShare HTTPS 请求异常 [{ssl_e}]，降级使用 HTTP 协议重试 [{api_name}]...")
-                    current_url = getattr(self.pro, "_DataApi__http_url", "")
-                    if current_url.startswith("https://"):
-                        http_url = "http://" + current_url[8:]
-                        setattr(self.pro, "_DataApi__http_url", http_url)
-                        df = self.pro.query(api_name, **kwargs)
+                logger.debug(
+                    f"TuShare 请求 (尝试 {attempt}/{max_retries}): api_name={api_name}, kwargs={kwargs}"
+                )
+                try:
+                    df: pd.DataFrame = self.pro.query(api_name, **kwargs)
+                except Exception as ssl_e:
+                    err_msg = str(ssl_e)
+                    if "ip超限" in err_msg or "频率" in err_msg or "最多" in err_msg:
+                        if attempt < max_retries:
+                            sleep_sec = attempt * 3.0
+                            logger.warning(
+                                f"TuShare 触发服务端频控拦截 [{err_msg}]，静默等待 {sleep_sec} 秒后进行第 {attempt + 1} 次自动重试..."
+                            )
+                            time.sleep(sleep_sec)
+                            continue
+                        raise
+                    if "SSL" in err_msg or "SSLEOFError" in err_msg:
+                        logger.warning(f"TuShare HTTPS 请求异常 [{ssl_e}]，降级使用 HTTP 协议重试 [{api_name}]...")
+                        current_url = getattr(self.pro, "_DataApi__http_url", "")
+                        if current_url.startswith("https://"):
+                            http_url = "http://" + current_url[8:]
+                            setattr(self.pro, "_DataApi__http_url", http_url)
+                            df = self.pro.query(api_name, **kwargs)
+                        else:
+                            raise
                     else:
                         raise
-                else:
-                    raise
 
-            if df is None or df.empty:
-                return pd.DataFrame()
+                if df is None or df.empty:
+                    return pd.DataFrame()
 
-            # 截断告警防护：如果单次返回条数达到边界，触发日志警告
-            if len(df) >= self.max_limit_threshold and not auto_paginate:
-                logger.warning(
-                    f"TuShare 接口 [{api_name}] 单次返回 {len(df)} 条记录，可能已触发服务器 {self.max_limit_threshold} 条截断上限！"
-                    f"建议传参 auto_paginate=True 或缩小查询范围。"
-                )
+                # 截断告警防护：如果单次返回条数达到边界，触发日志警告
+                if len(df) >= self.max_limit_threshold and not auto_paginate:
+                    logger.warning(
+                        f"TuShare 接口 [{api_name}] 单次返回 {len(df)} 条记录，可能已触发服务器 {self.max_limit_threshold} 条截断上限！"
+                        f"建议传参 auto_paginate=True 或缩小查询范围。"
+                    )
 
-            # 如果启用自动分页翻页 (Cursor Pagination)
-            if auto_paginate and len(df) >= self.paginate_threshold:
-                pages = [df]
-                limit = len(df)
-                offset = limit
-                while True:
-                    self.rate_limiter.acquire()
-                    kwargs["limit"] = limit
-                    kwargs["offset"] = offset
-                    page_df: pd.DataFrame = self.pro.query(api_name, **kwargs)
-                    if page_df is None or page_df.empty:
-                        break
-                    pages.append(page_df)
-                    if len(page_df) < limit:
-                        break
-                    offset += limit
-                df = pd.concat(pages, ignore_index=True)
+                # 如果启用自动分页翻页 (Cursor Pagination)
+                if auto_paginate and len(df) >= self.paginate_threshold:
+                    pages = [df]
+                    limit = len(df)
+                    offset = limit
+                    while True:
+                        self.rate_limiter.acquire()
+                        kwargs["limit"] = limit
+                        kwargs["offset"] = offset
+                        page_df: pd.DataFrame = self.pro.query(api_name, **kwargs)
+                        if page_df is None or page_df.empty:
+                            break
+                        pages.append(page_df)
+                        if len(page_df) < limit:
+                            break
+                        offset += limit
+                    df = pd.concat(pages, ignore_index=True)
 
-            return df
-        except Exception as e:
-            logger.error(f"TuShare API 请求失败 [{api_name}]: {e}")
-            raise DataFetchError(f"TuShare 接口 [{api_name}] 请求失败: {e}") from e
+                return df
+            except Exception as e:
+                err_msg = str(e)
+                if ("ip超限" in err_msg or "频率" in err_msg or "最多" in err_msg) and attempt < max_retries:
+                    sleep_sec = attempt * 3.0
+                    logger.warning(
+                        f"TuShare 触发服务端频控拦截 [{err_msg}]，静默等待 {sleep_sec} 秒后进行第 {attempt + 1} 次自动重试..."
+                    )
+                    import time
+                    time.sleep(sleep_sec)
+                    continue
+                logger.error(f"TuShare API 请求失败 [{api_name}]: {e}")
+                raise DataFetchError(f"TuShare 接口 [{api_name}] 请求失败: {e}") from e
+        return pd.DataFrame()

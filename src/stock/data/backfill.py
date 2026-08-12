@@ -14,6 +14,27 @@ from stock.data.update_scheduler import DataUpdateScheduler
 from stock.exceptions import DataFetchError
 from stock.utils.logger import logger
 
+MARKET_SINGLE_SYNC_ENDPOINTS: set[str] = {
+    # 宏观经济数据
+    "moneyflow_hsgt",
+    "hsgt_top10",
+    "margin",
+    "margin_detail",
+    "cn_gdp",
+    "cn_cpi",
+    "cn_ppi",
+    "cn_pmi",
+    "cn_m",
+    "sf_month",
+    "shibor_lpr",
+    # 静态/元数据/事件型接口 (只需 1 次全量获取)
+    "stock_basic",
+    "index_basic",
+    "index_classify",
+    "index_member",
+    "fund_basic",
+}
+
 
 class HistoricalBackfiller:
     """生产级历史数据回填调度引擎。"""
@@ -207,18 +228,7 @@ class HistoricalBackfiller:
         total_days = (end_date - start_date).days + 1
         freq = self.frequency
 
-        macro_single_sync_eps = {
-            "moneyflow_hsgt",
-            "hsgt_top10",
-            "margin",
-            "margin_detail",
-            "cn_gdp",
-            "cn_cpi",
-            "cn_ppi",
-            "cn_pmi",
-            "cn_m",
-            "shibor_lpr",
-        }
+        macro_single_sync_eps = MARKET_SINGLE_SYNC_ENDPOINTS
         # 对于非日频接口（如月频 CPI/利率、季频财报 GDP、事件驱动及宏观全区间接口），自动识别并执行单次全区间精准同步，彻底避免按交易日开市重复拉取
         if freq != "daily" or self.endpoint in macro_single_sync_eps:
             logger.info(
@@ -604,32 +614,7 @@ def main() -> None:
     else:
         raw_symbols = []
 
-    market_macro_eps = {
-        "moneyflow_hsgt",
-        "hsgt_top10",
-        "margin",
-        "cn_gdp",
-        "cn_cpi",
-        "cn_ppi",
-        "cn_pmi",
-        "cn_m",
-        "shibor_lpr",
-    }
-    if endpoint in market_macro_eps and not symbol:
-        target_symbols = [""]
-    elif symbol == "all" and endpoint not in per_symbol_eps:
-        target_symbols = [""]
-    else:
-        target_symbols = [symbol] if (symbol and symbol not in ("all", "watchlist")) else raw_symbols
-        if not target_symbols:
-            target_symbols = [""]
-
-    if len(target_symbols) > 1 or (len(target_symbols) == 1 and target_symbols[0]):
-        if not symbol:
-            logger.info(
-                f"未显式指定 --symbol，自动载入数据源 [{data_source}] 默认观察股票池 "
-                f"(共 {len(target_symbols)} 个标的): {target_symbols}"
-            )
+    endpoints = [ep.strip() for ep in endpoint.split(",") if ep.strip()]
 
     from stock.data.storage.duckdb_store import DuckDBMarketStore
     shared_store = DuckDBMarketStore(data_source=data_source)
@@ -637,25 +622,45 @@ def main() -> None:
         shared_store.enable_batch_mode()
 
     try:
-        for idx, sym in enumerate(target_symbols, 1):
-            if sym:
-                logger.info(f"===> 开始处理数据源 [{data_source}] 标的 [{sym}] ({idx}/{len(target_symbols)})...")
-            backfiller = HistoricalBackfiller(
-                data_source=data_source, endpoint=endpoint, symbol=sym
-            )
+        for ep_idx, current_ep in enumerate(endpoints, 1):
+            logger.info(f"\n=========================================================================================================")
+            logger.info(f"  [单一 CLI 进程串行安全调度 ({ep_idx}/{len(endpoints)})] 开始回填接口: [{data_source}/{current_ep}]")
+            logger.info(f"=========================================================================================================\n")
 
-            # 注入共享的批量存储引擎，解决写放大问题
-            backfiller.pipeline.store = shared_store
+            market_macro_eps = MARKET_SINGLE_SYNC_ENDPOINTS
+            if current_ep in market_macro_eps and not symbol:
+                target_symbols = [""]
+            elif symbol == "all" and current_ep not in per_symbol_eps:
+                target_symbols = [""]
+            else:
+                target_symbols = [symbol] if (symbol and symbol not in ("all", "watchlist")) else raw_symbols
+                if not target_symbols:
+                    target_symbols = [""]
 
-            backfiller.backfill_range(
-                start_d, end_d, force_refresh=force_refresh, max_workers=workers
-            )
+            for idx, sym in enumerate(target_symbols, 1):
+                if sym:
+                    logger.info(f"===> 开始处理数据源 [{data_source}] 接口 [{current_ep}] 标的 [{sym}] ({idx}/{len(target_symbols)})...")
+                backfiller = HistoricalBackfiller(
+                    data_source=data_source, endpoint=current_ep, symbol=sym
+                )
 
-            # 每回填完 50 个股票，定期落盘一次，防止撑爆内存
-            if idx % 50 == 0:
-                if hasattr(shared_store, "commit"):
-                    shared_store.commit()
-                    shared_store.enable_batch_mode()
+                # 注入共享的批量存储引擎，解决写放大问题
+                backfiller.pipeline.store = shared_store
+
+                backfiller.backfill_range(
+                    start_d, end_d, force_refresh=force_refresh, max_workers=workers
+                )
+
+                # 每回填完 5 个批次/交易日，定期落盘刷新一次，既防撑爆内存又能实时落盘
+                if idx % 5 == 0:
+                    if hasattr(shared_store, "commit"):
+                        shared_store.commit()
+                        shared_store.enable_batch_mode()
+
+            # 每个接口完成后物理提交 Commit
+            if hasattr(shared_store, "commit"):
+                shared_store.commit()
+                shared_store.enable_batch_mode()
     finally:
         # 确保进程退出前或全部执行完毕后最后一次提交落盘
         if hasattr(shared_store, "commit"):

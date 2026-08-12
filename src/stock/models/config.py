@@ -186,6 +186,35 @@ class EndpointSymbolModesConfig(BaseModel):
     )
 
 
+class RawStorageConfig(BaseModel):
+    """RAW 离线归档免分区配置。"""
+
+    non_partitioned_providers: list[str] = Field(
+        default_factory=lambda: ["fred", "lixinger"], description="全量免深层年/月分区的数据源"
+    )
+    non_partitioned_datasets: list[str] = Field(
+        default_factory=list, description="免深层年/月分区的数据集表名"
+    )
+
+
+class StorageConfig(BaseModel):
+    """离线存储与归档分桶配置。"""
+
+    raw: RawStorageConfig = Field(default_factory=RawStorageConfig)
+
+
+class BackfillTargetItemConfig(BaseModel):
+    """单个接口的回填目标配置。"""
+
+    api_name: str = Field(description="接口 API 名称")
+    description: str = Field(default="", description="接口描述")
+    fetch_mode: str = Field(
+        default="per_day", description="拉取模式 (per_day / per_symbol / event)"
+    )
+    default_start_date: str = Field(default="2024-01-01", description="默认历史回填起始日期")
+    enabled: bool = Field(default=True, description="是否启用回填")
+
+
 class DataConfig(BaseModel):
     """数据源与基准配置模型。"""
 
@@ -200,6 +229,7 @@ class DataConfig(BaseModel):
         default_factory=EndpointSymbolModesConfig
     )
     source_endpoint_supports: dict[str, dict[str, list[str]]] = Field(default_factory=dict)
+    storage: StorageConfig = Field(default_factory=StorageConfig)
     endpoint_start_date_overrides: dict[str, str] = Field(
         default_factory=lambda: {
             "moneyflow_hsgt": "2014-11-17",
@@ -208,6 +238,8 @@ class DataConfig(BaseModel):
         },
         description="接口历史最早起始日期校准覆盖表",
     )
+    exchange_start_dates: dict[str, dict[str, str]] = Field(default_factory=dict)
+    backfill_targets: dict[str, list[BackfillTargetItemConfig]] = Field(default_factory=dict)
 
 
 class DataConfigFile(BaseModel):

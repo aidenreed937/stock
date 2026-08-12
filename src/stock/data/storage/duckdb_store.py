@@ -4,8 +4,9 @@ from pathlib import Path
 import duckdb
 import polars as pl
 
+from stock.config.loader import load_data_config
 from stock.config.settings import settings
-from stock.data.contracts import DAILY_BAR_CONTRACT, DatasetKey
+from stock.data.contracts import DAILY_BAR_CONTRACT, DatasetKey, get_endpoint_market
 from stock.exceptions import DataValidationError
 from stock.utils.logger import logger
 
@@ -103,6 +104,7 @@ class DuckDBMarketStore:
                 c
                 for c in [
                     "market",
+                    "exchange_id",
                     "symbol",
                     "stockCode",
                     "ts_code",
@@ -237,19 +239,114 @@ class DuckDBMarketStore:
         df: pl.DataFrame,
         data_source: str | None = None,
     ) -> Path:
+        """保存行情数据 (对齐 save_curated 别名)。"""
+        return self.save_curated(df=df, endpoint=endpoint, target_date=target_date, data_source=data_source)
+
+    def _save_dataframe_partitioned(
+        self,
+        df: pl.DataFrame,
+        dataset_name: str,
+        fallback_date: date,
+        market_code: str,
+        source: str,
+    ) -> Path:
+        """根据数据帧内部的真实交易日 (trade_date/date) 动态分桶路由落盘。"""
+        config = load_data_config()
+        no_part_providers = set(config.storage.raw.non_partitioned_providers)
+        no_part_datasets = set(config.storage.raw.non_partitioned_datasets)
+
+        if source in no_part_providers or dataset_name in no_part_datasets:
+            file_path = (
+                self.storage_dir
+                / f"market={market_code.upper()}"
+                / dataset_name
+                / "data.parquet"
+            )
+            self._save_single_partition(file_path, df, dataset_name, source)
+            return file_path
+
+        date_col = next(
+            (c for c in ["trade_date", "date", "as_of_date", "Date"] if c in df.columns), None
+        )
+        if not date_col or df.is_empty():
+            file_path = self.get_parquet_path(dataset_name, fallback_date, market=market_code)
+            self._save_single_partition(file_path, df, dataset_name, source)
+            return file_path
+
+        try:
+            parsed_df = df.with_columns(
+                pl.col(date_col)
+                .cast(pl.Utf8)
+                .str.slice(0, 10)
+                .str.to_date("%Y-%m-%d", strict=False)
+                .alias("_parsed_date")
+            )
+            if parsed_df["_parsed_date"].null_count() == len(parsed_df):
+                parsed_df = df.with_columns(
+                    pl.col(date_col)
+                    .cast(pl.Utf8)
+                    .str.to_date("%Y%m%d", strict=False)
+                    .alias("_parsed_date")
+                )
+
+            valid_df = parsed_df.filter(pl.col("_parsed_date").is_not_null())
+            if valid_df.is_empty():
+                file_path = self.get_parquet_path(dataset_name, fallback_date, market=market_code)
+                self._save_single_partition(file_path, df, dataset_name, source)
+                return file_path
+
+            grouped = valid_df.with_columns(
+                [
+                    pl.col("_parsed_date").dt.year().alias("_part_year"),
+                    pl.col("_parsed_date").dt.month().alias("_part_month"),
+                ]
+            )
+
+            ym_pairs = grouped.select(["_part_year", "_part_month"]).unique().iter_rows()
+            last_path = None
+            for yr, mo in ym_pairs:
+                if yr is None or mo is None:
+                    continue
+                sub_df = grouped.filter(
+                    (pl.col("_part_year") == yr) & (pl.col("_part_month") == mo)
+                ).drop(["_parsed_date", "_part_year", "_part_month"])
+
+                sub_date = date(int(yr), int(mo), 1)
+                sub_path = self.get_parquet_path(dataset_name, sub_date, market=market_code)
+                self._save_single_partition(sub_path, sub_df, dataset_name, source)
+                last_path = sub_path
+
+            return last_path or self.get_parquet_path(
+                dataset_name, fallback_date, market=market_code
+            )
+        except Exception as e:
+            logger.warning(f"动态按交易日拆分落盘异常，降级使用统一时间分区: {e}")
+            file_path = self.get_parquet_path(dataset_name, fallback_date, market=market_code)
+            self._save_single_partition(file_path, df, dataset_name, source)
+            return file_path
+
+    def _save_single_partition(
+        self, file_path: Path, df: pl.DataFrame, dataset_name: str, source: str
+    ) -> None:
+        if getattr(self, "_batch_mode", False):
+            if file_path not in getattr(self, "_write_buffer", {}):
+                self._write_buffer[file_path] = []
+            self._write_buffer[file_path].append(df)
+            logger.debug(f"已加入攒批写入缓存 [{dataset_name}] -> {file_path}")
+        else:
+            merged = self._merge_and_save_parquet(file_path, [df], source=source)
+            logger.info(f"精炼数据落盘成功 [{dataset_name}] -> {file_path} ({len(merged)} 行)")
+
+    def save_curated(
+        self,
+        df: pl.DataFrame,
+        endpoint: str,
+        target_date: date,
+        data_source: str | None = None,
+    ) -> Path:
         """保存精炼数据到指定的时间分区。"""
         if endpoint == "daily":
             endpoint = "daily_bar"
-        market_code = "MULTI"
-        if "market" in df.columns and not df.is_empty():
-            m_values = set(df.get_column("market").drop_nulls().unique().to_list())
-            if len(m_values) == 1:
-                market_code = next(iter(m_values))
-        if df.is_empty():
-            file_path = self.get_parquet_path(endpoint, target_date, market=market_code)
-            logger.warning(f"数据帧为空，跳过精炼存储 [{endpoint}]")
-            return file_path
-
         source = data_source or self.data_source
         if source is None and "data_source" in df.columns:
             sources = set(df.get_column("data_source").drop_nulls().unique().to_list())
@@ -258,31 +355,42 @@ class DuckDBMarketStore:
         if source is None:
             raise DataValidationError("Curated 数据缺少数据源，拒绝写入未绑定来源的数据")
         self.bind_data_source(source)
+
+        market_code = get_endpoint_market(source, endpoint)
+        if "market" in df.columns and not df.is_empty():
+            m_values = set(df.get_column("market").drop_nulls().unique().to_list())
+            if len(m_values) == 1 and next(iter(m_values)):
+                market_code = next(iter(m_values))
+
+        if df.is_empty():
+            file_path = self.get_parquet_path(endpoint, target_date, market=market_code)
+            logger.warning(f"数据帧为空，跳过精炼存储 [{endpoint}]")
+            return file_path
+
         file_path = self.get_parquet_path(endpoint, target_date, market=market_code)
         self._validate_frame_source(df, source, f"Curated 数据 [{file_path}]")
         if endpoint in {"daily", "daily_bar"}:
             DAILY_BAR_CONTRACT.validate(df)
 
-        if getattr(self, "_batch_mode", False):
-            if file_path not in getattr(self, "_write_buffer", {}):
-                self._write_buffer[file_path] = []
-            self._write_buffer[file_path].append(df)
-            logger.debug(f"已加入攒批写入缓存 [{endpoint}] -> {file_path}")
-            return file_path
-
-        merged = self._merge_and_save_parquet(file_path, [df], source=source)
-        logger.info(f"精炼数据落盘成功 [{endpoint}] -> {file_path} ({len(merged)} 行)")
-        return file_path
+        return self._save_dataframe_partitioned(
+            df=df,
+            dataset_name=endpoint,
+            fallback_date=target_date,
+            market_code=market_code,
+            source=source,
+        )
 
     def save_dataset(self, key: DatasetKey, df: pl.DataFrame) -> Path:
         """按数据集和业务日期幂等合并保存标准数据。"""
         self.bind_data_source(key.provider)
-        market_code = "MULTI"
-        if key.instrument and key.instrument.market:
-            market_code = key.instrument.market
-        elif "market" in df.columns and not df.is_empty():
+        market_code = (
+            key.instrument.market
+            if key.instrument and key.instrument.market
+            else get_endpoint_market(key.provider, key.dataset)
+        )
+        if "market" in df.columns and not df.is_empty():
             m_values = set(df.get_column("market").drop_nulls().unique().to_list())
-            if len(m_values) == 1:
+            if len(m_values) == 1 and next(iter(m_values)):
                 market_code = next(iter(m_values))
         file_path = self.get_parquet_path(key.dataset, key.end_date, market=market_code)
         if df.is_empty():
@@ -291,15 +399,13 @@ class DuckDBMarketStore:
         if key.dataset == "daily_bar":
             DAILY_BAR_CONTRACT.validate(df)
 
-        if getattr(self, "_batch_mode", False):
-            if file_path not in getattr(self, "_write_buffer", {}):
-                self._write_buffer[file_path] = []
-            self._write_buffer[file_path].append(df)
-            logger.debug(f"已加入攒批写入缓存 [{key.dataset}] -> {file_path}")
-            return file_path
-
-        self._merge_and_save_parquet(file_path, [df], source=key.provider)
-        return file_path
+        return self._save_dataframe_partitioned(
+            df=df,
+            dataset_name=key.dataset,
+            fallback_date=key.end_date,
+            market_code=market_code,
+            source=key.provider,
+        )
 
     def query_dataset(
         self,

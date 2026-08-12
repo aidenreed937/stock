@@ -80,12 +80,20 @@ data:
       - "index_weight"
       - "global_index_daily"
       - "fund_daily"
+      - "fund_share"
+      - "income"
+      - "fina_indicator"
+      - "margin_detail"
+      - "hk_hold"
+      - "sw_daily"
+      - "suspend_d"
       - "history"
     per_day_endpoints:
       - "daily"
       - "daily_basic"
       - "moneyflow"
       - "adj_factor"
+      - "sw_daily"
 
   # 接口历史最早数据起始日校准表 (自动将更早的无意义请求截断提升至真实上线首日)
   endpoint_start_date_overrides:
@@ -93,12 +101,154 @@ data:
     hsgt_top10: "2014-11-17" # 沪港通十大成交股首日
     margin: "2010-03-31" # 融资融券首批试点上线首日
 
-  # 数据源接口特定限制白名单 (在发起网络请求前预先拦截)
-  source_endpoint_supports:
+  # 交易所特定业务上线首日表 (精准拦截早于交易所上线时间的无用 API 请求)
+  exchange_start_dates:
+    margin:
+      SSE: "2010-03-31"  # 上交所两融首批试点上线首日
+      SZSE: "2010-03-31" # 深交所两融首批试点上线首日
+      BSE: "2023-02-13"  # 北交所两融业务正式上线首日
+
+  # 离线存储与归档分桶配置
+  storage:
+    raw:
+      non_partitioned_providers:
+        - "fred"
+        - "lixinger"
+      non_partitioned_datasets:
+        - "stock_basic"
+        - "index_basic"
+        - "index_classify"
+        - "index_member"
+        - "fund_basic"
+        - "cn_cpi"
+        - "cn_gdp"
+        - "cn_ppi"
+        - "cn_pmi"
+        - "cn_m"
+        - "sf_month"
+        - "shibor_lpr"
+        - "margin"
+        - "moneyflow_hsgt"
+        - "hsgt_top10"
+        - "index_daily_bar"
+        - "global_index_daily"
+        - "financials"
+        - "balance_sheet"
+        - "cashflow"
+        - "dividends"
+        - "splits"
+        - "index_valuation"
+        - "macro_indicators"
+        - "cn_index_fundamental"
+
+  # TuShare 未回填接口全量回填目标池与参数分配配置
+  backfill_targets:
     tushare:
-      index_dailybasic:
-        - "000001.SH"
-        - "399001.SZ"
-        - "000300.SH"
-        - "000905.SH"
-        - "399006.SZ"
+      # 高优先级：行情与估值指标类
+      - api_name: "daily_basic"
+        description: "每日指标（换手率、PE、PB、总市值等）"
+        fetch_mode: "per_day"
+        default_start_date: "2024-01-01"
+        enabled: true
+      - api_name: "adj_factor"
+        description: "复权因子数据"
+        fetch_mode: "per_day"
+        default_start_date: "2014-08-01"
+        enabled: true
+      - api_name: "sw_daily"
+        description: "申万行业日线行情"
+        fetch_mode: "per_day"
+        default_start_date: "2014-08-01"
+        enabled: true
+
+      # 中优先级：北向资金与资金流向类
+      - api_name: "hk_hold"
+        description: "沪深港通持股明细（北向持仓）"
+        fetch_mode: "per_symbol"
+        default_start_date: "2014-11-17"
+        enabled: true
+      - api_name: "hsgt_top10"
+        description: "沪深港通十大成交股"
+        fetch_mode: "per_day"
+        default_start_date: "2014-11-17"
+        enabled: true
+      - api_name: "moneyflow"
+        description: "个股资金流向"
+        fetch_mode: "per_day"
+        default_start_date: "2024-01-01"
+        enabled: true
+
+      # 财务与基本面类
+      - api_name: "income"
+        description: "上市公司利润表"
+        fetch_mode: "per_symbol"
+        default_start_date: "2014-01-01"
+        enabled: true
+      - api_name: "fina_indicator"
+        description: "财务指标数据（ROE/毛利率等）"
+        fetch_mode: "per_symbol"
+        default_start_date: "2014-01-01"
+        enabled: true
+
+      # 指数与结构类
+      - api_name: "index_weight"
+        description: "指数成分股权重"
+        fetch_mode: "per_symbol"
+        default_start_date: "2014-08-01"
+        enabled: true
+      - api_name: "index_member"
+        description: "申万行业成分股"
+        fetch_mode: "event"
+        default_start_date: "2020-01-01"
+        enabled: true
+
+      # 两融明细与停复牌
+      - api_name: "margin_detail"
+        description: "融资融券交易明细"
+        fetch_mode: "per_symbol"
+        default_start_date: "2024-01-01"
+        enabled: true
+      - api_name: "suspend_d"
+        description: "每日停复牌信息"
+        fetch_mode: "per_day"
+        default_start_date: "2024-01-01"
+        enabled: true
+
+      # 宏观指标类
+      - api_name: "cn_ppi"
+        description: "工业生产者出厂价格指数 PPI"
+        fetch_mode: "event"
+        default_start_date: "2014-01-01"
+        enabled: true
+      - api_name: "cn_pmi"
+        description: "采购经理人指数 PMI"
+        fetch_mode: "event"
+        default_start_date: "2014-01-01"
+        enabled: true
+      - api_name: "cn_m"
+        description: "货币供应量 M0/M1/M2"
+        fetch_mode: "event"
+        default_start_date: "2014-01-01"
+        enabled: true
+      - api_name: "sf_month"
+        description: "社会融资规模"
+        fetch_mode: "event"
+        default_start_date: "2014-01-01"
+        enabled: true
+
+      # 基金与 ETF 类
+      - api_name: "fund_basic"
+        description: "基金基本信息"
+        fetch_mode: "event"
+        default_start_date: "2020-01-01"
+        enabled: true
+      - api_name: "fund_daily"
+        description: "基金日线行情"
+        fetch_mode: "per_symbol"
+        default_start_date: "2024-01-01"
+        enabled: true
+      - api_name: "fund_share"
+        description: "基金份额规模"
+        fetch_mode: "per_symbol"
+        default_start_date: "2024-01-01"
+        enabled: true

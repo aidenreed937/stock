@@ -99,3 +99,13 @@ def test_tushare_fetcher_dynamic_endpoint_routing(
     mock_pro.query.assert_called_with("daily_basic", trade_date="20260812")
     assert not df.is_empty()
     assert "pe" in df.columns
+
+    # 2. 测试 index_weight 参数映射 (symbol -> index_code)
+    mock_pro.query.return_value = pd.DataFrame([{"index_code": "000300.SH", "con_code": "600519.SH"}])
+    df_weight = fetcher.fetch_daily_bars_df(
+        "000300.SH", date(2026, 1, 1), date(2026, 8, 12), endpoint="index_weight"
+    )
+    mock_pro.query.assert_called_with(
+        "index_weight", index_code="000300.SH", start_date="20260101", end_date="20260812"
+    )
+    assert not df_weight.is_empty()

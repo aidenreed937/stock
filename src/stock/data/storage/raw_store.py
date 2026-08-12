@@ -5,6 +5,7 @@ from pathlib import Path
 
 import polars as pl
 
+from stock.config.loader import load_data_config
 from stock.config.settings import settings
 from stock.data.contracts import DatasetKey
 from stock.utils.logger import logger
@@ -122,12 +123,17 @@ class RawDataStorage:
             return None
 
     def _get_dataset_path(self, key: DatasetKey) -> Path:
-        """计算 RAW 缓存路径（按市场 market=XX 与月份归档为 data.parquet）。"""
+        """计算 RAW 缓存路径。针对少量/静态/宏观单次数据集，直接存放于数据集根目录。"""
+        config = load_data_config()
+        no_part_providers = set(config.storage.raw.non_partitioned_providers)
+        no_part_datasets = set(config.storage.raw.non_partitioned_datasets)
+
+        base_dataset_dir = self.base_dir / key.provider / key.market_slug / key.dataset
+        if key.provider in no_part_providers or key.dataset in no_part_datasets:
+            return base_dataset_dir / "data.parquet"
+
         partition_dir = (
-            self.base_dir
-            / key.provider
-            / key.market_slug
-            / key.dataset
+            base_dataset_dir
             / f"year={key.end_date.year:04d}"
             / f"month={key.end_date.month:02d}"
         )
