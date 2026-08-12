@@ -19,8 +19,8 @@
 # 同步环境与依赖
 uv sync
 
-# 安装 git pre-commit hooks
-uv run pre-commit install
+# 安装 git pre-commit 与 commit-msg hooks
+uv run pre-commit install --hook-type pre-commit --hook-type commit-msg
 ```
 
 ## 常用开发命令
