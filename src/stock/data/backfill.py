@@ -367,7 +367,10 @@ def _parse_args() -> argparse.Namespace:
     parser.add_argument("--start", type=str, default=None, help="开始日期 (YYYY-MM-DD)")
     parser.add_argument("--end", type=str, default=None, help="结束日期 (YYYY-MM-DD)")
     parser.add_argument(
+        "-s",
+        "--source",
         "--data-source",
+        dest="data_source",
         type=str,
         default=None,
         help="数据源标识名称 (如 tushare / yfinance)",
@@ -482,10 +485,10 @@ def main() -> None:
     else:
         raw_symbols = []
 
-    if symbol == "all":
+    if symbol == "all" and endpoint != "index_daily":
         target_symbols = [""]
     else:
-        target_symbols = [symbol] if symbol else raw_symbols
+        target_symbols = [symbol] if (symbol and symbol not in ("all", "watchlist")) else raw_symbols
         if not target_symbols:
             target_symbols = [""]
 
