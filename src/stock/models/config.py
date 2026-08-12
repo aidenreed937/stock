@@ -67,9 +67,9 @@ class StrategyConfigFile(BaseModel):
 class RateLimitsConfig(BaseModel):
     """数据源限频配置。"""
 
-    tushare_per_min: int = Field(default=200, gt=0, description="TuShare 每分钟最大请求数")
-    yfinance_per_min: int = Field(default=60, gt=0, description="YFinance 每分钟最大请求数")
-    lixinger_per_min: int = Field(default=1000, gt=0, description="理杏仁每分钟最大请求数")
+    tushare_per_min: int = Field(default=180, gt=0, description="TuShare 每分钟最大请求数")
+    yfinance_per_min: int = Field(default=40, gt=0, description="YFinance 每分钟最大请求数")
+    lixinger_per_min: int = Field(default=30, gt=0, description="理杏仁每分钟最大请求数")
 
 
 class ConcurrencyConfig(BaseModel):
