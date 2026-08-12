@@ -205,4 +205,25 @@ TUSHARE_API_REGISTRY: dict[str, EndpointMeta] = {
         primary_keys=["date"],
         rate_limit_per_min=100,
     ),
+    "fund_basic": EndpointMeta(
+        api_name="fund_basic",
+        description="基金基本信息",
+        group="basic_info",
+        primary_keys=["ts_code"],
+        rate_limit_per_min=100,
+    ),
+    "fund_daily": EndpointMeta(
+        api_name="fund_daily",
+        description="基金日线行情",
+        group="market_data",
+        primary_keys=["ts_code", "trade_date"],
+        rate_limit_per_min=100,
+    ),
+    "fund_share": EndpointMeta(
+        api_name="fund_share",
+        description="基金份额规模",
+        group="market_indicators",
+        primary_keys=["ts_code", "trade_date"],
+        rate_limit_per_min=100,
+    ),
 }
