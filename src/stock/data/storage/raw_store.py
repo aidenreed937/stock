@@ -93,7 +93,8 @@ class RawDataStorage:
     def _get_dataset_path(self, key: DatasetKey) -> Path:
         """计算带请求指纹的 RAW 缓存路径。"""
         partition_dir = self.base_dir / key.provider / key.dataset / f"year={key.end_date.year:04d}" / f"month={key.end_date.month:02d}"
-        filename = f"{key.endpoint}_{key.instrument_slug}_{key.start_date:%Y%m%d}_{key.end_date:%Y%m%d}_{key.request_id}.parquet"
+        clean_endpoint = key.endpoint.replace("/", "_")
+        filename = f"{clean_endpoint}_{key.instrument_slug}_{key.start_date:%Y%m%d}_{key.end_date:%Y%m%d}_{key.request_id}.parquet"
         return partition_dir / filename
 
     def load_raw(
