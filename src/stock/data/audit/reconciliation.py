@@ -321,7 +321,27 @@ def run_index_audit(
 
     cfg = load_data_config()
     wl = getattr(cfg.watchlists, data_source, None)
-    expected_indices = set(wl.indices) if (wl and hasattr(wl, "indices")) else set()
+    all_configured_indices = set(wl.indices) if (wl and hasattr(wl, "indices")) else set()
+
+    # 指数发布/基日地图 (剔除未到发布日的预期标的)
+    index_start_dates: dict[str, date] = {
+        "000001.SH": date(1990, 12, 19),
+        "399001.SZ": date(1994, 7, 20),
+        "000300.SH": date(2004, 12, 31),
+        "000905.SH": date(2004, 12, 31),
+        "000852.SH": date(2004, 12, 31),
+        "000985.CSI": date(2004, 12, 31),
+        "000922.CSI": date(2004, 12, 31),
+        "399006.SZ": date(2010, 5, 31),
+        "399102.SZ": date(2010, 5, 31),
+        "000688.SH": date(2019, 12, 31),
+    }
+
+    expected_indices = {
+        sym
+        for sym in all_configured_indices
+        if sym not in index_start_dates or index_start_dates[sym] <= target_date
+    }
 
     if not expected_indices:
         if not quiet:
