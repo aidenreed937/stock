@@ -26,7 +26,14 @@ def setup_logger(log_dir: Path | None = None) -> None:
     logger.remove()
 
     target_dir = log_dir or (settings.data_dir / "logs")
-    target_dir.mkdir(parents=True, exist_ok=True)
+
+    app_dir = target_dir / "app"
+    error_dir = target_dir / "error"
+    etl_dir = target_dir / "etl"
+    strategy_dir = target_dir / "strategy"
+
+    for d in (app_dir, error_dir, etl_dir, strategy_dir):
+        d.mkdir(parents=True, exist_ok=True)
 
     retention_str = f"{settings.log_retention_days} days"
     rotation_str = settings.log_rotation_size
@@ -38,9 +45,9 @@ def setup_logger(log_dir: Path | None = None) -> None:
         format=LOG_FORMAT,
     )
 
-    # 2. 全量 App 日志文件 (全级别 DEBUG+)
+    # 2. 全量 App 日志文件 (data/logs/app/app_{YYYY-MM-DD}.log)
     logger.add(
-        target_dir / "app_{time:YYYY-MM-DD}.log",
+        app_dir / "app_{time:YYYY-MM-DD}.log",
         rotation=rotation_str,
         retention=retention_str,
         level="DEBUG",
@@ -48,9 +55,9 @@ def setup_logger(log_dir: Path | None = None) -> None:
         encoding="utf-8",
     )
 
-    # 3. 独立 Error / Warning 警告故障专门通道 (仅记录 WARNING 及以上)
+    # 3. 独立 Error / Warning 故障告警通道 (data/logs/error/error_{YYYY-MM-DD}.log)
     logger.add(
-        target_dir / "error_{time:YYYY-MM-DD}.log",
+        error_dir / "error_{time:YYYY-MM-DD}.log",
         rotation=rotation_str,
         retention=retention_str,
         level="WARNING",
@@ -58,9 +65,9 @@ def setup_logger(log_dir: Path | None = None) -> None:
         encoding="utf-8",
     )
 
-    # 4. 数据 ETL 与 Fetcher 专用独立通道 (只包含 stock.data 模块)
+    # 4. 数据 ETL 与 Fetcher 专用通道 (data/logs/etl/etl_{YYYY-MM-DD}.log)
     logger.add(
-        target_dir / "etl_{time:YYYY-MM-DD}.log",
+        etl_dir / "etl_{time:YYYY-MM-DD}.log",
         rotation=rotation_str,
         retention=retention_str,
         level="DEBUG",
@@ -69,9 +76,9 @@ def setup_logger(log_dir: Path | None = None) -> None:
         encoding="utf-8",
     )
 
-    # 5. 策略与量化指标专用通道 (只包含 stock.strategy 与 stock.analytics 模块)
+    # 5. 策略与量化指标专用通道 (data/logs/strategy/strategy_{YYYY-MM-DD}.log)
     logger.add(
-        target_dir / "strategy_{time:YYYY-MM-DD}.log",
+        strategy_dir / "strategy_{time:YYYY-MM-DD}.log",
         rotation=rotation_str,
         retention=retention_str,
         level="DEBUG",

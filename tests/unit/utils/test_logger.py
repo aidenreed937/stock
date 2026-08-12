@@ -11,5 +11,5 @@ def test_setup_logger_custom_dir(tmp_path):
     logger.warning("Test warning message")
 
     assert log_dir.exists()
-    log_files = list(log_dir.glob("*.log"))
+    log_files = list(log_dir.glob("**/*.log"))
     assert len(log_files) >= 1
