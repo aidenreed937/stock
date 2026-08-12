@@ -1,5 +1,6 @@
 import logging
 from datetime import date, timedelta
+from typing import Any
 
 import polars as pl
 
@@ -43,7 +44,8 @@ class YFinanceDataFetcher(BaseDataFetcher):
                 return []
 
             bars: list[DailyBar] = []
-            for dt, row in df.iterrows():
+            for dt, row_series in df.iterrows():
+                row: Any = row_series
                 trade_date = dt.date() if hasattr(dt, "date") else dt
                 volume = float(row["Volume"])
                 close_price = float(row["Close"])
