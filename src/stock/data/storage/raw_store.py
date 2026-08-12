@@ -99,11 +99,10 @@ class RawDataStorage:
             / f"year={key.end_date.year:04d}"
             / f"month={key.end_date.month:02d}"
         )
-        slug = f"{key.instrument_slug}_" if key.instrument_slug else ""
-        if key.start_date == key.end_date:
-            filename = f"{slug}{key.start_date:%Y%m%d}.parquet"
+        if key.instrument_slug:
+            filename = f"{key.instrument_slug}.parquet"
         else:
-            filename = f"{slug}{key.start_date:%Y%m%d}_{key.end_date:%Y%m%d}.parquet"
+            filename = f"all_market_{key.end_date:%Y%m}.parquet"
         return partition_dir / filename
 
     def load_raw(
@@ -141,5 +140,4 @@ class RawDataStorage:
         dataset_dir = self.base_dir / data_source / dataset_name / f"year={target_date.year:04d}" / f"month={target_date.month:02d}"
         if not dataset_dir.exists():
             return False
-        date_str = target_date.strftime("%Y%m%d")
-        return any(date_str in p.name for p in dataset_dir.glob("*.parquet"))
+        return any(dataset_dir.glob("*.parquet"))
