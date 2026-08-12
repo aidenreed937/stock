@@ -13,3 +13,22 @@ data:
     lixinger_max_workers: 4
     yfinance_max_workers: 4
     default_max_workers: 4
+
+  watchlists:
+    yfinance:
+      - "AAPL"      # 苹果
+      - "MSFT"      # 微软
+      - "NVDA"      # 英伟达
+      - "GOOGL"     # 谷歌
+      - "AMZN"      # 亚马逊
+      - "META"      # Meta
+      - "TSLA"      # 特斯拉
+      - "^GSPC"     # 标普500指数
+      - "^IXIC"     # 纳斯达克指数
+      - "^DJI"      # 道琼斯工业指数
+    tushare:
+      - "600519.SH" # 贵州茅台
+      - "000001.SZ" # 平安银行
+    lixinger:
+      - "600519"
+      - "000001"

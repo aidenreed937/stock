@@ -315,7 +315,23 @@ if __name__ == "__main__":
             data_cfg.concurrency.default_max_workers,
         )
 
-    backfiller = HistoricalBackfiller(
-        data_source=args.data_source, endpoint=args.endpoint, symbol=args.symbol
-    )
-    backfiller.backfill_range(start_d, end_d, force_refresh=args.force_refresh, max_workers=workers)
+    target_symbols = [args.symbol] if args.symbol else getattr(data_cfg.watchlists, args.data_source, [])
+    if not target_symbols:
+        target_symbols = [""]
+
+    if len(target_symbols) > 1 or (len(target_symbols) == 1 and target_symbols[0]):
+        if not args.symbol:
+            logger.info(
+                f"未显式指定 --symbol，自动载入数据源 [{args.data_source}] 默认观察股票池 "
+                f"(共 {len(target_symbols)} 个标的): {target_symbols}"
+            )
+
+    for sym in target_symbols:
+        if sym:
+            logger.info(f"===> 开始处理数据源 [{args.data_source}] 标的 [{sym}]...")
+        backfiller = HistoricalBackfiller(
+            data_source=args.data_source, endpoint=args.endpoint, symbol=sym
+        )
+        backfiller.backfill_range(
+            start_d, end_d, force_refresh=args.force_refresh, max_workers=workers
+        )

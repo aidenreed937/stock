@@ -81,6 +81,34 @@ class ConcurrencyConfig(BaseModel):
     default_max_workers: int = Field(default=4, gt=0, description="默认通用抓取最大并发线程数")
 
 
+class WatchlistsConfig(BaseModel):
+    """数据源默认重点观察与拉取标的列表。"""
+
+    yfinance: list[str] = Field(
+        default_factory=lambda: [
+            "AAPL",
+            "MSFT",
+            "NVDA",
+            "GOOGL",
+            "AMZN",
+            "META",
+            "TSLA",
+            "^GSPC",
+            "^IXIC",
+            "^DJI",
+        ],
+        description="yfinance 外盘重点观察标的代码列表",
+    )
+    tushare: list[str] = Field(
+        default_factory=lambda: ["600519.SH", "000001.SZ"],
+        description="tushare 重点观察代码列表",
+    )
+    lixinger: list[str] = Field(
+        default_factory=lambda: ["600519", "000001"],
+        description="理杏仁重点观察代码列表",
+    )
+
+
 class DataConfig(BaseModel):
     """数据源与基准配置模型。"""
 
@@ -90,6 +118,7 @@ class DataConfig(BaseModel):
     default_source_mode: str = Field(default="tushare", description="默认主数据源")
     rate_limits: RateLimitsConfig = Field(default_factory=RateLimitsConfig)
     concurrency: ConcurrencyConfig = Field(default_factory=ConcurrencyConfig)
+    watchlists: WatchlistsConfig = Field(default_factory=WatchlistsConfig)
 
 
 class DataConfigFile(BaseModel):

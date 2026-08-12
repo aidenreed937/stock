@@ -23,6 +23,16 @@ class YFinanceDataFetcher(BaseDataFetcher):
         """
         self.client = client
 
+    def fetch_trade_cal(self, start_date: date, end_date: date) -> list[date]:
+        """获取交易日历（过滤周末）。"""
+        cur = start_date
+        open_dates: list[date] = []
+        while cur <= end_date:
+            if cur.weekday() < 5:
+                open_dates.append(cur)
+            cur += timedelta(days=1)
+        return open_dates
+
     def fetch_daily_bars(
         self, symbol: str, start_date: date, end_date: date
     ) -> list[DailyBar]:
