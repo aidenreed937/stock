@@ -14,7 +14,10 @@ from stock.data.contracts import (
     instrument_for_symbol,
 )
 from stock.data.fetcher.base import BaseDataFetcher
-from stock.data.normalizer.bar_normalizer import BarDataNormalizer
+from stock.data.normalizer.bar_normalizer import (
+    BarDataNormalizer,
+    infer_market_exchange_currency,
+)
 from stock.data.normalizer.base import BaseDataNormalizer
 from stock.data.storage.duckdb_store import DuckDBMarketStore
 from stock.data.storage.raw_store import RawDataStorage
@@ -137,44 +140,7 @@ class MarketDataPipeline:
             else:
                 # 动态从 ts_code/symbol 列推断市场、交易所和币种 (用于全市场同步时的单行推断)
                 col_ref = pl.col("ts_code") if "ts_code" in normalized_df.columns else pl.col("symbol")
-                market_expr = (
-                    pl.when(
-                        col_ref.str.to_uppercase().str.ends_with(".SH")
-                        | col_ref.str.to_uppercase().str.ends_with(".SS")
-                        | col_ref.str.to_uppercase().str.ends_with(".SZ")
-                        | col_ref.str.to_uppercase().str.ends_with(".BJ")
-                    )
-                    .then(pl.lit("CN"))
-                    .when(col_ref.str.to_uppercase().str.ends_with(".HK"))
-                    .then(pl.lit("HK"))
-                    .otherwise(pl.lit("US"))
-                )
-                exchange_expr = (
-                    pl.when(
-                        col_ref.str.to_uppercase().str.ends_with(".SH")
-                        | col_ref.str.to_uppercase().str.ends_with(".SS")
-                    )
-                    .then(pl.lit("SSE"))
-                    .when(col_ref.str.to_uppercase().str.ends_with(".SZ"))
-                    .then(pl.lit("SZSE"))
-                    .when(col_ref.str.to_uppercase().str.ends_with(".BJ"))
-                    .then(pl.lit("BSE"))
-                    .when(col_ref.str.to_uppercase().str.ends_with(".HK"))
-                    .then(pl.lit("HKEX"))
-                    .otherwise(pl.lit("US_EXCHANGE"))
-                )
-                currency_expr = (
-                    pl.when(
-                        col_ref.str.to_uppercase().str.ends_with(".SH")
-                        | col_ref.str.to_uppercase().str.ends_with(".SS")
-                        | col_ref.str.to_uppercase().str.ends_with(".SZ")
-                        | col_ref.str.to_uppercase().str.ends_with(".BJ")
-                    )
-                    .then(pl.lit("CNY"))
-                    .when(col_ref.str.to_uppercase().str.ends_with(".HK"))
-                    .then(pl.lit("HKD"))
-                    .otherwise(pl.lit("USD"))
-                )
+                market_expr, exchange_expr, currency_expr = infer_market_exchange_currency(col_ref)
 
             normalized_df = normalized_df.with_columns(
                 [

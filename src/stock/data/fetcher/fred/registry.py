@@ -7,6 +7,7 @@ class FREDEndpointMeta:
 
     series_id: str
     description: str
+    market: str = "US"
     frequency: str = "monthly"  # monthly, daily, quarterly
     group: str = "macro_data"
     primary_keys: list[str] = field(default_factory=lambda: ["symbol", "trade_date"])

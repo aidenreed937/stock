@@ -5,10 +5,6 @@ backfill:
   default_start_date: "today-365d"
   default_end_date: "today"
 
-  # 默认数据源与数据接口
-  default_data_source: "tushare"
-  default_endpoint: "daily"
-
   # 默认回填的标的范围，可选:
   # - "all" (全市场)
   # - "watchlist" (使用 config/data.yaml 中的观察池)

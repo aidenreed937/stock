@@ -8,9 +8,10 @@ class EndpointMeta:
 
     api_name: str
     description: str
+    market: str = "CN"
     group: str = "market_data"
     primary_keys: list[str] = field(default_factory=list)
-    rate_limit_per_min: int = 1000
+    rate_limit_per_min: int = 30
     update_time: str = "18:00"
     update_delay_days: int = 0
     default_metrics: list[str] = field(default_factory=list)
@@ -18,14 +19,13 @@ class EndpointMeta:
     code_param_name: str = "stockCodes"
 
 
-# 常用理杏仁 API 接口元数据注册表
+# 常用理杏仁 API 接口元数据注册表 (全局统一由 LixingerClient / data.yaml 控制限频)
 LIXINGER_API_REGISTRY: dict[str, EndpointMeta] = {
     "cn/company/fundamental/non_financial": EndpointMeta(
         api_name="cn/company/fundamental/non_financial",
         description="A 股非金融公司基本面估值数据",
         group="fundamental",
         primary_keys=["stockCode", "date"],
-        rate_limit_per_min=1000,
         update_time="18:00",
         update_delay_days=0,
         code_param_name="stockCodes",
@@ -36,7 +36,6 @@ LIXINGER_API_REGISTRY: dict[str, EndpointMeta] = {
         description="A 股公司 K 线行情数据",
         group="market_data",
         primary_keys=["stockCode", "date"],
-        rate_limit_per_min=1000,
         update_time="17:00",
         update_delay_days=0,
         code_param_name="stockCode",
@@ -47,7 +46,6 @@ LIXINGER_API_REGISTRY: dict[str, EndpointMeta] = {
         description="A 股指数基本面估值数据",
         group="fundamental",
         primary_keys=["stockCode", "date"],
-        rate_limit_per_min=1000,
         update_time="18:00",
         update_delay_days=0,
         code_param_name="stockCodes",
@@ -58,7 +56,6 @@ LIXINGER_API_REGISTRY: dict[str, EndpointMeta] = {
         description="A 股指数 K 线行情数据",
         group="market_data",
         primary_keys=["stockCode", "date"],
-        rate_limit_per_min=1000,
         update_time="17:00",
         update_delay_days=0,
         code_param_name="stockCode",
@@ -69,7 +66,6 @@ LIXINGER_API_REGISTRY: dict[str, EndpointMeta] = {
         description="申万 2021 版行业基本面估值数据",
         group="fundamental",
         primary_keys=["stockCode", "date"],
-        rate_limit_per_min=1000,
         update_time="18:00",
         update_delay_days=0,
         code_param_name="stockCodes",
@@ -80,7 +76,6 @@ LIXINGER_API_REGISTRY: dict[str, EndpointMeta] = {
         description="申万 2021 版行业成分股列表",
         group="basic_info",
         primary_keys=["stockCode", "date"],
-        rate_limit_per_min=1000,
         update_time="18:00",
         update_delay_days=0,
         code_param_name="stockCodes",

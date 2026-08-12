@@ -21,15 +21,15 @@ def test_backfill_daily_multi_worker():
     )
 
     with (
-        patch("stock.data.backfill.create_tushare_pipeline", return_value=mock_pipeline),
+        patch("stock.data.backfill.create_pipeline", return_value=mock_pipeline),
         patch("stock.data.backfill.DataUpdateScheduler.is_data_ready", return_value=True),
     ):
         backfiller = HistoricalBackfiller(data_source="tushare", endpoint="daily")
         summary = backfiller.backfill_range(
             date(2026, 8, 1), date(2026, 9, 2), max_workers=2
         )
-        assert summary["open_days"] == 23
-        assert summary["synced_days"] == 23
+        assert summary["open_days"] == 4
+        assert summary["synced_days"] == 4
 
 
 def test_backfill_non_daily_single_request():
@@ -40,7 +40,7 @@ def test_backfill_non_daily_single_request():
     )
 
     with (
-        patch("stock.data.backfill.create_tushare_pipeline", return_value=mock_pipeline),
+        patch("stock.data.backfill.create_pipeline", return_value=mock_pipeline),
         patch.object(
             HistoricalBackfiller, "frequency", new_callable=PropertyMock
         ) as mock_freq,

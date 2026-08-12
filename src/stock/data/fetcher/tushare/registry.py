@@ -9,15 +9,16 @@ class EndpointMeta:
 
     api_name: str
     description: str
+    market: str = "CN"
     frequency: str = "daily"  # daily, monthly, quarterly, event
     group: str = "market_data"
     primary_keys: list[str] = field(default_factory=list)
-    rate_limit_per_min: int = 200
+    rate_limit_per_min: int = 180
     update_time: str = "18:00"
     update_delay_days: int = 0
 
 
-# 常用 TuShare 接口元数据注册表
+# 常用 TuShare 接口元数据注册表 (全局统一由 TuShareClient / data.yaml 控制限频)
 TUSHARE_API_REGISTRY: dict[str, EndpointMeta] = {
     "daily": EndpointMeta(
         api_name="daily",
@@ -25,7 +26,6 @@ TUSHARE_API_REGISTRY: dict[str, EndpointMeta] = {
         frequency="daily",
         group="market_data",
         primary_keys=["ts_code", "trade_date"],
-        rate_limit_per_min=500,
         update_time="17:00",
         update_delay_days=0,
     ),
@@ -35,7 +35,6 @@ TUSHARE_API_REGISTRY: dict[str, EndpointMeta] = {
         frequency="daily",
         group="market_indicators",
         primary_keys=["ts_code", "trade_date"],
-        rate_limit_per_min=500,
         update_time="18:00",
         update_delay_days=0,
     ),
@@ -45,7 +44,6 @@ TUSHARE_API_REGISTRY: dict[str, EndpointMeta] = {
         frequency="event",
         group="basic_info",
         primary_keys=["ts_code"],
-        rate_limit_per_min=100,
     ),
     "adj_factor": EndpointMeta(
         api_name="adj_factor",
@@ -53,7 +51,6 @@ TUSHARE_API_REGISTRY: dict[str, EndpointMeta] = {
         frequency="daily",
         group="market_data",
         primary_keys=["ts_code", "trade_date"],
-        rate_limit_per_min=500,
     ),
     "income": EndpointMeta(
         api_name="income",
@@ -61,7 +58,6 @@ TUSHARE_API_REGISTRY: dict[str, EndpointMeta] = {
         frequency="quarterly",
         group="financial_statements",
         primary_keys=["ts_code", "end_date"],
-        rate_limit_per_min=100,
     ),
     "index_daily": EndpointMeta(
         api_name="index_daily",
@@ -69,7 +65,6 @@ TUSHARE_API_REGISTRY: dict[str, EndpointMeta] = {
         frequency="daily",
         group="market_data",
         primary_keys=["ts_code", "trade_date"],
-        rate_limit_per_min=500,
     ),
     "suspend_d": EndpointMeta(
         api_name="suspend_d",
@@ -77,7 +72,6 @@ TUSHARE_API_REGISTRY: dict[str, EndpointMeta] = {
         frequency="daily",
         group="market_data",
         primary_keys=["ts_code", "suspend_date"],
-        rate_limit_per_min=100,
     ),
     "fina_indicator": EndpointMeta(
         api_name="fina_indicator",
@@ -85,7 +79,6 @@ TUSHARE_API_REGISTRY: dict[str, EndpointMeta] = {
         frequency="quarterly",
         group="financial_statements",
         primary_keys=["ts_code", "end_date"],
-        rate_limit_per_min=100,
     ),
     "moneyflow": EndpointMeta(
         api_name="moneyflow",
@@ -93,7 +86,6 @@ TUSHARE_API_REGISTRY: dict[str, EndpointMeta] = {
         frequency="daily",
         group="money_flow",
         primary_keys=["ts_code", "trade_date"],
-        rate_limit_per_min=500,
     ),
     "hk_hold": EndpointMeta(
         api_name="hk_hold",
@@ -101,7 +93,6 @@ TUSHARE_API_REGISTRY: dict[str, EndpointMeta] = {
         frequency="daily",
         group="money_flow",
         primary_keys=["ts_code", "trade_date"],
-        rate_limit_per_min=100,
     ),
     "index_basic": EndpointMeta(
         api_name="index_basic",
@@ -109,7 +100,6 @@ TUSHARE_API_REGISTRY: dict[str, EndpointMeta] = {
         frequency="event",
         group="basic_info",
         primary_keys=["ts_code"],
-        rate_limit_per_min=100,
     ),
     "index_dailybasic": EndpointMeta(
         api_name="index_dailybasic",
@@ -117,7 +107,6 @@ TUSHARE_API_REGISTRY: dict[str, EndpointMeta] = {
         frequency="daily",
         group="market_indicators",
         primary_keys=["ts_code", "trade_date"],
-        rate_limit_per_min=100,
     ),
     "index_weight": EndpointMeta(
         api_name="index_weight",
@@ -125,7 +114,6 @@ TUSHARE_API_REGISTRY: dict[str, EndpointMeta] = {
         frequency="monthly",
         group="basic_info",
         primary_keys=["index_code", "con_code", "trade_date"],
-        rate_limit_per_min=100,
     ),
     "index_classify": EndpointMeta(
         api_name="index_classify",
@@ -133,7 +121,6 @@ TUSHARE_API_REGISTRY: dict[str, EndpointMeta] = {
         frequency="event",
         group="basic_info",
         primary_keys=["index_code"],
-        rate_limit_per_min=100,
     ),
     "index_member": EndpointMeta(
         api_name="index_member",
@@ -141,7 +128,6 @@ TUSHARE_API_REGISTRY: dict[str, EndpointMeta] = {
         frequency="event",
         group="basic_info",
         primary_keys=["index_code", "con_code"],
-        rate_limit_per_min=100,
     ),
     "sw_daily": EndpointMeta(
         api_name="sw_daily",
@@ -149,7 +135,6 @@ TUSHARE_API_REGISTRY: dict[str, EndpointMeta] = {
         frequency="daily",
         group="market_data",
         primary_keys=["ts_code", "trade_date"],
-        rate_limit_per_min=100,
     ),
     "margin": EndpointMeta(
         api_name="margin",
@@ -157,7 +142,6 @@ TUSHARE_API_REGISTRY: dict[str, EndpointMeta] = {
         frequency="daily",
         group="market_indicators",
         primary_keys=["trade_date", "exchange_id"],
-        rate_limit_per_min=100,
         update_time="09:00",
         update_delay_days=1,
     ),
@@ -167,7 +151,6 @@ TUSHARE_API_REGISTRY: dict[str, EndpointMeta] = {
         frequency="daily",
         group="market_data",
         primary_keys=["ts_code", "trade_date"],
-        rate_limit_per_min=100,
         update_time="09:00",
         update_delay_days=1,
     ),
@@ -177,7 +160,6 @@ TUSHARE_API_REGISTRY: dict[str, EndpointMeta] = {
         frequency="daily",
         group="money_flow",
         primary_keys=["trade_date"],
-        rate_limit_per_min=100,
     ),
     "hsgt_top10": EndpointMeta(
         api_name="hsgt_top10",
@@ -185,7 +167,6 @@ TUSHARE_API_REGISTRY: dict[str, EndpointMeta] = {
         frequency="daily",
         group="money_flow",
         primary_keys=["trade_date", "ts_code", "market_type"],
-        rate_limit_per_min=100,
     ),
     "cn_gdp": EndpointMeta(
         api_name="cn_gdp",
@@ -193,7 +174,6 @@ TUSHARE_API_REGISTRY: dict[str, EndpointMeta] = {
         frequency="quarterly",
         group="macro_data",
         primary_keys=["quarter"],
-        rate_limit_per_min=100,
     ),
     "cn_cpi": EndpointMeta(
         api_name="cn_cpi",
@@ -201,7 +181,6 @@ TUSHARE_API_REGISTRY: dict[str, EndpointMeta] = {
         frequency="monthly",
         group="macro_data",
         primary_keys=["month"],
-        rate_limit_per_min=100,
     ),
     "cn_ppi": EndpointMeta(
         api_name="cn_ppi",
@@ -209,7 +188,6 @@ TUSHARE_API_REGISTRY: dict[str, EndpointMeta] = {
         frequency="monthly",
         group="macro_data",
         primary_keys=["month"],
-        rate_limit_per_min=100,
     ),
     "cn_pmi": EndpointMeta(
         api_name="cn_pmi",
@@ -217,7 +195,6 @@ TUSHARE_API_REGISTRY: dict[str, EndpointMeta] = {
         frequency="monthly",
         group="macro_data",
         primary_keys=["month"],
-        rate_limit_per_min=100,
     ),
     "cn_m": EndpointMeta(
         api_name="cn_m",
@@ -225,7 +202,6 @@ TUSHARE_API_REGISTRY: dict[str, EndpointMeta] = {
         frequency="monthly",
         group="macro_data",
         primary_keys=["month"],
-        rate_limit_per_min=100,
     ),
     "sf_month": EndpointMeta(
         api_name="sf_month",
@@ -233,7 +209,6 @@ TUSHARE_API_REGISTRY: dict[str, EndpointMeta] = {
         frequency="monthly",
         group="macro_data",
         primary_keys=["month"],
-        rate_limit_per_min=100,
     ),
     "shibor_lpr": EndpointMeta(
         api_name="shibor_lpr",
@@ -241,27 +216,23 @@ TUSHARE_API_REGISTRY: dict[str, EndpointMeta] = {
         frequency="monthly",
         group="macro_data",
         primary_keys=["date"],
-        rate_limit_per_min=100,
     ),
     "fund_basic": EndpointMeta(
         api_name="fund_basic",
         description="基金基本信息",
         group="basic_info",
         primary_keys=["ts_code"],
-        rate_limit_per_min=100,
     ),
     "fund_daily": EndpointMeta(
         api_name="fund_daily",
         description="基金日线行情",
         group="market_data",
         primary_keys=["ts_code", "trade_date"],
-        rate_limit_per_min=100,
     ),
     "fund_share": EndpointMeta(
         api_name="fund_share",
         description="基金份额规模",
         group="market_indicators",
         primary_keys=["ts_code", "trade_date"],
-        rate_limit_per_min=100,
     ),
 }

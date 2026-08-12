@@ -82,3 +82,48 @@ class BarDataNormalizer(BaseDataNormalizer):
         logger.debug(f"数据标准化完成，包含列: {normalized_df.columns}")
 
         return normalized_df
+
+
+def infer_market_exchange_currency(
+    col_ref: pl.Expr,
+) -> tuple[pl.Expr, pl.Expr, pl.Expr]:
+    """根据证券代码前缀/后缀动态推算市场 (market)、交易所 (exchange) 与交易货币 (currency)。"""
+    market_expr = (
+        pl.when(
+            col_ref.str.to_uppercase().str.ends_with(".SH")
+            | col_ref.str.to_uppercase().str.ends_with(".SS")
+            | col_ref.str.to_uppercase().str.ends_with(".SZ")
+            | col_ref.str.to_uppercase().str.ends_with(".BJ")
+        )
+        .then(pl.lit("CN"))
+        .when(col_ref.str.to_uppercase().str.ends_with(".HK"))
+        .then(pl.lit("HK"))
+        .otherwise(pl.lit("US"))
+    )
+    exchange_expr = (
+        pl.when(
+            col_ref.str.to_uppercase().str.ends_with(".SH")
+            | col_ref.str.to_uppercase().str.ends_with(".SS")
+        )
+        .then(pl.lit("SSE"))
+        .when(col_ref.str.to_uppercase().str.ends_with(".SZ"))
+        .then(pl.lit("SZSE"))
+        .when(col_ref.str.to_uppercase().str.ends_with(".BJ"))
+        .then(pl.lit("BSE"))
+        .when(col_ref.str.to_uppercase().str.ends_with(".HK"))
+        .then(pl.lit("HKEX"))
+        .otherwise(pl.lit("US_EXCHANGE"))
+    )
+    currency_expr = (
+        pl.when(
+            col_ref.str.to_uppercase().str.ends_with(".SH")
+            | col_ref.str.to_uppercase().str.ends_with(".SS")
+            | col_ref.str.to_uppercase().str.ends_with(".SZ")
+            | col_ref.str.to_uppercase().str.ends_with(".BJ")
+        )
+        .then(pl.lit("CNY"))
+        .when(col_ref.str.to_uppercase().str.ends_with(".HK"))
+        .then(pl.lit("HKD"))
+        .otherwise(pl.lit("USD"))
+    )
+    return market_expr, exchange_expr, currency_expr

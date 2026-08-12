@@ -33,10 +33,13 @@ run:
 	uv run python -m stock.main
 
 backfill:
-	uv run python -m stock.data.backfill --start $(START) --end $(END)
+	uv run python -m stock.data.backfill --start $(START) --end $(END) --data-source $(or $(SOURCE),$(DATA_SOURCE),tushare)
 
 probe:
 	uv run python -m stock.data.probe
 
 validate:
 	uv run python -m stock.data.validator --endpoint $(or $(ENDPOINT),daily)
+
+audit:
+	uv run python -m stock.data.audit $(if $(START),--start $(START)) $(if $(END),--end $(END)) $(if $(DATE),--date $(DATE)) --data-source $(or $(SOURCE),$(DATA_SOURCE),tushare)

@@ -7,13 +7,8 @@ import argparse
 from datetime import date, datetime, timedelta
 from typing import Any
 
+from stock.data.factory import create_pipeline
 from stock.data.fetcher.base import BaseDataFetcher
-from stock.data.fetcher.lixinger.facade import LixingerDataFetcher
-from stock.data.fetcher.lixinger.factory import create_lixinger_pipeline
-from stock.data.fetcher.mock import MockDataFetcher
-from stock.data.fetcher.tushare.facade import TuShareDataFetcher
-from stock.data.fetcher.tushare.factory import create_tushare_pipeline
-from stock.data.fetcher.yfinance.factory import create_yfinance_pipeline
 from stock.data.pipeline import MarketDataPipeline
 from stock.data.update_scheduler import DataUpdateScheduler
 from stock.exceptions import DataFetchError
@@ -41,40 +36,20 @@ class HistoricalBackfiller:
             symbol: 标的代码或行业代码。
         """
         self.symbol = symbol
-        if fetcher is not None:
-            self.fetcher = fetcher
-        elif data_source == "mock":
-            self.fetcher = MockDataFetcher()
-        elif data_source == "yfinance":
-            self.fetcher = create_yfinance_pipeline(endpoint=endpoint).fetcher
-        elif data_source == "lixinger":
-            self.fetcher = create_lixinger_pipeline(endpoint=endpoint).fetcher
-        elif data_source == "fred":
-            from stock.data.fetcher.fred import create_fred_fetcher
-
-            self.fetcher = create_fred_fetcher()
-            self.pipeline = MarketDataPipeline(
-                fetcher=self.fetcher, data_source=data_source, endpoint=endpoint
-            )
-        else:
-            self.fetcher = TuShareDataFetcher()
-        if pipeline is not None:
-            self.pipeline = pipeline
-        elif data_source == "tushare":
-            self.pipeline = create_tushare_pipeline(endpoint=endpoint)
-        elif data_source == "yfinance":
-            self.pipeline = create_yfinance_pipeline(endpoint=endpoint)
-        elif data_source == "lixinger":
-            self.pipeline = create_lixinger_pipeline(endpoint=endpoint)
-        elif data_source == "fred":
-            pass
-        else:
-            self.pipeline = MarketDataPipeline(
-                fetcher=self.fetcher, data_source=data_source, endpoint=endpoint
-            )
         self.data_source = data_source
         self.endpoint = endpoint
         self._calendar_cache: dict[tuple[date, date], list[date]] = {}
+
+        if pipeline is not None:
+            self.pipeline = pipeline
+            self.fetcher = fetcher or pipeline.fetcher
+        else:
+            self.pipeline = create_pipeline(data_source=data_source, endpoint=endpoint)
+            if fetcher is not None:
+                self.fetcher = fetcher
+                self.pipeline.fetcher = fetcher
+            else:
+                self.fetcher = self.pipeline.fetcher
 
     @property
     def frequency(self) -> str:
@@ -460,7 +435,13 @@ def main() -> None:
     start_d = _parse_date_str(start_str)
     end_d = _parse_date_str(end_str)
 
-    data_source = args.data_source or yaml_config.get("default_data_source") or "tushare"
+    data_source = args.data_source or yaml_config.get("default_data_source")
+    if not data_source:
+        logger.error(
+            "缺少回填的数据源参数 (--source / --data-source / -s)，且未在配置文件中找到 default_data_source。"
+        )
+        sys.exit(1)
+
     endpoint = args.endpoint or yaml_config.get("default_endpoint") or "daily"
 
     symbol = args.symbol

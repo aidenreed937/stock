@@ -7,15 +7,16 @@ class YFinanceEndpointMeta:
 
     api_name: str
     description: str
+    market: str = "US"
     frequency: str = "daily"  # daily, monthly, quarterly, event
     group: str = "market_data"
     primary_keys: list[str] = field(default_factory=list)
-    rate_limit_per_min: int = 60
+    rate_limit_per_min: int = 40
     update_time: str = "06:00"
     update_delay_days: int = 1
 
 
-# YFinance 接口元数据注册表
+# YFinance 接口元数据注册表 (全局统一由 YFinanceClient / data.yaml 控制限频)
 YFINANCE_API_REGISTRY: dict[str, YFinanceEndpointMeta] = {
     "history": YFinanceEndpointMeta(
         api_name="history",
@@ -23,7 +24,6 @@ YFINANCE_API_REGISTRY: dict[str, YFinanceEndpointMeta] = {
         frequency="daily",
         group="market_data",
         primary_keys=["Date"],
-        rate_limit_per_min=60,
         update_time="06:00",
         update_delay_days=1,
     ),
@@ -33,7 +33,6 @@ YFINANCE_API_REGISTRY: dict[str, YFinanceEndpointMeta] = {
         frequency="daily",
         group="market_indicators",
         primary_keys=["symbol", "trade_date"],
-        rate_limit_per_min=60,
         update_time="06:00",
         update_delay_days=0,
     ),
@@ -43,7 +42,6 @@ YFINANCE_API_REGISTRY: dict[str, YFinanceEndpointMeta] = {
         frequency="quarterly",
         group="financial_reports",
         primary_keys=["symbol", "asOfDate"],
-        rate_limit_per_min=60,
     ),
     "balance_sheet": YFinanceEndpointMeta(
         api_name="balance_sheet",
@@ -51,7 +49,6 @@ YFINANCE_API_REGISTRY: dict[str, YFinanceEndpointMeta] = {
         frequency="quarterly",
         group="financial_reports",
         primary_keys=["symbol", "asOfDate"],
-        rate_limit_per_min=60,
     ),
     "cashflow": YFinanceEndpointMeta(
         api_name="cashflow",
@@ -59,7 +56,6 @@ YFINANCE_API_REGISTRY: dict[str, YFinanceEndpointMeta] = {
         frequency="quarterly",
         group="financial_reports",
         primary_keys=["symbol", "asOfDate"],
-        rate_limit_per_min=60,
     ),
     "dividends": YFinanceEndpointMeta(
         api_name="dividends",
@@ -67,7 +63,6 @@ YFINANCE_API_REGISTRY: dict[str, YFinanceEndpointMeta] = {
         frequency="event",
         group="corporate_actions",
         primary_keys=["symbol", "Date"],
-        rate_limit_per_min=60,
     ),
     "splits": YFinanceEndpointMeta(
         api_name="splits",
@@ -75,7 +70,6 @@ YFINANCE_API_REGISTRY: dict[str, YFinanceEndpointMeta] = {
         frequency="event",
         group="corporate_actions",
         primary_keys=["symbol", "Date"],
-        rate_limit_per_min=60,
     ),
     "analyst_price_target": YFinanceEndpointMeta(
         api_name="analyst_price_target",
@@ -83,7 +77,6 @@ YFINANCE_API_REGISTRY: dict[str, YFinanceEndpointMeta] = {
         frequency="daily",
         group="market_indicators",
         primary_keys=["symbol", "trade_date"],
-        rate_limit_per_min=60,
     ),
     "recommendations": YFinanceEndpointMeta(
         api_name="recommendations",
@@ -91,7 +84,6 @@ YFINANCE_API_REGISTRY: dict[str, YFinanceEndpointMeta] = {
         frequency="event",
         group="market_indicators",
         primary_keys=["symbol", "period"],
-        rate_limit_per_min=60,
     ),
     "institutional_holders": YFinanceEndpointMeta(
         api_name="institutional_holders",
@@ -99,7 +91,6 @@ YFINANCE_API_REGISTRY: dict[str, YFinanceEndpointMeta] = {
         frequency="quarterly",
         group="holders_info",
         primary_keys=["symbol", "Holder"],
-        rate_limit_per_min=60,
     ),
     "insider_transactions": YFinanceEndpointMeta(
         api_name="insider_transactions",
@@ -107,7 +98,6 @@ YFINANCE_API_REGISTRY: dict[str, YFinanceEndpointMeta] = {
         frequency="event",
         group="holders_info",
         primary_keys=["symbol", "Start Date", "Insider"],
-        rate_limit_per_min=60,
     ),
     "fast_info": YFinanceEndpointMeta(
         api_name="fast_info",
@@ -115,6 +105,5 @@ YFINANCE_API_REGISTRY: dict[str, YFinanceEndpointMeta] = {
         frequency="daily",
         group="market_data",
         primary_keys=["symbol", "trade_date"],
-        rate_limit_per_min=120,
     ),
 }

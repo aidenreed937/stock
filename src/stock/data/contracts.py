@@ -22,6 +22,40 @@ class InstrumentId:
     provider: str
 
 
+def get_endpoint_market(provider: str, endpoint: str) -> str:
+    """根据数据源与接口名直接从源头注册表元数据中获取归属市场。"""
+    provider_lower = provider.lower()
+    if provider_lower == "tushare":
+        from stock.data.fetcher.tushare.registry import TUSHARE_API_REGISTRY
+
+        meta = TUSHARE_API_REGISTRY.get(endpoint)
+        if meta and hasattr(meta, "market"):
+            return meta.market
+        return "CN"
+    if provider_lower == "yfinance":
+        from stock.data.fetcher.yfinance.registry import YFINANCE_API_REGISTRY
+
+        meta_yf = YFINANCE_API_REGISTRY.get(endpoint)
+        if meta_yf and hasattr(meta_yf, "market"):
+            return meta_yf.market
+        return "US"
+    if provider_lower == "lixinger":
+        from stock.data.fetcher.lixinger.registry import LIXINGER_API_REGISTRY
+
+        meta_lx = LIXINGER_API_REGISTRY.get(endpoint)
+        if meta_lx and hasattr(meta_lx, "market"):
+            return meta_lx.market
+        return "HK" if endpoint.startswith("hk") else "CN"
+    if provider_lower == "fred":
+        from stock.data.fetcher.fred.registry import FRED_API_REGISTRY
+
+        meta_fr = FRED_API_REGISTRY.get(endpoint)
+        if meta_fr and hasattr(meta_fr, "market"):
+            return meta_fr.market
+        return "US"
+    return "MULTI"
+
+
 @dataclass(frozen=True)
 class DatasetKey:
     """唯一描述一次数据请求，作为 RAW 缓存身份。"""
@@ -43,10 +77,11 @@ class DatasetKey:
 
     @property
     def market_slug(self) -> str:
-        """返回用于 Hive 目录划分的市场标识。"""
+        """返回用于 Hive 目录划分的市场标识 (优先使用标的市场，否则读取接口源头注册表元数据)。"""
         if self.instrument and self.instrument.market:
             return f"market={self.instrument.market.upper()}"
-        return "market=MULTI"
+        market = get_endpoint_market(self.provider, self.endpoint)
+        return f"market={market.upper()}"
 
     @property
     def instrument_slug(self) -> str:
@@ -227,5 +262,11 @@ def instrument_for_symbol(symbol: str, provider: str) -> InstrumentId | None:
     if symbol_upper.startswith("^"):
         return InstrumentId(symbol, "US", "INDEX", "USD", provider)
 
-    # 7. 默认无后缀及美股标的 (US)
+    # 7. 6 位数字代码或 TuShare 数据源默认 (CN)
+    if symbol.isdigit() and len(symbol) == 6:
+        return InstrumentId(symbol, "CN", "CN_EXCHANGE", "CNY", provider)
+    if provider == "tushare":
+        return InstrumentId(symbol, "CN", "CN_EXCHANGE", "CNY", provider)
+
+    # 8. 默认无后缀及美股标的 (US)
     return InstrumentId(symbol, "US", "US_EXCHANGE", "USD", provider)
