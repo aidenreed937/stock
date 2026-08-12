@@ -80,39 +80,45 @@ class DuckDBMarketStore:
         self, file_path: Path, dfs: list[pl.DataFrame], source: str | None = None
     ) -> pl.DataFrame:
         """读取现有文件、合并新数据帧列表、进行去重与排序，并原子写入 Parquet。"""
-        existing = pl.read_parquet(file_path) if file_path.exists() else pl.DataFrame()
-        if not existing.is_empty() and source is not None:
-            self._validate_frame_source(existing, source, f"已有 Curated 文件 [{file_path}]")
-            for df in dfs:
-                if existing.schema != df.schema:
-                    raise DataValidationError(
-                        f"Curated 文件 schema 不匹配 [{file_path}]: "
-                        f"已有列 {existing.columns}，新数据列 {df.columns}"
-                    )
+        if not hasattr(self, "_file_lock"):
+            import threading
 
-        all_dfs = ([existing] + dfs) if not existing.is_empty() else dfs
-        merged = pl.concat(all_dfs, how="diagonal")
+            self._file_lock = threading.Lock()
 
-        dedup_cols = [
-            c
-            for c in [
-                "market",
-                "symbol",
-                "stockCode",
-                "ts_code",
-                "code",
-                "trade_date",
-                "date",
-                "adjustment",
+        with self._file_lock:
+            existing = pl.read_parquet(file_path) if file_path.exists() else pl.DataFrame()
+            if not existing.is_empty() and source is not None:
+                self._validate_frame_source(existing, source, f"已有 Curated 文件 [{file_path}]")
+                for df in dfs:
+                    if set(existing.columns) != set(df.columns):
+                        raise DataValidationError(
+                            f"Curated 文件 schema 不匹配 [{file_path}]: "
+                            f"已有列 {existing.columns}，新数据列 {df.columns}"
+                        )
+
+            all_dfs = ([existing] + dfs) if not existing.is_empty() else dfs
+            merged = pl.concat(all_dfs, how="diagonal_relaxed")
+
+            dedup_cols = [
+                c
+                for c in [
+                    "market",
+                    "symbol",
+                    "stockCode",
+                    "ts_code",
+                    "code",
+                    "trade_date",
+                    "date",
+                    "adjustment",
+                ]
+                if c in merged.columns
             ]
-            if c in merged.columns
-        ]
-        if dedup_cols:
-            merged = merged.unique(subset=dedup_cols, keep="last")
-        if "trade_date" in merged.columns and "symbol" in merged.columns:
-            merged = merged.sort(["trade_date", "symbol"])
+            if dedup_cols:
+                merged = merged.unique(subset=dedup_cols, keep="last")
+            if "trade_date" in merged.columns and "symbol" in merged.columns:
+                merged = merged.sort(["trade_date", "symbol"])
 
-        file_path.parent.mkdir(parents=True, exist_ok=True)
+            file_path.parent.mkdir(parents=True, exist_ok=True)
         temp_path = file_path.with_suffix(".tmp.parquet")
         merged.write_parquet(temp_path)
         temp_path.replace(file_path)

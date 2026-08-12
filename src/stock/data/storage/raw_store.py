@@ -73,23 +73,33 @@ class RawDataStorage:
         file_path = self._get_dataset_path(key)
         if df.is_empty():
             return file_path
-        file_path.parent.mkdir(parents=True, exist_ok=True)
-        if file_path.exists():
-            try:
-                existing = pl.read_parquet(file_path)
-                if not existing.is_empty():
-                    df = pl.concat([existing, df], how="diagonal")
-                    dedup_cols = [
-                        c for c in ["symbol", "stockCode", "ts_code", "code", "trade_date", "date"] if c in df.columns
-                    ]
-                    if dedup_cols:
-                        df = df.unique(subset=dedup_cols, keep="last")
-            except Exception as e:
-                logger.warning(f"读取合并原有 RAW 文件失败 [{file_path}]: {e}")
-        temp_path = file_path.with_suffix(".tmp.parquet")
-        df.write_parquet(temp_path)
-        temp_path.replace(file_path)
-        return file_path
+        if not hasattr(self, "_file_lock"):
+            import threading
+
+            self._file_lock = threading.Lock()
+
+        with self._file_lock:
+            file_path.parent.mkdir(parents=True, exist_ok=True)
+            if file_path.exists():
+                try:
+                    existing = pl.read_parquet(file_path)
+                    if not existing.is_empty():
+                        df = pl.concat([existing, df], how="diagonal_relaxed")
+                        dedup_cols = [
+                            c
+                            for c in ["symbol", "stockCode", "ts_code", "code", "trade_date", "date"]
+                            if c in df.columns
+                        ]
+                        if dedup_cols:
+                            df = df.unique(subset=dedup_cols, keep="last")
+                except Exception as e:
+                    logger.warning(f"读取合并原有 RAW 文件失败 [{file_path}]: {e}")
+            import threading
+
+            temp_path = file_path.with_suffix(f".{threading.get_ident()}.tmp.parquet")
+            df.write_parquet(temp_path)
+            temp_path.replace(file_path)
+            return file_path
 
     def load_dataset(self, key: DatasetKey) -> pl.DataFrame | None:
         """按数据集和月份读取 RAW 归档数据。"""
