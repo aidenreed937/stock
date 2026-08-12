@@ -91,10 +91,19 @@ class RawDataStorage:
             return None
 
     def _get_dataset_path(self, key: DatasetKey) -> Path:
-        """计算带请求指纹的 RAW 缓存路径。"""
-        partition_dir = self.base_dir / key.provider / key.dataset / f"year={key.end_date.year:04d}" / f"month={key.end_date.month:02d}"
-        clean_endpoint = key.endpoint.replace("/", "_")
-        filename = f"{clean_endpoint}_{key.instrument_slug}_{key.start_date:%Y%m%d}_{key.end_date:%Y%m%d}_{key.request_id}.parquet"
+        """计算 RAW 缓存路径。"""
+        partition_dir = (
+            self.base_dir
+            / key.provider
+            / key.dataset
+            / f"year={key.end_date.year:04d}"
+            / f"month={key.end_date.month:02d}"
+        )
+        slug = f"{key.instrument_slug}_" if key.instrument_slug else ""
+        if key.start_date == key.end_date:
+            filename = f"{slug}{key.start_date:%Y%m%d}.parquet"
+        else:
+            filename = f"{slug}{key.start_date:%Y%m%d}_{key.end_date:%Y%m%d}.parquet"
         return partition_dir / filename
 
     def load_raw(
@@ -128,5 +137,9 @@ class RawDataStorage:
         legacy_path = self._get_file_path(data_source, endpoint, target_date)
         if legacy_path.exists():
             return True
-        dataset_dir = self.base_dir / data_source / "daily_bar" / f"year={target_date.year:04d}" / f"month={target_date.month:02d}"
-        return any(dataset_dir.glob(f"*_{target_date:%Y%m%d}_*.parquet")) if dataset_dir.exists() else False
+        dataset_name = "daily_bar" if endpoint in {"daily", "daily_bar"} else endpoint.replace("/", "_")
+        dataset_dir = self.base_dir / data_source / dataset_name / f"year={target_date.year:04d}" / f"month={target_date.month:02d}"
+        if not dataset_dir.exists():
+            return False
+        date_str = target_date.strftime("%Y%m%d")
+        return any(date_str in p.name for p in dataset_dir.glob("*.parquet"))
