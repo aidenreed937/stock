@@ -76,6 +76,9 @@ class ConcurrencyConfig(BaseModel):
     """数据源并发数配置。"""
 
     tushare_max_workers: int = Field(default=4, gt=0, description="TuShare 抓取最大并发线程数")
+    lixinger_max_workers: int = Field(default=4, gt=0, description="理杏仁抓取最大并发线程数")
+    yfinance_max_workers: int = Field(default=4, gt=0, description="YFinance 抓取最大并发线程数")
+    default_max_workers: int = Field(default=4, gt=0, description="默认通用抓取最大并发线程数")
 
 
 class DataConfig(BaseModel):

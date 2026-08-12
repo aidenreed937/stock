@@ -10,3 +10,6 @@ data:
 
   concurrency:
     tushare_max_workers: 4
+    lixinger_max_workers: 4
+    yfinance_max_workers: 4
+    default_max_workers: 4

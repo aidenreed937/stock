@@ -251,7 +251,7 @@ def _parse_args() -> argparse.Namespace:
         "--force-refresh", action="store_true", help="强制从 API 重新拉取并覆盖本地缓存"
     )
     parser.add_argument(
-        "--max-workers", type=int, default=1, help="并发同步线程数 (默认: 1)"
+        "--max-workers", type=int, default=None, help="并发同步线程数 (若未指定，自动读取 config/data.yaml 并发设置)"
     )
     return parser.parse_args()
 
@@ -261,7 +261,18 @@ if __name__ == "__main__":
     start_d = datetime.strptime(args.start, "%Y-%m-%d").date()
     end_d = datetime.strptime(args.end, "%Y-%m-%d").date()
 
+    from stock.config.loader import load_data_config
+
+    data_cfg = load_data_config()
+    workers = args.max_workers
+    if workers is None:
+        workers = getattr(
+            data_cfg.concurrency,
+            f"{args.data_source}_max_workers",
+            data_cfg.concurrency.default_max_workers,
+        )
+
     backfiller = HistoricalBackfiller(
         data_source=args.data_source, endpoint=args.endpoint
     )
-    backfiller.backfill_range(start_d, end_d, force_refresh=args.force_refresh, max_workers=args.max_workers)
+    backfiller.backfill_range(start_d, end_d, force_refresh=args.force_refresh, max_workers=workers)
