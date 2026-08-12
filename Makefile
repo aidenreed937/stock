@@ -33,7 +33,7 @@ run:
 	uv run python -m stock.main
 
 backfill:
-	uv run python -m stock.data.backfill --start $(START) --end $(END) --data-source $(or $(SOURCE),$(DATA_SOURCE),tushare)
+	uv run python -m stock.data.backfill --start $(START) --end $(END) --data-source $(or $(SOURCE),$(DATA_SOURCE),tushare) $(if $(ENDPOINT),--endpoint $(ENDPOINT)) $(if $(SYMBOL),--symbol $(SYMBOL))
 
 probe:
 	uv run python -m stock.data.probe

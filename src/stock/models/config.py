@@ -200,6 +200,14 @@ class DataConfig(BaseModel):
         default_factory=EndpointSymbolModesConfig
     )
     source_endpoint_supports: dict[str, dict[str, list[str]]] = Field(default_factory=dict)
+    endpoint_start_date_overrides: dict[str, str] = Field(
+        default_factory=lambda: {
+            "moneyflow_hsgt": "2014-11-17",
+            "hsgt_top10": "2014-11-17",
+            "margin": "2010-03-31",
+        },
+        description="接口历史最早起始日期校准覆盖表",
+    )
 
 
 class DataConfigFile(BaseModel):

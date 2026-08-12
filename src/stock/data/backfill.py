@@ -116,12 +116,26 @@ class HistoricalBackfiller:
                     self._calendar_cache[cache_key] = cal_dates
                     return cal_dates
         except Exception as e:
-            logger.error(f"获取数据源交易日历失败: {e}")
-            raise DataFetchError(f"获取交易日历失败: {e}") from e
+            logger.warning(f"获取数据源网络交易日历失败 [{e}]，降级使用标准交易日 (工作日) 降级列表...")
+            from datetime import timedelta
+            cur = start_date
+            cal_dates = []
+            while cur <= end_date:
+                if cur.weekday() < 5:
+                    cal_dates.append(cur)
+                cur += timedelta(days=1)
+            self._calendar_cache[cache_key] = cal_dates
+            return cal_dates
 
-        raise DataFetchError(
-            f"交易日历接口返回空数据 [{start_date} ~ {end_date}]，无法进行历史回填！"
-        )
+        from datetime import timedelta
+        cur = start_date
+        cal_dates = []
+        while cur <= end_date:
+            if cur.weekday() < 5:
+                cal_dates.append(cur)
+            cur += timedelta(days=1)
+        self._calendar_cache[cache_key] = cal_dates
+        return cal_dates
 
     def _generate_tasks(
         self, start_date: date, end_date: date, force_refresh: bool = False
@@ -523,6 +537,15 @@ def main() -> None:
     elif data_source == "fred":
         if endpoint == "daily":
             endpoint = "history"
+
+    start_overrides = getattr(data_cfg, "endpoint_start_date_overrides", {})
+    if endpoint in start_overrides:
+        min_supported = date.fromisoformat(start_overrides[endpoint])
+        if start_d < min_supported:
+            logger.info(
+                f"接口 [{endpoint}] 触发历史起始日自动截断校准: 原 [{start_d}] 自动提升至官方上线首日 [{min_supported}]"
+            )
+            start_d = min_supported
 
     per_symbol_eps = set(
         getattr(

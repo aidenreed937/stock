@@ -81,11 +81,26 @@ data:
       - "global_index_daily"
       - "fund_daily"
       - "history"
+      - "moneyflow_hsgt"
+      - "hsgt_top10"
+      - "margin"
+      - "cn_gdp"
+      - "cn_cpi"
+      - "cn_ppi"
+      - "cn_pmi"
+      - "cn_m"
+      - "shibor_lpr"
     per_day_endpoints:
       - "daily"
       - "daily_basic"
       - "moneyflow"
       - "adj_factor"
+
+  # 接口历史最早数据起始日校准表 (自动将更早的无意义请求截断提升至真实上线首日)
+  endpoint_start_date_overrides:
+    moneyflow_hsgt: "2014-11-17" # 沪港通上线首日
+    hsgt_top10: "2014-11-17" # 沪港通十大成交股首日
+    margin: "2010-03-31" # 融资融券首批试点上线首日
 
   # 数据源接口特定限制白名单 (在发起网络请求前预先拦截)
   source_endpoint_supports:
