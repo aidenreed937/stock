@@ -70,8 +70,7 @@ class DuckDBMarketStore:
     def get_parquet_path(self, endpoint: str, target_date: date) -> Path:
         """计算归档文件路径。"""
         partition_dir = self._get_partition_dir(endpoint, target_date)
-        date_str = target_date.strftime("%Y%m%d")
-        return partition_dir / f"{endpoint}_{date_str}.parquet"
+        return partition_dir / f"{endpoint}.parquet"
 
     def has_curated(self, endpoint: str, target_date: date) -> bool:
         """检查某天的数据是否已被精炼并落盘。"""
