@@ -20,7 +20,7 @@ def main() -> None:
     logger.info(f"启动 {settings.app_name} [环境: {settings.environment}]")
 
     # 2. 从 YAML 配置文件加载策略参数 (消除硬编码)
-    config_path = Path("config/strategy_example.yaml")
+    config_path = Path("config/strategy/double_sma_rsi.yaml")
     strategy_cfg = load_strategy_config(config_path)
     logger.info(f"成功加载策略配置: [{strategy_cfg.name}] v{strategy_cfg.version}")
 

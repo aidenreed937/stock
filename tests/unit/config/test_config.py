@@ -12,7 +12,7 @@ def test_settings_default_values() -> None:
 
 
 def test_load_strategy_config() -> None:
-    config_path = Path("config/strategy_example.yaml")
+    config_path = Path("config/strategy/double_sma_rsi.yaml")
     cfg = load_strategy_config(config_path)
     assert cfg.name == "Double_SMA_RSI_Cross"
     assert len(cfg.universe.symbols) > 0

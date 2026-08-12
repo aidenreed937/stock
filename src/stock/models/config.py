@@ -47,6 +47,8 @@ class StrategyConfig(BaseModel):
     name: str = Field(description="策略名称")
     version: str = Field(default="1.0.0", description="策略版本")
     description: str = Field(default="", description="策略描述")
+    universe_config_path: str | None = Field(default=None, description="外部股票池配置文件相对路径")
+    risk_config_path: str | None = Field(default=None, description="外部风控配置文件相对路径")
     universe: UniverseConfig = Field(description="股票池配置")
     indicators: IndicatorsConfig = Field(
         default_factory=IndicatorsConfig, description="技术指标配置"

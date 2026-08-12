@@ -1,0 +1,4 @@
+risk_management:
+  max_position_per_symbol: 0.2  # 单个标的最大持仓比例上限 (20%)
+  stop_loss_pct: 0.05            # 固定止损比例 (5%)
+  take_profit_pct: 0.15          # 目标止盈比例 (15%)
