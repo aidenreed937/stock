@@ -45,8 +45,8 @@
 
 | 目录名称 | 分层定位 | 存储规范 / 路径结构 | 说明与核心作用 |
 | :--- | :--- | :--- | :--- |
-| **`data/raw/`** | **原始归档层**<br>(Raw Landing Zone) | `data/raw/{data_source}/{endpoint}/year=YYYY/month=MM/{endpoint}_{YYYYMMDD}.parquet` | 原汁原味保留 API 响应列与格式，按交易日合集保存全市场行情。<br>**主要作用：防重复请求、节省积分、支持本地离线重洗。** |
-| **`data/curated/`** | **精炼生产层**<br>(Curated Zone) | `data/curated/{data_source}/{dataset}/year=YYYY/month=MM/{dataset}_{YYYYMMDD}.parquet` | 规范化 Schema（统一列名、统一类型），按数据源隔离并注入 `data_source` 与 `updated_at` 血统。`mock` 只能写入 `data/curated/mock/`，不能与生产源共享目录。<br>**主要作用：供策略回测与分析引擎直接使用。** |
+| **`data/raw/`** | **原始归档层**<br>(Raw Landing Zone) | `data/raw/{data_source}/market={market}/{endpoint}/[year=YYYY/month=MM/]data.parquet` | 原汁原味保留 API 响应列与格式，按 `market={market}` 路径与 Curated 层 100% 镜像对称。<br>**主要作用：防重复请求、节省积分、支持本地离线重洗。** |
+| **`data/curated/`** | **精炼生产层**<br>(Curated Zone) | `data/curated/{data_source}/market={market}/{dataset}/[year=YYYY/month=MM/]data.parquet` | 规范化 Schema（统一列名与数据类型），按 `market={market}` 隔离并注入 `data_source` 与 `updated_at` 血统，与 RAW 层物理文件 1-to-1 镜像映射。<br>**主要作用：供策略回测与分析引擎直接使用。** |
 | **`data/cache/`** | **临时缓存层**<br>(Transient Zone) | `data/cache/*.parquet` | 存储运行过程中的密集型计算中间结果（如长周期特征矩阵），可随时安全清空。 |
 
 ---

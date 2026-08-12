@@ -42,8 +42,8 @@ make backfill START=YYYY-MM-DD END=YYYY-MM-DD SOURCE=<data_source> [ENDPOINT=<en
 # 1. 回填 12 年 A 股 10 大核心指数 K 线与每日估值 (000001.SH, 000300.SH, 399006.SZ 等)
 make backfill START=2014-08-01 END=2026-08-12 SOURCE=tushare ENDPOINT=index_daily
 
-# 2. 回填 12 年指数每日估值 (PE-TTM, PB, 股息率)
-make backfill START=2014-08-01 END=2026-08-12 SOURCE=tushare ENDPOINT=index_dailybasic
+# 2. 多接口单一 CLI 进程串行安全回填 (复权因子 + 北向持仓 + 每日估值指标，防超限、防超并发)
+make backfill START=2024-01-01 END=2026-08-12 SOURCE=tushare ENDPOINT=adj_factor,hk_hold,daily_basic
 
 # 3. 回填指定 A 股个股 12 年 K 线 (如贵州茅台 600519.SH)
 make backfill START=2014-08-01 END=2026-08-12 SOURCE=tushare SYMBOL=600519.SH

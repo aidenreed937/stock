@@ -53,9 +53,32 @@ uv run python -m stock.data.backfill --start 2026-07-01 --end 2026-07-31 --force
 uv run python -m stock.data.backfill --start 2026-08-01 --end 2026-08-12 --endpoint daily_basic
 ```
 
+#### 场景 4：单一 CLI 进程按顺序串行回填多个核心接口 (防超限、防超并发)
+```bash
+uv run python -m stock.data.backfill \
+    --data-source tushare \
+    --endpoint adj_factor,hk_hold,daily_basic \
+    --start 2024-01-01 \
+    --end 2026-08-12
+```
+
 ---
 
-## 2. 全局数据源探测工具 (Global Data Probe CLI)
+## 2. 全库物理存储主审计 CLI (Master Audit CLI)
+
+基于 Polars 物理扫描全库全部 Parquet 文件，输出全表覆盖标的数、最小/最大交易日与完备度诊断：
+
+```bash
+# 通过 Makefile 快捷执行
+make master-audit
+
+# 或直接运行 Python 模块
+uv run python -m stock.data.audit.master_audit
+```
+
+---
+
+## 3. 全局数据源探测工具 (Global Data Probe CLI)
 
 用于快速检测各大数据源（TuShare, yfinance, FRED, 理杏仁）的连通性、响应时延与 Schema 契约状态。
 
