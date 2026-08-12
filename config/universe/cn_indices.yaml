@@ -1,7 +1,7 @@
 # A 股核心宽基与大盘指数固定配置文件
 universe:
   name: "cn_broad_base_indices"
-  description: "中国 A 股 8 大核心宽基与大盘指数"
+  description: "中国 A 股 10 大核心宽基与策略大盘指数"
   provider: "tushare"
   market: "CN"
   indices:
@@ -28,6 +28,10 @@ universe:
     - code: "000985.CSI"
       name: "中证全指"
       description: "全 A 股整体市场基准 (量化首选)"
+      base_date: "2004-12-31"
+    - code: "000922.CSI"
+      name: "中证红利"
+      description: "中证红利指数 (高股息率策略宽基标杆)"
       base_date: "2004-12-31"
     - code: "399006.SZ"
       name: "创业板指"
