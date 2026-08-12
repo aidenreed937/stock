@@ -145,3 +145,51 @@ def test_audit_main_index_cli():
     ):
         audit_main()
         mock_run_index.assert_called_once_with(date(2026, 8, 1), data_source="tushare")
+
+
+def test_run_daily_basic_audit():
+    from stock.data.audit.reconciliation import run_daily_basic_audit
+
+    bar_df = pl.DataFrame({"symbol": ["600000.SH", "000001.SZ"], "trade_date": ["2026-08-01", "2026-08-01"]})
+    db_df = pl.DataFrame({"symbol": ["600000.SH"], "trade_date": ["2026-08-01"]})
+
+    def mock_read(pattern: str):
+        if "stock_daily_bar" in pattern:
+            return bar_df
+        return db_df
+
+    with patch("polars.read_parquet", side_effect=mock_read):
+        res = run_daily_basic_audit(date(2026, 8, 1))
+        assert res["bar_count"] == 2
+        assert res["basic_count"] == 1
+        assert res["match_count"] == 1
+        assert res["integrity_rate"] == 50.0
+
+
+def test_run_adj_factor_audit():
+    from stock.data.audit.reconciliation import run_adj_factor_audit
+
+    basic_df = pl.DataFrame({"symbol": ["600000.SH", "000001.SZ"], "list_date": ["19991110", "19910403"]})
+    adj_df = pl.DataFrame({"symbol": ["600000.SH"], "trade_date": ["2026-08-01"]})
+
+    def mock_read(pattern):
+        if isinstance(pattern, list):
+            return basic_df
+        return adj_df
+
+    with patch("polars.read_parquet", side_effect=mock_read):
+        res = run_adj_factor_audit(date(2026, 8, 1))
+        assert res["expected_count"] == 2
+        assert res["actual_count"] == 1
+        assert res["coverage_rate"] == 50.0
+
+
+def test_run_hk_hold_audit():
+    from stock.data.audit.reconciliation import run_hk_hold_audit
+
+    hk_df = pl.DataFrame({"symbol": ["600000.SH"], "trade_date": ["2026-08-01"], "vol": [100000.0]})
+
+    with patch("polars.read_parquet", return_value=hk_df):
+        res = run_hk_hold_audit(date(2026, 8, 1))
+        assert res["symbols_count"] == 1
+        assert res["total_vol"] == 100000.0

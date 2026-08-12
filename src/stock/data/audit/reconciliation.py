@@ -2,6 +2,7 @@
 
 import argparse
 from datetime import date, datetime, timedelta
+from pathlib import Path
 import sys
 from typing import Any
 
@@ -423,6 +424,161 @@ def run_index_audit_range(
     }
 
 
+def run_daily_basic_audit(
+    target_date: date, data_source: str = "tushare", quiet: bool = False
+) -> dict[str, Any]:
+    """对比审计 daily_basic (每日估值指标) 与 stock_daily_bar (K线行情) 的 1-to-1 对齐匹配率。"""
+    logger.info(f"开始 daily_basic 估值对账审计，目标日期: {target_date} [数据源: {data_source}]")
+
+    # 1. 读取行情 K 线记录
+    daily_pattern = f"data/curated/{data_source}/market=CN/stock_daily_bar/year={target_date.year:04d}/month={target_date.month:02d}/*.parquet"
+    try:
+        daily_df = pl.read_parquet(daily_pattern)
+        if "trade_date" in daily_df.columns and daily_df["trade_date"].dtype == pl.String:
+            daily_df = daily_df.with_columns(
+                pl.col("trade_date").str.to_date("%Y-%m-%d").alias("trade_date")
+            )
+        bar_df = daily_df.filter(pl.col("trade_date") == target_date)
+        bar_symbols = set(bar_df["symbol"].unique().to_list())
+    except Exception:
+        bar_symbols = set()
+
+    # 2. 读取每日指标 daily_basic 记录
+    basic_pattern = f"data/curated/{data_source}/market=CN/daily_basic/year={target_date.year:04d}/month={target_date.month:02d}/*.parquet"
+    try:
+        db_df = pl.read_parquet(basic_pattern)
+        if "trade_date" in db_df.columns and db_df["trade_date"].dtype == pl.String:
+            db_df = db_df.with_columns(
+                pl.col("trade_date").str.to_date("%Y-%m-%d").alias("trade_date")
+            )
+        target_db = db_df.filter(pl.col("trade_date") == target_date)
+        basic_symbols = set(target_db["symbol"].unique().to_list())
+    except Exception:
+        basic_symbols = set()
+
+    match_count = len(bar_symbols.intersection(basic_symbols))
+    missing_in_basic = bar_symbols - basic_symbols
+    integrity_rate = (
+        (match_count / len(bar_symbols) * 100.0) if bar_symbols else 0.0
+    )
+
+    if not quiet:
+        print("\n" + "=" * 65)
+        print(f"      【daily_basic 每日指标 vs K线行情对账报告 ({target_date})】")
+        print("=" * 65)
+        print(f"K 线行情在盘交易个股数 : {len(bar_symbols):>6} 只")
+        print(f"估值指标 (daily_basic) 股数: {len(basic_symbols):>6} 只")
+        print(f"完全对齐匹配个股数     : {match_count:>6} 只")
+        print(f"对齐匹配率             : {integrity_rate:>6.2f} %")
+        if missing_in_basic:
+            print(f"有 K线但缺失估值指标股数: {len(missing_in_basic):>6} 只 (如: {sorted(list(missing_in_basic))[:5]})")
+        print("=" * 65 + "\n")
+
+    return {
+        "target_date": target_date,
+        "bar_count": len(bar_symbols),
+        "basic_count": len(basic_symbols),
+        "match_count": match_count,
+        "integrity_rate": integrity_rate,
+        "missing_symbols": sorted(list(missing_in_basic)),
+    }
+
+
+def run_adj_factor_audit(
+    target_date: date, data_source: str = "tushare", quiet: bool = False
+) -> dict[str, Any]:
+    """审计 adj_factor (复权因子) 在全市场有效上市个股中的物理覆盖率与断点。"""
+    logger.info(f"开始 adj_factor 复权因子对账审计，目标日期: {target_date} [数据源: {data_source}]")
+
+    # 1. 读取 stock_basic 理论上市股票池
+    basic_pattern = f"data/curated/{data_source}/market=CN/stock_basic"
+    try:
+        basic_files = list(Path(basic_pattern).rglob("*.parquet"))
+        basic_df = pl.read_parquet(basic_files) if basic_files else pl.DataFrame()
+        target_date_str = target_date.strftime("%Y%m%d")
+        expected_df = basic_df.filter(pl.col("list_date") <= target_date_str)
+        sym_col = "symbol" if "symbol" in basic_df.columns else "ts_code"
+        expected_symbols = set(expected_df[sym_col].unique().to_list())
+    except Exception:
+        expected_symbols = set()
+
+    # 2. 读取 adj_factor 记录
+    adj_pattern = f"data/curated/{data_source}/market=CN/adj_factor/year={target_date.year:04d}/month={target_date.month:02d}/*.parquet"
+    try:
+        adj_df = pl.read_parquet(adj_pattern)
+        if "trade_date" in adj_df.columns and adj_df["trade_date"].dtype == pl.String:
+            adj_df = adj_df.with_columns(
+                pl.col("trade_date").str.to_date("%Y-%m-%d").alias("trade_date")
+            )
+        target_adj = adj_df.filter(pl.col("trade_date") == target_date)
+        actual_symbols = set(target_adj["symbol"].unique().to_list())
+    except Exception:
+        actual_symbols = set()
+
+    match_count = len(expected_symbols.intersection(actual_symbols))
+    missing_symbols = expected_symbols - actual_symbols
+    coverage_rate = (
+        (match_count / len(expected_symbols) * 100.0) if expected_symbols else 0.0
+    )
+
+    if not quiet:
+        print("\n" + "=" * 65)
+        print(f"       【adj_factor 复权因子全市场覆盖率报告 ({target_date})】")
+        print("=" * 65)
+        print(f"理论在册上市股票总数   : {len(expected_symbols):>6} 只")
+        print(f"实际落盘复权因子个股数 : {len(actual_symbols):>6} 只")
+        print(f"复权因子物理覆盖率     : {coverage_rate:>6.2f} %")
+        if missing_symbols:
+            print(f"缺失复权因子的股票数   : {len(missing_symbols):>6} 只")
+        print("=" * 65 + "\n")
+
+    return {
+        "target_date": target_date,
+        "expected_count": len(expected_symbols),
+        "actual_count": len(actual_symbols),
+        "coverage_rate": coverage_rate,
+        "missing_symbols": sorted(list(missing_symbols)),
+    }
+
+
+def run_hk_hold_audit(
+    target_date: date, data_source: str = "tushare", quiet: bool = False
+) -> dict[str, Any]:
+    """审计 hk_hold (北向个股持仓明细) 数据集在开港通交易日的真实落盘记录与持股规模。"""
+    logger.info(f"开始 hk_hold 北向持仓对账审计，目标日期: {target_date} [数据源: {data_source}]")
+
+    hk_pattern = f"data/curated/{data_source}/market=CN/hk_hold/year={target_date.year:04d}/month={target_date.month:02d}/*.parquet"
+    try:
+        hk_df = pl.read_parquet(hk_pattern)
+        if "trade_date" in hk_df.columns and hk_df["trade_date"].dtype == pl.String:
+            hk_df = hk_df.with_columns(
+                pl.col("trade_date").str.to_date("%Y-%m-%d").alias("trade_date")
+            )
+        target_hk = hk_df.filter(pl.col("trade_date") == target_date)
+        symbols_count = target_hk["symbol"].n_unique() if "symbol" in target_hk.columns else 0
+        total_vol = (
+            target_hk["vol"].sum() if "vol" in target_hk.columns and not target_hk.is_empty() else 0
+        )
+        total_vol_float = float(total_vol) if total_vol is not None else 0.0
+    except Exception:
+        symbols_count = 0
+        total_vol_float = 0.0
+
+    if not quiet:
+        print("\n" + "=" * 65)
+        print(f"       【hk_hold 北向持仓明细对账审计报告 ({target_date})】")
+        print("=" * 65)
+        print(f"北向资金持仓覆盖股票数 : {symbols_count:>6} 只")
+        print(f"北向持股总量 (万股)    : {total_vol_float / 1e4:>10.2f} 万股")
+        print("=" * 65 + "\n")
+
+    return {
+        "target_date": target_date,
+        "symbols_count": symbols_count,
+        "total_vol": total_vol_float,
+    }
+
+
 def main() -> None:
     parser = argparse.ArgumentParser(description="数据完整性对账与审计工具")
     parser.add_argument(
@@ -438,8 +594,8 @@ def main() -> None:
         "--mode",
         type=str,
         default="stock",
-        choices=["stock", "index"],
-        help="对账模式 (stock: 股票全市场审计, index: 指数观察池审计，默认: stock)",
+        choices=["stock", "index", "daily_basic", "adj_factor", "hk_hold"],
+        help="对账模式 (stock: K线审计, index: 指数审计, daily_basic: 估值对账, adj_factor: 复权因子对账, hk_hold: 北向持仓对账)",
     )
     parser.add_argument(
         "--date",
@@ -510,6 +666,12 @@ def main() -> None:
 
         if args.mode == "index":
             run_index_audit(target_date, data_source=data_source)
+        elif args.mode == "daily_basic":
+            run_daily_basic_audit(target_date, data_source=data_source)
+        elif args.mode == "adj_factor":
+            run_adj_factor_audit(target_date, data_source=data_source)
+        elif args.mode == "hk_hold":
+            run_hk_hold_audit(target_date, data_source=data_source)
         else:
             run_audit(target_date, data_source=data_source)
 
