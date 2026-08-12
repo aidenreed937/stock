@@ -9,6 +9,7 @@ from typing import Any
 
 from stock.data.fetcher.base import BaseDataFetcher
 from stock.data.fetcher.tushare.facade import TuShareDataFetcher
+from stock.data.fetcher.tushare.factory import create_tushare_pipeline
 from stock.data.pipeline import MarketDataPipeline
 from stock.exceptions import DataFetchError
 from stock.utils.logger import logger
@@ -33,9 +34,14 @@ class HistoricalBackfiller:
             endpoint: API 接口名称（默认 daily）。
         """
         self.fetcher = fetcher or TuShareDataFetcher()
-        self.pipeline = pipeline or MarketDataPipeline(
-            fetcher=self.fetcher, data_source=data_source, endpoint=endpoint
-        )
+        if pipeline is not None:
+            self.pipeline = pipeline
+        elif data_source == "tushare":
+            self.pipeline = create_tushare_pipeline(endpoint=endpoint)
+        else:
+            self.pipeline = MarketDataPipeline(
+                fetcher=self.fetcher, data_source=data_source, endpoint=endpoint
+            )
         self.data_source = data_source
         self.endpoint = endpoint
         self._calendar_cache: dict[tuple[date, date], list[date]] = {}
@@ -79,18 +85,55 @@ class HistoricalBackfiller:
             f"交易日历接口返回空数据 [{start_date} ~ {end_date}]，无法进行历史回填！"
         )
 
+    def _generate_tasks(
+        self, start_date: date, end_date: date, force_refresh: bool = False
+    ) -> list[date]:
+        """生成并筛选需要进行数据同步的交易日任务列表（支持断点续传）。"""
+        open_dates = self._get_open_trading_dates(
+            start_date, end_date, use_cache=not force_refresh
+        )
+
+        todo_dates = []
+        for idx, trade_date in enumerate(open_dates, 1):
+            # 检查断点续传：只有在精炼层（Curated Store）存在数据时，才认为该日真正完成
+            has_curated = getattr(self.pipeline.store, "has_curated", lambda e, d: False)(self.endpoint, trade_date)
+            if has_curated and not force_refresh:
+                logger.debug(
+                    f"[{idx}/{len(open_dates)}] 命中精炼层归档 [{trade_date}]，断点续传自动跳过"
+                )
+                continue
+            todo_dates.append(trade_date)
+        return todo_dates
+
+    def _sync_single_day(self, trade_date: date, force_refresh: bool = False) -> bool:
+        """执行单日两层 ETL 管道数据补全。返回同步是否成功。"""
+        try:
+            df = self.pipeline.sync_daily_bars(
+                symbol="",
+                start_date=trade_date,
+                end_date=trade_date,
+                use_raw_cache=not force_refresh,
+                force_refresh=force_refresh,
+            )
+            return not df.is_empty()
+        except Exception as e:
+            logger.error(f"交易日 [{trade_date}] 回填异常: {e}")
+            return False
+
     def backfill_range(
         self,
         start_date: date,
         end_date: date,
         force_refresh: bool = False,
+        max_workers: int = 1,
     ) -> dict[str, Any]:
-        """按交易日范围进行历史数据批量回填。
+        """按交易日范围进行历史数据批量回填（支持并发）。
 
         Args:
             start_date: 回填开始日期。
-            end_date: 回填结束日期。
+            end_date: 回填结束日期.
             force_refresh: 是否强制向 API 拉取最新数据并覆盖 RAW 离线归档（默认 False）。
+            max_workers: 并发回填线程数（默认 1）。
 
         Returns:
             dict[str, Any]: 包含回填统计信息的字典。
@@ -105,39 +148,44 @@ class HistoricalBackfiller:
             f"(时间段: {start_date} ~ {end_date}, 自然日: {total_days}, 交易日: {len(open_dates)})"
         )
 
+        todo_dates = self._generate_tasks(start_date, end_date, force_refresh=force_refresh)
+        skipped_count = len(open_dates) - len(todo_dates)
         synced_count = 0
-        skipped_count = 0
         failed_count = 0
 
-        for idx, trade_date in enumerate(open_dates, 1):
-            # 1. 检查断点续传：只有在精炼层（Curated Store）存在数据时，才认为该日真正完成
-            has_curated = getattr(self.pipeline.store, "has_curated", lambda e, d: False)(self.endpoint, trade_date)
-            if has_curated and not force_refresh:
-                skipped_count += 1
-                logger.debug(
-                    f"[{idx}/{len(open_dates)}] 命中精炼层归档 [{trade_date}]，断点续传自动跳过"
-                )
-                continue
+        if todo_dates:
+            from concurrent.futures import ThreadPoolExecutor, as_completed
+            workers = min(max_workers, 4) if max_workers > 1 else 1
 
-            # 2. 执行两层 ETL 管道进行补全与归档
-            try:
-                df = self.pipeline.sync_daily_bars(
-                    symbol="",
-                    start_date=trade_date,
-                    end_date=trade_date,
-                    use_raw_cache=not force_refresh,
-                    force_refresh=force_refresh,
-                )
-                if not df.is_empty():
-                    synced_count += 1
-                else:
-                    failed_count += 1
-                logger.info(
-                    f"[{idx}/{len(open_dates)}] 交易日 [{trade_date}] 回填成功 ({len(df)} 条记录)"
-                )
-            except Exception as e:
-                failed_count += 1
-                logger.error(f"[{idx}/{len(open_dates)}] 交易日 [{trade_date}] 回填异常: {e}")
+            if workers > 1:
+                logger.info(f"使用 ThreadPoolExecutor 进行多线程回填，线程数: {workers}")
+                with ThreadPoolExecutor(max_workers=workers) as executor:
+                    futures = {
+                        executor.submit(self._sync_single_day, d, force_refresh): d
+                        for d in todo_dates
+                    }
+                    for idx, fut in enumerate(as_completed(futures), 1):
+                        d = futures[fut]
+                        try:
+                            success = fut.result()
+                            if success:
+                                synced_count += 1
+                                logger.info(f"[{idx}/{len(todo_dates)}] 交易日 [{d}] 回填成功")
+                            else:
+                                failed_count += 1
+                                logger.warning(f"[{idx}/{len(todo_dates)}] 交易日 [{d}] 回填失败")
+                        except Exception as e:
+                            logger.error(f"[{idx}/{len(todo_dates)}] 交易日 [{d}] 抛出异常: {e}")
+                            failed_count += 1
+            else:
+                for idx, trade_date in enumerate(todo_dates, 1):
+                    success = self._sync_single_day(trade_date, force_refresh)
+                    if success:
+                        synced_count += 1
+                        logger.info(f"[{idx}/{len(todo_dates)}] 交易日 [{trade_date}] 回填成功")
+                    else:
+                        failed_count += 1
+                        logger.warning(f"[{idx}/{len(todo_dates)}] 交易日 [{trade_date}] 回填失败")
 
         summary = {
             "total_days": total_days,
@@ -170,6 +218,9 @@ def _parse_args() -> argparse.Namespace:
     parser.add_argument(
         "--force-refresh", action="store_true", help="强制从 API 重新拉取并覆盖本地缓存"
     )
+    parser.add_argument(
+        "--max-workers", type=int, default=1, help="并发同步线程数 (默认: 1)"
+    )
     return parser.parse_args()
 
 
@@ -181,4 +232,5 @@ if __name__ == "__main__":
     backfiller = HistoricalBackfiller(
         data_source=args.data_source, endpoint=args.endpoint
     )
-    backfiller.backfill_range(start_d, end_d, force_refresh=args.force_refresh)
+    backfiller.backfill_range(start_d, end_d, force_refresh=args.force_refresh, max_workers=args.max_workers)
+
