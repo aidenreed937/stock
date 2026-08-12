@@ -103,11 +103,9 @@ class TuShareClient:
                 raise DataFetchError(
                     "未配置 TuShare API Token！请在 .env 文件中设置 TUSHARE_TOKEN=your_token"
                 )
-            ts.set_token(self.token)
+            self._pro_api = ts.pro_api(token=self.token)
             if self.url:
-                self._pro_api = ts.pro_api(env=self.url)
-            else:
-                self._pro_api = ts.pro_api()
+                setattr(self._pro_api, "_DataApi__http_url", self.url)
             logger.debug(
                 f"TuShare Pro API 初始化成功 [server: {self.url or 'default'}, "
                 f"rate_limit: {self.rate_limit_per_min}/min, workers: {self.max_workers}]"

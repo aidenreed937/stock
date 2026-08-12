@@ -59,11 +59,15 @@ class BarDataNormalizer(BaseDataNormalizer):
         if rename_dict:
             normalized_df = normalized_df.rename(rename_dict)
 
-        # 2. 转换 trade_date 为 Date 类型（如果目前是 String）
+        # 2. 转换 trade_date 为 Date 类型（自动适应 YYYYMMDD 与 YYYY-MM-DD 各种格式）
         if "trade_date" in normalized_df.columns and normalized_df["trade_date"].dtype == pl.String:
-            normalized_df = normalized_df.with_columns(
-                pl.col("trade_date").str.to_date("%Y-%m-%d").alias("trade_date")
-            )
+            non_null_vals = normalized_df["trade_date"].drop_nulls()
+            if not non_null_vals.is_empty():
+                first_val = non_null_vals[0]
+                fmt = "%Y%m%d" if len(first_val) == 8 else "%Y-%m-%d"
+                normalized_df = normalized_df.with_columns(
+                    pl.col("trade_date").str.to_date(fmt).alias("trade_date")
+                )
 
         # 3. 按统一的标准列名过滤并排序
         existing_std_cols = [c for c in STANDARD_COLUMNS if c in normalized_df.columns]

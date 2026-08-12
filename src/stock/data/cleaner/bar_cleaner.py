@@ -30,17 +30,25 @@ class BarDataCleaner(BaseDataCleaner):
 
         initial_count = len(df)
 
+        # 自动识别列名别名 (支持原始与标准化后的数据帧)
+        sym_col = "symbol" if "symbol" in df.columns else ("ts_code" if "ts_code" in df.columns else "code")
+        vol_col = "volume" if "volume" in df.columns else ("vol" if "vol" in df.columns else None)
+
         # 1. 过滤 null 异常记录
-        cleaned_df = df.drop_nulls(subset=["symbol", "trade_date", "close"])
+        null_subset = [c for c in [sym_col, "trade_date", "close"] if c in df.columns]
+        cleaned_df = df.drop_nulls(subset=null_subset)
 
         # 2. 过滤非正数值 (价格必须 > 0)
-        cleaned_df = cleaned_df.filter(
+        filter_expr = (
             (pl.col("open") > 0)
             & (pl.col("high") > 0)
             & (pl.col("low") > 0)
             & (pl.col("close") > 0)
-            & (pl.col("volume") >= 0)
         )
+        if vol_col:
+            filter_expr = filter_expr & (pl.col(vol_col) >= 0)
+
+        cleaned_df = cleaned_df.filter(filter_expr)
 
         # 3. 过滤最高价 < 最低价 或 最高价 < 开盘价/收盘价 的非法物理数据
         cleaned_df = cleaned_df.filter(
@@ -50,8 +58,8 @@ class BarDataCleaner(BaseDataCleaner):
         )
 
         # 4. 按交易日与标的代码去重
-        if "symbol" in cleaned_df.columns and "trade_date" in cleaned_df.columns:
-            cleaned_df = cleaned_df.unique(subset=["symbol", "trade_date"], keep="last")
+        if sym_col in cleaned_df.columns and "trade_date" in cleaned_df.columns:
+            cleaned_df = cleaned_df.unique(subset=[sym_col, "trade_date"], keep="last")
 
         final_count = len(cleaned_df)
         dropped_count = initial_count - final_count
