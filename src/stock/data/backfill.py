@@ -471,7 +471,9 @@ def main() -> None:
 
     wl = getattr(data_cfg.watchlists, data_source, None)
     if wl is not None:
-        if hasattr(wl, "all_symbols"):
+        if endpoint == "index_daily" and hasattr(wl, "indices") and wl.indices:
+            raw_symbols = wl.indices
+        elif hasattr(wl, "all_symbols"):
             raw_symbols = wl.all_symbols
         elif isinstance(wl, list):
             raw_symbols = wl
