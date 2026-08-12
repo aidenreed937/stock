@@ -36,27 +36,33 @@ make backfill START=YYYY-MM-DD END=YYYY-MM-DD SOURCE=<data_source> [ENDPOINT=<en
 ### 2.2 四大真实数据源回填实操指南
 
 #### ① TuShare (`SOURCE=tushare`)
-用于回填 A 股元数据、指数日线 K 线及每日估值数据：
+用于回填 A 股元数据、指数日线 K 线、每日估值、申万行业行情及场内基金/ETF 数据：
 
 ```bash
 # 1. 回填 12 年 A 股 10 大核心指数 K 线与每日估值 (000001.SH, 000300.SH, 399006.SZ 等)
 make backfill START=2014-08-01 END=2026-08-12 SOURCE=tushare ENDPOINT=index_daily
 
-# 2. 多接口单一 CLI 进程串行安全回填 (复权因子 + 北向持仓 + 每日估值指标，防超限、防超并发)
-make backfill START=2024-01-01 END=2026-08-12 SOURCE=tushare ENDPOINT=adj_factor,hk_hold,daily_basic
+# 2. 多接口单一 CLI 进程串行安全回填 (复权因子 + 北向持仓 + 每日估值指标 + 申万行业 + 场内基金，防超限、防超并发)
+make backfill START=2024-01-01 END=2026-08-12 SOURCE=tushare ENDPOINT=adj_factor,hk_hold,daily_basic,sw_daily,fund_daily,fund_adj,etf_share_size
 
 # 3. 回填指定 A 股个股 12 年 K 线 (如贵州茅台 600519.SH)
 make backfill START=2014-08-01 END=2026-08-12 SOURCE=tushare SYMBOL=600519.SH
 ```
 
 #### ② 理杏仁 LiXinger (`SOURCE=lixinger`)
-用于回填 9 大核心 A 股指数的 12 年基本面估值数据（等权 PE、市值加权 PE 等）：
+用于回填 9 大核心 A 股指数的 12 年基本面估值数据、申万 2021 行业成份股图谱及申万 31 个行业历史估值序列：
 
-> ⚠️ **理杏仁 API 限制**：单次请求时间跨度不能超过 10 年。系统代码中已实现 `timedelta(days=3200)` 自动 9 年时间分片切片，无需人工分段。
+> ⚠️ **理杏仁 API 限制**：单次请求时间跨度不能超过 10 年。系统代码中已实现 `timedelta(days=3200)` 自动 9 年时间分片切片，无需人工分段。对于成份股图谱 (`sw_2021_constituents`) 自动采取单次全量超高速获取。
 
 ```bash
-# 回填 9 大核心指数 12 年基本面估值历史 (2014-08-01 ~ 2026-08-12)
+# 1. 回填 9 大核心指数 12 年基本面估值历史 (2014-08-01 ~ 2026-08-12)
 make backfill START=2014-08-01 END=2026-08-12 SOURCE=lixinger ENDPOINT=index_fundamental
+
+# 2. 回填申万 2021 行业成分股名册图谱 (797 个一二三级行业成份股)
+make backfill SOURCE=lixinger ENDPOINT=sw_2021_constituents
+
+# 3. 回填申万 31 个一级行业全历史基本面估值序列 (PE-TTM、PB、股息率、总市值等)
+make backfill START=2014-08-01 END=2026-08-12 SOURCE=lixinger ENDPOINT=sw_2021_fundamental
 ```
 
 #### ③ Yahoo Finance (`SOURCE=yfinance`)
@@ -131,15 +137,25 @@ make validate
 make probe
 ```
 
-### 4.3 跨数据源估值百分位对账 (Cross-Source Audit)
-对比 TuShare vs 理杏仁关于相同指数（如沪深 300、创业板指）的 10 年 PE-TTM 分位对齐度：
+### 4.3 跨数据源估值与业务领域对账 (Cross-Source & Domain Audit)
+提供了多样化的业务领域对账 CLI：
 
 ```bash
+# 1. 对比 TuShare vs 理杏仁关于相同指数的 PE-TTM 分位对齐度
 make audit
+
+# 2. 申万 2021 行业成份股图谱与 31 个行业估值序列对账
+uv run python -m stock.data.audit.reconciliation --mode sw_industry --date 2026-08-12
+
+# 3. 申万 31 个行业每日日线行情落盘覆盖率对账
+uv run python -m stock.data.audit.reconciliation --mode sw_daily --date 2026-08-06
+
+# 4. daily_basic 估值指标 vs stock_daily_bar 行情 1-to-1 匹配率对账
+uv run python -m stock.data.audit.reconciliation --mode daily_basic --date 2026-07-30
 ```
 
 ### 4.4 全库物理存储主审计 CLI 入口
-运行固化的 Polars 审计工具物理扫描全库 300+ 个 Parquet 文件，输出主离线审计报告：
+运行固化的 Polars 审计工具物理扫描全库 400+ 个 Parquet 文件，输出主离线审计报告：
 
 ```bash
 make master-audit
