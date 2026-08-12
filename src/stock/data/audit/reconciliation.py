@@ -301,6 +301,120 @@ def run_audit_range(
     }
 
 
+    return {
+        "start_date": start_date,
+        "end_date": end_date,
+        "total_days": total_days,
+        "perfect_days": perfect_days_count,
+        "problematic_days": len(problematic_days),
+        "avg_integrity_rate": avg_integrity_rate,
+        "top_missing_symbols": top_missing_symbols,
+        "daily_results": daily_results,
+    }
+
+
+def run_index_audit(
+    target_date: date, data_source: str = "tushare", quiet: bool = False
+) -> dict[str, Any]:
+    """对指定单日进行指数观察池完整性审计对账。"""
+    from stock.config.loader import load_data_config
+
+    cfg = load_data_config()
+    wl = getattr(cfg.watchlists, data_source, None)
+    expected_indices = set(wl.indices) if (wl and hasattr(wl, "indices")) else set()
+
+    if not expected_indices:
+        if not quiet:
+            logger.warning(f"数据源 [{data_source}] 未配置指数观察池")
+        return {}
+
+    pattern = f"data/curated/{data_source}/market=*/index_daily*/year={target_date.year:04d}/month={target_date.month:02d}/*.parquet"
+    try:
+        df = pl.read_parquet(pattern)
+        if not df.is_empty():
+            if df["trade_date"].dtype == pl.String:
+                df = df.with_columns(
+                    pl.col("trade_date").str.to_date("%Y-%m-%d").alias("trade_date")
+                )
+            sub_df = df.filter(pl.col("trade_date") == target_date)
+            actual_indices = set(sub_df["symbol"].to_list())
+        else:
+            actual_indices = set()
+    except Exception:
+        actual_indices = set()
+
+    missing = expected_indices - actual_indices
+    integrity_rate = (
+        (len(actual_indices) / len(expected_indices) * 100.0) if expected_indices else 0.0
+    )
+
+    if not quiet:
+        logger.info(
+            f"指数审计结果 [{target_date}]: 预期 {len(expected_indices)} 个, "
+            f"实际 {len(actual_indices)} 个, 缺失: {list(missing)}, 完整率: {integrity_rate:.2f}%"
+        )
+
+    return {
+        "date": target_date,
+        "expected_count": len(expected_indices),
+        "actual_count": len(actual_indices),
+        "missing_count": len(missing),
+        "missing_indices": list(missing),
+        "integrity_rate": integrity_rate,
+    }
+
+
+def run_index_audit_range(
+    start_date: date,
+    end_date: date,
+    data_source: str = "tushare",
+    max_workers: int = 4,
+    show_details: bool = False,
+) -> dict[str, Any]:
+    """对指定时间段进行指数观察池完整性审计对账。"""
+    logger.info(
+        f"开始指数时间段对账审计 (区间: {start_date} ~ {end_date}, 数据源: {data_source})..."
+    )
+
+    trading_dates = get_trading_calendar(start_date, end_date)
+    if not trading_dates:
+        logger.error(f"获取 {start_date} ~ {end_date} 交易日历失败")
+        return {}
+
+    daily_results: list[dict[str, Any]] = []
+    perfect_count = 0
+
+    for d in trading_dates:
+        res = run_index_audit(d, data_source=data_source, quiet=not show_details)
+        if res:
+            daily_results.append(res)
+            if res["missing_count"] == 0 and res["integrity_rate"] >= 100.0:
+                perfect_count += 1
+
+    total_days = len(daily_results)
+    avg_rate = (
+        sum(r["integrity_rate"] for r in daily_results) / total_days if total_days > 0 else 0.0
+    )
+
+    print("\n" + "=" * 65)
+    print(
+        f"       指数时间段完整性对账审计汇总报告 [{start_date} ~ {end_date}] (数据源: {data_source})       "
+    )
+    print("=" * 65)
+    print(f"1. 审计交易日总数 (Trading Days):    {total_days} 天")
+    print(f"2. 完美无缺失天数 (Perfect Days):    {perfect_count} 天")
+    print(f"3. 存在缺失天数 (Problem Days):     {total_days - perfect_count} 天")
+    print(f"4. 区间平均数据完整率 (Avg Integrity Rate): {avg_rate:.2f}%")
+    print("=" * 65 + "\n")
+
+    return {
+        "total_days": total_days,
+        "perfect_days": perfect_count,
+        "avg_integrity_rate": avg_rate,
+        "daily_results": daily_results,
+    }
+
+
 def main() -> None:
     parser = argparse.ArgumentParser(description="数据完整性对账与审计工具")
     parser.add_argument(
@@ -311,6 +425,13 @@ def main() -> None:
         type=str,
         default="tushare",
         help="数据源标识名称 (如 tushare / yfinance / lixinger，默认: tushare)",
+    )
+    parser.add_argument(
+        "--mode",
+        type=str,
+        default="stock",
+        choices=["stock", "index"],
+        help="对账模式 (stock: 股票全市场审计, index: 指数观察池审计，默认: stock)",
     )
     parser.add_argument(
         "--date",
@@ -352,13 +473,22 @@ def main() -> None:
         except ValueError:
             logger.error("开始日期或结束日期格式不正确，必须为 YYYY-MM-DD")
             sys.exit(1)
-        run_audit_range(
-            start_d,
-            end_d,
-            data_source=data_source,
-            max_workers=args.max_workers,
-            show_details=args.show_details,
-        )
+        if args.mode == "index":
+            run_index_audit_range(
+                start_d,
+                end_d,
+                data_source=data_source,
+                max_workers=args.max_workers,
+                show_details=args.show_details,
+            )
+        else:
+            run_audit_range(
+                start_d,
+                end_d,
+                data_source=data_source,
+                max_workers=args.max_workers,
+                show_details=args.show_details,
+            )
     else:
         target_date: date
         if args.date:
@@ -370,7 +500,10 @@ def main() -> None:
         else:
             target_date = date.today() - timedelta(days=1)
 
-        run_audit(target_date, data_source=data_source)
+        if args.mode == "index":
+            run_index_audit(target_date, data_source=data_source)
+        else:
+            run_audit(target_date, data_source=data_source)
 
 
 if __name__ == "__main__":

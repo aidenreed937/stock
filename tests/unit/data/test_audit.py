@@ -96,3 +96,52 @@ def test_audit_main_range_cli():
             max_workers=2,
             show_details=False,
         )
+
+
+def test_run_index_audit():
+    from stock.data.audit.reconciliation import run_index_audit
+
+    index_df = pl.DataFrame({
+        "symbol": ["000001.SH", "399001.SZ"],
+        "trade_date": ["2026-08-01", "2026-08-01"],
+    })
+
+    with patch("polars.read_parquet", return_value=index_df):
+        res = run_index_audit(date(2026, 8, 1), data_source="tushare")
+        assert res["date"] == date(2026, 8, 1)
+        assert res["actual_count"] == 2
+        assert res["integrity_rate"] > 0
+
+
+def test_run_index_audit_range():
+    from stock.data.audit.reconciliation import run_index_audit_range
+
+    mock_res = {
+        "date": date(2026, 8, 1),
+        "expected_count": 2,
+        "actual_count": 2,
+        "missing_count": 0,
+        "missing_indices": [],
+        "integrity_rate": 100.0,
+    }
+
+    with (
+        patch(
+            "stock.data.audit.reconciliation.get_trading_calendar",
+            return_value=[date(2026, 8, 1), date(2026, 8, 2)],
+        ),
+        patch("stock.data.audit.reconciliation.run_index_audit", return_value=mock_res),
+    ):
+        res = run_index_audit_range(date(2026, 8, 1), date(2026, 8, 2), data_source="tushare")
+        assert res["total_days"] == 2
+        assert res["perfect_days"] == 2
+        assert res["avg_integrity_rate"] == 100.0
+
+
+def test_audit_main_index_cli():
+    with (
+        patch("sys.argv", ["audit", "--mode", "index", "--date", "2026-08-01"]),
+        patch("stock.data.audit.reconciliation.run_index_audit") as mock_run_index,
+    ):
+        audit_main()
+        mock_run_index.assert_called_once_with(date(2026, 8, 1), data_source="tushare")
