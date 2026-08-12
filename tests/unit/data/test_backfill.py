@@ -93,3 +93,22 @@ def test_historical_backfiller_calendar_cache(tmp_path) -> None:
     backfiller.backfill_range(start_d, end_d)
     assert (start_d, end_d) in backfiller._calendar_cache
     assert len(backfiller._calendar_cache[(start_d, end_d)]) == 3
+
+
+def test_historical_backfiller_skips_unready_data(tmp_path) -> None:
+    from unittest.mock import patch
+    from stock.data.update_scheduler import DataUpdateScheduler
+
+    fetcher = MockDataFetcher()
+    pipeline = MarketDataPipeline(fetcher=fetcher, data_source="tushare")
+    backfiller = HistoricalBackfiller(
+        pipeline=pipeline, fetcher=fetcher, data_source="tushare", endpoint="daily"
+    )
+
+    start_d = date(2026, 8, 3)
+    end_d = date(2026, 8, 3)
+
+    # 模拟 DataUpdateScheduler 返回 False（未就绪）
+    with patch.object(DataUpdateScheduler, "is_data_ready", return_value=False):
+        todo = backfiller._generate_tasks(start_d, end_d)
+        assert len(todo) == 0

@@ -28,7 +28,7 @@
                                        ▼
                   ┌─────────────────────────────────────────┐
                   │ 3. Curated 精炼存储层 (data/curated/)    │
-                  │    DuckDB SQL 索引 + 标准化 Parquet       │
+                  │    按数据源隔离 + 标准化 Parquet          │
                   └────────────────────┬────────────────────┘
                                        │ (4. 零拷贝分析对接)
                                        ▼
@@ -46,7 +46,7 @@
 | 目录名称 | 分层定位 | 存储规范 / 路径结构 | 说明与核心作用 |
 | :--- | :--- | :--- | :--- |
 | **`data/raw/`** | **原始归档层**<br>(Raw Landing Zone) | `data/raw/{data_source}/{endpoint}/year=YYYY/month=MM/{endpoint}_{YYYYMMDD}.parquet` | 原汁原味保留 API 响应列与格式，按交易日合集保存全市场行情。<br>**主要作用：防重复请求、节省积分、支持本地离线重洗。** |
-| **`data/curated/`** | **精炼生产层**<br>(Curated Zone) | `data/curated/parquet/daily_{symbol}.parquet`<br>`data/curated/market_data.duckdb` | 规范化 Schema（统一列名、统一类型），注入 `data_source` 与 `updated_at` 血统。<br>**主要作用：供策略回测与分析引擎直接使用。** |
+| **`data/curated/`** | **精炼生产层**<br>(Curated Zone) | `data/curated/{data_source}/{dataset}/year=YYYY/month=MM/{dataset}_{YYYYMMDD}.parquet` | 规范化 Schema（统一列名、统一类型），按数据源隔离并注入 `data_source` 与 `updated_at` 血统。`mock` 只能写入 `data/curated/mock/`，不能与生产源共享目录。<br>**主要作用：供策略回测与分析引擎直接使用。** |
 | **`data/cache/`** | **临时缓存层**<br>(Transient Zone) | `data/cache/*.parquet` | 存储运行过程中的密集型计算中间结果（如长周期特征矩阵），可随时安全清空。 |
 
 ---
@@ -68,8 +68,8 @@
 
 | 对比维度 | RAW 原始层 (`data/raw/`) | Curated 精炼层 (`data/curated/`) |
 | :--- | :--- | :--- |
-| **组织维度** | **按交易日维度** (Batch by Trade Date) | **按股票标的维度** (Partitioned by Symbol) |
-| **单文件内容** | 包含单交易日 + 全市场 5000+ 股票的原始响应合集。 | 包含单只股票 + 跨越过去数年（2020~2026）的全部历史 K 线。 |
+| **组织维度** | **按交易日维度** (Batch by Trade Date) | **按数据源 + 交易日维度** (Partitioned by Source and Trade Date) |
+| **单文件内容** | 包含单交易日 + 全市场 5000+ 股票的原始响应合集。 | 包含一个数据源、一个数据集和一个业务日期的标准化行情快照。 |
 | **Schema 列名** | API 原始异构列名（如 `ts_code`, `vol`）。 | 统一规范列名（`symbol`, `trade_date`, `open`, `high`, `low`, `close`, `volume`）。 |
 | **元数据追踪** | 无 | 注入 `data_source`（数据源）与 `updated_at`（入库时间戳）。 |
 | **适用场景** | 盘后批量增量采集、网络断网离线重洗。 | 策略回测、指标计算、高频量化分析。 |
@@ -101,6 +101,7 @@ TUSHARE_MAX_WORKERS=4
 
 - **严格交易日历对齐**：必须要求 Fetcher 提供 `fetch_trade_cal` 接口获取精确开市交易日，严禁粗暴按周一至周五推算（若缺乏日历接口则主动抛出 `DataFetchError` 拦截）。
 - **断点续传与无损跳过**：回填前自动检索 `data/raw/` 时间分区，若已存在当天的 RAW 文件且未开启 `force_refresh` 则自动跳过，保障任务随时中断与恢复。
+- **数据源隔离与 fail-closed 校验**：Curated 默认按 `data_source` 建目录；写入前校验 `data_source`、`DatasetKey.provider`、`daily_bar` 契约和已有文件 schema。来源或 schema 不一致时拒绝写入，不使用隐式列合并。
 - **命令行快捷调用**：
   ```bash
   make backfill START=2026-08-01 END=2026-08-12

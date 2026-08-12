@@ -1,20 +1,24 @@
 """行情数据同步与 2-Tier ETL Pipeline 编排管道。"""
 
 from datetime import date, datetime
+
 import polars as pl
 
 from stock.data.cleaner.bar_cleaner import BarDataCleaner
 from stock.data.cleaner.base import BaseDataCleaner
+from stock.data.cleaner.generic_cleaner import GenericCleaner
+from stock.data.contracts import (
+    DAILY_BAR_CONTRACT,
+    DatasetKey,
+    dataset_for_endpoint,
+    instrument_for_symbol,
+)
 from stock.data.fetcher.base import BaseDataFetcher
 from stock.data.normalizer.bar_normalizer import BarDataNormalizer
 from stock.data.normalizer.base import BaseDataNormalizer
 from stock.data.storage.duckdb_store import DuckDBMarketStore
 from stock.data.storage.raw_store import RawDataStorage
 from stock.utils.logger import logger
-
-
-from stock.data.cleaner.generic_cleaner import GenericCleaner
-from stock.data.contracts import DAILY_BAR_CONTRACT, DatasetKey, dataset_for_endpoint, instrument_for_symbol
 
 
 class MarketDataPipeline:
@@ -61,7 +65,10 @@ class MarketDataPipeline:
             self.cleaner = GenericCleaner()
 
         self.normalizer = normalizer if normalizer is not None else BarDataNormalizer()
-        self.store = store if store is not None else DuckDBMarketStore()
+        self.store = store if store is not None else DuckDBMarketStore(data_source=data_source)
+        bind_data_source = getattr(self.store, "bind_data_source", None)
+        if callable(bind_data_source):
+            bind_data_source(data_source)
         self.raw_store = raw_store if raw_store is not None else RawDataStorage()
 
     def sync_daily_bars(

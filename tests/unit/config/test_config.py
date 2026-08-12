@@ -9,6 +9,7 @@ def test_settings_default_values() -> None:
     assert settings.app_name == "StockFinanceApp"
     assert settings.environment == "development"
     assert settings.log_level == "INFO"
+    assert settings.data_source_mode == "tushare"
 
 
 def test_load_strategy_config() -> None:

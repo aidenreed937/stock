@@ -8,9 +8,12 @@ from datetime import date, datetime, timedelta
 from typing import Any
 
 from stock.data.fetcher.base import BaseDataFetcher
+from stock.data.fetcher.mock import MockDataFetcher
 from stock.data.fetcher.tushare.facade import TuShareDataFetcher
 from stock.data.fetcher.tushare.factory import create_tushare_pipeline
+from stock.data.fetcher.yfinance.factory import create_yfinance_pipeline
 from stock.data.pipeline import MarketDataPipeline
+from stock.data.update_scheduler import DataUpdateScheduler
 from stock.exceptions import DataFetchError
 from stock.utils.logger import logger
 
@@ -33,11 +36,20 @@ class HistoricalBackfiller:
             data_source: 数据源标识名称（默认 tushare）。
             endpoint: API 接口名称（默认 daily）。
         """
-        self.fetcher = fetcher or TuShareDataFetcher()
+        if fetcher is not None:
+            self.fetcher = fetcher
+        elif data_source == "mock":
+            self.fetcher = MockDataFetcher()
+        elif data_source == "yfinance":
+            self.fetcher = create_yfinance_pipeline(endpoint=endpoint).fetcher
+        else:
+            self.fetcher = TuShareDataFetcher()
         if pipeline is not None:
             self.pipeline = pipeline
         elif data_source == "tushare":
             self.pipeline = create_tushare_pipeline(endpoint=endpoint)
+        elif data_source == "yfinance":
+            self.pipeline = create_yfinance_pipeline(endpoint=endpoint)
         else:
             self.pipeline = MarketDataPipeline(
                 fetcher=self.fetcher, data_source=data_source, endpoint=endpoint
@@ -88,7 +100,7 @@ class HistoricalBackfiller:
     def _generate_tasks(
         self, start_date: date, end_date: date, force_refresh: bool = False
     ) -> list[date]:
-        """生成并筛选需要进行数据同步的交易日任务列表（支持断点续传）。"""
+        """生成并筛选需要进行数据同步的交易日任务列表（支持断点续传与时间窗口拦截）。"""
         open_dates = self._get_open_trading_dates(
             start_date, end_date, use_cache=not force_refresh
         )
@@ -96,12 +108,26 @@ class HistoricalBackfiller:
         todo_dates = []
         for idx, trade_date in enumerate(open_dates, 1):
             # 检查断点续传：只有在精炼层（Curated Store）存在数据时，才认为该日真正完成
-            has_curated = getattr(self.pipeline.store, "has_curated", lambda e, d: False)(self.endpoint, trade_date)
+            has_curated = getattr(self.pipeline.store, "has_curated", lambda e, d: False)(
+                self.endpoint, trade_date
+            )
             if has_curated and not force_refresh:
                 logger.debug(
                     f"[{idx}/{len(open_dates)}] 命中精炼层归档 [{trade_date}]，断点续传自动跳过"
                 )
                 continue
+
+            # 检查时间窗口：防未到更新时间的盘中/盘后无效拉取
+            if not DataUpdateScheduler.is_data_ready(
+                endpoint=self.endpoint,
+                target_date=trade_date,
+                data_source=self.data_source,
+            ):
+                logger.info(
+                    f"[{idx}/{len(open_dates)}] 交易日 [{trade_date}] 数据未到预计更新时间，安全跳过拉取"
+                )
+                continue
+
             todo_dates.append(trade_date)
         return todo_dates
 
@@ -233,4 +259,3 @@ if __name__ == "__main__":
         data_source=args.data_source, endpoint=args.endpoint
     )
     backfiller.backfill_range(start_d, end_d, force_refresh=args.force_refresh, max_workers=args.max_workers)
-

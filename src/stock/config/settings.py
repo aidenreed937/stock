@@ -1,4 +1,5 @@
 from pathlib import Path
+from typing import Literal
 
 from pydantic_settings import BaseSettings, SettingsConfigDict
 
@@ -29,7 +30,8 @@ class Settings(BaseSettings):
     tushare_max_workers: int = 4
     akshare_proxy: str = ""
     yfinance_proxy: str = ""
-    data_source_mode: str = "mock"
+    data_source_mode: Literal["tushare", "mock", "yfinance"] = "tushare"
+    endpoint_update_time_overrides: dict[str, str] = {}
 
     def setup_directories(self) -> None:
         """确保数据与缓存目录存在"""

@@ -12,6 +12,8 @@ class EndpointMeta:
     group: str = "market_data"
     primary_keys: list[str] = field(default_factory=list)
     rate_limit_per_min: int = 200
+    update_time: str = "18:00"
+    update_delay_days: int = 0
 
 
 # 常用 TuShare 接口元数据注册表
@@ -22,6 +24,8 @@ TUSHARE_API_REGISTRY: dict[str, EndpointMeta] = {
         group="market_data",
         primary_keys=["ts_code", "trade_date"],
         rate_limit_per_min=500,
+        update_time="17:00",
+        update_delay_days=0,
     ),
     "daily_basic": EndpointMeta(
         api_name="daily_basic",
@@ -29,6 +33,8 @@ TUSHARE_API_REGISTRY: dict[str, EndpointMeta] = {
         group="market_indicators",
         primary_keys=["ts_code", "trade_date"],
         rate_limit_per_min=500,
+        update_time="18:00",
+        update_delay_days=0,
     ),
     "stock_basic": EndpointMeta(
         api_name="stock_basic",
@@ -134,6 +140,8 @@ TUSHARE_API_REGISTRY: dict[str, EndpointMeta] = {
         group="market_indicators",
         primary_keys=["trade_date", "exchange_id"],
         rate_limit_per_min=100,
+        update_time="09:00",
+        update_delay_days=1,
     ),
     "margin_detail": EndpointMeta(
         api_name="margin_detail",
@@ -141,6 +149,8 @@ TUSHARE_API_REGISTRY: dict[str, EndpointMeta] = {
         group="market_data",
         primary_keys=["ts_code", "trade_date"],
         rate_limit_per_min=100,
+        update_time="09:00",
+        update_delay_days=1,
     ),
     "moneyflow_hsgt": EndpointMeta(
         api_name="moneyflow_hsgt",
