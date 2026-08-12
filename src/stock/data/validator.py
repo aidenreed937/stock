@@ -85,11 +85,23 @@ class OfflineDataValidator:
             # 允许 0.1% 内的尾数舍入浮点误差
             calc_diff_count = len(diff_df.filter(pl.col("diff") > 0.1))
 
+        # 6. 时间序列数据故障校验 (飞线/误脉冲与换手率溢出)
+        spike_fault_count = 0
+        if "pct_chg" in df.columns:
+            # 标记单日涨幅绝对值超出 1000% 的飞线故障 (剔除创业板/科创板新股首日合法暴涨)
+            spike_fault_count = len(df.filter(pl.col("pct_chg").abs() > 1000.0))
+
+        turnover_fault_count = 0
+        if "turnover_rate" in df.columns:
+            turnover_fault_count = len(df.filter(pl.col("turnover_rate") > 300.0))
+
         passed = (
             dup_count == 0
             and total_nulls == 0
             and physical_error_count == 0
             and len(truncated_dates) == 0
+            and spike_fault_count == 0
+            and turnover_fault_count == 0
         )
 
         return {
@@ -102,6 +114,8 @@ class OfflineDataValidator:
             "null_details": null_counts,
             "physical_errors": physical_error_count,
             "calc_diff_errors": calc_diff_count,
+            "spike_faults": spike_fault_count,
+            "turnover_faults": turnover_fault_count,
             "truncated_dates_count": len(truncated_dates),
             "anomaly_dates_count": len(anomaly_dates),
             "daily_distribution": date_counts,
@@ -142,9 +156,11 @@ def main() -> None:
     print(f"  - 截断日数量  : {report['truncated_dates_count']:>10} 天 (条数>=6000，预期: 0)")
     print(f"  - 异常日数量  : {report['anomaly_dates_count']:>10} 天 (条数<3000，预期: 0)")
     print("-" * 75)
-    print("【2. 准确性校验】")
+    print("【2. 准确性校验与数据故障诊断】")
     print(f"  - OHLC 物理逻辑错误数: {report['physical_errors']:>10} 行 (如 high<low 或 <=0，预期: 0)")
     print(f"  - 涨跌幅公式推演偏差数: {report['calc_diff_errors']:>10} 行 (与 (close-pre)/pre 偏差>0.1%，预期: 0)")
+    print(f"  - 极端飞线/错位故障数: {report['spike_faults']:>10} 行 (如单日涨跌幅>500%，预期: 0)")
+    print(f"  - 换手率物理溢出故障数: {report['turnover_faults']:>10} 行 (如换手率>300%，预期: 0)")
     print("-" * 75)
     print("【3. 按交易日数据量分布明细】")
     dist = report["daily_distribution"]

@@ -59,7 +59,15 @@ class BarDataCleaner(BaseDataCleaner):
             & (pl.col("low") <= pl.col("close"))
         )
 
-        # 4. 按交易日与标的代码去重
+        # 4. 数据故障过滤: 换手率超物理极限 (turnover_rate > 300%)
+        if "turnover_rate" in cleaned_df.columns:
+            cleaned_df = cleaned_df.filter(pl.col("turnover_rate") <= 300.0)
+
+        # 5. 数据故障过滤: 单日极端飞线跳变 (pct_chg > 1000%，属于典型数据单位错位或误脉冲；排除新股首日合法暴涨)
+        if "pct_chg" in cleaned_df.columns:
+            cleaned_df = cleaned_df.filter(pl.col("pct_chg").abs() <= 1000.0)
+
+        # 6. 按交易日与标的代码去重
         if sym_col in cleaned_df.columns and "trade_date" in cleaned_df.columns:
             cleaned_df = cleaned_df.unique(subset=[sym_col, "trade_date"], keep="last")
 
