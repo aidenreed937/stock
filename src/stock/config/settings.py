@@ -1,5 +1,5 @@
 from pathlib import Path
-from typing import Literal
+from typing import Any, Literal
 
 from pydantic_settings import BaseSettings, SettingsConfigDict
 
@@ -49,6 +49,29 @@ class Settings(BaseSettings):
     def effective_lixinger_url(self) -> str:
         """获取有效的理杏仁 API 服务器地址。"""
         return self.lixinger_url or self.lxr_url or "https://open.lixinger.com"
+
+    def model_post_init(self, __context: Any) -> None:
+        """在初始化后加载 config/data.yaml YAML 配置文件。"""
+        yaml_path = Path("config/data.yaml")
+        if yaml_path.exists():
+            try:
+                import yaml
+
+                with yaml_path.open("r", encoding="utf-8") as f:
+                    raw_data = yaml.safe_load(f)
+                if raw_data and "data" in raw_data:
+                    data_cfg = raw_data["data"]
+                    if (
+                        "default_benchmark_index_code" in data_cfg
+                        and "default_benchmark_index_code" not in self.model_fields_set
+                    ):
+                        object.__setattr__(
+                            self,
+                            "default_benchmark_index_code",
+                            str(data_cfg["default_benchmark_index_code"]),
+                        )
+            except Exception:  # noqa: S110
+                pass
 
     def setup_directories(self) -> None:
         """确保数据与缓存目录存在"""

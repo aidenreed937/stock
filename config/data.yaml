@@ -1,0 +1,9 @@
+# 全局数据源与基准配置文件
+data:
+  default_benchmark_index_code: "000001"  # 交易日历基准指数代码 (上证指数)
+  default_source_mode: "tushare"           # 默认主数据源 (tushare / lixinger / yfinance / mock)
+
+  rate_limits:
+    tushare_per_min: 200
+    yfinance_per_min: 60
+    lixinger_per_min: 1000
