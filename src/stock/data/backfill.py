@@ -33,6 +33,10 @@ MARKET_SINGLE_SYNC_ENDPOINTS: set[str] = {
     "index_classify",
     "index_member",
     "fund_basic",
+    "sw_2021_constituents",
+    "sw_2021_fundamental",
+    "cn/industry/constituents/sw_2021",
+    "cn/industry/fundamental/sw_2021",
 }
 
 

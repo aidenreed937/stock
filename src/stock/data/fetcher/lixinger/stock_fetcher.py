@@ -77,23 +77,47 @@ class LixingerStockFetcher:
         if meta.default_metrics:
             query_kwargs["metricsList"] = meta.default_metrics
 
-        if endpoint == "cn/industry/constituents/sw_2021":
+        if "constituents" in endpoint:
             query_kwargs["date"] = start_str
+            # 成份股列表查询无需指定单只 stockCodes，理杏仁将全量返回全行业成份股
+            if "stockCodes" in query_kwargs:
+                query_kwargs.pop("stockCodes", None)
+            if "stockCode" in query_kwargs:
+                query_kwargs.pop("stockCode", None)
         else:
             query_kwargs["startDate"] = start_str
             query_kwargs["endDate"] = end_str
 
-        if raw_code:
-            if meta.code_param_name == "stockCode":
-                query_kwargs["stockCode"] = raw_code
-            else:
-                query_kwargs["stockCodes"] = [raw_code]
-        elif not query_kwargs.get("stockCodes") and not query_kwargs.get("stockCode"):
-            if endpoint == "cn/index/fundamental":
-                data_conf = load_data_config()
-                lx_indices = data_conf.watchlists.lixinger.indices
-                default_code = lx_indices[0] if lx_indices else "000985"
-                query_kwargs["stockCodes"] = [default_code]
+            if raw_code and raw_code != endpoint and not raw_code.startswith("sw_2021"):
+                if meta.code_param_name == "stockCode":
+                    query_kwargs["stockCode"] = raw_code
+                else:
+                    query_kwargs["stockCodes"] = [raw_code]
+            elif not query_kwargs.get("stockCodes") and not query_kwargs.get("stockCode"):
+                if "index" in endpoint or endpoint == "cn/index/fundamental":
+                    data_conf = load_data_config()
+                    lx_indices = data_conf.watchlists.lixinger.indices
+                    default_code = lx_indices[0] if lx_indices else "000985"
+                    query_kwargs["stockCodes"] = [default_code]
+                elif "industry" in endpoint or "sw_2021" in endpoint:
+                    codes = [
+                        "110000", "210000", "220000", "230000", "240000", "270000",
+                        "280000", "330000", "340000", "350000", "360000", "370000",
+                        "410000", "420000", "430000", "450000", "460000", "480000",
+                        "490000", "510000", "610000", "620000", "630000", "640000",
+                        "650000", "710000", "720000", "730000", "740000", "750000", "760000", "770000"
+                    ]
+                    # 申万行业估值接口限制单次只能查询 1 个行业代码，逐个查询并拼接
+                    dfs: list[pl.DataFrame] = []
+                    for code in codes:
+                        sub_kwargs = dict(query_kwargs)
+                        sub_kwargs["stockCodes"] = [code]
+                        sub_df = self.client.query(meta.api_name, **sub_kwargs)
+                        if not sub_df.empty:
+                            dfs.append(pl.from_pandas(sub_df))
+                    if not dfs:
+                        return pl.DataFrame()
+                    return pl.concat(dfs, how="diagonal_relaxed")
 
         # 调用方传入的自定义参数覆盖默认配置
         query_kwargs.update(kwargs)
