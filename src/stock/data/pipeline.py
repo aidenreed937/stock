@@ -143,7 +143,8 @@ class MarketDataPipeline:
             )
 
         # 5. 精炼落盘 (Load to Curated Store)
-        DAILY_BAR_CONTRACT.validate(normalized_df)
+        if dataset == "daily_bar":
+            DAILY_BAR_CONTRACT.validate(normalized_df)
         self.store.save_dataset(key, normalized_df)
 
         logger.info(

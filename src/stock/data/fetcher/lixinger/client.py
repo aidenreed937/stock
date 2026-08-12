@@ -191,12 +191,17 @@ class LixingerClient:
 
             # 理杏仁 API 协议返回格式判定
             if isinstance(res_json, dict):
-                code = res_json.get("code")
-                msg_text = res_json.get("msg", "")
-                if code is not None and code != 0 and code != 200:
-                    raise DataFetchError(f"理杏仁 API 返回业务错误 [{code}]: {msg_text}")
+                if "error" in res_json:
+                    err_info = res_json.get("error")
+                    code = res_json.get("code", 0)
+                    raise DataFetchError(f"理杏仁 API 返回业务错误 [{code}]: {err_info}")
 
                 data = res_json.get("data")
+                if data is None and res_json.get("code") not in (1, 200, 0):
+                    code = res_json.get("code")
+                    msg_text = res_json.get("msg") or res_json.get("message", "")
+                    raise DataFetchError(f"理杏仁 API 返回业务错误 [{code}]: {msg_text}")
+
                 if isinstance(data, list):
                     return pd.DataFrame(data)
                 if isinstance(data, dict):

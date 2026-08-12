@@ -64,10 +64,15 @@ class BarDataNormalizer(BaseDataNormalizer):
             non_null_vals = normalized_df["trade_date"].drop_nulls()
             if not non_null_vals.is_empty():
                 first_val = non_null_vals[0]
-                fmt = "%Y%m%d" if len(first_val) == 8 else "%Y-%m-%d"
-                normalized_df = normalized_df.with_columns(
-                    pl.col("trade_date").str.to_date(fmt).alias("trade_date")
-                )
+                if "T" in first_val:
+                    normalized_df = normalized_df.with_columns(
+                        pl.col("trade_date").str.slice(0, 10).str.to_date("%Y-%m-%d").alias("trade_date")
+                    )
+                else:
+                    fmt = "%Y%m%d" if len(first_val) == 8 else "%Y-%m-%d"
+                    normalized_df = normalized_df.with_columns(
+                        pl.col("trade_date").str.to_date(fmt).alias("trade_date")
+                    )
 
         # 3. 按统一的标准列名过滤并排序
         existing_std_cols = [c for c in STANDARD_COLUMNS if c in normalized_df.columns]

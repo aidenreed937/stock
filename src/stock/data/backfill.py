@@ -29,6 +29,7 @@ class HistoricalBackfiller:
         fetcher: BaseDataFetcher | None = None,
         data_source: str = "tushare",
         endpoint: str = "daily",
+        symbol: str = "",
     ) -> None:
         """初始化历史数据回填器。
 
@@ -37,7 +38,9 @@ class HistoricalBackfiller:
             fetcher: 数据抓取器，若为 None 则默认使用 TuShareDataFetcher。
             data_source: 数据源标识名称（默认 tushare）。
             endpoint: API 接口名称（默认 daily）。
+            symbol: 标的代码或行业代码。
         """
+        self.symbol = symbol
         if fetcher is not None:
             self.fetcher = fetcher
         elif data_source == "mock":
@@ -141,7 +144,7 @@ class HistoricalBackfiller:
         """执行单日两层 ETL 管道数据补全。返回同步是否成功。"""
         try:
             df = self.pipeline.sync_daily_bars(
-                symbol="",
+                symbol=self.symbol,
                 start_date=trade_date,
                 end_date=trade_date,
                 use_raw_cache=not force_refresh,
@@ -248,6 +251,9 @@ def _parse_args() -> argparse.Namespace:
         "--endpoint", type=str, default="daily", help="API 接口名称 (默认: daily)"
     )
     parser.add_argument(
+        "--symbol", type=str, default="", help="标的代码或行业代码 (可选)"
+    )
+    parser.add_argument(
         "--force-refresh", action="store_true", help="强制从 API 重新拉取并覆盖本地缓存"
     )
     parser.add_argument(
@@ -273,6 +279,6 @@ if __name__ == "__main__":
         )
 
     backfiller = HistoricalBackfiller(
-        data_source=args.data_source, endpoint=args.endpoint
+        data_source=args.data_source, endpoint=args.endpoint, symbol=args.symbol
     )
     backfiller.backfill_range(start_d, end_d, force_refresh=args.force_refresh, max_workers=workers)
