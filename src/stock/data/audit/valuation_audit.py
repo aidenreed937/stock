@@ -64,3 +64,53 @@ def run_daily_basic_audit(
         "integrity_rate": integrity_rate,
         "missing_symbols": sorted(list(missing_in_basic)),
     }
+
+
+def run_sw_industry_audit(
+    target_date: date, data_source: str = "lixinger", quiet: bool = False
+) -> dict[str, Any]:
+    """审计申万 2021 版行业成分股图谱 (sw_2021_constituents) 与行业全历史估值序列 (sw_2021_fundamental)。"""
+    logger.info(f"开始申万行业图谱与估值对账审计，目标日期: {target_date} [数据源: {data_source}]")
+
+    # 1. 检查 sw_2021_constituents 行业图谱落盘
+    const_path = f"data/curated/{data_source}/market=CN/sw_2021_constituents/data.parquet"
+    try:
+        const_df = pl.read_parquet(const_path)
+        const_count = const_df["symbol"].n_unique() if "symbol" in const_df.columns else 0
+    except Exception:
+        const_count = 0
+
+    # 2. 检查 sw_2021_fundamental 在 target_date 的估值记录
+    fund_path = f"data/curated/{data_source}/market=CN/sw_2021_fundamental/data.parquet"
+    try:
+        fund_df = pl.read_parquet(fund_path)
+        if "trade_date" in fund_df.columns and fund_df["trade_date"].dtype == pl.String:
+            fund_df = fund_df.with_columns(
+                pl.col("trade_date").str.to_date("%Y-%m-%d").alias("trade_date")
+            )
+        target_fund = fund_df.filter(pl.col("trade_date") == target_date)
+        ind_symbols = set(target_fund["symbol"].unique().to_list()) if "symbol" in target_fund.columns else set()
+    except Exception:
+        ind_symbols = set()
+
+    expected_ind_count = 31  # 申万 2021 版一级行业固定为 31 个
+    match_count = len(ind_symbols)
+    coverage_rate = (match_count / expected_ind_count * 100.0) if expected_ind_count else 0.0
+
+    if not quiet:
+        print("\n" + "=" * 65)
+        print(f"      【申万 2021 行业成份股图谱与行业估值对账报告 ({target_date})】")
+        print("=" * 65)
+        print(f"已落盘申万行业节点总数 : {const_count:>6} 个 (包含一、二、三级全部行业)")
+        print(f"理论申万一级行业总数   : {expected_ind_count:>6} 个")
+        print(f"当日完成估值对账行业数 : {match_count:>6} 个")
+        print(f"申万行业估值覆盖率     : {coverage_rate:>6.2f} %")
+        print("=" * 65 + "\n")
+
+    return {
+        "target_date": target_date,
+        "constituents_industry_count": const_count,
+        "expected_primary_industry_count": expected_ind_count,
+        "actual_industry_count": match_count,
+        "coverage_rate": coverage_rate,
+    }

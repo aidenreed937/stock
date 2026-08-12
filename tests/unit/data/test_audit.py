@@ -194,3 +194,20 @@ def test_run_hk_hold_audit():
         res = run_hk_hold_audit(date(2026, 8, 1))
         assert res["symbols_count"] == 1
         assert res["total_vol"] == 100000.0
+
+
+def test_run_sw_industry_audit():
+    from stock.data.audit import run_sw_industry_audit
+
+    const_df = pl.DataFrame({"symbol": ["110000", "210000"]})
+    fund_df = pl.DataFrame({"symbol": ["110000"], "trade_date": ["2026-08-01"]})
+
+    def mock_read(pattern: str):
+        if "sw_2021_constituents" in pattern:
+            return const_df
+        return fund_df
+
+    with patch("polars.read_parquet", side_effect=mock_read):
+        res = run_sw_industry_audit(date(2026, 8, 1))
+        assert res["constituents_industry_count"] == 2
+        assert res["actual_industry_count"] == 1

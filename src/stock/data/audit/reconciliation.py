@@ -431,7 +431,7 @@ def run_index_audit_range(
 
 from stock.data.audit.factor_audit import run_adj_factor_audit
 from stock.data.audit.moneyflow_audit import run_hk_hold_audit
-from stock.data.audit.valuation_audit import run_daily_basic_audit
+from stock.data.audit.valuation_audit import run_daily_basic_audit, run_sw_industry_audit
 
 
 def main() -> None:
@@ -449,8 +449,8 @@ def main() -> None:
         "--mode",
         type=str,
         default="stock",
-        choices=["stock", "index", "daily_basic", "adj_factor", "hk_hold"],
-        help="对账模式 (stock: K线审计, index: 指数审计, daily_basic: 估值对账, adj_factor: 复权因子对账, hk_hold: 北向持仓对账)",
+        choices=["stock", "index", "daily_basic", "adj_factor", "hk_hold", "sw_industry"],
+        help="对账模式 (stock: K线审计, index: 指数审计, daily_basic: 估值对账, adj_factor: 复权因子对账, hk_hold: 北向持仓, sw_industry: 申万行业成份股及估值)",
     )
     parser.add_argument(
         "--date",
@@ -527,6 +527,8 @@ def main() -> None:
             run_adj_factor_audit(target_date, data_source=data_source)
         elif args.mode == "hk_hold":
             run_hk_hold_audit(target_date, data_source=data_source)
+        elif args.mode == "sw_industry":
+            run_sw_industry_audit(target_date, data_source=args.data_source if args.data_source != "tushare" else "lixinger")
         else:
             run_audit(target_date, data_source=data_source)
 
