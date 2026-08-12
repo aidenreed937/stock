@@ -9,29 +9,45 @@ import polars as pl
 from stock.data.storage.duckdb_store import DuckDBMarketStore
 from stock.utils.logger import logger, setup_logger
 
+from stock.data.validator.rules import (
+    BaseValidationRule,
+    NullCheckRule,
+    PrimaryKeyRule,
+    OhlcLogicRule,
+    VolatilityRule,
+    CompletenessRule,
+)
+
 
 class OfflineDataValidator:
     """离线数据质量审计器，负责校验本地落盘 parquet 与 DuckDB 行情数据的完整性与准确性。"""
 
-    def __init__(self, store: DuckDBMarketStore | None = None) -> None:
+    def __init__(
+        self,
+        store: DuckDBMarketStore | None = None,
+        rules: list[BaseValidationRule] | None = None,
+    ) -> None:
         """初始化校验器。
 
         Args:
             store: DuckDB 存储实例，若为 None 则自动创建。
+            rules: 校验规则链，若为 None 则默认组装日线全套校验规则。
         """
         self.store = store or DuckDBMarketStore()
+        self.rules = rules if rules is not None else [
+            NullCheckRule(),
+            PrimaryKeyRule(),
+            OhlcLogicRule(),
+            VolatilityRule(),
+            CompletenessRule(),
+        ]
 
     def audit_daily_bars(
         self, endpoint: str = "daily", start_date: date | None = None, end_date: date | None = None
     ) -> dict[str, Any]:
         """对本地存储的日线行情数据执行完整性与准确性离线审计。
 
-        校验维度包括:
-        1. 时间轴完整性 (包含天数、唯一交易日数)。
-        2. 截断与覆盖率异常检测 (每天记录数是否在合规区间 [3000, 6000])。
-        3. 主键唯一性 (symbol + trade_date 组合重复率)。
-        4. 物理与逻辑准确性 (空值率、价格非正值、OHLC 物理关系错误数)。
-        5. 涨跌幅一致性 (pct_chg 与 (close - pre_close)/pre_close 对齐度)。
+        校验维度通过注入的 rules 规则链执行。
 
         Returns:
             dict: 包含各项审计指标与结论的报告元数据。
@@ -41,85 +57,26 @@ class OfflineDataValidator:
             return {"status": "EMPTY", "message": "未检索到任何本地归档数据"}
 
         total_records = len(df)
-        unique_dates = df["trade_date"].unique().to_list()
-        unique_symbols = df["symbol"].unique().to_list()
+        unique_dates = df["trade_date"].unique().to_list() if "trade_date" in df.columns else []
+        unique_symbols = df["symbol"].unique().to_list() if "symbol" in df.columns else []
 
-        # 1. 每日记录数分布统计与截断/缺失检测
-        date_counts = df.group_by("trade_date").agg(pl.count("symbol").alias("count")).sort("trade_date")
-        anomaly_dates = date_counts.filter((pl.col("count") < 3000) | (pl.col("count") >= 6000))
-        truncated_dates = date_counts.filter(pl.col("count") >= 6000)
-
-        # 2. 主键重复数校验
-        dup_count = total_records - len(df.unique(subset=["symbol", "trade_date"]))
-
-        # 3. 核心关键列空值校验
-        null_counts = {
-            col: df[col].null_count()
-            for col in ["symbol", "trade_date", "close", "open", "high", "low"]
-            if col in df.columns
-        }
-        total_nulls = sum(null_counts.values())
-
-        # 4. OHLC 物理逻辑错误数校验
-        physical_errors = df.filter(
-            (pl.col("open") <= 0)
-            | (pl.col("high") <= 0)
-            | (pl.col("low") <= 0)
-            | (pl.col("close") <= 0)
-            | (pl.col("high") < pl.col("low"))
-            | (pl.col("high") < pl.col("open"))
-            | (pl.col("high") < pl.col("close"))
-            | (pl.col("low") > pl.col("open"))
-            | (pl.col("low") > pl.col("close"))
-        )
-        physical_error_count = len(physical_errors)
-
-        # 5. 涨跌幅计算偏差度校验 (仅在包含 pre_close 时计算)
-        calc_diff_count = 0
-        if "pre_close" in df.columns and "pct_chg" in df.columns:
-            diff_df = df.filter(pl.col("pre_close") > 0).with_columns(
-                (((pl.col("close") - pl.col("pre_close")) / pl.col("pre_close") * 100) - pl.col("pct_chg"))
-                .abs()
-                .alias("diff")
-            )
-            # 允许 0.1% 内的尾数舍入浮点误差
-            calc_diff_count = len(diff_df.filter(pl.col("diff") > 0.1))
-
-        # 6. 时间序列数据故障校验 (飞线/误脉冲与换手率溢出)
-        spike_fault_count = 0
-        if "pct_chg" in df.columns:
-            # 标记单日涨幅绝对值超出 1000% 的飞线故障 (剔除创业板/科创板新股首日合法暴涨)
-            spike_fault_count = len(df.filter(pl.col("pct_chg").abs() > 1000.0))
-
-        turnover_fault_count = 0
-        if "turnover_rate" in df.columns:
-            turnover_fault_count = len(df.filter(pl.col("turnover_rate") > 300.0))
-
-        passed = (
-            dup_count == 0
-            and total_nulls == 0
-            and physical_error_count == 0
-            and len(truncated_dates) == 0
-            and spike_fault_count == 0
-            and turnover_fault_count == 0
-        )
-
-        return {
-            "status": "PASSED" if passed else "WARNING",
+        report = {
             "total_records": total_records,
             "unique_dates_count": len(unique_dates),
             "unique_symbols_count": len(unique_symbols),
-            "duplicate_records": dup_count,
-            "total_nulls": total_nulls,
-            "null_details": null_counts,
-            "physical_errors": physical_error_count,
-            "calc_diff_errors": calc_diff_count,
-            "spike_faults": spike_fault_count,
-            "turnover_faults": turnover_fault_count,
-            "truncated_dates_count": len(truncated_dates),
-            "anomaly_dates_count": len(anomaly_dates),
-            "daily_distribution": date_counts,
         }
+
+        all_passed = True
+        for rule in self.rules:
+            res = rule.audit(df)
+            for k, v in res.items():
+                if k != "passed":
+                    report[k] = v
+            if not res.get("passed", True):
+                all_passed = False
+
+        report["status"] = "PASSED" if all_passed else "WARNING"
+        return report
 
 
 def _parse_args() -> argparse.Namespace:
