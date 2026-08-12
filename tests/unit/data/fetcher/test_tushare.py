@@ -30,10 +30,10 @@ def test_tushare_client_missing_token() -> None:
 
 def test_rate_limiter_acquire() -> None:
     limiter = RateLimiter(max_requests=5, time_window_seconds=1.0)
-    RateLimiter._requests.clear()
+    limiter._requests.clear()
     for _ in range(5):
         limiter.acquire()
-    assert len(RateLimiter._requests) == 5
+    assert len(limiter._requests) == 5
 
 
 def test_batch_slice_and_merge() -> None:
