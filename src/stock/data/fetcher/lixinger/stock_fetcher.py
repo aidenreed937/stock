@@ -46,6 +46,26 @@ class LixingerStockFetcher:
         meta = LIXINGER_API_REGISTRY.get(
             endpoint, EndpointMeta(api_name=endpoint, description=endpoint)
         )
+        # 理杏仁限制单次请求时间跨度不能超过 10 年，若跨度超过 9 年则自动分段拉取
+        if (end_date - start_date).days > 3200 and endpoint != "cn/industry/constituents/sw_2021":
+            chunks: list[pl.DataFrame] = []
+            curr_start = start_date
+            while curr_start <= end_date:
+                curr_end = min(curr_start + timedelta(days=3200), end_date)
+                chunk_df = self.fetch_daily_bars_df(
+                    symbol=symbol,
+                    start_date=curr_start,
+                    end_date=curr_end,
+                    endpoint=endpoint,
+                    **kwargs,
+                )
+                if not chunk_df.is_empty():
+                    chunks.append(chunk_df)
+                curr_start = curr_end + timedelta(days=1)
+            if not chunks:
+                return pl.DataFrame()
+            return pl.concat(chunks).unique()
+
         start_str = start_date.strftime("%Y-%m-%d")
         end_str = end_date.strftime("%Y-%m-%d")
 

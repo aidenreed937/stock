@@ -472,10 +472,32 @@ def main() -> None:
             data_cfg.concurrency.default_max_workers,
         )
 
+    per_symbol_eps = set(
+        getattr(
+            getattr(data_cfg, "endpoint_symbol_modes", None),
+            "per_symbol_endpoints",
+            ["index_daily", "index_dailybasic", "index_weight", "global_index_daily", "fund_daily"],
+        )
+    )
+
     wl = getattr(data_cfg.watchlists, data_source, None)
     if wl is not None:
-        if endpoint == "index_daily" and hasattr(wl, "indices") and wl.indices:
+        if endpoint in per_symbol_eps and hasattr(wl, "indices") and wl.indices:
             raw_symbols = wl.indices
+            supports = (
+                getattr(data_cfg, "source_endpoint_supports", {})
+                .get(data_source, {})
+                .get(endpoint, [])
+            )
+            if supports:
+                supported_set = set(supports)
+                filtered = [s for s in raw_symbols if s in supported_set]
+                ignored = [s for s in raw_symbols if s not in supported_set]
+                if ignored:
+                    logger.info(
+                        f"数据源 [{data_source}] 接口 [{endpoint}] 仅支持白名单 {sorted(supports)}，自动跳过不支持的标的: {ignored}"
+                    )
+                raw_symbols = filtered
         elif hasattr(wl, "all_symbols"):
             raw_symbols = wl.all_symbols
         elif isinstance(wl, list):
@@ -485,7 +507,7 @@ def main() -> None:
     else:
         raw_symbols = []
 
-    if symbol == "all" and endpoint != "index_daily":
+    if symbol == "all" and endpoint not in per_symbol_eps:
         target_symbols = [""]
     else:
         target_symbols = [symbol] if (symbol and symbol not in ("all", "watchlist")) else raw_symbols

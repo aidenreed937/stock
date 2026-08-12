@@ -140,6 +140,25 @@ class ConcurrencyConfig(BaseModel):
     default_max_workers: int = Field(default=4, gt=0, description="默认通用抓取最大并发线程数")
 
 
+class EndpointSymbolModesConfig(BaseModel):
+    """接口采集模式路由配置。"""
+
+    per_symbol_endpoints: list[str] = Field(
+        default_factory=lambda: [
+            "index_daily",
+            "index_dailybasic",
+            "index_weight",
+            "global_index_daily",
+            "fund_daily",
+        ],
+        description="按标的按时间段采集的接口列表",
+    )
+    per_day_endpoints: list[str] = Field(
+        default_factory=lambda: ["daily", "daily_basic", "moneyflow", "adj_factor"],
+        description="按交易日全市场采集的接口列表",
+    )
+
+
 class DataConfig(BaseModel):
     """数据源与基准配置模型。"""
 
@@ -150,6 +169,10 @@ class DataConfig(BaseModel):
     rate_limits: RateLimitsConfig = Field(default_factory=RateLimitsConfig)
     concurrency: ConcurrencyConfig = Field(default_factory=ConcurrencyConfig)
     watchlists: WatchlistsConfig = Field(default_factory=WatchlistsConfig)
+    endpoint_symbol_modes: EndpointSymbolModesConfig = Field(
+        default_factory=EndpointSymbolModesConfig
+    )
+    source_endpoint_supports: dict[str, dict[str, list[str]]] = Field(default_factory=dict)
 
 
 class DataConfigFile(BaseModel):

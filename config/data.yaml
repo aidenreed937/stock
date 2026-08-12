@@ -51,4 +51,38 @@ data:
       stocks:
         - "600519"
         - "000001"
-      indices: []
+      indices:
+        - "000001" # 上证指数
+        - "399001" # 深证成指
+        - "000300" # 沪深300指数
+        - "000905" # 中证500指数
+        - "000852" # 中证1000指数
+        - "399006" # 创业板指
+        - "399102" # 创业板综
+        - "000985" # 中证全指
+        - "000922" # 中证红利
+        - "000688" # 科创50
+
+  # 接口采集模式路由表 (按标的按时间段 vs 按交易日全市场)
+  endpoint_symbol_modes:
+    per_symbol_endpoints:
+      - "index_daily"
+      - "index_dailybasic"
+      - "index_weight"
+      - "global_index_daily"
+      - "fund_daily"
+    per_day_endpoints:
+      - "daily"
+      - "daily_basic"
+      - "moneyflow"
+      - "adj_factor"
+
+  # 数据源接口特定限制白名单 (在发起网络请求前预先拦截)
+  source_endpoint_supports:
+    tushare:
+      index_dailybasic:
+        - "000001.SH"
+        - "399001.SZ"
+        - "000300.SH"
+        - "000905.SH"
+        - "399006.SZ"

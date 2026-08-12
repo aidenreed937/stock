@@ -10,6 +10,11 @@ from stock.data.fetcher.tushare.registry import EndpointMeta, TUSHARE_API_REGIST
 from stock.models.market import DailyBar
 
 
+TUSHARE_INDEX_DAILYBASIC_SUPPORTED_CODES = {
+    "000001.SH", "399001.SZ", "000300.SH", "000905.SH", "399006.SZ"
+}
+
+
 class TuShareStockFetcher:
     """TuShare 股票领域专用数据抓取组件。"""
 
@@ -38,6 +43,12 @@ class TuShareStockFetcher:
         meta = TUSHARE_API_REGISTRY.get(
             endpoint, EndpointMeta(api_name=endpoint, description=endpoint)
         )
+        if endpoint == "index_dailybasic" and symbol and symbol not in TUSHARE_INDEX_DAILYBASIC_SUPPORTED_CODES:
+            from stock.utils.logger import logger
+            logger.info(
+                f"TuShare index_dailybasic 接口不支持指数 [{symbol}]，自动跳过请求以节省流量和额度"
+            )
+            return pl.DataFrame()
         start_str = start_date.strftime("%Y%m%d")
         end_str = end_date.strftime("%Y%m%d")
 
