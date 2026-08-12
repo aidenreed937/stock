@@ -26,8 +26,9 @@ def test_run_audit_success():
         "close": [10.0],
     })
 
-    def mock_read_parquet(pattern: str):
-        if "stock_basic" in pattern:
+    def mock_read_parquet(pattern):
+        pattern_str = str(pattern)
+        if "stock_basic" in pattern_str:
             return stock_basic_df
         return daily_df
 

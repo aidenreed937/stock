@@ -26,9 +26,14 @@ def run_audit(target_date: date, data_source: str = "tushare", quiet: bool = Fal
     logger.info(f"开始对账审计，目标日期: {target_date} [数据源: {data_source}]")
 
     # 1. 检查 stock_basic 基础元数据是否存在
-    basic_pattern = f"data/curated/{data_source}/market=CN/stock_basic/*/*/*.parquet"
+    basic_pattern = f"data/curated/{data_source}/market=CN/stock_basic"
     try:
-        basic_df = pl.read_parquet(basic_pattern)
+        basic_files = list(Path(basic_pattern).rglob("*.parquet"))
+        if basic_files:
+            basic_df = pl.read_parquet(basic_files)
+        else:
+            # 兼容 Mock 路径或空情形
+            basic_df = pl.read_parquet(f"{basic_pattern}/data.parquet")
     except Exception as e:
         logger.error(f"加载 [{data_source}] stock_basic 数据集失败，请确认是否已执行过基础数据拉取: {e}")
         return {}
