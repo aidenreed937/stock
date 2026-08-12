@@ -42,16 +42,24 @@ class TuShareStockFetcher:
         end_str = end_date.strftime("%Y%m%d")
 
         query_kwargs: dict[str, Any] = {}
-        if symbol:
-            query_kwargs["ts_code"] = symbol
-            query_kwargs["start_date"] = start_str
-            query_kwargs["end_date"] = end_str
+        is_real_symbol = symbol and (symbol != endpoint)
+
+        if meta.frequency == "event":
+            if is_real_symbol:
+                query_kwargs["ts_code"] = symbol
+            if endpoint == "stock_basic" and not is_real_symbol:
+                query_kwargs["list_status"] = "L"
         else:
-            if start_date == end_date:
-                query_kwargs["trade_date"] = start_str
-            else:
+            if is_real_symbol:
+                query_kwargs["ts_code"] = symbol
                 query_kwargs["start_date"] = start_str
                 query_kwargs["end_date"] = end_str
+            else:
+                if start_date == end_date:
+                    query_kwargs["trade_date"] = start_str
+                else:
+                    query_kwargs["start_date"] = start_str
+                    query_kwargs["end_date"] = end_str
 
         pandas_df = self.client.query(meta.api_name, **query_kwargs)
 

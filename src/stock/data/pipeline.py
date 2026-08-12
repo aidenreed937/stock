@@ -95,7 +95,7 @@ class MarketDataPipeline:
 
         raw_df: pl.DataFrame | None = None
         dataset = dataset_for_endpoint(self.endpoint, symbol=symbol)
-        instrument = instrument_for_symbol(symbol, self.data_source)
+        instrument = None if symbol == self.endpoint else instrument_for_symbol(symbol, self.data_source)
         key = DatasetKey(
             provider=self.data_source,
             dataset=dataset,
@@ -135,42 +135,43 @@ class MarketDataPipeline:
                 exchange_expr = pl.lit(instrument.exchange)
                 currency_expr = pl.lit(instrument.currency)
             else:
-                # 动态从 symbol 列推断市场、交易所和币种 (用于全市场同步时的单行推断)
+                # 动态从 ts_code/symbol 列推断市场、交易所和币种 (用于全市场同步时的单行推断)
+                col_ref = pl.col("ts_code") if "ts_code" in normalized_df.columns else pl.col("symbol")
                 market_expr = (
                     pl.when(
-                        pl.col("symbol").str.to_uppercase().str.ends_with(".SH")
-                        | pl.col("symbol").str.to_uppercase().str.ends_with(".SS")
-                        | pl.col("symbol").str.to_uppercase().str.ends_with(".SZ")
-                        | pl.col("symbol").str.to_uppercase().str.ends_with(".BJ")
+                        col_ref.str.to_uppercase().str.ends_with(".SH")
+                        | col_ref.str.to_uppercase().str.ends_with(".SS")
+                        | col_ref.str.to_uppercase().str.ends_with(".SZ")
+                        | col_ref.str.to_uppercase().str.ends_with(".BJ")
                     )
                     .then(pl.lit("CN"))
-                    .when(pl.col("symbol").str.to_uppercase().str.ends_with(".HK"))
+                    .when(col_ref.str.to_uppercase().str.ends_with(".HK"))
                     .then(pl.lit("HK"))
                     .otherwise(pl.lit("US"))
                 )
                 exchange_expr = (
                     pl.when(
-                        pl.col("symbol").str.to_uppercase().str.ends_with(".SH")
-                        | pl.col("symbol").str.to_uppercase().str.ends_with(".SS")
+                        col_ref.str.to_uppercase().str.ends_with(".SH")
+                        | col_ref.str.to_uppercase().str.ends_with(".SS")
                     )
                     .then(pl.lit("SSE"))
-                    .when(pl.col("symbol").str.to_uppercase().str.ends_with(".SZ"))
+                    .when(col_ref.str.to_uppercase().str.ends_with(".SZ"))
                     .then(pl.lit("SZSE"))
-                    .when(pl.col("symbol").str.to_uppercase().str.ends_with(".BJ"))
+                    .when(col_ref.str.to_uppercase().str.ends_with(".BJ"))
                     .then(pl.lit("BSE"))
-                    .when(pl.col("symbol").str.to_uppercase().str.ends_with(".HK"))
+                    .when(col_ref.str.to_uppercase().str.ends_with(".HK"))
                     .then(pl.lit("HKEX"))
                     .otherwise(pl.lit("US_EXCHANGE"))
                 )
                 currency_expr = (
                     pl.when(
-                        pl.col("symbol").str.to_uppercase().str.ends_with(".SH")
-                        | pl.col("symbol").str.to_uppercase().str.ends_with(".SS")
-                        | pl.col("symbol").str.to_uppercase().str.ends_with(".SZ")
-                        | pl.col("symbol").str.to_uppercase().str.ends_with(".BJ")
+                        col_ref.str.to_uppercase().str.ends_with(".SH")
+                        | col_ref.str.to_uppercase().str.ends_with(".SS")
+                        | col_ref.str.to_uppercase().str.ends_with(".SZ")
+                        | col_ref.str.to_uppercase().str.ends_with(".BJ")
                     )
                     .then(pl.lit("CNY"))
-                    .when(pl.col("symbol").str.to_uppercase().str.ends_with(".HK"))
+                    .when(col_ref.str.to_uppercase().str.ends_with(".HK"))
                     .then(pl.lit("HKD"))
                     .otherwise(pl.lit("USD"))
                 )
