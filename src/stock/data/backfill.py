@@ -419,9 +419,9 @@ class HistoricalBackfiller:
                                 )
                             else:
                                 failed_count += len(dates)
-                            logger.warning(
-                                f"[{idx}/{len(batch_items)}] 月度批次 [{ym[0]}-{ym[1]:02d}] 回填失败"
-                            )
+                                logger.warning(
+                                    f"[{idx}/{len(batch_items)}] 月度批次 [{ym[0]}-{ym[1]:02d}] 回填失败"
+                                )
 
         summary = {
             "total_days": total_days,

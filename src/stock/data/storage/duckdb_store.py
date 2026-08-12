@@ -29,6 +29,10 @@ class DuckDBMarketStore:
         self.conn = duckdb.connect(database=":memory:")
         self._batch_mode = False
         self._write_buffer: dict[Path, list[pl.DataFrame]] = {}
+        import threading
+
+        self._file_lock = threading.Lock()
+        self._curated_cache: dict[Path, pl.DataFrame] = {}
 
     def _get_source_dir(self) -> Path:
         """返回当前数据源专属的 Curated 目录。"""
@@ -172,9 +176,8 @@ class DuckDBMarketStore:
             return False
         date_str_hyphen = target_date.strftime("%Y-%m-%d")
         date_str_plain = target_date.strftime("%Y%m%d")
-
         if not hasattr(self, "_curated_cache"):
-            self._curated_cache: dict[Path, pl.DataFrame] = {}
+            self._curated_cache = {}
 
         for file_path in matching_files:
             try:

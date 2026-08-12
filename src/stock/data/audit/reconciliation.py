@@ -301,18 +301,6 @@ def run_audit_range(
     }
 
 
-    return {
-        "start_date": start_date,
-        "end_date": end_date,
-        "total_days": total_days,
-        "perfect_days": perfect_days_count,
-        "problematic_days": len(problematic_days),
-        "avg_integrity_rate": avg_integrity_rate,
-        "top_missing_symbols": top_missing_symbols,
-        "daily_results": daily_results,
-    }
-
-
 def run_index_audit(
     target_date: date, data_source: str = "tushare", quiet: bool = False
 ) -> dict[str, Any]:
