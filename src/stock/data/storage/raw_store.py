@@ -154,9 +154,17 @@ class RawDataStorage:
         legacy_path = self._get_file_path(data_source, endpoint, target_date)
         if legacy_path.exists():
             return True
-        dataset_name = "daily_bar" if endpoint in {"daily", "daily_bar"} else endpoint.replace("/", "_")
+        source_dir = self.base_dir / data_source
+        if not source_dir.exists():
+            return False
+        dataset_keywords = (
+            ["daily_bar", "stock_daily_bar", "index_daily_bar"]
+            if endpoint in {"daily", "daily_bar", "history"}
+            else [endpoint.replace("/", "_")]
+        )
         year_month_path = f"year={target_date.year:04d}/month={target_date.month:02d}"
-        for p in self.base_dir.glob(f"{data_source}/**/{dataset_name}/{year_month_path}/*.parquet"):
-            if p.exists():
+        for p in source_dir.rglob("*.parquet"):
+            p_str = str(p)
+            if year_month_path in p_str and any(kw in p_str for kw in dataset_keywords):
                 return True
         return False

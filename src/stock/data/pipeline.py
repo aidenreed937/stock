@@ -94,7 +94,7 @@ class MarketDataPipeline:
         logger.info(f"开始 2-Tier ETL 管道同步 [{symbol}] (范围: {start_date} ~ {end_date})...")
 
         raw_df: pl.DataFrame | None = None
-        dataset = dataset_for_endpoint(self.endpoint)
+        dataset = dataset_for_endpoint(self.endpoint, symbol=symbol)
         instrument = instrument_for_symbol(symbol, self.data_source)
         key = DatasetKey(
             provider=self.data_source,
@@ -143,7 +143,7 @@ class MarketDataPipeline:
             )
 
         # 5. 精炼落盘 (Load to Curated Store)
-        if dataset == "daily_bar":
+        if dataset in {"daily_bar", "stock_daily_bar", "index_daily_bar"}:
             DAILY_BAR_CONTRACT.validate(normalized_df)
         self.store.save_dataset(key, normalized_df)
 

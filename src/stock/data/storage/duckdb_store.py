@@ -78,10 +78,14 @@ class DuckDBMarketStore:
     ) -> bool:
         """检查某天（及可选指定股票）的数据是否已被精炼并落盘。"""
         data_source = self._require_data_source()
-        if endpoint == "daily":
-            endpoint = "daily_bar"
+        if endpoint in {"daily", "daily_bar"}:
+            endpoints = ["daily_bar", "stock_daily_bar", "index_daily_bar"]
+        else:
+            endpoints = [endpoint]
         year_month_path = f"year={target_date.year:04d}/month={target_date.month:02d}"
-        matching_files = list(self.storage_dir.glob(f"**/{endpoint}/{year_month_path}/*.parquet"))
+        matching_files: list[Path] = []
+        for ep in endpoints:
+            matching_files.extend(self.storage_dir.glob(f"**/{ep}/{year_month_path}/*.parquet"))
         if not matching_files:
             return False
         date_str_hyphen = target_date.strftime("%Y-%m-%d")
@@ -204,7 +208,8 @@ class DuckDBMarketStore:
     ) -> pl.DataFrame:
         """查询标准数据集，兼容旧 endpoint 查询入口。"""
         data_source = self._require_data_source()
-        search_pattern = str(self.storage_dir / "**" / dataset / "*" / "*" / "*.parquet")
+        target_dataset = "*daily_bar" if dataset in {"daily_bar", "daily"} else dataset
+        search_pattern = str(self.storage_dir / "**" / target_dataset / "*" / "*" / "*.parquet")
         if not list(self.storage_dir.rglob("*.parquet")):
             return pl.DataFrame()
         conditions: list[str] = []

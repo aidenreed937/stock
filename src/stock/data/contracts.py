@@ -79,8 +79,8 @@ class DatasetContract:
             )
 
 
-DAILY_BAR_CONTRACT = DatasetContract(
-    name="daily_bar",
+STOCK_DAILY_BAR_CONTRACT = DatasetContract(
+    name="stock_daily_bar",
     required_columns=(
         "symbol",
         "trade_date",
@@ -101,11 +101,40 @@ DAILY_BAR_CONTRACT = DatasetContract(
     units={"price": "quote_currency", "volume": "shares", "amount": "quote_currency"},
 )
 
+INDEX_DAILY_BAR_CONTRACT = DatasetContract(
+    name="index_daily_bar",
+    required_columns=(
+        "symbol",
+        "trade_date",
+        "open",
+        "high",
+        "low",
+        "close",
+        "volume",
+        "amount",
+        "data_source",
+        "market",
+        "exchange",
+        "currency",
+        "adjustment",
+        "schema_version",
+    ),
+    primary_keys=("market", "symbol", "trade_date", "adjustment"),
+    units={"price": "quote_currency", "volume": "shares", "amount": "quote_currency"},
+)
 
-def dataset_for_endpoint(endpoint: str) -> str:
-    """将外部接口名映射为内部标准数据集名。"""
-    if endpoint in {"daily", "history", "cn/company/candlestick", "cn/index/candlestick"}:
-        return "daily_bar"
+DAILY_BAR_CONTRACT = STOCK_DAILY_BAR_CONTRACT
+
+
+def dataset_for_endpoint(endpoint: str, symbol: str = "") -> str:
+    """将外部接口名与标的特征映射为内部标准数据集名。
+
+    个股 K 线归档为 stock_daily_bar，指数 K 线归档为 index_daily_bar。
+    """
+    if endpoint in {"daily", "daily_bar", "history", "cn/company/candlestick", "cn/index/candlestick"}:
+        if endpoint == "cn/index/candlestick" or symbol.startswith("^"):
+            return "index_daily_bar"
+        return "stock_daily_bar"
     return endpoint.replace("/", "_")
 
 
