@@ -331,3 +331,31 @@ def test_duckdb_store_has_curated_whole_market(tmp_path) -> None:
     # 5. 再次校验全市场查询，股票数 > 1000，应判定为已归档，返回 True
     assert store.has_curated("daily", date(2026, 1, 14), symbol=None)
     assert store.has_curated("daily", date(2026, 1, 14), symbol="")
+
+    # 6. 校验历史早期（如 1991 年）全市场阈值设定
+    df_early = pl.DataFrame(
+        {
+            "symbol": ["STK1.SH", "STK2.SH", "STK3.SH", "STK4.SH", "STK5.SH", "STK6.SH"],
+            "trade_date": [date(1991, 12, 18)] * 6,
+            "open": [10.0] * 6,
+            "high": [11.0] * 6,
+            "low": [9.0] * 6,
+            "close": [10.5] * 6,
+            "volume": [1000.0] * 6,
+            "amount": [10500.0] * 6,
+            "pre_close": [10.0] * 6,
+            "change": [0.5] * 6,
+            "pct_chg": [5.0] * 6,
+            "data_source": ["mock"] * 6,
+            "market": ["CN"] * 6,
+            "exchange": ["SSE"] * 6,
+            "currency": ["CNY"] * 6,
+            "adjustment": ["raw"] * 6,
+            "schema_version": ["v1"] * 6,
+        }
+    )
+    store.save_market_data("daily", date(1991, 12, 18), df_early)
+    if hasattr(store, "_curated_cache"):
+        delattr(store, "_curated_cache")
+    # 对于 1991 年，6 只股票已超过 min_symbols (5 只)，判定为已归档，应返回 True
+    assert store.has_curated("daily", date(1991, 12, 18), symbol=None)

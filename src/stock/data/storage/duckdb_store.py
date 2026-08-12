@@ -164,9 +164,12 @@ class DuckDBMarketStore:
                         elif (
                             not symbol
                             and "symbol" in df.columns
-                            and any(ep in str(file_path) for ep in ["daily_bar", "stock_daily_bar"])
+                            and (
+                                "stock_daily_bar" in str(file_path)
+                                or ("daily_bar" in str(file_path) and "index" not in str(file_path) and "fund" not in str(file_path))
+                            )
                         ):
-                            # 全市场日线行情回填时，如果当前文件中的该日期含有的个股数少于 1000 只，不判定为已归档
+                            # 全市场日线行情回填时，如果当前文件中的该日期含有的个股数少于对应年份的最小预期股票数，不判定为已归档
                             matched_val: date | str | None = None
                             if target_date in dates:
                                 matched_val = target_date
@@ -177,7 +180,18 @@ class DuckDBMarketStore:
 
                             if matched_val is not None:
                                 day_df = df.filter(pl.col("trade_date") == matched_val)
-                                if len(day_df["symbol"].unique()) < 1000:
+
+                                # 根据年份动态设定全市场最小股票数量阈值（防历史早期个股偏少导致死循环）
+                                if target_date.year < 1993:
+                                    min_symbols = 5
+                                elif target_date.year < 1996:
+                                    min_symbols = 50
+                                elif target_date.year < 2000:
+                                    min_symbols = 300
+                                else:
+                                    min_symbols = 800
+
+                                if len(day_df["symbol"].unique()) < min_symbols:
                                     continue
                         return True
             except Exception as e:
