@@ -1,0 +1,21 @@
+# 历史回填策略单独配置文件
+backfill:
+  # 默认回填的时间段（2025-08-12 ~ 2026-08-12 最近一年）
+  default_start_date: "2025-08-12"
+  default_end_date: "2026-08-12"
+
+  # 默认数据源与数据接口
+  default_data_source: "tushare"
+  default_endpoint: "daily"
+
+  # 默认回填的标的范围，可选:
+  # - "all" (全市场)
+  # - "watchlist" (使用 config/data.yaml 中的观察池)
+  # - 或者是具体的股票代码，如 "600519.SH"
+  default_symbol: "all"
+
+  # 是否开启强制刷新缓存，默认 false
+  force_refresh: false
+
+  # 单独针对回填的并发线程数控制（不设置则回退到 config/data.yaml 的线程限制）
+  max_workers: 4

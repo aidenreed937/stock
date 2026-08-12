@@ -1,5 +1,5 @@
 from datetime import date
-from unittest.mock import MagicMock, PropertyMock, patch
+from unittest.mock import MagicMock, PropertyMock, mock_open, patch
 
 import polars as pl
 import pytest
@@ -97,3 +97,49 @@ def test_backfill_cli_main(monkeypatch):
     with patch("stock.data.backfill.HistoricalBackfiller", return_value=mock_backfiller):
         backfill_main()
         mock_backfiller.backfill_range.assert_called_once()
+
+
+def test_backfill_cli_config_load(monkeypatch):
+    import sys
+    from datetime import date
+
+    mock_summary = {
+        "total_days": 10,
+        "open_days": 5,
+        "synced_days": 5,
+        "skipped_days": 0,
+        "failed_days": 0,
+    }
+
+    mock_backfiller = MagicMock()
+    mock_backfiller.backfill_range.return_value = mock_summary
+
+    monkeypatch.setattr(
+        sys,
+        "argv",
+        [
+            "backfill",
+            "--config",
+            "dummy_config.yaml",
+        ],
+    )
+
+    yaml_content = """
+backfill:
+  default_start_date: "2026-08-01"
+  default_end_date: "2026-08-10"
+  default_data_source: "tushare"
+  default_endpoint: "daily"
+  default_symbol: "000001.SZ"
+  max_workers: 3
+"""
+
+    with (
+        patch("pathlib.Path.exists", return_value=True),
+        patch("builtins.open", mock_open(read_data=yaml_content)),
+        patch("stock.data.backfill.HistoricalBackfiller", return_value=mock_backfiller),
+    ):
+        backfill_main()
+        mock_backfiller.backfill_range.assert_called_once_with(
+            date(2026, 8, 1), date(2026, 8, 10), force_refresh=False, max_workers=3
+        )

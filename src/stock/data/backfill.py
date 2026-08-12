@@ -383,46 +383,97 @@ class HistoricalBackfiller:
 
 def _parse_args() -> argparse.Namespace:
     parser = argparse.ArgumentParser(description="全市场历史数据回填工具")
-    parser.add_argument("--start", type=str, required=True, help="开始日期 (YYYY-MM-DD)")
-    parser.add_argument("--end", type=str, required=True, help="结束日期 (YYYY-MM-DD)")
+    parser.add_argument(
+        "--config",
+        type=str,
+        default="config/backfill.yaml",
+        help="回填配置文件路径 (默认: config/backfill.yaml)",
+    )
+    parser.add_argument("--start", type=str, default=None, help="开始日期 (YYYY-MM-DD)")
+    parser.add_argument("--end", type=str, default=None, help="结束日期 (YYYY-MM-DD)")
     parser.add_argument(
         "--data-source",
         type=str,
-        default="tushare",
-        help="数据源标识名称 (默认: tushare)",
+        default=None,
+        help="数据源标识名称 (如 tushare / yfinance)",
     )
     parser.add_argument(
-        "--endpoint", type=str, default="daily", help="API 接口名称 (默认: daily)"
+        "--endpoint", type=str, default=None, help="API 接口名称 (如 daily / daily_basic)"
     )
     parser.add_argument(
-        "--symbol", type=str, default="", help="标的代码或行业代码 (可选)"
+        "--symbol", type=str, default=None, help="标的代码或行业代码 (可选, all 表示全市场, watchlist 表示观察池)"
     )
     parser.add_argument(
-        "--force-refresh", action="store_true", help="强制从 API 重新拉取并覆盖本地缓存"
+        "--force-refresh", action="store_true", default=None, help="强制从 API 重新拉取并覆盖本地缓存"
     )
     parser.add_argument(
-        "--max-workers", type=int, default=None, help="并发同步线程数 (若未指定，自动读取 config/data.yaml 并发设置)"
+        "--max-workers", type=int, default=None, help="并发同步线程数 (若未指定，自动读取配置文件或 data.yaml 并发设置)"
     )
     return parser.parse_args()
 
 
 def main() -> None:
+    import sys
+    import yaml
+    from pathlib import Path
+
     args = _parse_args()
-    start_d = datetime.strptime(args.start, "%Y-%m-%d").date()
-    end_d = datetime.strptime(args.end, "%Y-%m-%d").date()
+
+    # 1. 尝试加载回填配置文件
+    yaml_config = {}
+    config_path = Path(args.config)
+    if config_path.exists():
+        try:
+            with open(config_path, "r", encoding="utf-8") as f:
+                cfg_data = yaml.safe_load(f)
+                if cfg_data and "backfill" in cfg_data:
+                    yaml_config = cfg_data["backfill"]
+                    logger.info(f"成功载入回填配置文件: {config_path}")
+        except Exception as e:
+            logger.warning(f"加载回填配置文件 [{args.config}] 失败: {e}，将仅使用命令行参数。")
+
+    # 2. 合并参数优先级 (命令行传入 > 配置文件预设)
+    start_str = args.start or yaml_config.get("default_start_date")
+    end_str = args.end or yaml_config.get("default_end_date")
+
+    if not start_str or not end_str:
+        logger.error(
+            "缺少回填的开始日期 (--start) 或结束日期 (--end)，且未在配置文件中找到 default_start_date / default_end_date。"
+        )
+        sys.exit(1)
+
+    start_d = datetime.strptime(start_str, "%Y-%m-%d").date()
+    end_d = datetime.strptime(end_str, "%Y-%m-%d").date()
+
+    data_source = args.data_source or yaml_config.get("default_data_source") or "tushare"
+    endpoint = args.endpoint or yaml_config.get("default_endpoint") or "daily"
+
+    symbol = args.symbol
+    if symbol is None:
+        symbol = yaml_config.get("default_symbol", "")
+    if symbol == "watchlist":
+        symbol = ""
+
+    force_refresh = args.force_refresh
+    if force_refresh is None:
+        force_refresh = yaml_config.get("force_refresh", False)
 
     from stock.config.loader import load_data_config
 
     data_cfg = load_data_config()
+
+    # 3. 确定并发线程数：命令行 -> 回填配置文件 -> 对应数据源通用并发数 -> 默认线程数
     workers = args.max_workers
+    if workers is None:
+        workers = yaml_config.get("max_workers")
     if workers is None:
         workers = getattr(
             data_cfg.concurrency,
-            f"{args.data_source}_max_workers",
+            f"{data_source}_max_workers",
             data_cfg.concurrency.default_max_workers,
         )
 
-    wl = getattr(data_cfg.watchlists, args.data_source, None)
+    wl = getattr(data_cfg.watchlists, data_source, None)
     if wl is not None:
         if hasattr(wl, "all_symbols"):
             raw_symbols = wl.all_symbols
@@ -433,38 +484,38 @@ def main() -> None:
     else:
         raw_symbols = []
 
-    if args.symbol == "all":
+    if symbol == "all":
         target_symbols = [""]
     else:
-        target_symbols = [args.symbol] if args.symbol else raw_symbols
+        target_symbols = [symbol] if symbol else raw_symbols
         if not target_symbols:
             target_symbols = [""]
 
     if len(target_symbols) > 1 or (len(target_symbols) == 1 and target_symbols[0]):
-        if not args.symbol:
+        if not symbol:
             logger.info(
-                f"未显式指定 --symbol，自动载入数据源 [{args.data_source}] 默认观察股票池 "
+                f"未显式指定 --symbol，自动载入数据源 [{data_source}] 默认观察股票池 "
                 f"(共 {len(target_symbols)} 个标的): {target_symbols}"
             )
 
     from stock.data.storage.duckdb_store import DuckDBMarketStore
-    shared_store = DuckDBMarketStore(data_source=args.data_source)
+    shared_store = DuckDBMarketStore(data_source=data_source)
     if hasattr(shared_store, "enable_batch_mode"):
         shared_store.enable_batch_mode()
 
     try:
         for idx, sym in enumerate(target_symbols, 1):
             if sym:
-                logger.info(f"===> 开始处理数据源 [{args.data_source}] 标的 [{sym}] ({idx}/{len(target_symbols)})...")
+                logger.info(f"===> 开始处理数据源 [{data_source}] 标的 [{sym}] ({idx}/{len(target_symbols)})...")
             backfiller = HistoricalBackfiller(
-                data_source=args.data_source, endpoint=args.endpoint, symbol=sym
+                data_source=data_source, endpoint=endpoint, symbol=sym
             )
 
             # 注入共享的批量存储引擎，解决写放大问题
             backfiller.pipeline.store = shared_store
 
             backfiller.backfill_range(
-                start_d, end_d, force_refresh=args.force_refresh, max_workers=workers
+                start_d, end_d, force_refresh=force_refresh, max_workers=workers
             )
 
             # 每回填完 50 个股票，定期落盘一次，防止撑爆内存
