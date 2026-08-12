@@ -211,3 +211,15 @@ def test_run_sw_industry_audit():
         res = run_sw_industry_audit(date(2026, 8, 1))
         assert res["constituents_industry_count"] == 2
         assert res["actual_industry_count"] == 1
+
+
+def test_run_sw_daily_audit():
+    from stock.data.audit import run_sw_daily_audit
+
+    sw_df = pl.DataFrame({"symbol": ["801010.SI", "801020.SI"], "trade_date": ["2026-08-01", "2026-08-01"]})
+
+    with patch("polars.read_parquet", return_value=sw_df):
+        res = run_sw_daily_audit(date(2026, 8, 1))
+        assert res["expected_count"] == 31
+        assert res["actual_count"] == 2
+        assert res["actual_symbols"] == ["801010.SI", "801020.SI"]

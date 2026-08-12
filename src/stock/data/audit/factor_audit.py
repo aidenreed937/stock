@@ -60,3 +60,44 @@ def run_adj_factor_audit(
         "coverage_rate": coverage_rate,
         "missing_symbols": sorted(list(missing_symbols)),
     }
+
+
+def run_sw_daily_audit(
+    target_date: date, data_source: str = "tushare", quiet: bool = False
+) -> dict[str, Any]:
+    """审计 sw_daily (申万行业日线行情) 在指定交易日的全市场行业覆盖率。"""
+    logger.info(f"开始 sw_daily 申万行业日行情对账审计，目标日期: {target_date} [数据源: {data_source}]")
+
+    sw_pattern = f"data/curated/{data_source}/market=CN/sw_daily/year={target_date.year:04d}/month={target_date.month:02d}/*.parquet"
+    try:
+        sw_df = pl.read_parquet(sw_pattern)
+        if "trade_date" in sw_df.columns:
+            if sw_df["trade_date"].dtype == pl.String:
+                sw_df = sw_df.with_columns(
+                    pl.col("trade_date").str.to_date("%Y-%m-%d", strict=False).alias("trade_date")
+                )
+        target_sw = sw_df.filter(pl.col("trade_date") == target_date)
+        actual_symbols = set(target_sw["symbol"].unique().to_list()) if "symbol" in target_sw.columns else set()
+    except Exception:
+        actual_symbols = set()
+
+    expected_ind_count = 31  # 申万一级行业固定为 31 个
+    match_count = len(actual_symbols)
+    coverage_rate = (match_count / expected_ind_count * 100.0) if expected_ind_count else 0.0
+
+    if not quiet:
+        print("\n" + "=" * 65)
+        print(f"       【sw_daily 申万行业日行情对账报告 ({target_date})】")
+        print("=" * 65)
+        print(f"理论申万一级行业总数   : {expected_ind_count:>6} 个")
+        print(f"实际落盘行业行情数     : {match_count:>6} 个")
+        print(f"行业日行情物理覆盖率   : {coverage_rate:>6.2f} %")
+        print("=" * 65 + "\n")
+
+    return {
+        "target_date": target_date,
+        "expected_count": expected_ind_count,
+        "actual_count": match_count,
+        "coverage_rate": coverage_rate,
+        "actual_symbols": sorted(list(actual_symbols)),
+    }
