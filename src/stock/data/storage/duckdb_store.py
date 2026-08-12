@@ -78,20 +78,27 @@ class DuckDBMarketStore:
         data_source = self._require_data_source()
         if endpoint == "daily":
             endpoint = "daily_bar"
-        file_path = self.get_parquet_path(endpoint, target_date)
-        if not file_path.exists():
+        partition_dir = self._get_partition_dir(endpoint, target_date)
+        if not partition_dir.exists():
             return False
-        try:
-            df = pl.read_parquet(file_path)
-            self._validate_frame_source(df, data_source, f"Curated 文件 [{file_path}]")
-            if endpoint == "daily_bar":
-                DAILY_BAR_CONTRACT.validate(df)
-            return (
-                "trade_date" not in df.columns or target_date in df["trade_date"].unique().to_list()
-            )
-        except Exception as e:
-            logger.warning(f"忽略无效 Curated 缓存 [{file_path}]: {e}")
-            return False
+        date_str_hyphen = target_date.strftime("%Y-%m-%d")
+        date_str_plain = target_date.strftime("%Y%m%d")
+        for file_path in partition_dir.glob("*.parquet"):
+            try:
+                df = pl.read_parquet(file_path)
+                self._validate_frame_source(df, data_source, f"Curated 文件 [{file_path}]")
+                if "trade_date" in df.columns:
+                    dates = set(df["trade_date"].unique().to_list())
+                    if (
+                        target_date in dates
+                        or date_str_hyphen in dates
+                        or date_str_plain in dates
+                    ):
+                        return True
+            except Exception as e:
+                logger.warning(f"忽略无效 Curated 缓存 [{file_path}]: {e}")
+                continue
+        return False
 
     def save_market_data(
         self,

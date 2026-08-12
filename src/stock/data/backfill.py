@@ -188,39 +188,76 @@ class HistoricalBackfiller:
         synced_count = 0
         failed_count = 0
 
-        if todo_dates:
+        # 将待处理交易日按月打成分组批次 (Monthly Batch Range Packing)
+        month_batches: dict[tuple[int, int], list[date]] = {}
+        for d in todo_dates:
+            month_batches.setdefault((d.year, d.month), []).append(d)
+
+        def _sync_month_batch(batch_dates: list[date]) -> int:
+            b_start = min(batch_dates)
+            b_end = max(batch_dates)
+            try:
+                df = self.pipeline.sync_daily_bars(
+                    symbol=self.symbol,
+                    start_date=b_start,
+                    end_date=b_end,
+                    use_raw_cache=not force_refresh,
+                    force_refresh=force_refresh,
+                )
+                return len(batch_dates) if not df.is_empty() else 0
+            except Exception as e:
+                logger.error(f"月度批次 [{b_start} ~ {b_end}] 回填异常: {e}")
+                return 0
+
+        batch_items = list(month_batches.items())
+        if batch_items:
             from concurrent.futures import ThreadPoolExecutor, as_completed
+
             workers = min(max_workers, 4) if max_workers > 1 else 1
 
-            if workers > 1:
-                logger.info(f"使用 ThreadPoolExecutor 进行多线程回填，线程数: {workers}")
+            if workers > 1 and len(batch_items) > 1:
+                logger.info(
+                    f"使用 ThreadPoolExecutor 进行按月多线程回填，月批次数: {len(batch_items)}, 线程数: {workers}"
+                )
                 with ThreadPoolExecutor(max_workers=workers) as executor:
                     futures = {
-                        executor.submit(self._sync_single_day, d, force_refresh): d
-                        for d in todo_dates
+                        executor.submit(_sync_month_batch, dates): (ym, dates)
+                        for ym, dates in batch_items
                     }
                     for idx, fut in enumerate(as_completed(futures), 1):
-                        d = futures[fut]
+                        (ym, dates) = futures[fut]
                         try:
-                            success = fut.result()
-                            if success:
-                                synced_count += 1
-                                logger.info(f"[{idx}/{len(todo_dates)}] 交易日 [{d}] 回填成功")
+                            count = fut.result()
+                            if count > 0:
+                                synced_count += count
+                                logger.info(
+                                    f"[{idx}/{len(batch_items)}] 月度批次 [{ym[0]}-{ym[1]:02d}] "
+                                    f"回填成功 (成功包含 {count} 个交易日)"
+                                )
                             else:
-                                failed_count += 1
-                                logger.warning(f"[{idx}/{len(todo_dates)}] 交易日 [{d}] 回填失败")
+                                failed_count += len(dates)
+                                logger.warning(
+                                    f"[{idx}/{len(batch_items)}] 月度批次 [{ym[0]}-{ym[1]:02d}] 回填失败"
+                                )
                         except Exception as e:
-                            logger.error(f"[{idx}/{len(todo_dates)}] 交易日 [{d}] 抛出异常: {e}")
-                            failed_count += 1
+                            logger.error(
+                                f"[{idx}/{len(batch_items)}] 月度批次 [{ym[0]}-{ym[1]:02d}] 抛出异常: {e}"
+                            )
+                            failed_count += len(dates)
             else:
-                for idx, trade_date in enumerate(todo_dates, 1):
-                    success = self._sync_single_day(trade_date, force_refresh)
-                    if success:
-                        synced_count += 1
-                        logger.info(f"[{idx}/{len(todo_dates)}] 交易日 [{trade_date}] 回填成功")
+                for idx, (ym, dates) in enumerate(batch_items, 1):
+                    count = _sync_month_batch(dates)
+                    if count > 0:
+                        synced_count += count
+                        logger.info(
+                            f"[{idx}/{len(batch_items)}] 月度批次 [{ym[0]}-{ym[1]:02d}] "
+                            f"回填成功 (成功包含 {count} 个交易日)"
+                        )
                     else:
-                        failed_count += 1
-                        logger.warning(f"[{idx}/{len(todo_dates)}] 交易日 [{trade_date}] 回填失败")
+                        failed_count += len(dates)
+                        logger.warning(
+                            f"[{idx}/{len(batch_items)}] 月度批次 [{ym[0]}-{ym[1]:02d}] 回填失败"
+                        )
 
         summary = {
             "total_days": total_days,
