@@ -8,6 +8,8 @@ from datetime import date, datetime, timedelta
 from typing import Any
 
 from stock.data.fetcher.base import BaseDataFetcher
+from stock.data.fetcher.lixinger.facade import LixingerDataFetcher
+from stock.data.fetcher.lixinger.factory import create_lixinger_pipeline
 from stock.data.fetcher.mock import MockDataFetcher
 from stock.data.fetcher.tushare.facade import TuShareDataFetcher
 from stock.data.fetcher.tushare.factory import create_tushare_pipeline
@@ -42,6 +44,8 @@ class HistoricalBackfiller:
             self.fetcher = MockDataFetcher()
         elif data_source == "yfinance":
             self.fetcher = create_yfinance_pipeline(endpoint=endpoint).fetcher
+        elif data_source == "lixinger":
+            self.fetcher = create_lixinger_pipeline(endpoint=endpoint).fetcher
         else:
             self.fetcher = TuShareDataFetcher()
         if pipeline is not None:
@@ -50,6 +54,8 @@ class HistoricalBackfiller:
             self.pipeline = create_tushare_pipeline(endpoint=endpoint)
         elif data_source == "yfinance":
             self.pipeline = create_yfinance_pipeline(endpoint=endpoint)
+        elif data_source == "lixinger":
+            self.pipeline = create_lixinger_pipeline(endpoint=endpoint)
         else:
             self.pipeline = MarketDataPipeline(
                 fetcher=self.fetcher, data_source=data_source, endpoint=endpoint

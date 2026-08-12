@@ -7,6 +7,7 @@ import logging
 from datetime import date, datetime, time, timedelta
 
 from stock.config.settings import settings
+from stock.data.fetcher.lixinger.registry import LIXINGER_API_REGISTRY
 from stock.data.fetcher.tushare.registry import TUSHARE_API_REGISTRY
 from stock.data.fetcher.yfinance.registry import YFINANCE_API_REGISTRY
 
@@ -29,7 +30,7 @@ class DataUpdateScheduler:
             endpoint: API 接口标识（如 daily, daily_basic, margin_detail, history 等）。
             target_date: 拟同步的交易日期。
             current_datetime: 当前系统时间，默认值为当前时间。
-            data_source: 数据源标识（tushare / yfinance / mock）。
+            data_source: 数据源标识（tushare / yfinance / lixinger / mock）。
 
         Returns:
             bool: 若已到达更新时间点返回 True，未到达则返回 False。
@@ -50,6 +51,11 @@ class DataUpdateScheduler:
             if meta_yf:
                 update_time_str = meta_yf.update_time
                 update_delay_days = meta_yf.update_delay_days
+        elif data_source == "lixinger":
+            meta_lx = LIXINGER_API_REGISTRY.get(endpoint)
+            if meta_lx:
+                update_time_str = meta_lx.update_time
+                update_delay_days = meta_lx.update_delay_days
         else:
             meta_ts = TUSHARE_API_REGISTRY.get(endpoint)
             if meta_ts:

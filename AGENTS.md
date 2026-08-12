@@ -21,6 +21,18 @@ make check         # format、lint、test 全流程；可能修改格式
 make backfill START=2026-08-01 END=2026-08-12
 ```
 
+### 沙箱隔离与 uv 缓存配置
+
+`uv` 默认会从系统用户全局路径（如 `~/.local/share/uv/`）调用 Python 解释器和依赖缓存。在沙箱限制环境下，访问工作区以外的路径会导致文件系统拦截（`sandbox blocked open`）。
+
+为避免触发外部沙箱权限申请，可将 `uv` 缓存与 Python 安装路径约束在项目工作区内部：
+
+```bash
+export UV_CACHE_DIR=.uv_cache
+export UV_PYTHON_INSTALL_DIR=.uv_python
+```
+
+
 ## 编码规范
 
 使用 4 空格缩进，YAML/Markdown 使用 2 空格；文件采用 LF 并保留末尾换行。Ruff 行宽为 100，遵循 `pyproject.toml` 中的 lint 规则；公共 API 和核心逻辑使用 Google 风格 docstring，函数、方法和变量使用 `snake_case`，类使用 `PascalCase`。业务代码应保持明确类型注解，避免 `print`，使用项目日志工具。

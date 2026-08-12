@@ -30,8 +30,24 @@ class Settings(BaseSettings):
     tushare_max_workers: int = 4
     akshare_proxy: str = ""
     yfinance_proxy: str = ""
-    data_source_mode: Literal["tushare", "mock", "yfinance"] = "tushare"
+    yfinance_rate_limit_per_min: int = 60
+    lixinger_token: str = ""
+    lixinger_url: str = "https://open.lixinger.com"
+    lixinger_rate_limit_per_min: int = 1000
+    lxr_token: str = ""
+    lxr_url: str = ""
+    data_source_mode: Literal["tushare", "mock", "yfinance", "lixinger"] = "tushare"
     endpoint_update_time_overrides: dict[str, str] = {}
+
+    @property
+    def effective_lixinger_token(self) -> str:
+        """获取有效的理杏仁 Token（兼容 LIXINGER_TOKEN 与 LXR_TOKEN）。"""
+        return self.lixinger_token or self.lxr_token
+
+    @property
+    def effective_lixinger_url(self) -> str:
+        """获取有效的理杏仁 API 服务器地址。"""
+        return self.lixinger_url or self.lxr_url or "https://open.lixinger.com"
 
     def setup_directories(self) -> None:
         """确保数据与缓存目录存在"""

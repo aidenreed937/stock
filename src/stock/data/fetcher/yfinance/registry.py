@@ -9,6 +9,7 @@ class YFinanceEndpointMeta:
     description: str
     group: str = "market_data"
     primary_keys: list[str] = field(default_factory=list)
+    rate_limit_per_min: int = 60
     update_time: str = "06:00"
     update_delay_days: int = 1
 
@@ -20,6 +21,7 @@ YFINANCE_API_REGISTRY: dict[str, YFinanceEndpointMeta] = {
         description="日线 K 线行情",
         group="market_data",
         primary_keys=["Date"],
+        rate_limit_per_min=60,
         update_time="06:00",
         update_delay_days=1,
     ),
