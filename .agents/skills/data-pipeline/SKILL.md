@@ -138,40 +138,13 @@ make probe
 make audit
 ```
 
-### 4.4 物理落盘全库审计脚本
-运行 Polars 脚本物理扫描全库 300+ 个 Parquet 文件，输出全量存储清单：
+### 4.4 全库物理存储主审计 CLI 入口
+运行固化的 Polars 审计工具物理扫描全库 300+ 个 Parquet 文件，输出主离线审计报告：
 
 ```bash
-uv run python -c "
-import polars as pl
-from pathlib import Path
-
-files = list(Path('data/curated').rglob('*.parquet'))
-records = []
-for f in files:
-    try:
-        df = pl.read_parquet(f)
-        src = f.parts[2] if len(f.parts) > 2 else 'unknown'
-        dataset = f.parts[4] if len(f.parts) > 4 else f.stem
-        records.append({
-            'source': src,
-            'dataset': dataset,
-            'rows': len(df),
-            'symbols': df['symbol'].n_unique() if 'symbol' in df.columns else 1,
-            'min_date': str(df['trade_date'].min())[:10] if 'trade_date' in df.columns else 'N/A',
-            'max_date': str(df['trade_date'].max())[:10] if 'trade_date' in df.columns else 'N/A',
-        })
-    except Exception:
-        pass
-
-df_rec = pl.DataFrame(records)
-print(df_rec.group_by(['source', 'dataset']).agg(
-    pl.col('symbols').max().alias('标的数'),
-    pl.col('rows').sum().alias('总记录行数'),
-    pl.col('min_date').min().alias('最早交易日'),
-    pl.col('max_date').max().alias('最新交易日'),
-).sort(['source', 'dataset']))
-"
+make master-audit
+# 或直接运行 Python 模块
+uv run python -m stock.data.audit.master_audit
 ```
 
 ---

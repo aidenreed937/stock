@@ -43,3 +43,6 @@ validate:
 
 audit:
 	uv run python -m stock.data.audit $(if $(START),--start $(START)) $(if $(END),--end $(END)) $(if $(DATE),--date $(DATE)) --data-source $(or $(SOURCE),$(DATA_SOURCE),tushare)
+
+master-audit:
+	uv run python -m stock.data.audit.master_audit
