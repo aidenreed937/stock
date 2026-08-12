@@ -1,6 +1,5 @@
-"""理杏仁 (Lixinger) 接口元数据注册表模块。"""
-
 from dataclasses import dataclass, field
+from typing import Any
 
 
 @dataclass(frozen=True)
@@ -14,6 +13,9 @@ class EndpointMeta:
     rate_limit_per_min: int = 1000
     update_time: str = "18:00"
     update_delay_days: int = 0
+    default_metrics: list[str] = field(default_factory=list)
+    default_params: dict[str, Any] = field(default_factory=dict)
+    code_param_name: str = "stockCodes"
 
 
 # 常用理杏仁 API 接口元数据注册表
@@ -26,6 +28,8 @@ LIXINGER_API_REGISTRY: dict[str, EndpointMeta] = {
         rate_limit_per_min=1000,
         update_time="18:00",
         update_delay_days=0,
+        code_param_name="stockCodes",
+        default_metrics=["pe_ttm", "pb", "ps_ttm", "dyr", "mc"],
     ),
     "cn/company/candlestick": EndpointMeta(
         api_name="cn/company/candlestick",
@@ -35,6 +39,8 @@ LIXINGER_API_REGISTRY: dict[str, EndpointMeta] = {
         rate_limit_per_min=1000,
         update_time="17:00",
         update_delay_days=0,
+        code_param_name="stockCode",
+        default_params={"type": "ex_rights"},
     ),
     "cn/index/fundamental": EndpointMeta(
         api_name="cn/index/fundamental",
@@ -44,6 +50,8 @@ LIXINGER_API_REGISTRY: dict[str, EndpointMeta] = {
         rate_limit_per_min=1000,
         update_time="18:00",
         update_delay_days=0,
+        code_param_name="stockCodes",
+        default_metrics=["pe_ttm.ew", "pb.ew", "ps_ttm.ew", "dyr.ew", "mc"],
     ),
     "cn/index/candlestick": EndpointMeta(
         api_name="cn/index/candlestick",
@@ -53,6 +61,8 @@ LIXINGER_API_REGISTRY: dict[str, EndpointMeta] = {
         rate_limit_per_min=1000,
         update_time="17:00",
         update_delay_days=0,
+        code_param_name="stockCode",
+        default_params={"type": "normal"},
     ),
     "cn/industry/fundamental/sw_2021": EndpointMeta(
         api_name="cn/industry/fundamental/sw_2021",
@@ -62,6 +72,8 @@ LIXINGER_API_REGISTRY: dict[str, EndpointMeta] = {
         rate_limit_per_min=1000,
         update_time="18:00",
         update_delay_days=0,
+        code_param_name="stockCodes",
+        default_metrics=["pe_ttm.ew", "pb.ew", "ps_ttm.ew", "dyr.ew", "mc"],
     ),
     "cn/industry/constituents/sw_2021": EndpointMeta(
         api_name="cn/industry/constituents/sw_2021",
@@ -71,5 +83,6 @@ LIXINGER_API_REGISTRY: dict[str, EndpointMeta] = {
         rate_limit_per_min=1000,
         update_time="18:00",
         update_delay_days=0,
+        code_param_name="stockCodes",
     ),
 }

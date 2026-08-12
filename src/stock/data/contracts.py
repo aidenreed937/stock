@@ -97,9 +97,9 @@ DAILY_BAR_CONTRACT = DatasetContract(
 
 def dataset_for_endpoint(endpoint: str) -> str:
     """将外部接口名映射为内部标准数据集名。"""
-    if endpoint in {"daily", "history"}:
+    if endpoint in {"daily", "history", "cn/company/candlestick", "cn/index/candlestick"}:
         return "daily_bar"
-    raise DataValidationError(f"接口 [{endpoint}] 尚未定义可落盘的数据契约")
+    return endpoint.replace("/", "_")
 
 
 def instrument_for_symbol(symbol: str, provider: str) -> InstrumentId | None:

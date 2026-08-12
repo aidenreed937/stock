@@ -37,6 +37,7 @@ class Settings(BaseSettings):
     lxr_token: str = ""
     lxr_url: str = ""
     data_source_mode: Literal["tushare", "mock", "yfinance", "lixinger"] = "tushare"
+    default_benchmark_index_code: str = "000001"
     endpoint_update_time_overrides: dict[str, str] = {}
 
     @property

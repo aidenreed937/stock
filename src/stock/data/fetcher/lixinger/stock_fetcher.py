@@ -5,9 +5,11 @@ from typing import Any
 
 import polars as pl
 
+from stock.config.settings import settings
 from stock.data.fetcher.lixinger.client import LixingerClient
 from stock.data.fetcher.lixinger.registry import EndpointMeta, LIXINGER_API_REGISTRY
 from stock.models.market import DailyBar
+from stock.utils.logger import logger
 
 
 class LixingerStockFetcher:
@@ -22,7 +24,12 @@ class LixingerStockFetcher:
         self.client = client or LixingerClient()
 
     def fetch_daily_bars_df(
-        self, symbol: str, start_date: date, end_date: date, endpoint: str = "cn/company/fundamental/non_financial"
+        self,
+        symbol: str,
+        start_date: date,
+        end_date: date,
+        endpoint: str = "cn/company/fundamental/non_financial",
+        **kwargs: Any,
     ) -> pl.DataFrame:
         """抓取指定股票或全市场在给定日期范围内的行情/估值数据。
 
@@ -31,6 +38,7 @@ class LixingerStockFetcher:
             start_date: 开始日期。
             end_date: 结束日期。
             endpoint: API 接口名称（默认 cn/company/fundamental/non_financial）。
+            **kwargs: 额外的自定义请求参数。
 
         Returns:
             pl.DataFrame: 包含理杏仁原始响应字段的 Polars DataFrame。
@@ -41,26 +49,28 @@ class LixingerStockFetcher:
         start_str = start_date.strftime("%Y-%m-%d")
         end_str = end_date.strftime("%Y-%m-%d")
 
-        query_kwargs: dict[str, Any] = {
-            "startDate": start_str,
-            "endDate": end_str,
-        }
-
-        # 清洗/去除 symbol 交易所后缀 (如 600519.SH -> 600519)
         raw_code = symbol.split(".")[0] if symbol else ""
-        if raw_code:
-            query_kwargs["stockCodes"] = [raw_code]
 
-        # 估值常用指标列表
-        if "fundamental" in endpoint:
-            query_kwargs["metricsList"] = [
-                "pe_ttm",
-                "pb",
-                "ps_ttm",
-                "dyr",
-                "mc",
-                "cp",
-            ]
+        query_kwargs: dict[str, Any] = {}
+        query_kwargs.update(meta.default_params)
+
+        if meta.default_metrics:
+            query_kwargs["metricsList"] = meta.default_metrics
+
+        if endpoint == "cn/industry/constituents/sw_2021":
+            query_kwargs["date"] = start_str
+        else:
+            query_kwargs["startDate"] = start_str
+            query_kwargs["endDate"] = end_str
+
+        if raw_code:
+            if meta.code_param_name == "stockCode":
+                query_kwargs["stockCode"] = raw_code
+            else:
+                query_kwargs["stockCodes"] = [raw_code]
+
+        # 调用方传入的自定义参数覆盖默认配置
+        query_kwargs.update(kwargs)
 
         pandas_df = self.client.query(meta.api_name, **query_kwargs)
 
@@ -122,29 +132,46 @@ class LixingerStockFetcher:
         start_str = start_date.strftime("%Y-%m-%d")
         end_str = end_date.strftime("%Y-%m-%d")
 
-        # 使用上证指数 000001 K线查询实际开市日期
-        pandas_df = self.client.query(
-            "cn/index/candlestick",
-            stockCodes=["000001"],
-            startDate=start_str,
-            endDate=end_str,
-        )
+        # 使用基准指数 K线查询实际开市日期
+        try:
+            pandas_df = self.client.query(
+                "cn/index/candlestick",
+                stockCode=settings.default_benchmark_index_code,
+                type="normal",
+                startDate=start_str,
+                endDate=end_str,
+            )
+        except Exception as e:
+            logger.warning(
+                f"理杏仁指数 K 线日历获取失败 ({e})，尝试降级使用 TuShare 交易日历或工作日列表..."
+            )
+            try:
+                from stock.data.fetcher.tushare.facade import TuShareDataFetcher
+                return TuShareDataFetcher().fetch_trade_cal(start_date, end_date)
+            except Exception:
+                fallback_dates: list[date] = []
+                curr = start_date
+                while curr <= end_date:
+                    if curr.weekday() < 5:
+                        fallback_dates.append(curr)
+                    curr += timedelta(days=1)
+                return fallback_dates
 
         if pandas_df.empty or "date" not in pandas_df.columns:
             # 降级退回自然日周一至周五
-            open_dates: list[date] = []
+            weekday_dates: list[date] = []
             curr = start_date
             while curr <= end_date:
                 if curr.weekday() < 5:
-                    open_dates.append(curr)
+                    weekday_dates.append(curr)
                 curr += timedelta(days=1)
-            return open_dates
+            return weekday_dates
 
-        open_dates = []
+        parsed_dates: list[date] = []
         for d_val in pandas_df["date"].to_list():
             if isinstance(d_val, str):
-                open_dates.append(datetime.strptime(d_val[:10], "%Y-%m-%d").date())
+                parsed_dates.append(datetime.strptime(d_val[:10], "%Y-%m-%d").date())
             elif isinstance(d_val, date):
-                open_dates.append(d_val)
+                parsed_dates.append(d_val)
 
-        return sorted(open_dates)
+        return sorted(parsed_dates)

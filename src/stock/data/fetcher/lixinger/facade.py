@@ -1,6 +1,7 @@
 """理杏仁 (Lixinger) 门面 (Facade) 数据抓取器实现模块。"""
 
 from datetime import date
+from typing import Any
 
 import polars as pl
 
@@ -32,11 +33,16 @@ class LixingerDataFetcher(BaseDataFetcher):
         return self.stock_fetcher.fetch_daily_bars(symbol, start_date, end_date)
 
     def fetch_daily_bars_df(
-        self, symbol: str, start_date: date, end_date: date, endpoint: str = "cn/company/fundamental/non_financial"
+        self,
+        symbol: str,
+        start_date: date,
+        end_date: date,
+        endpoint: str = "cn/company/fundamental/non_financial",
+        **kwargs: Any,
     ) -> pl.DataFrame:
         """抓取行情或估值基本面数据，并返回 Polars 数据帧。"""
         return self.stock_fetcher.fetch_daily_bars_df(
-            symbol, start_date, end_date, endpoint=endpoint
+            symbol, start_date, end_date, endpoint=endpoint, **kwargs
         )
 
     def fetch_trade_cal(
