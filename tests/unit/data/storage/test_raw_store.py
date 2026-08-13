@@ -42,3 +42,21 @@ def test_raw_storage_missing_cache(tmp_path: Path) -> None:
 
     assert not store.has_raw("tushare", "daily", missing_date)
     assert store.load_raw("tushare", "daily", missing_date) is None
+
+
+def test_raw_storage_uses_endpoint_market_for_dataset_cache(tmp_path: Path) -> None:
+    store = RawDataStorage(base_dir=tmp_path)
+    target_date = date(2026, 8, 12)
+    cache_path = (
+        tmp_path
+        / "yfinance"
+        / "market=US"
+        / "stock_daily_bar"
+        / "year=2026"
+        / "month=08"
+        / "data.parquet"
+    )
+    cache_path.parent.mkdir(parents=True)
+    pl.DataFrame({"symbol": ["AAPL"], "trade_date": ["20260812"]}).write_parquet(cache_path)
+
+    assert store.has_raw("yfinance", "history", target_date)

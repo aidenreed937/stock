@@ -2,6 +2,7 @@
 
 import threading
 import time
+from datetime import date
 from typing import Any
 
 import pandas as pd
@@ -82,6 +83,8 @@ class LixingerClient:
         if not self.token:
             logger.warning("理杏仁 Token 未设置！使用 Mock 或空结果返回。")
             return pd.DataFrame()
+
+        self._validate_date_range(api_path, kwargs)
 
         full_url = api_path if api_path.startswith("http") else f"{self.url}/api/{api_path}"
 
@@ -174,3 +177,36 @@ class LixingerClient:
             return pd.DataFrame()
 
         return pd.DataFrame()
+
+    @staticmethod
+    def _validate_date_range(api_path: str, kwargs: dict[str, Any]) -> None:
+        """在 HTTP 请求前执行理杏仁文档的最长十年时间窗约束。"""
+        stock_codes = kwargs.get("stockCodes")
+        if stock_codes is not None:
+            if not isinstance(stock_codes, (list, tuple)):
+                raise DataFetchError(f"理杏仁接口 [{api_path}] stockCodes 必须是数组")
+            if not 1 <= len(stock_codes) <= 100:
+                raise DataFetchError(
+                    f"理杏仁接口 [{api_path}] stockCodes 数量必须在 1~100 之间，实际 {len(stock_codes)}"
+                )
+        start_value = kwargs.get("startDate") or kwargs.get("start_date")
+        end_value = kwargs.get("endDate") or kwargs.get("end_date")
+        if start_value and stock_codes is not None and len(stock_codes) != 1:
+            raise DataFetchError(
+                f"理杏仁接口 [{api_path}] 带 startDate 的历史区间请求只能传入一个 stockCode，实际 {len(stock_codes)} 个"
+            )
+        if not start_value or not end_value:
+            return
+        try:
+            start = date.fromisoformat(str(start_value)[:10])
+            end = date.fromisoformat(str(end_value)[:10])
+        except ValueError as exc:
+            raise DataFetchError(
+                f"理杏仁接口 [{api_path}] 日期参数必须为 YYYY-MM-DD: start={start_value}, end={end_value}"
+            ) from exc
+        if end < start:
+            raise DataFetchError(f"理杏仁接口 [{api_path}] endDate 早于 startDate")
+        if (end - start).days > 3650:
+            raise DataFetchError(
+                f"理杏仁接口 [{api_path}] 请求跨度超过文档限制 10 年: {start} ~ {end}"
+            )

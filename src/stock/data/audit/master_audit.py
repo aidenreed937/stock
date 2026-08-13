@@ -62,6 +62,8 @@ def run_master_audit(base_dir: str = "data/curated") -> pl.DataFrame:
                 "symbols_count": symbols_cnt,
                 "min_date": min_d,
                 "max_date": max_d,
+                "null_count": sum(df[c].null_count() for c in df.columns),
+                "duplicate_rows": len(df) - len(df.unique()),
             })
         except Exception as e:
             logger.error(f"读取文件 [{f}] 发生审计解析异常: {e}")
@@ -97,7 +99,7 @@ def main() -> None:
             rows = row["精炼落盘总记录数"]
             min_d = row["最早交易日"]
             max_d = row["最新交易日"]
-            print(f"{src:<10} | {ds:<22} | {syms:<10} | {rows:<12} | {min_d:<10} | {max_d:<10} | ✅ 100% 完整")
+            print(f"{src:<10} | {ds:<22} | {syms:<10} | {rows:<12} | {min_d:<10} | {max_d:<10} | 已扫描，完整性需按接口契约判定")
     else:
         print("离线库为空或未包含任何有效 Parquet 数据文件。")
 

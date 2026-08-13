@@ -15,18 +15,48 @@ class GenericNormalizer(BaseDataNormalizer):
 
         normalized_df = df
 
-        # 1. 重命名 stockCode / code 为 symbol，date 为 trade_date
-        rename_dict = {}
-        if "stockCode" in normalized_df.columns and "symbol" not in normalized_df.columns:
-            rename_dict["stockCode"] = "symbol"
-        elif "code" in normalized_df.columns and "symbol" not in normalized_df.columns:
-            rename_dict["code"] = "symbol"
+        # 1. 统一标的与日期列名；历史数据可能同时包含标准列和源端别名。
+        # ts_code/stockCode 是权威标识，code 只用于填充缺失的标准标识。
+        for alias in ("ts_code", "stockCode"):
+            if alias not in normalized_df.columns:
+                continue
+            if "symbol" not in normalized_df.columns:
+                normalized_df = normalized_df.rename({alias: "symbol"})
+            else:
+                normalized_df = normalized_df.with_columns(
+                    pl.coalesce(
+                        [
+                            pl.col(alias).cast(pl.Utf8, strict=False),
+                            pl.col("symbol").cast(pl.Utf8, strict=False),
+                        ]
+                    ).alias("symbol")
+                ).drop(alias)
 
-        if "date" in normalized_df.columns and "trade_date" not in normalized_df.columns:
-            rename_dict["date"] = "trade_date"
+        if "code" in normalized_df.columns:
+            if "symbol" not in normalized_df.columns:
+                normalized_df = normalized_df.rename({"code": "symbol"})
+            else:
+                normalized_df = normalized_df.with_columns(
+                    pl.coalesce(
+                        [
+                            pl.col("symbol").cast(pl.Utf8, strict=False),
+                            pl.col("code").cast(pl.Utf8, strict=False),
+                        ]
+                    ).alias("symbol")
+                ).drop("code")
 
-        if rename_dict:
-            normalized_df = normalized_df.rename(rename_dict)
+        if "date" in normalized_df.columns:
+            if "trade_date" not in normalized_df.columns:
+                normalized_df = normalized_df.rename({"date": "trade_date"})
+            else:
+                normalized_df = normalized_df.with_columns(
+                    pl.coalesce(
+                        [
+                            pl.col("trade_date").cast(pl.Utf8, strict=False),
+                            pl.col("date").cast(pl.Utf8, strict=False),
+                        ]
+                    ).alias("trade_date")
+                ).drop("date")
 
         # 2. 转换 trade_date 为 Date 类型
         if "trade_date" in normalized_df.columns and normalized_df["trade_date"].dtype == pl.String:

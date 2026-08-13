@@ -23,33 +23,41 @@ class InstrumentId:
 
 
 def get_endpoint_market(provider: str, endpoint: str) -> str:
-    """根据数据源与接口名直接从源头注册表元数据中获取归属市场。"""
+    """根据项目任务名解析上游接口，再获取归属市场。"""
     provider_lower = provider.lower()
+    api_name = endpoint
+    try:
+        from stock.data.task_registry import resolve_task
+
+        api_name = resolve_task(provider_lower, endpoint).api_name
+    except ValueError:
+        # 迁移旧数据或处理未注册的自定义数据集时，保留原始名称回退路径。
+        pass
     if provider_lower == "tushare":
         from stock.data.fetcher.tushare.registry import TUSHARE_API_REGISTRY
 
-        meta = TUSHARE_API_REGISTRY.get(endpoint)
+        meta = TUSHARE_API_REGISTRY.get(api_name)
         if meta and hasattr(meta, "market"):
             return meta.market
         return "CN"
     if provider_lower == "yfinance":
         from stock.data.fetcher.yfinance.registry import YFINANCE_API_REGISTRY
 
-        meta_yf = YFINANCE_API_REGISTRY.get(endpoint)
+        meta_yf = YFINANCE_API_REGISTRY.get(api_name)
         if meta_yf and hasattr(meta_yf, "market"):
             return meta_yf.market
         return "US"
     if provider_lower == "lixinger":
         from stock.data.fetcher.lixinger.registry import LIXINGER_API_REGISTRY
 
-        meta_lx = LIXINGER_API_REGISTRY.get(endpoint)
+        meta_lx = LIXINGER_API_REGISTRY.get(api_name)
         if meta_lx and hasattr(meta_lx, "market"):
             return meta_lx.market
-        return "HK" if endpoint.startswith("hk") else "CN"
+        return "HK" if api_name.startswith("hk") else "CN"
     if provider_lower == "fred":
         from stock.data.fetcher.fred.registry import FRED_API_REGISTRY
 
-        meta_fr = FRED_API_REGISTRY.get(endpoint)
+        meta_fr = FRED_API_REGISTRY.get(api_name)
         if meta_fr and hasattr(meta_fr, "market"):
             return meta_fr.market
         return "US"
@@ -58,7 +66,7 @@ def get_endpoint_market(provider: str, endpoint: str) -> str:
 
 @dataclass(frozen=True)
 class DatasetKey:
-    """唯一描述一次数据请求，作为 RAW 缓存身份。"""
+    """唯一描述一次项目任务请求，作为 RAW 缓存身份。"""
 
     provider: str
     dataset: str
@@ -68,6 +76,11 @@ class DatasetKey:
     instrument: InstrumentId | None = None
     adjustment: str = "raw"
     schema_version: str = "v1"
+
+    @property
+    def task_name(self) -> str:
+        """返回项目任务名；endpoint 字段保留为旧调用兼容别名。"""
+        return self.endpoint
 
     @property
     def request_id(self) -> str:
@@ -107,11 +120,27 @@ class DatasetContract:
             raise DataValidationError(f"数据集 [{self.name}] 缺少必需列: {missing}")
         if any(df[column].null_count() > 0 for column in self.primary_keys):
             raise DataValidationError(f"数据集 [{self.name}] 主键包含空值")
+        if self.name in {"stock_daily_bar", "index_daily_bar"}:
+            if any(df[column].null_count() > 0 for column in ("open", "high", "low", "close")):
+                raise DataValidationError(f"数据集 [{self.name}] OHLC 包含空值")
+            physical_errors = df.filter(
+                (pl.col("open") <= 0)
+                | (pl.col("high") <= 0)
+                | (pl.col("low") <= 0)
+                | (pl.col("close") <= 0)
+                | (pl.col("high") < pl.col("low"))
+                | (pl.col("high") < pl.col("open"))
+                | (pl.col("high") < pl.col("close"))
+                | (pl.col("low") > pl.col("open"))
+                | (pl.col("low") > pl.col("close"))
+            )
+            if not physical_errors.is_empty():
+                raise DataValidationError(
+                    f"数据集 [{self.name}] 存在 {len(physical_errors)} 条 OHLC 物理异常"
+                )
         duplicate_count = len(df) - len(df.unique(subset=list(self.primary_keys)))
         if duplicate_count:
-            raise DataValidationError(
-                f"数据集 [{self.name}] 存在 {duplicate_count} 条重复主键记录"
-            )
+            raise DataValidationError(f"数据集 [{self.name}] 存在 {duplicate_count} 条重复主键记录")
 
 
 STOCK_DAILY_BAR_CONTRACT = DatasetContract(
@@ -132,7 +161,7 @@ STOCK_DAILY_BAR_CONTRACT = DatasetContract(
         "adjustment",
         "schema_version",
     ),
-    primary_keys=("market", "symbol", "trade_date", "adjustment"),
+    primary_keys=("market", "symbol", "trade_date"),
     units={"price": "quote_currency", "volume": "shares", "amount": "quote_currency"},
 )
 
@@ -154,7 +183,7 @@ INDEX_DAILY_BAR_CONTRACT = DatasetContract(
         "adjustment",
         "schema_version",
     ),
-    primary_keys=("market", "symbol", "trade_date", "adjustment"),
+    primary_keys=("market", "symbol", "trade_date"),
     units={"price": "quote_currency", "volume": "shares", "amount": "quote_currency"},
 )
 
@@ -181,28 +210,15 @@ INDEX_VALUATION_CONTRACT = DatasetContract(
 DAILY_BAR_CONTRACT = STOCK_DAILY_BAR_CONTRACT
 
 
-def dataset_for_endpoint(endpoint: str, symbol: str = "") -> str:
-    """将外部接口名与标的特征映射为内部标准数据集名。
+def dataset_for_endpoint(endpoint: str, symbol: str = "", provider: str = "tushare") -> str:
+    """返回项目任务对应的唯一数据集目录名。
 
-    个股 K 线归档为 stock_daily_bar，指数 K 线归档为 index_daily_bar。
+    ``endpoint`` 参数保留旧名称以兼容调用方，但解析由项目任务注册表负责；
+    不再从上游 API 路径拼接目录名。
     """
-    if endpoint in {"index_valuation", "etf_valuation", "us/index/fundamental"}:
-        return "index_valuation"
-    if endpoint in {"financials", "balance_sheet", "cashflow"}:
-        return f"financial_{endpoint}"
-    if endpoint in {"dividends", "splits"}:
-        return f"action_{endpoint}"
-    if endpoint in {"analyst_price_target", "recommendations"}:
-        return f"analyst_{endpoint}"
-    if endpoint in {"institutional_holders", "insider_transactions"}:
-        return f"holder_{endpoint}"
-    if endpoint == "fast_info":
-        return "fast_quote_snapshot"
-    if endpoint in {"daily", "daily_bar", "history", "cn/company/candlestick", "cn/index/candlestick"}:
-        if endpoint == "cn/index/candlestick" or symbol.startswith("^"):
-            return "index_daily_bar"
-        return "stock_daily_bar"
-    return endpoint.replace("/", "_")
+    from stock.data.task_registry import task_dataset
+
+    return task_dataset(provider, endpoint, symbol=symbol)
 
 
 def instrument_for_symbol(symbol: str, provider: str) -> InstrumentId | None:

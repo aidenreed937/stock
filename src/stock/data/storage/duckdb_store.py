@@ -7,12 +7,15 @@ import polars as pl
 from stock.config.loader import load_data_config
 from stock.config.settings import settings
 from stock.data.contracts import DAILY_BAR_CONTRACT, DatasetKey, get_endpoint_market
+from stock.data.task_registry import resolve_task
 from stock.exceptions import DataValidationError
 from stock.utils.logger import logger
 
 
 class DuckDBMarketStore:
     """基于 DuckDB + Parquet 的本地极速行情存储引擎"""
+
+    _BAR_DATASETS = {"daily_bar", "stock_daily_bar", "index_daily_bar", "fund_daily"}
 
     def __init__(
         self, storage_dir: Path | str | None = None, data_source: str | None = None
@@ -37,6 +40,19 @@ class DuckDBMarketStore:
     def _get_source_dir(self) -> Path:
         """返回当前数据源专属的 Curated 目录。"""
         return self._storage_root / self.data_source if self.data_source else self._storage_root
+
+    @staticmethod
+    def _is_artifact_path(path: Path) -> bool:
+        """跳过迁移备份和临时文件，只读取当前有效 Parquet。"""
+        return path.name.endswith((".bak.parquet", ".tmp.parquet"))
+
+    def _active_parquet_paths(self) -> list[Path]:
+        """返回当前数据源下可供查询的有效 Parquet 文件。"""
+        return [
+            path
+            for path in self.storage_dir.rglob("*.parquet")
+            if not self._is_artifact_path(path)
+        ]
 
     def _require_data_source(self) -> str:
         """要求存储实例已绑定数据源，避免读取未隔离目录。"""
@@ -91,36 +107,73 @@ class DuckDBMarketStore:
             self._file_lock = threading.Lock()
 
         with self._file_lock:
+            dataset_name = file_path.parent.name
+            if dataset_name.startswith("month="):
+                dataset_name = file_path.parent.parent.parent.name
             existing = pl.read_parquet(file_path) if file_path.exists() else pl.DataFrame()
+            if not existing.is_empty():
+                existing = self._normalize_identity_columns(existing)
+            normalized_dfs = [self._normalize_identity_columns(df) for df in dfs]
             if not existing.is_empty() and source is not None:
                 self._validate_frame_source(existing, source, f"已有 Curated 文件 [{file_path}]")
-                for df in dfs:
+                for df in normalized_dfs:
                     if set(existing.columns) != set(df.columns):
                         raise DataValidationError(
                             f"Curated 文件 schema 不匹配 [{file_path}]: "
                             f"已有列 {existing.columns}，新数据列 {df.columns}"
                         )
 
-            all_dfs = ([existing] + dfs) if not existing.is_empty() else dfs
+            all_dfs = ([existing] + normalized_dfs) if not existing.is_empty() else normalized_dfs
+            all_dfs = [self._normalize_datetime_columns(df) for df in all_dfs]
             merged = pl.concat(all_dfs, how="diagonal_relaxed")
 
-            dedup_cols = [
-                c
-                for c in [
-                    "market",
-                    "exchange_id",
-                    "symbol",
-                    "stockCode",
-                    "ts_code",
-                    "code",
-                    "trade_date",
-                    "date",
-                    "adjustment",
+            if dataset_name in self._BAR_DATASETS:
+                # 同一行情接口的复权标识是属性，不是并存版本的身份键。
+                # 否则历史 normal/raw 记录会在同一交易日形成两条行情。
+                dedup_cols: list[str] = [
+                    column
+                    for column in ("market", "symbol", "trade_date")
+                    if column in merged.columns
                 ]
-                if c in merged.columns
-            ]
+            else:
+                dedup_cols = [
+                    c
+                    for c in [
+                        "market",
+                        "exchange_id",
+                        "symbol",
+                        "stockCode",
+                        "ts_code",
+                        "code",
+                        "index_code",
+                        "con_code",
+                        "in_date",
+                        "out_date",
+                        "trade_date",
+                        "date",
+                        "end_date",
+                        "suspend_date",
+                        "market_type",
+                        "adjustment",
+                    ]
+                    if c in merged.columns
+                ]
+            # 宏观月/季频接口没有 symbol 维度，业务日期必须参与自然键，
+            # 否则整段回填会被压缩成最后一行。
+            if "month" in merged.columns and "month" not in dedup_cols:
+                dedup_cols.append("month")
+            if "quarter" in merged.columns and "quarter" not in dedup_cols:
+                dedup_cols.append("quarter")
             if dedup_cols:
                 merged = merged.unique(subset=dedup_cols, keep="last")
+            if dataset_name == "hk_hold" and "symbol" in merged.columns:
+                qualified_symbols = merged.filter(
+                    pl.col("symbol").cast(pl.Utf8, strict=False).str.contains(r"\.")
+                )
+                if not qualified_symbols.is_empty():
+                    merged = merged.filter(
+                        pl.col("symbol").cast(pl.Utf8, strict=False).str.contains(r"\.")
+                    )
             if "trade_date" in merged.columns and "symbol" in merged.columns:
                 merged = merged.sort(["trade_date", "symbol"])
 
@@ -139,6 +192,66 @@ class DuckDBMarketStore:
 
         return merged
 
+    @staticmethod
+    def _normalize_datetime_columns(df: pl.DataFrame) -> pl.DataFrame:
+        """将批量合并中的 datetime 列统一为 UTC 微秒精度。"""
+        target_dtype = pl.Datetime(time_unit="us", time_zone="UTC")
+        expressions = []
+        for column, dtype in df.schema.items():
+            if not isinstance(dtype, pl.Datetime):
+                continue
+            expression = pl.col(column)
+            if dtype.time_zone is None:
+                expression = expression.dt.replace_time_zone("UTC")
+            else:
+                expression = expression.dt.convert_time_zone("UTC")
+            expressions.append(expression.cast(target_dtype).alias(column))
+        return df.with_columns(expressions) if expressions else df
+
+    @staticmethod
+    def _normalize_identity_columns(df: pl.DataFrame) -> pl.DataFrame:
+        """将源端标的/日期别名归一为 Curated 标准列。"""
+        normalized = df
+        for alias in ("ts_code", "stockCode"):
+            if alias not in normalized.columns:
+                continue
+            if "symbol" not in normalized.columns:
+                normalized = normalized.rename({alias: "symbol"})
+            else:
+                normalized = normalized.with_columns(
+                    pl.coalesce(
+                        [
+                            pl.col(alias).cast(pl.Utf8, strict=False),
+                            pl.col("symbol").cast(pl.Utf8, strict=False),
+                        ]
+                    ).alias("symbol")
+                ).drop(alias)
+        if "code" in normalized.columns:
+            if "symbol" not in normalized.columns:
+                normalized = normalized.rename({"code": "symbol"})
+            else:
+                normalized = normalized.with_columns(
+                    pl.coalesce(
+                        [
+                            pl.col("symbol").cast(pl.Utf8, strict=False),
+                            pl.col("code").cast(pl.Utf8, strict=False),
+                        ]
+                    ).alias("symbol")
+                ).drop("code")
+        if "date" in normalized.columns:
+            if "trade_date" not in normalized.columns:
+                normalized = normalized.rename({"date": "trade_date"})
+            else:
+                normalized = normalized.with_columns(
+                    pl.coalesce(
+                        [
+                            pl.col("trade_date").cast(pl.Utf8, strict=False),
+                            pl.col("date").cast(pl.Utf8, strict=False),
+                        ]
+                    ).alias("trade_date")
+                ).drop("date")
+        return normalized
+
     def _validate_frame_source(self, df: pl.DataFrame, data_source: str, context: str) -> None:
         """校验数据帧的血统元数据。"""
         if "data_source" not in df.columns:
@@ -153,30 +266,30 @@ class DuckDBMarketStore:
             )
 
     def _get_partition_dir(self, endpoint: str, target_date: date, market: str = "MULTI") -> Path:
-        """根据接口名与日期计算 Hive 时间与市场分区目录路径。"""
+        """根据项目任务名与日期计算 Hive 时间与市场分区目录路径。"""
+        endpoint = self._dataset_name(endpoint)
         market_slug = f"market={market.upper()}"
         year_str = f"year={target_date.year:04d}"
         month_str = f"month={target_date.month:02d}"
         return self.storage_dir / market_slug / endpoint / year_str / month_str
 
     def get_parquet_path(self, endpoint: str, target_date: date, market: str = "MULTI") -> Path:
-        """计算归档文件路径（按市场与月份统一为 data.parquet）。"""
+        """计算项目任务归档文件路径（按市场与月份统一为 data.parquet）。"""
         partition_dir = self._get_partition_dir(endpoint, target_date, market=market)
         return partition_dir / "data.parquet"
 
-    def has_curated(
-        self, endpoint: str, target_date: date, symbol: str | None = None
-    ) -> bool:
+    def has_curated(self, endpoint: str, target_date: date, symbol: str | None = None) -> bool:
         """检查某天（及可选指定股票）的数据是否已被精炼并落盘。"""
         data_source = self._require_data_source()
-        if endpoint in {"daily", "daily_bar"}:
-            endpoints = ["daily_bar", "stock_daily_bar", "index_daily_bar"]
-        else:
-            endpoints = [endpoint]
+        endpoints = [self._dataset_name(endpoint)]
         year_month_path = f"year={target_date.year:04d}/month={target_date.month:02d}"
         matching_files: list[Path] = []
         for ep in endpoints:
-            matching_files.extend(self.storage_dir.glob(f"**/{ep}/{year_month_path}/*.parquet"))
+            matching_files.extend(
+                path
+                for path in self.storage_dir.glob(f"**/{ep}/{year_month_path}/*.parquet")
+                if not self._is_artifact_path(path)
+            )
         if not matching_files:
             return False
         date_str_hyphen = target_date.strftime("%Y-%m-%d")
@@ -193,11 +306,7 @@ class DuckDBMarketStore:
                 self._validate_frame_source(df, data_source, f"Curated 文件 [{file_path}]")
                 if "trade_date" in df.columns:
                     dates = set(df["trade_date"].unique().to_list())
-                    if (
-                        target_date in dates
-                        or date_str_hyphen in dates
-                        or date_str_plain in dates
-                    ):
+                    if target_date in dates or date_str_hyphen in dates or date_str_plain in dates:
                         if symbol and "symbol" in df.columns:
                             symbols = set(df["symbol"].unique().to_list())
                             if symbol not in symbols:
@@ -207,7 +316,6 @@ class DuckDBMarketStore:
                             and "symbol" in df.columns
                             and (
                                 "stock_daily_bar" in str(file_path)
-                                or ("daily_bar" in str(file_path) and "index" not in str(file_path) and "fund" not in str(file_path))
                             )
                         ):
                             # 全市场日线行情回填时，如果当前文件中的该日期含有的个股数少于对应年份的最小预期股票数，不判定为已归档
@@ -248,7 +356,9 @@ class DuckDBMarketStore:
         data_source: str | None = None,
     ) -> Path:
         """保存行情数据 (对齐 save_curated 别名)。"""
-        return self.save_curated(df=df, endpoint=endpoint, target_date=target_date, data_source=data_source)
+        return self.save_curated(
+            df=df, endpoint=endpoint, target_date=target_date, data_source=data_source
+        )
 
     def _save_dataframe_partitioned(
         self,
@@ -258,23 +368,21 @@ class DuckDBMarketStore:
         market_code: str,
         source: str,
     ) -> Path:
-        """根据数据帧内部的真实交易日 (trade_date/date) 动态分桶路由落盘。"""
+        """根据数据帧内部的真实业务日期动态分桶路由落盘。"""
         config = load_data_config()
         no_part_providers = set(config.storage.raw.non_partitioned_providers)
         no_part_datasets = set(config.storage.raw.non_partitioned_datasets)
 
         if source in no_part_providers or dataset_name in no_part_datasets:
             file_path = (
-                self.storage_dir
-                / f"market={market_code.upper()}"
-                / dataset_name
-                / "data.parquet"
+                self.storage_dir / f"market={market_code.upper()}" / dataset_name / "data.parquet"
             )
             self._save_single_partition(file_path, df, dataset_name, source)
             return file_path
 
         date_col = next(
-            (c for c in ["trade_date", "date", "as_of_date", "Date"] if c in df.columns), None
+            (c for c in ["trade_date", "date", "end_date", "as_of_date", "Date"] if c in df.columns),
+            None,
         )
         if not date_col or df.is_empty():
             file_path = self.get_parquet_path(dataset_name, fallback_date, market=market_code)
@@ -353,8 +461,6 @@ class DuckDBMarketStore:
         data_source: str | None = None,
     ) -> Path:
         """保存精炼数据到指定的时间分区。"""
-        if endpoint == "daily":
-            endpoint = "daily_bar"
         source = data_source or self.data_source
         if source is None and "data_source" in df.columns:
             sources = set(df.get_column("data_source").drop_nulls().unique().to_list())
@@ -363,6 +469,7 @@ class DuckDBMarketStore:
         if source is None:
             raise DataValidationError("Curated 数据缺少数据源，拒绝写入未绑定来源的数据")
         self.bind_data_source(source)
+        endpoint = self._dataset_name(endpoint, source)
 
         market_code = get_endpoint_market(source, endpoint)
         if "market" in df.columns and not df.is_empty():
@@ -377,7 +484,7 @@ class DuckDBMarketStore:
 
         file_path = self.get_parquet_path(endpoint, target_date, market=market_code)
         self._validate_frame_source(df, source, f"Curated 数据 [{file_path}]")
-        if endpoint in {"daily", "daily_bar"}:
+        if endpoint in {"daily_bar", "stock_daily_bar", "index_daily_bar", "fund_daily"}:
             DAILY_BAR_CONTRACT.validate(df)
 
         return self._save_dataframe_partitioned(
@@ -391,44 +498,57 @@ class DuckDBMarketStore:
     def save_dataset(self, key: DatasetKey, df: pl.DataFrame) -> Path:
         """按数据集和业务日期幂等合并保存标准数据。"""
         self.bind_data_source(key.provider)
+        dataset_name = self._dataset_name(key.dataset, key.provider)
         market_code = (
             key.instrument.market
             if key.instrument and key.instrument.market
-            else get_endpoint_market(key.provider, key.dataset)
+            else get_endpoint_market(key.provider, dataset_name)
         )
         if "market" in df.columns and not df.is_empty():
             m_values = set(df.get_column("market").drop_nulls().unique().to_list())
             if len(m_values) == 1 and next(iter(m_values)):
                 market_code = next(iter(m_values))
-        file_path = self.get_parquet_path(key.dataset, key.end_date, market=market_code)
+        file_path = self.get_parquet_path(dataset_name, key.end_date, market=market_code)
         if df.is_empty():
             return file_path
         self._validate_frame_source(df, key.provider, f"Curated 数据 [{file_path}]")
-        if key.dataset == "daily_bar":
+        if dataset_name in {"daily_bar", "stock_daily_bar", "index_daily_bar", "fund_daily"}:
             DAILY_BAR_CONTRACT.validate(df)
 
         return self._save_dataframe_partitioned(
             df=df,
-            dataset_name=key.dataset,
+            dataset_name=dataset_name,
             fallback_date=key.end_date,
             market_code=market_code,
             source=key.provider,
         )
 
+    def _dataset_name(self, endpoint: str, data_source: str | None = None) -> str:
+        """将兼容参数解析为唯一项目任务/数据集目录名。"""
+        provider = data_source or self.data_source
+        if provider is not None:
+            try:
+                return resolve_task(provider, endpoint).dataset
+            except ValueError:
+                pass
+        if endpoint in {"daily", "daily_bar", "history"}:
+            return "stock_daily_bar"
+        return endpoint
+
     def query_dataset(
         self,
-        dataset: str = "daily_bar",
+        dataset: str = "stock_daily_bar",
         symbol: str | None = None,
         start_date: date | None = None,
         end_date: date | None = None,
     ) -> pl.DataFrame:
         """查询标准数据集，兼容旧 endpoint 查询入口。"""
         data_source = self._require_data_source()
-        target_dataset = "*daily_bar" if dataset in {"daily_bar", "daily"} else dataset
+        target_dataset = self._dataset_name(dataset)
         matched_files = [
-            str(p)
-            for p in self.storage_dir.rglob("*.parquet")
-            if any(target_dataset.replace("*", "") in part for part in p.parts)
+            str(path)
+            for path in self._active_parquet_paths()
+            if any(target_dataset.replace("*", "") in part for part in path.parts)
         ]
         if not matched_files:
             return pl.DataFrame()
@@ -440,8 +560,15 @@ class DuckDBMarketStore:
         if end_date:
             conditions.append(f"trade_date <= '{end_date:%Y-%m-%d}'")
         where_clause = f" WHERE {' AND '.join(conditions)}" if conditions else ""
-        order_clause = " ORDER BY trade_date ASC, symbol ASC" if dataset not in {"stock_basic", "index_basic"} else ""
-        sql = f"SELECT * FROM read_parquet({matched_files}){where_clause}{order_clause}"  # noqa: S608
+        order_clause = (
+            " ORDER BY trade_date ASC, symbol ASC"
+            if target_dataset not in {"stock_basic", "index_basic", "fund_basic"}
+            else ""
+        )
+        sql = (
+            f"SELECT * FROM read_parquet({matched_files}, union_by_name=true)"
+            f"{where_clause}{order_clause}"
+        )  # noqa: S608
         try:
             return self.query_by_sql(sql)
         except Exception as e:
@@ -454,18 +581,24 @@ class DuckDBMarketStore:
         return pl.from_arrow(arrow_table)  # type: ignore
 
     def query_daily_bars(
-        self, symbol: str, endpoint: str = "daily", min_price: float | None = None
+        self, symbol: str, endpoint: str = "stock_daily_bar", min_price: float | None = None
     ) -> pl.DataFrame:
         """使用 DuckDB SQL 快速检索全量分区数据中的单只股票。"""
         data_source = self._require_data_source()
-        if endpoint == "daily":
-            return self.query_dataset(dataset="daily_bar", symbol=symbol)
-        search_pattern = str(self.storage_dir / "**" / endpoint / "*" / "*" / "*.parquet")
-        if not list(self.storage_dir.rglob("*.parquet")):
+        endpoint = self._dataset_name(endpoint)
+        if endpoint == "stock_daily_bar":
+            return self.query_dataset(dataset=endpoint, symbol=symbol)
+        matched_files = [
+            str(path) for path in self._active_parquet_paths() if endpoint in path.parts
+        ]
+        if not matched_files:
             logger.warning(f"本地无 {endpoint} 分区 Parquet 缓存文件")
             return pl.DataFrame()
 
-        sql = f"SELECT * FROM '{search_pattern}' WHERE symbol = '{symbol}'"  # noqa: S608
+        sql = (
+            f"SELECT * FROM read_parquet({matched_files}, union_by_name=true)"
+            f" WHERE symbol = '{symbol}'"
+        )  # noqa: S608
         sql += f" AND data_source = '{data_source}'"
         if min_price is not None:
             sql += f" AND close >= {min_price}"
@@ -479,15 +612,16 @@ class DuckDBMarketStore:
 
     def query_history(
         self,
-        endpoint: str = "daily",
+        endpoint: str = "stock_daily_bar",
         start_date: date | None = None,
         end_date: date | None = None,
         symbols: list[str] | None = None,
     ) -> pl.DataFrame:
         """检索全量或部分标的在指定时间段内的历史数据切片。"""
-        if endpoint == "daily":
+        endpoint = self._dataset_name(endpoint)
+        if endpoint == "stock_daily_bar":
             result = self.query_dataset(
-                dataset="daily_bar",
+                dataset=endpoint,
                 start_date=start_date,
                 end_date=end_date,
             )
@@ -495,8 +629,10 @@ class DuckDBMarketStore:
                 result = result.filter(pl.col("symbol").is_in(symbols))
             return result
         data_source = self._require_data_source()
-        search_pattern = str(self.storage_dir / "**" / endpoint / "*" / "*" / "*.parquet")
-        if not list(self.storage_dir.rglob("*.parquet")):
+        matched_files = [
+            str(path) for path in self._active_parquet_paths() if endpoint in path.parts
+        ]
+        if not matched_files:
             logger.warning(f"本地无 {endpoint} 分区 Parquet 缓存文件")
             return pl.DataFrame()
 
@@ -511,7 +647,10 @@ class DuckDBMarketStore:
         conditions.append(f"data_source = '{data_source}'")
 
         where_clause = f" WHERE {' AND '.join(conditions)}" if conditions else ""
-        sql = f"SELECT * FROM '{search_pattern}'{where_clause} ORDER BY trade_date ASC, symbol ASC"  # noqa: S608
+        sql = (
+            f"SELECT * FROM read_parquet({matched_files}, union_by_name=true)"
+            f"{where_clause} ORDER BY trade_date ASC, symbol ASC"
+        )  # noqa: S608
 
         try:
             return self.query_by_sql(sql)
@@ -519,7 +658,7 @@ class DuckDBMarketStore:
             logger.error(f"DuckDB 面板查询异常: {e}")
             return pl.DataFrame()
 
-    def get_max_trade_date(self, symbol: str, endpoint: str = "daily") -> date | None:
+    def get_max_trade_date(self, symbol: str, endpoint: str = "stock_daily_bar") -> date | None:
         """获取本地已存储该标的最新交易日期。"""
         df = self.query_daily_bars(symbol=symbol, endpoint=endpoint)
         if df.is_empty() or "trade_date" not in df.columns:
@@ -534,14 +673,21 @@ class DuckDBMarketStore:
     def query_universe_snapshots(self, as_of_date: date | str | None = None) -> pl.DataFrame:
         """查询已落盘归档的选股池历史快照 (Snapshot Archive)。"""
         snap_dir = self.storage_dir / "universe_snapshots"
-        matched_files = [str(p) for p in snap_dir.rglob("*.parquet")]
+        matched_files = [
+            str(path)
+            for path in snap_dir.rglob("*.parquet")
+            if not self._is_artifact_path(path)
+        ]
         if not matched_files:
             return pl.DataFrame()
         where_clause = ""
         if as_of_date:
             d_str = as_of_date.strftime("%Y-%m-%d") if isinstance(as_of_date, date) else as_of_date
             where_clause = f" WHERE as_of_date = '{d_str}'"
-        sql = f"SELECT * FROM read_parquet({matched_files}){where_clause} ORDER BY as_of_date DESC, symbol ASC"  # noqa: S608
+        sql = (
+            f"SELECT * FROM read_parquet({matched_files}, union_by_name=true)"
+            f"{where_clause} ORDER BY as_of_date DESC, symbol ASC"
+        )  # noqa: S608
         try:
             return self.query_by_sql(sql)
         except Exception as e:

@@ -56,6 +56,15 @@ class GenericCleaner(BaseDataCleaner):
                 if candidate in cleaned_df.columns:
                     target_keys.append(candidate)
 
+        # 月频/季频宏观接口必须保留业务周期；没有 symbol 的数据不能按日期之外的
+        # 通用推断键压成单行。
+        if "month" in cleaned_df.columns:
+            target_keys = [key for key in target_keys if key not in {"symbol", "ts_code", "date"}]
+            target_keys.append("month")
+        elif "quarter" in cleaned_df.columns:
+            target_keys = [key for key in target_keys if key not in {"symbol", "ts_code", "date"}]
+            target_keys.append("quarter")
+
         # 1. 过滤主键包含 null 的记录
         if target_keys:
             cleaned_df = cleaned_df.drop_nulls(subset=target_keys)

@@ -80,3 +80,27 @@ class BarDataCleaner(BaseDataCleaner):
             logger.debug(f"数据清洗完成: 校验 {final_count} 条记录完全合规")
 
         return cleaned_df
+
+    def clean_with_quarantine(
+        self,
+        df: pl.DataFrame,
+        *,
+        endpoint: str,
+        request_id: str = "",
+        data_source: str = "",
+        quarantine: object | None = None,
+    ) -> pl.DataFrame:
+        """清洗并将被过滤记录按原因写入隔离区。"""
+        cleaned = self.clean(df)
+        if quarantine is not None and len(cleaned) < len(df):
+            from stock.data.quality.quarantine import QuarantineStore
+
+            if isinstance(quarantine, QuarantineStore):
+                quarantine.write(
+                    df.join(cleaned, on=df.columns, how="anti"),
+                    endpoint=endpoint,
+                    reason="bar_validation_rejected",
+                    request_id=request_id,
+                    data_source=data_source,
+                )
+        return cleaned

@@ -122,12 +122,14 @@ class TuShareStockFetcher:
             else:
                 if start_date == end_date:
                     query_kwargs["trade_date"] = start_str
-                elif (end_date - start_date).days > 300:
+                elif (end_date - start_date).days >= (meta.request_window_days or 300):
                     from datetime import timedelta
+
+                    window_days = meta.request_window_days or 300
                     cur_d = start_date
                     frames: list[pl.DataFrame] = []
                     while cur_d <= end_date:
-                        next_d = min(cur_d + timedelta(days=300), end_date)
+                        next_d = min(cur_d + timedelta(days=window_days - 1), end_date)
                         sub_df = self.fetch_daily_bars_df(
                             symbol=symbol,
                             start_date=cur_d,
@@ -141,8 +143,11 @@ class TuShareStockFetcher:
                     if not frames:
                         return pl.DataFrame()
                     merged = pl.concat(frames, how="diagonal_relaxed")
+                    primary_keys = [c for c in meta.primary_keys if c in merged.columns]
+                    if primary_keys:
+                        merged = merged.unique(subset=primary_keys, keep="last")
                     if "trade_date" in merged.columns:
-                        merged = merged.unique(subset=["trade_date"]).sort("trade_date")
+                        merged = merged.sort("trade_date")
                     return merged
                 else:
                     query_kwargs["start_date"] = start_str
@@ -154,9 +159,12 @@ class TuShareStockFetcher:
             return pl.DataFrame()
 
         pl_df = pl.from_pandas(pandas_df)
-        if "symbol" not in pl_df.columns:
-            sym_val = symbol or endpoint.upper()
-            pl_df = pl_df.with_columns(pl.lit(sym_val).alias("symbol"))
+        if "symbol" not in pl_df.columns and symbol:
+            pl_df = pl_df.with_columns(pl.lit(symbol).alias("symbol"))
+        # 事件型接口可能返回重复页或重复关系，按注册表自然键去重，保留有效期字段。
+        primary_keys = [key for key in meta.primary_keys if key in pl_df.columns]
+        if primary_keys:
+            pl_df = pl_df.unique(subset=primary_keys, keep="last")
         return pl_df
 
     def fetch_daily_bars(

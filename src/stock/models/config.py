@@ -175,13 +175,25 @@ class EndpointSymbolModesConfig(BaseModel):
             "index_dailybasic",
             "index_weight",
             "global_index_daily",
-            "fund_daily",
-            "history",
+            "fund_share",
+            "income",
+            "fina_indicator",
+            "margin_detail",
+            "hk_hold",
         ],
         description="按标的按时间段采集的接口列表",
     )
     per_day_endpoints: list[str] = Field(
-        default_factory=lambda: ["daily", "daily_basic", "moneyflow", "adj_factor"],
+        default_factory=lambda: [
+            "stock_daily_bar",
+            "daily_basic",
+            "moneyflow",
+            "adj_factor",
+            "sw_daily",
+            "fund_adj",
+            "etf_share_size",
+            "suspend_d",
+        ],
         description="按交易日全市场采集的接口列表",
     )
 
@@ -204,10 +216,10 @@ class StorageConfig(BaseModel):
 
 
 class BackfillTargetItemConfig(BaseModel):
-    """单个接口的回填目标配置。"""
+    """单个项目任务的回填目标配置。"""
 
-    api_name: str = Field(description="接口 API 名称")
-    description: str = Field(default="", description="接口描述")
+    task_name: str = Field(description="项目任务名")
+    description: str = Field(default="", description="任务描述")
     fetch_mode: str = Field(
         default="per_day", description="拉取模式 (per_day / per_symbol / event)"
     )

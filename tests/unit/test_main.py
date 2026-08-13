@@ -100,7 +100,7 @@ def test_main_with_tushare_data_source():
 
         main()
 
-        mock_create_pipeline.assert_called_once_with(endpoint="daily")
+        mock_create_pipeline.assert_called_once_with(endpoint="stock_daily_bar")
 
 
 def test_main_with_yfinance_data_source():

@@ -58,6 +58,37 @@ def test_lixinger_client_errors() -> None:
         with pytest.raises(DataFetchError, match="Token 验证失效"):
             client.query("cn/company/fundamental/non_financial")
 
+
+def test_lixinger_client_rejects_range_over_ten_years_before_http() -> None:
+    client = LixingerClient(token="mock_token")
+    with patch.object(client._session, "post") as post:
+        with pytest.raises(DataFetchError, match="超过文档限制 10 年"):
+            client.query(
+                "cn/index/fundamental",
+                stockCodes=["000300"],
+                startDate="2010-01-01",
+                endDate="2021-01-02",
+            )
+        post.assert_not_called()
+
+
+def test_lixinger_client_rejects_invalid_stock_codes_before_http() -> None:
+    client = LixingerClient(token="mock_token")
+    with patch.object(client._session, "post") as post:
+        with pytest.raises(DataFetchError, match="只能传入一个 stockCode"):
+            client.query(
+                "cn/company/fundamental/non_financial",
+                stockCodes=["600519", "000001"],
+                startDate="2026-01-01",
+                endDate="2026-08-01",
+            )
+        post.assert_not_called()
+
+    with patch.object(client._session, "post") as post:
+        with pytest.raises(DataFetchError, match="数量必须在 1~100"):
+            client.query("cn/company/fundamental/non_financial", stockCodes=[])
+        post.assert_not_called()
+
     mock_403 = MagicMock()
     mock_403.status_code = 403
     mock_403.text = "Forbidden"
@@ -122,13 +153,25 @@ def test_lixinger_stock_fetcher() -> None:
     assert trade_dates == [start_d]
 
 
+def test_lixinger_constituents_are_flattened() -> None:
+    mock_client = MagicMock()
+    mock_client.query.return_value = pd.DataFrame([
+        {"stockCode": "490000", "constituents": [{"stockCode": "600519", "market": "CN"}]}
+    ])
+    fetcher = LixingerStockFetcher(client=mock_client)
+    df = fetcher.fetch_daily_bars_df(
+        "sw_2021_constituents", date(2026, 8, 1), date(2026, 8, 1), endpoint="cn/industry/constituents/sw_2021"
+    )
+    assert df.to_dicts() == [{"industryCode": "490000", "stockCode": "600519", "market": "CN"}]
+
+
 def test_lixinger_facade_and_factory() -> None:
     facade = LixingerDataFetcher(token="test_token")
     assert facade.client.token == "test_token"
 
-    pipeline = create_lixinger_pipeline("cn/company/fundamental/non_financial")
+    pipeline = create_lixinger_pipeline("company_fundamental")
     assert pipeline.data_source == "lixinger"
-    assert pipeline.endpoint == "cn/company/fundamental/non_financial"
+    assert pipeline.endpoint == "company_fundamental"
 
 
 def test_lixinger_update_scheduler() -> None:

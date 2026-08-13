@@ -2,7 +2,7 @@
   "exclude": [
     ".agents/",
     ".github/",
-    "data/",
+    "/data/",
     "docs/",
     "AGENTS.md",
     "GEMINI.md"

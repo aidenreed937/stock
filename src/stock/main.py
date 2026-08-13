@@ -37,7 +37,7 @@ def main() -> None:
     elif settings.data_source_mode == "tushare":
         from stock.data.fetcher.tushare.factory import create_tushare_pipeline
 
-        pipeline = create_tushare_pipeline(endpoint="daily")
+        pipeline = create_tushare_pipeline(endpoint="stock_daily_bar")
     elif settings.data_source_mode == "yfinance":
         from stock.data.fetcher.yfinance.factory import create_yfinance_pipeline
 
@@ -53,7 +53,9 @@ def main() -> None:
 
     # 4. 执行 DuckDB SQL 面板检索与策略信号生成
     store = pipeline.store
-    query_res = store.query_history(endpoint="daily", symbols=strategy_cfg.universe.all_symbols)
+    query_res = store.query_history(
+        endpoint="stock_daily_bar", symbols=strategy_cfg.universe.all_symbols
+    )
     logger.info(f"DuckDB SQL 查询结果: 共 {len(query_res)} 条缓存记录")
 
     # 5. 技术指标计算 (由 YAML 配置参数驱动)

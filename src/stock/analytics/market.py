@@ -35,7 +35,9 @@ class MarketBreadthAnalyzer:
             pl.DataFrame: 包含 trade_date, total_stocks, stocks_above_ma, breadth_ratio 的结果表
         """
         # 1. 抓取全市场面板数据
-        df = self.store.query_history(endpoint="daily", start_date=start_date, end_date=end_date)
+        df = self.store.query_history(
+            endpoint="stock_daily_bar", start_date=start_date, end_date=end_date
+        )
         if df.is_empty():
             return pl.DataFrame(
                 schema={

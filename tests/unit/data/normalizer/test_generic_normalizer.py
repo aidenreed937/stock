@@ -15,3 +15,48 @@ def test_generic_normalizer_iso_date():
     assert "trade_date" in normalized.columns
     assert normalized["symbol"][0] == "600519"
     assert str(normalized["trade_date"][0]) == "2024-08-01"
+
+
+def test_generic_normalizer_maps_ts_code_and_coalesces_aliases():
+    normalizer = GenericNormalizer()
+    raw_df = pl.DataFrame(
+        {
+            "symbol": ["A", None],
+            "ts_code": [None, "B"],
+            "trade_date": ["2024-08-01", "2024-08-02"],
+        }
+    )
+
+    normalized = normalizer.normalize(raw_df)
+
+    assert normalized["symbol"].to_list() == ["A", "B"]
+    assert "ts_code" not in normalized.columns
+
+
+def test_generic_normalizer_prefers_ts_code_over_placeholder_symbol():
+    normalized = GenericNormalizer().normalize(
+        pl.DataFrame(
+            {
+                "symbol": ["ADJ_FACTOR"],
+                "ts_code": ["600000.SH"],
+                "trade_date": ["2024-08-01"],
+            }
+        )
+    )
+
+    assert normalized["symbol"].to_list() == ["600000.SH"]
+
+
+def test_generic_normalizer_does_not_let_code_override_ts_code():
+    normalized = GenericNormalizer().normalize(
+        pl.DataFrame(
+            {
+                "code": ["90519"],
+                "ts_code": ["600519.SH"],
+                "symbol": ["600519.SH"],
+                "trade_date": ["2024-08-01"],
+            }
+        )
+    )
+
+    assert normalized["symbol"].to_list() == ["600519.SH"]

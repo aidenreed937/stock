@@ -3,21 +3,21 @@ from stock.data.pipeline import MarketDataPipeline
 
 
 def test_create_pipeline_tushare():
-    pipeline = create_pipeline("tushare", "daily")
+    pipeline = create_pipeline("tushare", "stock_daily_bar")
     assert isinstance(pipeline, MarketDataPipeline)
     assert pipeline.data_source == "tushare"
-    assert pipeline.endpoint == "daily"
+    assert pipeline.endpoint == "stock_daily_bar"
 
 
 def test_create_pipeline_yfinance():
-    pipeline = create_pipeline("yfinance", "history")
+    pipeline = create_pipeline("yfinance", "stock_daily_bar")
     assert isinstance(pipeline, MarketDataPipeline)
     assert pipeline.data_source == "yfinance"
-    assert pipeline.endpoint == "history"
+    assert pipeline.endpoint == "stock_daily_bar"
 
 
 def test_create_pipeline_lixinger():
-    pipeline = create_pipeline("lixinger", "cn/company/candlestick")
+    pipeline = create_pipeline("lixinger", "stock_daily_bar")
     assert isinstance(pipeline, MarketDataPipeline)
     assert pipeline.data_source == "lixinger"
 

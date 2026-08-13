@@ -1,4 +1,4 @@
-from datetime import date
+from datetime import date, datetime, timezone
 
 import polars as pl
 import pytest
@@ -35,6 +35,32 @@ def test_duckdb_store(tmp_path, mock_fetcher: MockDataFetcher) -> None:
     max_date = store.get_max_trade_date("TEST.SH")
     assert max_date == date(2026, 1, 15)
     assert store.get_max_trade_date("NON_EXISTENT") is None
+
+
+def test_daily_query_ignores_migration_backup_with_incompatible_schema(
+    tmp_path, mock_fetcher: MockDataFetcher
+) -> None:
+    store = DuckDBMarketStore(storage_dir=tmp_path, data_source="mock")
+    df = mock_fetcher.fetch_daily_bars_df("TEST.SH", date(2026, 1, 15), date(2026, 1, 15))
+    df = df.with_columns(
+        [
+            pl.lit("TEST.SH").alias("symbol"),
+            pl.lit("mock").alias("data_source"),
+            pl.lit("CN").alias("market"),
+            pl.lit("SSE").alias("exchange"),
+            pl.lit("CNY").alias("currency"),
+            pl.lit("raw").alias("adjustment"),
+            pl.lit("v1").alias("schema_version"),
+        ]
+    )
+    active_path = store.save_market_data("daily", date(2026, 1, 15), df)
+    backup_path = active_path.with_name("data.bak.parquet")
+    pl.DataFrame({"legacy": [1]}).write_parquet(backup_path)
+
+    queried = store.query_daily_bars("TEST.SH")
+
+    assert len(queried) == 1
+    assert queried["symbol"].to_list() == ["TEST.SH"]
 
 
 def test_default_store_isolated_by_data_source(tmp_path, monkeypatch) -> None:
@@ -259,6 +285,254 @@ def test_duckdb_store_batch_mode(tmp_path) -> None:
 
     # Calling commit again when empty should be safe
     store.commit()
+
+
+def test_duckdb_store_merges_datetime_columns_with_mixed_timezones(tmp_path) -> None:
+    store = DuckDBMarketStore(storage_dir=tmp_path, data_source="mock")
+    file_path = store.get_parquet_path("daily_basic", date(2026, 1, 1), market="CN")
+    base = pl.DataFrame(
+        {
+            "symbol": ["TEST.SH"],
+            "trade_date": [date(2026, 1, 1)],
+            "updated_at": [datetime(2026, 1, 1, tzinfo=timezone.utc)],
+            "data_source": ["mock"],
+            "market": ["CN"],
+        }
+    )
+    incoming = base.with_columns(
+        [
+            pl.lit(date(2026, 1, 2)).alias("trade_date"),
+            pl.lit(datetime(2026, 1, 2)).alias("updated_at"),
+        ]
+    )
+    file_path.parent.mkdir(parents=True)
+    base.write_parquet(file_path)
+
+    merged = store._merge_and_save_parquet(file_path, [incoming])
+
+    assert len(merged) == 2
+    assert merged.schema["updated_at"] == pl.Datetime(time_unit="us", time_zone="UTC")
+
+
+def test_duckdb_store_deduplicates_bar_adjustment_variants(tmp_path) -> None:
+    store = DuckDBMarketStore(storage_dir=tmp_path, data_source="tushare")
+    file_path = store.get_parquet_path("stock_daily_bar", date(2026, 8, 1), market="CN")
+    existing = pl.DataFrame(
+        {
+            "symbol": ["600519.SH"],
+            "trade_date": [date(2026, 8, 1)],
+            "open": [1500.0],
+            "high": [None],
+            "low": [None],
+            "close": [1505.0],
+            "market": ["CN"],
+            "adjustment": ["normal"],
+            "data_source": ["tushare"],
+            "updated_at": [datetime(2026, 8, 12, tzinfo=timezone.utc)],
+        }
+    )
+    incoming = existing.with_columns(
+        [
+            pl.lit(1510.0).alias("high"),
+            pl.lit(1490.0).alias("low"),
+            pl.lit("raw").alias("adjustment"),
+            pl.lit(datetime(2026, 8, 13, tzinfo=timezone.utc)).alias("updated_at"),
+        ]
+    )
+    file_path.parent.mkdir(parents=True)
+    existing.write_parquet(file_path)
+
+    merged = store._merge_and_save_parquet(file_path, [incoming])
+
+    assert len(merged) == 1
+    assert merged["adjustment"].to_list() == ["raw"]
+    assert merged["high"].to_list() == [1510.0]
+    assert merged["low"].to_list() == [1490.0]
+
+
+def test_duckdb_store_deduplicates_fund_bar_adjustment_variants(tmp_path) -> None:
+    store = DuckDBMarketStore(storage_dir=tmp_path, data_source="tushare")
+    file_path = store.get_parquet_path("fund_daily", date(2026, 7, 28), market="CN")
+    existing = pl.DataFrame(
+        {
+            "symbol": ["159017.SZ"],
+            "trade_date": [date(2026, 7, 28)],
+            "market": ["CN"],
+            "open": [0.897],
+            "high": [0.889],
+            "low": [0.901],
+            "close": [0.858],
+            "adjustment": ["normal"],
+            "data_source": ["tushare"],
+            "updated_at": [datetime(2026, 8, 12, tzinfo=timezone.utc)],
+        }
+    )
+    incoming = existing.with_columns(
+        [
+            pl.lit(0.911).alias("high"),
+            pl.lit(0.889).alias("low"),
+            pl.lit("raw").alias("adjustment"),
+            pl.lit(datetime(2026, 8, 13, tzinfo=timezone.utc)).alias("updated_at"),
+        ]
+    )
+    file_path.parent.mkdir(parents=True)
+    existing.write_parquet(file_path)
+
+    merged = store._merge_and_save_parquet(file_path, [incoming])
+
+    assert len(merged) == 1
+    assert merged["adjustment"].to_list() == ["raw"]
+    assert merged["high"].to_list() == [0.911]
+
+
+def test_duckdb_store_merges_source_symbol_alias_into_standard_column(tmp_path) -> None:
+    store = DuckDBMarketStore(storage_dir=tmp_path, data_source="mock")
+    file_path = store.get_parquet_path("daily_basic", date(2026, 7, 1), market="CN")
+    existing = pl.DataFrame(
+        {
+            "symbol": ["A"],
+            "trade_date": [date(2026, 7, 30)],
+            "data_source": ["mock"],
+            "market": ["CN"],
+        }
+    )
+    incoming = pl.DataFrame(
+        {
+            "ts_code": ["B"],
+            "trade_date": [date(2026, 7, 31)],
+            "data_source": ["mock"],
+            "market": ["CN"],
+        }
+    )
+    file_path.parent.mkdir(parents=True)
+    existing.write_parquet(file_path)
+
+    merged = store._merge_and_save_parquet(file_path, [incoming])
+
+    assert merged["symbol"].to_list() == ["A", "B"]
+    assert "ts_code" not in merged.columns
+
+
+def test_duckdb_store_preserves_quarterly_and_event_rows(tmp_path) -> None:
+    store = DuckDBMarketStore(storage_dir=tmp_path, data_source="tushare")
+    base = {
+        "symbol": ["600519.SH", "600519.SH"],
+        "data_source": ["tushare", "tushare"],
+        "market": ["CN", "CN"],
+    }
+
+    quarterly = pl.DataFrame(
+        {
+            **base,
+            "end_date": ["20240331", "20240630"],
+            "value": [1.0, 2.0],
+        }
+    )
+    quarterly_path = store.get_parquet_path("income", date(2026, 8, 12), market="CN")
+    quarterly_path.parent.mkdir(parents=True)
+    merged_quarterly = store._merge_and_save_parquet(quarterly_path, [quarterly])
+    assert len(merged_quarterly) == 2
+
+    events = pl.DataFrame(
+        {
+            "symbol": ["600519.SH", "600519.SH"],
+            "suspend_date": ["20260801", "20260802"],
+            "market": ["CN", "CN"],
+            "data_source": ["tushare", "tushare"],
+        }
+    )
+    events_path = store.get_parquet_path("suspend_d", date(2026, 8, 12), market="CN")
+    events_path.parent.mkdir(parents=True)
+    merged_events = store._merge_and_save_parquet(events_path, [events])
+    assert len(merged_events) == 2
+
+    top10 = pl.DataFrame(
+        {
+            "symbol": ["600519.SH", "600519.SH"],
+            "trade_date": [date(2026, 8, 1), date(2026, 8, 1)],
+            "market_type": ["1", "2"],
+            "market": ["CN", "CN"],
+            "data_source": ["tushare", "tushare"],
+        }
+    )
+    top10_path = store.get_parquet_path("hsgt_top10", date(2026, 8, 12), market="CN")
+    top10_path.parent.mkdir(parents=True)
+    merged_top10 = store._merge_and_save_parquet(top10_path, [top10])
+    assert len(merged_top10) == 2
+
+
+def test_duckdb_store_partitions_financial_rows_by_report_end_date(tmp_path) -> None:
+    store = DuckDBMarketStore(storage_dir=tmp_path, data_source="tushare")
+    frame = pl.DataFrame(
+        {
+            "symbol": ["600519.SH", "600519.SH"],
+            "end_date": ["20240331", "20240630"],
+            "revenue": [1.0, 2.0],
+            "data_source": ["tushare", "tushare"],
+            "market": ["CN", "CN"],
+        }
+    )
+
+    store.save_market_data("income", date(2026, 8, 12), frame)
+
+    march_path = store.get_parquet_path("income", date(2024, 3, 1), market="CN")
+    june_path = store.get_parquet_path("income", date(2024, 6, 1), market="CN")
+    fallback_path = store.get_parquet_path("income", date(2026, 8, 12), market="CN")
+    assert march_path.exists()
+    assert june_path.exists()
+    assert not fallback_path.exists()
+    assert pl.read_parquet(march_path)["end_date"].to_list() == ["20240331"]
+    assert pl.read_parquet(june_path)["end_date"].to_list() == ["20240630"]
+
+
+def test_duckdb_store_prefers_source_symbol_over_placeholder(tmp_path) -> None:
+    store = DuckDBMarketStore(storage_dir=tmp_path, data_source="mock")
+    file_path = store.get_parquet_path("adj_factor", date(2026, 8, 1), market="CN")
+    existing = pl.DataFrame(
+        {
+            "symbol": ["ADJ_FACTOR"],
+            "trade_date": [date(2026, 8, 1)],
+            "data_source": ["mock"],
+            "market": ["CN"],
+        }
+    )
+    incoming = pl.DataFrame(
+        {
+            "symbol": ["ADJ_FACTOR"],
+            "ts_code": ["600000.SH"],
+            "trade_date": [date(2026, 8, 2)],
+            "data_source": ["mock"],
+            "market": ["CN"],
+        }
+    )
+    file_path.parent.mkdir(parents=True)
+    existing.write_parquet(file_path)
+
+    merged = store._merge_and_save_parquet(file_path, [incoming])
+
+    assert merged["symbol"].to_list() == ["ADJ_FACTOR", "600000.SH"]
+
+
+def test_duckdb_store_removes_legacy_hk_hold_symbol_when_source_code_is_qualified(
+    tmp_path,
+) -> None:
+    store = DuckDBMarketStore(storage_dir=tmp_path, data_source="tushare")
+    file_path = store.get_parquet_path("hk_hold", date(2026, 6, 30), market="CN")
+    existing = pl.DataFrame(
+        {
+            "symbol": ["90519"],
+            "trade_date": [date(2026, 6, 30)],
+            "data_source": ["tushare"],
+            "market": ["CN"],
+        }
+    )
+    incoming = existing.with_columns(pl.lit("600519.SH").alias("symbol"))
+    file_path.parent.mkdir(parents=True)
+    existing.write_parquet(file_path)
+
+    merged = store._merge_and_save_parquet(file_path, [incoming])
+
+    assert merged["symbol"].to_list() == ["600519.SH"]
 
 
 def test_duckdb_store_has_curated_whole_market(tmp_path) -> None:

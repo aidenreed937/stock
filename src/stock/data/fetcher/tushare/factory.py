@@ -5,19 +5,22 @@ from stock.data.cleaner.generic_cleaner import GenericCleaner
 from stock.data.cleaner.bar_cleaner import BarDataCleaner
 from stock.data.pipeline import MarketDataPipeline
 
-def create_tushare_pipeline(endpoint: str = "daily") -> MarketDataPipeline:
-    """为给定的 TuShare 接口创建装配好的 MarketDataPipeline 实例。"""
+def create_tushare_pipeline(endpoint: str = "stock_daily_bar") -> MarketDataPipeline:
+    """按项目任务名创建 TuShare Pipeline。"""
     fetcher = TuShareDataFetcher()
     cleaner: BaseDataCleaner
-    if endpoint == "daily":
+    from stock.data.task_registry import resolve_task
+
+    task = resolve_task("tushare", endpoint)
+    meta = TUSHARE_API_REGISTRY.get(task.api_name)
+    if meta and meta.quality_profile == "bar":
         cleaner = BarDataCleaner()
     else:
-        meta = TUSHARE_API_REGISTRY.get(endpoint)
         p_keys = meta.primary_keys if meta else None
         cleaner = GenericCleaner(primary_keys=p_keys)
     return MarketDataPipeline(
         fetcher=fetcher,
         cleaner=cleaner,
         data_source="tushare",
-        endpoint=endpoint,
+        endpoint=task.task_name,
     )

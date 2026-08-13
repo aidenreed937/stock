@@ -3,6 +3,7 @@ from typing import Any
 
 import polars as pl
 
+
 class BaseValidationRule(ABC):
     """离线数据校验规则抽象基类。"""
 
@@ -22,11 +23,7 @@ class NullCheckRule(BaseValidationRule):
         self.columns = columns or ["symbol", "trade_date", "close", "open", "high", "low"]
 
     def audit(self, df: pl.DataFrame) -> dict[str, Any]:
-        null_counts = {
-            col: df[col].null_count()
-            for col in self.columns
-            if col in df.columns
-        }
+        null_counts = {col: df[col].null_count() for col in self.columns if col in df.columns}
         total_nulls = sum(null_counts.values())
         return {
             "total_nulls": total_nulls,
@@ -90,7 +87,10 @@ class VolatilityRule(BaseValidationRule):
         calc_diff_count = 0
         if "pre_close" in df.columns and "pct_chg" in df.columns and "close" in df.columns:
             diff_df = df.filter(pl.col("pre_close") > 0).with_columns(
-                (((pl.col("close") - pl.col("pre_close")) / pl.col("pre_close") * 100) - pl.col("pct_chg"))
+                (
+                    ((pl.col("close") - pl.col("pre_close")) / pl.col("pre_close") * 100)
+                    - pl.col("pct_chg")
+                )
                 .abs()
                 .alias("diff")
             )
@@ -117,9 +117,17 @@ class VolatilityRule(BaseValidationRule):
 class CompletenessRule(BaseValidationRule):
     """时间轴完整性及数据截断/异常天数校验规则。"""
 
-    def __init__(self, min_count: int = 3000, max_count: int = 6000) -> None:
+    def __init__(
+        self,
+        min_count: int = 3000,
+        max_count: int = 6000,
+        expected_counts: dict[Any, int] | None = None,
+        min_coverage: float = 0.9,
+    ) -> None:
         self.min_count = min_count
         self.max_count = max_count
+        self.expected_counts = expected_counts or {}
+        self.min_coverage = min_coverage
 
     def audit(self, df: pl.DataFrame) -> dict[str, Any]:
         if "trade_date" not in df.columns or "symbol" not in df.columns:
@@ -130,8 +138,25 @@ class CompletenessRule(BaseValidationRule):
                 "passed": False,
             }
 
-        date_counts = df.group_by("trade_date").agg(pl.count("symbol").alias("count")).sort("trade_date")
-        anomaly_dates = date_counts.filter((pl.col("count") < self.min_count) | (pl.col("count") >= self.max_count))
+        date_counts = (
+            df.group_by("trade_date").agg(pl.count("symbol").alias("count")).sort("trade_date")
+        )
+        if self.expected_counts:
+            expected_df = pl.DataFrame(
+                {
+                    "trade_date": list(self.expected_counts),
+                    "expected_count": list(self.expected_counts.values()),
+                }
+            )
+            date_counts = date_counts.join(expected_df, on="trade_date", how="left").with_columns(
+                pl.col("expected_count").fill_null(self.min_count)
+            )
+            min_allowed = (pl.col("expected_count") * self.min_coverage).ceil()
+        else:
+            min_allowed = pl.lit(self.min_count)
+        anomaly_dates = date_counts.filter(
+            (pl.col("count") < min_allowed) | (pl.col("count") >= self.max_count)
+        )
         truncated_dates = date_counts.filter(pl.col("count") >= self.max_count)
 
         return {

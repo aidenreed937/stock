@@ -18,7 +18,7 @@ class BaseDataFetcher(ABC):
 
     @abstractmethod
     def fetch_daily_bars_df(
-        self, symbol: str, start_date: date, end_date: date, endpoint: str = "daily"
+        self, symbol: str, start_date: date, end_date: date, endpoint: str = "stock_daily_bar"
     ) -> pl.DataFrame:
         """抓取行情或基本面数据，转化为标准 Polars DataFrame。"""
         pass

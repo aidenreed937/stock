@@ -10,6 +10,7 @@ from typing import Any
 from stock.data.factory import create_pipeline
 from stock.data.fetcher.base import BaseDataFetcher
 from stock.data.pipeline import MarketDataPipeline
+from stock.data.task_registry import resolve_public_task, resolve_task
 from stock.data.update_scheduler import DataUpdateScheduler
 from stock.exceptions import DataFetchError
 from stock.utils.logger import logger
@@ -19,7 +20,7 @@ MARKET_SINGLE_SYNC_ENDPOINTS: set[str] = {
     "moneyflow_hsgt",
     "hsgt_top10",
     "margin",
-    "margin_detail",
+    "suspend_d",
     "cn_gdp",
     "cn_cpi",
     "cn_ppi",
@@ -35,9 +36,101 @@ MARKET_SINGLE_SYNC_ENDPOINTS: set[str] = {
     "fund_basic",
     "sw_2021_constituents",
     "sw_2021_fundamental",
-    "cn/industry/constituents/sw_2021",
-    "cn/industry/fundamental/sw_2021",
+    "company_fundamental",
+    "index_fundamental",
+    "fs_non_financial",
+    "pledge_info",
 }
+
+TUSHARE_STOCK_POOL_ENDPOINTS = frozenset(
+    {"income", "fina_indicator", "margin_detail", "hk_hold"}
+)
+TUSHARE_FUND_POOL_ENDPOINTS = frozenset({"fund_share"})
+
+
+def _load_curated_symbol_pool(data_source: str, dataset: str) -> list[str]:
+    """从本地基础信息数据集加载可用于按标的回填的标准代码。"""
+    from stock.data.storage.duckdb_store import DuckDBMarketStore
+
+    frame = DuckDBMarketStore(data_source=data_source).query_dataset(dataset=dataset)
+    if frame.is_empty() or "symbol" not in frame.columns:
+        return []
+    return sorted(
+        {
+            str(symbol).strip()
+            for symbol in frame.get_column("symbol").drop_nulls().to_list()
+            if str(symbol).strip()
+        }
+    )
+
+
+def _tushare_local_pool(endpoint: str) -> tuple[str, str] | None:
+    """返回 TuShare 接口所需本地基础池及其缺失提示。"""
+    if endpoint in TUSHARE_STOCK_POOL_ENDPOINTS:
+        return "stock_basic", "A 股"
+    if endpoint in TUSHARE_FUND_POOL_ENDPOINTS:
+        return "fund_basic", "基金"
+    return None
+
+
+def _watchlist_symbols(
+    data_source: str,
+    endpoint: str,
+    data_cfg: Any,
+    per_symbol_endpoints: set[str],
+) -> list[str]:
+    """从配置观察池解析接口的默认标的。"""
+    watchlist = getattr(data_cfg.watchlists, data_source, None)
+    if watchlist is None:
+        return []
+    if (
+        endpoint in per_symbol_endpoints
+        and endpoint != "stock_daily_bar"
+        and getattr(watchlist, "indices", None)
+    ):
+        return list(watchlist.indices)
+    if hasattr(watchlist, "all_symbols"):
+        return list(watchlist.all_symbols)
+    return list(watchlist) if isinstance(watchlist, list) else []
+
+
+def _filter_supported_symbols(
+    symbols: list[str], data_source: str, endpoint: str, data_cfg: Any
+) -> list[str]:
+    """按接口白名单过滤配置观察池。"""
+    endpoint_supports = getattr(data_cfg, "source_endpoint_supports", {})
+    supports = endpoint_supports.get(data_source, {}).get(endpoint, [])
+    if not supports:
+        return symbols
+    supported = set(supports)
+    ignored = [symbol for symbol in symbols if symbol not in supported]
+    if ignored:
+        logger.info(
+            f"数据源 [{data_source}] 接口 [{endpoint}] 仅支持白名单 {sorted(supported)}，"
+            f"自动跳过不支持的标的: {ignored}"
+        )
+    return [symbol for symbol in symbols if symbol in supported]
+
+
+def _default_symbols_for_endpoint(
+    data_source: str,
+    endpoint: str,
+    data_cfg: Any,
+    per_symbol_endpoints: set[str],
+) -> list[str]:
+    """按接口业务类型选择默认标的池，避免把指数池误用于个股或基金接口。"""
+    local_pool = _tushare_local_pool(endpoint) if data_source == "tushare" else None
+    if local_pool is not None:
+        dataset, description = local_pool
+        symbols = _load_curated_symbol_pool(data_source, dataset)
+        if not symbols:
+            raise DataFetchError(
+                f"接口 [{endpoint}] 需要本地 {dataset} {description}标的池，请先完成 {dataset} 回填"
+            )
+        return symbols
+
+    symbols = _watchlist_symbols(data_source, endpoint, data_cfg, per_symbol_endpoints)
+    return _filter_supported_symbols(symbols, data_source, endpoint, data_cfg)
 
 
 class HistoricalBackfiller:
@@ -48,7 +141,7 @@ class HistoricalBackfiller:
         pipeline: MarketDataPipeline | None = None,
         fetcher: BaseDataFetcher | None = None,
         data_source: str = "tushare",
-        endpoint: str = "daily",
+        endpoint: str = "stock_daily_bar",
         symbol: str = "",
     ) -> None:
         """初始化历史数据回填器。
@@ -57,12 +150,12 @@ class HistoricalBackfiller:
             pipeline: MarketDataPipeline 实例，若为 None 则自动根据 fetcher 创建。
             fetcher: 数据抓取器，若为 None 则默认使用 TuShareDataFetcher。
             data_source: 数据源标识名称（默认 tushare）。
-            endpoint: API 接口名称（默认 daily）。
+            endpoint: 项目任务名（默认 stock_daily_bar）。
             symbol: 标的代码或行业代码。
         """
         self.symbol = symbol
         self.data_source = data_source
-        self.endpoint = endpoint
+        self.endpoint = resolve_task(data_source, endpoint).task_name
         self._calendar_cache: dict[tuple[date, date], list[date]] = {}
 
         if pipeline is not None:
@@ -78,7 +171,7 @@ class HistoricalBackfiller:
 
     @property
     def frequency(self) -> str:
-        """自动在注册表中识别并获取当前 endpoint 的更新频次 (daily | monthly | quarterly | event)。"""
+        """自动在注册表中识别当前项目任务的更新频次。"""
         registry_map = {
             "tushare": "stock.data.fetcher.tushare.registry",
             "yfinance": "stock.data.fetcher.yfinance.registry",
@@ -95,8 +188,9 @@ class HistoricalBackfiller:
                     or getattr(mod, "YFINANCE_API_REGISTRY", None)
                     or getattr(mod, "FRED_API_REGISTRY", None)
                 )
-                if reg_dict and self.endpoint in reg_dict:
-                    return getattr(reg_dict[self.endpoint], "frequency", "daily")
+                task = resolve_task(self.data_source, self.endpoint)
+                if reg_dict and task.api_name in reg_dict:
+                    return getattr(reg_dict[task.api_name], "frequency", task.frequency)
             except Exception:
                 pass
         return "daily"
@@ -176,7 +270,11 @@ class HistoricalBackfiller:
             has_curated = getattr(self.pipeline.store, "has_curated", lambda e, d, s=None: False)(
                 self.endpoint, trade_date, self.symbol
             )
-            if has_curated and not force_refresh:
+            has_raw = True
+            raw_store = getattr(self.pipeline, "raw_store", None)
+            if not force_refresh and raw_store is not None and hasattr(raw_store, "has_raw"):
+                has_raw = bool(raw_store.has_raw(self.data_source, self.endpoint, trade_date))
+            if has_curated and has_raw and not force_refresh:
                 logger.debug(
                     f"[{idx}/{len(open_dates)}] 命中精炼层归档 [{trade_date}]，断点续传自动跳过"
                 )
@@ -331,7 +429,7 @@ class HistoricalBackfiller:
                         "index_weight",
                         "global_index_daily",
                         "fund_daily",
-                        "history",
+                        "stock_daily_bar",
                     ],
                 )
             )
@@ -462,7 +560,7 @@ def _parse_args() -> argparse.Namespace:
         help="数据源标识名称 (如 tushare / yfinance)",
     )
     parser.add_argument(
-        "--endpoint", type=str, default=None, help="API 接口名称 (如 daily / daily_basic)"
+        "--endpoint", type=str, default=None, help="项目任务名 (如 stock_daily_bar / daily_basic)"
     )
     parser.add_argument(
         "--symbol", type=str, default=None, help="标的代码或行业代码 (可选, all 表示全市场, watchlist 表示观察池)"
@@ -534,7 +632,7 @@ def main() -> None:
         )
         sys.exit(1)
 
-    endpoint = args.endpoint or yaml_config.get("default_endpoint") or "daily"
+    endpoint = args.endpoint or yaml_config.get("default_endpoint")
 
     symbol = args.symbol
     if symbol is None:
@@ -550,6 +648,14 @@ def main() -> None:
 
     data_cfg = load_data_config()
 
+    configured_targets = []
+    if endpoint is None:
+        configured_targets = [item.task_name for item in data_cfg.backfill_targets.get(data_source, []) if item.enabled]
+        if not configured_targets:
+            endpoint = "stock_daily_bar"
+        else:
+            endpoint = ",".join(configured_targets)
+
     # 3. 确定并发线程数：命令行 -> 回填配置文件 -> 对应数据源通用并发数 -> 默认线程数
     workers = args.max_workers
     if workers is None:
@@ -560,12 +666,6 @@ def main() -> None:
             f"{data_source}_max_workers",
             data_cfg.concurrency.default_max_workers,
         )
-
-    if data_source == "yfinance" and endpoint in ("daily", "history"):
-        endpoint = "history"
-    elif data_source == "fred":
-        if endpoint == "daily":
-            endpoint = "history"
 
     start_overrides = getattr(data_cfg, "endpoint_start_date_overrides", {})
     if endpoint in start_overrides:
@@ -586,41 +686,20 @@ def main() -> None:
                 "index_weight",
                 "global_index_daily",
                 "fund_daily",
-                "history",
+                "stock_daily_bar",
             ],
         )
     )
     if data_source == "fred":
         per_symbol_eps.add(endpoint)
-        per_symbol_eps.add("history")
+        per_symbol_eps.add("macro_indicators")
 
-    wl = getattr(data_cfg.watchlists, data_source, None)
-    if wl is not None:
-        if endpoint in per_symbol_eps and endpoint not in ("history", "daily") and hasattr(wl, "indices") and wl.indices:
-            raw_symbols = wl.indices
-            supports = (
-                getattr(data_cfg, "source_endpoint_supports", {})
-                .get(data_source, {})
-                .get(endpoint, [])
-            )
-            if supports:
-                supported_set = set(supports)
-                filtered = [s for s in raw_symbols if s in supported_set]
-                ignored = [s for s in raw_symbols if s not in supported_set]
-                if ignored:
-                    logger.info(
-                        f"数据源 [{data_source}] 接口 [{endpoint}] 仅支持白名单 {sorted(supports)}，自动跳过不支持的标的: {ignored}"
-                    )
-                raw_symbols = filtered
-        elif hasattr(wl, "all_symbols"):
-            raw_symbols = wl.all_symbols
-        elif isinstance(wl, list):
-            raw_symbols = wl
-        else:
-            raw_symbols = []
-    else:
-        raw_symbols = []
+    if data_source == "tushare":
+        per_symbol_eps.discard("stock_daily_bar")
+    elif data_source == "yfinance":
+        per_symbol_eps.add("stock_daily_bar")
 
+    universe_symbols: list[str] | None = None
     if args.universe:
         import os
 
@@ -631,9 +710,14 @@ def main() -> None:
                 with open(uni_path, "r", encoding="utf-8") as f:
                     uni_data = yaml.safe_load(f)
                     if uni_data and "universe" in uni_data and "stocks" in uni_data["universe"]:
-                        raw_symbols = uni_data["universe"]["stocks"]
-                        symbol = "watchlist"
-                        logger.info(f"从配置文件 [{uni_path}] 载入股票池，共 {len(raw_symbols)} 只标的。")
+                        configured_symbols = [
+                            str(item) for item in uni_data["universe"]["stocks"]
+                        ]
+                        universe_symbols = configured_symbols
+                        symbol = ""
+                        logger.info(
+                            f"从配置文件 [{uni_path}] 载入股票池，共 {len(configured_symbols)} 只标的。"
+                        )
             except Exception as e:
                 logger.error(f"加载股票池配置文件失败: {e}")
                 sys.exit(1)
@@ -645,16 +729,23 @@ def main() -> None:
             if not df_snapshots.is_empty() and "symbol" in df_snapshots.columns:
                 latest_as_of = df_snapshots["as_of_date"].max()
                 df_latest_snap = df_snapshots.filter(df_snapshots["as_of_date"] == latest_as_of)
-                raw_symbols = df_latest_snap["symbol"].unique().to_list()
-                symbol = "watchlist"
+                universe_symbols = df_latest_snap["symbol"].unique().to_list()
+                symbol = ""
                 logger.info(
-                    f"成功直接从 DuckDB 选股快照数据库 (as_of_date={str(latest_as_of)}) 载入股票池，共 {len(raw_symbols)} 只标的。"
+                    f"成功直接从 DuckDB 选股快照数据库 (as_of_date={str(latest_as_of)}) "
+                    f"载入股票池，共 {len(universe_symbols)} 只标的。"
                 )
             else:
                 logger.error(f"找不到股票池配置文件 [{uni_path}]，且 DuckDB 选股快照库为空！请先运行 `make filter-universe` 生成股票池快照。")
                 sys.exit(1)
 
-    endpoints = [ep.strip() for ep in endpoint.split(",") if ep.strip()]
+    endpoints = []
+    for raw_endpoint in (ep.strip() for ep in endpoint.split(",") if ep.strip()):
+        try:
+            endpoints.append(resolve_public_task(data_source, raw_endpoint).task_name)
+        except ValueError as exc:
+            logger.error(str(exc))
+            sys.exit(2)
 
     from stock.data.storage.duckdb_store import DuckDBMarketStore
     shared_store = DuckDBMarketStore(data_source=data_source)
@@ -667,14 +758,21 @@ def main() -> None:
             logger.info(f"  [单一 CLI 进程串行安全调度 ({ep_idx}/{len(endpoints)})] 开始回填接口: [{data_source}/{current_ep}]")
             logger.info(f"=========================================================================================================\n")
 
-            market_macro_eps = MARKET_SINGLE_SYNC_ENDPOINTS
-            if current_ep in market_macro_eps and not symbol:
+            if current_ep in MARKET_SINGLE_SYNC_ENDPOINTS and not symbol:
                 target_symbols = [""]
             elif symbol == "all" and current_ep not in per_symbol_eps:
                 target_symbols = [""]
+            elif symbol and symbol not in ("all", "watchlist"):
+                target_symbols = [symbol]
             else:
-                target_symbols = [symbol] if (symbol and symbol not in ("all", "watchlist")) else raw_symbols
+                target_symbols = universe_symbols or _default_symbols_for_endpoint(
+                    data_source, current_ep, data_cfg, per_symbol_eps
+                )
                 if not target_symbols:
+                    if current_ep in per_symbol_eps:
+                        raise DataFetchError(
+                            f"接口 [{data_source}/{current_ep}] 未解析到按标的回填所需的目标池"
+                        )
                     target_symbols = [""]
 
             for idx, sym in enumerate(target_symbols, 1):

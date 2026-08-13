@@ -8,18 +8,29 @@ import polars as pl
 import pytest
 
 from stock.data.fetcher.tushare.client import RateLimiter, TuShareClient
+from stock.data.fetcher.tushare.factory import create_tushare_pipeline
 from stock.data.fetcher.tushare.facade import TuShareDataFetcher
 from stock.data.fetcher.tushare.registry import TUSHARE_API_REGISTRY
 from stock.data.fetcher.tushare.slicer import batch_slice_and_merge
+from stock.data.cleaner.bar_cleaner import BarDataCleaner
 from stock.exceptions import DataFetchError
 
 
 def test_tushare_registry() -> None:
     assert "daily" in TUSHARE_API_REGISTRY
+    from stock.data.fetcher.tushare.registry import TUSHARE_TASK_REGISTRY
+
+    assert TUSHARE_TASK_REGISTRY["stock_daily_bar"].api_name == "daily"
     assert "stock_basic" in TUSHARE_API_REGISTRY
     daily_meta = TUSHARE_API_REGISTRY["daily"]
     assert daily_meta.api_name == "daily"
     assert "ts_code" in daily_meta.primary_keys
+
+
+def test_tushare_factory_uses_bar_cleaner_for_bar_profiles() -> None:
+    pipeline = create_tushare_pipeline(endpoint="fund_daily")
+
+    assert isinstance(pipeline.cleaner, BarDataCleaner)
 
 
 def test_tushare_client_missing_token() -> None:
@@ -109,3 +120,102 @@ def test_tushare_fetcher_dynamic_endpoint_routing(
         "index_weight", index_code="000300.SH", start_date="20260101", end_date="20260812"
     )
     assert not df_weight.is_empty()
+
+
+@patch("tushare.pro_api")
+@patch("tushare.set_token")
+def test_stock_daily_bar_task_routes_to_daily_api(
+    mock_set_token: MagicMock, mock_pro_api: MagicMock
+) -> None:
+    mock_pro = MagicMock()
+    mock_pro_api.return_value = mock_pro
+    mock_pro.query.return_value = pd.DataFrame(
+        [{
+            "ts_code": "600000.SH",
+            "trade_date": "20260812",
+            "open": 10.0,
+            "high": 11.0,
+            "low": 9.0,
+            "close": 10.5,
+        }]
+    )
+
+    from stock.data.factory import create_pipeline
+
+    pipeline = create_pipeline("tushare", "stock_daily_bar")
+    result = pipeline.fetcher.fetch_daily_bars_df(
+        "600000.SH", date(2026, 8, 12), date(2026, 8, 12), endpoint="daily"
+    )
+
+    assert not result.is_empty()
+    mock_pro.query.assert_called_once()
+    assert mock_pro.query.call_args.args[0] == "daily"
+
+
+def test_tushare_client_auto_paginates() -> None:
+    client = TuShareClient(token="mock", paginate_threshold=2)
+    client._pro_api = MagicMock()
+    client._pro_api.query.side_effect = [
+        pd.DataFrame({"ts_code": ["A", "B"]}),
+        pd.DataFrame({"ts_code": ["C"]}),
+    ]
+    result = client.query("stock_basic")
+    assert result["ts_code"].tolist() == ["A", "B", "C"]
+
+
+def test_tushare_full_market_does_not_invent_symbol() -> None:
+    fetcher = TuShareDataFetcher(token="mock")
+    fetcher.client._pro_api = MagicMock()
+    fetcher.client._pro_api.query.return_value = pd.DataFrame(
+        {"ts_code": ["000001.SZ"], "trade_date": ["20260812"]}
+    )
+    df = fetcher.fetch_daily_bars_df("", date(2026, 8, 12), date(2026, 8, 12))
+    assert "symbol" not in df.columns
+
+
+def test_tushare_suspend_d_uses_trade_date_for_full_market_query() -> None:
+    fetcher = TuShareDataFetcher(token="mock")
+    fetcher.client._pro_api = MagicMock()
+    fetcher.client._pro_api.query.return_value = pd.DataFrame(
+        {
+            "ts_code": ["000001.SZ"],
+            "trade_date": ["20260812"],
+            "suspend_type": ["S"],
+        }
+    )
+
+    result = fetcher.fetch_daily_bars_df(
+        "", date(2026, 8, 12), date(2026, 8, 12), endpoint="suspend_d"
+    )
+
+    fetcher.client._pro_api.query.assert_called_once_with(
+        "suspend_d", trade_date="20260812"
+    )
+    assert result.get_column("trade_date").to_list() == ["20260812"]
+
+
+def test_tushare_full_market_endpoint_uses_small_request_window() -> None:
+    fetcher = TuShareDataFetcher(token="mock")
+    fetcher.client._pro_api = MagicMock()
+
+    def query(api_name: str, **kwargs: str) -> pd.DataFrame:
+        assert api_name == "hsgt_top10"
+        return pd.DataFrame(
+            {
+                "ts_code": ["600519.SH"],
+                "trade_date": [kwargs["start_date"]],
+                "market_type": ["1"],
+            }
+        )
+
+    fetcher.client._pro_api.query.side_effect = query
+    result = fetcher.fetch_daily_bars_df(
+        "", date(2026, 1, 1), date(2026, 3, 1), endpoint="hsgt_top10"
+    )
+
+    assert len(result) == 2
+    calls = fetcher.client._pro_api.query.call_args_list
+    assert [(call.kwargs["start_date"], call.kwargs["end_date"]) for call in calls] == [
+        ("20260101", "20260130"),
+        ("20260131", "20260301"),
+    ]

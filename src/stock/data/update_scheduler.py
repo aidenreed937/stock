@@ -10,6 +10,7 @@ from stock.config.settings import settings
 from stock.data.fetcher.lixinger.registry import LIXINGER_API_REGISTRY
 from stock.data.fetcher.tushare.registry import TUSHARE_API_REGISTRY
 from stock.data.fetcher.yfinance.registry import YFINANCE_API_REGISTRY
+from stock.data.task_registry import resolve_task
 
 logger = logging.getLogger(__name__)
 
@@ -42,29 +43,33 @@ class DataUpdateScheduler:
         if current_datetime is None:
             current_datetime = datetime.now()
 
+        task = resolve_task(data_source, endpoint)
+
         # 获取默认更新规则元数据
         update_time_str = "18:00"
         update_delay_days = 0
 
         if data_source == "yfinance":
-            meta_yf = YFINANCE_API_REGISTRY.get(endpoint)
+            meta_yf = YFINANCE_API_REGISTRY.get(task.api_name)
             if meta_yf:
                 update_time_str = meta_yf.update_time
                 update_delay_days = meta_yf.update_delay_days
         elif data_source == "lixinger":
-            meta_lx = LIXINGER_API_REGISTRY.get(endpoint)
+            meta_lx = LIXINGER_API_REGISTRY.get(task.api_name)
             if meta_lx:
                 update_time_str = meta_lx.update_time
                 update_delay_days = meta_lx.update_delay_days
         else:
-            meta_ts = TUSHARE_API_REGISTRY.get(endpoint)
+            meta_ts = TUSHARE_API_REGISTRY.get(task.api_name)
             if meta_ts:
                 update_time_str = meta_ts.update_time
                 update_delay_days = meta_ts.update_delay_days
 
         # 支持全局 Settings 配置项覆盖 update_time (HH:MM 格式)
-        if endpoint in settings.endpoint_update_time_overrides:
-            update_time_str = settings.endpoint_update_time_overrides[endpoint]
+        if task.task_name in settings.endpoint_update_time_overrides:
+            update_time_str = settings.endpoint_update_time_overrides[task.task_name]
+        elif task.api_name in settings.endpoint_update_time_overrides:
+            update_time_str = settings.endpoint_update_time_overrides[task.api_name]
 
         # 解析 HH:MM 时间
         try:

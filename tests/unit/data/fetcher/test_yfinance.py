@@ -67,7 +67,7 @@ def test_yfinance_fetcher_empty() -> None:
 def test_create_yfinance_pipeline() -> None:
     pipeline = create_yfinance_pipeline(proxy="http://some-proxy")
     assert pipeline.data_source == "yfinance"
-    assert pipeline.endpoint == "history"
+    assert pipeline.endpoint == "stock_daily_bar"
     assert isinstance(pipeline.fetcher, YFinanceDataFetcher)
     assert pipeline.fetcher.client.proxy == "http://some-proxy"
 

@@ -10,17 +10,20 @@ from stock.data.pipeline import MarketDataPipeline
 
 
 def create_lixinger_pipeline(
-    endpoint: str = "cn/company/fundamental/non_financial",
+    endpoint: str = "company_fundamental",
 ) -> MarketDataPipeline:
-    """为给定的理杏仁 (Lixinger) 接口创建装配好的 MarketDataPipeline 实例。"""
+    """按项目任务名创建理杏仁 Pipeline。"""
     fetcher = LixingerDataFetcher()
     cleaner: BaseDataCleaner
     normalizer: BaseDataNormalizer
-    if "candlestick" in endpoint:
+    from stock.data.task_registry import resolve_task
+
+    task = resolve_task("lixinger", endpoint)
+    if task.quality_profile == "bar":
         cleaner = BarDataCleaner()
         normalizer = BarDataNormalizer()
     else:
-        meta = LIXINGER_API_REGISTRY.get(endpoint)
+        meta = LIXINGER_API_REGISTRY.get(task.api_name)
         p_keys = meta.primary_keys if meta else None
         cleaner = GenericCleaner(primary_keys=p_keys)
         normalizer = GenericNormalizer()
@@ -29,5 +32,5 @@ def create_lixinger_pipeline(
         cleaner=cleaner,
         normalizer=normalizer,
         data_source="lixinger",
-        endpoint=endpoint,
+        endpoint=task.task_name,
     )

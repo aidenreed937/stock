@@ -58,18 +58,42 @@ class UniverseFilter:
         logger.info("测试/非本地模式：请求接口或 Mock 获取 stock_basic 数据...")
         return self.fetcher.client.query("stock_basic", list_status="L")
 
-    def load_filter_rules(self, rule_file: str = "config/universe/filter_rules.yaml") -> dict[str, Any]:
+    def load_filter_rules(
+        self, rule_file: str = "config/universe/filter_rules.yaml"
+    ) -> dict[str, Any]:
         """从配置文件动态解析粗筛规则。"""
         if os.path.exists(rule_file):
             try:
                 with open(rule_file, "r", encoding="utf-8") as f:
                     data = yaml.safe_load(f)
-                    if data and isinstance(data, dict) and "filter_rules" in data and isinstance(data["filter_rules"], dict):
+                    if (
+                        data
+                        and isinstance(data, dict)
+                        and "filter_rules" in data
+                        and isinstance(data["filter_rules"], dict)
+                    ):
                         logger.info(f"成功载入筛选规则配置文件: {rule_file}")
                         return data["filter_rules"]
             except Exception as e:
                 logger.warning(f"读取规则配置文件 [{rule_file}] 失败: {e}，将使用默认规则。")
         return {}
+
+    def _filter_basic_stocks(
+        self,
+        df_basic: pd.DataFrame,
+        *,
+        exclude_st: bool,
+        exclude_bj: bool,
+        min_age_days: int,
+    ) -> pd.DataFrame:
+        """应用股票池共用的基础排除规则。"""
+        filtered = df_basic
+        if exclude_st:
+            filtered = filtered[~filtered["name"].str.contains("ST|退", case=False, na=False)]
+        if exclude_bj:
+            filtered = filtered[~filtered["ts_code"].str.endswith(".BJ", na=False)]
+        cutoff_date = (datetime.now() - timedelta(days=min_age_days)).strftime("%Y%m%d")
+        return filtered[filtered["list_date"] <= cutoff_date]
 
     def _fetch_latest_daily_basic(self) -> tuple[str, pd.DataFrame]:
         """从本地离线库检索最新行情、20日均成交额、流通市值及 PB 估值。"""
@@ -82,7 +106,11 @@ class UniverseFilter:
                 store = DuckDBMarketStore(data_source="tushare")
                 df_bar_pl = store.query_dataset(dataset="stock_daily_bar")
 
-                if not df_bar_pl.is_empty() and "trade_date" in df_bar_pl.columns and "amount" in df_bar_pl.columns:
+                if (
+                    not df_bar_pl.is_empty()
+                    and "trade_date" in df_bar_pl.columns
+                    and "amount" in df_bar_pl.columns
+                ):
                     unique_dates = df_bar_pl["trade_date"].unique().sort(descending=True)
                     top20_dates = unique_dates.head(20)
                     latest_date = top20_dates[0]
@@ -90,11 +118,16 @@ class UniverseFilter:
                     code_col = "ts_code" if "ts_code" in df_bar_pl.columns else "symbol"
 
                     # 筛选最近 20 个交易日计算 amount 均值
-                    df_20d = df_bar_pl.filter(pl.col("trade_date").is_in(top20_dates))
-                    df_agg = df_20d.group_by(code_col).agg([
-                        pl.col("amount").mean().alias("amount_20d"),
-                        pl.col("amount").filter(pl.col("trade_date") == latest_date).first().alias("amount")
-                    ])
+                    df_20d = df_bar_pl.filter(pl.col("trade_date").is_in(top20_dates.to_list()))
+                    df_agg = df_20d.group_by(code_col).agg(
+                        [
+                            pl.col("amount").mean().alias("amount_20d"),
+                            pl.col("amount")
+                            .filter(pl.col("trade_date") == latest_date)
+                            .first()
+                            .alias("amount"),
+                        ]
+                    )
 
                     df_pd = df_agg.to_pandas()
                     if "ts_code" not in df_pd.columns and "symbol" in df_pd.columns:
@@ -105,18 +138,35 @@ class UniverseFilter:
                         df_db_pl = store.query_dataset(dataset="daily_basic")
                         if not df_db_pl.is_empty() and "trade_date" in df_db_pl.columns:
                             max_db_d = df_db_pl["trade_date"].max()
-                            df_db_latest = df_db_pl.filter(pl.col("trade_date") == max_db_d).to_pandas()
-                            if "ts_code" not in df_db_latest.columns and "symbol" in df_db_latest.columns:
+                            df_db_latest = df_db_pl.filter(
+                                pl.col("trade_date") == max_db_d
+                            ).to_pandas()
+                            if (
+                                "ts_code" not in df_db_latest.columns
+                                and "symbol" in df_db_latest.columns
+                            ):
                                 df_db_latest["ts_code"] = df_db_latest["symbol"]
 
-                            cols_to_merge = [c for c in ["ts_code", "circ_mv", "total_mv", "pb"] if c in df_db_latest.columns]
+                            cols_to_merge = [
+                                c
+                                for c in ["ts_code", "circ_mv", "total_mv", "pb"]
+                                if c in df_db_latest.columns
+                            ]
                             if len(cols_to_merge) > 1:
-                                df_pd = df_pd.merge(df_db_latest[cols_to_merge], on="ts_code", how="left")
+                                df_pd = df_pd.merge(
+                                    df_db_latest[cols_to_merge], on="ts_code", how="left"
+                                )
                     except Exception as e:
                         logger.warning(f"关联 daily_basic 流通市值及 PB 失败: {e}")
 
-                    d_str = latest_date.strftime("%Y%m%d") if isinstance(latest_date, date) else str(latest_date).replace("-", "")
-                    logger.info(f"命中本地 DuckDB 最新交易日 [{d_str}] 行情与 20日均成交额数据 (共 {len(df_pd)} 条)。")
+                    d_str = (
+                        latest_date.strftime("%Y%m%d")
+                        if isinstance(latest_date, date)
+                        else str(latest_date).replace("-", "")
+                    )
+                    logger.info(
+                        f"命中本地 DuckDB 最新交易日 [{d_str}] 行情与 20日均成交额数据 (共 {len(df_pd)} 条)。"
+                    )
                     return d_str, df_pd
             except Exception as e:
                 logger.error(f"读取本地成交额与指标归档失败: {e}")
@@ -168,21 +218,16 @@ class UniverseFilter:
         logger.info(f"== Layer 1 粗筛开始 (全市场初始股票总数: {total_initial}) ==")
 
         # 2. 剔除 ST / *ST / 退市股
-        if exclude_st:
-            df_basic = df_basic[~df_basic["name"].str.contains("ST|退", case=False, na=False)]
-            logger.info(f"  └─ [1. 剔除 ST/退市标的] 剩余: {len(df_basic)} 只 (淘汰 {total_initial - len(df_basic)} 只)")
-
-        cnt_after_st = len(df_basic)
-        # 3. 剔除北交所股票
-        if exclude_bj:
-            df_basic = df_basic[~df_basic["ts_code"].str.endswith(".BJ", na=False)]
-            logger.info(f"  └─ [2. 剔除北交所标的] 剩余: {len(df_basic)} 只 (淘汰 {cnt_after_st - len(df_basic)} 只)")
-
-        cnt_after_bj = len(df_basic)
-        # 4. 剔除上市不满 N 天的次新股 (默认满 2 年 / 730 天)
-        cutoff_date = (datetime.now() - timedelta(days=min_age_days)).strftime("%Y%m%d")
-        df_basic = df_basic[df_basic["list_date"] <= cutoff_date]
-        logger.info(f"  └─ [3. 剔除上市未满 {min_age_days} 天次新股] 剩余: {len(df_basic)} 只 (淘汰 {cnt_after_bj - len(df_basic)} 只)")
+        df_basic = self._filter_basic_stocks(
+            df_basic,
+            exclude_st=exclude_st,
+            exclude_bj=exclude_bj,
+            min_age_days=min_age_days,
+        )
+        logger.info(
+            f"  └─ [1-3. 基础排除规则] 剩余: {len(df_basic)} 只 "
+            f"(淘汰 {total_initial - len(df_basic)} 只)"
+        )
 
         # 5. 获取行情与指标
         latest_trade_date, df_daily = self._fetch_latest_daily_basic()
@@ -201,7 +246,9 @@ class UniverseFilter:
             # 流通市值下限 (本地 DuckDB 中 circ_mv 单位为元，15亿 = 1.5e9 元)
             if "circ_mv" in df_daily.columns and min_float_mv_yi:
                 min_circ_mv_yuan = min_float_mv_yi * 1e8
-                cond = cond & (df_daily["circ_mv"].isna() | (df_daily["circ_mv"] >= min_circ_mv_yuan))
+                cond = cond & (
+                    df_daily["circ_mv"].isna() | (df_daily["circ_mv"] >= min_circ_mv_yuan)
+                )
 
             # PB 市净率过滤
             if "pb" in df_daily.columns:
@@ -239,14 +286,12 @@ class UniverseFilter:
 
         df_basic = self._fetch_stock_basic()
 
-        if exclude_st:
-            df_basic = df_basic[~df_basic["name"].str.contains("ST|退", case=False, na=False)]
-
-        if exclude_bj:
-            df_basic = df_basic[~df_basic["ts_code"].str.endswith(".BJ", na=False)]
-
-        cutoff_date = (datetime.now() - timedelta(days=min_age_days)).strftime("%Y%m%d")
-        df_basic = df_basic[df_basic["list_date"] <= cutoff_date]
+        df_basic = self._filter_basic_stocks(
+            df_basic,
+            exclude_st=exclude_st,
+            exclude_bj=exclude_bj,
+            min_age_days=min_age_days,
+        )
 
         latest_trade_date, df_daily = self._fetch_latest_daily_basic()
 
@@ -261,7 +306,9 @@ class UniverseFilter:
 
             if "circ_mv" in df_daily.columns and min_float_mv_yi:
                 min_circ_mv_yuan = min_float_mv_yi * 1e8
-                cond = cond & (df_daily["circ_mv"].isna() | (df_daily["circ_mv"] >= min_circ_mv_yuan))
+                cond = cond & (
+                    df_daily["circ_mv"].isna() | (df_daily["circ_mv"] >= min_circ_mv_yuan)
+                )
 
             if "pb" in df_daily.columns:
                 if min_pb is not None:
@@ -294,7 +341,19 @@ class UniverseFilter:
         filtered_df["rule_name"] = rule_name
         filtered_df["created_at"] = datetime.now().strftime("%Y-%m-%d %H:%M:%S")
 
-        cols = ["as_of_date", "symbol", "ts_code", "name", "list_date", "amount", "amount_20d", "circ_mv", "pb", "rule_name", "created_at"]
+        cols = [
+            "as_of_date",
+            "symbol",
+            "ts_code",
+            "name",
+            "list_date",
+            "amount",
+            "amount_20d",
+            "circ_mv",
+            "pb",
+            "rule_name",
+            "created_at",
+        ]
         return filtered_df[[c for c in cols if c in filtered_df.columns]]
 
     def save_universe_snapshot(self, rule_name: str = "liquid_core_universe") -> str:
@@ -315,7 +374,9 @@ class UniverseFilter:
         os.makedirs(target_dir, exist_ok=True)
         file_path = target_dir / "snapshot.parquet"
         pl_df.write_parquet(file_path)
-        logger.info(f"选股池历史快照 (Snapshot Archive) 已成功归档至: {file_path} (共 {len(pl_df)} 条记录)")
+        logger.info(
+            f"选股池历史快照 (Snapshot Archive) 已成功归档至: {file_path} (共 {len(pl_df)} 条记录)"
+        )
         return str(file_path)
 
 

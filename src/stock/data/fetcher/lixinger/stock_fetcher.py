@@ -160,6 +160,18 @@ class LixingerStockFetcher:
         if pandas_df.empty:
             return pl.DataFrame()
 
+        if "constituents" in endpoint and "constituents" in pandas_df.columns:
+            rows: list[dict[str, Any]] = []
+            for record in pandas_df.to_dict(orient="records"):
+                industry_code = record.get("stockCode")
+                constituents = record.get("constituents") or []
+                if isinstance(constituents, dict):
+                    constituents = [constituents]
+                for constituent in constituents:
+                    if isinstance(constituent, dict):
+                        rows.append({"industryCode": industry_code, **constituent})
+            return pl.DataFrame(rows) if rows else pl.DataFrame()
+
         return pl.from_pandas(pandas_df)
 
     def fetch_daily_bars(

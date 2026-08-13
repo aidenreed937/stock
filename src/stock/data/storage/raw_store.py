@@ -7,7 +7,8 @@ import polars as pl
 
 from stock.config.loader import load_data_config
 from stock.config.settings import settings
-from stock.data.contracts import DatasetKey
+from stock.data.contracts import DatasetKey, get_endpoint_market
+from stock.data.task_registry import resolve_task
 from stock.utils.logger import logger
 
 
@@ -26,10 +27,19 @@ class RawDataStorage:
         """
         self.base_dir = base_dir if base_dir is not None else settings.raw_data_dir
 
+    @staticmethod
+    def _dataset_name(data_source: str, endpoint: str) -> str:
+        """将项目任务或历史兼容名归一为唯一数据集目录名。"""
+        try:
+            return resolve_task(data_source, endpoint).dataset
+        except ValueError:
+            return endpoint.replace("/", "_")
+
     def _get_partition_dir(
         self, data_source: str, endpoint: str, target_date: date
     ) -> Path:
-        """根据数据源、接口名与日期计算 Hive 时间分区目录路径。"""
+        """根据数据源、项目任务与日期计算 Hive 时间分区目录路径。"""
+        endpoint = self._dataset_name(data_source, endpoint)
         year_str = f"year={target_date.year:04d}"
         month_str = f"month={target_date.month:02d}"
         return self.base_dir / data_source / endpoint / year_str / month_str
@@ -38,6 +48,7 @@ class RawDataStorage:
         self, data_source: str, endpoint: str, target_date: date
     ) -> Path:
         """计算 RAW 归档文件路径。"""
+        endpoint = self._dataset_name(data_source, endpoint)
         partition_dir = self._get_partition_dir(data_source, endpoint, target_date)
         date_str = target_date.strftime("%Y%m%d")
         return partition_dir / f"{endpoint}_{date_str}.parquet"
@@ -71,6 +82,27 @@ class RawDataStorage:
 
     def save_dataset(self, key: DatasetKey, df: pl.DataFrame) -> Path:
         """按数据集和月份幂等合并保存 RAW 归档数据。"""
+        date_col = next((c for c in ("trade_date", "date", "end_date", "month", "quarter") if c in df.columns), None)
+        if date_col and not df.is_empty() and date_col in {"trade_date", "date", "end_date"}:
+            # 按真实业务日期分桶，避免请求 end_date 造成历史快照串区。
+            values = df.get_column(date_col).cast(pl.Utf8, strict=False)
+            months = values.str.replace_all("-", "").str.slice(0, 6).unique().drop_nulls().to_list()
+            if months:
+                output = self._get_dataset_path(key)
+                for month in months:
+                    part = df.filter(values.str.replace_all("-", "").str.slice(0, 6) == month)
+                    y, m = int(month[:4]), int(month[4:6])
+                    part_key = DatasetKey(
+                        provider=key.provider, dataset=key.dataset, endpoint=key.endpoint,
+                        start_date=date(y, m, 1), end_date=date(y, m, 28),
+                        instrument=key.instrument, adjustment=key.adjustment, schema_version=key.schema_version,
+                    )
+                    output = self._save_dataset_file(part_key, part)
+                return output
+        return self._save_dataset_file(key, df)
+
+    def _save_dataset_file(self, key: DatasetKey, df: pl.DataFrame) -> Path:
+        """保存单个逻辑分区文件。"""
         file_path = self._get_dataset_path(key)
         if df.is_empty():
             return file_path
@@ -86,11 +118,7 @@ class RawDataStorage:
                     existing = pl.read_parquet(file_path)
                     if not existing.is_empty():
                         df = pl.concat([existing, df], how="diagonal_relaxed")
-                        dedup_cols = [
-                            c
-                            for c in ["symbol", "stockCode", "ts_code", "code", "trade_date", "date"]
-                            if c in df.columns
-                        ]
+                        dedup_cols = self._primary_keys(key, df)
                         if dedup_cols:
                             df = df.unique(subset=dedup_cols, keep="last")
                 except Exception as e:
@@ -102,6 +130,27 @@ class RawDataStorage:
             temp_path.replace(file_path)
             return file_path
 
+    @staticmethod
+    def _primary_keys(key: DatasetKey, df: pl.DataFrame) -> list[str]:
+        """Resolve registered endpoint keys before falling back to generic identity columns."""
+        meta: object | None = None
+        try:
+            if key.provider == "tushare":
+                from stock.data.fetcher.tushare.registry import TUSHARE_API_REGISTRY
+                meta = TUSHARE_API_REGISTRY.get(resolve_task(key.provider, key.endpoint).api_name)
+            elif key.provider == "lixinger":
+                from stock.data.fetcher.lixinger.registry import LIXINGER_API_REGISTRY
+                meta = LIXINGER_API_REGISTRY.get(resolve_task(key.provider, key.endpoint).api_name)
+            else:
+                meta = None
+            if meta:
+                keys = [c for c in meta.primary_keys if c in df.columns]
+                if keys:
+                    return keys
+        except Exception:
+            pass
+        return [c for c in ["symbol", "stockCode", "ts_code", "code", "trade_date", "date"] if c in df.columns]
+
     def load_dataset(self, key: DatasetKey) -> pl.DataFrame | None:
         """按数据集和月份读取 RAW 归档数据。"""
         file_path = self._get_dataset_path(key)
@@ -112,6 +161,18 @@ class RawDataStorage:
             if df.is_empty():
                 return None
             symbol = key.instrument_slug
+            date_cols = [c for c in ["trade_date", "date", "end_date", "month", "quarter"] if c in df.columns]
+            if date_cols and any(c in {"trade_date", "date", "end_date"} for c in date_cols):
+                date_col = next(c for c in ["trade_date", "date", "end_date"] if c in df.columns)
+                values = df.get_column(date_col).cast(pl.Utf8).str.replace_all("-", "").str.slice(0, 8)
+                start = key.start_date.strftime("%Y%m%d")
+                end = key.end_date.strftime("%Y%m%d")
+                if values.filter((values >= start) & (values <= end)).len() == 0:
+                    return None
+                min_value = values.min()
+                max_value = values.max()
+                if isinstance(min_value, str) and isinstance(max_value, str) and (min_value > start or max_value < end):
+                    return None
             if symbol:
                 symbol_col = next((c for c in ["symbol", "ts_code", "stockCode", "code"] if c in df.columns), None)
                 if symbol_col:
@@ -128,8 +189,9 @@ class RawDataStorage:
         no_part_providers = set(config.storage.raw.non_partitioned_providers)
         no_part_datasets = set(config.storage.raw.non_partitioned_datasets)
 
-        base_dataset_dir = self.base_dir / key.provider / key.market_slug / key.dataset
-        if key.provider in no_part_providers or key.dataset in no_part_datasets:
+        dataset_name = self._dataset_name(key.provider, key.dataset)
+        base_dataset_dir = self.base_dir / key.provider / key.market_slug / dataset_name
+        if key.provider in no_part_providers or dataset_name in no_part_datasets:
             return base_dataset_dir / "data.parquet"
 
         partition_dir = (
@@ -173,14 +235,16 @@ class RawDataStorage:
         source_dir = self.base_dir / data_source
         if not source_dir.exists():
             return False
-        dataset_keywords = (
-            ["daily_bar", "stock_daily_bar", "index_daily_bar"]
-            if endpoint in {"daily", "daily_bar", "history"}
-            else [endpoint.replace("/", "_")]
-        )
         year_month_path = f"year={target_date.year:04d}/month={target_date.month:02d}"
-        for p in source_dir.rglob("*.parquet"):
-            p_str = str(p)
-            if year_month_path in p_str and any(kw in p_str for kw in dataset_keywords):
+        task = resolve_task(data_source, endpoint)
+        dataset_names = [task.dataset]
+        market = get_endpoint_market(data_source, task.task_name)
+        for dataset_name in dataset_names:
+            dataset_dir = source_dir / f"market={market.upper()}" / dataset_name
+            if any(
+                path.exists()
+                and not path.name.endswith((".bak.parquet", ".tmp.parquet"))
+                for path in [dataset_dir / year_month_path / "data.parquet"]
+            ):
                 return True
         return False

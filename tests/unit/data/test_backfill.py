@@ -4,7 +4,11 @@ from unittest.mock import MagicMock, PropertyMock, mock_open, patch
 import polars as pl
 import pytest
 
-from stock.data.backfill import HistoricalBackfiller, main as backfill_main
+from stock.data.backfill import (
+    HistoricalBackfiller,
+    _default_symbols_for_endpoint,
+    main as backfill_main,
+)
 
 
 def test_backfill_daily_multi_worker():
@@ -86,7 +90,7 @@ def test_backfill_cli_main(monkeypatch):
             "--data-source",
             "tushare",
             "--endpoint",
-            "daily",
+            "stock_daily_bar",
             "--symbol",
             "000001.SZ",
             "--max-workers",
@@ -129,7 +133,7 @@ backfill:
   default_start_date: "2026-08-01"
   default_end_date: "2026-08-10"
   default_data_source: "tushare"
-  default_endpoint: "daily"
+  default_endpoint: "stock_daily_bar"
   default_symbol: "000001.SZ"
   max_workers: 3
 """
@@ -143,3 +147,19 @@ backfill:
         mock_backfiller.backfill_range.assert_called_once_with(
             date(2026, 8, 1), date(2026, 8, 10), force_refresh=False, max_workers=3
         )
+
+
+def test_tushare_stock_endpoints_use_local_stock_basic_pool(monkeypatch) -> None:
+    data_cfg = MagicMock()
+    data_cfg.watchlists.tushare.indices = ["000001.SH"]
+    data_cfg.source_endpoint_supports = {}
+    monkeypatch.setattr(
+        "stock.data.backfill._load_curated_symbol_pool",
+        lambda source, dataset: ["000001.SZ", "600519.SH"] if dataset == "stock_basic" else [],
+    )
+
+    symbols = _default_symbols_for_endpoint(
+        "tushare", "income", data_cfg, {"income", "index_daily"}
+    )
+
+    assert symbols == ["000001.SZ", "600519.SH"]

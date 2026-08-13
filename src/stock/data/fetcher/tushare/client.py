@@ -77,7 +77,7 @@ class TuShareClient:
             )
         return self._pro_api
 
-    def query(self, api_name: str, *, auto_paginate: bool = False, **kwargs: Any) -> pd.DataFrame:
+    def query(self, api_name: str, *, auto_paginate: bool = True, **kwargs: Any) -> pd.DataFrame:
         """调用指定 TuShare 接口并返回 Pandas DataFrame (自动做滑动窗口限频与截断防护)。
 
         Args:
@@ -140,9 +140,10 @@ class TuShareClient:
                     offset = limit
                     while True:
                         self.rate_limiter.acquire()
-                        kwargs["limit"] = limit
-                        kwargs["offset"] = offset
-                        page_df: pd.DataFrame = self.pro.query(api_name, **kwargs)
+                        page_kwargs = dict(kwargs)
+                        page_kwargs["limit"] = limit
+                        page_kwargs["offset"] = offset
+                        page_df: pd.DataFrame = self.pro.query(api_name, **page_kwargs)
                         if page_df is None or page_df.empty:
                             break
                         pages.append(page_df)
