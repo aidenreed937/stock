@@ -539,270 +539,42 @@ class HistoricalBackfiller:
         )
         return summary
 
-
-def _parse_args() -> argparse.Namespace:
-    parser = argparse.ArgumentParser(description="全市场历史数据回填工具")
-    parser.add_argument(
-        "--config",
-        type=str,
-        default="config/backfill.yaml",
-        help="回填配置文件路径 (默认: config/backfill.yaml)",
-    )
-    parser.add_argument("--start", type=str, default=None, help="开始日期 (YYYY-MM-DD)")
-    parser.add_argument("--end", type=str, default=None, help="结束日期 (YYYY-MM-DD)")
-    parser.add_argument(
-        "-s",
-        "--source",
-        "--data-source",
-        dest="data_source",
-        type=str,
-        default=None,
-        help="数据源标识名称 (如 tushare / yfinance)",
-    )
-    parser.add_argument(
-        "--endpoint", type=str, default=None, help="项目任务名 (如 stock_daily_bar / daily_basic)"
-    )
-    parser.add_argument(
-        "--symbol", type=str, default=None, help="标的代码或行业代码 (可选, all 表示全市场, watchlist 表示观察池)"
-    )
-    parser.add_argument(
-        "--universe", type=str, default=None, help="目标股票池配置名 (如 target_universe, 会覆盖 --symbol)"
-    )
-    parser.add_argument(
-        "--force-refresh", action="store_true", default=None, help="强制从 API 重新拉取并覆盖本地缓存"
-    )
-    parser.add_argument(
-        "--max-workers", type=int, default=None, help="并发同步线程数 (若未指定，自动读取配置文件或 data.yaml 并发设置)"
-    )
-    return parser.parse_args()
+__all__ = [
+    "MARKET_SINGLE_SYNC_ENDPOINTS",
+    "TUSHARE_STOCK_POOL_ENDPOINTS",
+    "TUSHARE_FUND_POOL_ENDPOINTS",
+    "HistoricalBackfiller",
+    "resolve_public_task",
+    "_default_symbols_for_endpoint",
+    "_load_backfill_yaml_config",
+]
 
 
-def _parse_date_str(date_str: str) -> date:
-    date_str = date_str.strip().lower()
-    if date_str == "today":
-        return date.today()
-    if date_str.startswith("today"):
-        offset_str = date_str[5:].replace(" ", "")
-        if offset_str.endswith("d"):
-            try:
-                days = int(offset_str[:-1])
-                return date.today() + timedelta(days=days)
-            except ValueError:
-                pass
-    return datetime.strptime(date_str, "%Y-%m-%d").date()
-
-
-def main() -> None:
-    import sys
-    import yaml
+def _load_backfill_yaml_config(
+    config_path_str: str = "config/backfill.yaml",
+) -> dict[str, Any]:
+    """加载 YAML 回填配置文件。"""
     from pathlib import Path
+    import yaml
 
-    args = _parse_args()
-
-    # 1. 尝试加载回填配置文件
-    yaml_config = {}
-    config_path = Path(args.config)
+    config_path = Path(config_path_str)
     if config_path.exists():
         try:
             with open(config_path, "r", encoding="utf-8") as f:
                 cfg_data = yaml.safe_load(f)
                 if cfg_data and "backfill" in cfg_data:
-                    yaml_config = cfg_data["backfill"]
-                    logger.info(f"成功载入回填配置文件: {config_path}")
+                    res: dict[str, Any] = cfg_data["backfill"]
+                    return res
         except Exception as e:
-            logger.warning(f"加载回填配置文件 [{args.config}] 失败: {e}，将仅使用命令行参数。")
+            logger.warning(f"加载回填配置文件 [{config_path_str}] 失败: {e}")
+    return {}
 
-    # 2. 合并参数优先级 (命令行传入 > 配置文件预设)
-    start_str = args.start or yaml_config.get("default_start_date")
-    end_str = args.end or yaml_config.get("default_end_date")
 
-    if not start_str or not end_str:
-        logger.error(
-            "缺少回填的开始日期 (--start) 或结束日期 (--end)，且未在配置文件中找到 default_start_date / default_end_date。"
-        )
-        sys.exit(1)
+def main() -> None:
+    """CLI 入口点 (兼容层包装)。"""
+    from stock.cli.backfill import main as cli_main
 
-    start_d = _parse_date_str(start_str)
-    end_d = _parse_date_str(end_str)
-
-    data_source = args.data_source or yaml_config.get("default_data_source")
-    if not data_source:
-        logger.error(
-            "缺少回填的数据源参数 (--source / --data-source / -s)，且未在配置文件中找到 default_data_source。"
-        )
-        sys.exit(1)
-
-    endpoint = args.endpoint or yaml_config.get("default_endpoint")
-
-    symbol = args.symbol
-    if symbol is None:
-        symbol = yaml_config.get("default_symbol", "")
-    if symbol == "watchlist":
-        symbol = ""
-
-    force_refresh = args.force_refresh
-    if force_refresh is None:
-        force_refresh = yaml_config.get("force_refresh", False)
-
-    from stock.config.loader import load_data_config
-
-    data_cfg = load_data_config()
-
-    configured_targets = []
-    if endpoint is None:
-        configured_targets = [item.task_name for item in data_cfg.backfill_targets.get(data_source, []) if item.enabled]
-        if not configured_targets:
-            endpoint = "stock_daily_bar"
-        else:
-            endpoint = ",".join(configured_targets)
-
-    # 3. 确定并发线程数：命令行 -> 回填配置文件 -> 对应数据源通用并发数 -> 默认线程数
-    workers = args.max_workers
-    if workers is None:
-        workers = yaml_config.get("max_workers")
-    if workers is None:
-        workers = getattr(
-            data_cfg.concurrency,
-            f"{data_source}_max_workers",
-            data_cfg.concurrency.default_max_workers,
-        )
-
-    start_overrides = getattr(data_cfg, "endpoint_start_date_overrides", {})
-    if endpoint in start_overrides:
-        min_supported = date.fromisoformat(start_overrides[endpoint])
-        if start_d < min_supported:
-            logger.info(
-                f"接口 [{endpoint}] 触发历史起始日自动截断校准: 原 [{start_d}] 自动提升至官方上线首日 [{min_supported}]"
-            )
-            start_d = min_supported
-
-    per_symbol_eps = set(
-        getattr(
-            getattr(data_cfg, "endpoint_symbol_modes", None),
-            "per_symbol_endpoints",
-            [
-                "index_daily",
-                "index_dailybasic",
-                "index_weight",
-                "global_index_daily",
-                "fund_daily",
-                "stock_daily_bar",
-            ],
-        )
-    )
-    if data_source == "fred":
-        per_symbol_eps.add(endpoint)
-        per_symbol_eps.add("macro_indicators")
-
-    if data_source == "tushare":
-        per_symbol_eps.discard("stock_daily_bar")
-    elif data_source == "yfinance":
-        per_symbol_eps.add("stock_daily_bar")
-
-    universe_symbols: list[str] | None = None
-    if args.universe:
-        import os
-
-        uni_path = f"config/universe/{args.universe}.yaml"
-        if os.path.exists(uni_path):
-            import yaml
-            try:
-                with open(uni_path, "r", encoding="utf-8") as f:
-                    uni_data = yaml.safe_load(f)
-                    if uni_data and "universe" in uni_data and "stocks" in uni_data["universe"]:
-                        configured_symbols = [
-                            str(item) for item in uni_data["universe"]["stocks"]
-                        ]
-                        universe_symbols = configured_symbols
-                        symbol = ""
-                        logger.info(
-                            f"从配置文件 [{uni_path}] 载入股票池，共 {len(configured_symbols)} 只标的。"
-                        )
-            except Exception as e:
-                logger.error(f"加载股票池配置文件失败: {e}")
-                sys.exit(1)
-        else:
-            from stock.data.storage.duckdb_store import DuckDBMarketStore
-
-            store = DuckDBMarketStore(data_source="tushare")
-            df_snapshots = store.query_universe_snapshots()
-            if not df_snapshots.is_empty() and "symbol" in df_snapshots.columns:
-                latest_as_of = df_snapshots["as_of_date"].max()
-                df_latest_snap = df_snapshots.filter(df_snapshots["as_of_date"] == latest_as_of)
-                universe_symbols = df_latest_snap["symbol"].unique().to_list()
-                symbol = ""
-                logger.info(
-                    f"成功直接从 DuckDB 选股快照数据库 (as_of_date={str(latest_as_of)}) "
-                    f"载入股票池，共 {len(universe_symbols)} 只标的。"
-                )
-            else:
-                logger.error(f"找不到股票池配置文件 [{uni_path}]，且 DuckDB 选股快照库为空！请先运行 `make filter-universe` 生成股票池快照。")
-                sys.exit(1)
-
-    endpoints = []
-    for raw_endpoint in (ep.strip() for ep in endpoint.split(",") if ep.strip()):
-        try:
-            endpoints.append(resolve_public_task(data_source, raw_endpoint).task_name)
-        except ValueError as exc:
-            logger.error(str(exc))
-            sys.exit(2)
-
-    from stock.data.storage.duckdb_store import DuckDBMarketStore
-    shared_store = DuckDBMarketStore(data_source=data_source)
-    if hasattr(shared_store, "enable_batch_mode"):
-        shared_store.enable_batch_mode()
-
-    try:
-        for ep_idx, current_ep in enumerate(endpoints, 1):
-            logger.info(f"\n=========================================================================================================")
-            logger.info(f"  [单一 CLI 进程串行安全调度 ({ep_idx}/{len(endpoints)})] 开始回填接口: [{data_source}/{current_ep}]")
-            logger.info(f"=========================================================================================================\n")
-
-            if current_ep in MARKET_SINGLE_SYNC_ENDPOINTS and not symbol:
-                target_symbols = [""]
-            elif symbol == "all" and current_ep not in per_symbol_eps:
-                target_symbols = [""]
-            elif symbol and symbol not in ("all", "watchlist"):
-                target_symbols = [symbol]
-            else:
-                target_symbols = universe_symbols or _default_symbols_for_endpoint(
-                    data_source, current_ep, data_cfg, per_symbol_eps
-                )
-                if not target_symbols:
-                    if current_ep in per_symbol_eps:
-                        raise DataFetchError(
-                            f"接口 [{data_source}/{current_ep}] 未解析到按标的回填所需的目标池"
-                        )
-                    target_symbols = [""]
-
-            for idx, sym in enumerate(target_symbols, 1):
-                if sym:
-                    logger.info(f"===> 开始处理数据源 [{data_source}] 接口 [{current_ep}] 标的 [{sym}] ({idx}/{len(target_symbols)})...")
-                backfiller = HistoricalBackfiller(
-                    data_source=data_source, endpoint=current_ep, symbol=sym
-                )
-
-                # 注入共享的批量存储引擎，解决写放大问题
-                backfiller.pipeline.store = shared_store
-
-                backfiller.backfill_range(
-                    start_d, end_d, force_refresh=force_refresh, max_workers=workers
-                )
-
-                # 每回填完 5 个批次/交易日，定期落盘刷新一次，既防撑爆内存又能实时落盘
-                if idx % 5 == 0:
-                    if hasattr(shared_store, "commit"):
-                        shared_store.commit()
-                        shared_store.enable_batch_mode()
-
-            # 每个接口完成后物理提交 Commit
-            if hasattr(shared_store, "commit"):
-                shared_store.commit()
-                shared_store.enable_batch_mode()
-    finally:
-        # 确保进程退出前或全部执行完毕后最后一次提交落盘
-        if hasattr(shared_store, "commit"):
-            shared_store.commit()
+    cli_main()
 
 
 if __name__ == "__main__":

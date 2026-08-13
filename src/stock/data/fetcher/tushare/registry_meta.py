@@ -1,0 +1,26 @@
+"""TuShare 接口元数据 dataclass 定义。"""
+
+from dataclasses import dataclass, field
+
+
+@dataclass(frozen=True)
+class EndpointMeta:
+    """TuShare 接口元数据描述。"""
+
+    api_name: str
+    description: str
+    market: str = "CN"
+    frequency: str = "daily"  # daily, monthly, quarterly, event
+    group: str = "market_data"
+    primary_keys: list[str] = field(default_factory=list)
+    rate_limit_per_min: int = 180
+    update_time: str = "18:00"
+    update_delay_days: int = 0
+    date_columns: list[str] = field(default_factory=list)
+    required_columns: list[str] = field(default_factory=list)
+    units: dict[str, str] = field(default_factory=dict)
+    max_range_days: int | None = None
+    request_window_days: int | None = None
+    pagination_required: bool = True
+    max_rows_per_request: int | None = None
+    quality_profile: str = "generic"

@@ -543,7 +543,7 @@ class DuckDBMarketStore:
         end_date: date | None = None,
     ) -> pl.DataFrame:
         """查询标准数据集，兼容旧 endpoint 查询入口。"""
-        data_source = self._require_data_source()
+        self._require_data_source()
         target_dataset = self._dataset_name(dataset)
         matched_files = [
             str(path)
@@ -559,16 +559,14 @@ class DuckDBMarketStore:
             conditions.append(f"trade_date >= '{start_date:%Y-%m-%d}'")
         if end_date:
             conditions.append(f"trade_date <= '{end_date:%Y-%m-%d}'")
-        where_clause = f" WHERE {' AND '.join(conditions)}" if conditions else ""
         order_clause = (
             " ORDER BY trade_date ASC, symbol ASC"
             if target_dataset not in {"stock_basic", "index_basic", "fund_basic"}
             else ""
         )
-        sql = (
-            f"SELECT * FROM read_parquet({matched_files}, union_by_name=true)"
-            f"{where_clause}{order_clause}"
-        )  # noqa: S608
+        from stock.data.storage.sql_templates import build_read_parquet_sql
+
+        sql = build_read_parquet_sql(matched_files, conditions=conditions, order_clause=order_clause)
         try:
             return self.query_by_sql(sql)
         except Exception as e:
@@ -595,14 +593,14 @@ class DuckDBMarketStore:
             logger.warning(f"本地无 {endpoint} 分区 Parquet 缓存文件")
             return pl.DataFrame()
 
-        sql = (
-            f"SELECT * FROM read_parquet({matched_files}, union_by_name=true)"
-            f" WHERE symbol = '{symbol}'"
-        )  # noqa: S608
-        sql += f" AND data_source = '{data_source}'"
-        if min_price is not None:
-            sql += f" AND close >= {min_price}"
-        sql += " ORDER BY trade_date ASC"
+        from stock.data.storage.sql_templates import build_daily_bars_sql
+
+        sql = build_daily_bars_sql(
+            matched_files=matched_files,
+            symbol=symbol,
+            data_source=data_source,
+            min_price=min_price,
+        )
 
         try:
             return self.query_by_sql(sql)
@@ -636,21 +634,15 @@ class DuckDBMarketStore:
             logger.warning(f"本地无 {endpoint} 分区 Parquet 缓存文件")
             return pl.DataFrame()
 
-        conditions = []
-        if start_date:
-            conditions.append(f"trade_date >= '{start_date.strftime('%Y-%m-%d')}'")
-        if end_date:
-            conditions.append(f"trade_date <= '{end_date.strftime('%Y-%m-%d')}'")
-        if symbols:
-            symbols_str = ", ".join(f"'{s}'" for s in symbols)
-            conditions.append(f"symbol IN ({symbols_str})")
-        conditions.append(f"data_source = '{data_source}'")
+        from stock.data.storage.sql_templates import build_history_sql
 
-        where_clause = f" WHERE {' AND '.join(conditions)}" if conditions else ""
-        sql = (
-            f"SELECT * FROM read_parquet({matched_files}, union_by_name=true)"
-            f"{where_clause} ORDER BY trade_date ASC, symbol ASC"
-        )  # noqa: S608
+        sql = build_history_sql(
+            matched_files=matched_files,
+            data_source=data_source,
+            start_date=start_date,
+            end_date=end_date,
+            symbols=symbols,
+        )
 
         try:
             return self.query_by_sql(sql)
@@ -680,14 +672,10 @@ class DuckDBMarketStore:
         ]
         if not matched_files:
             return pl.DataFrame()
-        where_clause = ""
-        if as_of_date:
-            d_str = as_of_date.strftime("%Y-%m-%d") if isinstance(as_of_date, date) else as_of_date
-            where_clause = f" WHERE as_of_date = '{d_str}'"
-        sql = (
-            f"SELECT * FROM read_parquet({matched_files}, union_by_name=true)"
-            f"{where_clause} ORDER BY as_of_date DESC, symbol ASC"
-        )  # noqa: S608
+
+        from stock.data.storage.sql_templates import build_snapshot_sql
+
+        sql = build_snapshot_sql(matched_files=matched_files, as_of_date=as_of_date)
         try:
             return self.query_by_sql(sql)
         except Exception as e:
