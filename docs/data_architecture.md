@@ -124,3 +124,18 @@ make backfill START=2026-08-01 END=2026-08-12
 # 4. 执行主项目入口与 YAML 驱动测试
 make run
 ```
+
+---
+
+## 7. 数据字段数值单位规约 (Data Field Units Specification)
+
+在处理 TuShare API 在线数据与本地 DuckDB Curated 数据仓库时，需特别注意数值单位的归一化映射：
+
+| 数据集 | 字段名称 (`Field`) | 在线 API 原始单位 | 本地 DuckDB 归档单位 | 换算公式 / 阈值比较说明 |
+| :--- | :--- | :--- | :--- | :--- |
+| `daily_basic` | `circ_mv` (流通市值) | 万元 | **元 (Yuan)** | $15\text{ 亿元} = 15 \times 10^8 = 1.5 \times 10^9\text{ 元}$ |
+| `daily_basic` | `total_mv` (总市值) | 万元 | **元 (Yuan)** | $15\text{ 亿元} = 1.5 \times 10^9\text{ 元}$ |
+| `stock_daily_bar` | `amount` (成交额) | 元 / 千元 | **元 (Yuan)** | $3000\text{ 万元} = 3 \times 10^7\text{ 元}$ |
+
+> [!CAUTION]
+> **开发规约避坑提醒**：在编写策略或初筛过滤逻辑（如 `UniverseFilter`）时，所有基于 DuckDB 本地库的市值比较必须统一换算为**元（RMB）**作为基准，禁止直接套用 TuShare 在线 API 的“万元”口径（会导致市值阈值被误降 $10000$ 倍而失效）。

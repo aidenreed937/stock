@@ -359,3 +359,24 @@ def test_duckdb_store_has_curated_whole_market(tmp_path) -> None:
         delattr(store, "_curated_cache")
     # 对于 1991 年，6 只股票已超过 min_symbols (5 只)，判定为已归档，应返回 True
     assert store.has_curated("daily", date(1991, 12, 18), symbol=None)
+
+
+def test_query_universe_snapshots(tmp_path) -> None:
+    store = DuckDBMarketStore(storage_dir=tmp_path, data_source="mock")
+    assert store.query_universe_snapshots().is_empty()
+
+    snap_dir = store.storage_dir / "universe_snapshots" / "as_of_date=2026-08-12"
+    snap_dir.mkdir(parents=True, exist_ok=True)
+    df_snap = pl.DataFrame({
+        "as_of_date": ["2026-08-12"],
+        "symbol": ["600519"],
+        "ts_code": ["600519.SH"],
+    })
+    df_snap.write_parquet(snap_dir / "snapshot.parquet")
+
+    res = store.query_universe_snapshots()
+    assert len(res) == 1
+    assert res["symbol"][0] == "600519"
+
+    res_filtered = store.query_universe_snapshots(as_of_date="2026-08-12")
+    assert len(res_filtered) == 1

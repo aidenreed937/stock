@@ -17,6 +17,8 @@ class EndpointMeta:
     default_metrics: list[str] = field(default_factory=list)
     default_params: dict[str, Any] = field(default_factory=dict)
     code_param_name: str = "stockCodes"
+    support_batch_prefetch: bool = False
+
 
 
 # 常用理杏仁 API 接口元数据注册表 (全局统一由 LixingerClient / data.yaml 控制限频)
@@ -30,6 +32,7 @@ LIXINGER_API_REGISTRY: dict[str, EndpointMeta] = {
         update_delay_days=0,
         code_param_name="stockCodes",
         default_metrics=["pe_ttm", "pb", "ps_ttm", "dyr", "mc"],
+        support_batch_prefetch=True,
     ),
     "cn/company/candlestick": EndpointMeta(
         api_name="cn/company/candlestick",
@@ -80,9 +83,33 @@ LIXINGER_API_REGISTRY: dict[str, EndpointMeta] = {
         update_delay_days=0,
         code_param_name="stockCodes",
     ),
+    "cn/company/fs/non_financial": EndpointMeta(
+        api_name="cn/company/fs/non_financial",
+        description="A 股非金融公司财务报表 (含商誉、经营现金流、净资产与审计意见)",
+        group="financial_statement",
+        primary_keys=["stockCode", "date"],
+        update_time="18:00",
+        update_delay_days=0,
+        code_param_name="stockCodes",
+        default_metrics=["goodwill", "operating_cash_flow", "equity", "audit_opinion", "interest_bearing_debt"],
+        support_batch_prefetch=True,
+    ),
+    "cn/company/hot/ple": EndpointMeta(
+        api_name="cn/company/hot/ple",
+        description="A 股公司股权质押汇总 (含大股东质押率与全公司质押率)",
+        group="risk_control",
+        primary_keys=["stockCode", "date"],
+        update_time="18:00",
+        update_delay_days=0,
+        code_param_name="stockCodes",
+        default_metrics=["pledge_ratio", "major_shareholder_pledge_ratio"],
+        support_batch_prefetch=True,
+    ),
 }
 
 # 增加 CLI 常用短别名映射
 LIXINGER_API_REGISTRY["sw_2021_constituents"] = LIXINGER_API_REGISTRY["cn/industry/constituents/sw_2021"]
 LIXINGER_API_REGISTRY["sw_2021_fundamental"] = LIXINGER_API_REGISTRY["cn/industry/fundamental/sw_2021"]
 LIXINGER_API_REGISTRY["index_fundamental"] = LIXINGER_API_REGISTRY["cn/index/fundamental"]
+LIXINGER_API_REGISTRY["fs_non_financial"] = LIXINGER_API_REGISTRY["cn/company/fs/non_financial"]
+LIXINGER_API_REGISTRY["pledge_info"] = LIXINGER_API_REGISTRY["cn/company/hot/ple"]

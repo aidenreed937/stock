@@ -145,6 +145,8 @@ data:
         - "cn_index_fundamental"
         - "sw_2021_constituents"
         - "sw_2021_fundamental"
+        - "fs_non_financial"
+        - "pledge_info"
 
   # TuShare / 理杏仁 未回填接口全量回填目标池与参数分配配置
   backfill_targets:
@@ -158,6 +160,16 @@ data:
         description: "申万 2021 版行业基本面估值数据"
         fetch_mode: "event"
         default_start_date: "2014-08-01"
+        enabled: true
+      - api_name: "fs_non_financial"
+        description: "A 股非金融公司财务报表 (含商誉、现金流与审计意见)"
+        fetch_mode: "event"
+        default_start_date: "2020-01-01"
+        enabled: true
+      - api_name: "pledge_info"
+        description: "A 股公司股权质押汇总"
+        fetch_mode: "event"
+        default_start_date: "2020-01-01"
         enabled: true
     tushare:
       # 高优先级：行情与估值指标类

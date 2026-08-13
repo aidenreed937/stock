@@ -11,6 +11,8 @@ help:
 	@echo "  make backfill - Backfill historical data (e.g., make backfill START=2026-08-01 END=2026-08-12)"
 	@echo "  make probe    - Run global data source connectivity probe"
 	@echo "  make validate - Run offline data quality validator"
+	@echo "  make filter-universe - Generate filtered stock universe based on liquidity"
+	@echo "  make backfill-fundamental - Backfill fundamentals from lixinger based on universe"
 
 install:
 	uv sync
@@ -46,3 +48,15 @@ audit:
 
 master-audit:
 	uv run python -m stock.data.audit.master_audit
+
+filter-universe:
+	uv run python -m stock.data.universe
+
+backfill-fundamental:
+	uv run python -m stock.data.backfill --start $(START) --end $(END) --data-source lixinger --endpoint cn/company/fundamental/non_financial --universe $(or $(UNIVERSE),target_universe)
+
+backfill-fs:
+	uv run python -m stock.data.backfill --start $(START) --end $(END) --data-source lixinger --endpoint cn/company/fs/non_financial --universe $(or $(UNIVERSE),target_universe)
+
+backfill-pledge:
+	uv run python -m stock.data.backfill --start $(START) --end $(END) --data-source lixinger --endpoint cn/company/hot/ple --universe $(or $(UNIVERSE),target_universe)

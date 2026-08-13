@@ -425,8 +425,12 @@ class DuckDBMarketStore:
         """查询标准数据集，兼容旧 endpoint 查询入口。"""
         data_source = self._require_data_source()
         target_dataset = "*daily_bar" if dataset in {"daily_bar", "daily"} else dataset
-        search_pattern = str(self.storage_dir / "**" / target_dataset / "*" / "*" / "*.parquet")
-        if not list(self.storage_dir.rglob("*.parquet")):
+        matched_files = [
+            str(p)
+            for p in self.storage_dir.rglob("*.parquet")
+            if any(target_dataset.replace("*", "") in part for part in p.parts)
+        ]
+        if not matched_files:
             return pl.DataFrame()
         conditions: list[str] = []
         if symbol:
@@ -435,9 +439,9 @@ class DuckDBMarketStore:
             conditions.append(f"trade_date >= '{start_date:%Y-%m-%d}'")
         if end_date:
             conditions.append(f"trade_date <= '{end_date:%Y-%m-%d}'")
-        conditions.append(f"data_source = '{data_source}'")
         where_clause = f" WHERE {' AND '.join(conditions)}" if conditions else ""
-        sql = f"SELECT * FROM '{search_pattern}'{where_clause} ORDER BY trade_date ASC, symbol ASC"  # noqa: S608
+        order_clause = " ORDER BY trade_date ASC, symbol ASC" if dataset not in {"stock_basic", "index_basic"} else ""
+        sql = f"SELECT * FROM read_parquet({matched_files}){where_clause}{order_clause}"  # noqa: S608
         try:
             return self.query_by_sql(sql)
         except Exception as e:
@@ -526,3 +530,20 @@ class DuckDBMarketStore:
         if isinstance(max_d, str):
             return date.fromisoformat(max_d)
         return None
+
+    def query_universe_snapshots(self, as_of_date: date | str | None = None) -> pl.DataFrame:
+        """查询已落盘归档的选股池历史快照 (Snapshot Archive)。"""
+        snap_dir = self.storage_dir / "universe_snapshots"
+        matched_files = [str(p) for p in snap_dir.rglob("*.parquet")]
+        if not matched_files:
+            return pl.DataFrame()
+        where_clause = ""
+        if as_of_date:
+            d_str = as_of_date.strftime("%Y-%m-%d") if isinstance(as_of_date, date) else as_of_date
+            where_clause = f" WHERE as_of_date = '{d_str}'"
+        sql = f"SELECT * FROM read_parquet({matched_files}){where_clause} ORDER BY as_of_date DESC, symbol ASC"  # noqa: S608
+        try:
+            return self.query_by_sql(sql)
+        except Exception as e:
+            logger.error(f"DuckDB 选股快照查询异常: {e}")
+            return pl.DataFrame()

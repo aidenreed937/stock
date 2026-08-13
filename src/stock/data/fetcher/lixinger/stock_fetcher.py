@@ -15,6 +15,38 @@ from stock.utils.logger import logger
 class LixingerStockFetcher:
     """理杏仁股票领域专用数据抓取器。"""
 
+    # 类共享缓存，key: "endpoint:start_date:end_date" -> value: pl.DataFrame
+    _prefetch_cache: dict[str, pl.DataFrame] = {}
+
+    def _get_lixinger_universe(self) -> list[str]:
+        """获取理杏仁回填的目标 A 股股票池列表（不含后缀）。"""
+        try:
+            from stock.data.storage.duckdb_store import DuckDBMarketStore
+
+            store = DuckDBMarketStore(data_source="tushare")
+            df_snapshots = store.query_universe_snapshots()
+            if not df_snapshots.is_empty() and "symbol" in df_snapshots.columns:
+                latest_as_of = df_snapshots["as_of_date"].max()
+                df_latest_snap = df_snapshots.filter(df_snapshots["as_of_date"] == latest_as_of)
+                symbols = df_latest_snap["symbol"].unique().to_list()
+                return sorted(list({s.split(".")[0] for s in symbols if s}))
+        except Exception as e:
+            logger.warning(f"从 DuckDB 获取股票池快照失败，尝试降级: {e}")
+
+        try:
+            from stock.data.storage.duckdb_store import DuckDBMarketStore
+
+            store = DuckDBMarketStore(data_source="tushare")
+            df_basic = store.query_dataset(dataset="stock_basic")
+            if not df_basic.is_empty():
+                code_col = "ts_code" if "ts_code" in df_basic.columns else "symbol"
+                symbols = df_basic[code_col].unique().to_list()
+                return sorted(list({s.split(".")[0] for s in symbols if s}))
+        except Exception as e:
+            logger.error(f"从 DuckDB 降级获取 stock_basic 股票池也失败: {e}")
+
+        return []
+
     def __init__(self, client: LixingerClient | None = None) -> None:
         """初始化 LixingerStockFetcher。
 
@@ -65,6 +97,7 @@ class LixingerStockFetcher:
             if not chunks:
                 return pl.DataFrame()
             return pl.concat(chunks).unique()
+
 
         start_str = start_date.strftime("%Y-%m-%d")
         end_str = end_date.strftime("%Y-%m-%d")

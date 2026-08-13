@@ -468,6 +468,9 @@ def _parse_args() -> argparse.Namespace:
         "--symbol", type=str, default=None, help="标的代码或行业代码 (可选, all 表示全市场, watchlist 表示观察池)"
     )
     parser.add_argument(
+        "--universe", type=str, default=None, help="目标股票池配置名 (如 target_universe, 会覆盖 --symbol)"
+    )
+    parser.add_argument(
         "--force-refresh", action="store_true", default=None, help="强制从 API 重新拉取并覆盖本地缓存"
     )
     parser.add_argument(
@@ -617,6 +620,39 @@ def main() -> None:
             raw_symbols = []
     else:
         raw_symbols = []
+
+    if args.universe:
+        import os
+
+        uni_path = f"config/universe/{args.universe}.yaml"
+        if os.path.exists(uni_path):
+            import yaml
+            try:
+                with open(uni_path, "r", encoding="utf-8") as f:
+                    uni_data = yaml.safe_load(f)
+                    if uni_data and "universe" in uni_data and "stocks" in uni_data["universe"]:
+                        raw_symbols = uni_data["universe"]["stocks"]
+                        symbol = "watchlist"
+                        logger.info(f"从配置文件 [{uni_path}] 载入股票池，共 {len(raw_symbols)} 只标的。")
+            except Exception as e:
+                logger.error(f"加载股票池配置文件失败: {e}")
+                sys.exit(1)
+        else:
+            from stock.data.storage.duckdb_store import DuckDBMarketStore
+
+            store = DuckDBMarketStore(data_source="tushare")
+            df_snapshots = store.query_universe_snapshots()
+            if not df_snapshots.is_empty() and "symbol" in df_snapshots.columns:
+                latest_as_of = df_snapshots["as_of_date"].max()
+                df_latest_snap = df_snapshots.filter(df_snapshots["as_of_date"] == latest_as_of)
+                raw_symbols = df_latest_snap["symbol"].unique().to_list()
+                symbol = "watchlist"
+                logger.info(
+                    f"成功直接从 DuckDB 选股快照数据库 (as_of_date={str(latest_as_of)}) 载入股票池，共 {len(raw_symbols)} 只标的。"
+                )
+            else:
+                logger.error(f"找不到股票池配置文件 [{uni_path}]，且 DuckDB 选股快照库为空！请先运行 `make filter-universe` 生成股票池快照。")
+                sys.exit(1)
 
     endpoints = [ep.strip() for ep in endpoint.split(",") if ep.strip()]
 
