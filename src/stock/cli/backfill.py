@@ -2,7 +2,7 @@
 
 import argparse
 import sys
-from datetime import date, datetime
+from datetime import date, datetime, timedelta
 from pathlib import Path
 
 import yaml
@@ -14,6 +14,7 @@ from stock.data.backfill import (
     _load_backfill_yaml_config,
     resolve_public_task,
 )
+from stock.data.task_registry import is_per_symbol_task
 from stock.exceptions import DataFetchError
 from stock.utils.logger import logger
 
@@ -24,7 +25,7 @@ def main() -> None:  # noqa: C901, PLR0912, PLR0915
     parser.add_argument(
         "--config",
         type=str,
-        default="config/backfill.yaml",
+        default="config/data.yaml",
         help="回填配置文件路径",
     )
     parser.add_argument(
@@ -108,6 +109,12 @@ def main() -> None:  # noqa: C901, PLR0912, PLR0915
         d_clean = d_str.strip().lower()
         if d_clean == "today":
             return date.today()
+        if "today-" in d_clean:
+            import re
+
+            m = re.search(r"today-(\d+)", d_clean)
+            if m:
+                return date.today() - timedelta(days=int(m.group(1)))
         d_clean = d_clean.replace("-", "")
         return datetime.strptime(d_clean, "%Y%m%d").date()
 
@@ -125,11 +132,9 @@ def main() -> None:  # noqa: C901, PLR0912, PLR0915
     )
 
     if endpoint is None:
-        configured_targets = [
-            item.task_name
-            for item in data_cfg.backfill_targets.get(data_source, [])
-            if item.enabled
-        ]
+        from stock.data.task_registry import list_available_tasks
+
+        configured_targets = list_available_tasks(data_source)
         endpoint = "stock_daily_bar" if not configured_targets else ",".join(configured_targets)
 
     workers = args.max_workers
@@ -142,7 +147,11 @@ def main() -> None:  # noqa: C901, PLR0912, PLR0915
             data_cfg.concurrency.default_max_workers,
         )
 
-    start_overrides = getattr(data_cfg, "endpoint_start_date_overrides", {})
+    from stock.constants import ENDPOINT_START_DATE_OVERRIDES
+
+    start_overrides = (
+        getattr(data_cfg, "endpoint_start_date_overrides", {}) or ENDPOINT_START_DATE_OVERRIDES
+    )
     if endpoint in start_overrides:
         min_supported = date.fromisoformat(start_overrides[endpoint])
         if start_d < min_supported:
@@ -151,29 +160,6 @@ def main() -> None:  # noqa: C901, PLR0912, PLR0915
                 f"自动提升至官方上线首日 [{min_supported}]"
             )
             start_d = min_supported
-
-    per_symbol_eps = set(
-        getattr(
-            getattr(data_cfg, "endpoint_symbol_modes", None),
-            "per_symbol_endpoints",
-            [
-                "index_daily",
-                "index_dailybasic",
-                "index_weight",
-                "global_index_daily",
-                "fund_daily",
-                "stock_daily_bar",
-            ],
-        )
-    )
-    if data_source == "fred":
-        per_symbol_eps.add(endpoint)
-        per_symbol_eps.add("macro_indicators")
-
-    if data_source == "tushare":
-        per_symbol_eps.discard("stock_daily_bar")
-    elif data_source == "yfinance":
-        per_symbol_eps.add("stock_daily_bar")
 
     universe_symbols: list[str] | None = None
     if args.universe:
@@ -238,18 +224,20 @@ def main() -> None:  # noqa: C901, PLR0912, PLR0915
                 f"{'=' * 105}\n"
             )
 
+            current_is_per_symbol = is_per_symbol_task(data_source, current_ep)
             is_single_sync = current_ep in MARKET_SINGLE_SYNC_ENDPOINTS and not symbol
-            is_all_non_per_symbol = symbol == "all" and current_ep not in per_symbol_eps
+            is_all_non_per_symbol = symbol == "all" and not current_is_per_symbol
             if is_single_sync or is_all_non_per_symbol:
                 target_symbols = [""]
             elif symbol and symbol not in ("all", "watchlist"):
                 target_symbols = [symbol]
             else:
+                ep_filter = {current_ep} if current_is_per_symbol else set()
                 target_symbols = universe_symbols or _default_symbols_for_endpoint(
-                    data_source, current_ep, data_cfg, per_symbol_eps
+                    data_source, current_ep, data_cfg, ep_filter
                 )
                 if not target_symbols:
-                    if current_ep in per_symbol_eps:
+                    if current_is_per_symbol:
                         raise DataFetchError(
                             f"接口 [{data_source}/{current_ep}] 未解析到按标的回填所需的目标池"
                         )

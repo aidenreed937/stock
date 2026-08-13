@@ -1,6 +1,6 @@
 from pathlib import Path
 
-from stock.config.loader import load_strategy_config
+from stock.config.loader import load_data_config, load_strategy_config, load_watchlist_config
 from stock.config.settings import Settings
 
 
@@ -16,6 +16,26 @@ def test_load_strategy_config() -> None:
     config_path = Path("config/strategy/double_sma_rsi.yaml")
     cfg = load_strategy_config(config_path)
     assert cfg.name == "Double_SMA_RSI_Cross"
-    assert len(cfg.universe.all_symbols) > 0
+    assert "600519.SH" in cfg.universe.all_symbols
+    assert "000300.SH" in cfg.universe.all_symbols
     assert cfg.indicators.sma.fast_period == 5
     assert cfg.indicators.rsi.period == 14
+
+
+def test_load_watchlist_and_data_config() -> None:
+    wl = load_watchlist_config()
+    assert "600519.SH" in wl.tushare.stocks
+    assert "000300.SH" in wl.tushare.indices
+    assert "600519" in wl.lixinger.stocks
+    assert "000300" in wl.lixinger.indices
+    assert "AAPL" in wl.yfinance.stocks
+    assert "^GSPC" in wl.yfinance.indices
+    assert "FEDFUNDS" in wl.fred.macro_series
+
+    data_cfg = load_data_config()
+    assert data_cfg.default_source_mode == "tushare"
+    assert "600519.SH" in data_cfg.watchlists.tushare.stocks
+    assert "AAPL" in data_cfg.watchlists.yfinance.stocks
+    assert data_cfg.backfill.default_start_date == "today-365d"
+    assert data_cfg.backfill.default_end_date == "today"
+    assert data_cfg.backfill.max_workers == 4

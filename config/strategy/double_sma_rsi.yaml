@@ -5,7 +5,7 @@ strategy:
   description: "基于 5 日与 20 日均线金叉死叉，结合 RSI 超买超卖过滤的策略配置"
 
   # 级联引用外部子配置文件
-  universe_config_path: "../universe/main_watchlist.yaml"
+  universe_config_path: "../universe/watchlist.yaml"
   risk_config_path: "../risk/conservative_risk.yaml"
 
   # 技术指标计算参数

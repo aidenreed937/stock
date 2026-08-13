@@ -5,12 +5,12 @@ import shutil
 
 import polars as pl
 
+from stock.constants import BAR_DATASETS
 from stock.data.audit.baseline import build_baseline
 from stock.data.cleaner.bar_cleaner import BarDataCleaner
 from stock.data.quality.quarantine import QuarantineStore
 
-
-_BAR_DATASETS = {"daily_bar", "stock_daily_bar", "index_daily_bar", "fund_daily"}
+_BAR_DATASETS = BAR_DATASETS
 
 
 def _is_artifact(path: Path) -> bool:
@@ -28,7 +28,7 @@ def _endpoint_name(path: Path) -> str:
 def _primary_keys(path: Path, columns: list[str]) -> list[str]:
     """按目录 endpoint 使用注册表主键，未知数据集才回退完整行。"""
     endpoint = _endpoint_name(path)
-    if endpoint in {"daily_bar", "stock_daily_bar", "index_daily_bar", "fund_daily"}:
+    if endpoint in BAR_DATASETS:
         # 行情的 adjustment 是数据属性；同一市场、标的、交易日只允许一条记录。
         return [
             column

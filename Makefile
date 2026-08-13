@@ -65,10 +65,10 @@ filter-universe:
 	uv run python -m stock.data.universe
 
 backfill-fundamental:
-	uv run python -m stock.data.backfill --start $(START) --end $(END) --data-source lixinger --endpoint company_fundamental --universe $(or $(UNIVERSE),target_universe)
+	uv run python -m stock.data.backfill --start $(START) --end $(END) --data-source lixinger --endpoint company_fundamental --universe $(or $(UNIVERSE),watchlist)
 
 backfill-fs:
-	uv run python -m stock.data.backfill --start $(START) --end $(END) --data-source lixinger --endpoint fs_non_financial --universe $(or $(UNIVERSE),target_universe)
+	uv run python -m stock.data.backfill --start $(START) --end $(END) --data-source lixinger --endpoint fs_non_financial --universe $(or $(UNIVERSE),watchlist)
 
 backfill-pledge:
-	uv run python -m stock.data.backfill --start $(START) --end $(END) --data-source lixinger --endpoint pledge_info --universe $(or $(UNIVERSE),target_universe)
+	uv run python -m stock.data.backfill --start $(START) --end $(END) --data-source lixinger --endpoint pledge_info --universe $(or $(UNIVERSE),watchlist)

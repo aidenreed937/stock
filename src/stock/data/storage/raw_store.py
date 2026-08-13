@@ -185,13 +185,11 @@ class RawDataStorage:
 
     def _get_dataset_path(self, key: DatasetKey) -> Path:
         """计算 RAW 缓存路径。针对少量/静态/宏观单次数据集，直接存放于数据集根目录。"""
-        config = load_data_config()
-        no_part_providers = set(config.storage.raw.non_partitioned_providers)
-        no_part_datasets = set(config.storage.raw.non_partitioned_datasets)
+        from stock.data.task_registry import is_task_partitioned
 
         dataset_name = self._dataset_name(key.provider, key.dataset)
         base_dataset_dir = self.base_dir / key.provider / key.market_slug / dataset_name
-        if key.provider in no_part_providers or dataset_name in no_part_datasets:
+        if not is_task_partitioned(key.provider, dataset_name):
             return base_dataset_dir / "data.parquet"
 
         partition_dir = (

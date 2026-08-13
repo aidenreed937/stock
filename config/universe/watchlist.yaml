@@ -1,0 +1,103 @@
+# 全系统唯一核心自选标的池 (Unified Universe Watchlist)
+# 包含 A 股核心自选标的、宽基指数（含官方基准起始日）、全球外盘资产与宏观时序
+universe:
+  name: "unified_watchlist"
+  description: "系统统一自选股票、核心指数（含基准起始日）与宏观基准池"
+
+  # A 股核心自选标的 (TuShare / 理杏仁)
+  a_shares:
+    stocks:
+      - code: "600519.SH"
+        name: "贵州茅台"
+      - code: "000001.SZ"
+        name: "平安银行"
+      - code: "300750.SZ"
+        name: "宁德时代"
+    indices:
+      - code: "000001.SH"
+        name: "上证指数"
+        description: "上证综合指数 (A股开市首日 1990-12-19)"
+        base_date: "1990-12-19"
+      - code: "399001.SZ"
+        name: "深证成指"
+        description: "深证成份指数 (深市主板基准 1994-07-20)"
+        base_date: "1994-07-20"
+      - code: "000300.SH"
+        name: "沪深300"
+        description: "沪深 300 大盘宽基指数"
+        base_date: "2004-12-31"
+      - code: "000905.SH"
+        name: "中证500"
+        description: "中证 500 中盘宽基指数"
+        base_date: "2004-12-31"
+      - code: "000852.SH"
+        name: "中证1000"
+        description: "中证 1000 小盘宽基指数"
+        base_date: "2004-12-31"
+      - code: "000985.CSI"
+        name: "中证全指"
+        description: "全 A 股整体市场基准 (量化首选)"
+        base_date: "2004-12-31"
+      - code: "000922.CSI"
+        name: "中证红利"
+        description: "中证红利指数 (高股息率策略宽基标杆)"
+        base_date: "2004-12-31"
+      - code: "399006.SZ"
+        name: "创业板指"
+        description: "创业板 100 只龙头成分股指数 (成长龙头)"
+        base_date: "2010-05-31"
+      - code: "399102.SZ"
+        name: "创业板综"
+        description: "创业板综合指数 (创业板全板块 1300+ 股票成交与全貌)"
+        base_date: "2010-05-31"
+      - code: "000688.SH"
+        name: "科创50"
+        description: "科创 50 指数 (硬科技)"
+        base_date: "2019-12-31"
+
+  # 全球与美股核心资产 (yfinance)
+  global:
+    stocks:
+      - code: "AAPL"
+        name: "苹果"
+      - code: "MSFT"
+        name: "微软"
+      - code: "NVDA"
+        name: "英伟达"
+      - code: "GOOGL"
+        name: "谷歌"
+      - code: "AMZN"
+        name: "亚马逊"
+      - code: "META"
+        name: "Meta"
+      - code: "TSLA"
+        name: "特斯拉"
+    indices:
+      - code: "^GSPC"
+        name: "标普500"
+      - code: "^IXIC"
+        name: "纳斯达克"
+      - code: "^DJI"
+        name: "道琼斯"
+      - code: "^SOX"
+        name: "费城半导体"
+      - code: "^RUT"
+        name: "罗素2000"
+      - code: "^N225"
+        name: "日经225"
+      - code: "^KS11"
+        name: "韩国KOSPI"
+      - code: "^HSI"
+        name: "恒生指数"
+      - code: "^TWII"
+        name: "台湾加权"
+
+  # 核心宏观时序 (FRED)
+  macro:
+    - "FEDFUNDS" # 联邦基金利率
+    - "CPIAUCSL" # 美国 CPI
+    - "UNRATE"   # 失业率
+    - "PAYEMS"   # 非农就业人数
+    - "GDP"      # 美国 GDP
+    - "T10Y2Y"   # 10年-2年美债利差
+    - "WALCL"    # 美联储资产负债表规模

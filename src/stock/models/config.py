@@ -1,6 +1,6 @@
 """策略及业务 YAML 强类型 Pydantic Schema 定义模块。"""
 
-from pydantic import BaseModel, Field
+from pydantic import BaseModel, Field, model_validator
 
 
 class UniverseConfig(BaseModel):
@@ -9,6 +9,39 @@ class UniverseConfig(BaseModel):
     stocks: list[str] = Field(default_factory=list, description="股票代码列表")
     indices: list[str] = Field(default_factory=list, description="指数代码列表")
     symbols: list[str] = Field(default_factory=list, description="兼容旧配置的单列表")
+
+    @model_validator(mode="before")
+    @classmethod
+    def extract_nested_universe(cls, data: object) -> dict[str, object]:
+        """将多层级嵌套的统一自选池结构扁平提取。"""
+        if not isinstance(data, dict):
+            return {"stocks": [], "indices": [], "symbols": []}
+
+        def _to_code_str(val: object) -> str:
+            if isinstance(val, dict):
+                return str(val.get("code", "")).strip()
+            return str(val).strip()
+
+        stocks = list(data.get("stocks", []))
+        indices = list(data.get("indices", []))
+        symbols = list(data.get("symbols", []))
+
+        if "a_shares" in data and isinstance(data["a_shares"], dict):
+            stocks.extend(data["a_shares"].get("stocks", []))
+            indices.extend(data["a_shares"].get("indices", []))
+        if "global" in data and isinstance(data["global"], dict):
+            stocks.extend(data["global"].get("stocks", []))
+            indices.extend(data["global"].get("indices", []))
+
+        clean_stocks = [_to_code_str(s) for s in stocks if _to_code_str(s)]
+        clean_indices = [_to_code_str(i) for i in indices if _to_code_str(i)]
+        clean_symbols = [_to_code_str(s) for s in symbols if _to_code_str(s)]
+
+        return {
+            "stocks": clean_stocks,
+            "indices": clean_indices,
+            "symbols": clean_symbols,
+        }
 
     @property
     def all_symbols(self) -> list[str]:
@@ -46,52 +79,10 @@ class SourceWatchlistConfig(BaseModel):
 class WatchlistsConfig(BaseModel):
     """数据源观察池总体配置。"""
 
-    yfinance: SourceWatchlistConfig = Field(
-        default_factory=lambda: SourceWatchlistConfig(
-            stocks=["AAPL", "MSFT", "NVDA", "GOOGL", "AMZN", "META", "TSLA"],
-            indices=["^GSPC", "^IXIC", "^DJI", "^SOX", "^RUT", "^N225", "^KS11", "^HSI", "^TWII"],
-        ),
-        description="yfinance 重点观察代码列表",
-    )
-    tushare: SourceWatchlistConfig = Field(
-        default_factory=lambda: SourceWatchlistConfig(
-            stocks=["600519.SH", "000001.SZ"],
-            indices=[
-                "000001.SH",
-                "399001.SZ",
-                "000300.SH",
-                "000905.SH",
-                "000852.SH",
-                "399006.SZ",
-                "399102.SZ",
-                "000985.CSI",
-                "000922.CSI",
-                "000688.SH",
-            ],
-        ),
-        description="tushare 重点观察代码列表",
-    )
-    lixinger: SourceWatchlistConfig = Field(
-        default_factory=lambda: SourceWatchlistConfig(
-            stocks=["600519", "000001"],
-            indices=[],
-        ),
-        description="理杏仁重点观察代码列表",
-    )
-    fred: SourceWatchlistConfig = Field(
-        default_factory=lambda: SourceWatchlistConfig(
-            macro_series=[
-                "FEDFUNDS",
-                "CPIAUCSL",
-                "UNRATE",
-                "PAYEMS",
-                "GDP",
-                "T10Y2Y",
-                "WALCL",
-            ],
-        ),
-        description="FRED 重点观察宏观指标列表",
-    )
+    yfinance: SourceWatchlistConfig = Field(default_factory=SourceWatchlistConfig)
+    tushare: SourceWatchlistConfig = Field(default_factory=SourceWatchlistConfig)
+    lixinger: SourceWatchlistConfig = Field(default_factory=SourceWatchlistConfig)
+    fred: SourceWatchlistConfig = Field(default_factory=SourceWatchlistConfig)
 
 
 class SMAIndicatorConfig(BaseModel):
@@ -166,65 +157,14 @@ class ConcurrencyConfig(BaseModel):
     default_max_workers: int = Field(default=4, gt=0, description="默认通用抓取最大并发线程数")
 
 
-class EndpointSymbolModesConfig(BaseModel):
-    """接口采集模式路由配置。"""
+class BackfillDefaultsConfig(BaseModel):
+    """历史回填策略默认配置。"""
 
-    per_symbol_endpoints: list[str] = Field(
-        default_factory=lambda: [
-            "index_daily",
-            "index_dailybasic",
-            "index_weight",
-            "global_index_daily",
-            "fund_share",
-            "income",
-            "fina_indicator",
-            "margin_detail",
-            "hk_hold",
-        ],
-        description="按标的按时间段采集的接口列表",
-    )
-    per_day_endpoints: list[str] = Field(
-        default_factory=lambda: [
-            "stock_daily_bar",
-            "daily_basic",
-            "moneyflow",
-            "adj_factor",
-            "sw_daily",
-            "fund_adj",
-            "etf_share_size",
-            "suspend_d",
-        ],
-        description="按交易日全市场采集的接口列表",
-    )
-
-
-class RawStorageConfig(BaseModel):
-    """RAW 离线归档免分区配置。"""
-
-    non_partitioned_providers: list[str] = Field(
-        default_factory=lambda: ["fred", "lixinger"], description="全量免深层年/月分区的数据源"
-    )
-    non_partitioned_datasets: list[str] = Field(
-        default_factory=list, description="免深层年/月分区的数据集表名"
-    )
-
-
-class StorageConfig(BaseModel):
-    """离线存储与归档分桶配置。"""
-
-    raw: RawStorageConfig = Field(default_factory=RawStorageConfig)
-
-
-class BackfillTargetItemConfig(BaseModel):
-    """单个项目任务的回填目标配置。"""
-
-    task_name: str = Field(description="项目任务名")
-    description: str = Field(default="", description="任务描述")
-    fetch_mode: str = Field(
-        default="per_day", description="拉取模式 (per_day / per_symbol / event)"
-    )
-    default_start_date: str = Field(default="2024-01-01", description="默认历史回填起始日期")
-    enabled: bool = Field(default=True, description="是否启用回填")
+    default_start_date: str = Field(default="today-365d", description="默认回填起始日期")
+    default_end_date: str = Field(default="today", description="默认回填结束日期")
+    default_symbol: str = Field(default="all", description="默认回填标的范围")
+    force_refresh: bool = Field(default=False, description="是否默认开启强制刷新")
+    max_workers: int = Field(default=4, gt=0, description="回填默认并发线程数")
 
 
 class DataConfig(BaseModel):
@@ -237,21 +177,7 @@ class DataConfig(BaseModel):
     rate_limits: RateLimitsConfig = Field(default_factory=RateLimitsConfig)
     concurrency: ConcurrencyConfig = Field(default_factory=ConcurrencyConfig)
     watchlists: WatchlistsConfig = Field(default_factory=WatchlistsConfig)
-    endpoint_symbol_modes: EndpointSymbolModesConfig = Field(
-        default_factory=EndpointSymbolModesConfig
-    )
-    source_endpoint_supports: dict[str, dict[str, list[str]]] = Field(default_factory=dict)
-    storage: StorageConfig = Field(default_factory=StorageConfig)
-    endpoint_start_date_overrides: dict[str, str] = Field(
-        default_factory=lambda: {
-            "moneyflow_hsgt": "2014-11-17",
-            "hsgt_top10": "2014-11-17",
-            "margin": "2010-03-31",
-        },
-        description="接口历史最早起始日期校准覆盖表",
-    )
-    exchange_start_dates: dict[str, dict[str, str]] = Field(default_factory=dict)
-    backfill_targets: dict[str, list[BackfillTargetItemConfig]] = Field(default_factory=dict)
+    backfill: BackfillDefaultsConfig = Field(default_factory=BackfillDefaultsConfig)
 
 
 class DataConfigFile(BaseModel):

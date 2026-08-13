@@ -59,19 +59,14 @@ class TuShareStockFetcher(BaseDataFetcher):
 
         # 最外层防御性拦截：针对 margin 接口自动按交易所拆分与最早上线首日过滤
         if endpoint == "margin" and "exchange_id" not in extra_kwargs:
-            from stock.config.loader import load_data_config
+            from stock.constants import EXCHANGE_START_DATES
             from stock.utils.logger import logger
 
-            data_cfg = load_data_config()
-            ex_dates = getattr(getattr(data_cfg, "exchange_start_dates", None), "margin", {})
+            ex_dates = EXCHANGE_START_DATES.get("margin", {})
 
             dfs: list[pl.DataFrame] = []
             for ex in ["SSE", "SZSE", "BSE"]:
-                min_start_str = (
-                    getattr(ex_dates, ex, None)
-                    if hasattr(ex_dates, ex)
-                    else (ex_dates.get(ex) if isinstance(ex_dates, dict) else None)
-                )
+                min_start_str = ex_dates.get(ex)
                 if min_start_str:
                     min_start_d = date.fromisoformat(min_start_str)
                     if end_date < min_start_d:

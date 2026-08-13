@@ -6,6 +6,7 @@ import polars as pl
 
 from stock.config.loader import load_data_config
 from stock.config.settings import settings
+from stock.constants import BAR_DATASETS
 from stock.data.contracts import DAILY_BAR_CONTRACT, DatasetKey, get_endpoint_market
 from stock.data.task_registry import resolve_task
 from stock.exceptions import DataValidationError
@@ -15,7 +16,7 @@ from stock.utils.logger import logger
 class DuckDBMarketStore:
     """基于 DuckDB + Parquet 的本地极速行情存储引擎"""
 
-    _BAR_DATASETS = {"daily_bar", "stock_daily_bar", "index_daily_bar", "fund_daily"}
+    _BAR_DATASETS = BAR_DATASETS
 
     def __init__(
         self, storage_dir: Path | str | None = None, data_source: str | None = None
@@ -118,9 +119,14 @@ class DuckDBMarketStore:
                 self._validate_frame_source(existing, source, f"已有 Curated 文件 [{file_path}]")
                 for df in normalized_dfs:
                     if set(existing.columns) != set(df.columns):
-                        raise DataValidationError(
-                            f"Curated 文件 schema 不匹配 [{file_path}]: "
-                            f"已有列 {existing.columns}，新数据列 {df.columns}"
+                        if dataset_name in self._BAR_DATASETS:
+                            raise DataValidationError(
+                                f"Curated 文件 schema 不匹配 [{file_path}]: "
+                                f"已有列 {existing.columns}，新数据列 {df.columns}"
+                            )
+                        logger.debug(
+                            f"Curated 文件 schema 自动扩展对齐 [{file_path}]: "
+                            f"已有列数 {len(existing.columns)}，新数据列数 {len(df.columns)}"
                         )
 
             all_dfs = ([existing] + normalized_dfs) if not existing.is_empty() else normalized_dfs
@@ -369,11 +375,9 @@ class DuckDBMarketStore:
         source: str,
     ) -> Path:
         """根据数据帧内部的真实业务日期动态分桶路由落盘。"""
-        config = load_data_config()
-        no_part_providers = set(config.storage.raw.non_partitioned_providers)
-        no_part_datasets = set(config.storage.raw.non_partitioned_datasets)
+        from stock.data.task_registry import is_task_partitioned
 
-        if source in no_part_providers or dataset_name in no_part_datasets:
+        if not is_task_partitioned(source, dataset_name):
             file_path = (
                 self.storage_dir / f"market={market_code.upper()}" / dataset_name / "data.parquet"
             )

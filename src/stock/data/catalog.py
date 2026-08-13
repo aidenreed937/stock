@@ -28,12 +28,13 @@ from pathlib import Path
 import polars as pl
 
 from stock.config.settings import settings
+from stock.constants import BAR_DATASETS
 from stock.data.contracts import DAILY_BAR_CONTRACT
 from stock.exceptions import DataValidationError
 from stock.utils.logger import logger
 
 #: 行情类数据集：读取时统一按 (market, symbol, trade_date) 去重并保留最新复权。
-_BAR_DATASETS = frozenset({"daily_bar", "stock_daily_bar", "index_daily_bar", "fund_daily"})
+_BAR_DATASETS = BAR_DATASETS
 #: 历史归档文件备份/临时文件一律跳过。
 _ARTIFACT_SUFFIXES = (".bak.parquet", ".tmp.parquet", ".migration.tmp.parquet")
 #: 身份列别名归一：源端 ts_code/stockCode/code 统一映射为 symbol。

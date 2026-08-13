@@ -14,6 +14,101 @@ class TaskSpec:
     dataset: str
     frequency: str = "daily"
     quality_profile: str = "generic"
+    partitioned: bool = True
+    fetch_mode: str = "per_day"
+
+
+def is_per_symbol_task(provider: str, task_name: str) -> bool:
+    """判断指定数据源与任务是否属于按标的代码拉取模式 (per_symbol)。
+
+    按标的拉取模式支持单次抓取整段历史范围，而按交易日拉取模式 (per_day) 则按天并发拉取全市场。
+    """
+    prov = provider.lower()
+    name = task_name.strip()
+
+    if prov in ("fred", "yfinance"):
+        return True
+
+    per_symbol_datasets = {
+        "index_daily",
+        "index_dailybasic",
+        "index_weight",
+        "global_index_daily",
+        "fund_share",
+        "income",
+        "fina_indicator",
+        "margin_detail",
+        "hk_hold",
+    }
+    if name in per_symbol_datasets:
+        return True
+
+    try:
+        task = resolve_task(prov, name)
+        if task.dataset in per_symbol_datasets or task.task_name in per_symbol_datasets:
+            return True
+        return task.fetch_mode == "per_symbol"
+    except Exception:
+        return False
+
+
+def is_task_partitioned(provider: str, task_or_dataset: str) -> bool:
+    """判断指定数据源与数据集/任务是否采用 Hive 年月时间分桶存储。
+
+    非分区数据集（如静态基本信息表、宏观单次快照等）直接存储于 ``dataset/data.parquet``。
+    """
+    prov = provider.lower()
+    name = task_or_dataset.strip()
+
+    # 全局免分区分桶数据源
+    if prov in ("fred", "lixinger"):
+        return False
+
+    # 显式免分区的低频/静态/单表数据集集合
+    non_part_datasets = {
+        "stock_basic",
+        "index_basic",
+        "index_classify",
+        "index_member",
+        "fund_basic",
+        "cn_cpi",
+        "cn_gdp",
+        "cn_ppi",
+        "cn_pmi",
+        "cn_m",
+        "sf_month",
+        "shibor_lpr",
+        "margin",
+        "moneyflow_hsgt",
+        "hsgt_top10",
+        "index_daily_bar",
+        "global_index_daily",
+        "financials",
+        "balance_sheet",
+        "cashflow",
+        "dividends",
+        "splits",
+        "index_valuation",
+        "macro_indicators",
+        "index_fundamental",
+        "sw_2021_constituents",
+        "sw_2021_fundamental",
+        "company_fundamental",
+        "fs_non_financial",
+        "pledge_info",
+    }
+    if name in non_part_datasets:
+        return False
+
+    try:
+        task = resolve_task(prov, name)
+        if task.dataset in non_part_datasets:
+            return False
+        if task.frequency in ("static", "event") and task.dataset not in ("suspend_d", "index_weight"):
+            return False
+        return task.partitioned
+    except Exception:
+        return True
 
 
 _CUSTOM_TASKS: dict[tuple[str, str], TaskSpec] = {
@@ -235,3 +330,20 @@ def task_dataset(provider: str, task_name: str, symbol: str = "") -> str:
 def is_bar_task(provider: str, task_name: str, symbol: str = "") -> bool:
     """判断任务是否使用行情 K 线清洗与契约。"""
     return resolve_task(provider, task_name, symbol=symbol).quality_profile == "bar"
+
+
+def list_available_tasks(provider: str) -> list[str]:
+    """返回指定数据源下所有已注册且未停用的公开任务名称列表。"""
+    prov = provider.lower()
+    tasks: list[str] = []
+
+    for p, t in _CUSTOM_TASKS:
+        if p == prov and t not in _DISABLED_TASKS and t not in tasks:
+            tasks.append(t)
+
+    registry = _provider_registry(prov)
+    for name in registry:
+        if name not in _DISABLED_TASKS and name not in tasks and "/" not in name:
+            tasks.append(name)
+
+    return tasks

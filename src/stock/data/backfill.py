@@ -264,6 +264,9 @@ class HistoricalBackfiller:
             start_date, end_date, use_cache=not force_refresh
         )
 
+        if force_refresh:
+            return open_dates
+
         todo_dates = []
         for idx, trade_date in enumerate(open_dates, 1):
             # 检查断点续传：只有在精炼层（Curated Store）存在数据时，才认为该日真正完成
@@ -329,12 +332,13 @@ class HistoricalBackfiller:
         """
         total_days = (end_date - start_date).days + 1
         freq = self.frequency
+        task_spec = resolve_task(self.data_source, self.endpoint)
 
-        macro_single_sync_eps = MARKET_SINGLE_SYNC_ENDPOINTS
-        # 对于非日频接口（如月频 CPI/利率、季频财报 GDP、事件驱动及宏观全区间接口），自动识别并执行单次全区间精准同步，彻底避免按交易日开市重复拉取
-        if freq != "daily" or self.endpoint in macro_single_sync_eps:
+        # 对于非日频或非按日切片接口（如月频 CPI、季频财报、事件驱动及宏观全区间接口），自动执行单次全区间同步
+        if freq != "daily" or task_spec.fetch_mode != "per_day" or self.endpoint in MARKET_SINGLE_SYNC_ENDPOINTS:
             logger.info(
-                f"识别到接口 [{self.data_source}/{self.endpoint}] 执行单次全区间超高速同步 ({start_date} ~ {end_date})..."
+                f"识别到接口 [{self.data_source}/{self.endpoint}] (模式: {task_spec.fetch_mode}) "
+                f"执行单次全区间超高速同步 ({start_date} ~ {end_date})..."
             )
             sym_code = self.symbol or self.endpoint
             df = self.pipeline.sync_daily_bars(
@@ -416,24 +420,9 @@ class HistoricalBackfiller:
                             failed_count += 1
         else:
             # 单只股票/指数回填模式：对于支持整段拉取的接口，直接 1 次请求完成整段范围抓取，避免拆成月度切片触发限频
-            from stock.config.loader import load_data_config
+            from stock.data.task_registry import is_per_symbol_task
 
-            data_cfg = load_data_config()
-            per_symbol_eps = set(
-                getattr(
-                    getattr(data_cfg, "endpoint_symbol_modes", None),
-                    "per_symbol_endpoints",
-                    [
-                        "index_daily",
-                        "index_dailybasic",
-                        "index_weight",
-                        "global_index_daily",
-                        "fund_daily",
-                        "stock_daily_bar",
-                    ],
-                )
-            )
-            if self.endpoint in per_symbol_eps or self.data_source == "yfinance":
+            if is_per_symbol_task(self.data_source, self.endpoint):
                 b_start = min(todo_dates)
                 b_end = max(todo_dates)
                 try:
@@ -551,7 +540,7 @@ __all__ = [
 
 
 def _load_backfill_yaml_config(
-    config_path_str: str = "config/backfill.yaml",
+    config_path_str: str = "config/data.yaml",
 ) -> dict[str, Any]:
     """加载 YAML 回填配置文件。"""
     from pathlib import Path
@@ -562,9 +551,13 @@ def _load_backfill_yaml_config(
         try:
             with open(config_path, "r", encoding="utf-8") as f:
                 cfg_data = yaml.safe_load(f)
-                if cfg_data and "backfill" in cfg_data:
-                    res: dict[str, Any] = cfg_data["backfill"]
-                    return res
+                if cfg_data:
+                    if "data" in cfg_data and isinstance(cfg_data["data"], dict):
+                        b_cfg = cfg_data["data"].get("backfill")
+                        if isinstance(b_cfg, dict):
+                            return b_cfg
+                    if "backfill" in cfg_data and isinstance(cfg_data["backfill"], dict):
+                        return cfg_data["backfill"]
         except Exception as e:
             logger.warning(f"加载回填配置文件 [{config_path_str}] 失败: {e}")
     return {}
