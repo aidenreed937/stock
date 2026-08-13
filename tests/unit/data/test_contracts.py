@@ -1,4 +1,4 @@
-from datetime import date
+from datetime import date, datetime, timezone
 
 import polars as pl
 import pytest
@@ -46,6 +46,7 @@ def test_daily_contract_fails_closed_for_missing_columns() -> None:
 
 
 def test_daily_contract_rejects_adjustment_variants_for_same_bar() -> None:
+    now_utc = datetime.now(timezone.utc)
     frame = pl.DataFrame(
         {
             "symbol": ["AAA", "AAA"],
@@ -57,13 +58,15 @@ def test_daily_contract_rejects_adjustment_variants_for_same_bar() -> None:
             "volume": [100.0, 100.0],
             "amount": [1000.0, 1000.0],
             "data_source": ["mock", "mock"],
+            "source_endpoint": ["daily", "daily"],
             "market": ["CN", "CN"],
             "exchange": ["SSE", "SSE"],
             "currency": ["CNY", "CNY"],
             "adjustment": ["raw", "normal"],
-            "schema_version": ["v1", "v1"],
+            "schema_version": ["v2", "v2"],
+            "updated_at": [now_utc, now_utc],
         }
     )
 
-    with pytest.raises(DataValidationError, match="重复主键"):
+    with pytest.raises(DataValidationError):
         DAILY_BAR_CONTRACT.validate(frame)

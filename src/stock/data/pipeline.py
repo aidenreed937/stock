@@ -20,6 +20,7 @@ from stock.data.normalizer.bar_normalizer import (
 )
 from stock.data.normalizer.base import BaseDataNormalizer
 from stock.data.normalizer.generic_normalizer import GenericNormalizer
+from stock.data.normalizer.unit_normalizer import UnitNormalizer
 from stock.data.storage.duckdb_store import DuckDBMarketStore
 from stock.data.storage.raw_store import RawDataStorage
 from stock.data.task_registry import resolve_task
@@ -146,10 +147,14 @@ class MarketDataPipeline:
         raw_df = self._clip_endpoint_date_range(raw_df, start_date, end_date)
         self._validate_endpoint_frame(raw_df, start_date, end_date)
 
-        # 3. 清洗 (Clean)
-        cleaned_df = self.cleaner.clean(raw_df)
+        # 3. 显式单位转换 (Unit Normalization)
+        unit_normalizer = UnitNormalizer(self.data_source, task.api_name)
+        unit_df = unit_normalizer.normalize_units(raw_df)
 
-        # 4. 标准化 (Normalize)
+        # 4. 清洗 (Clean)
+        cleaned_df = self.cleaner.clean(unit_df)
+
+        # 5. 标准化 (Normalize)
         normalized_df = self.normalizer.normalize(cleaned_df)
 
         # 注入数据血统元数据 (Data Lineage)
@@ -179,23 +184,22 @@ class MarketDataPipeline:
                         "CNY" if self.data_source in {"tushare", "lixinger"} else "USD"
                     )
 
+            now_utc = datetime.now(timezone.utc)
             normalized_df = normalized_df.with_columns(
                 [
                     pl.lit(self.data_source).alias("data_source"),
                     pl.lit(task.api_name).alias("source_endpoint"),
                     pl.lit(key.request_id).alias("request_id"),
-                    pl.lit(len(raw_df)).alias("raw_row_count"),
-                    pl.lit(len(cleaned_df)).alias("clean_row_count"),
-                    pl.lit(datetime.now(timezone.utc)).alias("updated_at"),
+                    pl.lit(now_utc).cast(pl.Datetime(time_unit="us", time_zone="UTC")).alias("updated_at"),
                     market_expr.alias("market"),
                     exchange_expr.alias("exchange"),
                     currency_expr.alias("currency"),
                     pl.lit("raw").alias("adjustment"),
-                    pl.lit("v1").alias("schema_version"),
+                    pl.lit("v2").alias("schema_version"),
                 ]
             )
 
-        # 5. 精炼落盘 (Load to Curated Store)
+        # 6. 精炼落盘 (Load to Curated Store)
         if dataset in {"stock_daily_bar", "index_daily_bar"}:
             DAILY_BAR_CONTRACT.validate(normalized_df)
         self.store.save_dataset(key, normalized_df)

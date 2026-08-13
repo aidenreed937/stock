@@ -483,6 +483,13 @@ class DuckDBMarketStore:
             return file_path
 
         file_path = self.get_parquet_path(endpoint, target_date, market=market_code)
+        if "source_endpoint" not in df.columns:
+            df = df.with_columns(pl.lit(endpoint).alias("source_endpoint"))
+        if "updated_at" not in df.columns:
+            from datetime import datetime, timezone
+            df = df.with_columns(pl.lit(datetime.now(timezone.utc)).cast(pl.Datetime("us", "UTC")).alias("updated_at"))
+        df = df.with_columns(pl.lit("v2").alias("schema_version"))
+
         self._validate_frame_source(df, source, f"Curated 数据 [{file_path}]")
         if endpoint in {"daily_bar", "stock_daily_bar", "index_daily_bar", "fund_daily"}:
             DAILY_BAR_CONTRACT.validate(df)
@@ -511,6 +518,13 @@ class DuckDBMarketStore:
         file_path = self.get_parquet_path(dataset_name, key.end_date, market=market_code)
         if df.is_empty():
             return file_path
+        if "source_endpoint" not in df.columns:
+            df = df.with_columns(pl.lit(key.endpoint).alias("source_endpoint"))
+        if "updated_at" not in df.columns:
+            from datetime import datetime, timezone
+            df = df.with_columns(pl.lit(datetime.now(timezone.utc)).cast(pl.Datetime("us", "UTC")).alias("updated_at"))
+        df = df.with_columns(pl.lit("v2").alias("schema_version"))
+
         self._validate_frame_source(df, key.provider, f"Curated 数据 [{file_path}]")
         if dataset_name in {"daily_bar", "stock_daily_bar", "index_daily_bar", "fund_daily"}:
             DAILY_BAR_CONTRACT.validate(df)

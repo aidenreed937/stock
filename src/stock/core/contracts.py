@@ -33,7 +33,7 @@ class DatasetKey:
     end_date: date
     instrument: InstrumentId | None = None
     adjustment: str = "raw"
-    schema_version: str = "v1"
+    schema_version: str = "v2"
 
     @property
     def task_name(self) -> str:
@@ -73,31 +73,74 @@ class DatasetContract:
     primary_keys: tuple[str, ...]
     units: dict[str, str]
 
+    def _validate_types_and_metadata(self, df: pl.DataFrame) -> None:
+        """校验 Schema 数据类型与元数据。"""
+        drift_cols = [c for c in ("raw_row_count", "clean_row_count") if c in df.columns]
+        if drift_cols:
+            raise DataValidationError(f"数据集 [{self.name}] 包含已废弃列: {drift_cols}")
+
+        if "trade_date" in df.columns and df["trade_date"].dtype != pl.Date:
+            t_dtype = df["trade_date"].dtype
+            raise DataValidationError(
+                f"数据集 [{self.name}] trade_date 须为 Date 类型，实际: {t_dtype}"
+            )
+
+        if "updated_at" in df.columns:
+            dtype = df["updated_at"].dtype
+            if not isinstance(dtype, pl.Datetime) or dtype.time_zone != "UTC":
+                raise DataValidationError(
+                    f"数据集 [{self.name}] updated_at 须为 Datetime[us, UTC] 类型，实际: {dtype}"
+                )
+
+        if "schema_version" in df.columns:
+            versions = set(df.get_column("schema_version").unique().to_list())
+            if "v1" in versions:
+                raise DataValidationError(f"数据集 [{self.name}] 包含旧版 schema_version 'v1'")
+
+        if "adjustment" in df.columns:
+            adjustments = set(df.get_column("adjustment").drop_nulls().unique().to_list())
+            if len(adjustments) > 1:
+                raise DataValidationError(f"数据集 [{self.name}] 存在混合复权标记: {adjustments}")
+            if "normal" in adjustments:
+                raise DataValidationError(f"数据集 [{self.name}] adjustment 不得包含 'normal'")
+
+    def _validate_ohlc_physics(self, df: pl.DataFrame) -> None:
+        """校验 OHLC 物理异常与空值。"""
+        if any(df[column].null_count() > 0 for column in ("open", "high", "low", "close")):
+            raise DataValidationError(f"数据集 [{self.name}] OHLC 包含空值")
+        physical_errors = df.filter(
+            (pl.col("open") <= 0)
+            | (pl.col("high") <= 0)
+            | (pl.col("low") <= 0)
+            | (pl.col("close") <= 0)
+            | (pl.col("high") < pl.col("low"))
+            | (pl.col("high") < pl.col("open"))
+            | (pl.col("high") < pl.col("close"))
+            | (pl.col("low") > pl.col("open"))
+            | (pl.col("low") > pl.col("close"))
+        )
+        if not physical_errors.is_empty():
+            raise DataValidationError(
+                f"数据集 [{self.name}] 存在 {len(physical_errors)} 条 OHLC 物理异常"
+            )
+
     def validate(self, df: pl.DataFrame) -> None:
         """以 fail-closed 方式校验数据集。"""
+        if df.is_empty():
+            return
+
         missing = [column for column in self.required_columns if column not in df.columns]
         if missing:
             raise DataValidationError(f"数据集 [{self.name}] 缺少必需列: {missing}")
+
+        self._validate_types_and_metadata(df)
+
         if any(df[column].null_count() > 0 for column in self.primary_keys):
             raise DataValidationError(f"数据集 [{self.name}] 主键包含空值")
+
         if self.name in {"stock_daily_bar", "index_daily_bar"}:
-            if any(df[column].null_count() > 0 for column in ("open", "high", "low", "close")):
-                raise DataValidationError(f"数据集 [{self.name}] OHLC 包含空值")
-            physical_errors = df.filter(
-                (pl.col("open") <= 0)
-                | (pl.col("high") <= 0)
-                | (pl.col("low") <= 0)
-                | (pl.col("close") <= 0)
-                | (pl.col("high") < pl.col("low"))
-                | (pl.col("high") < pl.col("open"))
-                | (pl.col("high") < pl.col("close"))
-                | (pl.col("low") > pl.col("open"))
-                | (pl.col("low") > pl.col("close"))
-            )
-            if not physical_errors.is_empty():
-                raise DataValidationError(
-                    f"数据集 [{self.name}] 存在 {len(physical_errors)} 条 OHLC 物理异常"
-                )
+            self._validate_ohlc_physics(df)
+
         duplicate_count = len(df) - len(df.unique(subset=list(self.primary_keys)))
         if duplicate_count:
             raise DataValidationError(f"数据集 [{self.name}] 存在 {duplicate_count} 条重复主键记录")
@@ -115,11 +158,13 @@ STOCK_DAILY_BAR_CONTRACT = DatasetContract(
         "volume",
         "amount",
         "data_source",
+        "source_endpoint",
         "market",
         "exchange",
         "currency",
         "adjustment",
         "schema_version",
+        "updated_at",
     ),
     primary_keys=("market", "symbol", "trade_date"),
     units={"price": "quote_currency", "volume": "shares", "amount": "quote_currency"},
@@ -137,11 +182,13 @@ INDEX_DAILY_BAR_CONTRACT = DatasetContract(
         "volume",
         "amount",
         "data_source",
+        "source_endpoint",
         "market",
         "exchange",
         "currency",
         "adjustment",
         "schema_version",
+        "updated_at",
     ),
     primary_keys=("market", "symbol", "trade_date"),
     units={"price": "quote_currency", "volume": "shares", "amount": "quote_currency"},

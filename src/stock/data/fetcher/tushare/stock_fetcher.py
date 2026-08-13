@@ -5,6 +5,7 @@ from typing import Any
 
 import polars as pl
 
+from stock.data.fetcher.base import BaseDataFetcher
 from stock.data.fetcher.tushare.client import TuShareClient
 from stock.data.fetcher.tushare.registry import EndpointMeta, TUSHARE_API_REGISTRY
 from stock.models.market import DailyBar
@@ -15,7 +16,7 @@ TUSHARE_INDEX_DAILYBASIC_SUPPORTED_CODES = {
 }
 
 
-class TuShareStockFetcher:
+class TuShareStockFetcher(BaseDataFetcher):
     """TuShare 股票领域专用数据抓取组件。"""
 
     def __init__(self, client: TuShareClient | None = None) -> None:
@@ -184,9 +185,11 @@ class TuShareStockFetcher:
         if df.is_empty():
             return []
 
-        # 简单转换兼容 DailyBar
+        from stock.data.normalizer.unit_normalizer import UnitNormalizer
+        norm_df = UnitNormalizer("tushare", "daily").normalize_units(df)
+
         bars: list[DailyBar] = []
-        for row in df.iter_rows(named=True):
+        for row in norm_df.iter_rows(named=True):
             trade_date_val = row.get("trade_date")
             if isinstance(trade_date_val, str):
                 parsed_date = date(
@@ -199,6 +202,9 @@ class TuShareStockFetcher:
             else:
                 parsed_date = date.today()
 
+            vol_val = row.get("volume", row.get("vol", 0.0))
+            amt_val = row.get("amount", 0.0)
+
             bars.append(
                 DailyBar(
                     symbol=row.get("ts_code", symbol),
@@ -207,8 +213,8 @@ class TuShareStockFetcher:
                     high=float(row.get("high", 0.0)),
                     low=float(row.get("low", 0.0)),
                     close=float(row.get("close", 0.0)),
-                    volume=float(row.get("vol", 0.0)),
-                    amount=float(row.get("amount", 0.0)) * 1000.0,
+                    volume=float(vol_val or 0.0),
+                    amount=float(amt_val or 0.0),
                 )
             )
         return bars

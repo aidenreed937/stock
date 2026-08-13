@@ -23,9 +23,12 @@ def run_master_audit(base_dir: str = "data/curated") -> pl.DataFrame:
         logger.warning(f"审计目标目录不存在: {base_dir}")
         return pl.DataFrame()
 
-    files = list(curated_path.rglob("*.parquet"))
+    files = [
+        f for f in curated_path.rglob("*.parquet")
+        if not f.name.endswith((".bak.parquet", ".tmp.parquet"))
+    ]
     if not files:
-        logger.info(f"目录 [{base_dir}] 下未扫描到任何 Parquet 数据文件。")
+        logger.info(f"目录 [{base_dir}] 下未扫描到任何有效 Parquet 数据文件。")
         return pl.DataFrame()
 
     records: list[dict[str, Any]] = []
