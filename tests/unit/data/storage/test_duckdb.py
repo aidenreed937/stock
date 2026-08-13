@@ -3,7 +3,7 @@ from datetime import date, datetime, timezone
 import polars as pl
 import pytest
 
-from stock.data.contracts import DatasetKey, instrument_for_symbol
+from stock.core.contracts import DatasetKey, instrument_for_symbol
 from stock.data.fetcher.mock import MockDataFetcher
 from stock.data.storage.duckdb_store import DuckDBMarketStore
 from stock.exceptions import DataValidationError

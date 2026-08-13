@@ -5,7 +5,7 @@ import polars as pl
 
 from stock.config.loader import load_strategy_config
 from stock.config.settings import settings
-from stock.data.pipeline import MarketDataPipeline
+from stock.data.factory import create_pipeline
 from stock.strategy.runner import StrategyRunner
 from stock.utils.logger import logger, setup_logger
 
@@ -30,21 +30,7 @@ def main() -> None:
     end_date = date.today()
     start_date = end_date - timedelta(days=DEFAULT_LOOKBACK_DAYS)
 
-    if settings.data_source_mode == "mock":
-        from stock.data.fetcher.mock import MockDataFetcher
-
-        pipeline = MarketDataPipeline(fetcher=MockDataFetcher(), data_source="mock")
-    elif settings.data_source_mode == "tushare":
-        from stock.data.fetcher.tushare.factory import create_tushare_pipeline
-
-        pipeline = create_tushare_pipeline(endpoint="stock_daily_bar")
-    elif settings.data_source_mode == "yfinance":
-        from stock.data.fetcher.yfinance.factory import create_yfinance_pipeline
-
-        proxy = settings.yfinance_proxy if settings.yfinance_proxy else None
-        pipeline = create_yfinance_pipeline(proxy=proxy)
-    else:
-        raise ValueError(f"不支持的数据源模式: {settings.data_source_mode}")
+    pipeline = create_pipeline(settings.data_source_mode, endpoint="stock_daily_bar")
     frames = [
         pipeline.sync_daily_bars(symbol, start_date, end_date)
         for symbol in strategy_cfg.universe.all_symbols

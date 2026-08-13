@@ -44,25 +44,25 @@ baseline:
 	uv run python -m stock.data.audit.baseline --root $(or $(ROOT),data) --output $(or $(OUTPUT),data/audit/baseline.json)
 
 migrate-data:
-	UV_CACHE_DIR=.uv_cache UV_PYTHON_INSTALL_DIR=.uv_python uv run python -m stock.data.migration --root $(or $(ROOT),data) $(if $(APPLY),--apply) $(if $(REPAIR_LINEAGE),--repair-lineage)
+	UV_CACHE_DIR=.uv_cache UV_PYTHON_INSTALL_DIR=.uv_python uv run python -m stock.data.ops.migration --root $(or $(ROOT),data) $(if $(APPLY),--apply) $(if $(REPAIR_LINEAGE),--repair-lineage)
 
 backfill-accept:
 	uv run python -m stock.data.audit.backfill_acceptance --root $(or $(ROOT),data/curated) --endpoint $(ENDPOINT) $(if $(START),--start $(START)) $(if $(END),--end $(END))
 
 probe:
-	uv run python -m stock.data.probe
+	uv run python -m stock.data.ops.probe
 
 validate:
 	uv run python -m stock.data.validator --endpoint $(or $(ENDPOINT),stock_daily_bar) --strict
 
 audit:
-	uv run python -m stock.data.audit $(if $(START),--start $(START)) $(if $(END),--end $(END)) $(if $(DATE),--date $(DATE)) --data-source $(or $(SOURCE),$(DATA_SOURCE),tushare)
+	uv run python -m stock.cli.audit --type $(or $(TYPE),master) --data-source $(or $(SOURCE),$(DATA_SOURCE),tushare)
 
 master-audit:
-	uv run python -m stock.data.audit.master_audit
+	uv run python -m stock.cli.audit --type master
 
 filter-universe:
-	uv run python -m stock.data.universe
+	uv run python -m stock.data.domain.universe
 
 backfill-fundamental:
 	uv run python -m stock.data.backfill --start $(START) --end $(END) --data-source lixinger --endpoint company_fundamental --universe $(or $(UNIVERSE),watchlist)

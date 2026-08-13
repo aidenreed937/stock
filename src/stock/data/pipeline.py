@@ -8,7 +8,7 @@ import polars as pl
 from stock.data.cleaner.bar_cleaner import BarDataCleaner
 from stock.data.cleaner.base import BaseDataCleaner
 from stock.data.cleaner.generic_cleaner import GenericCleaner
-from stock.data.contracts import (
+from stock.core.contracts import (
     DAILY_BAR_CONTRACT,
     DatasetKey,
     instrument_for_symbol,

@@ -7,8 +7,9 @@ import polars as pl
 from stock.config.loader import load_data_config
 from stock.config.settings import settings
 from stock.constants import BAR_DATASETS
-from stock.data.contracts import DAILY_BAR_CONTRACT, DatasetKey, get_endpoint_market
-from stock.data.task_registry import resolve_task
+from stock.core.contracts import DAILY_BAR_CONTRACT, DatasetKey
+from stock.data.storage.compat import StorageCompat
+from stock.data.task_registry import get_endpoint_market, resolve_task
 from stock.exceptions import DataValidationError
 from stock.utils.logger import logger
 
@@ -45,7 +46,7 @@ class DuckDBMarketStore:
     @staticmethod
     def _is_artifact_path(path: Path) -> bool:
         """跳过迁移备份和临时文件，只读取当前有效 Parquet。"""
-        return path.name.endswith((".bak.parquet", ".tmp.parquet"))
+        return StorageCompat.is_artifact_path(path)
 
     def _active_parquet_paths(self) -> list[Path]:
         """返回当前数据源下可供查询的有效 Parquet 文件。"""
@@ -200,63 +201,13 @@ class DuckDBMarketStore:
 
     @staticmethod
     def _normalize_datetime_columns(df: pl.DataFrame) -> pl.DataFrame:
-        """将批量合并中的 datetime 列统一为 UTC 微秒精度。"""
-        target_dtype = pl.Datetime(time_unit="us", time_zone="UTC")
-        expressions = []
-        for column, dtype in df.schema.items():
-            if not isinstance(dtype, pl.Datetime):
-                continue
-            expression = pl.col(column)
-            if dtype.time_zone is None:
-                expression = expression.dt.replace_time_zone("UTC")
-            else:
-                expression = expression.dt.convert_time_zone("UTC")
-            expressions.append(expression.cast(target_dtype).alias(column))
-        return df.with_columns(expressions) if expressions else df
+        """将批量合并中的 datetime 列统一为 UTC 微秒精度 (委托 StorageCompat)。"""
+        return StorageCompat.normalize_datetime_columns(df)
 
     @staticmethod
     def _normalize_identity_columns(df: pl.DataFrame) -> pl.DataFrame:
-        """将源端标的/日期别名归一为 Curated 标准列。"""
-        normalized = df
-        for alias in ("ts_code", "stockCode"):
-            if alias not in normalized.columns:
-                continue
-            if "symbol" not in normalized.columns:
-                normalized = normalized.rename({alias: "symbol"})
-            else:
-                normalized = normalized.with_columns(
-                    pl.coalesce(
-                        [
-                            pl.col(alias).cast(pl.Utf8, strict=False),
-                            pl.col("symbol").cast(pl.Utf8, strict=False),
-                        ]
-                    ).alias("symbol")
-                ).drop(alias)
-        if "code" in normalized.columns:
-            if "symbol" not in normalized.columns:
-                normalized = normalized.rename({"code": "symbol"})
-            else:
-                normalized = normalized.with_columns(
-                    pl.coalesce(
-                        [
-                            pl.col("symbol").cast(pl.Utf8, strict=False),
-                            pl.col("code").cast(pl.Utf8, strict=False),
-                        ]
-                    ).alias("symbol")
-                ).drop("code")
-        if "date" in normalized.columns:
-            if "trade_date" not in normalized.columns:
-                normalized = normalized.rename({"date": "trade_date"})
-            else:
-                normalized = normalized.with_columns(
-                    pl.coalesce(
-                        [
-                            pl.col("trade_date").cast(pl.Utf8, strict=False),
-                            pl.col("date").cast(pl.Utf8, strict=False),
-                        ]
-                    ).alias("trade_date")
-                ).drop("date")
-        return normalized
+        """将源端标的/日期别名归一为 Curated 标准列 (委托 StorageCompat)。"""
+        return StorageCompat.normalize_identity_columns(df)
 
     def _validate_frame_source(self, df: pl.DataFrame, data_source: str, context: str) -> None:
         """校验数据帧的血统元数据。"""
@@ -543,15 +494,7 @@ class DuckDBMarketStore:
 
     def _dataset_name(self, endpoint: str, data_source: str | None = None) -> str:
         """将兼容参数解析为唯一项目任务/数据集目录名。"""
-        provider = data_source or self.data_source
-        if provider is not None:
-            try:
-                return resolve_task(provider, endpoint).dataset
-            except ValueError:
-                pass
-        if endpoint in {"daily", "daily_bar", "history"}:
-            return "stock_daily_bar"
-        return endpoint
+        return StorageCompat.canonical_dataset_name(endpoint, data_source or self.data_source)
 
     def query_dataset(
         self,

@@ -30,10 +30,18 @@ def repartition_all_curated(base_dir: str = "data/curated") -> None:
     # 按数据源与数据集分组读取合并
     dataset_groups: dict[tuple[str, str], list[Path]] = {}
     for f in files:
-        parts = f.relative_to(curated_path).parts
-        if len(parts) >= 3:
-            src = parts[0]
-            dataset = parts[2]
+        rel_parts = f.relative_to(curated_path).parts
+        if not rel_parts:
+            continue
+        src = rel_parts[0]
+        dataset = ""
+        for i, part in enumerate(rel_parts):
+            if part.startswith("market=") and i + 1 < len(rel_parts):
+                dataset = rel_parts[i + 1]
+                break
+        if not dataset:
+            dataset = rel_parts[1] if len(rel_parts) > 1 else "unknown"
+        if dataset and dataset != "unknown":
             dataset_groups.setdefault((src, dataset), []).append(f)
 
     for (src, dataset), file_list in dataset_groups.items():

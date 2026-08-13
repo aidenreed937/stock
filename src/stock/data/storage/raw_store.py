@@ -7,8 +7,9 @@ import polars as pl
 
 from stock.config.loader import load_data_config
 from stock.config.settings import settings
-from stock.data.contracts import DatasetKey, get_endpoint_market
-from stock.data.task_registry import resolve_task
+from stock.core.contracts import DatasetKey
+from stock.data.storage.compat import StorageCompat
+from stock.data.task_registry import get_endpoint_market, resolve_task
 from stock.utils.logger import logger
 
 
@@ -30,10 +31,7 @@ class RawDataStorage:
     @staticmethod
     def _dataset_name(data_source: str, endpoint: str) -> str:
         """将项目任务或历史兼容名归一为唯一数据集目录名。"""
-        try:
-            return resolve_task(data_source, endpoint).dataset
-        except ValueError:
-            return endpoint.replace("/", "_")
+        return StorageCompat.canonical_dataset_name(endpoint, data_source)
 
     def _get_partition_dir(
         self, data_source: str, endpoint: str, target_date: date

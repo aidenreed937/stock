@@ -51,7 +51,7 @@ class DatasetKey:
         """返回用于 Hive 目录划分的市场标识 (优先使用标的市场，否则读取接口源头注册表元数据)。"""
         if self.instrument and self.instrument.market:
             return f"market={self.instrument.market.upper()}"
-        from stock.data.registry.router import get_endpoint_market
+        from stock.data.task_registry import get_endpoint_market
 
         market = get_endpoint_market(self.provider, self.endpoint)
         return f"market={market.upper()}"

@@ -1,7 +1,7 @@
 from datetime import date
 import polars as pl
 
-from stock.data.storage.repartition_tool import repartition_all_curated, repartition_dataset
+from stock.data.ops.repartition import repartition_all_curated, repartition_dataset
 
 
 def test_repartition_all_curated(tmp_path):

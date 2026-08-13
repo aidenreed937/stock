@@ -3,7 +3,7 @@
 from pathlib import Path
 import polars as pl
 
-from stock.data.contracts import DatasetContract, STOCK_DAILY_BAR_CONTRACT
+from stock.core.contracts import DatasetContract, STOCK_DAILY_BAR_CONTRACT
 from stock.exceptions import DataValidationError
 from stock.utils.logger import logger
 

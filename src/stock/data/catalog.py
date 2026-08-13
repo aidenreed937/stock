@@ -29,7 +29,7 @@ import polars as pl
 
 from stock.config.settings import settings
 from stock.constants import BAR_DATASETS
-from stock.data.contracts import DAILY_BAR_CONTRACT
+from stock.core.contracts import DAILY_BAR_CONTRACT
 from stock.exceptions import DataValidationError
 from stock.utils.logger import logger
 

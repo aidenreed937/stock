@@ -5,7 +5,7 @@ from pathlib import Path
 import polars as pl
 
 from stock.data.audit.baseline import build_baseline
-from stock.data.migration import migrate_parquet
+from stock.data.ops.migration import migrate_parquet
 from stock.data.audit.backfill_acceptance import accept_backfill
 from stock.data.cleaner.bar_cleaner import BarDataCleaner
 from stock.data.quality.quarantine import QuarantineStore

@@ -347,3 +347,47 @@ def list_available_tasks(provider: str) -> list[str]:
             tasks.append(name)
 
     return tasks
+
+
+def get_endpoint_market(provider: str, endpoint: str) -> str:
+    """根据项目任务名解析上游接口，再获取归属市场。"""
+    provider_lower = provider.lower()
+    api_name = endpoint
+    try:
+        api_name = resolve_task(provider_lower, endpoint).api_name
+    except ValueError:
+        pass
+    if provider_lower == "tushare":
+        from stock.data.fetcher.tushare.registry import TUSHARE_API_REGISTRY
+
+        meta = TUSHARE_API_REGISTRY.get(api_name)
+        if meta and hasattr(meta, "market"):
+            return str(meta.market)
+        return "CN"
+    if provider_lower == "yfinance":
+        from stock.data.fetcher.yfinance.registry import YFINANCE_API_REGISTRY
+
+        meta_yf = YFINANCE_API_REGISTRY.get(api_name)
+        if meta_yf and hasattr(meta_yf, "market"):
+            return str(meta_yf.market)
+        return "US"
+    if provider_lower == "lixinger":
+        from stock.data.fetcher.lixinger.registry import LIXINGER_API_REGISTRY
+
+        meta_lx = LIXINGER_API_REGISTRY.get(api_name)
+        if meta_lx and hasattr(meta_lx, "market"):
+            return str(meta_lx.market)
+        return "HK" if api_name.startswith("hk") else "CN"
+    if provider_lower == "fred":
+        from stock.data.fetcher.fred.registry import FRED_API_REGISTRY
+
+        meta_fr = FRED_API_REGISTRY.get(api_name)
+        if meta_fr and hasattr(meta_fr, "market"):
+            return str(meta_fr.market)
+        return "US"
+    return "MULTI"
+
+
+def dataset_for_endpoint(endpoint: str, symbol: str = "", provider: str = "tushare") -> str:
+    """返回项目任务对应的唯一数据集目录名。"""
+    return task_dataset(provider, endpoint, symbol=symbol)

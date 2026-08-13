@@ -19,9 +19,15 @@ def _is_artifact(path: Path) -> bool:
 
 
 def _endpoint_name(path: Path) -> str:
-    """从 Hive 分区路径解析数据集名称。"""
+    """从 Hive 分区路径或免深层分区路径精准解析数据集名称。"""
+    parts = path.parts
+    for i, part in enumerate(parts):
+        if part.startswith("market=") and i + 1 < len(parts):
+            return parts[i + 1]
     if path.parent.name.startswith("month="):
         return path.parent.parent.parent.name
+    if path.name == "data.parquet":
+        return path.parent.name
     return path.stem.split(".", 1)[0]
 
 

@@ -2,7 +2,7 @@ import pytest
 import pandas as pd
 from unittest.mock import MagicMock
 
-from stock.data.universe import UniverseFilter
+from stock.data.domain.universe import UniverseFilter
 
 
 @pytest.fixture
