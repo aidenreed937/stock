@@ -1,9 +1,12 @@
 """Parquet 分区原子写入与多月份拆分写入器 (ParquetPartitionWriter)。"""
 
+from __future__ import annotations
+
 from datetime import date
 from pathlib import Path
 import threading
 from typing import Callable
+
 import polars as pl
 
 from stock.constants import BAR_DATASETS, SYSTEM_METADATA_COLUMNS
@@ -31,7 +34,7 @@ class ParquetPartitionWriter:
         logger.info("ParquetPartitionWriter 已开启攒批写入模式 (Micro-batching)")
 
     def commit(self, cache_updater: Callable[[Path, pl.DataFrame], None] | None = None) -> None:
-        if not getattr(self, "_batch_mode", False) or not getattr(self, "_write_buffer", {}):
+        if not self._batch_mode or not self._write_buffer:
             self._batch_mode = False
             return
 
@@ -51,15 +54,18 @@ class ParquetPartitionWriter:
     def merge_and_save_parquet(
         self, file_path: Path, dfs: list[pl.DataFrame], source: str | None = None
     ) -> pl.DataFrame:
-        """读取现有文件、合并新数据帧列表、进行去重与排序，并原子写入 Parquet。"""
+        """读取现有文件、合并新数据帧列表、去重与时序排序，并原子写回 Parquet。"""
         with self._file_lock:
-            dataset_name = file_path.parent.name
-            if dataset_name.startswith("month="):
-                dataset_name = file_path.parent.parent.parent.name
+            dataset_name = (
+                file_path.parent.parent.parent.name
+                if file_path.parent.name.startswith("month=")
+                else file_path.parent.name
+            )
             existing = pl.read_parquet(file_path) if file_path.exists() else pl.DataFrame()
             if not existing.is_empty():
                 existing = StorageCompat.normalize_identity_columns(existing)
             normalized_dfs = [StorageCompat.normalize_identity_columns(df) for df in dfs]
+
             if not existing.is_empty() and source is not None:
                 self._validate_frame_source(existing, source, f"已有 Curated 文件 [{file_path}]")
                 for df in normalized_dfs:
@@ -80,16 +86,11 @@ class ParquetPartitionWriter:
             )
             if dedup_cols:
                 merged = merged.unique(subset=dedup_cols, keep="last")
-            if dataset_name == "hk_hold" and "symbol" in merged.columns:
-                qualified_symbols = merged.filter(
-                    pl.col("symbol").cast(pl.Utf8, strict=False).str.contains(r"\.")
-                )
-                if not qualified_symbols.is_empty():
-                    merged = merged.filter(
-                        pl.col("symbol").cast(pl.Utf8, strict=False).str.contains(r"\.")
-                    )
-            if "trade_date" in merged.columns and "symbol" in merged.columns:
-                merged = merged.sort(["trade_date", "symbol"])
+            merged = StorageCompat.post_process_dataset(dataset_name, merged)
+
+            sort_cols = [c for c in ["trade_date", "symbol"] if c in merged.columns]
+            if sort_cols:
+                merged = merged.sort(sort_cols)
 
             file_path.parent.mkdir(parents=True, exist_ok=True)
             temp_path = file_path.with_suffix(".tmp.parquet")
@@ -104,7 +105,7 @@ class ParquetPartitionWriter:
         sources = set(df.get_column("data_source").drop_nulls().unique().to_list())
         if not sources:
             raise DataValidationError(f"{context}中 data_source 字段全为空")
-        if any(source != data_source for source in sources):
+        if any(s != data_source for s in sources):
             raise DataValidationError(
                 f"{context}数据源不匹配: 期望 [{data_source}]，实际包含 {sorted(sources)}"
             )
@@ -120,6 +121,7 @@ class ParquetPartitionWriter:
         path_resolver: Callable[[str, date, str], Path],
         cache_updater: Callable[[Path, pl.DataFrame], None] | None = None,
     ) -> Path:
+        """根据数据集属性决定单表落盘或动态按交易日年月拆分落盘。"""
         if not is_task_partitioned(source, dataset_name):
             file_path = (
                 storage_dir / f"market={market_code.upper()}" / dataset_name / "data.parquet"
@@ -137,30 +139,26 @@ class ParquetPartitionWriter:
             return file_path
 
         try:
-            parsed_df = df.with_columns(parse_mixed_date(date_col).alias("_parsed_date"))
-            valid_df = parsed_df.filter(pl.col("_parsed_date").is_not_null())
-            if valid_df.is_empty():
+            parsed = df.with_columns(parse_mixed_date(date_col).alias("_dt"))
+            valid = parsed.filter(pl.col("_dt").is_not_null())
+            if valid.is_empty():
                 file_path = path_resolver(dataset_name, fallback_date, market_code)
                 self._save_single(file_path, df, dataset_name, source, cache_updater)
                 return file_path
 
-            grouped = valid_df.with_columns(
+            grouped = valid.with_columns(
                 [
-                    pl.col("_parsed_date").dt.year().alias("_part_year"),
-                    pl.col("_parsed_date").dt.month().alias("_part_month"),
+                    pl.col("_dt").dt.year().alias("_y"),
+                    pl.col("_dt").dt.month().alias("_m"),
                 ]
             )
-            ym_pairs = grouped.select(["_part_year", "_part_month"]).unique().iter_rows()
             last_path = None
-            for yr, mo in ym_pairs:
+            for (yr, mo), sub_df in grouped.partition_by(["_y", "_m"], as_dict=True).items():
                 if yr is None or mo is None:
                     continue
-                sub_df = grouped.filter(
-                    (pl.col("_part_year") == yr) & (pl.col("_part_month") == mo)
-                ).drop(["_parsed_date", "_part_year", "_part_month"])
-                sub_date = date(int(yr), int(mo), 1)
-                sub_path = path_resolver(dataset_name, sub_date, market_code)
-                self._save_single(sub_path, sub_df, dataset_name, source, cache_updater)
+                clean_sub = sub_df.drop(["_dt", "_y", "_m"])
+                sub_path = path_resolver(dataset_name, date(int(yr), int(mo), 1), market_code)
+                self._save_single(sub_path, clean_sub, dataset_name, source, cache_updater)
                 last_path = sub_path
 
             return last_path or path_resolver(dataset_name, fallback_date, market_code)
@@ -178,10 +176,8 @@ class ParquetPartitionWriter:
         source: str,
         cache_updater: Callable[[Path, pl.DataFrame], None] | None = None,
     ) -> None:
-        if getattr(self, "_batch_mode", False):
-            if file_path not in self._write_buffer:
-                self._write_buffer[file_path] = []
-            self._write_buffer[file_path].append(df)
+        if self._batch_mode:
+            self._write_buffer.setdefault(file_path, []).append(df)
             logger.debug(f"已加入攒批写入缓存 [{dataset_name}] -> {file_path}")
         else:
             merged = self.merge_and_save_parquet(file_path, [df], source=source)

@@ -179,6 +179,15 @@ class StorageCompat:
         return list(dict.fromkeys(dedup_cols)) if (entity_cols or period_cols) else []
 
     @staticmethod
+    def post_process_dataset(dataset_name: str, df: pl.DataFrame) -> pl.DataFrame:
+        """对特定数据集做安全后处理（如北向持仓标的代码格式过滤）。"""
+        if dataset_name == "hk_hold" and "symbol" in df.columns:
+            qualified = df.filter(pl.col("symbol").cast(pl.Utf8, strict=False).str.contains(r"\."))
+            if not qualified.is_empty():
+                return qualified
+        return df
+
+    @staticmethod
     def build_dataset_query_clause(
         matched_files: list[str],
         symbol: str | None = None,
