@@ -25,7 +25,7 @@ PER_SYMBOL_DATASETS: frozenset[str] = frozenset({
     "index_daily", "index_dailybasic", "index_weight", "global_index_daily",
     "fund_share", "fund_daily", "fund_adj", "etf_share_size",
     "income", "fina_indicator", "forecast", "express", "balancesheet", "cashflow",
-    "margin_detail", "hk_hold",
+    "margin_detail", "hk_hold", "report_rc",
 })
 
 _EXPLICIT_NON_PARTITIONED: frozenset[str] = frozenset({

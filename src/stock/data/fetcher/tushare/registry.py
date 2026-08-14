@@ -172,6 +172,9 @@ _TUSHARE_PROFILES: dict[str, tuple[list[str], dict[str, str], str]] = {
     "express": (["ts_code", "ann_date", "end_date"], {"revenue": "CNY", "n_income": "CNY"}, "financial_statement"),
     "balancesheet": (["ts_code", "ann_date", "end_date"], {"total_assets": "CNY"}, "financial_statement"),
     "cashflow": (["ts_code", "ann_date", "end_date"], {"n_cashflow_act": "CNY"}, "financial_statement"),
+    "report_rc": (["ts_code", "report_date", "org_name"], {"predict_net_profit": "CNY10k", "predict_eps": "CNY/share"}, "financial_indicator"),
+    "index_member": (["index_code", "con_code", "in_date"], {}, "constituent_weight"),
+    "index_classify": (["index_code", "industry_name"], {}, "static"),
 }
 for _endpoint, (_required, _units, _profile) in _TUSHARE_PROFILES.items():
     if _endpoint in TUSHARE_API_REGISTRY:

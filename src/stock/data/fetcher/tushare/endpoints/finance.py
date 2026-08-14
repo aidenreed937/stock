@@ -179,4 +179,13 @@ FINANCE_ENDPOINTS: dict[str, EndpointMeta] = {
         date_columns=["ann_date", "end_date"],
         required_columns=["ts_code", "ann_date", "end_date"],
     ),
+    "report_rc": EndpointMeta(
+        api_name="report_rc",
+        description="卖方机构盈利预测数据 (分析师一致预期)",
+        frequency="daily",
+        group="financial_statements",
+        primary_keys=["ts_code", "report_date", "org_name"],
+        date_columns=["report_date"],
+        required_columns=["ts_code", "report_date", "org_name"],
+    ),
 }
