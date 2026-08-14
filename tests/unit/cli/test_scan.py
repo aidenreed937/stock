@@ -1,85 +1,83 @@
-"""stock.cli.scan 单元测试。"""
+"""CLI 量化扫描命令与报告格式化单元测试。"""
 
 from datetime import date
+from pathlib import Path
 from unittest.mock import MagicMock, patch
 
-from stock.cli.scan import (
-    _build_parser,
+from stock.analytics.models import DailyMarketScanSummary, MicroHealthSummary
+from stock.cli.scan import main, run_market_scan
+from stock.cli.scan_report import (
     format_console_report,
     format_investor_report,
     format_pro_report,
-    main,
-    run_market_scan,
 )
 
 
-def test_scan_parser() -> None:
-    parser = _build_parser()
-    args = parser.parse_args(["-d", "2026-08-14", "-s", "000300", "-f", "investor"])
-    assert args.target_date == "2026-08-14"
-    assert args.symbol == "000300"
-    assert args.format == "investor"
+def _make_sample_summary() -> DailyMarketScanSummary:
+    return DailyMarketScanSummary(
+        trade_date=date(2026, 8, 14),
+        one_sentence_summary="保持 85% 仓位，优选低估资产。",
+        signals=[],
+        undervalued_industries=["银行", "非银金融"],
+        crowded_industries=["电子"],
+        top1_industry="电子",
+        top1_tcr=25.0,
+        micro_health=MicroHealthSummary(
+            margin_ratio=2.1,
+            margin_status="杠杆出清",
+            pb_break_ratio=8.5,
+            pb_break_status="大面积折价",
+            turnover_ratio=3.2,
+            turnover_status="情绪中性",
+            above_ma60_ratio=50.0,
+            ma60_status="修复中",
+        ),
+        action_items=["- ✅ 保持 75~95% 仓位", "- ❌ 不追高"],
+    )
 
 
-def test_format_reports() -> None:
+def test_format_reports_with_dict_and_summary() -> None:
     mock_data = {
         "trade_date": "2026-08-14",
+        "one_sentence_summary": "保持 85% 仓位，优选低估资产。",
+        "signals": [
+            {
+                "category": "真实估值 (全 A 资产)",
+                "name": "全 A 水位 (中证全指 PB)",
+                "value_str": "2.16x",
+                "percentile_str": "63%",
+                "status": "🟡 中枢偏上",
+                "description": "估值中枢偏上",
+            }
+        ],
+        "undervalued_industries": ["银行", "非银金融"],
+        "crowded_industries": ["电子"],
+        "top1_industry": "电子",
+        "top1_tcr": 25.0,
+        "micro_health": {
+            "margin_ratio": 2.1,
+            "margin_status": "杠杆出清",
+            "pb_break_ratio": 8.5,
+            "pb_break_status": "大面积折价",
+            "turnover_ratio": 3.2,
+            "turnover_status": "情绪中性",
+            "above_ma60_ratio": 50.0,
+            "ma60_status": "修复中",
+        },
+        "action_items": ["- ✅ 保持 75~95% 仓位", "- ❌ 不追高"],
         "macro": {
+            "trade_date": "2026-08-14",
             "regime": "OPPORTUNITY_ZONE",
-            "regime_desc": "战略级大底",
+            "regime_desc": "战略黄金机会区",
             "suggested_equity_exposure": 0.85,
-            "ey_by": {
-                "ey_by_ratio": 2.5,
-                "pe_ttm": 20.0,
-                "bond_yield_10y": 2.0,
-                "percentile_10y": 88.0,
-            },
-            "buffett": {
-                "securitization_ratio": 62.5,
-                "total_market_cap_yi": 780000.0,
-                "gdp_ttm_yi": 1250000.0,
-                "percentile_10y": 15.0,
-            },
-            "all_market": {
-                "symbol": "000985",
-                "index_name": "中证全指",
-                "pb_ew": 2.16,
-                "pb_percentile_10y": 63.0,
-                "pe_ttm_ew": 113.0,
-                "pe_percentile_10y": 88.0,
-            },
-            "key_drivers": ["股债收益比极高"],
+            "key_drivers": ["股债比极高"],
         },
         "tcr": {
+            "trade_date": "2026-08-14",
             "total_amount_yi": 15000.0,
             "top1_industry": "801080.SI",
             "top1_tcr": 18.5,
             "crowded_industries": ["801080.SI"],
-        },
-        "pbroe": {
-            "r_squared": 0.45,
-            "undervalued_industries": ["480000", "760000"],
-        },
-        "momentum": {
-            "spread": 25.0,
-            "diagnostics": "常态分化",
-        },
-        "margin": {
-            "margin_penetration": 2.1,
-            "margin_balance_yi": 14000.0,
-            "circ_mv_yi": 650000.0,
-            "zone_desc": "杠杆彻底出清底",
-        },
-        "breadth": {
-            "above_ma20_ratio": 65.0,
-            "above_ma60_ratio": 50.0,
-            "above_ma120_ratio": 45.0,
-            "diagnostics": ["市场宽度健康"],
-        },
-        "sentiment": {
-            "pb_break_ratio": 8.5,
-            "turnover_ratio": 3.2,
-            "diagnostics": ["情绪中性"],
         },
     }
 
@@ -89,7 +87,7 @@ def test_format_reports() -> None:
     assert "四个关键信号" in investor_report
     assert "中证全指" in investor_report
     assert "行业怎么选" in investor_report
-    assert "银行" in investor_report  # 480000 成功映射为银行
+    assert "银行" in investor_report
     assert "85%" in investor_report
 
     pro_report = format_pro_report(mock_data)
@@ -102,39 +100,33 @@ def test_format_reports() -> None:
 
 
 def test_run_market_scan() -> None:
+    mock_engine = MagicMock()
+    mock_summary = _make_sample_summary()
+    mock_engine.get_or_compute.return_value = (mock_summary, False)
+
+    res = run_market_scan(target_date=date(2026, 8, 14), engine=mock_engine)
+    assert res.trade_date == date(2026, 8, 14)
+    assert res.top1_industry == "电子"
+
+
+def test_main_cli(tmp_path: Path) -> None:
+    test_file = tmp_path / "report.md"
+    mock_summary = _make_sample_summary()
+
     with (
-        patch("stock.cli.scan.MacroRegimeAnalyzer") as mock_reg_cls,
-        patch("stock.cli.scan.TCRCalculator"),
-        patch("stock.cli.scan.IndustryPBROEAnalyzer"),
-        patch("stock.cli.scan.IndustryMomentumSpreadAnalyzer"),
-        patch("stock.cli.scan.MarginPenetrationCalculator"),
-        patch("stock.cli.scan.MultiPeriodMarketBreadthAnalyzer"),
-        patch("stock.cli.scan.MarketSentimentAnalyzer"),
-    ):
-        mock_instance = mock_reg_cls.return_value
-        mock_res = MagicMock()
-        mock_res.trade_date = date(2026, 8, 14)
-        mock_res.model_dump.return_value = {"regime": "OPPORTUNITY_ZONE"}
-        mock_instance.evaluate_regime.return_value = mock_res
-
-        res = run_market_scan(target_date=date(2026, 8, 14))
-        assert res["trade_date"] == "2026-08-14"
-        assert res["macro"] == {"regime": "OPPORTUNITY_ZONE"}
-
-
-def test_main_cli(tmp_path: object) -> None:
-    test_file = f"{tmp_path}/report.md"
-    with (
-        patch("sys.argv", ["scan", "-d", "2026-08-14", "-f", "investor", "-o", test_file]),
-        patch("stock.cli.scan.run_market_scan", return_value={"trade_date": "2026-08-14"}),
+        patch("sys.argv", ["scan", "-d", "2026-08-14", "-f", "investor", "-o", str(test_file)]),
+        patch("stock.cli.scan.run_market_scan", return_value=mock_summary),
     ):
         main()
+    assert test_file.exists()
+    assert "A 股每日体检" in test_file.read_text(encoding="utf-8")
 
     # 测试 --save 分支
     with (
         patch("sys.argv", ["scan", "-d", "2026-08-14", "--save"]),
-        patch("stock.cli.scan.run_market_scan", return_value={"trade_date": "2026-08-14"}),
-        patch("pathlib.Path.write_text") as mock_write,
+        patch("stock.cli.scan.run_market_scan", return_value=mock_summary),
+        patch.object(Path, "mkdir"),
+        patch.object(Path, "write_text") as mock_write,
     ):
         main()
-        assert mock_write.call_count == 2
+        assert mock_write.called

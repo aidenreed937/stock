@@ -1,31 +1,20 @@
 """A 股全市场量化全景体检与扫描 CLI (stock.cli.scan)。
 
-执行三层量化扫描:
-    1. 宏观周期温度计: 股债收益比 (EY/BY)、巴菲特证券化率、四象限周期状态与建议仓位
-    2. 中观行业风控雷达: 申万 31 行业成交拥挤度 (TCR)、PB-ROE 性价比残差、动量剪刀差
-    3. 微观博弈与情绪特征: 两融渗透率、多周期市场宽度与背离诊断、破净率及换手率特征
+架构特性:
+    1. 领域引擎驱动: 由 MarketScanEngine 负责全流程量化计算、分位数评估与研判合成；
+    2. 数据与报告物化解耦: 产物按日组织在 reports/scan/{YYYY-MM-DD}/ 目录下；
+    3. 支持缓存复用与强制重算: 修改报告仅需毫秒级重绘，无需重复跑库计算。
 """
 
 from __future__ import annotations
 
 import argparse
-import json
 import sys
 from datetime import date
 from pathlib import Path
-from typing import Any
+from typing import TYPE_CHECKING
 
-from stock.analytics.industry import (
-    IndustryMomentumSpreadAnalyzer,
-    IndustryPBROEAnalyzer,
-    TCRCalculator,
-)
-from stock.analytics.macro import MacroRegimeAnalyzer
-from stock.analytics.micro import (
-    MarginPenetrationCalculator,
-    MarketSentimentAnalyzer,
-    MultiPeriodMarketBreadthAnalyzer,
-)
+from stock.analytics.engine import MarketScanEngine
 from stock.cli.scan_report import (
     format_console_report,
     format_investor_report,
@@ -33,6 +22,9 @@ from stock.cli.scan_report import (
 )
 from stock.data.catalog import DataCatalog
 from stock.utils.logger import logger
+
+if TYPE_CHECKING:
+    from stock.analytics.models import DailyMarketScanSummary
 
 
 def _build_parser() -> argparse.ArgumentParser:
@@ -66,6 +58,13 @@ def _build_parser() -> argparse.ArgumentParser:
         help="输出格式 (investor: 投资者通俗版, console: 终端卡片, pro: 专业版, json: 纯JSON)",
     )
     parser.add_argument(
+        "-r",
+        "--recompute",
+        dest="recompute",
+        action="store_true",
+        help="强制重新计算底层各维度量化指标并刷新 data.json (忽略已物化缓存)",
+    )
+    parser.add_argument(
         "-o",
         "--output",
         dest="output",
@@ -77,7 +76,7 @@ def _build_parser() -> argparse.ArgumentParser:
         "--save",
         dest="auto_save",
         action="store_true",
-        help="自动将通俗版与专业版报告归档至 reports/scan/ 目录",
+        help="自动在 reports/scan/{YYYY-MM-DD}/ 目录下保存 data.json, report.md 与 report_pro.md",
     )
     return parser
 
@@ -85,9 +84,13 @@ def _build_parser() -> argparse.ArgumentParser:
 def run_market_scan(
     target_date: date | None = None,
     symbol: str = "000300",
-) -> dict[str, Any]:
-    """执行全流程三层量化体检并返回结构化数据。"""
-    # 统一基准日解析：若未显式指定，以库内基础行情最新交易日为统一基准
+    *,
+    recompute: bool = False,
+    engine: MarketScanEngine | None = None,
+) -> DailyMarketScanSummary:
+    """执行全流程三层量化体检并返回强类型 DailyMarketScanSummary 聚合根。"""
+    scan_engine = engine or MarketScanEngine()
+
     if target_date is None:
         try:
             cat = DataCatalog(data_source="tushare")
@@ -98,61 +101,49 @@ def run_market_scan(
         except Exception as e:
             logger.debug("自动解析全市场最新基准日失败，将交由各分析器按需降级: %s", e)
 
-    # 1. 宏观周期状态机
-    regime_analyzer = MacroRegimeAnalyzer()
-    regime_res = regime_analyzer.evaluate_regime(target_date=target_date, index_symbol=symbol)
-
-    # 2. 中观行业风控与轮动
-    tcr_calc = TCRCalculator()
-    tcr_res = tcr_calc.calculate_daily_tcr(target_date=target_date)
-
-    pbroe_analyzer = IndustryPBROEAnalyzer()
-    pbroe_res = pbroe_analyzer.analyze_cross_section(target_date=target_date)
-
-    momentum_analyzer = IndustryMomentumSpreadAnalyzer()
-    momentum_res = momentum_analyzer.calculate_spread(target_date=target_date)
-
-    # 3. 微观筹码博弈与情绪
-    margin_calc = MarginPenetrationCalculator()
-    margin_res = margin_calc.calculate_latest(target_date=target_date)
-
-    breadth_analyzer = MultiPeriodMarketBreadthAnalyzer()
-    breadth_res = breadth_analyzer.diagnose_latest(target_date=target_date)
-
-    sentiment_analyzer = MarketSentimentAnalyzer()
-    sentiment_res = sentiment_analyzer.diagnose_latest(target_date=target_date)
-
-    eval_date = (
-        target_date
-        or (regime_res.trade_date if regime_res else None)
-        or (tcr_res.trade_date if tcr_res else date.today())
+    summary, is_cache = scan_engine.get_or_compute(
+        target_date=target_date,
+        index_symbol=symbol,
+        recompute=recompute,
     )
-
-    return {
-        "trade_date": eval_date.isoformat(),
-        "macro": regime_res.model_dump() if regime_res else None,
-        "tcr": tcr_res.model_dump() if tcr_res else None,
-        "pbroe": pbroe_res.model_dump() if pbroe_res else None,
-        "momentum": momentum_res.model_dump() if momentum_res else None,
-        "margin": margin_res.model_dump() if margin_res else None,
-        "breadth": breadth_res.model_dump() if breadth_res else None,
-        "sentiment": sentiment_res.model_dump() if sentiment_res else None,
-    }
+    if is_cache:
+        logger.info(
+            "⚡ 命中本地已物化数据: reports/scan/%s/data.json (秒级加载)", summary.trade_date
+        )
+    return summary
 
 
-def _save_scan_reports(data: dict[str, Any], output_text: str, args: argparse.Namespace) -> None:
-    """处理报告持久化保存与自动归档逻辑。"""
-    target_output = args.output
-    if not target_output and args.auto_save:
-        dt_compact = str(data.get("trade_date", "")).replace("-", "")
-        investor_path = Path(f"reports/scan/market_scan_{dt_compact}.md")
-        pro_path = Path(f"reports/scan/market_scan_pro_{dt_compact}.md")
-        investor_path.parent.mkdir(parents=True, exist_ok=True)
-        investor_path.write_text(format_investor_report(data), encoding="utf-8")
-        pro_path.write_text(format_pro_report(data), encoding="utf-8")
-        logger.info("体检报告已归档至: %s 与 %s", investor_path.resolve(), pro_path.resolve())
-    elif target_output:
-        out_path = Path(target_output)
+def _save_scan_artifacts(
+    summary: DailyMarketScanSummary,
+    output_text: str,
+    args: argparse.Namespace,
+    engine: MarketScanEngine,
+) -> None:
+    """按日目录保存数据与报告产物。"""
+    dt_str = summary.trade_date.strftime("%Y-%m-%d")
+    target_dir = Path("reports/scan") / dt_str
+
+    if args.auto_save:
+        target_dir.mkdir(parents=True, exist_ok=True)
+        # 1. 保存强类型数据文件 data.json
+        engine.save_data(summary, base_dir="reports/scan")
+
+        # 2. 保存投资者通俗版报告 report.md 与专业版报告 report_pro.md
+        report_path = target_dir / "report.md"
+        report_pro_path = target_dir / "report_pro.md"
+        report_path.write_text(format_investor_report(summary), encoding="utf-8")
+        report_pro_path.write_text(format_pro_report(summary), encoding="utf-8")
+
+        # 兼容旧单文件路径
+        legacy_path = Path("reports/scan") / f"market_scan_{dt_str.replace('-', '')}.md"
+        legacy_pro_path = Path("reports/scan") / f"market_scan_pro_{dt_str.replace('-', '')}.md"
+        legacy_path.write_text(format_investor_report(summary), encoding="utf-8")
+        legacy_pro_path.write_text(format_pro_report(summary), encoding="utf-8")
+
+        logger.info("体检产物已归档至目录: %s", target_dir.resolve())
+
+    if args.output:
+        out_path = Path(args.output)
         out_path.parent.mkdir(parents=True, exist_ok=True)
         out_path.write_text(output_text, encoding="utf-8")
         logger.info("体检报告已保存至: %s", out_path.resolve())
@@ -171,24 +162,35 @@ def main() -> None:
             logger.error("日期格式错误，请使用 YYYY-MM-DD 格式: %s", args.target_date)
             sys.exit(1)
 
-    logger.info("开始执行三层量化扫描 (日期: %s, 标的: %s)...", target_d or "最新", args.symbol)
+    engine = MarketScanEngine()
+    logger.info(
+        "开始执行三层量化扫描 (日期: %s, 标的: %s, 强制重算: %s)...",
+        target_d or "最新",
+        args.symbol,
+        args.recompute,
+    )
     try:
-        data = run_market_scan(target_date=target_d, symbol=args.symbol)
+        summary = run_market_scan(
+            target_date=target_d,
+            symbol=args.symbol,
+            recompute=args.recompute,
+            engine=engine,
+        )
     except Exception as e:
         logger.exception("量化全景扫描执行失败: %s", e)
         sys.exit(1)
 
     if args.format == "pro":
-        output_text = format_pro_report(data)
+        output_text = format_pro_report(summary)
     elif args.format == "json":
-        output_text = json.dumps(data, ensure_ascii=False, indent=2)
+        output_text = summary.model_dump_json(indent=2)
     elif args.format == "console":
-        output_text = format_console_report(data)
+        output_text = format_console_report(summary)
     else:
-        output_text = format_investor_report(data)
+        output_text = format_investor_report(summary)
 
     sys.stdout.write(output_text + "\n")
-    _save_scan_reports(data, output_text, args)
+    _save_scan_artifacts(summary, output_text, args, engine)
 
 
 if __name__ == "__main__":

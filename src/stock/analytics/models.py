@@ -124,6 +124,23 @@ class IndustryPBROEResult(BaseModel):
     )
 
 
+class MomentumSpreadResult(BaseModel):
+    """行业动量剪刀差分析结果。"""
+
+    trade_date: date = Field(..., description="计算日期")
+    top_leaders_120d: list[dict[str, Any]] = Field(
+        default_factory=list, description="120日领跑行业 (前5)"
+    )
+    bottom_laggards_20d: list[dict[str, Any]] = Field(
+        default_factory=list, description="20日超跌行业 (后5)"
+    )
+    spread: float = Field(..., description="动量剪刀差 (领跑行业均值 - 超跌行业均值 %)")
+    is_switch_imminent: bool = Field(
+        default=False, description="是否处于高低切换临界点 (剪刀差 > 35%)"
+    )
+    diagnostics: str = Field(default="", description="动量轮动诊断说明")
+
+
 class MarginPenetrationResult(BaseModel):
     """两融杠杆渗透率分析结果。"""
 
@@ -161,3 +178,50 @@ class MarketSentimentResult(BaseModel):
         default=False, description="是否处于大面积资产折价破净底 (>10%)"
     )
     diagnostics: list[str] = Field(default_factory=list, description="微观情绪特征描述")
+
+
+class MacroSignalItem(BaseModel):
+    """宏观关键信号条目。"""
+
+    category: str = Field(..., description="信号类型 (如 真实估值、宏观规模水位、短线情绪)")
+    name: str = Field(..., description="信号名称 (如 股债比 EY/BY)")
+    value_str: str = Field(..., description="格式化关键数字 (如 2.67x)")
+    percentile_str: str = Field(..., description="10年分位文字 (如 86% 或 —)")
+    status: str = Field(..., description="定性状态 (如 🟢 高 / 🟡 中枢偏上 / 🔴 过热)")
+    description: str = Field(..., description="业务定性说明")
+
+
+class MicroHealthSummary(BaseModel):
+    """微观市场健康度领域模型。"""
+
+    margin_ratio: float = Field(..., description="两融渗透率 (%)")
+    margin_status: str = Field(..., description="两融定性 (如 温和健康)")
+    pb_break_ratio: float = Field(..., description="破净率 (%)")
+    pb_break_status: str = Field(..., description="破净定性 (如 大面积折价)")
+    turnover_ratio: float = Field(..., description="换手率 (%)")
+    turnover_status: str = Field(..., description="换手定性 (如 情绪适中)")
+    above_ma60_ratio: float = Field(..., description="站上 MA60 比例 (%)")
+    ma60_status: str = Field(..., description="中期趋势定性 (如 修复中)")
+
+
+class DailyMarketScanSummary(BaseModel):
+    """全市场每日量化体检领域聚合根 (全量计算指标、研判结论与行动清单)。"""
+
+    trade_date: date = Field(..., description="体检基准交易日")
+    one_sentence_summary: str = Field(..., description="一句话核心决策结论")
+    signals: list[MacroSignalItem] = Field(default_factory=list, description="四个关键信号清单")
+    undervalued_industries: list[str] = Field(
+        default_factory=list, description="低估高性价比行业名称"
+    )
+    crowded_industries: list[str] = Field(default_factory=list, description="极端拥挤行业名称")
+    top1_industry: str = Field(default="", description="成交最高行业名称")
+    top1_tcr: float = Field(default=0.0, description="成交最高行业占比 (%)")
+    micro_health: MicroHealthSummary = Field(..., description="微观健康度状态")
+    action_items: list[str] = Field(default_factory=list, description="操作备忘清单")
+    macro: MacroRegimeResult | None = Field(default=None, description="宏观周期状态机结果")
+    tcr: TCRAnalysisResult | None = Field(default=None, description="中观行业拥挤度结果")
+    pbroe: IndustryPBROEResult | None = Field(default=None, description="行业 PB-ROE 残差结果")
+    momentum: MomentumSpreadResult | None = Field(default=None, description="行业动量剪刀差结果")
+    margin: MarginPenetrationResult | None = Field(default=None, description="两融杠杆结果")
+    breadth: MarketBreadthResult | None = Field(default=None, description="市场宽度结果")
+    sentiment: MarketSentimentResult | None = Field(default=None, description="微观情绪结果")

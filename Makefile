@@ -83,4 +83,4 @@ monitor:
 	UV_CACHE_DIR=.uv_cache UV_PYTHON_INSTALL_DIR=.uv_python uv run python scripts/monitor_resources.py $(if $(WATCH),--watch) $(if $(INTERVAL),--interval $(INTERVAL))
 
 scan:
-	UV_CACHE_DIR=.uv_cache UV_PYTHON_INSTALL_DIR=.uv_python uv run python -m stock.cli.scan $(if $(DATE),--date $(DATE)) $(if $(SYMBOL),--symbol $(SYMBOL)) $(if $(FORMAT),--format $(FORMAT)) $(if $(OUTPUT),--output $(OUTPUT)) $(if $(SAVE),--save)
+	UV_CACHE_DIR=.uv_cache UV_PYTHON_INSTALL_DIR=.uv_python uv run python -m stock.cli.scan $(if $(DATE),--date $(DATE)) $(if $(SYMBOL),--symbol $(SYMBOL)) $(if $(FORMAT),--format $(FORMAT)) $(if $(OUTPUT),--output $(OUTPUT)) $(if $(RECOMPUTE),--recompute) $(if $(SAVE),--save)

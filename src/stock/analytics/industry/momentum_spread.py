@@ -6,30 +6,15 @@
 """
 
 from datetime import date
-from typing import Any, cast
+from typing import cast
 
 import polars as pl
-from pydantic import BaseModel, Field
 
 from stock.analytics.industry.classifier import IndustryClassifier
+from stock.analytics.models import MomentumSpreadResult
 from stock.data.catalog import DataCatalog
 
-
-class MomentumSpreadResult(BaseModel):
-    """行业动量剪刀差分析结果。"""
-
-    trade_date: date = Field(..., description="计算日期")
-    top_leaders_120d: list[dict[str, Any]] = Field(
-        default_factory=list, description="120日领跑行业 (前5)"
-    )
-    bottom_laggards_20d: list[dict[str, Any]] = Field(
-        default_factory=list, description="20日超跌行业 (后5)"
-    )
-    spread: float = Field(..., description="动量剪刀差 (领跑行业均值 - 超跌行业均值 %)")
-    is_switch_imminent: bool = Field(
-        default=False, description="是否处于高低切换临界点 (剪刀差 > 35%)"
-    )
-    diagnostics: str = Field(default="", description="分析诊断建议")
+__all__ = ["IndustryMomentumSpreadAnalyzer", "MomentumSpreadResult"]
 
 
 class IndustryMomentumSpreadAnalyzer:

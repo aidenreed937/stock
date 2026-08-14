@@ -8,34 +8,10 @@
 from datetime import date
 
 import polars as pl
-from pydantic import BaseModel, Field
 
 from stock.analytics.industry.classifier import IndustryClassifier
+from stock.analytics.models import SingleIndustryTCR, TCRAnalysisResult
 from stock.data.catalog import DataCatalog
-
-
-class SingleIndustryTCR(BaseModel):
-    """单个行业的成交额与拥挤度数据。"""
-
-    industry_code: str = Field(..., description="申万一级行业代码 (如 801080.SI)")
-    industry_name: str = Field(..., description="申万一级行业中文名称 (如 电子)")
-    amount_yi: float = Field(..., description="单日成交额 (亿元)")
-    tcr: float = Field(..., description="行业成交额占 31 一级行业总成交额的比例 (%)")
-    is_crowded: bool = Field(default=False, description="是否突破拥挤度警戒线 (>20%)")
-    crowding_penalty: float = Field(default=0.0, description="拥挤度风控惩罚系数 [0.0, 1.0]")
-
-
-class TCRAnalysisResult(BaseModel):
-    """行业成交额拥挤度全景分析结果。"""
-
-    trade_date: date = Field(..., description="计算日期")
-    total_amount_yi: float = Field(..., description="31 申万一级行业合计成交额 (亿元)")
-    industries: list[SingleIndustryTCR] = Field(
-        default_factory=list, description="31 行业拥挤度明细 (按 TCR 降序排列)"
-    )
-    crowded_industries: list[str] = Field(default_factory=list, description="极端拥挤行业名称列表")
-    top1_industry: str = Field(default="", description="当日成交占比最高的一级行业")
-    top1_tcr: float = Field(default=0.0, description="Top1 行业的成交额占比 (%)")
 
 
 class TCRCalculator:
