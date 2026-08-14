@@ -177,8 +177,8 @@ LIXINGER_API_REGISTRY: dict[str, EndpointMeta] = {
         update_delay_days=0,
         code_param_name="stockCodes",
         default_metrics=[
-            "q.ps.toi.t_y2y", "q.ps.np.t_y2y", "q.ps.gp.t_y2y", "q.fi.roe.t",
-            "t.ps.toi.c_y2y", "t.ps.np.c_y2y", "t.fi.roe.t",
+            "q.ps.toi.c_y2y", "q.ps.np.c_y2y", "q.ps.gp_m.ttm", "q.m.roe.ttm",
+            "q.ps.toi.ttm_y2y", "q.ps.np.ttm_y2y",
         ],
         support_batch_prefetch=True,
     ),
@@ -192,7 +192,7 @@ LIXINGER_API_REGISTRY: dict[str, EndpointMeta] = {
         update_time="18:00",
         update_delay_days=0,
         code_param_name="stockCodes",
-        default_metrics=["q.ps.toi.t_y2y", "q.ps.np.t_y2y", "q.fi.roe.t", "t.ps.toi.c_y2y", "t.ps.np.c_y2y"],
+        default_metrics=["q.ps.toi.c_y2y", "q.ps.np.c_y2y", "q.m.roe.ttm", "q.ps.toi.ttm_y2y", "q.ps.np.ttm_y2y"],
         support_batch_prefetch=True,
     ),
     "cn/industry/fs/sw_2021/security": EndpointMeta(
@@ -205,7 +205,7 @@ LIXINGER_API_REGISTRY: dict[str, EndpointMeta] = {
         update_time="18:00",
         update_delay_days=0,
         code_param_name="stockCodes",
-        default_metrics=["q.ps.toi.t_y2y", "q.ps.np.t_y2y", "q.fi.roe.t", "t.ps.toi.c_y2y", "t.ps.np.c_y2y"],
+        default_metrics=["q.ps.toi.c_y2y", "q.ps.np.c_y2y", "q.m.roe.ttm", "q.ps.toi.ttm_y2y", "q.ps.np.ttm_y2y"],
         support_batch_prefetch=True,
     ),
     "cn/industry/fs/sw_2021/insurance": EndpointMeta(
@@ -218,7 +218,7 @@ LIXINGER_API_REGISTRY: dict[str, EndpointMeta] = {
         update_time="18:00",
         update_delay_days=0,
         code_param_name="stockCodes",
-        default_metrics=["q.ps.toi.t_y2y", "q.ps.np.t_y2y", "q.fi.roe.t", "t.ps.toi.c_y2y", "t.ps.np.c_y2y"],
+        default_metrics=["q.ps.toi.c_y2y", "q.ps.np.c_y2y", "q.m.roe.ttm", "q.ps.toi.ttm_y2y", "q.ps.np.ttm_y2y"],
         support_batch_prefetch=True,
     ),
     "cn/company/fs/non_financial": EndpointMeta(
