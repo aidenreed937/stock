@@ -41,14 +41,6 @@ def test_yfinance_history_timing() -> None:
     assert DataUpdateScheduler.is_data_ready("history", target_date, dt_us_closed, data_source="yfinance")
 
 
-def test_mock_data_source_timing() -> None:
-    target_date = date(2026, 8, 12)
-    dt_midday = datetime(2026, 8, 12, 14, 0)
-
-    # mock 数据源不受时间限制
-    assert DataUpdateScheduler.is_data_ready("daily", target_date, dt_midday, data_source="mock")
-
-
 def test_settings_override_timing() -> None:
     target_date = date(2026, 8, 12)
     dt_1715 = datetime(2026, 8, 12, 17, 15)

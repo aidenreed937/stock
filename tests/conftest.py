@@ -2,7 +2,6 @@ from datetime import date
 
 import pytest
 
-from stock.data.fetcher.mock import MockDataFetcher
 from stock.models.market import DailyBar
 
 
@@ -18,8 +17,3 @@ def sample_daily_bar() -> DailyBar:
         volume=10000.0,
         amount=102000.0,
     )
-
-
-@pytest.fixture
-def mock_fetcher() -> MockDataFetcher:
-    return MockDataFetcher()

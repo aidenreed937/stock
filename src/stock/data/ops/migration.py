@@ -125,7 +125,7 @@ def _normalize_numeric_columns(df: pl.DataFrame) -> tuple[pl.DataFrame, bool]:
 
 def _infer_data_source(path: Path) -> str | None:
     """从历史数据路径推断数据源名称。"""
-    providers = {"tushare", "lixinger", "yfinance", "fred", "mock"}
+    providers = {"tushare", "lixinger", "yfinance", "fred"}
     return next((part for part in path.parts if part in providers), None)
 
 

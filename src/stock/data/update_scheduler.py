@@ -21,7 +21,6 @@ DATA_SOURCE_TIMEZONES: dict[str, ZoneInfo] = {
     "lixinger": ZoneInfo("Asia/Shanghai"),
     "yfinance": ZoneInfo("Asia/Shanghai"),
     "fred": ZoneInfo("America/New_York"),
-    "mock": ZoneInfo("Asia/Shanghai"),
 }
 
 
@@ -102,15 +101,11 @@ class DataUpdateScheduler:
             endpoint: API 接口标识（如 daily, daily_basic, margin_detail, history 等）。
             target_date: 拟同步的交易日期。
             current_datetime: 当前系统时间，默认值为当前时间。
-            data_source: 数据源标识（tushare / yfinance / lixinger / mock / fred）。
+            data_source: 数据源标识（tushare / yfinance / lixinger / fred）。
 
         Returns:
             bool: 若已到达更新时间点返回 True，未到达则返回 False。
         """
-        # mock 数据源无时间约束，时刻可被读取
-        if data_source == "mock":
-            return True
-
         meta = cls.get_endpoint_update_meta(data_source, endpoint)
         target_tz = meta.timezone
 

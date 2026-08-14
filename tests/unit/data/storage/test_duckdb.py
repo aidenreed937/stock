@@ -1,33 +1,50 @@
-from datetime import date, datetime, timezone
+from datetime import date, datetime, timedelta, timezone
+from unittest.mock import MagicMock
 
 import polars as pl
 import pytest
 
 from stock.core.contracts import DatasetKey, instrument_for_symbol
-from stock.data.fetcher.mock import MockDataFetcher
 from stock.data.storage.duckdb_store import DuckDBMarketStore
 from stock.exceptions import DataValidationError
 
 
-def test_duckdb_store(tmp_path, mock_fetcher: MockDataFetcher) -> None:
-    store = DuckDBMarketStore(storage_dir=tmp_path, data_source="mock")
-    df = mock_fetcher.fetch_daily_bars_df("TEST.SH", date(2026, 1, 1), date(2026, 1, 15))
-    df = df.with_columns(
-        [
-            pl.lit("TEST.SH").alias("symbol"),
-            pl.lit("mock").alias("data_source"),
-            pl.lit("CN").alias("market"),
-            pl.lit("SSE").alias("exchange"),
-            pl.lit("CNY").alias("currency"),
-            pl.lit("raw").alias("adjustment"),
-            pl.lit("v1").alias("schema_version"),
-        ]
+def _make_daily_bar_df(
+    symbol: str = "TEST.SH",
+    start_date: date = date(2026, 1, 1),
+    days: int = 15,
+    data_source: str = "tushare",
+) -> pl.DataFrame:
+    dates = [start_date + timedelta(days=i) for i in range(days)]
+    prices = [10.0 + i * 0.2 for i in range(days)]
+    return pl.DataFrame(
+        {
+            "symbol": [symbol] * days,
+            "trade_date": dates,
+            "open": prices,
+            "high": [p + 0.5 for p in prices],
+            "low": [p - 0.5 for p in prices],
+            "close": prices,
+            "volume": [1000.0] * days,
+            "amount": [p * 1000.0 for p in prices],
+            "data_source": [data_source] * days,
+            "market": ["CN"] * days,
+            "exchange": ["SSE"] * days,
+            "currency": ["CNY"] * days,
+            "adjustment": ["raw"] * days,
+            "schema_version": ["v1"] * days,
+        }
     )
+
+
+def test_duckdb_store(tmp_path) -> None:
+    store = DuckDBMarketStore(storage_dir=tmp_path, data_source="tushare")
+    df = _make_daily_bar_df("TEST.SH", date(2026, 1, 1), days=15, data_source="tushare")
 
     file_path = store.save_market_data("daily", date(2026, 1, 15), df)
     assert file_path.exists()
     assert "market=CN" in str(file_path)
-    assert file_path.relative_to(tmp_path / "mock").parts[0] == "market=CN"
+    assert file_path.relative_to(tmp_path / "tushare").parts[0] == "market=CN"
 
     queried_df = store.query_daily_bars("TEST.SH")
     assert len(queried_df) == len(df)
@@ -38,21 +55,10 @@ def test_duckdb_store(tmp_path, mock_fetcher: MockDataFetcher) -> None:
 
 
 def test_daily_query_ignores_migration_backup_with_incompatible_schema(
-    tmp_path, mock_fetcher: MockDataFetcher
+    tmp_path,
 ) -> None:
-    store = DuckDBMarketStore(storage_dir=tmp_path, data_source="mock")
-    df = mock_fetcher.fetch_daily_bars_df("TEST.SH", date(2026, 1, 15), date(2026, 1, 15))
-    df = df.with_columns(
-        [
-            pl.lit("TEST.SH").alias("symbol"),
-            pl.lit("mock").alias("data_source"),
-            pl.lit("CN").alias("market"),
-            pl.lit("SSE").alias("exchange"),
-            pl.lit("CNY").alias("currency"),
-            pl.lit("raw").alias("adjustment"),
-            pl.lit("v1").alias("schema_version"),
-        ]
-    )
+    store = DuckDBMarketStore(storage_dir=tmp_path, data_source="tushare")
+    df = _make_daily_bar_df("TEST.SH", date(2026, 1, 15), days=1, data_source="tushare")
     active_path = store.save_market_data("daily", date(2026, 1, 15), df)
     backup_path = active_path.with_name("data.bak.parquet")
     pl.DataFrame({"legacy": [1]}).write_parquet(backup_path)
@@ -69,10 +75,10 @@ def test_default_store_isolated_by_data_source(tmp_path, monkeypatch) -> None:
     monkeypatch.setattr(settings, "curated_data_dir", tmp_path / "curated")
 
     tushare_store = DuckDBMarketStore(data_source="tushare")
-    mock_store = DuckDBMarketStore(data_source="mock")
+    yfinance_store = DuckDBMarketStore(data_source="yfinance")
 
     assert tushare_store.storage_dir == tmp_path / "curated" / "tushare"
-    assert mock_store.storage_dir == tmp_path / "curated" / "mock"
+    assert yfinance_store.storage_dir == tmp_path / "curated" / "yfinance"
 
 
 def test_pipeline_binds_explicit_store_to_source_directory(tmp_path) -> None:
@@ -80,12 +86,12 @@ def test_pipeline_binds_explicit_store_to_source_directory(tmp_path) -> None:
 
     store = DuckDBMarketStore(storage_dir=tmp_path / "curated")
     MarketDataPipeline(
-        fetcher=MockDataFetcher(),
+        fetcher=MagicMock(),
         store=store,
-        data_source="mock",
+        data_source="tushare",
     )
 
-    assert store.storage_dir == tmp_path / "curated" / "mock"
+    assert store.storage_dir == tmp_path / "curated" / "tushare"
 
 
 def test_unbound_store_rejects_reads(tmp_path) -> None:
@@ -107,7 +113,7 @@ def test_store_rejects_mismatched_source(tmp_path) -> None:
             "close": [10.5],
             "volume": [1000.0],
             "amount": [10500.0],
-            "data_source": ["mock"],
+            "data_source": ["yfinance"],
         }
     )
     key = DatasetKey(
@@ -162,7 +168,7 @@ def test_store_rejects_schema_mismatch(tmp_path) -> None:
 
 
 def test_duckdb_store_extra_branches(tmp_path) -> None:
-    store = DuckDBMarketStore(storage_dir=tmp_path, data_source="mock")
+    store = DuckDBMarketStore(storage_dir=tmp_path, data_source="tushare")
 
     # Test bind_data_source mismatch
     with pytest.raises(DataValidationError, match="Curated 存储数据源不匹配"):
@@ -173,12 +179,12 @@ def test_duckdb_store_extra_branches(tmp_path) -> None:
     assert not file_path.exists()
 
     key = DatasetKey(
-        provider="mock",
+        provider="tushare",
         dataset="daily_bar",
         endpoint="daily",
         start_date=date(2026, 1, 15),
         end_date=date(2026, 1, 15),
-        instrument=instrument_for_symbol("TEST.SH", "mock"),
+        instrument=instrument_for_symbol("TEST.SH", "tushare"),
     )
     empty_dataset_path = store.save_dataset(key, pl.DataFrame())
     assert not empty_dataset_path.exists()
@@ -197,7 +203,7 @@ def test_duckdb_store_extra_branches(tmp_path) -> None:
             "pre_close": [10.0, 10.5],
             "change": [0.5, 10.0],
             "pct_chg": [5.0, 48.78],
-            "data_source": ["mock", "mock"],
+            "data_source": ["tushare", "tushare"],
             "market": ["CN", "CN"],
             "exchange": ["SSE", "SSE"],
             "currency": ["CNY", "CNY"],
@@ -223,7 +229,7 @@ def test_duckdb_store_extra_branches(tmp_path) -> None:
 
 
 def test_duckdb_store_batch_mode(tmp_path) -> None:
-    store = DuckDBMarketStore(storage_dir=tmp_path, data_source="mock")
+    store = DuckDBMarketStore(storage_dir=tmp_path, data_source="tushare")
     store.enable_batch_mode()
 
     df1 = pl.DataFrame(
@@ -239,7 +245,7 @@ def test_duckdb_store_batch_mode(tmp_path) -> None:
             "pre_close": [10.0],
             "change": [0.5],
             "pct_chg": [5.0],
-            "data_source": ["mock"],
+            "data_source": ["tushare"],
             "market": ["CN"],
             "exchange": ["SSE"],
             "currency": ["CNY"],
@@ -260,7 +266,7 @@ def test_duckdb_store_batch_mode(tmp_path) -> None:
             "pre_close": [10.5],
             "change": [1.0],
             "pct_chg": [9.52],
-            "data_source": ["mock"],
+            "data_source": ["tushare"],
             "market": ["CN"],
             "exchange": ["SSE"],
             "currency": ["CNY"],
@@ -288,14 +294,14 @@ def test_duckdb_store_batch_mode(tmp_path) -> None:
 
 
 def test_duckdb_store_merges_datetime_columns_with_mixed_timezones(tmp_path) -> None:
-    store = DuckDBMarketStore(storage_dir=tmp_path, data_source="mock")
+    store = DuckDBMarketStore(storage_dir=tmp_path, data_source="tushare")
     file_path = store.get_parquet_path("daily_basic", date(2026, 1, 1), market="CN")
     base = pl.DataFrame(
         {
             "symbol": ["TEST.SH"],
             "trade_date": [date(2026, 1, 1)],
             "updated_at": [datetime(2026, 1, 1, tzinfo=timezone.utc)],
-            "data_source": ["mock"],
+            "data_source": ["tushare"],
             "market": ["CN"],
         }
     )
@@ -386,13 +392,13 @@ def test_duckdb_store_deduplicates_fund_bar_adjustment_variants(tmp_path) -> Non
 
 
 def test_duckdb_store_merges_source_symbol_alias_into_standard_column(tmp_path) -> None:
-    store = DuckDBMarketStore(storage_dir=tmp_path, data_source="mock")
+    store = DuckDBMarketStore(storage_dir=tmp_path, data_source="tushare")
     file_path = store.get_parquet_path("daily_basic", date(2026, 7, 1), market="CN")
     existing = pl.DataFrame(
         {
             "symbol": ["A"],
             "trade_date": [date(2026, 7, 30)],
-            "data_source": ["mock"],
+            "data_source": ["tushare"],
             "market": ["CN"],
         }
     )
@@ -400,7 +406,7 @@ def test_duckdb_store_merges_source_symbol_alias_into_standard_column(tmp_path) 
         {
             "ts_code": ["B"],
             "trade_date": [date(2026, 7, 31)],
-            "data_source": ["mock"],
+            "data_source": ["tushare"],
             "market": ["CN"],
         }
     )
@@ -486,13 +492,13 @@ def test_duckdb_store_partitions_financial_rows_by_report_end_date(tmp_path) -> 
 
 
 def test_duckdb_store_routes_mixed_date_formats_without_dropping_rows(tmp_path) -> None:
-    store = DuckDBMarketStore(storage_dir=tmp_path, data_source="mock")
+    store = DuckDBMarketStore(storage_dir=tmp_path, data_source="tushare")
     frame = pl.DataFrame(
         {
             "symbol": ["A", "B"],
             "trade_date": ["20260812", "2026-08-13"],
             "value": [1.0, 2.0],
-            "data_source": ["mock", "mock"],
+            "data_source": ["tushare", "tushare"],
             "market": ["CN", "CN"],
         }
     )
@@ -505,13 +511,13 @@ def test_duckdb_store_routes_mixed_date_formats_without_dropping_rows(tmp_path) 
 
 
 def test_duckdb_store_prefers_source_symbol_over_placeholder(tmp_path) -> None:
-    store = DuckDBMarketStore(storage_dir=tmp_path, data_source="mock")
+    store = DuckDBMarketStore(storage_dir=tmp_path, data_source="tushare")
     file_path = store.get_parquet_path("adj_factor", date(2026, 8, 1), market="CN")
     existing = pl.DataFrame(
         {
             "symbol": ["ADJ_FACTOR"],
             "trade_date": [date(2026, 8, 1)],
-            "data_source": ["mock"],
+            "data_source": ["tushare"],
             "market": ["CN"],
         }
     )
@@ -520,7 +526,7 @@ def test_duckdb_store_prefers_source_symbol_over_placeholder(tmp_path) -> None:
             "symbol": ["ADJ_FACTOR"],
             "ts_code": ["600000.SH"],
             "trade_date": [date(2026, 8, 2)],
-            "data_source": ["mock"],
+            "data_source": ["tushare"],
             "market": ["CN"],
         }
     )
@@ -555,7 +561,7 @@ def test_duckdb_store_removes_legacy_hk_hold_symbol_when_source_code_is_qualifie
 
 
 def test_duckdb_store_has_curated_whole_market(tmp_path) -> None:
-    store = DuckDBMarketStore(storage_dir=tmp_path, data_source="mock")
+    store = DuckDBMarketStore(storage_dir=tmp_path, data_source="tushare")
     # 1. 初始状态：无任何文件归档，应返回 False
     assert not store.has_curated("daily", date(2026, 1, 14), symbol=None)
     assert not store.has_curated("daily", date(2026, 1, 14), symbol="")
@@ -575,7 +581,7 @@ def test_duckdb_store_has_curated_whole_market(tmp_path) -> None:
             "pre_close": [10.0, 11.0],
             "change": [0.5, 0.5],
             "pct_chg": [5.0, 4.5],
-            "data_source": ["mock", "mock"],
+            "data_source": ["tushare", "tushare"],
             "market": ["CN", "CN"],
             "exchange": ["SSE", "SSE"],
             "currency": ["CNY", "CNY"],
@@ -607,7 +613,7 @@ def test_duckdb_store_has_curated_whole_market(tmp_path) -> None:
             "pre_close": [10.0] * 1005,
             "change": [0.5] * 1005,
             "pct_chg": [5.0] * 1005,
-            "data_source": ["mock"] * 1005,
+            "data_source": ["tushare"] * 1005,
             "market": ["CN"] * 1005,
             "exchange": ["SSE"] * 1005,
             "currency": ["CNY"] * 1005,
@@ -639,7 +645,7 @@ def test_duckdb_store_has_curated_whole_market(tmp_path) -> None:
             "pre_close": [10.0] * 6,
             "change": [0.5] * 6,
             "pct_chg": [5.0] * 6,
-            "data_source": ["mock"] * 6,
+            "data_source": ["tushare"] * 6,
             "market": ["CN"] * 6,
             "exchange": ["SSE"] * 6,
             "currency": ["CNY"] * 6,
@@ -655,7 +661,7 @@ def test_duckdb_store_has_curated_whole_market(tmp_path) -> None:
 
 
 def test_query_universe_snapshots(tmp_path) -> None:
-    store = DuckDBMarketStore(storage_dir=tmp_path, data_source="mock")
+    store = DuckDBMarketStore(storage_dir=tmp_path, data_source="tushare")
     assert store.query_universe_snapshots().is_empty()
 
     snap_dir = store.storage_dir / "universe_snapshots" / "as_of_date=2026-08-12"

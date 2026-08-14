@@ -8,7 +8,7 @@ from typing import Any
 
 import polars as pl
 
-_KNOWN_PROVIDERS = {"tushare", "lixinger", "yfinance", "fred", "mock"}
+_KNOWN_PROVIDERS = {"tushare", "lixinger", "yfinance", "fred"}
 
 
 def _keys(endpoint: str, columns: list[str], data_source: str = "tushare") -> list[str]:

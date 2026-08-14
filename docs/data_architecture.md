@@ -10,7 +10,7 @@
 
 ```text
                   ┌─────────────────────────────────────────┐
-                  │ 外部数据源 (TuShare / AKShare / Mock)     │
+                  │ 外部数据源 (TuShare / LiXinger / Yahoo Finance / FRED) │
                   └────────────────────┬────────────────────┘
                                        │ (1. Fetcher 接口拉取)
                                        ▼

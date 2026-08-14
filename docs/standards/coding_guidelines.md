@@ -5,7 +5,7 @@
 ## 一、 命名规范
 
 - **模块/文件名**: 全小写 + 下划线（snake_case），例如 `duckdb_store.py`。
-- **类名**: 大驼峰（PascalCase），例如 `DuckDBMarketStore`, `MockDataFetcher`。
+- **类名**: 大驼峰（PascalCase），例如 `DuckDBMarketStore`, `TuShareDataFetcher`。
 - **函数/变量/属性**: 小写 + 下划线（snake_case），例如 `fetch_daily_bars_df`。
 - **常量**: 全大写 + 下划线（UPPER_SNAKE_CASE），例如 `DEFAULT_TIMEOUT_SECONDS = 30`。
 

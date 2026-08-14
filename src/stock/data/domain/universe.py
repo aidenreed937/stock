@@ -55,7 +55,7 @@ class UniverseFilter:
                 "为保证数据绝对一致，已彻底禁止在线请求降级。请先运行 `make backfill ENDPOINT=stock_basic` 补全本地基础库。"
             )
 
-        logger.info("测试/非本地模式：请求接口或 Mock 获取 stock_basic 数据...")
+        logger.info("测试/非本地模式：请求接口获取 stock_basic 数据...")
         return self.fetcher.client.query("stock_basic", list_status="L")
 
     def load_filter_rules(
@@ -174,7 +174,7 @@ class UniverseFilter:
             if df_daily is not None and not df_daily.empty:
                 return today_str, df_daily
         except Exception as e:
-            logger.debug(f"Mock/在线请求 daily_basic 失败: {e}")
+            logger.debug(f"在线请求 daily_basic 失败: {e}")
         return today_str, pd.DataFrame()
 
     def _build_rule_chain(self, rules: dict[str, Any]) -> CompositeRuleChain:

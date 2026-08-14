@@ -32,7 +32,7 @@ class Settings(BaseSettings):
     lixinger_url: str = "https://open.lixinger.com"
     lxr_token: str = ""
     lxr_url: str = ""
-    data_source_mode: Literal["tushare", "mock", "yfinance", "lixinger"] = "tushare"
+    data_source_mode: Literal["tushare", "yfinance", "lixinger", "fred"] = "tushare"
     endpoint_update_time_overrides: dict[str, str] = {}
 
     @property

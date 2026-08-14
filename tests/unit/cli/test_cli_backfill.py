@@ -18,7 +18,7 @@ def test_cli_backfill_single_endpoint(monkeypatch) -> None:
         [
             "backfill",
             "--source",
-            "mock",
+            "tushare",
             "--endpoint",
             "stock_daily_bar",
             "--symbol",

@@ -81,7 +81,7 @@ class LixingerClient:
             DataFetchError: 当缺少 Token、请求校验失败、Token 无效或重试用尽时抛出。
         """
         if not self.token:
-            logger.warning("理杏仁 Token 未设置！使用 Mock 或空结果返回。")
+            logger.warning("理杏仁 Token 未设置！返回空结果。")
             return pd.DataFrame()
 
         self._validate_date_range(api_path, kwargs)

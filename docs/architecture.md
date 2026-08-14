@@ -7,7 +7,7 @@
 系统采用高内聚、低耦合的分层架构，核心数据流向如下：
 
 ```
-[外部 API / 数据源] (TuShare / AKShare / Mock)
+[外部 API / 数据源] (TuShare / LiXinger / Yahoo Finance / FRED)
         │
         ▼
  [1. Fetcher 抓取层] ──(Raw Data)──► [RAW 原始归档层 (data/raw/)]
@@ -59,7 +59,7 @@
 2. **门禁契约与脏数据拦截 (Schema-First & Quality Gate)**：数据进入 `Storage` 前必须在 `Cleaner` 与 `Normalizer` 完备通过合法性校验与标准 Schema 转换，确保库内无脏数据。
 3. **数据不可变性 (Immutability)**：基础行情 OHLCV 列在后续流转中只读；分析层指标通过追加派生列的方式生成新视图。
 4. **零拷贝与高效传输 (Zero-Copy Transfer)**：全程以 Polars / Apache Arrow 内存结构传递，存储层与分析层之间实现零拷贝数据对接。
-5. **无状态与依赖注入 (Stateless & Injectable Flow)**：Cleaner 与 Normalizer 均为纯无状态转换模块；Pipeline 管道通过依赖注入管理数据流，便于单元测试与 Mock。
+5. **无状态与依赖注入 (Stateless & Injectable Flow)**：Cleaner 与 Normalizer 均为纯无状态转换模块；Pipeline 管道通过依赖注入管理数据流，便于单元测试与隔离验证。
 
 ---
 

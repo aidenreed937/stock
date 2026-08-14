@@ -9,8 +9,8 @@ from stock.exceptions import DataValidationError
 
 
 def test_dataset_key_separates_symbol_and_range() -> None:
-    key_a = DatasetKey("mock", "daily_bar", "daily", date(2026, 1, 1), date(2026, 1, 5), instrument_for_symbol("AAA", "mock"))
-    key_b = DatasetKey("mock", "daily_bar", "daily", date(2026, 1, 1), date(2026, 1, 5), instrument_for_symbol("BBB", "mock"))
+    key_a = DatasetKey("tushare", "daily_bar", "daily", date(2026, 1, 1), date(2026, 1, 5), instrument_for_symbol("AAA", "tushare"))
+    key_b = DatasetKey("tushare", "daily_bar", "daily", date(2026, 1, 1), date(2026, 1, 5), instrument_for_symbol("BBB", "tushare"))
     assert key_a.request_id != key_b.request_id
 
 
@@ -57,7 +57,7 @@ def test_daily_contract_rejects_adjustment_variants_for_same_bar() -> None:
             "close": [10.5, 10.5],
             "volume": [100.0, 100.0],
             "amount": [1000.0, 1000.0],
-            "data_source": ["mock", "mock"],
+            "data_source": ["tushare", "tushare"],
             "source_endpoint": ["daily", "daily"],
             "market": ["CN", "CN"],
             "exchange": ["SSE", "SSE"],

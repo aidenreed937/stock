@@ -249,7 +249,7 @@ def run_audit(
             if basic_files:
                 basic_df = pl.read_parquet(basic_files)
             else:
-                # 兼容 Mock 路径或空情形
+                # 兼容单文件结构或直接路径
                 basic_df = pl.read_parquet(f"{basic_pattern}/data.parquet")
         except Exception as e:
             logger.error(

@@ -79,7 +79,6 @@ def _make_spec(
 
 
 _CUSTOM_TASKS: dict[tuple[str, str], TaskSpec] = {
-    ("mock", "stock_daily_bar"): _make_spec("stock_daily_bar", "mock", "daily", "stock_daily_bar", "bar", fetch_mode="per_day", partitioned=True),
     ("tushare", "stock_daily_bar"): _make_spec("stock_daily_bar", "tushare", "daily", "stock_daily_bar", "bar", fetch_mode="per_day", partitioned=True),
     ("tushare", "report_rc"): _make_spec("report_rc", "tushare", "report_rc", "report_rc", fetch_mode="per_day", partitioned=True),
     ("tushare", "forecast"): _make_spec("forecast", "tushare", "forecast", "forecast", fetch_mode="per_day", partitioned=True),
@@ -113,8 +112,6 @@ _CUSTOM_TASKS: dict[tuple[str, str], TaskSpec] = {
 }
 
 _ALIASES: dict[tuple[str, str], str] = {
-    ("mock", "daily"): "stock_daily_bar",
-    ("mock", "daily_bar"): "stock_daily_bar",
     ("tushare", "daily"): "stock_daily_bar",
     ("tushare", "daily_bar"): "stock_daily_bar",
     ("yfinance", "history"): "stock_daily_bar",
@@ -247,7 +244,7 @@ def resolve_task(provider: str, task_name: str, symbol: str = "") -> TaskSpec:
                 f"未知项目任务 [{provider_name}/{task_name}]。"
                 "请使用项目任务名，不要直接传入上游接口路径。"
             )
-        # 允许 Mock 和扩展 Provider 使用同名任务/API；长路径必须显式注册。
+        # 允许扩展 Provider 使用同名任务/API；长路径必须显式注册。
         return TaskSpec(
             task_name=requested,
             provider=provider_name,

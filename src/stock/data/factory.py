@@ -21,7 +21,7 @@ def get_shared_fetcher(data_source: str, **kwargs: Any) -> BaseDataFetcher:
     """获取或初始化全局共享的 Fetcher 实例（保障全生命周期共享 RateLimiter 与元数据缓存）。
 
     Args:
-        data_source: 数据源标识 (tushare, lixinger, yfinance, fred, mock).
+        data_source: 数据源标识 (tushare, lixinger, yfinance, fred).
         **kwargs: 附加初始化参数（如 proxy, token, url 等）。
 
     Returns:
@@ -58,10 +58,6 @@ def get_shared_fetcher(data_source: str, **kwargs: Any) -> BaseDataFetcher:
 
         proxy = kwargs.get("proxy") or getattr(settings, "fred_proxy", None)
         fetcher = create_fred_fetcher(proxy=proxy)
-    elif ds == "mock":
-        from stock.data.fetcher.mock import MockDataFetcher
-
-        fetcher = MockDataFetcher()
     else:
         from stock.data.fetcher.tushare.factory import create_tushare_fetcher
 
@@ -79,7 +75,7 @@ def create_pipeline(
     """根据数据源名称和项目任务名统一装配 MarketDataPipeline 实例。
 
     Args:
-        data_source: 数据源标识名称（如 tushare, yfinance, lixinger, fred, mock）。
+        data_source: 数据源标识名称（如 tushare, yfinance, lixinger, fred）。
         endpoint: 项目任务名（如 stock_daily_bar、daily_basic）。
         fetcher: 可选的显式 Fetcher 实例；若为 None，则默认使用全局共享 Fetcher 单例。
 
@@ -113,12 +109,6 @@ def create_pipeline(
 
         ff = active_fetcher if isinstance(active_fetcher, FredDataFetcher) else None
         return create_fred_pipeline(endpoint=endpoint, fetcher=ff)
-    elif ds == "mock":
-        from stock.data.pipeline import MarketDataPipeline
-
-        return MarketDataPipeline(
-            fetcher=active_fetcher, data_source=data_source, endpoint=endpoint
-        )
     else:
         from stock.data.fetcher.tushare.facade import TuShareDataFetcher
         from stock.data.fetcher.tushare.factory import create_tushare_pipeline

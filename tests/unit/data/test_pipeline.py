@@ -1,16 +1,54 @@
 """ETL 清洗、标准化与 Pipeline 数据流单元测试。"""
 
-from datetime import date
+from datetime import date, timedelta
+from typing import Any
 
 import polars as pl
 
 from stock.data.cleaner.bar_cleaner import BarDataCleaner
-from stock.data.fetcher.mock import MockDataFetcher
+from stock.data.fetcher.base import BaseDataFetcher
 from stock.data.normalizer.bar_normalizer import BarDataNormalizer
 from stock.data.quality.quarantine import QuarantineStore
 from stock.data.pipeline import MarketDataPipeline
 from stock.data.storage.duckdb_store import DuckDBMarketStore
 from stock.data.storage.raw_store import RawDataStorage
+
+
+class StubBarFetcher(BaseDataFetcher):
+    """用于 Pipeline 流程测试的桩 Fetcher。"""
+
+    def fetch_daily_bars(self, symbol: str, start_date: date, end_date: date):
+        return []
+
+    def fetch_daily_bars_df(
+        self, symbol: str, start_date: date, end_date: date, endpoint: str = "daily", **kwargs: Any
+    ) -> pl.DataFrame:
+        dates: list[date] = []
+        curr = start_date
+        while curr <= end_date:
+            dates.append(curr)
+            curr += timedelta(days=1)
+        prices = [10.0 + i * 0.1 for i in range(len(dates))]
+        return pl.DataFrame(
+            {
+                "ts_code": [symbol] * len(dates),
+                "trade_date": [d.strftime("%Y%m%d") for d in dates],
+                "open": prices,
+                "high": [p + 0.5 for p in prices],
+                "low": [p - 0.5 for p in prices],
+                "close": prices,
+                "vol": [1000.0] * len(dates),
+                "amount": [p * 1000.0 for p in prices],
+            }
+        )
+
+    def fetch_trade_cal(self, start_date: date, end_date: date) -> list[date]:
+        curr = start_date
+        cal: list[date] = []
+        while curr <= end_date:
+            cal.append(curr)
+            curr += timedelta(days=1)
+        return cal
 
 
 def test_bar_cleaner_filtering() -> None:
@@ -59,7 +97,7 @@ def test_bar_normalizer_renaming() -> None:
 
 
 def test_market_data_pipeline(tmp_path) -> None:
-    fetcher = MockDataFetcher()
+    fetcher = StubBarFetcher()
     store = DuckDBMarketStore(storage_dir=tmp_path / "curated")
     raw_store = RawDataStorage(base_dir=tmp_path / "raw")
     pipeline = MarketDataPipeline(
@@ -131,7 +169,7 @@ def test_market_data_pipeline_quarantines_rejected_rows(tmp_path, monkeypatch) -
 
 
 def test_macro_pipeline_sync_does_not_clip_history(tmp_path) -> None:
-    class MockMacroFetcher:
+    class StubMacroFetcher:
         def fetch_daily_bars_df(self, symbol, start_date, end_date, endpoint="cn_cpi"):
             return pl.DataFrame(
                 {
@@ -143,7 +181,7 @@ def test_macro_pipeline_sync_does_not_clip_history(tmp_path) -> None:
     store = DuckDBMarketStore(storage_dir=tmp_path / "curated")
     raw_store = RawDataStorage(base_dir=tmp_path / "raw")
     pipeline = MarketDataPipeline(
-        fetcher=MockMacroFetcher(),
+        fetcher=StubMacroFetcher(),
         store=store,
         raw_store=raw_store,
         data_source="tushare",

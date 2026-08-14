@@ -31,7 +31,7 @@ def test_double_sma_rsi_uses_configured_weight() -> None:
 
 def test_strategy_runner_report_contains_config_identity() -> None:
     config = load_strategy_config("config/strategy/double_sma_rsi.yaml")
-    report = StrategyRunner(config, "mock").run(_bars())
+    report = StrategyRunner(config, "tushare").run(_bars())
     assert report.strategy_name == config.name
     assert report.strategy_version == config.version
-    assert report.data_source == "mock"
+    assert report.data_source == "tushare"

@@ -125,7 +125,7 @@ def test_tushare_fetcher_dynamic_endpoint_routing(
 
 
 def test_tushare_client_auto_paginates() -> None:
-    client = TuShareClient(token="mock", paginate_threshold=2)
+    client = TuShareClient(token="test_token", paginate_threshold=2)
     client._pro_api = MagicMock()
     client._pro_api.query.side_effect = [
         pd.DataFrame({"ts_code": ["A", "B"]}),
@@ -136,7 +136,7 @@ def test_tushare_client_auto_paginates() -> None:
 
 
 def test_tushare_full_market_does_not_invent_symbol() -> None:
-    fetcher = TuShareDataFetcher(token="mock")
+    fetcher = TuShareDataFetcher(token="test_token")
     fetcher.client._pro_api = MagicMock()
     fetcher.client._pro_api.query.return_value = pd.DataFrame(
         {"ts_code": ["000001.SZ"], "trade_date": ["20260812"]}
@@ -146,7 +146,7 @@ def test_tushare_full_market_does_not_invent_symbol() -> None:
 
 
 def test_tushare_suspend_d_uses_trade_date_for_full_market_query() -> None:
-    fetcher = TuShareDataFetcher(token="mock")
+    fetcher = TuShareDataFetcher(token="test_token")
     fetcher.client._pro_api = MagicMock()
     fetcher.client._pro_api.query.return_value = pd.DataFrame(
         {
@@ -165,7 +165,7 @@ def test_tushare_suspend_d_uses_trade_date_for_full_market_query() -> None:
 
 
 def test_tushare_full_market_endpoint_uses_small_request_window() -> None:
-    fetcher = TuShareDataFetcher(token="mock")
+    fetcher = TuShareDataFetcher(token="test_token")
     fetcher.client._pro_api = MagicMock()
 
     def query(api_name: str, **kwargs: str) -> pd.DataFrame:

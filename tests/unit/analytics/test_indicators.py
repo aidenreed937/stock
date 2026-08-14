@@ -1,11 +1,26 @@
-from datetime import date
+from datetime import date, timedelta
+
+import polars as pl
 
 from stock.analytics.indicators import calculate_ema, calculate_rsi, calculate_sma
-from stock.data.fetcher.mock import MockDataFetcher
 
 
-def test_calculate_indicators(mock_fetcher: MockDataFetcher) -> None:
-    df = mock_fetcher.fetch_daily_bars_df("TEST", date(2026, 1, 1), date(2026, 3, 1))
+def test_calculate_indicators() -> None:
+    # 构造 30 天的基础行情序列
+    dates = [date(2026, 1, 1) + timedelta(days=i) for i in range(30)]
+    prices = [10.0 + (i * 0.5 if i % 2 == 0 else -i * 0.3) for i in range(30)]
+    df = pl.DataFrame(
+        {
+            "symbol": ["TEST"] * 30,
+            "trade_date": dates,
+            "open": prices,
+            "high": [p + 0.5 for p in prices],
+            "low": [p - 0.5 for p in prices],
+            "close": prices,
+            "volume": [1000.0] * 30,
+            "amount": [p * 1000.0 for p in prices],
+        }
+    )
     assert len(df) > 20
 
     df_sma = calculate_sma(df, window=5)
