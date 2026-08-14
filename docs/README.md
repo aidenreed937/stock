@@ -14,6 +14,7 @@
 
 ### 3. 🚀 开发者指南 (`docs/guides/`)
 - [快速上手指南 (Getting Started)](file:///Users/mac/workspace/personal/finance/stock/docs/guides/getting_started.md) — 基于 `uv` 的环境搭建、本地运行、测试与 Lint 常用指令
+- [多品类市场数据摄取与调度规则手册 (Market Data Ingestion Rules)](file:///Users/mac/workspace/personal/finance/stock/docs/guides/market_data_ingestion_rules.md) — 股票/指数/ETF/行业摄取范式、全市场截面 vs 观察池范围抓取及 DuckDB 架构规范
 
 ---
 

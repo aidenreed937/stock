@@ -10,123 +10,20 @@ from typing import Any, Callable
 from stock.data.factory import create_pipeline
 from stock.data.fetcher.base import BaseDataFetcher
 from stock.data.pipeline import MarketDataPipeline
+from stock.data.planner import (
+    MARKET_SINGLE_SYNC_ENDPOINTS,
+    TUSHARE_FUND_POOL_ENDPOINTS,
+    TUSHARE_STOCK_POOL_ENDPOINTS,
+    _default_symbols_for_endpoint,
+    _filter_supported_symbols,
+    _load_curated_symbol_pool,
+    _tushare_local_pool,
+    _watchlist_symbols,
+)
 from stock.data.task_registry import is_per_symbol_task, resolve_public_task, resolve_task
 from stock.data.update_scheduler import DataUpdateScheduler
 from stock.exceptions import DataFetchError
 from stock.utils.logger import logger
-
-MARKET_SINGLE_SYNC_ENDPOINTS: set[str] = {
-    # 宏观经济数据
-    "moneyflow_hsgt",
-    "hsgt_top10",
-    "margin",
-    "suspend_d",
-    "cn_gdp",
-    "cn_cpi",
-    "cn_ppi",
-    "cn_pmi",
-    "cn_m",
-    "sf_month",
-    "shibor_lpr",
-    # 静态/元数据/事件型接口 (只需 1 次全量获取)
-    "stock_basic",
-    "index_basic",
-    "index_classify",
-    "index_member",
-    "fund_basic",
-    "sw_2021_constituents",
-    "sw_2021_fundamental",
-    "company_fundamental",
-    "index_fundamental",
-    "fs_non_financial",
-    "pledge_info",
-}
-
-TUSHARE_STOCK_POOL_ENDPOINTS = frozenset(
-    {"income", "fina_indicator", "margin_detail", "hk_hold"}
-)
-TUSHARE_FUND_POOL_ENDPOINTS = frozenset({"fund_share"})
-
-
-def _load_curated_symbol_pool(data_source: str, dataset: str) -> list[str]:
-    """从本地基础信息数据集加载可用于按标的回填的标准代码。"""
-    from stock.data.storage.duckdb_store import DuckDBMarketStore
-
-    frame = DuckDBMarketStore(data_source=data_source).query_dataset(dataset=dataset)
-    if frame.is_empty():
-        return []
-    sym_col = next((c for c in ("symbol", "ts_code", "stockCode", "code") if c in frame.columns), None)
-    if not sym_col:
-        return []
-    vals = frame.get_column(sym_col).drop_nulls().to_list()
-    return sorted({str(s).strip() for s in vals if str(s).strip()})
-
-
-def _tushare_local_pool(endpoint: str) -> tuple[str, str] | None:
-    """返回 TuShare 接口所需本地基础池及其缺失提示。"""
-    if endpoint in TUSHARE_STOCK_POOL_ENDPOINTS:
-        return "stock_basic", "A 股"
-    if endpoint in TUSHARE_FUND_POOL_ENDPOINTS:
-        return "fund_basic", "基金"
-    return None
-
-
-def _watchlist_symbols(
-    data_source: str,
-    endpoint: str,
-    data_cfg: Any,
-    per_symbol_endpoints: set[str],
-) -> list[str]:
-    """从配置观察池解析接口的默认标的。"""
-    watchlist = getattr(data_cfg.watchlists, data_source, None)
-    if watchlist is None:
-        return []
-    if endpoint in {"fund_daily", "fund_adj", "fund_share", "etf_share_size"} and getattr(watchlist, "funds", None):
-        return list(watchlist.funds)
-    if endpoint in per_symbol_endpoints and endpoint != "stock_daily_bar" and getattr(watchlist, "indices", None):
-        return list(watchlist.indices)
-    if hasattr(watchlist, "all_symbols"):
-        return list(watchlist.all_symbols)
-    return list(watchlist) if isinstance(watchlist, list) else []
-
-
-def _filter_supported_symbols(
-    symbols: list[str], data_source: str, endpoint: str, data_cfg: Any
-) -> list[str]:
-    """按接口白名单过滤配置观察池。"""
-    endpoint_supports = getattr(data_cfg, "source_endpoint_supports", {})
-    supports = endpoint_supports.get(data_source, {}).get(endpoint, [])
-    if not supports:
-        return symbols
-    supported = set(supports)
-    ignored = [symbol for symbol in symbols if symbol not in supported]
-    if ignored:
-        logger.info(
-            f"数据源 [{data_source}] 接口 [{endpoint}] 仅支持白名单 {sorted(supported)}，"
-            f"自动跳过不支持的标的: {ignored}"
-        )
-    return [symbol for symbol in symbols if symbol in supported]
-
-
-def _default_symbols_for_endpoint(
-    data_source: str,
-    endpoint: str,
-    data_cfg: Any,
-    per_symbol_endpoints: set[str],
-) -> list[str]:
-    """按接口业务类型选择默认标的池，避免把指数池误用于个股或基金接口。"""
-    local_pool = _tushare_local_pool(endpoint) if data_source == "tushare" else None
-    if local_pool is not None:
-        dataset, description = local_pool
-        symbols = _load_curated_symbol_pool(data_source, dataset)
-        if not symbols:
-            raise DataFetchError(
-                f"接口 [{endpoint}] 需要本地 {dataset} {description}标的池，请先完成 {dataset} 回填"
-            )
-        return symbols
-
-    symbols = _watchlist_symbols(data_source, endpoint, data_cfg, per_symbol_endpoints)
-    return _filter_supported_symbols(symbols, data_source, endpoint, data_cfg)
 
 
 def _resolve_calendar_dates(
@@ -179,28 +76,28 @@ def _execute_parallel_tasks(
                 try:
                     res = fut.result()
                     if (isinstance(res, bool) and res) or (isinstance(res, int) and res > 0):
-                        synced += (res if isinstance(res, int) else 1)
+                        synced += res if isinstance(res, int) else 1
                         logger.info(f"[{idx}/{len(items)}] {desc} 回填成功")
                     else:
-                        failed += (1 if isinstance(res, bool) else (len(item[1]) if isinstance(item, tuple) else 1))
+                        failed += 1 if isinstance(res, bool) else (len(item[1]) if isinstance(item, tuple) else 1)
                         logger.warning(f"[{idx}/{len(items)}] {desc} 回填失败")
                 except Exception as e:
                     logger.error(f"[{idx}/{len(items)}] {desc} 抛出异常: {e}")
-                    failed += (1 if isinstance(item, date) else (len(item[1]) if isinstance(item, tuple) else 1))
+                    failed += 1 if isinstance(item, date) else (len(item[1]) if isinstance(item, tuple) else 1)
     else:
         for idx, item in enumerate(items, 1):
             desc = item_desc(item)
             try:
                 res = task_fn(item)
                 if (isinstance(res, bool) and res) or (isinstance(res, int) and res > 0):
-                    synced += (res if isinstance(res, int) else 1)
+                    synced += res if isinstance(res, int) else 1
                     logger.info(f"[{idx}/{len(items)}] {desc} 回填成功")
                 else:
-                    failed += (1 if isinstance(res, bool) else (len(item[1]) if isinstance(item, tuple) else 1))
+                    failed += 1 if isinstance(res, bool) else (len(item[1]) if isinstance(item, tuple) else 1)
                     logger.warning(f"[{idx}/{len(items)}] {desc} 回填失败")
             except Exception as e:
                 logger.error(f"[{idx}/{len(items)}] {desc} 抛出异常: {e}")
-                failed += (1 if isinstance(item, date) else (len(item[1]) if isinstance(item, tuple) else 1))
+                failed += 1 if isinstance(item, date) else (len(item[1]) if isinstance(item, tuple) else 1)
     return synced, failed
 
 
@@ -274,7 +171,7 @@ class HistoricalBackfiller:
             return open_dates
 
         todo_dates = []
-        for idx, trade_date in enumerate(open_dates, 1):
+        for trade_date in open_dates:
             has_curated = getattr(self.pipeline.store, "has_curated", lambda e, d, s=None: False)(
                 self.endpoint, trade_date, self.symbol
             )
@@ -292,20 +189,6 @@ class HistoricalBackfiller:
             todo_dates.append(trade_date)
         return todo_dates
 
-    def _sync_single_day(self, trade_date: date, force_refresh: bool = False) -> bool:
-        try:
-            df = self.pipeline.sync_daily_bars(
-                symbol=self.symbol,
-                start_date=trade_date,
-                end_date=trade_date,
-                use_raw_cache=not force_refresh,
-                force_refresh=force_refresh,
-            )
-            return not df.is_empty()
-        except Exception as e:
-            logger.error(f"交易日 [{trade_date}] 回填异常: {e}")
-            return False
-
     def backfill_range(
         self,
         start_date: date,
@@ -317,30 +200,54 @@ class HistoricalBackfiller:
         total_days = (end_date - start_date).days + 1
         freq = self.frequency
         task_spec = resolve_task(self.data_source, self.endpoint)
+        is_per_sym = is_per_symbol_task(self.data_source, self.endpoint)
 
-        if freq != "daily" or task_spec.fetch_mode != "per_day" or self.endpoint in MARKET_SINGLE_SYNC_ENDPOINTS:
+        # 1. 范围拉取模式 (月频/宏观/静态/按标的历史范围)
+        if freq != "daily" or is_per_sym or self.endpoint in MARKET_SINGLE_SYNC_ENDPOINTS:
             sym_code = self.symbol or self.endpoint
-            df = self.pipeline.sync_daily_bars(
-                symbol=sym_code,
-                start_date=start_date,
-                end_date=end_date,
-                use_raw_cache=not force_refresh,
-                force_refresh=force_refresh,
-            )
-            count = len(df) if not df.is_empty() else 0
-            return {
-                "total_days": total_days,
-                "open_days": 1,
-                "synced_days": count,
-                "skipped_days": 0,
-                "failed_days": 0 if count > 0 else 1,
-            }
+            # 检查是否全部命中本地缓存
+            if not force_refresh and self.symbol:
+                open_dates = self._get_open_trading_dates(start_date, end_date, use_cache=True)
+                todo_dates = self._generate_tasks(start_date, end_date, force_refresh=False)
+                if not todo_dates:
+                    return {
+                        "total_days": total_days,
+                        "open_days": len(open_dates),
+                        "synced_days": 0,
+                        "skipped_days": len(open_dates),
+                        "failed_days": 0,
+                    }
 
+            try:
+                df = self.pipeline.sync_daily_bars(
+                    symbol=sym_code,
+                    start_date=start_date,
+                    end_date=end_date,
+                    use_raw_cache=not force_refresh,
+                    force_refresh=force_refresh,
+                )
+                count = len(df) if not df.is_empty() else 0
+                return {
+                    "total_days": total_days,
+                    "open_days": 1,
+                    "synced_days": count,
+                    "skipped_days": 1 if count == 0 else 0,
+                    "failed_days": 0,
+                }
+            except Exception as err:
+                logger.error(f"标的 [{sym_code}] 范围回填异常: {err}")
+                return {
+                    "total_days": total_days,
+                    "open_days": 1,
+                    "synced_days": 0,
+                    "skipped_days": 0,
+                    "failed_days": 1,
+                }
+
+        # 2. 按交易日切片并行拉取模式 (全市场每日截面)
         open_dates = self._get_open_trading_dates(start_date, end_date, use_cache=not force_refresh)
         todo_dates = self._generate_tasks(start_date, end_date, force_refresh=force_refresh)
         skipped_count = len(open_dates) - len(todo_dates)
-        synced_count = 0
-        failed_count = 0
 
         if not todo_dates:
             return {
@@ -351,90 +258,34 @@ class HistoricalBackfiller:
                 "failed_days": 0,
             }
 
-        if not self.symbol:
-            def _sync_day(d: date) -> bool:
-                try:
-                    df = self.pipeline.sync_daily_bars(
-                        symbol="",
-                        start_date=d,
-                        end_date=d,
-                        use_raw_cache=not force_refresh,
-                        force_refresh=force_refresh,
-                    )
-                    return not df.is_empty()
-                except Exception as e:
-                    logger.error(f"全市场交易日 [{d}] 同步异常: {e}")
-                    return False
-
-            synced_count, failed_count = _execute_parallel_tasks(
-                task_fn=_sync_day,
-                items=todo_dates,
-                max_workers=max_workers,
-                item_desc=lambda d: f"交易日 [{d}] 全市场数据",
-            )
-        elif is_per_symbol_task(self.data_source, self.endpoint) or bool(self.symbol):
-            b_start = min(todo_dates)
-            b_end = max(todo_dates)
+        def _sync_day(d: date) -> bool:
             try:
                 df = self.pipeline.sync_daily_bars(
-                    symbol=self.symbol,
-                    start_date=b_start,
-                    end_date=b_end,
+                    symbol=self.symbol or "",
+                    start_date=d,
+                    end_date=d,
                     use_raw_cache=not force_refresh,
                     force_refresh=force_refresh,
                 )
-                synced_count = len(todo_dates) if not df.is_empty() else 0
+                return not df.is_empty()
             except Exception as e:
-                logger.error(f"标的 [{self.symbol}] 历史范围 [{b_start} ~ {b_end}] 回填异常: {e}")
-                failed_count = len(todo_dates)
-        else:
-            month_batches: dict[tuple[int, int], list[date]] = {}
-            for d in todo_dates:
-                month_batches.setdefault((d.year, d.month), []).append(d)
+                logger.error(f"交易日 [{d}] 同步异常: {e}")
+                return False
 
-            def _sync_batch(batch_tuple: tuple[tuple[int, int], list[date]]) -> int:
-                _, b_dates = batch_tuple
-                b_start = min(b_dates)
-                b_end = max(b_dates)
-                try:
-                    df = self.pipeline.sync_daily_bars(
-                        symbol=self.symbol,
-                        start_date=b_start,
-                        end_date=b_end,
-                        use_raw_cache=not force_refresh,
-                        force_refresh=force_refresh,
-                    )
-                    return len(b_dates) if not df.is_empty() else 0
-                except Exception as e:
-                    logger.error(f"月度批次 [{b_start} ~ {b_end}] 回填异常: {e}")
-                    return 0
+        synced_count, failed_count = _execute_parallel_tasks(
+            task_fn=_sync_day,
+            items=todo_dates,
+            max_workers=max_workers,
+            item_desc=lambda d: f"交易日 [{d}] 数据",
+        )
 
-            synced_count, failed_count = _execute_parallel_tasks(
-                task_fn=_sync_batch,
-                items=list(month_batches.items()),
-                max_workers=max_workers,
-                item_desc=lambda t: f"月度批次 [{t[0][0]}-{t[0][1]:02d}]",
-            )
-
-        summary = {
+        return {
             "total_days": total_days,
             "open_days": len(open_dates),
             "synced_days": synced_count,
             "skipped_days": skipped_count,
             "failed_days": failed_count,
         }
-        return summary
-
-
-__all__ = [
-    "MARKET_SINGLE_SYNC_ENDPOINTS",
-    "TUSHARE_STOCK_POOL_ENDPOINTS",
-    "TUSHARE_FUND_POOL_ENDPOINTS",
-    "HistoricalBackfiller",
-    "resolve_public_task",
-    "_default_symbols_for_endpoint",
-    "_load_backfill_yaml_config",
-]
 
 
 def _load_backfill_yaml_config(
@@ -470,3 +321,17 @@ def main() -> None:
 
 if __name__ == "__main__":
     main()
+
+__all__ = [
+    "MARKET_SINGLE_SYNC_ENDPOINTS",
+    "TUSHARE_STOCK_POOL_ENDPOINTS",
+    "TUSHARE_FUND_POOL_ENDPOINTS",
+    "HistoricalBackfiller",
+    "resolve_public_task",
+    "_default_symbols_for_endpoint",
+    "_load_backfill_yaml_config",
+    "_filter_supported_symbols",
+    "_resolve_calendar_dates",
+    "_execute_parallel_tasks",
+    "_watchlist_symbols",
+]

@@ -18,6 +18,13 @@ class TaskSpec:
     fetch_mode: str = "per_day"
 
 
+PER_SYMBOL_DATASETS: frozenset[str] = frozenset({
+    "index_daily", "index_dailybasic", "index_weight", "global_index_daily",
+    "fund_share", "fund_daily", "fund_adj", "etf_share_size",
+    "income", "fina_indicator", "margin_detail", "hk_hold",
+})
+
+
 def is_per_symbol_task(provider: str, task_name: str) -> bool:
     """判断指定数据源与任务是否属于按标的代码拉取模式 (per_symbol)。
 
@@ -26,26 +33,12 @@ def is_per_symbol_task(provider: str, task_name: str) -> bool:
     prov = provider.lower()
     name = task_name.strip()
 
-    if prov in ("fred", "yfinance"):
-        return True
-
-    per_symbol_datasets = {
-        "index_daily",
-        "index_dailybasic",
-        "index_weight",
-        "global_index_daily",
-        "fund_share",
-        "income",
-        "fina_indicator",
-        "margin_detail",
-        "hk_hold",
-    }
-    if name in per_symbol_datasets:
+    if prov in ("fred", "yfinance") or name in PER_SYMBOL_DATASETS:
         return True
 
     try:
         task = resolve_task(prov, name)
-        if task.dataset in per_symbol_datasets or task.task_name in per_symbol_datasets:
+        if task.dataset in PER_SYMBOL_DATASETS or task.task_name in PER_SYMBOL_DATASETS:
             return True
         return task.fetch_mode == "per_symbol"
     except Exception:
@@ -66,36 +59,13 @@ def is_task_partitioned(provider: str, task_or_dataset: str) -> bool:
 
     # 显式免分区的低频/静态/单表数据集集合
     non_part_datasets = {
-        "stock_basic",
-        "index_basic",
-        "index_classify",
-        "index_member",
-        "fund_basic",
-        "cn_cpi",
-        "cn_gdp",
-        "cn_ppi",
-        "cn_pmi",
-        "cn_m",
-        "sf_month",
-        "shibor_lpr",
-        "margin",
-        "moneyflow_hsgt",
-        "hsgt_top10",
-        "index_daily_bar",
-        "global_index_daily",
-        "financials",
-        "balance_sheet",
-        "cashflow",
-        "dividends",
-        "splits",
-        "index_valuation",
-        "macro_indicators",
-        "index_fundamental",
-        "sw_2021_constituents",
-        "sw_2021_fundamental",
-        "company_fundamental",
-        "fs_non_financial",
-        "pledge_info",
+        "stock_basic", "index_basic", "index_classify", "index_member", "fund_basic",
+        "cn_cpi", "cn_gdp", "cn_ppi", "cn_pmi", "cn_m", "sf_month", "shibor_lpr",
+        "margin", "moneyflow_hsgt", "hsgt_top10", "index_daily_bar", "global_index_daily",
+        "financials", "balance_sheet", "cashflow", "dividends", "splits",
+        "index_valuation", "macro_indicators", "index_fundamental",
+        "sw_2021_constituents", "sw_2021_fundamental", "company_fundamental",
+        "fs_non_financial", "pledge_info",
     }
     if name in non_part_datasets:
         return False
@@ -111,104 +81,26 @@ def is_task_partitioned(provider: str, task_or_dataset: str) -> bool:
         return True
 
 
+def _make_spec(task: str, prov: str, api: str, dataset: str, qp: str = "generic") -> TaskSpec:
+    return TaskSpec(task_name=task, provider=prov, api_name=api, dataset=dataset, quality_profile=qp)
+
+
 _CUSTOM_TASKS: dict[tuple[str, str], TaskSpec] = {
-    ("mock", "stock_daily_bar"): TaskSpec(
-        task_name="stock_daily_bar",
-        provider="mock",
-        api_name="daily",
-        dataset="stock_daily_bar",
-        quality_profile="bar",
-    ),
-    ("tushare", "stock_daily_bar"): TaskSpec(
-        task_name="stock_daily_bar",
-        provider="tushare",
-        api_name="daily",
-        dataset="stock_daily_bar",
-        quality_profile="bar",
-    ),
-    ("tushare", "index_daily_bar"): TaskSpec(
-        task_name="index_daily_bar",
-        provider="tushare",
-        api_name="index_daily",
-        dataset="index_daily_bar",
-        quality_profile="bar",
-    ),
-    ("yfinance", "macro_indicators"): TaskSpec(
-        task_name="macro_indicators",
-        provider="yfinance",
-        api_name="macro_indicators",
-        dataset="macro_indicators",
-    ),
-    ("fred", "macro_indicators"): TaskSpec(
-        task_name="macro_indicators",
-        provider="fred",
-        api_name="macro_indicators",
-        dataset="macro_indicators",
-    ),
-    ("yfinance", "stock_daily_bar"): TaskSpec(
-        task_name="stock_daily_bar",
-        provider="yfinance",
-        api_name="history",
-        dataset="stock_daily_bar",
-        quality_profile="bar",
-    ),
-    ("yfinance", "index_daily_bar"): TaskSpec(
-        task_name="index_daily_bar",
-        provider="yfinance",
-        api_name="history",
-        dataset="index_daily_bar",
-        quality_profile="bar",
-    ),
-    ("lixinger", "stock_daily_bar"): TaskSpec(
-        task_name="stock_daily_bar",
-        provider="lixinger",
-        api_name="cn/company/candlestick",
-        dataset="stock_daily_bar",
-        quality_profile="bar",
-    ),
-    ("lixinger", "index_daily_bar"): TaskSpec(
-        task_name="index_daily_bar",
-        provider="lixinger",
-        api_name="cn/index/candlestick",
-        dataset="index_daily_bar",
-        quality_profile="bar",
-    ),
-    ("lixinger", "company_fundamental"): TaskSpec(
-        task_name="company_fundamental",
-        provider="lixinger",
-        api_name="cn/company/fundamental/non_financial",
-        dataset="company_fundamental",
-    ),
-    ("lixinger", "index_fundamental"): TaskSpec(
-        task_name="index_fundamental",
-        provider="lixinger",
-        api_name="cn/index/fundamental",
-        dataset="index_fundamental",
-    ),
-    ("lixinger", "sw_2021_fundamental"): TaskSpec(
-        task_name="sw_2021_fundamental",
-        provider="lixinger",
-        api_name="cn/industry/fundamental/sw_2021",
-        dataset="sw_2021_fundamental",
-    ),
-    ("lixinger", "sw_2021_constituents"): TaskSpec(
-        task_name="sw_2021_constituents",
-        provider="lixinger",
-        api_name="cn/industry/constituents/sw_2021",
-        dataset="sw_2021_constituents",
-    ),
-    ("lixinger", "fs_non_financial"): TaskSpec(
-        task_name="fs_non_financial",
-        provider="lixinger",
-        api_name="cn/company/fs/non_financial",
-        dataset="fs_non_financial",
-    ),
-    ("lixinger", "pledge_info"): TaskSpec(
-        task_name="pledge_info",
-        provider="lixinger",
-        api_name="cn/company/hot/ple",
-        dataset="pledge_info",
-    ),
+    ("mock", "stock_daily_bar"): _make_spec("stock_daily_bar", "mock", "daily", "stock_daily_bar", "bar"),
+    ("tushare", "stock_daily_bar"): _make_spec("stock_daily_bar", "tushare", "daily", "stock_daily_bar", "bar"),
+    ("tushare", "index_daily_bar"): _make_spec("index_daily_bar", "tushare", "index_daily", "index_daily_bar", "bar"),
+    ("yfinance", "macro_indicators"): _make_spec("macro_indicators", "yfinance", "macro_indicators", "macro_indicators"),
+    ("fred", "macro_indicators"): _make_spec("macro_indicators", "fred", "macro_indicators", "macro_indicators"),
+    ("yfinance", "stock_daily_bar"): _make_spec("stock_daily_bar", "yfinance", "history", "stock_daily_bar", "bar"),
+    ("yfinance", "index_daily_bar"): _make_spec("index_daily_bar", "yfinance", "history", "index_daily_bar", "bar"),
+    ("lixinger", "stock_daily_bar"): _make_spec("stock_daily_bar", "lixinger", "cn/company/candlestick", "stock_daily_bar", "bar"),
+    ("lixinger", "index_daily_bar"): _make_spec("index_daily_bar", "lixinger", "cn/index/candlestick", "index_daily_bar", "bar"),
+    ("lixinger", "company_fundamental"): _make_spec("company_fundamental", "lixinger", "cn/company/fundamental/non_financial", "company_fundamental"),
+    ("lixinger", "index_fundamental"): _make_spec("index_fundamental", "lixinger", "cn/index/fundamental", "index_fundamental"),
+    ("lixinger", "sw_2021_fundamental"): _make_spec("sw_2021_fundamental", "lixinger", "cn/industry/fundamental/sw_2021", "sw_2021_fundamental"),
+    ("lixinger", "sw_2021_constituents"): _make_spec("sw_2021_constituents", "lixinger", "cn/industry/constituents/sw_2021", "sw_2021_constituents"),
+    ("lixinger", "fs_non_financial"): _make_spec("fs_non_financial", "lixinger", "cn/company/fs/non_financial", "fs_non_financial"),
+    ("lixinger", "pledge_info"): _make_spec("pledge_info", "lixinger", "cn/company/hot/ple", "pledge_info"),
 }
 
 _ALIASES: dict[tuple[str, str], str] = {
@@ -285,6 +177,15 @@ def resolve_task(provider: str, task_name: str, symbol: str = "") -> TaskSpec:
 
     raw_api_name = getattr(meta, "api_name", None) or getattr(meta, "series_id", requested)
     api_name = str(raw_api_name)
+    mode = (
+        "per_symbol"
+        if (
+            requested in PER_SYMBOL_DATASETS
+            or getattr(meta, "fetch_mode", None) == "per_symbol"
+            or provider_name in ("fred", "yfinance")
+        )
+        else getattr(meta, "fetch_mode", "per_day")
+    )
     return TaskSpec(
         task_name=requested,
         provider=provider_name,
@@ -292,6 +193,7 @@ def resolve_task(provider: str, task_name: str, symbol: str = "") -> TaskSpec:
         dataset=requested,
         frequency=getattr(meta, "frequency", "daily"),
         quality_profile=getattr(meta, "quality_profile", "generic"),
+        fetch_mode=mode,
     )
 
 

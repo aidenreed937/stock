@@ -43,8 +43,9 @@ class FetcherStage:
     ) -> pl.DataFrame:
         raw_df: pl.DataFrame | None = None
         if use_raw_cache and not force_refresh:
-            raw_df = self.raw_store.load_dataset(key)
-            if raw_df is not None and not raw_df.is_empty():
+            cached_df = self.raw_store.load_dataset(key)
+            if cached_df is not None and not cached_df.is_empty():
+                raw_df = cached_df
                 logger.info(f"命中 RAW 离线时间分区缓存 [{symbol}]，跳过网络请求")
 
         if raw_df is None:

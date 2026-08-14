@@ -163,7 +163,25 @@ class QualityGate:
                 df = pl.read_parquet(file)
                 if df.is_empty():
                     continue
-                keys = [c for c in ("market", "symbol", "trade_date") if c in df.columns]
+                keys = [
+                    c
+                    for c in (
+                        "market",
+                        "symbol",
+                        "index_code",
+                        "con_code",
+                        "ts_code",
+                        "exchange_id",
+                        "trade_date",
+                        "month",
+                        "quarter",
+                        "date",
+                        "end_date",
+                        "ann_date",
+                        "in_date",
+                    )
+                    if c in df.columns
+                ]
                 if len(keys) >= 2:
                     dups = len(df) - len(df.unique(subset=keys))
                     if dups > 0:
