@@ -81,25 +81,42 @@ class RawDataStorage:
         )
         if date_col and not df.is_empty() and date_col in {"trade_date", "date", "end_date"}:
             # 按真实业务日期分桶，避免请求 end_date 造成历史快照串区。
-            values = df.get_column(date_col).cast(pl.Utf8, strict=False)
-            months = values.str.replace_all("-", "").str.slice(0, 6).unique().drop_nulls().to_list()
-            if months:
-                output = self._get_dataset_path(key)
-                for month in months:
-                    part = df.filter(values.str.replace_all("-", "").str.slice(0, 6) == month)
-                    y, m = int(month[:4]), int(month[4:6])
-                    part_key = DatasetKey(
-                        provider=key.provider,
-                        dataset=key.dataset,
-                        endpoint=key.endpoint,
-                        start_date=date(y, m, 1),
-                        end_date=date(y, m, 28),
-                        instrument=key.instrument,
-                        adjustment=key.adjustment,
-                        schema_version=key.schema_version,
-                    )
-                    output = self._save_dataset_file(part_key, part)
-                return output
+            raw_str = (
+                df.get_column(date_col)
+                .cast(pl.Utf8, strict=False)
+                .str.replace(r"\.0+$", "")
+                .str.replace_all(r"[^\d]", "")
+            )
+            valid_months_mask = (raw_str.str.len_chars() >= 6) & (
+                raw_str.str.slice(0, 4).cast(pl.Int32, strict=False) >= 1990
+            ) & (
+                raw_str.str.slice(4, 2).cast(pl.Int32, strict=False).is_between(1, 12)
+            )
+            if valid_months_mask.any():
+                month_series = raw_str.str.slice(0, 6)
+                months = (
+                    month_series.filter(valid_months_mask)
+                    .unique()
+                    .drop_nulls()
+                    .to_list()
+                )
+                if months:
+                    output = self._get_dataset_path(key)
+                    for month in months:
+                        part = df.filter(month_series == month)
+                        y, m = int(month[:4]), int(month[4:6])
+                        part_key = DatasetKey(
+                            provider=key.provider,
+                            dataset=key.dataset,
+                            endpoint=key.endpoint,
+                            start_date=date(y, m, 1),
+                            end_date=date(y, m, 28),
+                            instrument=key.instrument,
+                            adjustment=key.adjustment,
+                            schema_version=key.schema_version,
+                        )
+                        output = self._save_dataset_file(part_key, part)
+                    return output
         return self._save_dataset_file(key, df)
 
     def _save_dataset_file(self, key: DatasetKey, df: pl.DataFrame) -> Path:

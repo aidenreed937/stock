@@ -128,3 +128,29 @@ def test_market_data_pipeline_quarantines_rejected_rows(tmp_path, monkeypatch) -
         tmp_path / "quarantine" / "endpoint=stock_daily_bar" / "records.parquet"
     )
     assert quarantined["ts_code"].to_list() == ["000001.SZ"]
+
+
+def test_macro_pipeline_sync_does_not_clip_history(tmp_path) -> None:
+    class MockMacroFetcher:
+        def fetch_daily_bars_df(self, symbol, start_date, end_date, endpoint="cn_cpi"):
+            return pl.DataFrame(
+                {
+                    "month": ["202301", "202302", "202303", "202304"],
+                    "cpi": [101.0, 101.5, 101.8, 102.0],
+                }
+            )
+
+    store = DuckDBMarketStore(storage_dir=tmp_path / "curated")
+    raw_store = RawDataStorage(base_dir=tmp_path / "raw")
+    pipeline = MarketDataPipeline(
+        fetcher=MockMacroFetcher(),
+        store=store,
+        raw_store=raw_store,
+        data_source="tushare",
+        endpoint="cn_cpi",
+    )
+
+    # 即使传入单日请求区间，由于是宏观免分区接口，也不应丢弃其余历史月份
+    df = pipeline.sync_daily_bars("cn_cpi", date(2023, 4, 1), date(2023, 4, 30))
+    assert len(df) == 4
+    assert set(df["month"].to_list()) == {"202301", "202302", "202303", "202304"}

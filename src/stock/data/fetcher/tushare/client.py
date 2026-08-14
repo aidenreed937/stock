@@ -160,7 +160,6 @@ class TuShareClient:
                     logger.warning(
                         f"TuShare 触发服务端频控拦截 [{err_msg}]，静默等待 {sleep_sec} 秒后进行第 {attempt + 1} 次自动重试..."
                     )
-                    import time
                     time.sleep(sleep_sec)
                     continue
                 logger.error(f"TuShare API 请求失败 [{api_name}]: {e}")

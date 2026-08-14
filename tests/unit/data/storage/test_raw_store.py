@@ -77,3 +77,52 @@ def test_raw_storage_has_raw_requires_target_date_in_month_file(tmp_path: Path) 
     pl.DataFrame({"symbol": ["AAPL"], "trade_date": ["20260811"]}).write_parquet(cache_path)
 
     assert not store.has_raw("yfinance", "history", date(2026, 8, 12))
+
+
+def test_raw_storage_save_dataset_multi_month(tmp_path: Path) -> None:
+    from stock.core.contracts import DatasetKey
+
+    store = RawDataStorage(base_dir=tmp_path)
+    df_multi = pl.DataFrame(
+        {
+            "ts_code": ["000300.SH", "000300.SH"],
+            "trade_date": ["20140801.0", "20260812"],
+            "pe": [10.5, 12.3],
+        }
+    )
+    key = DatasetKey(
+        provider="tushare",
+        dataset="index_dailybasic",
+        endpoint="index_dailybasic",
+        start_date=date(2014, 8, 1),
+        end_date=date(2026, 8, 12),
+    )
+    store.save_dataset(key, df_multi)
+
+    p_2014 = (
+        tmp_path
+        / "tushare"
+        / "market=CN"
+        / "index_dailybasic"
+        / "year=2014"
+        / "month=08"
+        / "data.parquet"
+    )
+    p_2026 = (
+        tmp_path
+        / "tushare"
+        / "market=CN"
+        / "index_dailybasic"
+        / "year=2026"
+        / "month=08"
+        / "data.parquet"
+    )
+
+    assert p_2014.exists()
+    assert p_2026.exists()
+    df_14 = pl.read_parquet(p_2014)
+    df_26 = pl.read_parquet(p_2026)
+    assert len(df_14) == 1
+    assert len(df_26) == 1
+    assert df_14["trade_date"][0] == "20140801.0"
+    assert df_26["trade_date"][0] == "20260812"

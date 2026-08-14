@@ -157,7 +157,27 @@ def print_master_audit_summary(summary: pl.DataFrame) -> None:
             min_d = row["最早交易日"]
             max_d = row["最新交易日"]
             errors = row.get("审计错误数", 0)
-            diagnosis = "存在文件读取错误" if errors else "已扫描，物理文件完整"
+            if errors:
+                diagnosis = "存在文件读取错误"
+            elif rows == 0:
+                diagnosis = "空数据集 (0行)"
+            elif (
+                ds
+                in (
+                    "cn_cpi",
+                    "cn_gdp",
+                    "cn_m",
+                    "cn_pmi",
+                    "cn_ppi",
+                    "sf_month",
+                    "index_classify",
+                    "index_member",
+                )
+                and rows <= 1
+            ):
+                diagnosis = "警告: 记录数严重偏少(<=1行)"
+            else:
+                diagnosis = "已扫描，物理文件完整"
             print(
                 f"{src:<10} | {ds:<28} | {syms:<10} | {rows:<12,d} | "
                 f"{min_d:<10} | {max_d:<10} | {errors:<8} | {diagnosis}"

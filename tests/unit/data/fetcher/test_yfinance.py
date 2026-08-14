@@ -211,3 +211,58 @@ def test_fetch_daily_bars_df_dispatches_macro_indicators() -> None:
         date(2026, 8, 11),
         symbols=None,
     )
+
+
+def test_yfinance_fetcher_trade_cal() -> None:
+    client = YFinanceClient()
+    fetcher = YFinanceDataFetcher(client=client)
+    dates = fetcher.fetch_trade_cal(date(2024, 1, 5), date(2024, 1, 8))
+    # 2024-01-05 (Fri), 2024-01-08 (Mon)
+    assert dates == [date(2024, 1, 5), date(2024, 1, 8)]
+
+
+def test_yfinance_fetcher_index_valuations() -> None:
+    client = YFinanceClient()
+    fetcher = YFinanceDataFetcher(client=client)
+
+    with patch("yfinance.Ticker") as mock_ticker_cls:
+        mock_instance = MagicMock()
+        mock_instance.info = {
+            "trailingPE": 25.5,
+            "forwardPE": 22.0,
+            "priceToBook": 4.5,
+            "priceToSalesTrailing12Months": 3.0,
+            "yield": 0.015,
+            "totalAssets": 5e11,
+        }
+        mock_ticker_cls.return_value = mock_instance
+
+        df = fetcher.fetch_index_valuations_df(
+            etf_map={"SPY": "^GSPC"}, target_date=date(2024, 1, 2)
+        )
+        assert not df.is_empty()
+        assert df["symbol"][0] == "SPY"
+        assert df["target_index"][0] == "^GSPC"
+        assert df["trailing_pe"][0] == 25.5
+
+
+def test_yfinance_fetcher_financials_and_actions() -> None:
+    import pandas as pd
+    client = YFinanceClient()
+    fetcher = YFinanceDataFetcher(client=client)
+
+    with patch("yfinance.Ticker") as mock_ticker_cls:
+        mock_instance = MagicMock()
+        mock_instance.quarterly_financials = pd.DataFrame(
+            {"2024-01-01": [100.0, 50.0]}, index=["Total Revenue", "Net Income"]
+        )
+        mock_instance.dividends = pd.Series([0.5, 0.6], index=[pd.Timestamp("2024-01-01"), pd.Timestamp("2024-04-01")])
+        mock_ticker_cls.return_value = mock_instance
+
+        df_fin = fetcher.fetch_financials_df("AAPL", statement_type="financials", freq="quarterly")
+        assert not df_fin.is_empty()
+        assert df_fin["symbol"][0] == "AAPL"
+
+        df_act = fetcher.fetch_actions_df("AAPL", action_type="dividends")
+        assert not df_act.is_empty()
+        assert df_act["symbol"][0] == "AAPL"

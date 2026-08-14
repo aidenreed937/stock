@@ -673,3 +673,57 @@ def test_query_universe_snapshots(tmp_path) -> None:
 
     res_filtered = store.query_universe_snapshots(as_of_date="2026-08-12")
     assert len(res_filtered) == 1
+
+
+def test_save_macro_dataset_preserves_all_months(tmp_path) -> None:
+    store = DuckDBMarketStore(storage_dir=tmp_path, data_source="tushare")
+    df_cpi = pl.DataFrame(
+        {
+            "month": ["202401", "202402", "202403"],
+            "cpi": [100.1, 100.2, 100.3],
+            "data_source": ["tushare"] * 3,
+            "market": ["CN"] * 3,
+            "adjustment": ["raw"] * 3,
+        }
+    )
+    store.save_dataset(
+        DatasetKey(
+            provider="tushare",
+            dataset="cn_cpi",
+            endpoint="cn_cpi",
+            start_date=date(2024, 1, 1),
+            end_date=date(2024, 3, 31),
+        ),
+        df_cpi,
+    )
+    queried = store.query_dataset("cn_cpi")
+    assert len(queried) == 3
+    assert set(queried["month"].to_list()) == {"202401", "202402", "202403"}
+
+
+def test_save_index_member_preserves_all_constituents(tmp_path) -> None:
+    store = DuckDBMarketStore(storage_dir=tmp_path, data_source="tushare")
+    df_member = pl.DataFrame(
+        {
+            "index_code": ["000300.SH"] * 3,
+            "con_code": ["600519.SH", "000858.SZ", "601318.SH"],
+            "in_date": ["20200101"] * 3,
+            "out_date": [None] * 3,
+            "data_source": ["tushare"] * 3,
+            "market": ["CN"] * 3,
+            "adjustment": ["raw"] * 3,
+        }
+    )
+    store.save_dataset(
+        DatasetKey(
+            provider="tushare",
+            dataset="index_member",
+            endpoint="index_member",
+            start_date=date(2020, 1, 1),
+            end_date=date(2020, 1, 1),
+        ),
+        df_member,
+    )
+    queried = store.query_dataset("index_member")
+    assert len(queried) == 3
+    assert set(queried["con_code"].to_list()) == {"600519.SH", "000858.SZ", "601318.SH"}

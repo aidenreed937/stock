@@ -38,6 +38,20 @@ class BarDataCleaner(BaseDataCleaner):
         null_subset = [c for c in [sym_col, "trade_date", "close"] if c in df.columns]
         cleaned_df = df.drop_nulls(subset=null_subset)
 
+        # 对停牌无成交记录 (vol == 0 且 close > 0) 的开高低 0/null 进行合理填充 (对齐 close)
+        if vol_col and "close" in cleaned_df.columns:
+            is_suspended = (pl.col(vol_col) == 0) & (pl.col("close") > 0)
+            fill_exprs = [
+                pl.when(is_suspended & ((pl.col(col) <= 0) | pl.col(col).is_null()))
+                .then(pl.col("close"))
+                .otherwise(pl.col(col))
+                .alias(col)
+                for col in ("open", "high", "low")
+                if col in cleaned_df.columns
+            ]
+            if fill_exprs:
+                cleaned_df = cleaned_df.with_columns(fill_exprs)
+
         # 2. 过滤非正数值 (价格必须 > 0)
         filter_expr = (
             (pl.col("open") > 0)

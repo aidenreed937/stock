@@ -1,4 +1,5 @@
 from pathlib import Path
+from unittest.mock import patch
 
 import polars as pl
 
@@ -43,6 +44,18 @@ def test_run_master_audit_reports_bad_parquet(tmp_path: Path) -> None:
 
 
 def test_main(capsys) -> None:
-    main()
-    captured = capsys.readouterr()
-    assert "全库全量数据离线存储主审计报告" in captured.out
+    with patch("stock.data.audit.master_audit.run_master_audit") as mock_audit:
+        mock_audit.return_value = pl.DataFrame(
+            {
+                "source": ["tushare"],
+                "dataset": ["stock_daily_bar"],
+                "标的数": [10],
+                "精炼落盘总记录数": [1000],
+                "最早交易日": ["2024-01-01"],
+                "最新交易日": ["2024-01-10"],
+                "审计错误数": [0],
+            }
+        )
+        main()
+        captured = capsys.readouterr()
+        assert "全库全量数据离线存储主审计报告" in captured.out
