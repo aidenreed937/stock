@@ -1,27 +1,103 @@
-# 数据处理流水线与存储契约 (Data Pipeline & Storage)
+# 数据处理流水线与核心类架构 (Data Pipeline & Core Classes)
 
-针对金融数据**强时序性**、**数据量大**及**外部接口变动频繁**的特点，本项目建立了标准的四阶段数据处理流水线。
+本项目针对金融数据**强时序性**、**数据量大**、**多源异构**及**外部接口多波次发布**的特点，建立了标准的高性能 **2-Tier ETL 流水线**。
 
-## 一、 数据流转步骤
+---
 
-```text
-[1. Fetch (抓取)] ──> [2. Validate (校验)] ──> [3. Cache (存储)] ──> [4. Compute (计算)]
+## 一、从采集到落盘的 6 大核心类映射
+
+从“**任务调度 $\rightarrow$ 网络拉取 $\rightarrow$ 管道总装 $\rightarrow$ 质检清洗 $\rightarrow$ 契约塑形 $\rightarrow$ 分桶写盘**”，数据流经以下 6 个核心类：
+
+```mermaid
+flowchart TD
+    subgraph S1 [1. 调度与规划层]
+        A["① DailySyncEngine / HistoricalBackfiller\n(任务规划、水位自动嗅探与并发编排)"]
+        S["DataUpdateScheduler\n(时间发布窗口就绪判断与保护锁)"]
+        S -. 保护 .-> A
+    end
+
+    subgraph S2 [2. 数据源获取层]
+        B["② TuShareStockFetcher / YFinanceGlobalFetcher\n(多源适配、截面/单标的请求封装)"]
+        A --> B
+    end
+
+    subgraph S3 [3. 2-Tier ETL 总指挥]
+        C["③ MarketDataPipeline\n(编排: Fetch -> Raw -> Clean -> Normalize -> Curated)"]
+        B --> C
+    end
+
+    subgraph S4 [4. 质量门禁与标准化]
+        D["④ GenericCleaner\n(主键非空校验、物理规则与脏数据拦截)"]
+        E["⑤ GenericNormalizer\n(字段别名映射、日期/单位对齐、血统元数据注入)"]
+        C --> D
+        D --> E
+    end
+
+    subgraph S5 [5. 两层物理存储]
+        F1["RawDataStorage\n(Tier-1: 原始 API 响应全量快照追加落盘)"]
+        F2["⑥ ParquetPartitionWriter\n(Tier-2: 年月 Hive 分桶、主键去重、时序排序与原子落盘)"]
+        C --> F1
+        E --> F2
+    end
 ```
 
-### 1. Fetch (数据抓取)
-- **适配器抽象**: `BaseDataFetcher` 统一定义 `fetch_daily_bars` 与 `fetch_daily_bars_df` 接口。
-- **扩展策略**: 当对接 AkShare、TuShare 或 Yahoo Finance 时，只需继承 `BaseDataFetcher` 并在子类中封装具体的网络请求。
+---
 
-### 2. Validate (数据校验)
-- **模型校验**: 使用 Pydantic 模型 `DailyBar` 对从外部 API 获取的原始 JSON/Dictionary 数据进行类型转换与逻辑约束。
-- **业务规约**: 触发如“最高价不能低于开盘价/最低价”、“开盘价/收盘价必须大于 0”等物理约束检查。
+## 二、6 大核心类职责详解
 
-### 3. Cache & Storage (存储与检索)
-- **Parquet 列式存储**: 经过校验的数据通过 Polars 直接落盘为二进制 `.parquet` 文件，体积小且加载极快。
-- **DuckDB 极速 SQL 查询**: 内存中挂载 DuckDB 引擎，可通过 SQL 语句直接跨 Parquet 文件检索，例如：
-  ```sql
-  SELECT * FROM 'data/parquet/daily_600000_SH.parquet' WHERE close >= 98.0 ORDER BY trade_date ASC;
-  ```
+### 1. `DailySyncEngine`（增量引擎与水位探测）
+- **源码路径**：[`src/stock/data/sync.py`](file:///Users/mac/workspace/personal/finance/stock/src/stock/data/sync.py)
+- **职责**：
+  - 调用 `DataCatalog` 逆序嗅探各数据集最新落盘交易日（Watermark）；
+  - 结合 `DataUpdateScheduler` 拦截未到发布窗口的端点；
+  - 规划最小必要增量区间 $(T_{last}, T_{today}]$ 并通过线程池并发执行；
+  - 同步完成后自动联动 `reconciliation` 物理对账。
 
-### 4. Compute (向量化计算)
-- 基于 Polars 的高效算子进行多维技术指标计算（如 SMA、EMA、RSI），避免传统 Python 显式 `for` 循环带来的性能瓶颈。
+### 2. `TuShareStockFetcher` / `GlobalFetcher`（数据源协议转换）
+- **源码路径**：[`src/stock/data/fetcher/tushare/stock_fetcher.py`](file:///Users/mac/workspace/personal/finance/stock/src/stock/data/fetcher/tushare/stock_fetcher.py)
+- **职责**：
+  - 封装底层 API 调用参数（`trade_date` 截面模式与 `ts_code` 标的模式）；
+  - 配合全局 `RateLimiter` 线程安全限流池（如 180 次/分）；
+  - 将 API 原始响应解析为标准 Polars DataFrame。
+
+### 3. `MarketDataPipeline`（2-Tier ETL 总指挥）
+- **源码路径**：[`src/stock/data/pipeline.py`](file:///Users/mac/workspace/personal/finance/stock/src/stock/data/pipeline.py)
+- **职责**：
+  - 编排单一数据集从拉取到落盘的完整生命周期；
+  - 第一时间将未经修改的 API 原始响应写入 `data/raw/`（Tier-1 备份）；
+  - 依次调用 Cleaner $\rightarrow$ Normalizer $\rightarrow$ PartitionWriter 完成精炼落盘（Tier-2 黄金表）。
+
+### 4. `GenericCleaner`（质量门禁与规则拦截）
+- **源码路径**：[`src/stock/data/cleaner/generic_cleaner.py`](file:///Users/mac/workspace/personal/finance/stock/src/stock/data/cleaner/generic_cleaner.py)
+- **职责**：
+  - 主键非空性检查（如 `symbol`, `trade_date` 严禁为空）；
+  - 物理与金融有效性校验（OHLC 关系：`high >= low`, `open > 0` 等）；
+  - 异常数据拦截并隔离记录至 `data/quarantine/`。
+
+### 5. `GenericNormalizer`（标准契约塑形与血统注入）
+- **源码路径**：[`src/stock/data/normalizer/generic_normalizer.py`](file:///Users/mac/workspace/personal/finance/stock/src/stock/data/normalizer/generic_normalizer.py)
+- **职责**：
+  - 字段别名归一（如 `ts_code -> symbol`, `date -> trade_date`）；
+  - 日期统一转换为 `pl.Date` 类型；
+  - 金融单位换算（如万元转元、万股转股、百分比转小数）；
+  - 注入系统级数据血统列（`fetched_at`, `request_id`, `data_source`, `schema_version` 等）。
+
+### 6. `ParquetPartitionWriter`（物理分桶与原子存储引擎）
+- **源码路径**：[`src/stock/data/storage/partition_writer.py`](file:///Users/mac/workspace/personal/finance/stock/src/stock/data/storage/partition_writer.py)
+- **职责**：
+  - **Hive 分桶路由**：自动将跨月数据拆分并路由至 `year=YYYY/month=MM/data.parquet`；
+  - **内存攒批（Batch Buffer）**：在批量回填时暂存内存，避免重复磁盘 I/O；
+  - **幂等合并与去重**：采用 `pl.concat(..., how="diagonal_relaxed")` 宽松合并并按主键 `unique(subset=dedup_keys, keep="last")` 去重；
+  - **时序物理重排**：强制按 `["trade_date", "symbol"]` 升序排序，最大化查询谓词下推性能；
+  - **原子写盘**：写 `.tmp.parquet` 并通过系统级 `replace` 原子替换，彻底防止写入坏文件。
+
+---
+
+## 三、记忆口诀
+
+> **调度规划（`DailySyncEngine`）**
+> $\rightarrow$ **网络拉取（`Fetcher`）**
+> $\rightarrow$ **管道总装（`MarketDataPipeline`）**
+> $\rightarrow$ **质检清洗（`GenericCleaner`）**
+> $\rightarrow$ **契约塑形（`GenericNormalizer`）**
+> $\rightarrow$ **分桶写盘（`ParquetPartitionWriter`）**

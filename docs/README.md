@@ -5,8 +5,9 @@
 ## 📚 文档目录导航
 
 ### 1. 🏛️ 架构设计 (`docs/architecture/`)
-- [系统架构总览 (Overview)](file:///Users/mac/workspace/personal/finance/stock/docs/architecture/overview.md) — 整体分层架构、依赖倒置原则与模块边界
-- [数据处理流水线 (Data Pipeline)](file:///Users/mac/workspace/personal/finance/stock/docs/architecture/data_pipeline.md) — 数据抓取、校验、Parquet 列式存储与 DuckDB SQL 检索契约
+- [系统架构目录与总览 (Architecture Index)](file:///Users/mac/workspace/personal/finance/stock/docs/architecture/README.md) — 2-Tier ETL 湖仓一体架构导航与核心设计理念
+- [核心数据流水线与 6 大类 (Data Pipeline & Core Classes)](file:///Users/mac/workspace/personal/finance/stock/docs/architecture/data_pipeline.md) — 数据从采集到落盘的 2-Tier ETL 生命周期与 6 大核心类职责详解
+- [系统模块总览 (Overview)](file:///Users/mac/workspace/personal/finance/stock/docs/architecture/overview.md) — 整体分层架构、依赖倒置原则与模块边界
 
 ### 2. 📏 规范与质量控制 (`docs/standards/`)
 - [代码编写规范 (Coding Guidelines)](file:///Users/mac/workspace/personal/finance/stock/docs/standards/coding_guidelines.md) — 命名规范、Python 3.12 强类型约束与领域异常定义
