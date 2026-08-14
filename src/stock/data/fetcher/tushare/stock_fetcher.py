@@ -75,6 +75,17 @@ class TuShareStockFetcher(BaseDataFetcher):
             merged = merged.sort("trade_date")
         return merged
 
+    def _fetch_all_industry_classifies(self, meta: EndpointMeta, symbol: str) -> pl.DataFrame:
+        """同时拉取 SW2021 与 SW2014 标准的行业分类元数据并合并。"""
+        frames: list[pl.DataFrame] = []
+        for src_ver in ["SW2021", "SW2014"]:
+            pdf = self.client.query("index_classify", src=src_ver)
+            if not pdf.empty:
+                df = post_process_tushare_frame(pdf, meta, symbol)
+                if not df.is_empty():
+                    frames.append(df)
+        return pl.concat(frames, how="diagonal_relaxed") if frames else pl.DataFrame()
+
     def fetch_daily_bars_df(
         self,
         symbol: str,
@@ -93,6 +104,9 @@ class TuShareStockFetcher(BaseDataFetcher):
 
         if should_split_margin_exchanges(endpoint, extra_kwargs):
             return self._fetch_split_exchanges(symbol, start_date, end_date, endpoint)
+
+        if endpoint == "index_classify" and "src" not in extra_kwargs:
+            return self._fetch_all_industry_classifies(meta, symbol)
 
         is_real_symbol = bool(symbol and (symbol != endpoint))
         if not is_real_symbol and meta.frequency != "event" and start_date != end_date:

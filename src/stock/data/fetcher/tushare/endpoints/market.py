@@ -89,7 +89,7 @@ MARKET_ENDPOINTS: dict[str, EndpointMeta] = {
         description="申万行业分类",
         frequency="event",
         group="basic_info",
-        primary_keys=["index_code"],
+        primary_keys=["index_code", "src"],
     ),
     "index_member": EndpointMeta(
         api_name="index_member",
