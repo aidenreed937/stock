@@ -36,6 +36,6 @@ def test_load_watchlist_and_data_config() -> None:
     assert data_cfg.default_source_mode == "tushare"
     assert "600519.SH" in data_cfg.watchlists.tushare.stocks
     assert "AAPL" in data_cfg.watchlists.yfinance.stocks
-    assert data_cfg.backfill.default_start_date == "today-365d"
+    assert data_cfg.backfill.default_start_date == "today-30d"
     assert data_cfg.backfill.default_end_date == "today"
     assert data_cfg.backfill.max_workers == 4

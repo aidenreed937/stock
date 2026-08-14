@@ -160,7 +160,7 @@ class ConcurrencyConfig(BaseModel):
 class BackfillDefaultsConfig(BaseModel):
     """历史回填策略默认配置。"""
 
-    default_start_date: str = Field(default="today-365d", description="默认回填起始日期")
+    default_start_date: str = Field(default="today-30d", description="默认回填起始日期")
     default_end_date: str = Field(default="today", description="默认回填结束日期")
     default_symbol: str = Field(default="all", description="默认回填标的范围")
     force_refresh: bool = Field(default=False, description="是否默认开启强制刷新")
