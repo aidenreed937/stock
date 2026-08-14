@@ -35,7 +35,7 @@ _EXPLICIT_NON_PARTITIONED: frozenset[str] = frozenset({
     "margin", "moneyflow_hsgt", "hsgt_top10", "index_daily_bar", "global_index_daily",
     "financials", "balance_sheet", "cashflow", "dividends", "splits",
     "index_valuation", "macro_indicators", "index_fundamental",
-    "sw_2021_constituents", "sw_2021_fundamental", "company_fundamental",
+    "sw_2021_constituents", "sw_2021_fundamental", "sw_2021_fs_non_financial", "company_fundamental",
     "fs_non_financial", "pledge_info", "national_debt", "interest_rates",
     "non_ferrous_metals", "crude_oil",
 })
@@ -45,7 +45,7 @@ _EXPLICIT_SINGLE_SYNC: frozenset[str] = frozenset({
     "cn_gdp", "cn_cpi", "cn_ppi", "cn_pmi", "cn_m", "sf_month",
     "shibor_lpr", "shibor", "cn_schedule", "fut_index_daily",
     "stock_basic", "index_basic", "index_classify", "index_member", "fund_basic",
-    "sw_2021_constituents", "sw_2021_fundamental", "company_fundamental",
+    "sw_2021_constituents", "sw_2021_fundamental", "sw_2021_fs_non_financial", "company_fundamental",
     "index_fundamental", "fs_non_financial", "pledge_info",
     "national_debt", "interest_rates", "non_ferrous_metals", "crude_oil",
 })
@@ -91,6 +91,7 @@ _CUSTOM_TASKS: dict[tuple[str, str], TaskSpec] = {
     ("lixinger", "sw_2021_fundamental"): _make_spec("sw_2021_fundamental", "lixinger", "cn/industry/fundamental/sw_2021", "sw_2021_fundamental", fetch_mode="per_symbol", partitioned=False, is_single_sync=True),
     ("lixinger", "sw_2021_l2_fundamental"): _make_spec("sw_2021_l2_fundamental", "lixinger", "cn/industry/fundamental/sw_2021_l2", "sw_2021_l2_fundamental", fetch_mode="per_symbol", partitioned=False, is_single_sync=True),
     ("lixinger", "sw_2021_constituents"): _make_spec("sw_2021_constituents", "lixinger", "cn/industry/constituents/sw_2021", "sw_2021_constituents", fetch_mode="per_symbol", partitioned=False, is_single_sync=True),
+    ("lixinger", "sw_2021_fs_non_financial"): _make_spec("sw_2021_fs_non_financial", "lixinger", "cn/industry/fs/sw_2021/non_financial", "sw_2021_fs_non_financial", fetch_mode="per_symbol", partitioned=False, is_single_sync=True),
     ("lixinger", "fs_non_financial"): _make_spec("fs_non_financial", "lixinger", "cn/company/fs/non_financial", "fs_non_financial", fetch_mode="per_symbol", partitioned=False, is_single_sync=True),
     ("lixinger", "pledge_info"): _make_spec("pledge_info", "lixinger", "cn/company/hot/ple", "pledge_info", fetch_mode="per_symbol", partitioned=False, is_single_sync=True),
     ("lixinger", "national_debt"): _make_spec("national_debt", "lixinger", "macro/national-debt", "national_debt", fetch_mode="per_symbol", partitioned=False, is_single_sync=True),

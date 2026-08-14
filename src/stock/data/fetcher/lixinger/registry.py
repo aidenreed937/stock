@@ -166,11 +166,28 @@ LIXINGER_API_REGISTRY: dict[str, EndpointMeta] = {
         required_columns=["date"],
         update_time="18:00",
     ),
+    "cn/industry/fs/sw_2021/non_financial": EndpointMeta(
+        api_name="cn/industry/fs/sw_2021/non_financial",
+        description="申万 2021 版非金融行业财务报表数据 (含营收/净利/毛利/ROE等多维指标)",
+        group="financial_statement",
+        primary_keys=["stockCode", "date"],
+        date_columns=["date"],
+        required_columns=["stockCode", "date"],
+        update_time="18:00",
+        update_delay_days=0,
+        code_param_name="stockCodes",
+        default_metrics=[
+            "q.ps.toi.t_y2y", "q.ps.np.t_y2y", "q.ps.gp.t_y2y", "q.fi.roe.t",
+            "t.ps.toi.c_y2y", "t.ps.np.c_y2y", "t.fi.roe.t",
+        ],
+        support_batch_prefetch=True,
+    ),
 }
 
 LIXINGER_API_REGISTRY["sw_2021_constituents"] = LIXINGER_API_REGISTRY["cn/industry/constituents/sw_2021"]
 LIXINGER_API_REGISTRY["sw_2021_fundamental"] = LIXINGER_API_REGISTRY["cn/industry/fundamental/sw_2021"]
 LIXINGER_API_REGISTRY["sw_2021_l2_fundamental"] = LIXINGER_API_REGISTRY["cn/industry/fundamental/sw_2021"]
+LIXINGER_API_REGISTRY["sw_2021_fs_non_financial"] = LIXINGER_API_REGISTRY["cn/industry/fs/sw_2021/non_financial"]
 LIXINGER_API_REGISTRY["index_fundamental"] = LIXINGER_API_REGISTRY["cn/index/fundamental"]
 LIXINGER_API_REGISTRY["fs_non_financial"] = LIXINGER_API_REGISTRY["cn/company/fs/non_financial"]
 LIXINGER_API_REGISTRY["pledge_info"] = LIXINGER_API_REGISTRY["cn/company/hot/ple"]
