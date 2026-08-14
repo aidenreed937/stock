@@ -221,6 +221,17 @@ LIXINGER_API_REGISTRY: dict[str, EndpointMeta] = {
         default_metrics=["q.ps.toi.t_y2y", "q.ps.np.t_y2y", "q.fi.roe.t", "t.ps.toi.c_y2y", "t.ps.np.c_y2y"],
         support_batch_prefetch=True,
     ),
+    "cn/company/fs/non_financial": EndpointMeta(
+        api_name="cn/company/fs/non_financial",
+        description="A 股非金融公司财务报表 (含商誉、经营现金流、净资产与审计意见)",
+        group="financial_statement",
+        primary_keys=["stockCode", "date"],
+        update_time="18:00",
+        update_delay_days=0,
+        code_param_name="stockCodes",
+        default_metrics=["q.ps.toi.t", "q.ps.np.t", "q.bs.gw.t", "q.cfs.ncffoa.t", "q.fi.roe.t"],
+        support_batch_prefetch=True,
+    ),
     "cn/company/fs/bank": EndpointMeta(
         api_name="cn/company/fs/bank",
         description="A 股银行公司财务报表 (含净息差、不良率、拨备覆盖率、资本充足率)",
@@ -229,7 +240,7 @@ LIXINGER_API_REGISTRY: dict[str, EndpointMeta] = {
         update_time="18:00",
         update_delay_days=0,
         code_param_name="stockCodes",
-        default_metrics=["nim", "npl_ratio", "provision_coverage_ratio", "capital_adequacy_ratio", "equity"],
+        default_metrics=["q.ps.toi.t", "q.ps.np.t", "q.bs.nim.t", "q.bs.npl.t", "q.bs.pcr.t", "q.fi.roe.t"],
         support_batch_prefetch=True,
     ),
     "cn/company/fs/security": EndpointMeta(
@@ -240,7 +251,7 @@ LIXINGER_API_REGISTRY: dict[str, EndpointMeta] = {
         update_time="18:00",
         update_delay_days=0,
         code_param_name="stockCodes",
-        default_metrics=["net_capital", "brokerage_net_income", "ib_net_income", "investment_income", "equity"],
+        default_metrics=["q.ps.toi.t", "q.ps.np.t", "q.ps.bni.t", "q.ps.ibni.t", "q.fi.roe.t"],
         support_batch_prefetch=True,
     ),
     "cn/company/fs/insurance": EndpointMeta(
@@ -251,7 +262,7 @@ LIXINGER_API_REGISTRY: dict[str, EndpointMeta] = {
         update_time="18:00",
         update_delay_days=0,
         code_param_name="stockCodes",
-        default_metrics=["embedded_value", "new_business_value", "earned_premium", "operating_profit", "equity"],
+        default_metrics=["q.ps.toi.t", "q.ps.np.t", "q.ps.ep.t", "q.fi.roe.t"],
         support_batch_prefetch=True,
     ),
 }
