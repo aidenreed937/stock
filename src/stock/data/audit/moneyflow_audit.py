@@ -1,8 +1,10 @@
 """资金流向与北向持仓 (hk_hold / moneyflow) 领域对账审计模块。"""
 
 from datetime import date
+from pathlib import Path
 from typing import Any
 import polars as pl
+from stock.data.storage.compat import StorageCompat
 from stock.utils.logger import logger
 
 
@@ -12,9 +14,17 @@ def run_hk_hold_audit(
     """审计 hk_hold (北向个股持仓明细) 数据集在开港通交易日的真实落盘记录与持股规模。"""
     logger.info(f"开始 hk_hold 北向持仓对账审计，目标日期: {target_date} [数据源: {data_source}]")
 
-    hk_pattern = f"data/curated/{data_source}/market=CN/hk_hold/year={target_date.year:04d}/month={target_date.month:02d}/*.parquet"
+    hk_dir = Path(
+        f"data/curated/{data_source}/market=CN/hk_hold/"
+        f"year={target_date.year:04d}/month={target_date.month:02d}"
+    )
+    hk_files = (
+        [p for p in hk_dir.glob("*.parquet") if not StorageCompat.is_artifact_path(p)]
+        if hk_dir.exists()
+        else []
+    )
     try:
-        hk_df = pl.read_parquet(hk_pattern)
+        hk_df = pl.read_parquet(hk_files) if hk_files else pl.DataFrame()
         if "trade_date" in hk_df.columns and hk_df["trade_date"].dtype == pl.String:
             hk_df = hk_df.with_columns(
                 pl.col("trade_date").str.to_date("%Y-%m-%d").alias("trade_date")
@@ -31,8 +41,12 @@ def run_hk_hold_audit(
 
     max_date_str = "N/A"
     try:
-        from pathlib import Path
-        all_hk_files = list(Path(f"data/curated/{data_source}/market=CN/hk_hold").rglob("*.parquet"))
+        base_dir = Path(f"data/curated/{data_source}/market=CN/hk_hold")
+        all_hk_files = (
+            [p for p in base_dir.rglob("*.parquet") if not StorageCompat.is_artifact_path(p)]
+            if base_dir.exists()
+            else []
+        )
         if all_hk_files:
             summary_df = pl.read_parquet(all_hk_files)
             if "trade_date" in summary_df.columns:
