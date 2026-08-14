@@ -1,4 +1,6 @@
 import polars as pl
+
+from stock.data.normalizer.bar_normalizer import BarDataNormalizer
 from stock.data.normalizer.generic_normalizer import GenericNormalizer
 
 
@@ -60,3 +62,27 @@ def test_generic_normalizer_does_not_let_code_override_ts_code():
     )
 
     assert normalized["symbol"].to_list() == ["600519.SH"]
+
+
+def test_normalizers_parse_mixed_date_formats_without_dropping_rows():
+    values = ["20260812", "2026-08-13", "2026/08/14", "2026-08-15T00:00:00+08:00"]
+    expected = ["2026-08-12", "2026-08-13", "2026-08-14", "2026-08-15"]
+
+    generic = GenericNormalizer().normalize(
+        pl.DataFrame({"symbol": ["A"] * 4, "trade_date": values})
+    )
+    bars = BarDataNormalizer().normalize(
+        pl.DataFrame(
+            {
+                "symbol": ["A"] * 4,
+                "trade_date": values,
+                "open": [1.0] * 4,
+                "high": [1.0] * 4,
+                "low": [1.0] * 4,
+                "close": [1.0] * 4,
+            }
+        )
+    )
+
+    assert [str(value) for value in generic["trade_date"]] == expected
+    assert [str(value) for value in bars["trade_date"]] == expected

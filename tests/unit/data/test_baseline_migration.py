@@ -350,6 +350,50 @@ def test_backfill_acceptance_maps_date_to_trade_date(tmp_path: Path) -> None:
     assert report["status"] == "PASSED"
 
 
+def test_backfill_acceptance_fails_when_curated_rows_drop_below_raw_ratio(
+    tmp_path: Path,
+) -> None:
+    raw_root = tmp_path / "raw"
+    curated_root = tmp_path / "curated"
+    (raw_root / "stock_daily_bar").mkdir(parents=True)
+    (curated_root / "stock_daily_bar").mkdir(parents=True)
+
+    raw_frame = pl.DataFrame(
+        {
+            "ts_code": ["A", "B", "C", "D"],
+            "trade_date": ["20260801"] * 4,
+        }
+    )
+    curated_frame = pl.DataFrame(
+        {
+            "symbol": ["A", "B"],
+            "trade_date": ["2026-08-01"] * 2,
+            "open": [1.0, 1.0],
+            "high": [1.0, 1.0],
+            "low": [1.0, 1.0],
+            "close": [1.0, 1.0],
+            "data_source": ["tushare", "tushare"],
+            "source_endpoint": ["daily", "daily"],
+            "request_id": ["r1", "r2"],
+            "updated_at": ["2026-08-01", "2026-08-01"],
+        }
+    )
+    raw_frame.write_parquet(raw_root / "stock_daily_bar" / "data.parquet")
+    curated_frame.write_parquet(curated_root / "stock_daily_bar" / "data.parquet")
+
+    report = accept_backfill(
+        str(curated_root),
+        "stock_daily_bar",
+        raw_root=str(raw_root),
+        min_raw_ratio=0.75,
+    )
+
+    assert report["raw_rows"] == 4
+    assert report["curated_raw_ratio"] == 0.5
+    assert report["raw_ratio_passed"] is False
+    assert report["status"] == "FAILED"
+
+
 def test_bar_cleaner_quarantines_rejected_rows(tmp_path: Path) -> None:
     frame = pl.DataFrame({"symbol": ["A", "B"], "trade_date": ["2026-08-01"] * 2, "open": [1.0, 0.0], "high": [1.0, 0.0], "low": [1.0, 0.0], "close": [1.0, 0.0]})
     cleaned = BarDataCleaner().clean_with_quarantine(

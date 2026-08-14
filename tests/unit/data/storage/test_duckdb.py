@@ -485,6 +485,25 @@ def test_duckdb_store_partitions_financial_rows_by_report_end_date(tmp_path) -> 
     assert pl.read_parquet(june_path)["end_date"].to_list() == ["20240630"]
 
 
+def test_duckdb_store_routes_mixed_date_formats_without_dropping_rows(tmp_path) -> None:
+    store = DuckDBMarketStore(storage_dir=tmp_path, data_source="mock")
+    frame = pl.DataFrame(
+        {
+            "symbol": ["A", "B"],
+            "trade_date": ["20260812", "2026-08-13"],
+            "value": [1.0, 2.0],
+            "data_source": ["mock", "mock"],
+            "market": ["CN", "CN"],
+        }
+    )
+
+    store.save_market_data("daily_basic", date(2026, 8, 13), frame)
+
+    path = store.get_parquet_path("daily_basic", date(2026, 8, 1), market="CN")
+    saved = pl.read_parquet(path)
+    assert len(saved) == 2
+
+
 def test_duckdb_store_prefers_source_symbol_over_placeholder(tmp_path) -> None:
     store = DuckDBMarketStore(storage_dir=tmp_path, data_source="mock")
     file_path = store.get_parquet_path("adj_factor", date(2026, 8, 1), market="CN")

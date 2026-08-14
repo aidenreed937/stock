@@ -3,6 +3,7 @@
 import polars as pl
 
 from stock.data.normalizer.base import BaseDataNormalizer
+from stock.utils.date import parse_mixed_date
 from stock.utils.logger import logger
 
 
@@ -60,20 +61,9 @@ class GenericNormalizer(BaseDataNormalizer):
 
         # 2. 转换 trade_date 为 Date 类型
         if "trade_date" in normalized_df.columns:
-            dtype = normalized_df["trade_date"].dtype
-            if dtype == pl.String or dtype == pl.Utf8:
-                non_null_vals = normalized_df["trade_date"].drop_nulls()
-                if not non_null_vals.is_empty():
-                    first_val = str(non_null_vals[0])
-                    if "T" in first_val:
-                        normalized_df = normalized_df.with_columns(
-                            pl.col("trade_date").str.slice(0, 10).str.to_date("%Y-%m-%d").alias("trade_date")
-                        )
-                    else:
-                        fmt = "%Y%m%d" if len(first_val) == 8 else "%Y-%m-%d"
-                        normalized_df = normalized_df.with_columns(
-                            pl.col("trade_date").str.to_date(fmt, strict=False).alias("trade_date")
-                        )
+            normalized_df = normalized_df.with_columns(
+                parse_mixed_date("trade_date").alias("trade_date")
+            )
 
         # 3. 移除历史明细记录统计字段 (若存在)
         for legacy_col in ("raw_row_count", "clean_row_count"):

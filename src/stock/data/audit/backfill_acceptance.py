@@ -94,6 +94,24 @@ def _is_artifact(path: Path) -> bool:
     return path.name.endswith((".bak.parquet", ".tmp.parquet"))
 
 
+def _matching_files(root: str | Path, aliases: set[str]) -> list[Path]:
+    """按数据集别名查找有效 Parquet 文件。"""
+    base = Path(root)
+    if not base.exists():
+        return []
+    files = [path for path in base.rglob("*.parquet") if not _is_artifact(path)]
+    return [
+        path
+        for path in files
+        if any(alias in path.parts or alias in path.stem for alias in aliases)
+    ]
+
+
+def _count_rows(path: Path) -> int:
+    """只读取 Parquet 元数据统计行数，避免验收加载整张 RAW 表。"""
+    return int(pl.scan_parquet(str(path)).select(pl.len()).collect().item())
+
+
 def _date_key(value: object) -> str:
     """将日期列中的紧凑格式和 ISO 格式统一为 YYYY-MM-DD。"""
     text = str(value)
@@ -139,18 +157,15 @@ def accept_backfill(
     start: date | None = None,
     end: date | None = None,
     source_gaps: list[str] | None = None,
+    raw_root: str | None = None,
+    min_raw_ratio: float | None = None,
 ) -> dict[str, Any]:
     """检查文件、日期覆盖、主键重复和源端缺口，返回可序列化报告。"""
-    files = (
-        [path for path in Path(root).rglob("*.parquet") if not _is_artifact(path)]
-        if Path(root).exists()
-        else []
-    )
+    if min_raw_ratio is not None and not 0 <= min_raw_ratio <= 1:
+        raise ValueError("min_raw_ratio 必须位于 [0, 1] 区间")
+
     aliases = _endpoint_aliases(endpoint)
-    matched = [
-        path for path in files
-        if any(alias in path.parts or alias in path.stem for alias in aliases)
-    ]
+    matched = _matching_files(root, aliases)
     rows = 0
     duplicates = 0
     dates: set[str] = set()
@@ -204,6 +219,32 @@ def accept_backfill(
     if key_frames:
         all_keys = pl.concat(key_frames, how="vertical_relaxed")
         duplicates = len(all_keys) - len(all_keys.unique())
+
+    raw_files: list[Path] = []
+    raw_rows: int | None = None
+    raw_ratio: float | None = None
+    raw_ratio_passed: bool | None = None
+    raw_errors: list[str] = []
+    if raw_root is not None:
+        raw_files = _matching_files(raw_root, aliases)
+        raw_rows = 0
+        for path in raw_files:
+            try:
+                raw_rows += _count_rows(path)
+            except Exception as exc:
+                raw_errors.append(f"{path}: {exc}")
+        if raw_rows:
+            raw_ratio = rows / raw_rows
+        if min_raw_ratio is not None:
+            raw_ratio_passed = bool(
+                raw_files
+                and raw_rows
+                and raw_ratio is not None
+                and raw_ratio >= min_raw_ratio
+                and not raw_errors
+            )
+        errors.extend(raw_errors)
+
     missing: list[str] = []
     if start and end:
         start_period = _boundary_period(start, frequency)
@@ -229,6 +270,7 @@ def accept_backfill(
         and not missing
         and not missing_columns
         and not lineage_errors
+        and raw_ratio_passed is not False
     )
     return {
         "status": "PASSED" if passed else "FAILED",
@@ -239,6 +281,11 @@ def accept_backfill(
         "missing_boundary_dates": missing,
         "source_gaps": gaps,
         "source_lag": source_lag,
+        "raw_files": len(raw_files),
+        "raw_rows": raw_rows,
+        "curated_raw_ratio": raw_ratio,
+        "min_raw_ratio": min_raw_ratio,
+        "raw_ratio_passed": raw_ratio_passed,
         "errors": errors,
         "missing_columns": sorted(set(missing_columns)),
         "lineage_errors": lineage_errors,

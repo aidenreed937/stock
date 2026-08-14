@@ -12,6 +12,8 @@ def run_audit(
     audit_type: str = "master",
     data_source: str = "tushare",
     target_date: date | None = None,
+    raw_root: str | None = None,
+    min_raw_ratio: float | None = None,
 ) -> dict[str, Any]:
     """根据类型执行指定的审计套件。"""
     audit_type_lower = audit_type.lower()
@@ -36,7 +38,11 @@ def run_audit(
         from stock.data.audit.backfill_acceptance import accept_backfill
 
         logger.info(f"=== 开始执行全量回填验收测试 [{data_source}] ===")
-        results["acceptance"] = accept_backfill(endpoint="stock_daily_bar")
+        results["acceptance"] = accept_backfill(
+            endpoint="stock_daily_bar",
+            raw_root=raw_root,
+            min_raw_ratio=min_raw_ratio,
+        )
 
     if audit_type_lower in {"valuation", "all"}:
         from stock.data.audit.valuation_audit import run_daily_basic_audit, run_sw_industry_audit
@@ -100,6 +106,17 @@ def main() -> None:
         default=None,
         help="指定审计目标日期 (YYYY-MM-DD，默认最新或当日)",
     )
+    parser.add_argument(
+        "--raw-root",
+        default=None,
+        help="回填验收时 RAW 数据根目录（启用 RAW/Curated 行数对比）",
+    )
+    parser.add_argument(
+        "--min-raw-ratio",
+        type=float,
+        default=None,
+        help="回填验收要求的最小 Curated/RAW 行数比例（0~1）",
+    )
 
     args = parser.parse_args()
     target_dt = date.fromisoformat(args.date) if args.date else None
@@ -108,7 +125,16 @@ def main() -> None:
         f"数据源=[{args.source}], 目标日期=[{target_dt or '最新'}]"
     )
     try:
-        run_audit(audit_type=args.audit_type, data_source=args.source, target_date=target_dt)
+        run_kwargs: dict[str, Any] = {
+            "audit_type": args.audit_type,
+            "data_source": args.source,
+            "target_date": target_dt,
+        }
+        if args.raw_root is not None:
+            run_kwargs["raw_root"] = args.raw_root
+        if args.min_raw_ratio is not None:
+            run_kwargs["min_raw_ratio"] = args.min_raw_ratio
+        run_audit(**run_kwargs)
         logger.info("数据审计执行完毕！")
     except Exception as e:
         logger.error(f"数据审计执行失败: {e}")

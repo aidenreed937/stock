@@ -327,6 +327,7 @@ class DuckDBMarketStore:
     ) -> Path:
         """根据数据帧内部的真实业务日期动态分桶路由落盘。"""
         from stock.data.task_registry import is_task_partitioned
+        from stock.utils.date import parse_mixed_date
 
         if not is_task_partitioned(source, dataset_name):
             file_path = (
@@ -346,19 +347,8 @@ class DuckDBMarketStore:
 
         try:
             parsed_df = df.with_columns(
-                pl.col(date_col)
-                .cast(pl.Utf8)
-                .str.slice(0, 10)
-                .str.to_date("%Y-%m-%d", strict=False)
-                .alias("_parsed_date")
+                parse_mixed_date(date_col).alias("_parsed_date")
             )
-            if parsed_df["_parsed_date"].null_count() == len(parsed_df):
-                parsed_df = df.with_columns(
-                    pl.col(date_col)
-                    .cast(pl.Utf8)
-                    .str.to_date("%Y%m%d", strict=False)
-                    .alias("_parsed_date")
-                )
 
             valid_df = parsed_df.filter(pl.col("_parsed_date").is_not_null())
             if valid_df.is_empty():
