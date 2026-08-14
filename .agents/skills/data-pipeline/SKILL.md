@@ -47,36 +47,49 @@ make backfill START=YYYY-MM-DD END=YYYY-MM-DD SOURCE=<data_source> [ENDPOINT=<en
 ### 3.2 四大真实数据源回填实操指南
 
 #### ① TuShare (`SOURCE=tushare`)
-用于回填 A 股行情、指数 K 线、每日估值、复权因子、申万行业行情及场内基金：
+用于回填 A 股行情、指数 K 线、每日估值、复权因子、申万行业行情、成分流水、卖方研报及业绩预告/快报：
 
 ```bash
 # 1. 回填 12 年 A 股 10 大核心指数 K 线 (000001.SH, 000300.SH, 399006.SZ 等)
-make backfill START=2014-08-01 END=2026-08-12 SOURCE=tushare ENDPOINT=index_daily
+make backfill START=2014-08-01 END=2026-08-14 SOURCE=tushare ENDPOINT=index_daily
 
 # 2. 全市场 A 股每日估值指标全量回填 (自动按交易日并发回填，自动单位归一为元)
-make backfill START=2013-01-04 END=2026-08-12 SOURCE=tushare ENDPOINT=daily_basic
+make backfill START=2013-01-04 END=2026-08-14 SOURCE=tushare ENDPOINT=daily_basic
 
-# 3. 多接口单一 CLI 进程串行安全回填 (复权因子 + 每日估值 + 申万行业 + 场内基金)
-make backfill START=2024-01-01 END=2026-08-12 SOURCE=tushare ENDPOINT=adj_factor,daily_basic,sw_daily,fund_daily,fund_adj
+# 3. 回填申万行业历史成分股流水与分类标准 (零前瞻偏差基石，一次落盘)
+make backfill SOURCE=tushare ENDPOINT=index_member,index_classify
 
-# 4. 回填自选池 A 股个股 12 年 K 线 (如贵州茅台 600519.SH)
-make backfill START=2014-08-01 END=2026-08-12 SOURCE=tushare SYMBOL=600519.SH
+# 4. 回填全市场 2020 年至今券商研报卖方盈利预测 (支持行业预期上修比例聚合)
+make backfill START=2020-01-01 END=2026-08-14 SOURCE=tushare ENDPOINT=report_rc
+
+# 5. 回填全市场 2020 年至今上市公司业绩预告与业绩快报 (自动启用 VIP 全市场通道，秒级完成)
+make backfill START=2020-01-01 END=2026-08-14 SOURCE=tushare ENDPOINT=forecast
+make backfill START=2020-01-01 END=2026-08-14 SOURCE=tushare ENDPOINT=express
+
+# 6. 多接口单一 CLI 进程串行安全回填 (复权因子 + 每日估值 + 申万行业 + 场内基金)
+make backfill START=2024-01-01 END=2026-08-14 SOURCE=tushare ENDPOINT=adj_factor,daily_basic,sw_daily,fund_daily,fund_adj
+
+# 7. 回填自选池 A 股个股 12 年 K 线 (如贵州茅台 600519.SH)
+make backfill START=2014-08-01 END=2026-08-14 SOURCE=tushare SYMBOL=600519.SH
 ```
 
 #### ② 理杏仁 LiXinger (`SOURCE=lixinger`)
-用于回填 9 大核心 A 股指数的 12 年基本面估值数据、申万 2021 行业成份股图谱及申万 31 个行业历史估值序列：
+用于回填 9 大核心 A 股指数的 12 年基本面估值、申万 2021 行业成份股图谱、一级/二级行业估值序列及四大专属行业合并财务报表：
 
-> ⚠️ **理杏仁 API 限制**：单次请求时间跨度不能超过 10 年。系统代码中已实现 `timedelta(days=3200)` 自动 9 年时间分片切片，无需人工分段。成份股图谱 (`sw_2021_constituents`) 自动采取单次全量超高速获取。
+> ⚠️ **理杏仁 API 限制**：单次请求时间跨度不能超过 10 年。系统代码中已实现 `timedelta(days=3200)` 自动 9 年时间分片切片，无需人工分段。行业代码已实现动态全谱映射，无硬编码。
 
 ```bash
-# 1. 回填 9 大核心指数 12 年基本面估值历史 (2014-08-01 ~ 2026-08-12)
-make backfill START=2014-08-01 END=2026-08-12 SOURCE=lixinger ENDPOINT=index_fundamental
+# 1. 回填 9 大核心指数 12 年基本面估值历史 (2014-08-01 ~ 2026-08-14)
+make backfill START=2014-08-01 END=2026-08-14 SOURCE=lixinger ENDPOINT=index_fundamental
 
 # 2. 回填申万 2021 行业成分股名册图谱 (797 个一二三级行业成份股)
 make backfill SOURCE=lixinger ENDPOINT=sw_2021_constituents
 
-# 3. 回填申万 31 个一级行业全历史基本面估值序列 (PE-TTM、PB、股息率、总市值等)
-make backfill START=2014-08-01 END=2026-08-12 SOURCE=lixinger ENDPOINT=sw_2021_fundamental
+# 3. 回填申万 31 个一级与 134 个二级行业全历史估值序列 (PE-TTM、PB、股息率、总市值等)
+make backfill START=2014-08-01 END=2026-08-14 SOURCE=lixinger ENDPOINT=sw_2021_fundamental,sw_2021_l2_fundamental
+
+# 4. 回填申万 31 行业四大专属合并财务报表 (2020 年至今非金融/银行/证券/保险)
+make backfill START=2020-01-01 END=2026-08-14 SOURCE=lixinger ENDPOINT=sw_2021_fs_non_financial,sw_2021_fs_bank,sw_2021_fs_security,sw_2021_fs_insurance
 ```
 
 #### ③ Yahoo Finance (`SOURCE=yfinance`)

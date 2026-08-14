@@ -22,6 +22,13 @@ description: 本地落盘数据资产统一目录 (DataCatalog) 与极速查询�
 | **`tushare`** | `fund_daily` | 场内基金与 ETF 日 K 线 | 26 只核心观察池 ETF 等 | `open`, `high`, `low`, `close`, `volume`, `amount` |
 | **`tushare`** | `etf_share_size` | ETF 份额与规模序列 | 核心 ETF 全历史 | `symbol`, `trade_date`, `fd_share`, `n_shares` |
 | **`tushare`** | `moneyflow` | 个股大单小单资金流向 | 全市场个股资金流 | `buy_sm_amount`, `buy_md_amount`, `buy_lg_amount`, `buy_elg_amount` |
+| **`tushare`** | `report_rc` | 卖方机构盈利预测明细 (一致预期) | 全市场 4,390 股 (2020 至今 20.6 万行) | `quarter`, `np(万元)`, `eps`, `tp(目标价)`, `rating`, `org_name` |
+| **`tushare`** | `forecast` | 上市公司业绩预告 (PIT) | 全市场 4,712 股 (2020 至今 1.5 万行) | `type`, `p_change_min`, `p_change_max`, `net_profit_min`, `summary` |
+| **`tushare`** | `express` | 上市公司业绩快报 (PIT) | 全市场 1,810 股 (2022 至今 4.3 千行) | `revenue`, `operate_profit`, `n_income`, `yoy_net_profit`, `diluted_roe` |
+| **`lixinger`** | `sw_2021_fs_non_financial` | 申万 29 非金融行业合并财报 | 29 个非金融行业 (2020 至今 705 行) | `ps.toi.c_y2y`, `ps.np.c_y2y`, `ps.gp_m.ttm`, `m.roe.ttm` |
+| **`lixinger`** | `sw_2021_fs_bank` | 申万银行行业合并财报 | 商业银行 (2020 至今 63 行) | `ps.nii.c_y2y`, `ps.np.c_y2y`, `ps.cir.ttm`, `m.roe.ttm` |
+| **`lixinger`** | `sw_2021_fs_security` | 申万证券行业合并财报 | 证券公司 (2020 至今 25 行) | `ps.ib_n_inc.c_y2y`, `ps.np.c_y2y`, `m.roe.ttm` |
+| **`lixinger`** | `sw_2021_fs_insurance` | 申万保险行业合并财报 | 保险公司 (2020 至今 25 行) | `ps.ep.c_y2y`, `ps.np.c_y2y`, `m.roe.ttm` |
 | **`lixinger`** | `sw_2021_constituents` | 申万 2021 行业成份股图谱 | 797 个行业全量挂载关系 | `symbol(行业代码)`, `constituents(成份股数组)` |
 | **`lixinger`** | `sw_2021_l2_fundamental` | 申万 2021 二级行业估值 | 162 个二级行业 12 年连续日度 | `pe_ttm.ew`, `pb.ew`, `ps_ttm.ew`, `dyr.ew`, `mc(元)` |
 | **`lixinger`** | `sw_2021_fundamental` | 申万 2021 一级行业估值 | 31 个一级行业 12 年连续日度 | `pe_ttm.ew`, `pb.ew`, `ps_ttm.ew`, `dyr.ew`, `mc(元)` |
@@ -190,6 +197,32 @@ lagging = summary_df.filter(
 )
 print("需关注的滞后数据集:")
 print(lagging)
+```
+
+### 范例 4：申万 31 行业分析师盈利预测上修比例 (Revision Ratio)
+```python
+from datetime import date
+from stock.data.catalog import DataCatalog
+import polars as pl
+
+cat_ts = DataCatalog(data_source="tushare")
+
+# 1. 加载 2026 年全市场券商研报预测明细
+df_rc = cat_ts.load_dataset("report_rc", start_date=date(2026, 1, 1))
+
+# 2. 加载申万行业成分股关系并过滤出最新在册成分
+df_mem = cat_ts.load_dataset("index_member").filter(
+    (pl.col("in_date") <= "20260814") & ((pl.col("out_date").is_null()) | (pl.col("out_date") > "20260814"))
+)
+
+# 3. 关联行业成分计算各申万一级行业研报覆盖度与平均目标价空间
+df_sector_rc = df_rc.join(df_mem, left_on="symbol", right_on="con_code", how="inner").group_by("index_code").agg([
+    pl.col("symbol").n_unique().alias("covered_stocks"),
+    pl.col("tp").mean().alias("avg_target_price"),
+    pl.col("np").mean().alias("avg_predicted_np_wan"),
+    pl.count().alias("report_count"),
+]).sort("report_count", descending=True)
+print(df_sector_rc.head(10))
 ```
 
 ---
