@@ -90,7 +90,12 @@ class TuShareStockFetcher(BaseDataFetcher):
                 query_kwargs["start_date"], query_kwargs["end_date"] = start_str, end_str
             else:
                 if start_date == end_date:
-                    query_kwargs["report_date" if endpoint == "report_rc" else "trade_date"] = start_str
+                    if endpoint in ("forecast", "express"):
+                        query_kwargs["ann_date"] = start_str
+                    elif endpoint == "report_rc":
+                        query_kwargs["report_date"] = start_str
+                    else:
+                        query_kwargs["trade_date"] = start_str
                 elif (end_date - start_date).days >= (meta.request_window_days or 300):
                     from datetime import timedelta
 
@@ -122,7 +127,12 @@ class TuShareStockFetcher(BaseDataFetcher):
                     query_kwargs["start_date"] = start_str
                     query_kwargs["end_date"] = end_str
 
-        pandas_df = self.client.query(meta.api_name, **query_kwargs)
+        api_to_call = (
+            f"{meta.api_name}_vip"
+            if meta.api_name in ("forecast", "express") and not is_real_symbol
+            else meta.api_name
+        )
+        pandas_df = self.client.query(api_to_call, **query_kwargs)
 
         if pandas_df.empty:
             return pl.DataFrame()
@@ -139,50 +149,31 @@ class TuShareStockFetcher(BaseDataFetcher):
     def fetch_daily_bars(
         self, symbol: str, start_date: date, end_date: date
     ) -> list[DailyBar]:
-        """抓取日 K 线数据并转换为 DailyBar 模型列表。
-
-        Args:
-            symbol: 股票代码。
-            start_date: 开始日期。
-            end_date: 结束日期。
-
-        Returns:
-            list[DailyBar]: 转换后的模型列表。
-        """
+        """抓取日 K 线数据并转换为 DailyBar 模型列表。"""
         df = self.fetch_daily_bars_df(symbol, start_date, end_date)
         if df.is_empty():
             return []
 
         from stock.data.normalizer.unit_normalizer import UnitNormalizer
         norm_df = UnitNormalizer("tushare", "daily").normalize_units(df)
-
         bars: list[DailyBar] = []
         for row in norm_df.iter_rows(named=True):
-            trade_date_val = row.get("trade_date")
-            if isinstance(trade_date_val, str):
-                parsed_date = date(
-                    int(trade_date_val[:4]),
-                    int(trade_date_val[4:6]),
-                    int(trade_date_val[6:8]),
-                )
-            elif isinstance(trade_date_val, date):
-                parsed_date = trade_date_val
-            else:
-                parsed_date = date.today()
-
-            vol_val = row.get("volume", row.get("vol", 0.0))
-            amt_val = row.get("amount", 0.0)
-
+            d_val = row.get("trade_date")
+            p_date = (
+                date(int(d_val[:4]), int(d_val[4:6]), int(d_val[6:8]))
+                if isinstance(d_val, str) and len(d_val) == 8
+                else (d_val if isinstance(d_val, date) else date.today())
+            )
             bars.append(
                 DailyBar(
                     symbol=row.get("ts_code", symbol),
-                    trade_date=parsed_date,
+                    trade_date=p_date,
                     open=float(row.get("open", 0.0)),
                     high=float(row.get("high", 0.0)),
                     low=float(row.get("low", 0.0)),
                     close=float(row.get("close", 0.0)),
-                    volume=float(vol_val or 0.0),
-                    amount=float(amt_val or 0.0),
+                    volume=float(row.get("volume", row.get("vol", 0.0)) or 0.0),
+                    amount=float(row.get("amount", 0.0) or 0.0),
                 )
             )
         return bars
@@ -190,23 +181,12 @@ class TuShareStockFetcher(BaseDataFetcher):
     def fetch_trade_cal(
         self, start_date: date, end_date: date
     ) -> list[date]:
-        """获取指定日期范围内的 A 股有效开市交易日列表。
-
-        Args:
-            start_date: 开始日期。
-            end_date: 结束日期。
-
-        Returns:
-            list[date]: 开市交易日列表（按升序排列）。
-        """
-        start_str = start_date.strftime("%Y%m%d")
-        end_str = end_date.strftime("%Y%m%d")
-
+        """获取指定日期范围内的 A 股有效开市交易日列表。"""
         pandas_df = self.client.query(
             "trade_cal",
             exchange="",
-            start_date=start_str,
-            end_date=end_str,
+            start_date=start_date.strftime("%Y%m%d"),
+            end_date=end_date.strftime("%Y%m%d"),
             is_open="1",
         )
 
