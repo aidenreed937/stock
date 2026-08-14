@@ -12,28 +12,51 @@ from stock.models.market import DailyBar
 from stock.utils.logger import logger
 
 
-_INDUSTRY_CODES_CACHE: dict[str, list[str]] = {}
+_INDUSTRY_TABLE_CACHE: Any = None
 
 
-def _resolve_sw_2021_codes(client: LixingerClient, level: str = "one") -> list[str]:
-    """动态获取申万 2021 版行业代码列表 (one=一级, two=二级, three=三级)。"""
-    cache_key = f"sw_2021_{level}"
-    if cache_key in _INDUSTRY_CODES_CACHE:
-        return _INDUSTRY_CODES_CACHE[cache_key]
-
+def _resolve_sw_2021_industry_codes(
+    client: LixingerClient,
+    endpoint: str = "",
+    level: str = "one",
+) -> list[str]:
+    """动态从理杏仁获取申万 2021 版行业代码列表，根据接口类型自动匹配对应分类（无硬编码）。"""
+    global _INDUSTRY_TABLE_CACHE
     try:
-        df_ind = client.query("cn/industry", source="sw_2021")
-        if not df_ind.empty and "level" in df_ind.columns and "stockCode" in df_ind.columns:
-            target_codes = (
-                df_ind[df_ind["level"] == level]["stockCode"].dropna().astype(str).tolist()
-            )
-            if target_codes:
-                _INDUSTRY_CODES_CACHE[cache_key] = sorted(target_codes)
-                return _INDUSTRY_CODES_CACHE[cache_key]
-    except Exception as e:
-        logger.warning(f"动态获取申万 {level} 级行业分类失败: {e}")
+        if _INDUSTRY_TABLE_CACHE is None or _INDUSTRY_TABLE_CACHE.empty:
+            _INDUSTRY_TABLE_CACHE = client.query("cn/industry", source="sw_2021")
 
-    return []
+        df_ind = _INDUSTRY_TABLE_CACHE
+        if df_ind.empty or "level" not in df_ind.columns or "stockCode" not in df_ind.columns:
+            return []
+
+        # 1. 银行行业接口 -> 动态筛选包含“银行”的分类
+        if "/bank" in endpoint:
+            mask = df_ind["name"].str.contains("银行", na=False) & (df_ind["level"].isin(["one", "two"]))
+            return sorted(df_ind[mask]["stockCode"].dropna().astype(str).unique().tolist())
+
+        # 2. 证券行业接口 -> 动态筛选包含“证券”的分类
+        if "/security" in endpoint:
+            mask = df_ind["name"].str.contains("证券", na=False) & (df_ind["level"].isin(["one", "two"]))
+            return sorted(df_ind[mask]["stockCode"].dropna().astype(str).unique().tolist())
+
+        # 3. 保险行业接口 -> 动态筛选包含“保险”的分类
+        if "/insurance" in endpoint:
+            mask = df_ind["name"].str.contains("保险", na=False) & (df_ind["level"].isin(["one", "two"]))
+            return sorted(df_ind[mask]["stockCode"].dropna().astype(str).unique().tolist())
+
+        # 4. 非金融行业接口 -> 动态排除“银行”与“非银金融”
+        if "/non_financial" in endpoint:
+            mask = ~df_ind["name"].str.contains("银行|非银", na=False) & (df_ind["level"] == level)
+            return sorted(df_ind[mask]["stockCode"].dropna().astype(str).unique().tolist())
+
+        # 5. 通用行业估值/行情 -> 按指定 level 动态获取
+        mask = df_ind["level"] == level
+        return sorted(df_ind[mask]["stockCode"].dropna().astype(str).unique().tolist())
+
+    except Exception as e:
+        logger.warning(f"动态获取申万行业分类失败: {e}")
+        return []
 
 
 class LixingerStockFetcher:
@@ -122,7 +145,6 @@ class LixingerStockFetcher:
                 return pl.DataFrame()
             return pl.concat(chunks, how="diagonal_relaxed").unique()
 
-
         start_str = start_date.strftime("%Y-%m-%d")
         end_str = end_date.strftime("%Y-%m-%d")
 
@@ -158,15 +180,21 @@ class LixingerStockFetcher:
                     query_kwargs["stockCodes"] = [default_code]
                 elif "industry" in endpoint or "sw_2021" in endpoint:
                     target_level = "two" if "l2" in endpoint.lower() else "one"
-                    codes = _resolve_sw_2021_codes(self.client, level=target_level)
-                    # 申万行业估值接口限制单次只能查询 1 个行业代码，逐个查询并拼接
+                    codes = _resolve_sw_2021_industry_codes(
+                        self.client, endpoint=endpoint, level=target_level
+                    )
+
+                    # 申万行业估值/财务接口限制单次只能查询 1 个行业代码，逐个查询并拼接
                     dfs: list[pl.DataFrame] = []
                     for code in codes:
                         sub_kwargs = dict(query_kwargs)
                         sub_kwargs["stockCodes"] = [code]
-                        sub_df = self.client.query(meta.api_name, **sub_kwargs)
-                        if not sub_df.empty:
-                            dfs.append(pl.from_pandas(sub_df))
+                        try:
+                            sub_df = self.client.query(meta.api_name, **sub_kwargs)
+                            if not sub_df.empty:
+                                dfs.append(pl.from_pandas(sub_df))
+                        except Exception as err:
+                            logger.debug(f"理杏仁行业代码 [{code}] 查询跳过或不适用: {err}")
                     if not dfs:
                         return pl.DataFrame()
                     return pl.concat(dfs, how="diagonal_relaxed")
