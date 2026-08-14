@@ -86,7 +86,7 @@ def test_format_reports() -> None:
     assert "OPPORTUNITY_ZONE" in pro_report
 
     console_report = format_console_report(mock_data)
-    assert "A 股量化全景体检日报" in console_report
+    assert "A 股量化体检全景摘要" in console_report
     assert "85.0%" in console_report
 
 
