@@ -82,6 +82,9 @@ universe:
       - code: "512890.SH"
         name: "红利低波ETF"
         description: "红利低波动策略 (华泰柏瑞)"
+      - code: "513920.SH"
+        name: "央企红利ETF"
+        description: "港股通高股息央企核心资产 (华安)"
 
       # --- 核心行业与主题龙头 ---
       - code: "159995.SZ"
