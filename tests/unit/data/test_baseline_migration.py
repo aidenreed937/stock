@@ -251,7 +251,7 @@ def test_backfill_acceptance_normalizes_compact_boundary_dates(tmp_path: Path) -
     pl.DataFrame(
         {
             "symbol": ["A", "A"],
-            "trade_date": ["20140801", "20260812"],
+            "trade_date": ["20260812", "20260813"],
             "adj_factor": [1.0, 1.1],
             "data_source": ["tushare", "tushare"],
             "source_endpoint": ["adj_factor", "adj_factor"],
@@ -261,11 +261,61 @@ def test_backfill_acceptance_normalizes_compact_boundary_dates(tmp_path: Path) -
     ).write_parquet(curated / "data.parquet")
 
     report = accept_backfill(
-        str(tmp_path), "adj_factor", date(2014, 8, 1), date(2026, 8, 12)
+        str(tmp_path), "adj_factor", date(2026, 8, 12), date(2026, 8, 13)
     )
 
     assert report["missing_boundary_dates"] == []
     assert report["status"] == "PASSED"
+
+
+def test_backfill_acceptance_fails_on_internal_daily_gap(tmp_path: Path) -> None:
+    curated = tmp_path / "adj_factor"
+    curated.mkdir()
+    pl.DataFrame(
+        {
+            "symbol": ["A", "A"],
+            "trade_date": ["20260812", "20260814"],
+            "adj_factor": [1.0, 1.1],
+            "data_source": ["tushare", "tushare"],
+            "source_endpoint": ["adj_factor", "adj_factor"],
+            "request_id": ["r1", "r2"],
+            "updated_at": ["2026-08-12", "2026-08-14"],
+        }
+    ).write_parquet(curated / "data.parquet")
+
+    report = accept_backfill(
+        str(tmp_path), "adj_factor", date(2026, 8, 12), date(2026, 8, 14)
+    )
+
+    assert report["missing_dates"] == ["2026-08-13"]
+    assert report["status"] == "FAILED"
+
+
+def test_backfill_acceptance_filters_by_data_source(tmp_path: Path) -> None:
+    target = tmp_path / "yfinance" / "market=US" / "stock_daily_bar"
+    target.mkdir(parents=True)
+    pl.DataFrame(
+        {
+            "symbol": ["AAPL"],
+            "trade_date": ["2026-08-12"],
+            "open": [1.0],
+            "high": [1.0],
+            "low": [1.0],
+            "close": [1.0],
+            "data_source": ["yfinance"],
+            "source_endpoint": ["history"],
+            "request_id": ["r"],
+            "updated_at": ["2026-08-12"],
+        }
+    ).write_parquet(target / "data.parquet")
+
+    tushare_report = accept_backfill(str(tmp_path), "stock_daily_bar", data_source="tushare")
+    yfinance_report = accept_backfill(str(tmp_path), "stock_daily_bar", data_source="yfinance")
+
+    assert tushare_report["status"] == "FAILED"
+    assert tushare_report["files"] == 0
+    assert yfinance_report["status"] == "PASSED"
+    assert yfinance_report["files"] == 1
 
 
 def test_backfill_acceptance_handles_quarterly_report_periods(tmp_path: Path) -> None:

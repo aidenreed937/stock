@@ -60,3 +60,20 @@ def test_raw_storage_uses_endpoint_market_for_dataset_cache(tmp_path: Path) -> N
     pl.DataFrame({"symbol": ["AAPL"], "trade_date": ["20260812"]}).write_parquet(cache_path)
 
     assert store.has_raw("yfinance", "history", target_date)
+
+
+def test_raw_storage_has_raw_requires_target_date_in_month_file(tmp_path: Path) -> None:
+    store = RawDataStorage(base_dir=tmp_path)
+    cache_path = (
+        tmp_path
+        / "yfinance"
+        / "market=US"
+        / "stock_daily_bar"
+        / "year=2026"
+        / "month=08"
+        / "data.parquet"
+    )
+    cache_path.parent.mkdir(parents=True)
+    pl.DataFrame({"symbol": ["AAPL"], "trade_date": ["20260811"]}).write_parquet(cache_path)
+
+    assert not store.has_raw("yfinance", "history", date(2026, 8, 12))

@@ -1,24 +1,212 @@
 """A 股全市场数据完整性与停牌对账审计模块。"""
 
 import argparse
+import sys
 from datetime import date, datetime, timedelta
 from pathlib import Path
-import sys
 from typing import Any
 
 import polars as pl
 
+from stock.config.settings import settings
+from stock.data.audit.factor_audit import run_adj_factor_audit, run_sw_daily_audit
+from stock.data.audit.moneyflow_audit import run_hk_hold_audit
+from stock.data.audit.valuation_audit import run_daily_basic_audit, run_sw_industry_audit
 from stock.data.fetcher.tushare.client import TuShareClient
+from stock.data.task_registry import resolve_task
 from stock.utils.logger import logger
 
+_DATE_COLUMNS = ("trade_date", "date", "end_date", "suspend_date", "Date")
+_SYMBOL_COLUMNS = ("symbol", "ts_code", "stockCode", "code", "ticker")
 
-def run_audit(target_date: date, data_source: str = "tushare", quiet: bool = False) -> dict[str, Any]:
+
+def _is_artifact_path(path: Path) -> bool:
+    """跳过迁移备份和临时文件。"""
+    return path.name.endswith((".bak.parquet", ".tmp.parquet"))
+
+
+def _dataset_aliases(data_source: str, endpoint: str) -> set[str]:
+    aliases = {endpoint}
+    try:
+        task = resolve_task(data_source, endpoint)
+        aliases.update({task.task_name, task.dataset, task.api_name})
+    except Exception as exc:
+        logger.debug(f"解析审计数据集别名失败 [{data_source}/{endpoint}]: {exc}")
+    return {alias for alias in aliases if alias}
+
+
+def _collect_dataset_files(
+    base_dir: Path,
+    data_source: str,
+    endpoint: str,
+    target_date: date,
+) -> list[Path]:
+    """按数据源、数据集别名和目标月份定位物理 Parquet 文件。"""
+    source_root = base_dir / data_source
+    if not source_root.exists():
+        return []
+
+    aliases = _dataset_aliases(data_source, endpoint)
+    target_year = f"year={target_date.year:04d}"
+    target_month = f"month={target_date.month:02d}"
+    files: list[Path] = []
+    for path in source_root.rglob("*.parquet"):
+        if _is_artifact_path(path):
+            continue
+        if not any(alias in path.parts or alias in path.stem for alias in aliases):
+            continue
+        has_time_partition = any(part.startswith("year=") for part in path.parts)
+        if has_time_partition and (target_year not in path.parts or target_month not in path.parts):
+            continue
+        files.append(path)
+    return sorted(files)
+
+
+def _filter_target_date(frame: pl.DataFrame, target_date: date) -> pl.DataFrame:
+    """将不同日期列格式统一后筛选目标日期。"""
+    date_col = next((col for col in _DATE_COLUMNS if col in frame.columns), None)
+    if date_col is None or frame.is_empty():
+        return frame
+
+    target_plain = target_date.strftime("%Y%m%d")
+    return (
+        frame.with_columns(
+            pl.col(date_col)
+            .cast(pl.Utf8, strict=False)
+            .str.replace_all("-", "")
+            .str.replace_all("/", "")
+            .str.slice(0, 8)
+            .alias("_audit_date")
+        )
+        .filter(pl.col("_audit_date") == target_plain)
+        .drop("_audit_date")
+    )
+
+
+def _read_target_frames(
+    files: list[Path],
+    target_date: date,
+) -> tuple[pl.DataFrame, list[str]]:
+    frames: list[pl.DataFrame] = []
+    errors: list[str] = []
+    for path in files:
+        try:
+            frame = _filter_target_date(pl.read_parquet(path), target_date)
+            if not frame.is_empty():
+                frames.append(frame)
+        except Exception as exc:
+            errors.append(f"{path}: {exc}")
+    if not frames:
+        return pl.DataFrame(), errors
+    return pl.concat(frames, how="diagonal_relaxed"), errors
+
+
+def _identity_key_set(frame: pl.DataFrame) -> set[tuple[str, str]]:
+    """抽取 symbol + trade_date 主键集合，兼容 RAW 源端列名。"""
+    if frame.is_empty():
+        return set()
+    symbol_col = next((col for col in _SYMBOL_COLUMNS if col in frame.columns), None)
+    date_col = next((col for col in _DATE_COLUMNS if col in frame.columns), None)
+    if symbol_col is None or date_col is None:
+        return set()
+
+    key_frame = frame.select(
+        [
+            pl.col(symbol_col).cast(pl.Utf8, strict=False).alias("symbol"),
+            pl.col(date_col)
+            .cast(pl.Utf8, strict=False)
+            .str.replace_all("-", "")
+            .str.replace_all("/", "")
+            .str.slice(0, 8)
+            .alias("trade_date"),
+        ]
+    ).drop_nulls()
+    return {(symbol, trade_date) for symbol, trade_date in key_frame.iter_rows()}
+
+
+def _format_key_sample(keys: set[tuple[str, str]], limit: int = 20) -> list[str]:
+    return [f"{symbol}@{trade_date}" for symbol, trade_date in sorted(keys)[:limit]]
+
+
+def _run_raw_curated_reconciliation(
+    target_date: date,
+    data_source: str,
+    endpoint: str = "stock_daily_bar",
+) -> dict[str, Any]:
+    """执行 RAW 与 Curated 的物理文件、行数和主键对账。"""
+    raw_files = _collect_dataset_files(
+        settings.raw_data_dir,
+        data_source,
+        endpoint,
+        target_date,
+    )
+    curated_files = _collect_dataset_files(
+        settings.curated_data_dir,
+        data_source,
+        endpoint,
+        target_date,
+    )
+    raw_df, raw_errors = _read_target_frames(raw_files, target_date)
+    curated_df, curated_errors = _read_target_frames(curated_files, target_date)
+
+    raw_keys = _identity_key_set(raw_df)
+    curated_keys = _identity_key_set(curated_df)
+    missing_in_curated = raw_keys - curated_keys
+    extra_in_curated = curated_keys - raw_keys
+
+    reason = ""
+    status = "PASSED"
+    if not raw_files and not curated_files:
+        status = "SKIPPED"
+        reason = "未找到 RAW/Curated 物理文件"
+    elif not raw_files:
+        status = "FAILED"
+        reason = "缺少 RAW 物理文件"
+    elif not curated_files:
+        status = "FAILED"
+        reason = "缺少 Curated 物理文件"
+    elif raw_errors or curated_errors:
+        status = "FAILED"
+        reason = "存在 Parquet 读取错误"
+    elif len(raw_df) != len(curated_df):
+        status = "FAILED"
+        reason = "目标日期 RAW 与 Curated 行数不一致"
+    elif (raw_keys or curated_keys) and raw_keys != curated_keys:
+        status = "FAILED"
+        reason = "目标日期 RAW 与 Curated 主键集合不一致"
+
+    return {
+        "raw_curated_status": status,
+        "raw_curated_reason": reason,
+        "raw_curated_match": status == "PASSED" if status != "SKIPPED" else None,
+        "raw_files": len(raw_files),
+        "curated_files": len(curated_files),
+        "raw_count": len(raw_df),
+        "curated_count": len(curated_df),
+        "raw_key_count": len(raw_keys),
+        "curated_key_count": len(curated_keys),
+        "missing_in_curated_count": len(missing_in_curated),
+        "extra_in_curated_count": len(extra_in_curated),
+        "missing_in_curated_sample": _format_key_sample(missing_in_curated),
+        "extra_in_curated_sample": _format_key_sample(extra_in_curated),
+        "raw_errors": raw_errors,
+        "curated_errors": curated_errors,
+    }
+
+
+def run_audit(
+    target_date: date,
+    data_source: str = "tushare",
+    quiet: bool = False,
+    endpoint: str = "stock_daily_bar",
+) -> dict[str, Any]:
     """对指定单日进行 A 股行情完整性审计对账。
 
     Args:
         target_date: 目标审计日期。
         data_source: 数据源标识 (默认 tushare)。
         quiet: 是否抑制 stdout 日报表控制台打印 (用于历史区间批量审计时静默模式)。
+        endpoint: RAW/Curated 物理对账的数据集名称。
 
     Returns:
         dict[str, Any]: 单日审计结果统计字典。
@@ -35,11 +223,16 @@ def run_audit(target_date: date, data_source: str = "tushare", quiet: bool = Fal
             # 兼容 Mock 路径或空情形
             basic_df = pl.read_parquet(f"{basic_pattern}/data.parquet")
     except Exception as e:
-        logger.error(f"加载 [{data_source}] stock_basic 数据集失败，请确认是否已执行过基础数据拉取: {e}")
+        logger.error(
+            f"加载 [{data_source}] stock_basic 数据集失败，请确认是否已执行过基础数据拉取: {e}"
+        )
         return {}
 
     # 2. 读取对应月份的 daily_bar 数据
-    daily_pattern = f"data/curated/{data_source}/market=CN/stock_daily_bar/year={target_date.year:04d}/month={target_date.month:02d}/*.parquet"
+    daily_pattern = (
+        f"data/curated/{data_source}/market=CN/stock_daily_bar/"
+        f"year={target_date.year:04d}/month={target_date.month:02d}/*.parquet"
+    )
     try:
         daily_df = pl.read_parquet(daily_pattern)
     except Exception:
@@ -95,7 +288,8 @@ def run_audit(target_date: date, data_source: str = "tushare", quiet: bool = Fal
     missing_count = len(missing_symbols)
 
     logger.info(
-        f"预期上市个股数: {theoretical_count}，实际行情个股数: {actual_count}，缺失个股数: {missing_count}"
+        f"预期上市个股数: {theoretical_count}，实际行情个股数: {actual_count}，"
+        f"缺失个股数: {missing_count}"
     )
 
     suspended_symbols: list[str] = []
@@ -107,17 +301,27 @@ def run_audit(target_date: date, data_source: str = "tushare", quiet: bool = Fal
         suspend_set: set[str] = set()
 
         # 优先读取本地 suspend_d 数据
-        local_suspend_path = f"data/curated/{data_source}/market=CN/suspend_d/year={target_date.year:04d}/month={target_date.month:02d}/*.parquet"
+        local_suspend_path = (
+            f"data/curated/{data_source}/market=CN/suspend_d/"
+            f"year={target_date.year:04d}/month={target_date.month:02d}/*.parquet"
+        )
         try:
             local_sus_df = pl.read_parquet(local_suspend_path)
-            date_col = next((c for c in ["trade_date", "date", "suspend_date"] if c in local_sus_df.columns), None)
+            date_col = next(
+                (c for c in ["trade_date", "date", "suspend_date"] if c in local_sus_df.columns),
+                None,
+            )
             if date_col:
                 if local_sus_df[date_col].dtype == pl.String:
                     local_sus_df = local_sus_df.with_columns(
-                        pl.col(date_col).str.to_date("%Y-%m-%d", strict=False).alias("suspend_d_date")
+                        pl.col(date_col)
+                        .str.to_date("%Y-%m-%d", strict=False)
+                        .alias("suspend_d_date")
                     )
                 else:
-                    local_sus_df = local_sus_df.with_columns(pl.col(date_col).alias("suspend_d_date"))
+                    local_sus_df = local_sus_df.with_columns(
+                        pl.col(date_col).alias("suspend_d_date")
+                    )
                 sub_sus = local_sus_df.filter(pl.col("suspend_d_date") == target_date)
                 sym_col_sus = next((c for c in ["symbol", "ts_code"] if c in sub_sus.columns), None)
                 if sym_col_sus:
@@ -151,9 +355,19 @@ def run_audit(target_date: date, data_source: str = "tushare", quiet: bool = Fal
 
     integrity_rate = 0.0
     if theoretical_count > 0:
-        integrity_rate = (
-            (actual_count + verified_suspended_count) / theoretical_count
-        ) * 100.0
+        integrity_rate = ((actual_count + verified_suspended_count) / theoretical_count) * 100.0
+
+    physical_recon = _run_raw_curated_reconciliation(
+        target_date=target_date,
+        data_source=data_source,
+        endpoint=endpoint,
+    )
+    raw_curated_status = physical_recon["raw_curated_status"]
+    status = (
+        "PASSED"
+        if true_missing_count == 0 and raw_curated_status in {"PASSED", "SKIPPED"}
+        else "FAILED"
+    )
 
     if not quiet:
         print("\n" + "=" * 50)
@@ -166,11 +380,20 @@ def run_audit(target_date: date, data_source: str = "tushare", quiet: bool = Fal
         print(f"   - 异常缺失股票数 (Unexplained): {true_missing_count}")
         print("-" * 50)
         print(f"4. 行情数据完整率 (Integrity Rate): {integrity_rate:.2f}%")
+        print(
+            "5. RAW vs Curated 物理对账: "
+            f"{raw_curated_status}"
+            f" (RAW {physical_recon['raw_count']} 行 / "
+            f"Curated {physical_recon['curated_count']} 行)"
+        )
+        if physical_recon["raw_curated_reason"]:
+            print(f"   - 诊断: {physical_recon['raw_curated_reason']}")
         print("=" * 50)
 
         if true_missing_count > 0:
             print(
-                f"\n[警告] 以下 {true_missing_count} 只个股存在异常缺失，请检查网络拉取或尝试重新执行回填："
+                f"\n[警告] 以下 {true_missing_count} 只个股存在异常缺失，"
+                "请检查网络拉取或尝试重新执行回填："
             )
             for sym in sorted(unexplained_symbols):
                 name_val = expected_df.filter(pl.col(sym_col) == sym)["name"].to_list()
@@ -189,6 +412,8 @@ def run_audit(target_date: date, data_source: str = "tushare", quiet: bool = Fal
         "unexplained": true_missing_count,
         "integrity_rate": integrity_rate,
         "unexplained_symbols": unexplained_symbols,
+        "status": status,
+        **physical_recon,
     }
 
 
@@ -233,7 +458,8 @@ def run_audit_range(
         dict[str, Any]: 历史区间汇总审计统计报告。
     """
     logger.info(
-        f"开始历史时间段对账审计 (区间: {start_date} ~ {end_date}, 数据源: {data_source}, 线程数: {max_workers})..."
+        f"开始历史时间段对账审计 (区间: {start_date} ~ {end_date}, "
+        f"数据源: {data_source}, 线程数: {max_workers})..."
     )
 
     open_dates = get_trading_calendar(start_date, end_date)
@@ -276,9 +502,7 @@ def run_audit_range(
 
     total_days = len(daily_results)
     avg_integrity_rate = (
-        sum(r["integrity_rate"] for r in daily_results) / total_days
-        if total_days > 0
-        else 0.0
+        sum(r["integrity_rate"] for r in daily_results) / total_days if total_days > 0 else 0.0
     )
 
     problematic_days = [r for r in daily_results if r["unexplained"] > 0]
@@ -290,13 +514,12 @@ def run_audit_range(
         for sym in r.get("unexplained_symbols", []):
             symbol_missing_counts[sym] = symbol_missing_counts.get(sym, 0) + 1
 
-    top_missing_symbols = sorted(
-        symbol_missing_counts.items(), key=lambda x: x[1], reverse=True
-    )
+    top_missing_symbols = sorted(symbol_missing_counts.items(), key=lambda x: x[1], reverse=True)
 
     print("\n" + "=" * 65)
     print(
-        f"       历史时间段数据完整性对账审计汇总报告 [{start_date} ~ {end_date}] (数据源: {data_source})       "
+        "       历史时间段数据完整性对账审计汇总报告 "
+        f"[{start_date} ~ {end_date}] (数据源: {data_source})       "
     )
     print("=" * 65)
     print(f"1. 审计交易日总数 (Trading Days):    {total_days} 天")
@@ -365,14 +588,19 @@ def run_index_audit(
     target_year = f"year={target_date.year:04d}"
     target_month = f"month={target_date.month:02d}"
     root_path = Path(f"data/curated/{data_source}")
-    matched_files = [
-        p for p in root_path.rglob("*.parquet")
-        if ("index_daily" in p.parts or "index_daily_bar" in p.parts)
-        and "index_dailybasic" not in p.parts
-        and target_year in p.parts
-        and target_month in p.parts
-        and not p.name.endswith((".bak.parquet", ".tmp.parquet"))
-    ] if root_path.exists() else []
+    matched_files = (
+        [
+            p
+            for p in root_path.rglob("*.parquet")
+            if ("index_daily" in p.parts or "index_daily_bar" in p.parts)
+            and "index_dailybasic" not in p.parts
+            and target_year in p.parts
+            and target_month in p.parts
+            and not p.name.endswith((".bak.parquet", ".tmp.parquet"))
+        ]
+        if root_path.exists()
+        else []
+    )
 
     try:
         if matched_files:
@@ -443,7 +671,8 @@ def run_index_audit_range(
 
     print("\n" + "=" * 65)
     print(
-        f"       指数时间段完整性对账审计汇总报告 [{start_date} ~ {end_date}] (数据源: {data_source})       "
+        "       指数时间段完整性对账审计汇总报告 "
+        f"[{start_date} ~ {end_date}] (数据源: {data_source})       "
     )
     print("=" * 65)
     print(f"1. 审计交易日总数 (Trading Days):    {total_days} 天")
@@ -458,11 +687,6 @@ def run_index_audit_range(
         "avg_integrity_rate": avg_rate,
         "daily_results": daily_results,
     }
-
-
-from stock.data.audit.factor_audit import run_adj_factor_audit, run_sw_daily_audit
-from stock.data.audit.moneyflow_audit import run_hk_hold_audit
-from stock.data.audit.valuation_audit import run_daily_basic_audit, run_sw_industry_audit
 
 
 def main() -> None:
@@ -480,8 +704,20 @@ def main() -> None:
         "--mode",
         type=str,
         default="stock",
-        choices=["stock", "index", "daily_basic", "adj_factor", "hk_hold", "sw_industry", "sw_daily"],
-        help="对账模式 (stock: K线审计, index: 指数审计, daily_basic: 估值对账, adj_factor: 复权因子对账, hk_hold: 北向持仓, sw_industry: 申万行业图谱与估值, sw_daily: 申万行业日行情)",
+        choices=[
+            "stock",
+            "index",
+            "daily_basic",
+            "adj_factor",
+            "hk_hold",
+            "sw_industry",
+            "sw_daily",
+        ],
+        help=(
+            "对账模式 (stock: K线审计, index: 指数审计, daily_basic: 估值对账, "
+            "adj_factor: 复权因子对账, hk_hold: 北向持仓, sw_industry: "
+            "申万行业图谱与估值, sw_daily: 申万行业日行情)"
+        ),
     )
     parser.add_argument(
         "--date",
@@ -559,7 +795,10 @@ def main() -> None:
         elif args.mode == "hk_hold":
             run_hk_hold_audit(target_date, data_source=data_source)
         elif args.mode == "sw_industry":
-            run_sw_industry_audit(target_date, data_source=args.data_source if args.data_source != "tushare" else "lixinger")
+            run_sw_industry_audit(
+                target_date,
+                data_source=args.data_source if args.data_source != "tushare" else "lixinger",
+            )
         elif args.mode == "sw_daily":
             run_sw_daily_audit(target_date, data_source=data_source)
         else:

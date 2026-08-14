@@ -215,6 +215,7 @@ def main() -> None:  # noqa: C901, PLR0912, PLR0915
     if hasattr(shared_store, "enable_batch_mode"):
         shared_store.enable_batch_mode()
 
+    summaries: list[dict[str, object]] = []
     try:
         for ep_idx, current_ep in enumerate(endpoints, 1):
             logger.info(
@@ -257,9 +258,17 @@ def main() -> None:  # noqa: C901, PLR0912, PLR0915
 
                 backfiller.pipeline.store = shared_store
 
-                backfiller.backfill_range(
+                summary = backfiller.backfill_range(
                     start_d, end_d, force_refresh=force_refresh, max_workers=workers
                 )
+                if isinstance(summary, dict):
+                    summaries.append(
+                        {
+                            "endpoint": current_ep,
+                            "symbol": sym,
+                            **summary,
+                        }
+                    )
 
                 if idx % 5 == 0 and hasattr(shared_store, "commit"):
                     shared_store.commit()
@@ -271,6 +280,13 @@ def main() -> None:  # noqa: C901, PLR0912, PLR0915
     finally:
         if hasattr(shared_store, "commit"):
             shared_store.commit()
+
+    failed_days = sum(
+        value for item in summaries if isinstance(value := item.get("failed_days", 0), int)
+    )
+    if failed_days:
+        logger.error(f"历史数据回填存在失败任务，失败交易日数合计: {failed_days}")
+        sys.exit(1)
 
 
 if __name__ == "__main__":

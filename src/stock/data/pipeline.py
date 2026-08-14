@@ -21,6 +21,7 @@ from stock.data.normalizer.bar_normalizer import (
 from stock.data.normalizer.base import BaseDataNormalizer
 from stock.data.normalizer.generic_normalizer import GenericNormalizer
 from stock.data.normalizer.unit_normalizer import UnitNormalizer
+from stock.data.quality.quarantine import QuarantineStore
 from stock.data.storage.duckdb_store import DuckDBMarketStore
 from stock.data.storage.raw_store import RawDataStorage
 from stock.data.task_registry import resolve_task
@@ -152,7 +153,17 @@ class MarketDataPipeline:
         unit_df = unit_normalizer.normalize_units(raw_df)
 
         # 4. 清洗 (Clean)
-        cleaned_df = self.cleaner.clean(unit_df)
+        clean_with_quarantine = getattr(self.cleaner, "clean_with_quarantine", None)
+        if callable(clean_with_quarantine):
+            cleaned_df = clean_with_quarantine(
+                unit_df,
+                endpoint=dataset,
+                request_id=key.request_id,
+                data_source=self.data_source,
+                quarantine=QuarantineStore(),
+            )
+        else:
+            cleaned_df = self.cleaner.clean(unit_df)
 
         # 5. 标准化 (Normalize)
         normalized_df = self.normalizer.normalize(cleaned_df)

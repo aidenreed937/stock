@@ -9,6 +9,19 @@ import polars as pl
 logger = logging.getLogger(__name__)
 
 
+def _parse_source_dataset(file_path: Path, base_dir: Path) -> tuple[str, str]:
+    """从物理路径解析数据源和数据集名。"""
+    rel_parts = file_path.relative_to(base_dir).parts
+    source = rel_parts[0] if len(rel_parts) > 0 else "unknown"
+    if len(rel_parts) >= 3 and rel_parts[1].startswith("market="):
+        dataset = rel_parts[2]
+    elif len(rel_parts) >= 2:
+        dataset = rel_parts[1]
+    else:
+        dataset = file_path.stem
+    return source, dataset
+
+
 def run_master_audit(base_dir: str = "data/curated") -> pl.DataFrame:
     """物理扫描指定目录下的全部 Parquet 文件，按数据源与数据集汇总审计信息。
 
@@ -24,7 +37,8 @@ def run_master_audit(base_dir: str = "data/curated") -> pl.DataFrame:
         return pl.DataFrame()
 
     files = [
-        f for f in curated_path.rglob("*.parquet")
+        f
+        for f in curated_path.rglob("*.parquet")
         if not f.name.endswith((".bak.parquet", ".tmp.parquet"))
     ]
     if not files:
@@ -35,16 +49,7 @@ def run_master_audit(base_dir: str = "data/curated") -> pl.DataFrame:
     for f in files:
         try:
             df = pl.read_parquet(f)
-            rel_parts = f.relative_to(curated_path).parts
-            src = rel_parts[0] if len(rel_parts) > 0 else "unknown"
-
-            # 精确解析数据集名（兼容 market=XX 分区与扁平层级）
-            if len(rel_parts) >= 3 and rel_parts[1].startswith("market="):
-                dataset = rel_parts[2]
-            elif len(rel_parts) >= 2:
-                dataset = rel_parts[1]
-            else:
-                dataset = f.stem
+            src, dataset = _parse_source_dataset(f, curated_path)
 
             symbols_cnt = 0
             for sym_col in ["symbol", "ts_code", "stockCode", "ticker"]:
@@ -56,7 +61,8 @@ def run_master_audit(base_dir: str = "data/curated") -> pl.DataFrame:
             max_d = "N/A"
             date_col = next(
                 (
-                    c for c in [
+                    c
+                    for c in [
                         "trade_date",
                         "date",
                         "as_of_date",
@@ -78,32 +84,57 @@ def run_master_audit(base_dir: str = "data/curated") -> pl.DataFrame:
                     min_d = str(vals.min())[:10]
                     max_d = str(vals.max())[:10]
 
-            records.append({
-                "source": src,
-                "dataset": dataset,
-                "path": str(f),
-                "rows": len(df),
-                "symbols_count": symbols_cnt,
-                "min_date": min_d,
-                "max_date": max_d,
-                "null_count": sum(df[c].null_count() for c in df.columns),
-                "duplicate_rows": len(df) - len(df.unique()),
-            })
+            records.append(
+                {
+                    "source": src,
+                    "dataset": dataset,
+                    "path": str(f),
+                    "rows": len(df),
+                    "symbols_count": symbols_cnt,
+                    "min_date": min_d,
+                    "max_date": max_d,
+                    "null_count": sum(df[c].null_count() for c in df.columns),
+                    "duplicate_rows": len(df) - len(df.unique()),
+                    "audit_errors": 0,
+                }
+            )
         except Exception as e:
+            src, dataset = _parse_source_dataset(f, curated_path)
             logger.error(f"读取文件 [{f}] 发生审计解析异常: {e}")
+            records.append(
+                {
+                    "source": src,
+                    "dataset": dataset,
+                    "path": str(f),
+                    "rows": 0,
+                    "symbols_count": 0,
+                    "min_date": "N/A",
+                    "max_date": "N/A",
+                    "null_count": 0,
+                    "duplicate_rows": 0,
+                    "audit_errors": 1,
+                }
+            )
 
     if not records:
         return pl.DataFrame()
 
     df_rec = pl.DataFrame(records)
-    summary = df_rec.group_by(["source", "dataset"]).agg(
-        pl.col("symbols_count").max().alias("标的数"),
-        pl.col("rows").sum().alias("精炼落盘总记录数"),
-        pl.col("min_date").min().alias("最早交易日"),
-        pl.col("max_date").max().alias("最新交易日"),
-    ).sort(["source", "dataset"])
-
-    return summary
+    return (
+        df_rec.group_by(["source", "dataset"])
+        .agg(
+            pl.col("symbols_count").max().alias("标的数"),
+            pl.col("rows").sum().alias("精炼落盘总记录数"),
+            pl.col("min_date").filter(pl.col("min_date") != "N/A").min().alias("最早交易日"),
+            pl.col("max_date").filter(pl.col("max_date") != "N/A").max().alias("最新交易日"),
+            pl.col("audit_errors").sum().alias("审计错误数"),
+        )
+        .with_columns(
+            pl.col("最早交易日").fill_null("N/A"),
+            pl.col("最新交易日").fill_null("N/A"),
+        )
+        .sort(["source", "dataset"])
+    )
 
 
 def print_master_audit_summary(summary: pl.DataFrame) -> None:
@@ -115,7 +146,7 @@ def print_master_audit_summary(summary: pl.DataFrame) -> None:
     if not summary.is_empty():
         print(
             f"{'数据源':<10} | {'数据集表名':<28} | {'覆盖标的数':<10} | {'落盘总记录数':<12} | "
-            f"{'最早交易日':<10} | {'最新交易日':<10} | {'完备度诊断'}"
+            f"{'最早交易日':<10} | {'最新交易日':<10} | {'审计错误'} | {'完备度诊断'}"
         )
         print("-" * 105)
         for row in summary.iter_rows(named=True):
@@ -125,9 +156,11 @@ def print_master_audit_summary(summary: pl.DataFrame) -> None:
             rows = row["精炼落盘总记录数"]
             min_d = row["最早交易日"]
             max_d = row["最新交易日"]
+            errors = row.get("审计错误数", 0)
+            diagnosis = "存在文件读取错误" if errors else "已扫描，物理文件完整"
             print(
                 f"{src:<10} | {ds:<28} | {syms:<10} | {rows:<12,d} | "
-                f"{min_d:<10} | {max_d:<10} | 已扫描，物理文件完整"
+                f"{min_d:<10} | {max_d:<10} | {errors:<8} | {diagnosis}"
             )
     else:
         print("离线库为空或未包含任何有效 Parquet 数据文件。")

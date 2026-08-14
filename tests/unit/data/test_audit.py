@@ -1,4 +1,5 @@
 from datetime import date
+from pathlib import Path
 from unittest.mock import MagicMock, patch
 
 import polars as pl
@@ -14,17 +15,21 @@ def test_run_audit_missing_stock_basic():
 
 
 def test_run_audit_success():
-    stock_basic_df = pl.DataFrame({
-        "ts_code": ["600000.SH", "000001.SZ"],
-        "name": ["浦发银行", "平安银行"],
-        "list_date": ["19991110", "19910403"],
-        "delist_date": pl.Series("delist_date", [None, None], dtype=pl.String),
-    })
-    daily_df = pl.DataFrame({
-        "symbol": ["600000.SH"],
-        "trade_date": ["2026-08-01"],
-        "close": [10.0],
-    })
+    stock_basic_df = pl.DataFrame(
+        {
+            "ts_code": ["600000.SH", "000001.SZ"],
+            "name": ["浦发银行", "平安银行"],
+            "list_date": ["19991110", "19910403"],
+            "delist_date": pl.Series("delist_date", [None, None], dtype=pl.String),
+        }
+    )
+    daily_df = pl.DataFrame(
+        {
+            "symbol": ["600000.SH"],
+            "trade_date": ["2026-08-01"],
+            "close": [10.0],
+        }
+    )
 
     def mock_read_parquet(pattern):
         pattern_str = str(pattern)
@@ -104,12 +109,25 @@ def test_audit_main_range_cli():
 def test_run_index_audit():
     from stock.data.audit.reconciliation import run_index_audit
 
-    index_df = pl.DataFrame({
-        "symbol": ["000001.SH", "399001.SZ"],
-        "trade_date": ["2026-08-01", "2026-08-01"],
-    })
+    index_df = pl.DataFrame(
+        {
+            "symbol": ["000001.SH", "399001.SZ"],
+            "trade_date": ["2026-08-01", "2026-08-01"],
+        }
+    )
 
-    with patch("polars.read_parquet", return_value=index_df):
+    with (
+        patch("pathlib.Path.exists", return_value=True),
+        patch(
+            "pathlib.Path.rglob",
+            return_value=[
+                Path(
+                    "data/curated/tushare/market=CN/index_daily_bar/year=2026/month=08/data.parquet"
+                )
+            ],
+        ),
+        patch("polars.read_parquet", return_value=index_df),
+    ):
         res = run_index_audit(date(2026, 8, 1), data_source="tushare")
         assert res["date"] == date(2026, 8, 1)
         assert res["actual_count"] == 2
@@ -153,7 +171,9 @@ def test_audit_main_index_cli():
 def test_run_daily_basic_audit():
     from stock.data.audit.reconciliation import run_daily_basic_audit
 
-    bar_df = pl.DataFrame({"symbol": ["600000.SH", "000001.SZ"], "trade_date": ["2026-08-01", "2026-08-01"]})
+    bar_df = pl.DataFrame(
+        {"symbol": ["600000.SH", "000001.SZ"], "trade_date": ["2026-08-01", "2026-08-01"]}
+    )
     db_df = pl.DataFrame({"symbol": ["600000.SH"], "trade_date": ["2026-08-01"]})
 
     def mock_read(pattern: str):
@@ -172,7 +192,9 @@ def test_run_daily_basic_audit():
 def test_run_adj_factor_audit():
     from stock.data.audit.reconciliation import run_adj_factor_audit
 
-    basic_df = pl.DataFrame({"symbol": ["600000.SH", "000001.SZ"], "list_date": ["19991110", "19910403"]})
+    basic_df = pl.DataFrame(
+        {"symbol": ["600000.SH", "000001.SZ"], "list_date": ["19991110", "19910403"]}
+    )
     adj_df = pl.DataFrame({"symbol": ["600000.SH"], "trade_date": ["2026-08-01"]})
 
     def mock_read(pattern):
@@ -180,11 +202,47 @@ def test_run_adj_factor_audit():
             return basic_df
         return adj_df
 
-    with patch("polars.read_parquet", side_effect=mock_read):
+    with (
+        patch(
+            "pathlib.Path.rglob",
+            return_value=[Path("data/curated/tushare/market=CN/stock_basic/data.parquet")],
+        ),
+        patch("polars.read_parquet", side_effect=mock_read),
+    ):
         res = run_adj_factor_audit(date(2026, 8, 1))
         assert res["expected_count"] == 2
         assert res["actual_count"] == 1
         assert res["coverage_rate"] == 50.0
+
+
+def test_raw_curated_reconciliation_detects_key_mismatch(tmp_path, monkeypatch):
+    from stock.data.audit.reconciliation import _run_raw_curated_reconciliation
+
+    raw_root = tmp_path / "raw"
+    curated_root = tmp_path / "curated"
+    monkeypatch.setattr("stock.data.audit.reconciliation.settings.raw_data_dir", raw_root)
+    monkeypatch.setattr("stock.data.audit.reconciliation.settings.curated_data_dir", curated_root)
+
+    raw_path = raw_root / "tushare" / "market=CN" / "stock_daily_bar" / "year=2026" / "month=08"
+    curated_path = (
+        curated_root / "tushare" / "market=CN" / "stock_daily_bar" / "year=2026" / "month=08"
+    )
+    raw_path.mkdir(parents=True)
+    curated_path.mkdir(parents=True)
+
+    pl.DataFrame(
+        {"ts_code": ["600000.SH", "000001.SZ"], "trade_date": ["20260801", "20260801"]}
+    ).write_parquet(raw_path / "data.parquet")
+    pl.DataFrame({"symbol": ["600000.SH"], "trade_date": ["2026-08-01"]}).write_parquet(
+        curated_path / "data.parquet"
+    )
+
+    result = _run_raw_curated_reconciliation(date(2026, 8, 1), "tushare")
+
+    assert result["raw_curated_status"] == "FAILED"
+    assert result["raw_count"] == 2
+    assert result["curated_count"] == 1
+    assert result["missing_in_curated_count"] == 1
 
 
 def test_run_hk_hold_audit():
@@ -218,7 +276,9 @@ def test_run_sw_industry_audit():
 def test_run_sw_daily_audit():
     from stock.data.audit import run_sw_daily_audit
 
-    sw_df = pl.DataFrame({"symbol": ["801010.SI", "801020.SI"], "trade_date": ["2026-08-01", "2026-08-01"]})
+    sw_df = pl.DataFrame(
+        {"symbol": ["801010.SI", "801020.SI"], "trade_date": ["2026-08-01", "2026-08-01"]}
+    )
 
     with patch("polars.read_parquet", return_value=sw_df):
         res = run_sw_daily_audit(date(2026, 8, 1))

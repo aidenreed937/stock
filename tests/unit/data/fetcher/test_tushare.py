@@ -7,12 +7,12 @@ import pandas as pd
 import polars as pl
 import pytest
 
+from stock.data.cleaner.bar_cleaner import BarDataCleaner
 from stock.data.fetcher.tushare.client import RateLimiter, TuShareClient
-from stock.data.fetcher.tushare.factory import create_tushare_pipeline
 from stock.data.fetcher.tushare.facade import TuShareDataFetcher
+from stock.data.fetcher.tushare.factory import create_tushare_pipeline
 from stock.data.fetcher.tushare.registry import TUSHARE_API_REGISTRY
 from stock.data.fetcher.tushare.slicer import batch_slice_and_merge
-from stock.data.cleaner.bar_cleaner import BarDataCleaner
 from stock.exceptions import DataFetchError
 
 
@@ -112,7 +112,9 @@ def test_tushare_fetcher_dynamic_endpoint_routing(
     assert "pe" in df.columns
 
     # 2. 测试 index_weight 参数映射 (symbol -> index_code)
-    mock_pro.query.return_value = pd.DataFrame([{"index_code": "000300.SH", "con_code": "600519.SH"}])
+    mock_pro.query.return_value = pd.DataFrame(
+        [{"index_code": "000300.SH", "con_code": "600519.SH"}]
+    )
     df_weight = fetcher.fetch_daily_bars_df(
         "000300.SH", date(2026, 1, 1), date(2026, 8, 12), endpoint="index_weight"
     )
@@ -158,9 +160,7 @@ def test_tushare_suspend_d_uses_trade_date_for_full_market_query() -> None:
         "", date(2026, 8, 12), date(2026, 8, 12), endpoint="suspend_d"
     )
 
-    fetcher.client._pro_api.query.assert_called_once_with(
-        "suspend_d", trade_date="20260812"
-    )
+    fetcher.client._pro_api.query.assert_called_once_with("suspend_d", trade_date="20260812")
     assert result.get_column("trade_date").to_list() == ["20260812"]
 
 

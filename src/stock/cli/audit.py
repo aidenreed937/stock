@@ -5,7 +5,49 @@ import sys
 from datetime import date
 from typing import Any
 
+import polars as pl
+
 from stock.utils.logger import logger
+
+
+def _dataframe_audit_failed(result: pl.DataFrame) -> bool:
+    if result.is_empty():
+        return True
+
+    for column in ("审计错误数", "audit_errors"):
+        if column not in result.columns:
+            continue
+        error_count = result.select(
+            pl.col(column).fill_null(0).cast(pl.Int64, strict=False).sum()
+        ).item()
+        if error_count and error_count > 0:
+            return True
+
+    if "status" not in result.columns:
+        return False
+    statuses = {str(value).upper() for value in result.get_column("status").drop_nulls().to_list()}
+    return "FAILED" in statuses
+
+
+def _dict_audit_failed(result: dict[str, Any]) -> bool:
+    if not result:
+        return True
+    status = result.get("status")
+    if isinstance(status, str) and status.upper() == "FAILED":
+        return True
+    return any(_audit_result_failed(value) for value in result.values())
+
+
+def _audit_result_failed(result: Any) -> bool:
+    """将审计函数的结构化失败结果转换为 CLI 退出语义。"""
+    if isinstance(result, dict):
+        return _dict_audit_failed(result)
+    if isinstance(result, pl.DataFrame):
+        return _dataframe_audit_failed(result)
+
+    if isinstance(result, list | tuple):
+        return any(_audit_result_failed(value) for value in result)
+    return False
 
 
 def run_audit(
@@ -38,11 +80,15 @@ def run_audit(
         from stock.data.audit.backfill_acceptance import accept_backfill
 
         logger.info(f"=== 开始执行全量回填验收测试 [{data_source}] ===")
-        results["acceptance"] = accept_backfill(
-            endpoint="stock_daily_bar",
-            raw_root=raw_root,
-            min_raw_ratio=min_raw_ratio,
-        )
+        accept_kwargs: dict[str, Any] = {
+            "endpoint": "stock_daily_bar",
+            "data_source": data_source,
+        }
+        if raw_root is not None:
+            accept_kwargs["raw_root"] = raw_root
+        if min_raw_ratio is not None:
+            accept_kwargs["min_raw_ratio"] = min_raw_ratio
+        results["acceptance"] = accept_backfill(**accept_kwargs)
 
     if audit_type_lower in {"valuation", "all"}:
         from stock.data.audit.valuation_audit import run_daily_basic_audit, run_sw_industry_audit
@@ -134,7 +180,10 @@ def main() -> None:
             run_kwargs["raw_root"] = args.raw_root
         if args.min_raw_ratio is not None:
             run_kwargs["min_raw_ratio"] = args.min_raw_ratio
-        run_audit(**run_kwargs)
+        result = run_audit(**run_kwargs)
+        if _audit_result_failed(result):
+            logger.error("数据审计存在失败项")
+            sys.exit(1)
         logger.info("数据审计执行完毕！")
     except Exception as e:
         logger.error(f"数据审计执行失败: {e}")

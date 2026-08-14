@@ -79,3 +79,41 @@ def test_backfill_cli_universe_resolution() -> None:
 
         main()
         mock_instance.backfill_range.assert_called_once()
+
+
+def test_backfill_cli_exits_nonzero_on_failed_days() -> None:
+    with (
+        patch(
+            "sys.argv",
+            [
+                "backfill.py",
+                "--source",
+                "tushare",
+                "--endpoint",
+                "stock_daily_bar",
+                "--symbol",
+                "600519.SH",
+                "--start",
+                "2026-08-10",
+                "--end",
+                "2026-08-12",
+            ],
+        ),
+        patch("stock.cli.backfill.load_data_config") as mock_cfg,
+        patch("stock.data.backfill.HistoricalBackfiller") as mock_backfiller_cls,
+    ):
+        mock_cfg.return_value = MagicMock()
+        mock_instance = MagicMock()
+        mock_instance.backfill_range.return_value = {
+            "total_days": 3,
+            "open_days": 3,
+            "synced_days": 2,
+            "skipped_days": 0,
+            "failed_days": 1,
+        }
+        mock_backfiller_cls.return_value = mock_instance
+
+        with pytest.raises(SystemExit) as exc:
+            main()
+
+    assert exc.value.code == 1

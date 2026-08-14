@@ -4,8 +4,8 @@ from unittest.mock import MagicMock, patch
 import pandas as pd
 
 from stock.data.fetcher.yfinance.client import YFinanceClient
-from stock.data.fetcher.yfinance.global_fetcher import YFinanceDataFetcher
 from stock.data.fetcher.yfinance.factory import create_yfinance_pipeline
+from stock.data.fetcher.yfinance.global_fetcher import YFinanceDataFetcher
 
 
 def test_yfinance_fetcher() -> None:
@@ -90,7 +90,9 @@ def test_fetch_index_valuations() -> None:
         mock_ticker_instance.info = mock_info
         mock_ticker_class.return_value = mock_ticker_instance
 
-        df = fetcher.fetch_index_valuations_df(etf_map={"SPY": "^GSPC"}, target_date=date(2026, 8, 12))
+        df = fetcher.fetch_index_valuations_df(
+            etf_map={"SPY": "^GSPC"}, target_date=date(2026, 8, 12)
+        )
         assert not df.is_empty()
         assert len(df) == 1
         assert df["symbol"][0] == "SPY"
@@ -184,3 +186,28 @@ def test_fetch_macro_indicators() -> None:
         assert not macro_df.is_empty()
         assert len(macro_df) == 1
         assert macro_df["symbol"][0] == "^TNX"
+
+
+def test_fetch_daily_bars_df_dispatches_macro_indicators() -> None:
+    client = YFinanceClient()
+    fetcher = YFinanceDataFetcher(client=client)
+    sentinel = MagicMock()
+
+    with patch.object(
+        fetcher,
+        "fetch_macro_indicators_df",
+        return_value=sentinel,
+    ) as mock_macro:
+        result = fetcher.fetch_daily_bars_df(
+            "macro_indicators",
+            date(2026, 8, 10),
+            date(2026, 8, 11),
+            endpoint="macro_indicators",
+        )
+
+    assert result is sentinel
+    mock_macro.assert_called_once_with(
+        date(2026, 8, 10),
+        date(2026, 8, 11),
+        symbols=None,
+    )

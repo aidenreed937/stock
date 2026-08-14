@@ -33,9 +33,7 @@ class YFinanceDataFetcher(BaseDataFetcher):
             cur += timedelta(days=1)
         return open_dates
 
-    def fetch_daily_bars(
-        self, symbol: str, start_date: date, end_date: date
-    ) -> list[DailyBar]:
+    def fetch_daily_bars(self, symbol: str, start_date: date, end_date: date) -> list[DailyBar]:
         """抓取指定标的代码的 K 线数据，转化为标准 DailyBar 模型。"""
         # yfinance 结束日期是 exclusive，加1天以包含该日期
         end_date_ex = end_date + timedelta(days=1)
@@ -88,12 +86,87 @@ class YFinanceDataFetcher(BaseDataFetcher):
         if not meta:
             logger.warning(f"未在注册表中找到 YFinance endpoint: {endpoint}")
 
+        specialized = self._fetch_specialized_endpoint_df(symbol, start_date, end_date, endpoint)
+        if specialized is not None:
+            return specialized
+
         bars = self.fetch_daily_bars(symbol, start_date, end_date)
         if not bars:
             return pl.DataFrame()
 
         data_dicts = [bar.model_dump() for bar in bars]
         return pl.DataFrame(data_dicts)
+
+    @staticmethod
+    def _has_explicit_symbol(symbol: str, endpoint: str) -> bool:
+        return bool(symbol) and symbol != endpoint
+
+    def _fetch_specialized_endpoint_df(
+        self,
+        symbol: str,
+        start_date: date,
+        end_date: date,
+        endpoint: str,
+    ) -> pl.DataFrame | None:
+        """处理非历史 K 线的 yfinance endpoint。"""
+        result: pl.DataFrame | None = None
+        if endpoint == "macro_indicators":
+            symbols = None if symbol in {"", endpoint} else [symbol]
+            result = self.fetch_macro_indicators_df(start_date, end_date, symbols=symbols)
+        elif endpoint == "index_valuation":
+            result = self.fetch_index_valuations_df(target_date=end_date)
+        else:
+            symbol_required = endpoint in {
+                "financials",
+                "balance_sheet",
+                "cashflow",
+                "dividends",
+                "splits",
+                "analyst_price_target",
+                "fast_info",
+                "recommendations",
+                "institutional_holders",
+                "insider_transactions",
+            }
+            if not symbol_required:
+                return None
+            if not self._has_explicit_symbol(symbol, endpoint):
+                logger.warning(f"YFinance [{endpoint}] 需要明确 symbol")
+                return pl.DataFrame()
+
+            if endpoint in {"financials", "balance_sheet", "cashflow"}:
+                result = self.fetch_financials_df(symbol, statement_type=endpoint)
+            elif endpoint in {"dividends", "splits"}:
+                result = self.fetch_actions_df(symbol, action_type=endpoint)
+            elif endpoint == "analyst_price_target":
+                result = self.fetch_analyst_target_df(symbol)
+            elif endpoint == "fast_info":
+                result = self.fetch_fast_info_df(symbol)
+            else:
+                result = self._fetch_ticker_table_df(symbol, endpoint)
+        return result
+
+    def _fetch_ticker_table_df(self, symbol: str, endpoint: str) -> pl.DataFrame:
+        """抓取 yfinance Ticker 上的表格型扩展数据。"""
+        import yfinance as yf
+
+        session = self.client._get_session()
+        try:
+            ticker = yf.Ticker(symbol, session=session)
+            attr_map = {
+                "recommendations": "recommendations",
+                "institutional_holders": "institutional_holders",
+                "insider_transactions": "insider_transactions",
+            }
+            raw = getattr(ticker, attr_map[endpoint], None)
+            if raw is None or raw.empty:
+                return pl.DataFrame()
+            df_raw = raw.reset_index()
+            df_raw["symbol"] = symbol
+            return pl.from_pandas(df_raw)
+        except Exception as e:
+            logger.error(f"YFinance 抓取扩展表失败 [{symbol}/{endpoint}]: {e}")
+            return pl.DataFrame()
 
     def fetch_index_valuations(
         self, etf_map: dict[str, str] | None = None, target_date: date | None = None

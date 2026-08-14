@@ -1,11 +1,10 @@
 """RAW 原始数据离线时间分区归档存储引擎。"""
 
-from datetime import date
+from datetime import date, timedelta
 from pathlib import Path
 
 import polars as pl
 
-from stock.config.loader import load_data_config
 from stock.config.settings import settings
 from stock.core.contracts import DatasetKey
 from stock.data.storage.compat import StorageCompat
@@ -33,18 +32,14 @@ class RawDataStorage:
         """将项目任务或历史兼容名归一为唯一数据集目录名。"""
         return StorageCompat.canonical_dataset_name(endpoint, data_source)
 
-    def _get_partition_dir(
-        self, data_source: str, endpoint: str, target_date: date
-    ) -> Path:
+    def _get_partition_dir(self, data_source: str, endpoint: str, target_date: date) -> Path:
         """根据数据源、项目任务与日期计算 Hive 时间分区目录路径。"""
         endpoint = self._dataset_name(data_source, endpoint)
         year_str = f"year={target_date.year:04d}"
         month_str = f"month={target_date.month:02d}"
         return self.base_dir / data_source / endpoint / year_str / month_str
 
-    def _get_file_path(
-        self, data_source: str, endpoint: str, target_date: date
-    ) -> Path:
+    def _get_file_path(self, data_source: str, endpoint: str, target_date: date) -> Path:
         """计算 RAW 归档文件路径。"""
         endpoint = self._dataset_name(data_source, endpoint)
         partition_dir = self._get_partition_dir(data_source, endpoint, target_date)
@@ -80,7 +75,10 @@ class RawDataStorage:
 
     def save_dataset(self, key: DatasetKey, df: pl.DataFrame) -> Path:
         """按数据集和月份幂等合并保存 RAW 归档数据。"""
-        date_col = next((c for c in ("trade_date", "date", "end_date", "month", "quarter") if c in df.columns), None)
+        date_col = next(
+            (c for c in ("trade_date", "date", "end_date", "month", "quarter") if c in df.columns),
+            None,
+        )
         if date_col and not df.is_empty() and date_col in {"trade_date", "date", "end_date"}:
             # 按真实业务日期分桶，避免请求 end_date 造成历史快照串区。
             values = df.get_column(date_col).cast(pl.Utf8, strict=False)
@@ -91,9 +89,14 @@ class RawDataStorage:
                     part = df.filter(values.str.replace_all("-", "").str.slice(0, 6) == month)
                     y, m = int(month[:4]), int(month[4:6])
                     part_key = DatasetKey(
-                        provider=key.provider, dataset=key.dataset, endpoint=key.endpoint,
-                        start_date=date(y, m, 1), end_date=date(y, m, 28),
-                        instrument=key.instrument, adjustment=key.adjustment, schema_version=key.schema_version,
+                        provider=key.provider,
+                        dataset=key.dataset,
+                        endpoint=key.endpoint,
+                        start_date=date(y, m, 1),
+                        end_date=date(y, m, 28),
+                        instrument=key.instrument,
+                        adjustment=key.adjustment,
+                        schema_version=key.schema_version,
                     )
                     output = self._save_dataset_file(part_key, part)
                 return output
@@ -135,9 +138,11 @@ class RawDataStorage:
         try:
             if key.provider == "tushare":
                 from stock.data.fetcher.tushare.registry import TUSHARE_API_REGISTRY
+
                 meta = TUSHARE_API_REGISTRY.get(resolve_task(key.provider, key.endpoint).api_name)
             elif key.provider == "lixinger":
                 from stock.data.fetcher.lixinger.registry import LIXINGER_API_REGISTRY
+
                 meta = LIXINGER_API_REGISTRY.get(resolve_task(key.provider, key.endpoint).api_name)
             else:
                 meta = None
@@ -145,9 +150,13 @@ class RawDataStorage:
                 keys = [c for c in meta.primary_keys if c in df.columns]
                 if keys:
                     return keys
-        except Exception:
-            pass
-        return [c for c in ["symbol", "stockCode", "ts_code", "code", "trade_date", "date"] if c in df.columns]
+        except Exception as e:
+            logger.debug(f"解析 RAW 主键失败 [{key.provider}/{key.endpoint}]: {e}")
+        return [
+            c
+            for c in ["symbol", "stockCode", "ts_code", "code", "trade_date", "date"]
+            if c in df.columns
+        ]
 
     def load_dataset(self, key: DatasetKey) -> pl.DataFrame | None:
         """按数据集和月份读取 RAW 归档数据。"""
@@ -159,20 +168,30 @@ class RawDataStorage:
             if df.is_empty():
                 return None
             symbol = key.instrument_slug
-            date_cols = [c for c in ["trade_date", "date", "end_date", "month", "quarter"] if c in df.columns]
+            date_cols = [
+                c for c in ["trade_date", "date", "end_date", "month", "quarter"] if c in df.columns
+            ]
             if date_cols and any(c in {"trade_date", "date", "end_date"} for c in date_cols):
                 date_col = next(c for c in ["trade_date", "date", "end_date"] if c in df.columns)
-                values = df.get_column(date_col).cast(pl.Utf8).str.replace_all("-", "").str.slice(0, 8)
+                values = (
+                    df.get_column(date_col).cast(pl.Utf8).str.replace_all("-", "").str.slice(0, 8)
+                )
                 start = key.start_date.strftime("%Y%m%d")
                 end = key.end_date.strftime("%Y%m%d")
                 if values.filter((values >= start) & (values <= end)).len() == 0:
                     return None
                 min_value = values.min()
                 max_value = values.max()
-                if isinstance(min_value, str) and isinstance(max_value, str) and (min_value > start or max_value < end):
+                if (
+                    isinstance(min_value, str)
+                    and isinstance(max_value, str)
+                    and (min_value > start or max_value < end)
+                ):
                     return None
             if symbol:
-                symbol_col = next((c for c in ["symbol", "ts_code", "stockCode", "code"] if c in df.columns), None)
+                symbol_col = next(
+                    (c for c in ["symbol", "ts_code", "stockCode", "code"] if c in df.columns), None
+                )
                 if symbol_col:
                     filtered = df.filter(pl.col(symbol_col) == symbol)
                     return filtered if not filtered.is_empty() else None
@@ -191,15 +210,11 @@ class RawDataStorage:
             return base_dataset_dir / "data.parquet"
 
         partition_dir = (
-            base_dataset_dir
-            / f"year={key.end_date.year:04d}"
-            / f"month={key.end_date.month:02d}"
+            base_dataset_dir / f"year={key.end_date.year:04d}" / f"month={key.end_date.month:02d}"
         )
         return partition_dir / "data.parquet"
 
-    def load_raw(
-        self, data_source: str, endpoint: str, target_date: date
-    ) -> pl.DataFrame | None:
+    def load_raw(self, data_source: str, endpoint: str, target_date: date) -> pl.DataFrame | None:
         """读取指定日期的 RAW 归档数据。
 
         Args:
@@ -221,9 +236,7 @@ class RawDataStorage:
             logger.error(f"读取 RAW 归档文件失败 [{file_path}]: {e}")
             return None
 
-    def has_raw(
-        self, data_source: str, endpoint: str, target_date: date
-    ) -> bool:
+    def has_raw(self, data_source: str, endpoint: str, target_date: date) -> bool:
         """判断本地是否存在指定日期的 RAW 归档数据。"""
         legacy_path = self._get_file_path(data_source, endpoint, target_date)
         if legacy_path.exists():
@@ -237,10 +250,35 @@ class RawDataStorage:
         market = get_endpoint_market(data_source, task.task_name)
         for dataset_name in dataset_names:
             dataset_dir = source_dir / f"market={market.upper()}" / dataset_name
-            if any(
-                path.exists()
-                and not path.name.endswith((".bak.parquet", ".tmp.parquet"))
-                for path in [dataset_dir / year_month_path / "data.parquet"]
-            ):
+            path = dataset_dir / year_month_path / "data.parquet"
+            if not path.exists() or path.name.endswith((".bak.parquet", ".tmp.parquet")):
+                continue
+            try:
+                df = pl.read_parquet(path)
+            except Exception as e:
+                logger.warning(f"读取 RAW 日期检查文件失败 [{path}]: {e}")
+                continue
+            if df.is_empty():
+                continue
+            date_col = next(
+                (c for c in ("trade_date", "date", "end_date") if c in df.columns),
+                None,
+            )
+            if date_col is None:
+                return True
+            target_plain = target_date.strftime("%Y%m%d")
+            candidate_dates = {target_plain}
+            effective_date = target_date
+            while effective_date.weekday() >= 5:
+                effective_date -= timedelta(days=1)
+                candidate_dates.add(effective_date.strftime("%Y%m%d"))
+            values = (
+                df.get_column(date_col)
+                .cast(pl.Utf8, strict=False)
+                .str.replace_all("-", "")
+                .str.replace_all("/", "")
+                .str.slice(0, 8)
+            )
+            if values.filter(values.is_in(candidate_dates)).len() > 0:
                 return True
         return False

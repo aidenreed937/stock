@@ -64,6 +64,33 @@ def test_backfill_non_daily_single_request():
         )
 
 
+def test_backfill_per_symbol_all_dates_skipped() -> None:
+    mock_pipeline = MagicMock()
+    mock_pipeline.fetcher.fetch_trade_cal.return_value = [
+        date(2026, 8, 3),
+        date(2026, 8, 4),
+    ]
+    mock_pipeline.store.has_curated.return_value = True
+    mock_pipeline.raw_store.has_raw.return_value = True
+
+    with patch("stock.data.backfill.create_pipeline", return_value=mock_pipeline):
+        backfiller = HistoricalBackfiller(
+            data_source="yfinance",
+            endpoint="stock_daily_bar",
+            symbol="AAPL",
+        )
+        summary = backfiller.backfill_range(date(2026, 8, 3), date(2026, 8, 4))
+
+    assert summary == {
+        "total_days": 2,
+        "open_days": 2,
+        "synced_days": 0,
+        "skipped_days": 2,
+        "failed_days": 0,
+    }
+    mock_pipeline.sync_daily_bars.assert_not_called()
+
+
 def test_backfill_cli_main(monkeypatch):
     import sys
 

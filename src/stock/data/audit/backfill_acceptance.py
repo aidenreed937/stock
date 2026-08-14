@@ -8,44 +8,56 @@ from typing import Any
 
 import polars as pl
 
+_KNOWN_PROVIDERS = {"tushare", "lixinger", "yfinance", "fred", "mock"}
 
-def _keys(endpoint: str, columns: list[str]) -> list[str]:
+
+def _keys(endpoint: str, columns: list[str], data_source: str = "tushare") -> list[str]:
     try:
-        from stock.data.fetcher.tushare.registry import TUSHARE_API_REGISTRY
-
         from stock.data.task_registry import resolve_task
 
-        meta = TUSHARE_API_REGISTRY.get(resolve_task("tushare", endpoint).api_name)
+        meta = _meta(endpoint, data_source=data_source)
+        task = resolve_task(data_source, endpoint)
         if meta:
             aliases: dict[str, str] = {
                 "ts_code": "symbol",
                 "stockCode": "symbol",
                 "date": "trade_date",
+                "Date": "trade_date",
             }
             return [
                 aliases.get(key, key)
                 for key in meta.primary_keys
                 if key in columns or (key in aliases and aliases[key] in columns)
             ]
+        if task.dataset in {"stock_daily_bar", "index_daily_bar"}:
+            return [key for key in ("symbol", "trade_date") if key in columns]
     except Exception:
         pass
-    return [key for key in ("symbol", "ts_code", "trade_date", "date") if key in columns]
+    return [
+        key
+        for key in ("symbol", "ts_code", "stockCode", "trade_date", "date", "Date")
+        if key in columns
+    ]
 
 
-def _key_frame(endpoint: str, frame: pl.DataFrame) -> pl.DataFrame:
+def _key_frame(endpoint: str, frame: pl.DataFrame, data_source: str = "tushare") -> pl.DataFrame:
     """将各历史文件的主键别名统一为 Curated 规范列名。"""
-    keys = _keys(endpoint, frame.columns)
+    keys = _keys(endpoint, frame.columns, data_source=data_source)
     expressions: list[pl.Expr] = []
     for key in keys:
         source: str | None
         if key == "symbol":
             source = next(
-                (column for column in ("symbol", "ts_code", "stockCode") if column in frame.columns),
+                (
+                    column
+                    for column in ("symbol", "ts_code", "stockCode")
+                    if column in frame.columns
+                ),
                 None,
             )
         elif key == "trade_date":
             source = next(
-                (column for column in ("trade_date", "date") if column in frame.columns),
+                (column for column in ("trade_date", "date", "Date") if column in frame.columns),
                 None,
             )
         else:
@@ -55,14 +67,30 @@ def _key_frame(endpoint: str, frame: pl.DataFrame) -> pl.DataFrame:
     return frame.select(expressions) if expressions else pl.DataFrame()
 
 
-def _meta(endpoint: str) -> Any:
+def _meta(endpoint: str, data_source: str = "tushare") -> Any:
     try:
-        from stock.data.fetcher.tushare.registry import TUSHARE_API_REGISTRY
         from stock.data.task_registry import resolve_task
 
-        return TUSHARE_API_REGISTRY.get(resolve_task("tushare", endpoint).api_name)
+        task = resolve_task(data_source, endpoint)
+        if data_source == "tushare":
+            from stock.data.fetcher.tushare.registry import TUSHARE_API_REGISTRY
+
+            return TUSHARE_API_REGISTRY.get(task.api_name)
+        if data_source == "lixinger":
+            from stock.data.fetcher.lixinger.registry import LIXINGER_API_REGISTRY
+
+            return LIXINGER_API_REGISTRY.get(task.api_name)
+        if data_source == "yfinance":
+            from stock.data.fetcher.yfinance.registry import YFINANCE_API_REGISTRY
+
+            return YFINANCE_API_REGISTRY.get(task.api_name)
+        if data_source == "fred":
+            from stock.data.fetcher.fred.registry import FRED_API_REGISTRY
+
+            return FRED_API_REGISTRY.get(task.api_name)
     except Exception:
-        return None
+        pass
+    return None
 
 
 def _endpoint_aliases(endpoint: str) -> set[str]:
@@ -121,6 +149,23 @@ def _date_key(value: object) -> str:
     return text[:10]
 
 
+def _path_provider(path: Path) -> str | None:
+    """从路径片段中识别 provider，兼容 data/curated/{source}/... 和扁平测试目录。"""
+    return next((part for part in path.parts if part in _KNOWN_PROVIDERS), None)
+
+
+def _weekday_dates(start: date, end: date) -> list[str]:
+    from datetime import timedelta
+
+    current = start
+    days: list[str] = []
+    while current <= end:
+        if current.weekday() < 5:
+            days.append(str(current))
+        current += timedelta(days=1)
+    return days
+
+
 def _period_key(value: object, frequency: str) -> str:
     """将月频/季频业务日期转换为可比较的业务期间。"""
     text = str(value)
@@ -156,6 +201,7 @@ def accept_backfill(
     endpoint: str = "stock_daily_bar",
     start: date | None = None,
     end: date | None = None,
+    data_source: str = "tushare",
     source_gaps: list[str] | None = None,
     raw_root: str | None = None,
     min_raw_ratio: float | None = None,
@@ -165,7 +211,11 @@ def accept_backfill(
         raise ValueError("min_raw_ratio 必须位于 [0, 1] 区间")
 
     aliases = _endpoint_aliases(endpoint)
-    matched = _matching_files(root, aliases)
+    matched = [
+        path
+        for path in _matching_files(root, aliases)
+        if _path_provider(path) in {None, data_source}
+    ]
     rows = 0
     duplicates = 0
     dates: set[str] = set()
@@ -174,23 +224,33 @@ def accept_backfill(
     missing_columns: list[str] = []
     lineage_errors: list[str] = []
     key_frames: list[pl.DataFrame] = []
-    meta = _meta(endpoint)
+    meta = _meta(endpoint, data_source=data_source)
     frequency = getattr(meta, "frequency", "daily") if meta else "daily"
+    matched_count = 0
     for path in matched:
         try:
             frame = pl.read_parquet(path)
+            path_provider = _path_provider(path)
+            if data_source and "data_source" in frame.columns:
+                sources = set(frame.get_column("data_source").drop_nulls().unique().to_list())
+                if sources and sources != {data_source}:
+                    if path_provider == data_source:
+                        lineage_errors.append(f"{path}: data_source mismatch {sorted(sources)}")
+                    continue
+            matched_count += 1
             rows += len(frame)
             if meta:
                 missing_columns.extend(
-                    column for column in meta.required_columns
+                    column
+                    for column in getattr(meta, "required_columns", [])
                     if not _column_present(column, frame.columns)
                 )
                 for lineage in ("data_source", "source_endpoint", "request_id", "updated_at"):
                     if lineage not in frame.columns:
                         lineage_errors.append(f"{path}: missing {lineage}")
-            keys = _keys(endpoint, frame.columns)
+            keys = _keys(endpoint, frame.columns, data_source=data_source)
             if keys:
-                key_frame = _key_frame(endpoint, frame)
+                key_frame = _key_frame(endpoint, frame, data_source=data_source)
                 for key in ("trade_date", "end_date", "suspend_date"):
                     if key in key_frame.columns:
                         key_frame = key_frame.with_columns(
@@ -209,7 +269,14 @@ def accept_backfill(
                         .alias("trade_date")
                     )
                 key_frames.append(key_frame)
-            date_col = next((col for col in ("trade_date", "date", "end_date", "month", "quarter") if col in frame.columns), None)
+            date_col = next(
+                (
+                    col
+                    for col in ("trade_date", "date", "end_date", "month", "quarter")
+                    if col in frame.columns
+                ),
+                None,
+            )
             if date_col:
                 values = frame[date_col].drop_nulls().to_list()
                 dates.update(_date_key(value) for value in values)
@@ -226,7 +293,11 @@ def accept_backfill(
     raw_ratio_passed: bool | None = None
     raw_errors: list[str] = []
     if raw_root is not None:
-        raw_files = _matching_files(raw_root, aliases)
+        raw_files = [
+            path
+            for path in _matching_files(raw_root, aliases)
+            if _path_provider(path) in {None, data_source}
+        ]
         raw_rows = 0
         for path in raw_files:
             try:
@@ -246,16 +317,18 @@ def accept_backfill(
         errors.extend(raw_errors)
 
     missing: list[str] = []
+    end_period = _boundary_period(end, frequency) if end else ""
     if start and end:
         start_period = _boundary_period(start, frequency)
-        end_period = _boundary_period(end, frequency)
         if frequency in {"monthly", "quarterly"}:
             # 财务/宏观接口按报告期或自然月发布，结束边界可能因源端发布节奏滞后；
             # 起始期间仍必须存在，结束期间缺失通过 source_lag 单独报告。
             if start_period not in periods:
                 missing.append(str(start))
         else:
-            missing = [str(day) for day in (start, end) if str(day) not in dates]
+            gap_dates = {_date_key(value) for value in (source_gaps or [])}
+            expected_dates = _weekday_dates(start, end)
+            missing = [day for day in expected_dates if day not in dates and day not in gap_dates]
     gaps = source_gaps or []
     source_lag = bool(
         end
@@ -263,7 +336,7 @@ def accept_backfill(
         not in (periods if frequency in {"monthly", "quarterly"} else dates)
     )
     passed = (
-        bool(matched)
+        matched_count > 0
         and rows > 0
         and duplicates == 0
         and not errors
@@ -275,10 +348,12 @@ def accept_backfill(
     return {
         "status": "PASSED" if passed else "FAILED",
         "endpoint": endpoint,
-        "files": len(matched),
+        "data_source": data_source,
+        "files": matched_count,
         "rows": rows,
         "duplicate_keys": duplicates,
         "missing_boundary_dates": missing,
+        "missing_dates": missing,
         "source_gaps": gaps,
         "source_lag": source_lag,
         "raw_files": len(raw_files),
@@ -298,6 +373,7 @@ def main() -> None:
     parser.add_argument("--endpoint", required=True)
     parser.add_argument("--start")
     parser.add_argument("--end")
+    parser.add_argument("--source", "--data-source", dest="data_source", default="tushare")
     parser.add_argument("--source-gap", action="append", default=[])
     args = parser.parse_args()
     result = accept_backfill(
@@ -305,6 +381,7 @@ def main() -> None:
         args.endpoint,
         date.fromisoformat(args.start) if args.start else None,
         date.fromisoformat(args.end) if args.end else None,
+        args.data_source,
         args.source_gap,
     )
     print(json.dumps(result, ensure_ascii=False, indent=2))

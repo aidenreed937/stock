@@ -1,5 +1,5 @@
-from datetime import date
 import logging
+from datetime import date
 from typing import Any
 
 import polars as pl
@@ -18,9 +18,7 @@ class FredDataFetcher(BaseDataFetcher):
         """初始化 FRED 数据抓取器。"""
         self.client = client or FredClient(proxy=proxy)
 
-    def fetch_daily_bars(
-        self, symbol: str, start_date: date, end_date: date
-    ) -> list[Any]:
+    def fetch_daily_bars(self, symbol: str, start_date: date, end_date: date) -> list[Any]:
         """兼容 BaseDataFetcher 接口。将宏观数据点映射为标准序列。"""
         return []
 
@@ -28,11 +26,11 @@ class FredDataFetcher(BaseDataFetcher):
         self, symbol: str, start_date: date, end_date: date, endpoint: str = "history"
     ) -> pl.DataFrame:
         """实现 BaseDataFetcher 接口。抓取指定 FRED 宏观序列。"""
+        if endpoint == "macro_indicators" or symbol == "macro_indicators":
+            return self.fetch_macro_indicators_df(start_date, end_date)
         return self.fetch_series_df(symbol, start_date, end_date)
 
-    def fetch_series_df(
-        self, series_id: str, start_date: date, end_date: date
-    ) -> pl.DataFrame:
+    def fetch_series_df(self, series_id: str, start_date: date, end_date: date) -> pl.DataFrame:
         """抓取指定 FRED 宏观序列 (如 FEDFUNDS, CPIAUCSL, UNRATE) 并过滤时间切片。"""
         raw_df = self.client.fetch_series_raw(series_id)
         if raw_df.empty:
@@ -65,20 +63,22 @@ class FredDataFetcher(BaseDataFetcher):
             pl.col("value").alias("low"),
             pl.lit(0.0).alias("volume"),
             pl.lit(0.0).alias("amount"),
-        ).select([
-            "symbol",
-            "trade_date",
-            "value",
-            "close",
-            "open",
-            "high",
-            "low",
-            "volume",
-            "amount",
-            "description",
-            "units",
-            "data_source",
-        ])
+        ).select(
+            [
+                "symbol",
+                "trade_date",
+                "value",
+                "close",
+                "open",
+                "high",
+                "low",
+                "volume",
+                "amount",
+                "description",
+                "units",
+                "data_source",
+            ]
+        )
 
     def fetch_macro_indicators_df(
         self,

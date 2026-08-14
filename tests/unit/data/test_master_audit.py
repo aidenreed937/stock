@@ -1,6 +1,8 @@
 from pathlib import Path
+
 import polars as pl
-from stock.data.audit.master_audit import run_master_audit, main
+
+from stock.data.audit.master_audit import main, run_master_audit
 
 
 def test_run_master_audit_empty(tmp_path: Path) -> None:
@@ -9,22 +11,35 @@ def test_run_master_audit_empty(tmp_path: Path) -> None:
 
 
 def test_run_master_audit_with_data(tmp_path: Path) -> None:
-    # 模拟构建 Parquet 文件目录结构: tmp_path / tushare / market=CN / index_daily / year=2026 / month=08 / data.parquet
     target_dir = tmp_path / "tushare" / "market=CN" / "index_daily" / "year=2026" / "month=08"
     target_dir.mkdir(parents=True, exist_ok=True)
     file_path = target_dir / "data.parquet"
 
-    mock_df = pl.DataFrame({
-        "symbol": ["000001.SH", "000300.SH"],
-        "trade_date": ["2026-08-01", "2026-08-02"],
-        "close": [3000.0, 4000.0],
-    })
+    mock_df = pl.DataFrame(
+        {
+            "symbol": ["000001.SH", "000300.SH"],
+            "trade_date": ["2026-08-01", "2026-08-02"],
+            "close": [3000.0, 4000.0],
+        }
+    )
     mock_df.write_parquet(file_path)
 
     summary = run_master_audit(str(tmp_path))
     assert not summary.is_empty()
     assert "source" in summary.columns
     assert summary["精炼落盘总记录数"][0] == 2
+    assert summary["审计错误数"][0] == 0
+
+
+def test_run_master_audit_reports_bad_parquet(tmp_path: Path) -> None:
+    target_dir = tmp_path / "tushare" / "market=CN" / "stock_daily_bar"
+    target_dir.mkdir(parents=True)
+    (target_dir / "data.parquet").write_text("not a parquet file", encoding="utf-8")
+
+    summary = run_master_audit(str(tmp_path))
+
+    assert not summary.is_empty()
+    assert summary["审计错误数"][0] == 1
 
 
 def test_main(capsys) -> None:

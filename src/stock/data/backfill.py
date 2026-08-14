@@ -371,6 +371,20 @@ class HistoricalBackfiller:
         synced_count = 0
         failed_count = 0
 
+        if not todo_dates:
+            summary = {
+                "total_days": total_days,
+                "open_days": len(open_dates),
+                "synced_days": 0,
+                "skipped_days": skipped_count,
+                "failed_days": 0,
+            }
+            logger.info(
+                f"历史数据回填完成总结: 交易日={summary['open_days']}, "
+                f"同步成功=0, 断点跳过={summary['skipped_days']}, 失败=0"
+            )
+            return summary
+
         if not self.symbol:
             # 全市场数据回填模式：必须按日同步（TuShare 限制全市场拉取必须传单个 trade_date）
             logger.info(f"全市场数据回填模式激活，将按日并发同步共 {len(todo_dates)} 个交易日...")

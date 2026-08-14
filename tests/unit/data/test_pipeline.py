@@ -7,6 +7,7 @@ import polars as pl
 from stock.data.cleaner.bar_cleaner import BarDataCleaner
 from stock.data.fetcher.mock import MockDataFetcher
 from stock.data.normalizer.bar_normalizer import BarDataNormalizer
+from stock.data.quality.quarantine import QuarantineStore
 from stock.data.pipeline import MarketDataPipeline
 from stock.data.storage.duckdb_store import DuckDBMarketStore
 from stock.data.storage.raw_store import RawDataStorage
@@ -85,3 +86,45 @@ def test_market_data_pipeline(tmp_path) -> None:
     # 验证在 DuckDB 中的查询
     stored_df = store.query_daily_bars("TEST.SH")
     assert len(stored_df) == len(df)
+
+
+def test_market_data_pipeline_quarantines_rejected_rows(tmp_path, monkeypatch) -> None:
+    class DirtyFetcher:
+        def fetch_daily_bars(self, symbol, start_date, end_date):
+            return []
+
+        def fetch_daily_bars_df(self, symbol, start_date, end_date, endpoint="daily"):
+            return pl.DataFrame(
+                {
+                    "ts_code": ["600000.SH", "000001.SZ"],
+                    "trade_date": ["20260812", "20260812"],
+                    "open": [10.0, 0.0],
+                    "high": [11.0, 0.0],
+                    "low": [9.0, 0.0],
+                    "close": [10.5, 0.0],
+                    "vol": [100.0, 100.0],
+                    "amount": [105.0, 0.0],
+                }
+            )
+
+    monkeypatch.setattr(
+        "stock.data.pipeline.QuarantineStore",
+        lambda: QuarantineStore(tmp_path / "quarantine"),
+    )
+    store = DuckDBMarketStore(storage_dir=tmp_path / "curated")
+    raw_store = RawDataStorage(base_dir=tmp_path / "raw")
+    pipeline = MarketDataPipeline(
+        fetcher=DirtyFetcher(),
+        store=store,
+        raw_store=raw_store,
+        data_source="tushare",
+        endpoint="stock_daily_bar",
+    )
+
+    df = pipeline.sync_daily_bars("600000.SH", date(2026, 8, 12), date(2026, 8, 12))
+
+    assert len(df) == 1
+    quarantined = pl.read_parquet(
+        tmp_path / "quarantine" / "endpoint=stock_daily_bar" / "records.parquet"
+    )
+    assert quarantined["ts_code"].to_list() == ["000001.SZ"]

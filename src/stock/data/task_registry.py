@@ -336,14 +336,20 @@ def list_available_tasks(provider: str) -> list[str]:
     """返回指定数据源下所有已注册且未停用的公开任务名称列表。"""
     prov = provider.lower()
     tasks: list[str] = []
+    alias_names = {alias for alias_provider, alias in _ALIASES if alias_provider == prov}
 
     for p, t in _CUSTOM_TASKS:
-        if p == prov and t not in _DISABLED_TASKS and t not in tasks:
+        if p == prov and t not in _DISABLED_TASKS and t not in alias_names and t not in tasks:
             tasks.append(t)
 
     registry = _provider_registry(prov)
     for name in registry:
-        if name not in _DISABLED_TASKS and name not in tasks and "/" not in name:
+        if (
+            name not in _DISABLED_TASKS
+            and name not in alias_names
+            and name not in tasks
+            and "/" not in name
+        ):
             tasks.append(name)
 
     return tasks
