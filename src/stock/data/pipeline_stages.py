@@ -83,7 +83,7 @@ class FetcherStage:
             pass
 
         date_col = next(
-            (c for c in ("trade_date", "date", "end_date", "month", "quarter") if c in frame.columns),
+            (c for c in ("trade_date", "date", "report_date", "ann_date", "end_date", "month", "quarter") if c in frame.columns),
             None,
         )
         if not date_col or frame.is_empty():
