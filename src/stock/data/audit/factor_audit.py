@@ -4,6 +4,7 @@ from datetime import date
 from pathlib import Path
 from typing import Any
 import polars as pl
+from stock.data.storage.compat import StorageCompat
 from stock.utils.logger import logger
 
 
@@ -16,7 +17,11 @@ def run_adj_factor_audit(
     # 1. 读取 stock_basic 理论上市股票池
     basic_pattern = f"data/curated/{data_source}/market=CN/stock_basic"
     try:
-        basic_files = list(Path(basic_pattern).rglob("*.parquet"))
+        basic_files = (
+            [p for p in Path(basic_pattern).rglob("*.parquet") if not StorageCompat.is_artifact_path(p)]
+            if Path(basic_pattern).exists()
+            else []
+        )
         basic_df = pl.read_parquet(basic_files) if basic_files else pl.DataFrame()
         target_date_str = target_date.strftime("%Y%m%d")
         expected_df = basic_df.filter(pl.col("list_date") <= target_date_str)
@@ -26,9 +31,17 @@ def run_adj_factor_audit(
         expected_symbols = set()
 
     # 2. 读取 adj_factor 记录
-    adj_pattern = f"data/curated/{data_source}/market=CN/adj_factor/year={target_date.year:04d}/month={target_date.month:02d}/*.parquet"
+    adj_dir = Path(
+        f"data/curated/{data_source}/market=CN/adj_factor/"
+        f"year={target_date.year:04d}/month={target_date.month:02d}"
+    )
+    adj_files = (
+        [p for p in adj_dir.glob("*.parquet") if not StorageCompat.is_artifact_path(p)]
+        if adj_dir.exists()
+        else []
+    )
     try:
-        adj_df = pl.read_parquet(adj_pattern)
+        adj_df = pl.read_parquet(adj_files) if adj_files else pl.DataFrame()
         if "trade_date" in adj_df.columns and adj_df["trade_date"].dtype == pl.String:
             adj_df = adj_df.with_columns(
                 pl.col("trade_date").str.to_date("%Y-%m-%d").alias("trade_date")
@@ -68,9 +81,17 @@ def run_sw_daily_audit(
     """审计 sw_daily (申万行业日线行情) 在指定交易日的全市场行业覆盖率。"""
     logger.info(f"开始 sw_daily 申万行业日行情对账审计，目标日期: {target_date} [数据源: {data_source}]")
 
-    sw_pattern = f"data/curated/{data_source}/market=CN/sw_daily/year={target_date.year:04d}/month={target_date.month:02d}/*.parquet"
+    sw_dir = Path(
+        f"data/curated/{data_source}/market=CN/sw_daily/"
+        f"year={target_date.year:04d}/month={target_date.month:02d}"
+    )
+    sw_files = (
+        [p for p in sw_dir.glob("*.parquet") if not StorageCompat.is_artifact_path(p)]
+        if sw_dir.exists()
+        else []
+    )
     try:
-        sw_df = pl.read_parquet(sw_pattern)
+        sw_df = pl.read_parquet(sw_files) if sw_files else pl.DataFrame()
         if "trade_date" in sw_df.columns:
             if sw_df["trade_date"].dtype == pl.String:
                 sw_df = sw_df.with_columns(
