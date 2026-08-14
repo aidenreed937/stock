@@ -210,3 +210,30 @@ def test_updated_at_timezone_tolerance(tmp_path: Path) -> None:
     catalog = DataCatalog(data_source="tushare", storage_dir=tmp_path)
     df = catalog.load_dataset("daily_basic")
     assert len(df) == 2  # 时区差异不应导致读取失败
+
+
+def test_catalog_standardized_methods(tmp_path) -> None:
+    partition = tmp_path / "tushare" / "market=CN" / "daily_basic" / "year=2026" / "month=08"
+    partition.mkdir(parents=True, exist_ok=True)
+    df = pl.DataFrame({"symbol": ["600000.SH"], "trade_date": [date(2026, 8, 14)]})
+    df.write_parquet(partition / "data.parquet")
+
+    catalog = DataCatalog(data_source="tushare", storage_dir=tmp_path)
+
+    # 1. get_latest_trade_date with exact name and alias
+    latest = catalog.get_latest_trade_date("daily_basic")
+    assert latest == date(2026, 8, 14)
+
+    # 2. list_datasets
+    datasets = catalog.list_datasets()
+    assert "daily_basic" in datasets
+
+    # 3. list_datasets all
+    all_datasets = catalog.list_datasets(data_source="all")
+    assert "daily_basic" in all_datasets
+
+    # 4. summary
+    summary_df = catalog.summary()
+    assert len(summary_df) >= 1
+    assert "daily_basic" in summary_df["dataset"].to_list()
+    assert summary_df.filter(pl.col("dataset") == "daily_basic")["latest_date"][0] == "2026-08-14"

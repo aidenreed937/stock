@@ -10,32 +10,14 @@ import polars as pl
 
 from stock.config.settings import settings
 from stock.constants import BAR_DATASETS
-from stock.core.contracts import DAILY_BAR_CONTRACT
 from stock.data.storage.compat import StorageCompat
 from stock.exceptions import DataValidationError
 from stock.utils.logger import logger
 
-#: 行情类数据集：读取时统一按 (market, symbol, trade_date) 去重并保留最新复权。
 _BAR_DATASETS = BAR_DATASETS
-#: 历史归档文件备份/临时文件一律跳过。
 _ARTIFACT_SUFFIXES = (".bak.parquet", ".tmp.parquet", ".migration.tmp.parquet")
-#: 身份列别名归一：源端 ts_code/stockCode/code 统一映射为 symbol。
 _IDENTITY_ALIASES = ("ts_code", "stockCode", "code")
-#: 交易日列别名归一：date 统一映射为 trade_date。
 _DATE_ALIASES = ("date",)
-
-
-def _dataset_name(path: Path) -> str:
-    """从 Hive 分区路径或文件目录解析数据集名称。"""
-    parts = path.parts
-    for i in range(len(parts) - 1, -1, -1):
-        if parts[i].startswith("month=") and i >= 2 and parts[i - 1].startswith("year="):
-            return parts[i - 2]
-        if parts[i].startswith("year=") and i >= 1:
-            return parts[i - 1]
-    if not path.parent.name.startswith("market=") and not path.parent.name.startswith("year="):
-        return path.parent.name
-    return path.stem.split(".", 1)[0]
 
 
 @dataclass(frozen=True)
@@ -48,7 +30,6 @@ class CatalogDataset:
 
     @property
     def total_rows(self) -> int | None:
-        """尽力读取元数据返回总行数；失败时为 None（不加载全量数据）。"""
         if not self.files:
             return None
         try:
@@ -58,13 +39,7 @@ class CatalogDataset:
 
 
 class DataCatalog:
-    """按数据源隔离的本地落盘数据统一读取入口。
-
-    Args:
-        data_source: 数据源标识，例如 ``tushare`` / ``yfinance`` / ``lixinger`` / ``fred``。
-            默认取 ``settings.data_source_mode``。
-        storage_dir: Curated 根目录，默认 ``settings.curated_data_dir``。
-    """
+    """按数据源隔离的本地落盘数据统一读取入口。"""
 
     def __init__(
         self,
@@ -76,26 +51,8 @@ class DataCatalog:
         if not self.storage_dir.exists():
             raise FileNotFoundError(f"Curated 数据目录不存在: {self.storage_dir}")
 
-    def _source_root(self) -> Path:
-        """返回当前数据源专属的 Curated 根目录。"""
-        return self.storage_dir / self.data_source
-
     def _parquet_files(self, dataset: str | None = None, market: str | None = None) -> list[Path]:
-        """递归列出当前数据源下有效 Parquet，可按数据集目录名与市场精确过滤。"""
-        base = self._source_root()
-        if not base.exists():
-            return []
-        glob_pattern = "**/*.parquet" if dataset is None else f"**/{dataset}/**/*.parquet"
-        files: list[Path] = []
-        for path in base.glob(glob_pattern):
-            if path.name.endswith(_ARTIFACT_SUFFIXES):
-                continue
-            if dataset is not None and _dataset_name(path) != dataset:
-                continue
-            if market is not None and f"market={market.upper()}" not in path.parts:
-                continue
-            files.append(path)
-        return sorted(files)
+        return _list_parquet_files(self.storage_dir / self.data_source, dataset=dataset, market=market)
 
     def available_datasets(self, market: str | None = None) -> list[CatalogDataset]:
         """列出当前数据源下所有可用数据集。"""
@@ -106,76 +63,6 @@ class DataCatalog:
             CatalogDataset(data_source=self.data_source, dataset=name, files=tuple(sorted(paths)))
             for name, paths in sorted(seen.items())
         ]
-
-    def _read_dataset_files(
-        self,
-        dataset: str,
-        *,
-        start_date: date | None,
-        end_date: date | None,
-        market: str | None,
-        symbols: list[str] | None,
-    ) -> pl.DataFrame:
-        """按分区裁剪读取数据集，并在读取后进行规范列归一。"""
-        files = self._parquet_files(dataset=dataset, market=market)
-        if not files:
-            logger.warning(
-                f"DataCatalog 未找到数据集 [{dataset}] 的 Parquet 文件 (数据源: {self.data_source})"
-            )
-            return pl.DataFrame()
-
-        # Hive 年月分区下推：只读取与请求日期范围相交的月份目录。
-        candidate_files = files
-        if start_date is not None or end_date is not None:
-            start_ym = (start_date.year, start_date.month) if start_date else (date.min.year, 1)
-            end_ym = (end_date.year, end_date.month) if end_date else (date.max.year, 12)
-            candidate_files = [
-                path for path in files if _path_intersects_range(path, start_ym, end_ym)
-            ]
-            if not candidate_files:
-                return pl.DataFrame()
-
-        # 逐文件读取并统一 updated_at 时区，规避跨文件 SchemaError。
-        frames: list[pl.DataFrame] = []
-        for path in candidate_files:
-            try:
-                frame = pl.read_parquet(path)
-            except Exception as e:
-                logger.error(f"DataCatalog 读取文件失败 [{path}]: {e}")
-                continue
-            if "updated_at" in frame.columns:
-                frame = frame.with_columns(
-                    pl.col("updated_at").cast(pl.Datetime(time_unit="us", time_zone="UTC"), strict=False)
-                )
-            frames.append(frame)
-        if not frames:
-            return pl.DataFrame()
-        try:
-            df = pl.concat(frames, how="diagonal_relaxed")
-        except Exception as e:
-            logger.error(f"DataCatalog 合并数据集 [{dataset}] 失败: {e}")
-            return pl.DataFrame()
-
-        if df.is_empty():
-            return df
-
-        df = _normalize_identity_columns(df)
-
-        if "trade_date" in df.columns:
-            df = _coerce_trade_date(df)
-            if start_date is not None:
-                df = df.filter(pl.col("trade_date") >= start_date)
-            if end_date is not None:
-                df = df.filter(pl.col("trade_date") <= end_date)
-
-        if symbols:
-            symbol_col = "symbol" if "symbol" in df.columns else None
-            if symbol_col is None:
-                logger.warning(f"数据集 [{dataset}] 缺少 symbol 列，无法按标的过滤")
-            else:
-                df = df.filter(pl.col(symbol_col).is_in(symbols))
-
-        return df
 
     def load_dataset(
         self,
@@ -188,13 +75,8 @@ class DataCatalog:
         dedup: bool = True,
     ) -> pl.DataFrame:
         """读取标准数据集（非行情类也可用），可按标的与日期范围过滤。"""
-        df = self._read_dataset_files(
-            dataset=dataset,
-            start_date=start_date,
-            end_date=end_date,
-            market=market,
-            symbols=symbols,
-        )
+        files = _list_parquet_files(self.storage_dir / self.data_source, dataset=dataset, market=market)
+        df = _read_dataset_files(files, dataset, self.data_source, start_date, end_date, symbols)
         if df.is_empty():
             return df
         if dedup and "market" in df.columns and "symbol" in df.columns and "trade_date" in df.columns:
@@ -214,28 +96,11 @@ class DataCatalog:
         dedup: bool = True,
         validate: bool = True,
     ) -> pl.DataFrame:
-        """读取行情（K 线）数据。
-
-        Args:
-            symbol: 单个标的代码（与 ``symbols`` 二选一，优先单个）。
-            start_date / end_date: 日期范围（含端点）。
-            symbols: 多个标的代码列表。
-            dataset: 行情数据集名，默认 ``stock_daily_bar``。
-            market: 市场标识（如 ``CN``），缺省自动从已落盘数据推断。
-            adjustment: 复权类型过滤（``raw`` / ``normal`` / ``hfq`` 等），
-                缺省保留全部复权版本；若使用 ``dedup=True`` 则会按市场、标的、
-                交易日去重并保留最新版本。
-            validate: 是否对行情数据执行物理约束校验（默认 True）。
-        """
+        """读取行情（K 线）数据并进行时序排序与有效性校验。"""
         if symbol is not None:
             symbols = [symbol]
-        df = self._read_dataset_files(
-            dataset=dataset,
-            start_date=start_date,
-            end_date=end_date,
-            market=market,
-            symbols=symbols,
-        )
+        files = _list_parquet_files(self.storage_dir / self.data_source, dataset=dataset, market=market)
+        df = _read_dataset_files(files, dataset, self.data_source, start_date, end_date, symbols)
         if df.is_empty():
             logger.warning(f"DataCatalog 未找到 [{dataset}] 行情数据 (数据源: {self.data_source})")
             return df
@@ -260,42 +125,190 @@ class DataCatalog:
         market: str | None = None,
         n: int = 1,
     ) -> list[date]:
-        """返回数据集中最近 N 个交易日（降序），优先逆序扫描最新分区文件以保证秒级返回。"""
-        return _scan_latest_trade_dates(self._parquet_files(dataset=dataset, market=market), n)
+        """返回数据集中最近 N 个交易日（降序）。"""
+        resolved = _resolve_dataset_alias(self.data_source, dataset)
+        files = _list_parquet_files(self.storage_dir / self.data_source, dataset=resolved, market=market)
+        return _scan_latest_trade_dates(files, n)
 
-    def market_of_dataset(self, dataset: str, market: str | None = None) -> str | None:
-        """推断数据集的实际市场标识（基于目录路径）。"""
-        files = self._parquet_files(dataset=dataset, market=market)
-        for path in files:
-            for part in path.parts:
-                if part.startswith("market="):
-                    return part.removeprefix("market=")
-        return None
+    def get_latest_trade_date(
+        self,
+        dataset: str,
+        market: str | None = None,
+        data_source: str | None = None,
+    ) -> date | None:
+        """返回指定数据集的全表最新落盘交易日（标量 date）。"""
+        ds = data_source or self.data_source
+        cat = self if ds == self.data_source else DataCatalog(data_source=ds, storage_dir=self.storage_dir)
+        dates = cat.latest_trade_dates(dataset=dataset, market=market, n=1)
+        return dates[0] if dates else None
+
+    def list_datasets(self, data_source: str | None = None, market: str | None = None) -> list[str]:
+        """返回指定数据源（或当前数据源，传入 'all' 时扫描全库）下已落盘的数据集名称列表。"""
+        ds = data_source or self.data_source
+        if ds == "all":
+            all_names: set[str] = set()
+            for source_dir in self.storage_dir.iterdir():
+                if source_dir.is_dir() and not source_dir.name.startswith("."):
+                    cat = DataCatalog(data_source=source_dir.name, storage_dir=self.storage_dir)
+                    all_names.update(d.dataset for d in cat.available_datasets(market=market))
+            return sorted(all_names)
+        cat = self if ds == self.data_source else DataCatalog(data_source=ds, storage_dir=self.storage_dir)
+        return [d.dataset for d in cat.available_datasets(market=market)]
+
+    def summary(self, data_source: str | None = None, market: str | None = None) -> pl.DataFrame:
+        """一键生成全库或指定数据源的落盘数据资产全景状态表格。"""
+        return _build_catalog_summary(self, data_source, market)
 
     def describe(self, market: str | None = None) -> pl.DataFrame:
-        """生成数据目录摘要（数据集、文件数、总行数），用于人工巡检与对账。"""
-        rows: list[dict[str, object]] = []
-        for entry in self.available_datasets(market=market):
-            rows.append(
-                {
-                    "data_source": self.data_source,
-                    "dataset": entry.dataset,
-                    "files": len(entry.files),
-                    "rows": entry.total_rows,
-                }
-            )
-        if rows:
-            return pl.DataFrame(rows)
-        return pl.DataFrame(
+        """生成数据目录摘要（数据集、文件数、总行数）。"""
+        rows = [
+            {
+                "data_source": self.data_source,
+                "dataset": entry.dataset,
+                "files": len(entry.files),
+                "rows": entry.total_rows,
+            }
+            for entry in self.available_datasets(market=market)
+        ]
+        return pl.DataFrame(rows) if rows else pl.DataFrame(
             schema={"data_source": pl.Utf8, "dataset": pl.Utf8, "files": pl.Int64, "rows": pl.Int64}
         )
 
 
-def _path_intersects_range(path: Path, start_ym: tuple[int, int], end_ym: tuple[int, int]) -> bool:
-    """判断读写路径的 year=/month= 分区是否与请求的 (年, 月) 范围相交。
+def _list_parquet_files(base_dir: Path, dataset: str | None = None, market: str | None = None) -> list[Path]:
+    if not base_dir.exists():
+        return []
+    glob_pattern = "**/*.parquet" if dataset is None else f"**/{dataset}/**/*.parquet"
+    files: list[Path] = []
+    for path in base_dir.glob(glob_pattern):
+        if path.name.endswith(_ARTIFACT_SUFFIXES):
+            continue
+        if dataset is not None and _dataset_name(path) != dataset:
+            continue
+        if market is not None and f"market={market.upper()}" not in path.parts:
+            continue
+        files.append(path)
+    return sorted(files)
 
-    非分区文件（如 lixinger/fred 免分区数据集）一律视为命中。
-    """
+
+def _dataset_name(path: Path) -> str:
+    parts = path.parts
+    for i in range(len(parts) - 1, -1, -1):
+        if parts[i].startswith("month=") and i >= 2 and parts[i - 1].startswith("year="):
+            return parts[i - 2]
+        if parts[i].startswith("year=") and i >= 1:
+            return parts[i - 1]
+    if not path.parent.name.startswith("market=") and not path.parent.name.startswith("year="):
+        return path.parent.name
+    return path.stem.split(".", 1)[0]
+
+
+def _read_dataset_files(
+    files: list[Path],
+    dataset: str,
+    data_source: str,
+    start_date: date | None,
+    end_date: date | None,
+    symbols: list[str] | None,
+) -> pl.DataFrame:
+    if not files:
+        logger.warning(f"DataCatalog 未找到数据集 [{dataset}] 的 Parquet 文件 (数据源: {data_source})")
+        return pl.DataFrame()
+
+    candidate_files = files
+    if start_date is not None or end_date is not None:
+        start_ym = (start_date.year, start_date.month) if start_date else (date.min.year, 1)
+        end_ym = (end_date.year, end_date.month) if end_date else (date.max.year, 12)
+        candidate_files = [path for path in files if _path_intersects_range(path, start_ym, end_ym)]
+        if not candidate_files:
+            return pl.DataFrame()
+
+    frames: list[pl.DataFrame] = []
+    for path in candidate_files:
+        try:
+            frame = pl.read_parquet(path)
+        except Exception as e:
+            logger.error(f"DataCatalog 读取文件失败 [{path}]: {e}")
+            continue
+        if "updated_at" in frame.columns:
+            frame = frame.with_columns(
+                pl.col("updated_at").cast(pl.Datetime(time_unit="us", time_zone="UTC"), strict=False)
+            )
+        frames.append(frame)
+    if not frames:
+        return pl.DataFrame()
+    try:
+        df = pl.concat(frames, how="diagonal_relaxed")
+    except Exception as e:
+        logger.error(f"DataCatalog 合并数据集 [{dataset}] 失败: {e}")
+        return pl.DataFrame()
+
+    if df.is_empty():
+        return df
+
+    df = _normalize_identity_columns(df)
+    if "trade_date" in df.columns:
+        df = StorageCompat.safe_cast_date_col(df, "trade_date")
+        if start_date is not None:
+            df = df.filter(pl.col("trade_date") >= start_date)
+        if end_date is not None:
+            df = df.filter(pl.col("trade_date") <= end_date)
+
+    if symbols:
+        symbol_col = "symbol" if "symbol" in df.columns else None
+        if symbol_col is not None:
+            df = df.filter(pl.col(symbol_col).is_in(symbols))
+
+    return df
+
+
+def _build_catalog_summary(catalog: DataCatalog, data_source: str | None, market: str | None) -> pl.DataFrame:
+    sources = (
+        [d.name for d in catalog.storage_dir.iterdir() if d.is_dir() and not d.name.startswith(".")]
+        if (data_source == "all" or data_source is None)
+        else [data_source]
+    )
+    rows: list[dict[str, object]] = []
+    for src in sorted(sources):
+        try:
+            cat = catalog if src == catalog.data_source else DataCatalog(data_source=src, storage_dir=catalog.storage_dir)
+            for entry in cat.available_datasets(market=market):
+                w_date = cat.get_latest_trade_date(entry.dataset, market=market)
+                rows.append(
+                    {
+                        "data_source": src,
+                        "dataset": entry.dataset,
+                        "files": len(entry.files),
+                        "total_rows": entry.total_rows,
+                        "latest_date": str(w_date) if w_date else "N/A",
+                    }
+                )
+        except Exception:
+            continue
+    if rows:
+        return pl.DataFrame(rows).sort(["data_source", "dataset"])
+    return pl.DataFrame(
+        schema={
+            "data_source": pl.Utf8,
+            "dataset": pl.Utf8,
+            "files": pl.Int64,
+            "total_rows": pl.Int64,
+            "latest_date": pl.Utf8,
+        }
+    )
+
+
+def _resolve_dataset_alias(data_source: str, name: str) -> str:
+    try:
+        from stock.data.task_registry import resolve_task
+
+        task = resolve_task(data_source, name)
+        return task.dataset
+    except Exception:
+        return name
+
+
+def _path_intersects_range(path: Path, start_ym: tuple[int, int], end_ym: tuple[int, int]) -> bool:
     year_part = month_part = None
     for part in path.parts:
         if part.startswith("year="):
@@ -309,14 +322,13 @@ def _path_intersects_range(path: Path, start_ym: tuple[int, int], end_ym: tuple[
             except ValueError:
                 return True
     if year_part is None:
-        return True  # 无分区信息，无法裁剪，保守读取。
+        return True
     if month_part is None:
         return start_ym[0] <= year_part <= end_ym[0]
     return (start_ym[0], start_ym[1]) <= (year_part, month_part) <= (end_ym[0], end_ym[1])
 
 
 def _normalize_identity_columns(df: pl.DataFrame) -> pl.DataFrame:
-    """将源端标的/日期别名归一为 Curated 标准列。"""
     columns = set(df.columns)
     result = df
     for alias in _IDENTITY_ALIASES:
@@ -328,12 +340,13 @@ def _normalize_identity_columns(df: pl.DataFrame) -> pl.DataFrame:
             result = result.with_columns(
                 pl.coalesce(
                     [
-                        pl.col(alias).cast(pl.Utf8, strict=False),
                         pl.col("symbol").cast(pl.Utf8, strict=False),
+                        pl.col(alias).cast(pl.Utf8, strict=False),
                     ]
                 ).alias("symbol")
             ).drop(alias)
         columns = set(result.columns)
+
     for alias in _DATE_ALIASES:
         if alias not in columns:
             continue
@@ -352,13 +365,7 @@ def _normalize_identity_columns(df: pl.DataFrame) -> pl.DataFrame:
     return result
 
 
-def _coerce_trade_date(df: pl.DataFrame) -> pl.DataFrame:
-    """将 trade_date 统一为 ``date`` 类型，兼容日期字符串与时间戳。"""
-    return StorageCompat.safe_cast_date_col(df, "trade_date")
-
-
 def _scan_latest_trade_dates(files: list[Path], n: int = 1) -> list[date]:
-    """逆序扫描 Parquet 分区提取最近 N 个交易日。"""
     if not files:
         return []
     found: set[date] = set()
@@ -383,7 +390,6 @@ def _scan_latest_trade_dates(files: list[Path], n: int = 1) -> list[date]:
 
 
 def _validate_bars(df: pl.DataFrame, dataset: str) -> None:
-    """对行情数据执行物理约束校验（OHLC 非空且有序）。"""
     if dataset not in _BAR_DATASETS or df.is_empty():
         return
     required = {"open", "high", "low", "close"}
