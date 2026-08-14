@@ -78,10 +78,8 @@ class DataCatalog:
         resolved = _resolve_dataset_alias(self.data_source, dataset)
         files = _list_parquet_files(self.storage_dir / self.data_source, dataset=resolved, market=market)
         df = _read_dataset_files(files, resolved, self.data_source, start_date, end_date, symbols)
-        if df.is_empty():
-            return df
-        if dedup and "market" in df.columns and "symbol" in df.columns and "trade_date" in df.columns:
-            df = df.unique(subset=["market", "symbol", "trade_date"], keep="last")
+        if dedup and (k := StorageCompat.resolve_dedup_keys(resolved, self.data_source, self.data_source, df)):
+            df = df.unique(subset=k, keep="last")
         return df
 
     def load_bars(

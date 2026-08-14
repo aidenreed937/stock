@@ -29,6 +29,7 @@ make format        # Ruff 自动修复并格式化
 make test          # pytest 单元测试 + 覆盖率 (最低 75%)
 make check         # format、lint、test 全流程门禁
 make run           # 运行主程序 (uv run python -m stock.main)
+make scan          # 一键全市场量化全景扫描与体检 (支持 DATE=YYYY-MM-DD FORMAT=markdown OUTPUT=...)
 ```
 
 ### 2. 核心数据管道 CLI (`data-pipeline`)

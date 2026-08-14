@@ -1,4 +1,4 @@
-.PHONY: help install lint format test check run backfill baseline migrate-data backfill-accept
+.PHONY: help install lint format test check run scan backfill baseline migrate-data backfill-accept
 
 help:
 	@echo "Available commands:"
@@ -8,6 +8,7 @@ help:
 	@echo "  make test     - Run pytest with coverage"
 	@echo "  make check    - Run format, lint, and test (recommended before commit)"
 	@echo "  make run      - Run the main application"
+	@echo "  make scan     - Run 3-layer market scan (e.g., make scan [DATE=YYYY-MM-DD] [FORMAT=markdown])"
 	@echo "  make backfill - Backfill historical data (e.g., make backfill START=2026-08-01 END=2026-08-12)"
 	@echo "  make baseline - Generate immutable data inventory"
 	@echo "  make migrate-data [APPLY=1] - Preview/apply local dedup migration"
@@ -80,3 +81,6 @@ backfill-pledge:
 
 monitor:
 	UV_CACHE_DIR=.uv_cache UV_PYTHON_INSTALL_DIR=.uv_python uv run python scripts/monitor_resources.py $(if $(WATCH),--watch) $(if $(INTERVAL),--interval $(INTERVAL))
+
+scan:
+	UV_CACHE_DIR=.uv_cache UV_PYTHON_INSTALL_DIR=.uv_python uv run python -m stock.cli.scan $(if $(DATE),--date $(DATE)) $(if $(SYMBOL),--symbol $(SYMBOL)) $(if $(FORMAT),--format $(FORMAT)) $(if $(OUTPUT),--output $(OUTPUT)) $(if $(SAVE),--save)

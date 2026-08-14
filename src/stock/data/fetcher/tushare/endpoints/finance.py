@@ -45,6 +45,7 @@ FINANCE_ENDPOINTS: dict[str, EndpointMeta] = {
         primary_keys=["trade_date", "exchange_id"],
         update_time="09:00",
         update_delay_days=1,
+        request_window_days=90,
     ),
     "margin_detail": EndpointMeta(
         api_name="margin_detail",
