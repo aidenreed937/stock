@@ -182,14 +182,92 @@ LIXINGER_API_REGISTRY: dict[str, EndpointMeta] = {
         ],
         support_batch_prefetch=True,
     ),
+    "cn/industry/fs/sw_2021/bank": EndpointMeta(
+        api_name="cn/industry/fs/sw_2021/bank",
+        description="申万 2021 版银行行业财务报表数据 (含净利息收入/非息收入/成本收入比/ROE)",
+        group="financial_statement",
+        primary_keys=["stockCode", "date"],
+        date_columns=["date"],
+        required_columns=["stockCode", "date"],
+        update_time="18:00",
+        update_delay_days=0,
+        code_param_name="stockCodes",
+        default_metrics=["q.ps.toi.t_y2y", "q.ps.np.t_y2y", "q.fi.roe.t", "t.ps.toi.c_y2y", "t.ps.np.c_y2y"],
+        support_batch_prefetch=True,
+    ),
+    "cn/industry/fs/sw_2021/security": EndpointMeta(
+        api_name="cn/industry/fs/sw_2021/security",
+        description="申万 2021 版证券行业财务报表数据 (含经纪/投行/资管净收入与自营投资收益)",
+        group="financial_statement",
+        primary_keys=["stockCode", "date"],
+        date_columns=["date"],
+        required_columns=["stockCode", "date"],
+        update_time="18:00",
+        update_delay_days=0,
+        code_param_name="stockCodes",
+        default_metrics=["q.ps.toi.t_y2y", "q.ps.np.t_y2y", "q.fi.roe.t", "t.ps.toi.c_y2y", "t.ps.np.c_y2y"],
+        support_batch_prefetch=True,
+    ),
+    "cn/industry/fs/sw_2021/insurance": EndpointMeta(
+        api_name="cn/industry/fs/sw_2021/insurance",
+        description="申万 2021 版保险行业财务报表数据 (含已赚保费/内含价值/新业务价值/营运利润)",
+        group="financial_statement",
+        primary_keys=["stockCode", "date"],
+        date_columns=["date"],
+        required_columns=["stockCode", "date"],
+        update_time="18:00",
+        update_delay_days=0,
+        code_param_name="stockCodes",
+        default_metrics=["q.ps.toi.t_y2y", "q.ps.np.t_y2y", "q.fi.roe.t", "t.ps.toi.c_y2y", "t.ps.np.c_y2y"],
+        support_batch_prefetch=True,
+    ),
+    "cn/company/fs/bank": EndpointMeta(
+        api_name="cn/company/fs/bank",
+        description="A 股银行公司财务报表 (含净息差、不良率、拨备覆盖率、资本充足率)",
+        group="financial_statement",
+        primary_keys=["stockCode", "date"],
+        update_time="18:00",
+        update_delay_days=0,
+        code_param_name="stockCodes",
+        default_metrics=["nim", "npl_ratio", "provision_coverage_ratio", "capital_adequacy_ratio", "equity"],
+        support_batch_prefetch=True,
+    ),
+    "cn/company/fs/security": EndpointMeta(
+        api_name="cn/company/fs/security",
+        description="A 股证券公司财务报表 (含净资本、经纪/投行/自营业务净收入)",
+        group="financial_statement",
+        primary_keys=["stockCode", "date"],
+        update_time="18:00",
+        update_delay_days=0,
+        code_param_name="stockCodes",
+        default_metrics=["net_capital", "brokerage_net_income", "ib_net_income", "investment_income", "equity"],
+        support_batch_prefetch=True,
+    ),
+    "cn/company/fs/insurance": EndpointMeta(
+        api_name="cn/company/fs/insurance",
+        description="A 股保险公司财务报表 (含内含价值 EV、新业务价值 NBV、已赚保费)",
+        group="financial_statement",
+        primary_keys=["stockCode", "date"],
+        update_time="18:00",
+        update_delay_days=0,
+        code_param_name="stockCodes",
+        default_metrics=["embedded_value", "new_business_value", "earned_premium", "operating_profit", "equity"],
+        support_batch_prefetch=True,
+    ),
 }
 
 LIXINGER_API_REGISTRY["sw_2021_constituents"] = LIXINGER_API_REGISTRY["cn/industry/constituents/sw_2021"]
 LIXINGER_API_REGISTRY["sw_2021_fundamental"] = LIXINGER_API_REGISTRY["cn/industry/fundamental/sw_2021"]
 LIXINGER_API_REGISTRY["sw_2021_l2_fundamental"] = LIXINGER_API_REGISTRY["cn/industry/fundamental/sw_2021"]
 LIXINGER_API_REGISTRY["sw_2021_fs_non_financial"] = LIXINGER_API_REGISTRY["cn/industry/fs/sw_2021/non_financial"]
+LIXINGER_API_REGISTRY["sw_2021_fs_bank"] = LIXINGER_API_REGISTRY["cn/industry/fs/sw_2021/bank"]
+LIXINGER_API_REGISTRY["sw_2021_fs_security"] = LIXINGER_API_REGISTRY["cn/industry/fs/sw_2021/security"]
+LIXINGER_API_REGISTRY["sw_2021_fs_insurance"] = LIXINGER_API_REGISTRY["cn/industry/fs/sw_2021/insurance"]
 LIXINGER_API_REGISTRY["index_fundamental"] = LIXINGER_API_REGISTRY["cn/index/fundamental"]
 LIXINGER_API_REGISTRY["fs_non_financial"] = LIXINGER_API_REGISTRY["cn/company/fs/non_financial"]
+LIXINGER_API_REGISTRY["fs_bank"] = LIXINGER_API_REGISTRY["cn/company/fs/bank"]
+LIXINGER_API_REGISTRY["fs_security"] = LIXINGER_API_REGISTRY["cn/company/fs/security"]
+LIXINGER_API_REGISTRY["fs_insurance"] = LIXINGER_API_REGISTRY["cn/company/fs/insurance"]
 LIXINGER_API_REGISTRY["pledge_info"] = LIXINGER_API_REGISTRY["cn/company/hot/ple"]
 LIXINGER_API_REGISTRY["national_debt"] = LIXINGER_API_REGISTRY["macro/national-debt"]
 LIXINGER_API_REGISTRY["interest_rates"] = LIXINGER_API_REGISTRY["macro/interest-rates"]
