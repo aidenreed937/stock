@@ -6,7 +6,7 @@ import threading
 from typing import Callable
 import polars as pl
 
-from stock.constants import BAR_DATASETS
+from stock.constants import BAR_DATASETS, SYSTEM_METADATA_COLUMNS
 from stock.data.storage.compat import StorageCompat
 from stock.data.task_registry import is_task_partitioned
 from stock.exceptions import DataValidationError
@@ -62,9 +62,10 @@ class ParquetPartitionWriter:
             normalized_dfs = [StorageCompat.normalize_identity_columns(df) for df in dfs]
             if not existing.is_empty() and source is not None:
                 self._validate_frame_source(existing, source, f"已有 Curated 文件 [{file_path}]")
-                meta_cols = {"fetched_at", "source_id", "source_unit_note", "raw_row_count", "clean_row_count"}
                 for df in normalized_dfs:
-                    if (set(df.columns) - meta_cols) != (set(existing.columns) - meta_cols):
+                    if (set(df.columns) - SYSTEM_METADATA_COLUMNS) != (
+                        set(existing.columns) - SYSTEM_METADATA_COLUMNS
+                    ):
                         raise DataValidationError(
                             f"Curated 文件 [{file_path}] schema 不匹配: "
                             f"已有列 {sorted(existing.columns)}，新数据列 {sorted(df.columns)}"

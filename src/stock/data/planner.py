@@ -129,13 +129,14 @@ def _resolve_target_symbols(
     """解析当前接口需要遍历的目标标的代码列表。"""
     if symbol and symbol not in ("all", "watchlist"):
         return [s.strip() for s in symbol.split(",") if s.strip()]
-    if symbol == "watchlist" or (is_per_sym and not symbol):
-        targets = _default_symbols_for_endpoint(
-            data_source, public_name, data_cfg, {public_name} if is_per_sym else set()
-        )
-        return targets if targets or is_per_sym else [""]
     if not is_per_sym:
+        # 全市场按日截面端点（per_day），保持全量截面模式，不拆解为 watchlist 个股
         return [""]
+    if symbol == "watchlist" or not symbol:
+        targets = _default_symbols_for_endpoint(
+            data_source, public_name, data_cfg, {public_name}
+        )
+        return targets if targets else [""]
     return _default_symbols_for_endpoint(data_source, public_name, data_cfg, {public_name})
 
 

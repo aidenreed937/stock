@@ -26,13 +26,11 @@ def run_daily_basic_audit(
     )
     try:
         daily_df = pl.read_parquet(daily_files) if daily_files else pl.DataFrame()
-        if "trade_date" in daily_df.columns and daily_df["trade_date"].dtype == pl.String:
-            daily_df = daily_df.with_columns(
-                pl.col("trade_date").str.to_date("%Y-%m-%d").alias("trade_date")
-            )
+        daily_df = StorageCompat.safe_cast_date_col(daily_df, "trade_date")
         bar_df = daily_df.filter(pl.col("trade_date") == target_date)
         bar_symbols = set(bar_df["symbol"].unique().to_list())
-    except Exception:
+    except Exception as exc:
+        logger.debug(f"读取 stock_daily_bar 对账失败: {exc}")
         bar_symbols = set()
 
     # 2. 读取每日指标 daily_basic 记录
@@ -47,13 +45,11 @@ def run_daily_basic_audit(
     )
     try:
         db_df = pl.read_parquet(basic_files) if basic_files else pl.DataFrame()
-        if "trade_date" in db_df.columns and db_df["trade_date"].dtype == pl.String:
-            db_df = db_df.with_columns(
-                pl.col("trade_date").str.to_date("%Y-%m-%d").alias("trade_date")
-            )
+        db_df = StorageCompat.safe_cast_date_col(db_df, "trade_date")
         target_db = db_df.filter(pl.col("trade_date") == target_date)
         basic_symbols = set(target_db["symbol"].unique().to_list())
-    except Exception:
+    except Exception as exc:
+        logger.debug(f"读取 daily_basic 对账失败: {exc}")
         basic_symbols = set()
 
     match_count = len(bar_symbols.intersection(basic_symbols))
@@ -102,13 +98,11 @@ def run_sw_industry_audit(
     fund_path = f"data/curated/{data_source}/market=CN/sw_2021_fundamental/data.parquet"
     try:
         fund_df = pl.read_parquet(fund_path)
-        if "trade_date" in fund_df.columns and fund_df["trade_date"].dtype == pl.String:
-            fund_df = fund_df.with_columns(
-                pl.col("trade_date").str.to_date("%Y-%m-%d").alias("trade_date")
-            )
+        fund_df = StorageCompat.safe_cast_date_col(fund_df, "trade_date")
         target_fund = fund_df.filter(pl.col("trade_date") == target_date)
         ind_symbols = set(target_fund["symbol"].unique().to_list()) if "symbol" in target_fund.columns else set()
-    except Exception:
+    except Exception as exc:
+        logger.debug(f"读取 sw_2021_fundamental 对账失败: {exc}")
         ind_symbols = set()
 
     expected_ind_count = 31  # 申万 2021 版一级行业固定为 31 个

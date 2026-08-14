@@ -1,23 +1,4 @@
-"""统一读取本地已落盘 Curated Parquet 数据的数据目录服务 (DataCatalog)。
-
-DataCatalog 是分析与回测层访问落盘数据的唯一入口，负责：
-
-1. 按 ``data_source`` 隔离数据目录，绝不混读不同来源。
-2. 将 Hive 时间分区 ``year=YYYY/month=MM`` 的路径列表折叠为基于
-   ``trade_date`` 的按需分区裁剪；默认读取全部复权版本并按主键去重。
-3. 提供按 ``symbol`` 与日期范围过滤的读取入口；对行情类数据集统一
-   规范化为与 ``DuckDBMarketStore`` 一致的别名列（``ts_code -> symbol``、
-   ``date -> trade_date``），并对跨文件 schema 漂移与时区差异做容错。
-
-典型用法::
-
-    from stock.data.catalog import DataCatalog
-
-    catalog = DataCatalog(data_source="tushare")
-    bars = catalog.load_bars("600519.SH", start_date=date(2025, 1, 1))
-    basics = catalog.load_dataset("daily_basic", start_date=date(2025, 1, 1))
-    catalog.describe()
-"""
+"""统一读取本地已落盘 Curated Parquet 数据的数据目录服务 (DataCatalog)。"""
 
 from __future__ import annotations
 
@@ -30,6 +11,7 @@ import polars as pl
 from stock.config.settings import settings
 from stock.constants import BAR_DATASETS
 from stock.core.contracts import DAILY_BAR_CONTRACT
+from stock.data.storage.compat import StorageCompat
 from stock.exceptions import DataValidationError
 from stock.utils.logger import logger
 
@@ -278,14 +260,8 @@ class DataCatalog:
         market: str | None = None,
         n: int = 1,
     ) -> list[date]:
-        """返回数据集中最近 N 个交易日（降序）。"""
-        df = self._read_dataset_files(
-            dataset=dataset, market=market, start_date=None, end_date=None, symbols=None
-        )
-        if df.is_empty() or "trade_date" not in df.columns:
-            return []
-        dates = df["trade_date"].unique().sort(descending=True).to_list()
-        return [d for d in dates if isinstance(d, date)][:n]
+        """返回数据集中最近 N 个交易日（降序），优先逆序扫描最新分区文件以保证秒级返回。"""
+        return _scan_latest_trade_dates(self._parquet_files(dataset=dataset, market=market), n)
 
     def market_of_dataset(self, dataset: str, market: str | None = None) -> str | None:
         """推断数据集的实际市场标识（基于目录路径）。"""
@@ -378,19 +354,32 @@ def _normalize_identity_columns(df: pl.DataFrame) -> pl.DataFrame:
 
 def _coerce_trade_date(df: pl.DataFrame) -> pl.DataFrame:
     """将 trade_date 统一为 ``date`` 类型，兼容日期字符串与时间戳。"""
-    dtype = df.schema["trade_date"]
-    if dtype == pl.Date:
-        return df
-    if isinstance(dtype, pl.Datetime):
-        return df.with_columns(pl.col("trade_date").dt.date().alias("trade_date"))
-    if dtype == pl.String:
-        return df.with_columns(
-            pl.col("trade_date")
-            .str.to_date("%Y-%m-%d", strict=False)
-            .fill_null(pl.col("trade_date").str.to_date("%Y%m%d", strict=False))
-            .alias("trade_date")
-        )
-    return df
+    return StorageCompat.safe_cast_date_col(df, "trade_date")
+
+
+def _scan_latest_trade_dates(files: list[Path], n: int = 1) -> list[date]:
+    """逆序扫描 Parquet 分区提取最近 N 个交易日。"""
+    if not files:
+        return []
+    found: set[date] = set()
+    for path in reversed(files):
+        try:
+            df_lazy = pl.scan_parquet(path)
+            cols = df_lazy.collect_schema().names()
+            date_col = next((c for c in ("trade_date", "date", "Date") if c in cols), None)
+            if not date_col:
+                continue
+            distinct_df = StorageCompat.safe_cast_date_col(
+                df_lazy.select(pl.col(date_col).drop_nulls().unique()).collect(), date_col
+            )
+            for d in distinct_df[date_col].to_list():
+                if isinstance(d, date):
+                    found.add(d)
+            if len(found) >= max(n * 3, 10):
+                break
+        except Exception:
+            continue
+    return sorted(found, reverse=True)[:n]
 
 
 def _validate_bars(df: pl.DataFrame, dataset: str) -> None:

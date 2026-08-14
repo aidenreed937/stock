@@ -13,6 +13,7 @@ from stock.data.audit.factor_audit import run_adj_factor_audit, run_sw_daily_aud
 from stock.data.audit.moneyflow_audit import run_hk_hold_audit
 from stock.data.audit.valuation_audit import run_daily_basic_audit, run_sw_industry_audit
 from stock.data.fetcher.tushare.client import TuShareClient
+from stock.data.storage.compat import StorageCompat
 from stock.data.task_registry import resolve_task
 from stock.utils.logger import logger
 
@@ -271,10 +272,7 @@ def run_audit(
         actual_symbols: set[str] = set()
     else:
         # 确保 trade_date 转换为 date 类型进行比较
-        if daily_df["trade_date"].dtype == pl.String:
-            daily_df = daily_df.with_columns(
-                pl.col("trade_date").str.to_date("%Y-%m-%d").alias("trade_date")
-            )
+        daily_df = StorageCompat.safe_cast_date_col(daily_df, "trade_date")
         day_df = daily_df.filter(pl.col("trade_date") == target_date)
         actual_symbols = set(day_df["symbol"].unique().to_list())
 
@@ -653,15 +651,13 @@ def run_index_audit(
     try:
         if matched_files:
             df = pl.read_parquet(matched_files)
-            if df["trade_date"].dtype == pl.String:
-                df = df.with_columns(
-                    pl.col("trade_date").str.to_date("%Y-%m-%d").alias("trade_date")
-                )
+            df = StorageCompat.safe_cast_date_col(df, "trade_date")
             sub_df = df.filter(pl.col("trade_date") == target_date)
             actual_indices = set(sub_df["symbol"].to_list())
         else:
             actual_indices = set()
-    except Exception:
+    except Exception as exc:
+        logger.debug(f"读取指数行情对账失败: {exc}")
         actual_indices = set()
 
     missing = expected_indices - actual_indices

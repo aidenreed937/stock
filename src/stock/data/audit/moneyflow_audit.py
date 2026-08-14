@@ -25,17 +25,15 @@ def run_hk_hold_audit(
     )
     try:
         hk_df = pl.read_parquet(hk_files) if hk_files else pl.DataFrame()
-        if "trade_date" in hk_df.columns and hk_df["trade_date"].dtype == pl.String:
-            hk_df = hk_df.with_columns(
-                pl.col("trade_date").str.to_date("%Y-%m-%d").alias("trade_date")
-            )
+        hk_df = StorageCompat.safe_cast_date_col(hk_df, "trade_date")
         target_hk = hk_df.filter(pl.col("trade_date") == target_date)
         symbols_count = target_hk["symbol"].n_unique() if "symbol" in target_hk.columns else 0
         total_vol = (
             target_hk["vol"].sum() if "vol" in target_hk.columns and not target_hk.is_empty() else 0
         )
         total_vol_float = float(total_vol) if total_vol is not None else 0.0
-    except Exception:
+    except Exception as exc:
+        logger.debug(f"读取 hk_hold 对账失败: {exc}")
         symbols_count = 0
         total_vol_float = 0.0
 

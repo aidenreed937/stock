@@ -124,11 +124,41 @@ make backfill START=$(date +%Y-%m-%d) END=$(date +%Y-%m-%d) SOURCE=tushare
 make backfill START=$(date +%Y-%m-%d) END=$(date +%Y-%m-%d) SOURCE=yfinance
 ```
 
-### 4.2 自动化增量调度服务 (Scheduler)
-启动后台驻留增量调度器（包含数据源收盘保护锁，防止抓取盘中半条 K 线）：
+### 4.2 更新时间窗口就绪诊断与调度保护 (Update Scheduler)
+各数据源发布时间窗口不同（如 A 股日 K 为 17:00、估值指标为 18:00、美股历史为次日 06:00）。`DataUpdateScheduler` 在回填与增量时自动作为前置收盘保护锁，防止抓取盘中半条数据或未就绪截面。
+
+运行以下命令可诊断各数据源端点当前的就绪状态：
 
 ```bash
-uv run python -m stock.data.update_scheduler
+uv run python -m stock.data.update_scheduler [--source tushare] [--date YYYY-MM-DD]
+```
+
+### 4.3 一键极速增量同步与自动化调度 (Fast Daily Sync)
+增量引擎 `DailySyncEngine` 会自动探测本地落盘最新交易日（Watermark），识别时间发布窗口，多端点并发补齐缺口，并在完成后自动运行对账审计。
+
+#### 1. 统一 CLI 与 Makefile 入口
+```bash
+# 1. 默认一键同步当天所有已就绪端点并对账
+make sync
+
+# 2. 补齐指定数据源或指定日期缺口
+make sync SOURCE=tushare DATE=YYYY-MM-DD
+
+# 3. 全数据源一键增量并强制覆盖刷新
+make sync SOURCE=all FORCE=1
+```
+
+#### 2. 宿主机标准 Crontab 调度模板 (分时 3 波次)
+量化系统采用无状态定时唤起，通过 Crontab 配置 3 波次同步任务：
+```crontab
+# 波次 1 (工作日 17:15): A 股日 K 与场内 ETF 行情
+15 17 * * 1-5 cd /Users/mac/workspace/personal/finance/stock && make sync SOURCE=tushare >> logs/cron_sync.log 2>&1
+
+# 波次 2 (工作日 18:15): A 股每日估值、复权因子、申万行业、资金流、ETF 规模
+15 18 * * 1-5 cd /Users/mac/workspace/personal/finance/stock && make sync SOURCE=tushare >> logs/cron_sync.log 2>&1
+
+# 波次 3 (周二至周六 09:15): 美股外盘收盘行情、全球宏观、A 股融资融券
+15 09 * * 2-6 cd /Users/mac/workspace/personal/finance/stock && make sync SOURCE=all >> logs/cron_sync.log 2>&1
 ```
 
 ---

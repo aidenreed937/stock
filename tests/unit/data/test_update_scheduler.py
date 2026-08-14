@@ -74,3 +74,28 @@ def test_timezone_aware_timing() -> None:
     # 传入带 UTC 时区的 datetime (对应北京时间 2026-08-12 16:30) -> 未就绪
     dt_utc_not_ready = datetime(2026, 8, 12, 8, 30, tzinfo=ZoneInfo("UTC"))
     assert not DataUpdateScheduler.is_data_ready("daily", target_date, dt_utc_not_ready, data_source="tushare")
+
+
+def test_get_endpoint_update_meta() -> None:
+    meta = DataUpdateScheduler.get_endpoint_update_meta("tushare", "daily")
+    assert meta.task_name == "stock_daily_bar"
+    assert meta.api_name == "daily"
+    assert meta.update_time == "17:00"
+    assert meta.update_delay_days == 0
+    assert meta.frequency == "daily"
+
+
+def test_check_readiness_and_cli(capsys) -> None:
+    from stock.data.update_scheduler import main
+
+    # 测试 check_readiness 返回 DataFrame
+    df = DataUpdateScheduler.check_readiness(target_date=date(2026, 8, 12), data_source="tushare")
+    assert not df.is_empty()
+    assert "任务名称" in df.columns
+    assert "状态" in df.columns
+
+    # 测试 CLI main 输出
+    with patch("sys.argv", ["update_scheduler.py", "-s", "tushare", "-d", "2026-08-12"]):
+        main()
+        captured = capsys.readouterr()
+        assert "数据源更新窗口就绪诊断报告" in captured.out

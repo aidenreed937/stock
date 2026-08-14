@@ -107,3 +107,18 @@ def test_main_cli_exits_on_master_audit_errors() -> None:
     ):
         main()
     assert exc_info.value.code == 1
+
+
+def test_resolve_audit_target_date_auto() -> None:
+    from stock.cli.audit import _resolve_audit_target_date
+
+    # 1. 显式传入目标日期
+    dt, is_auto = _resolve_audit_target_date("valuation", "tushare", date(2026, 8, 12))
+    assert dt == date(2026, 8, 12)
+    assert not is_auto
+
+    # 2. 自动探测
+    with patch("stock.data.catalog.DataCatalog.latest_trade_dates", return_value=[date(2026, 8, 11)]):
+        dt_auto, is_auto2 = _resolve_audit_target_date("valuation", "tushare", None)
+        assert dt_auto == date(2026, 8, 11)
+        assert is_auto2

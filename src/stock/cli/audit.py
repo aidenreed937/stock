@@ -50,6 +50,41 @@ def _audit_result_failed(result: Any) -> bool:
     return False
 
 
+AUDIT_DEFAULT_DATASETS: dict[str, str] = {
+    "valuation": "daily_basic",
+    "factor": "adj_factor",
+    "moneyflow": "hk_hold",
+    "reconciliation": "stock_daily_bar",
+    "recon": "stock_daily_bar",
+    "acceptance": "stock_daily_bar",
+}
+
+
+def _resolve_audit_target_date(
+    audit_type: str,
+    data_source: str,
+    target_date: date | None,
+) -> tuple[date, bool]:
+    """解析审计基准日期，若未显式指定则自适应探测核心数据集最新有效交易日。"""
+    if target_date is not None:
+        return target_date, False
+
+    dataset = AUDIT_DEFAULT_DATASETS.get(audit_type.lower(), "stock_daily_bar")
+    try:
+        from stock.data.catalog import DataCatalog
+
+        catalog = DataCatalog(data_source=data_source)
+        dates = catalog.latest_trade_dates(dataset=dataset, n=1)
+        if dates:
+            return dates[0], True
+    except Exception as exc:
+        logger.debug(f"自适应探测最新交易日失败 [{data_source}/{dataset}]: {exc}")
+
+    from datetime import timedelta
+
+    return date.today() - timedelta(days=1), True
+
+
 def run_audit(
     audit_type: str = "master",
     data_source: str = "tushare",
@@ -59,7 +94,8 @@ def run_audit(
 ) -> dict[str, Any]:
     """根据类型执行指定的审计套件。"""
     audit_type_lower = audit_type.lower()
-    t_date = target_date or date.today()
+    t_date, is_auto = _resolve_audit_target_date(audit_type_lower, data_source, target_date)
+    auto_tag = " [自动探测最新交易日]" if is_auto else ""
     results: dict[str, Any] = {}
 
     if audit_type_lower in {"master", "all"}:
@@ -73,7 +109,9 @@ def run_audit(
     if audit_type_lower in {"reconciliation", "recon", "all"}:
         from stock.data.audit.reconciliation import run_audit as recon_run_audit
 
-        logger.info(f"=== 开始执行 RAW vs Curated 对账审计 [{data_source}] (日期: {t_date}) ===")
+        logger.info(
+            f"=== 开始执行 RAW vs Curated 对账审计 [{data_source}] (日期: {t_date}{auto_tag}) ==="
+        )
         results["reconciliation"] = recon_run_audit(target_date=t_date, data_source=data_source)
 
     if audit_type_lower in {"acceptance", "all"}:
@@ -93,7 +131,7 @@ def run_audit(
     if audit_type_lower in {"valuation", "all"}:
         from stock.data.audit.valuation_audit import run_daily_basic_audit, run_sw_industry_audit
 
-        logger.info(f"=== 开始执行估值指标专项审计 [{data_source}] (日期: {t_date}) ===")
+        logger.info(f"=== 开始执行估值指标专项审计 [{data_source}] (日期: {t_date}{auto_tag}) ===")
         results["daily_basic"] = run_daily_basic_audit(t_date, data_source=data_source)
         sw_source = "lixinger" if data_source == "tushare" else data_source
         results["sw_industry"] = run_sw_industry_audit(t_date, data_source=sw_source)
@@ -101,14 +139,14 @@ def run_audit(
     if audit_type_lower in {"factor", "all"}:
         from stock.data.audit.factor_audit import run_adj_factor_audit, run_sw_daily_audit
 
-        logger.info(f"=== 开始执行技术指标因子审计 [{data_source}] (日期: {t_date}) ===")
+        logger.info(f"=== 开始执行技术指标因子审计 [{data_source}] (日期: {t_date}{auto_tag}) ===")
         results["adj_factor"] = run_adj_factor_audit(t_date, data_source=data_source)
         results["sw_daily"] = run_sw_daily_audit(t_date, data_source=data_source)
 
     if audit_type_lower in {"moneyflow", "all"}:
         from stock.data.audit.moneyflow_audit import run_hk_hold_audit
 
-        logger.info(f"=== 开始执行资金流向数据审计 [{data_source}] (日期: {t_date}) ===")
+        logger.info(f"=== 开始执行资金流向数据审计 [{data_source}] (日期: {t_date}{auto_tag}) ===")
         results["hk_hold"] = run_hk_hold_audit(t_date, data_source=data_source)
 
     return results

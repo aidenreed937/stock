@@ -42,13 +42,11 @@ def run_adj_factor_audit(
     )
     try:
         adj_df = pl.read_parquet(adj_files) if adj_files else pl.DataFrame()
-        if "trade_date" in adj_df.columns and adj_df["trade_date"].dtype == pl.String:
-            adj_df = adj_df.with_columns(
-                pl.col("trade_date").str.to_date("%Y-%m-%d").alias("trade_date")
-            )
+        adj_df = StorageCompat.safe_cast_date_col(adj_df, "trade_date")
         target_adj = adj_df.filter(pl.col("trade_date") == target_date)
         actual_symbols = set(target_adj["symbol"].unique().to_list())
-    except Exception:
+    except Exception as exc:
+        logger.debug(f"读取 adj_factor 对账失败: {exc}")
         actual_symbols = set()
 
     match_count = len(expected_symbols.intersection(actual_symbols))
@@ -92,14 +90,11 @@ def run_sw_daily_audit(
     )
     try:
         sw_df = pl.read_parquet(sw_files) if sw_files else pl.DataFrame()
-        if "trade_date" in sw_df.columns:
-            if sw_df["trade_date"].dtype == pl.String:
-                sw_df = sw_df.with_columns(
-                    pl.col("trade_date").str.to_date("%Y-%m-%d", strict=False).alias("trade_date")
-                )
+        sw_df = StorageCompat.safe_cast_date_col(sw_df, "trade_date")
         target_sw = sw_df.filter(pl.col("trade_date") == target_date)
         actual_symbols = set(target_sw["symbol"].unique().to_list()) if "symbol" in target_sw.columns else set()
-    except Exception:
+    except Exception as exc:
+        logger.debug(f"读取 sw_daily 对账失败: {exc}")
         actual_symbols = set()
 
     # 申万 2021 版一级行业代码特征为 801xxx.SI (如 801010.SI, 801120.SI 等共 31 个)

@@ -35,3 +35,26 @@ EXCHANGE_START_DATES: Final[dict[str, dict[str, str]]] = {
         "BSE": "2023-02-13",
     }
 }
+
+# 系统统一数据血统与元数据列集合（存储层通用安全校验标准）
+SYSTEM_METADATA_COLUMNS: Final[frozenset[str]] = frozenset(
+    {
+        "data_source",
+        "updated_at",
+        "adjustment",
+        "market",
+        "exchange",
+        "currency",
+        "schema_version",
+        "source_endpoint",
+        "request_id",
+        "fetched_at",
+        "source_id",
+        "source_unit_note",
+        "raw_row_count",
+        "clean_row_count",
+        "scope_note",
+        "source_scope",
+        "field_provenance",
+    }
+)

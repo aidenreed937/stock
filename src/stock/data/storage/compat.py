@@ -72,6 +72,25 @@ class StorageCompat:
         return normalized
 
     @staticmethod
+    def safe_cast_date_col(df: pl.DataFrame, col_name: str = "trade_date") -> pl.DataFrame:
+        """安全地将指定日期列规范化为 pl.Date 类型，兼容 Date/Datetime/YYYY-MM-DD/YYYYMMDD 混合格式。"""
+        if col_name not in df.columns or df.is_empty():
+            return df
+        dtype = df[col_name].dtype
+        if dtype == pl.Date:
+            return df
+        if dtype == pl.Datetime:
+            return df.with_columns(pl.col(col_name).dt.date().alias(col_name))
+        return df.with_columns(
+            pl.coalesce(
+                [
+                    pl.col(col_name).cast(pl.Utf8, strict=False).str.to_date("%Y-%m-%d", strict=False),
+                    pl.col(col_name).cast(pl.Utf8, strict=False).str.to_date("%Y%m%d", strict=False),
+                ]
+            ).alias(col_name)
+        )
+
+    @staticmethod
     def normalize_datetime_columns(df: pl.DataFrame) -> pl.DataFrame:
         """将合并中的 datetime 列统一为 UTC 微秒精度。"""
         target_dtype = pl.Datetime(time_unit="us", time_zone="UTC")
@@ -167,37 +186,46 @@ class StorageCompat:
         end_date: object | None = None,
     ) -> tuple[list[str], str]:
         """依据 Parquet 文件 Schema 动态构建 SQL 过滤条件与排序列。"""
-        conditions: list[str] = []
-        order_cols: list[str] = []
-        if not matched_files:
-            return conditions, ""
-        try:
-            first_schema = pl.read_parquet_schema(matched_files[0])
-            if symbol and "symbol" in first_schema:
-                conditions.append(f"symbol = '{symbol}'")
-            elif symbol and "ts_code" in first_schema:
-                conditions.append(f"ts_code = '{symbol}'")
-            if start_date:
-                sd_str = f"{start_date:%Y-%m-%d}" if hasattr(start_date, "strftime") else str(start_date)
-                if "trade_date" in first_schema:
-                    conditions.append(f"trade_date >= '{sd_str}'")
-                elif "date" in first_schema:
-                    conditions.append(f"date >= '{sd_str}'")
-            if end_date:
-                ed_str = f"{end_date:%Y-%m-%d}" if hasattr(end_date, "strftime") else str(end_date)
-                if "trade_date" in first_schema:
-                    conditions.append(f"trade_date <= '{ed_str}'")
-                elif "date" in first_schema:
-                    conditions.append(f"date <= '{ed_str}'")
+        return _build_dataset_query_clause(matched_files, symbol, start_date, end_date)
 
-            for col in ("trade_date", "date", "month", "quarter"):
-                if col in first_schema:
-                    order_cols.append(f"{col} ASC")
-                    break
-            if "symbol" in first_schema:
-                order_cols.append("symbol ASC")
-        except Exception:
-            pass
 
-        order_clause = f" ORDER BY {', '.join(order_cols)}" if order_cols else ""
-        return conditions, order_clause
+def _build_dataset_query_clause(
+    matched_files: list[str],
+    symbol: str | None = None,
+    start_date: object | None = None,
+    end_date: object | None = None,
+) -> tuple[list[str], str]:
+    conditions: list[str] = []
+    order_cols: list[str] = []
+    if not matched_files:
+        return conditions, ""
+    try:
+        first_schema = pl.read_parquet_schema(matched_files[0])
+        if symbol and "symbol" in first_schema:
+            conditions.append(f"symbol = '{symbol}'")
+        elif symbol and "ts_code" in first_schema:
+            conditions.append(f"ts_code = '{symbol}'")
+        if start_date:
+            sd_str = f"{start_date:%Y-%m-%d}" if hasattr(start_date, "strftime") else str(start_date)
+            if "trade_date" in first_schema:
+                conditions.append(f"trade_date >= '{sd_str}'")
+            elif "date" in first_schema:
+                conditions.append(f"date >= '{sd_str}'")
+        if end_date:
+            ed_str = f"{end_date:%Y-%m-%d}" if hasattr(end_date, "strftime") else str(end_date)
+            if "trade_date" in first_schema:
+                conditions.append(f"trade_date <= '{ed_str}'")
+            elif "date" in first_schema:
+                conditions.append(f"date <= '{ed_str}'")
+
+        for col in ("trade_date", "date", "month", "quarter"):
+            if col in first_schema:
+                order_cols.append(f"{col} ASC")
+                break
+        if "symbol" in first_schema:
+            order_cols.append("symbol ASC")
+    except Exception:
+        pass
+
+    order_clause = f" ORDER BY {', '.join(order_cols)}" if order_cols else ""
+    return conditions, order_clause

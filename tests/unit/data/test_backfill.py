@@ -206,3 +206,32 @@ def test_load_curated_symbol_pool_with_ts_code_column() -> None:
     with patch("stock.data.storage.duckdb_store.DuckDBMarketStore", return_value=mock_store):
         symbols = _load_curated_symbol_pool("tushare", "stock_basic")
         assert symbols == ["000001.SZ", "600519.SH"]
+
+
+def test_planner_watchlist_on_per_day_endpoint_preserves_full_market() -> None:
+    from stock.data.planner import BackfillPlanner
+
+    data_cfg = MagicMock()
+    data_cfg.watchlists.tushare.stocks = ["600519.SH", "000001.SZ"]
+    data_cfg.watchlists.tushare.all_symbols = ["600519.SH", "000001.SZ"]
+    data_cfg.source_endpoint_supports = {}
+
+    tasks = BackfillPlanner.plan_tasks(
+        data_source="tushare",
+        endpoints=["stock_daily_bar", "fund_daily"],
+        symbol="watchlist",
+        start_date=date(2026, 8, 1),
+        end_date=date(2026, 8, 10),
+        start_specified=True,
+        data_cfg=data_cfg,
+    )
+
+    stock_tasks = [t for t in tasks if t.endpoint == "stock_daily_bar"]
+    fund_tasks = [t for t in tasks if t.endpoint == "fund_daily"]
+
+    # stock_daily_bar 是 per_day 模式，应保持 symbol=""（全市场）
+    assert len(stock_tasks) == 1
+    assert stock_tasks[0].symbol == ""
+
+    # fund_daily 是 per_symbol 模式，允许展开 watchlist 基金
+    assert len(fund_tasks) >= 1
