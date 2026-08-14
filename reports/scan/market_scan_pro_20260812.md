@@ -12,14 +12,14 @@
   - 【指标分歧提示】证券化率处于中高位 (97.7%)，股债性价比主要受超低国债利率推升，属结构性分化，建议精选低估值高股息资产
 
 ## 2. 中观行业轮动与风控 (TCR As-Of: 2026-08-12, PB-ROE As-Of: 2026-08-12)
-- **Total Amount**: `20990.6 亿元`
-- **Top 1 Industry**: `电子` (28.2%)
+- **Total Amount**: `21443.1 亿元`
+- **Top 1 Industry**: `电子` (27.6%)
 - **Crowded Industries**: `['电子']`
 - **PB-ROE Fit**: `R²=0.013 (α: 2.141, β: 0.0148)`
-- **Undervalued Industries**: `['非银金融', '银行', '公用事业']`
-- **Momentum Spread**: `16.9%`
+- **Undervalued Industries**: `['银行', '非银金融', '公用事业']`
+- **Momentum Spread**: `18.8%`
 
-## 3. 微观博弈与流动性情绪 (Micro Sentiment, Margin As-Of: 2026-08-12)
+## 3. 微观博弈与流动性情绪 (Margin As-Of: 2026-08-12)
 - **Margin Penetration**: `2.62%` (Balance: 26473.8 亿)
 - **Breadth**: MA20 `90.0%` | MA60 `43.9%` | MA120 `19.0%`
 - **Sentiment**: PB Break `7.55%` | Turnover `4.79%`

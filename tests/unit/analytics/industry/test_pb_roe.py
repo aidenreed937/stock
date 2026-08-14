@@ -22,6 +22,7 @@ def test_industry_pb_roe_analyzer() -> None:
     assert res is not None
     assert res.regression_beta > 0  # ROE 越高通常 PB 越高
     assert res.r_squared > 0.5
-    # 行业5 应该具有最低的残差 (被低估)
+    # 行业5 应该具有最低的残差 (被低估程度最深)，且 undervalued_industries 首位必须是行业5
     assert res.industries[0]["name"] == "行业5"
+    assert res.undervalued_industries[0] == "行业5"
     assert "行业5" in res.undervalued_industries

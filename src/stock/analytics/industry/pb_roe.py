@@ -98,8 +98,6 @@ class IndustryPBROEAnalyzer:
         )
 
         results: list[dict[str, Any]] = []
-        undervalued: list[str] = []
-
         for idx, row in enumerate(clean_df.to_dicts()):
             res_val = float(residuals[idx])
             pb_val, roe_val = float(row["pb"]), float(row["roe"])
@@ -107,9 +105,6 @@ class IndustryPBROEAnalyzer:
             name_val = self.classifier.resolve_name(sym_str)
             if not name_val or name_val == sym_str:
                 name_val = str(row.get("name") or sym_str)
-
-            if res_val < -0.1 and roe_val > 5.0:
-                undervalued.append(name_val)
 
             results.append(
                 {
@@ -124,6 +119,7 @@ class IndustryPBROEAnalyzer:
             )
 
         results.sort(key=lambda x: x["residual"])
+        undervalued = [r["name"] for r in results if r["is_undervalued"]]
 
         return IndustryPBROEResult(
             trade_date=eval_date,
