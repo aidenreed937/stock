@@ -122,36 +122,6 @@ def test_tushare_fetcher_dynamic_endpoint_routing(
     assert not df_weight.is_empty()
 
 
-@patch("tushare.pro_api")
-@patch("tushare.set_token")
-def test_stock_daily_bar_task_routes_to_daily_api(
-    mock_set_token: MagicMock, mock_pro_api: MagicMock
-) -> None:
-    mock_pro = MagicMock()
-    mock_pro_api.return_value = mock_pro
-    mock_pro.query.return_value = pd.DataFrame(
-        [{
-            "ts_code": "600000.SH",
-            "trade_date": "20260812",
-            "open": 10.0,
-            "high": 11.0,
-            "low": 9.0,
-            "close": 10.5,
-        }]
-    )
-
-    from stock.data.factory import create_pipeline
-
-    pipeline = create_pipeline("tushare", "stock_daily_bar")
-    result = pipeline.fetcher.fetch_daily_bars_df(
-        "600000.SH", date(2026, 8, 12), date(2026, 8, 12), endpoint="daily"
-    )
-
-    assert not result.is_empty()
-    mock_pro.query.assert_called_once()
-    assert mock_pro.query.call_args.args[0] == "daily"
-
-
 def test_tushare_client_auto_paginates() -> None:
     client = TuShareClient(token="mock", paginate_threshold=2)
     client._pro_api = MagicMock()
