@@ -1,8 +1,10 @@
 """估值指标数据 (daily_basic) 领域对账审计模块。"""
 
 from datetime import date
+from pathlib import Path
 from typing import Any
 import polars as pl
+from stock.data.storage.compat import StorageCompat
 from stock.utils.logger import logger
 
 
@@ -13,9 +15,17 @@ def run_daily_basic_audit(
     logger.info(f"开始 daily_basic 估值对账审计，目标日期: {target_date} [数据源: {data_source}]")
 
     # 1. 读取行情 K 线记录
-    daily_pattern = f"data/curated/{data_source}/market=CN/stock_daily_bar/year={target_date.year:04d}/month={target_date.month:02d}/*.parquet"
+    daily_dir = Path(
+        f"data/curated/{data_source}/market=CN/stock_daily_bar/"
+        f"year={target_date.year:04d}/month={target_date.month:02d}"
+    )
+    daily_files = (
+        [p for p in daily_dir.glob("*.parquet") if not StorageCompat.is_artifact_path(p)]
+        if daily_dir.exists()
+        else []
+    )
     try:
-        daily_df = pl.read_parquet(daily_pattern)
+        daily_df = pl.read_parquet(daily_files) if daily_files else pl.DataFrame()
         if "trade_date" in daily_df.columns and daily_df["trade_date"].dtype == pl.String:
             daily_df = daily_df.with_columns(
                 pl.col("trade_date").str.to_date("%Y-%m-%d").alias("trade_date")
@@ -26,9 +36,17 @@ def run_daily_basic_audit(
         bar_symbols = set()
 
     # 2. 读取每日指标 daily_basic 记录
-    basic_pattern = f"data/curated/{data_source}/market=CN/daily_basic/year={target_date.year:04d}/month={target_date.month:02d}/*.parquet"
+    basic_dir = Path(
+        f"data/curated/{data_source}/market=CN/daily_basic/"
+        f"year={target_date.year:04d}/month={target_date.month:02d}"
+    )
+    basic_files = (
+        [p for p in basic_dir.glob("*.parquet") if not StorageCompat.is_artifact_path(p)]
+        if basic_dir.exists()
+        else []
+    )
     try:
-        db_df = pl.read_parquet(basic_pattern)
+        db_df = pl.read_parquet(basic_files) if basic_files else pl.DataFrame()
         if "trade_date" in db_df.columns and db_df["trade_date"].dtype == pl.String:
             db_df = db_df.with_columns(
                 pl.col("trade_date").str.to_date("%Y-%m-%d").alias("trade_date")

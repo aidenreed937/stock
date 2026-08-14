@@ -64,15 +64,14 @@ def _collect_dataset_files(
 
 def _filter_target_date(frame: pl.DataFrame, target_date: date) -> pl.DataFrame:
     """将不同日期列格式统一后筛选目标日期。"""
-    date_col = next((col for col in _DATE_COLUMNS if col in frame.columns), None)
-    if date_col is None or frame.is_empty():
+    date_cols = [col for col in _DATE_COLUMNS if col in frame.columns]
+    if not date_cols or frame.is_empty():
         return frame
 
     target_plain = target_date.strftime("%Y%m%d")
     return (
         frame.with_columns(
-            pl.col(date_col)
-            .cast(pl.Utf8, strict=False)
+            pl.coalesce([pl.col(col).cast(pl.Utf8, strict=False) for col in date_cols])
             .str.replace_all("-", "")
             .str.replace_all("/", "")
             .str.slice(0, 8)
@@ -105,16 +104,15 @@ def _identity_key_set(frame: pl.DataFrame) -> set[tuple[str, str]]:
     """抽取 symbol + trade_date 主键集合，兼容 RAW 源端列名。"""
     if frame.is_empty():
         return set()
-    symbol_col = next((col for col in _SYMBOL_COLUMNS if col in frame.columns), None)
-    date_col = next((col for col in _DATE_COLUMNS if col in frame.columns), None)
-    if symbol_col is None or date_col is None:
+    sym_cols = [col for col in _SYMBOL_COLUMNS if col in frame.columns]
+    date_cols = [col for col in _DATE_COLUMNS if col in frame.columns]
+    if not sym_cols or not date_cols:
         return set()
 
     key_frame = frame.select(
         [
-            pl.col(symbol_col).cast(pl.Utf8, strict=False).alias("symbol"),
-            pl.col(date_col)
-            .cast(pl.Utf8, strict=False)
+            pl.coalesce([pl.col(col).cast(pl.Utf8, strict=False) for col in sym_cols]).alias("symbol"),
+            pl.coalesce([pl.col(col).cast(pl.Utf8, strict=False) for col in date_cols])
             .str.replace_all("-", "")
             .str.replace_all("/", "")
             .str.slice(0, 8)
