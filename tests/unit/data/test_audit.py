@@ -176,12 +176,20 @@ def test_run_daily_basic_audit():
     )
     db_df = pl.DataFrame({"symbol": ["600000.SH"], "trade_date": ["2026-08-01"]})
 
-    def mock_read(pattern: str):
-        if "stock_daily_bar" in pattern:
+    def mock_read(pattern):
+        pattern_str = str(pattern)
+        if "stock_daily_bar" in pattern_str:
             return bar_df
         return db_df
 
-    with patch("polars.read_parquet", side_effect=mock_read):
+    def mock_glob(self, pattern):
+        return [self / "data.parquet"]
+
+    with (
+        patch("pathlib.Path.glob", mock_glob),
+        patch("pathlib.Path.exists", return_value=True),
+        patch("polars.read_parquet", side_effect=mock_read),
+    ):
         res = run_daily_basic_audit(date(2026, 8, 1))
         assert res["bar_count"] == 2
         assert res["basic_count"] == 1
@@ -198,15 +206,21 @@ def test_run_adj_factor_audit():
     adj_df = pl.DataFrame({"symbol": ["600000.SH"], "trade_date": ["2026-08-01"]})
 
     def mock_read(pattern):
-        if isinstance(pattern, list):
+        pattern_str = str(pattern)
+        if "stock_basic" in pattern_str:
             return basic_df
         return adj_df
 
+    def mock_glob(self, pattern):
+        return [self / "data.parquet"]
+
     with (
+        patch("pathlib.Path.glob", mock_glob),
         patch(
             "pathlib.Path.rglob",
             return_value=[Path("data/curated/tushare/market=CN/stock_basic/data.parquet")],
         ),
+        patch("pathlib.Path.exists", return_value=True),
         patch("polars.read_parquet", side_effect=mock_read),
     ):
         res = run_adj_factor_audit(date(2026, 8, 1))
@@ -250,7 +264,14 @@ def test_run_hk_hold_audit():
 
     hk_df = pl.DataFrame({"symbol": ["600000.SH"], "trade_date": ["2026-08-01"], "vol": [100000.0]})
 
-    with patch("polars.read_parquet", return_value=hk_df):
+    def mock_glob(self, pattern):
+        return [self / "data.parquet"]
+
+    with (
+        patch("pathlib.Path.glob", mock_glob),
+        patch("pathlib.Path.exists", return_value=True),
+        patch("polars.read_parquet", return_value=hk_df),
+    ):
         res = run_hk_hold_audit(date(2026, 8, 1))
         assert res["symbols_count"] == 1
         assert res["total_vol"] == 100000.0
