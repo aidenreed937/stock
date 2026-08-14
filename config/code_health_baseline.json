@@ -14,10 +14,6 @@
       "lines": 259,
       "methods": 5
     },
-    "src/stock/data/fetcher/tushare/stock_fetcher.py::TuShareStockFetcher": {
-      "lines": 204,
-      "methods": 4
-    },
     "src/stock/data/fetcher/yfinance/global_fetcher.py::YFinanceDataFetcher": {
       "lines": 336,
       "methods": 15

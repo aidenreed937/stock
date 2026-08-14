@@ -1,31 +1,79 @@
 """TuShare 股票行情与基本面数据 Fetcher 实现。"""
 
-from datetime import date
+from datetime import date, timedelta
 from typing import Any
-
 import polars as pl
 
+from stock.constants import EXCHANGE_START_DATES
 from stock.data.fetcher.base import BaseDataFetcher
 from stock.data.fetcher.tushare.client import TuShareClient
+from stock.data.fetcher.tushare.query_builder import (
+    build_tushare_query,
+    is_index_dailybasic_supported,
+    post_process_tushare_frame,
+    should_split_margin_exchanges,
+)
 from stock.data.fetcher.tushare.registry import EndpointMeta, TUSHARE_API_REGISTRY
 from stock.models.market import DailyBar
-
-
-TUSHARE_INDEX_DAILYBASIC_SUPPORTED_CODES = {
-    "000001.SH", "399001.SZ", "000300.SH", "000905.SH", "399006.SZ"
-}
+from stock.utils.logger import logger
 
 
 class TuShareStockFetcher(BaseDataFetcher):
     """TuShare 股票领域专用数据抓取组件。"""
 
     def __init__(self, client: TuShareClient | None = None) -> None:
-        """初始化 TuShareStockFetcher。
-
-        Args:
-            client: TuShareClient 实例，若为 None 则自动创建。
-        """
+        """初始化 TuShareStockFetcher。"""
         self.client = client or TuShareClient()
+
+    def _fetch_split_exchanges(
+        self, symbol: str, start_date: date, end_date: date, endpoint: str
+    ) -> pl.DataFrame:
+        """按交易所拆分并行请求并合并数据。"""
+        ex_dates = EXCHANGE_START_DATES.get("margin", {})
+        dfs = [
+            self.fetch_daily_bars_df(
+                symbol=symbol,
+                start_date=max(start_date, date.fromisoformat(ex_dates[ex])) if ex in ex_dates else start_date,
+                end_date=end_date,
+                endpoint=endpoint,
+                exchange_id=ex,
+            )
+            for ex in ["SSE", "SZSE", "BSE"]
+            if not (ex in ex_dates and end_date < date.fromisoformat(ex_dates[ex]))
+        ]
+        valid_dfs = [df for df in dfs if not df.is_empty()]
+        return pl.concat(valid_dfs, how="diagonal_relaxed") if valid_dfs else pl.DataFrame()
+
+    def _fetch_windowed(
+        self,
+        symbol: str,
+        start_date: date,
+        end_date: date,
+        endpoint: str,
+        meta: EndpointMeta,
+        extra_kwargs: dict[str, Any],
+    ) -> pl.DataFrame:
+        """按窗口分片循环拉取长周期数据并合并。"""
+        window_days = meta.request_window_days or 300
+        cur_d = start_date
+        frames: list[pl.DataFrame] = []
+        while cur_d <= end_date:
+            next_d = min(cur_d + timedelta(days=window_days - 1), end_date)
+            sub_df = self.fetch_daily_bars_df(
+                symbol=symbol, start_date=cur_d, end_date=next_d, endpoint=endpoint, **extra_kwargs
+            )
+            if not sub_df.is_empty():
+                frames.append(sub_df)
+            cur_d = next_d + timedelta(days=1)
+        if not frames:
+            return pl.DataFrame()
+        merged = pl.concat(frames, how="diagonal_relaxed")
+        primary_keys = [c for c in meta.primary_keys if c in merged.columns]
+        if primary_keys:
+            merged = merged.unique(subset=primary_keys, keep="last")
+        if "trade_date" in merged.columns:
+            merged = merged.sort("trade_date")
+        return merged
 
     def fetch_daily_bars_df(
         self,
@@ -35,116 +83,29 @@ class TuShareStockFetcher(BaseDataFetcher):
         endpoint: str = "daily",
         **extra_kwargs: Any,
     ) -> pl.DataFrame:
-        """抓取指定股票或全市场在给定日期范围内的行情/基本面原始数据。
-
-        Args:
-            symbol: 股票代码（若为空字符串，则表示抓取全市场指定交易日的数据）。
-            start_date: 开始日期。
-            end_date: 结束日期。
-            endpoint: API 接口名称（默认 daily）。
-            extra_kwargs: 额外的 API 查询参数 (如 exchange_id)。
-
-        Returns:
-            pl.DataFrame: 包含 TuShare 原始响应字段的 Polars DataFrame。
-        """
+        """抓取指定股票或全市场在给定日期范围内的行情/基本面原始数据。"""
         meta = TUSHARE_API_REGISTRY.get(
             endpoint, EndpointMeta(api_name=endpoint, description=endpoint)
         )
-        if endpoint == "index_dailybasic" and symbol and symbol not in TUSHARE_INDEX_DAILYBASIC_SUPPORTED_CODES:
-            from stock.utils.logger import logger
-            logger.info(
-                f"TuShare index_dailybasic 接口不支持指数 [{symbol}]，自动跳过请求以节省流量和额度"
-            )
+        if not is_index_dailybasic_supported(endpoint, symbol):
+            logger.info(f"TuShare index_dailybasic 不支持指数 [{symbol}]，自动跳过")
             return pl.DataFrame()
 
-        # 防御性拦截：针对 margin 接口自动按交易所拆分与最早上线首日过滤
-        if endpoint == "margin" and "exchange_id" not in extra_kwargs:
-            from stock.constants import EXCHANGE_START_DATES
-            ex_dates = EXCHANGE_START_DATES.get("margin", {})
-            dfs = [
-                self.fetch_daily_bars_df(
-                    symbol=symbol,
-                    start_date=max(start_date, date.fromisoformat(ex_dates[ex])) if ex in ex_dates else start_date,
-                    end_date=end_date,
-                    endpoint=endpoint,
-                    exchange_id=ex,
+        if should_split_margin_exchanges(endpoint, extra_kwargs):
+            return self._fetch_split_exchanges(symbol, start_date, end_date, endpoint)
+
+        is_real_symbol = bool(symbol and (symbol != endpoint))
+        if not is_real_symbol and meta.frequency != "event" and start_date != end_date:
+            if (end_date - start_date).days >= (meta.request_window_days or 300):
+                return self._fetch_windowed(
+                    symbol, start_date, end_date, endpoint, meta, extra_kwargs
                 )
-                for ex in ["SSE", "SZSE", "BSE"]
-                if not (ex in ex_dates and end_date < date.fromisoformat(ex_dates[ex]))
-            ]
-            valid_dfs = [df for df in dfs if not df.is_empty()]
-            return pl.concat(valid_dfs, how="diagonal_relaxed") if valid_dfs else pl.DataFrame()
 
-        start_str, end_str = start_date.strftime("%Y%m%d"), end_date.strftime("%Y%m%d")
-        query_kwargs: dict[str, Any] = dict(extra_kwargs)
-        is_real_symbol = symbol and (symbol != endpoint)
-
-        if meta.frequency == "event":
-            if is_real_symbol:
-                query_kwargs["index_code" if endpoint in ("index_weight", "index_classify", "index_member") else "ts_code"] = symbol
-            if endpoint == "stock_basic" and not is_real_symbol:
-                query_kwargs["list_status"] = "L"
-        else:
-            if is_real_symbol:
-                query_kwargs["index_code" if endpoint in ("index_weight", "index_classify", "index_member") else "ts_code"] = symbol
-                query_kwargs["start_date"], query_kwargs["end_date"] = start_str, end_str
-            else:
-                if start_date == end_date:
-                    if endpoint in ("forecast", "express"):
-                        query_kwargs["ann_date"] = start_str
-                    elif endpoint == "report_rc":
-                        query_kwargs["report_date"] = start_str
-                    else:
-                        query_kwargs["trade_date"] = start_str
-                elif (end_date - start_date).days >= (meta.request_window_days or 300):
-                    from datetime import timedelta
-
-                    window_days = meta.request_window_days or 300
-                    cur_d = start_date
-                    frames: list[pl.DataFrame] = []
-                    while cur_d <= end_date:
-                        next_d = min(cur_d + timedelta(days=window_days - 1), end_date)
-                        sub_df = self.fetch_daily_bars_df(
-                            symbol=symbol,
-                            start_date=cur_d,
-                            end_date=next_d,
-                            endpoint=endpoint,
-                            **extra_kwargs,
-                        )
-                        if not sub_df.is_empty():
-                            frames.append(sub_df)
-                        cur_d = next_d + timedelta(days=1)
-                    if not frames:
-                        return pl.DataFrame()
-                    merged = pl.concat(frames, how="diagonal_relaxed")
-                    primary_keys = [c for c in meta.primary_keys if c in merged.columns]
-                    if primary_keys:
-                        merged = merged.unique(subset=primary_keys, keep="last")
-                    if "trade_date" in merged.columns:
-                        merged = merged.sort("trade_date")
-                    return merged
-                else:
-                    query_kwargs["start_date"] = start_str
-                    query_kwargs["end_date"] = end_str
-
-        api_to_call = (
-            f"{meta.api_name}_vip"
-            if meta.api_name in ("forecast", "express") and not is_real_symbol
-            else meta.api_name
+        api_to_call, query_kwargs = build_tushare_query(
+            meta, symbol, start_date, end_date, extra_kwargs
         )
         pandas_df = self.client.query(api_to_call, **query_kwargs)
-
-        if pandas_df.empty:
-            return pl.DataFrame()
-
-        pl_df = pl.from_pandas(pandas_df)
-        if "symbol" not in pl_df.columns and is_real_symbol:
-            pl_df = pl_df.with_columns(pl.lit(symbol).alias("symbol"))
-        # 事件型接口可能返回重复页或重复关系，按注册表自然键去重，保留有效期字段。
-        primary_keys = [key for key in meta.primary_keys if key in pl_df.columns]
-        if primary_keys:
-            pl_df = pl_df.unique(subset=primary_keys, keep="last")
-        return pl_df
+        return post_process_tushare_frame(pandas_df, meta, symbol)
 
     def fetch_daily_bars(
         self, symbol: str, start_date: date, end_date: date
@@ -189,14 +150,10 @@ class TuShareStockFetcher(BaseDataFetcher):
             end_date=end_date.strftime("%Y%m%d"),
             is_open="1",
         )
-
         if pandas_df.empty or "cal_date" not in pandas_df.columns:
             return []
-
-        open_dates: list[date] = []
-        for d_str in pandas_df["cal_date"].to_list():
-            if isinstance(d_str, str) and len(d_str) == 8:
-                open_dates.append(
-                    date(int(d_str[:4]), int(d_str[4:6]), int(d_str[6:8]))
-                )
-        return sorted(open_dates)
+        return sorted([
+            date(int(d[:4]), int(d[4:6]), int(d[6:8]))
+            for d in pandas_df["cal_date"].to_list()
+            if isinstance(d, str) and len(d) == 8
+        ])
