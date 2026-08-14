@@ -6,6 +6,18 @@ from typing import Any
 
 import polars as pl
 
+# 记录数允许较少的特定宏观与结构数据集
+LOW_VOLUME_DATASETS = {
+    "cn_cpi",
+    "cn_gdp",
+    "cn_m",
+    "cn_pmi",
+    "cn_ppi",
+    "sf_month",
+    "index_classify",
+    "index_member",
+}
+
 logger = logging.getLogger(__name__)
 
 
@@ -47,18 +59,13 @@ def run_master_audit(base_dir: str = "data/curated") -> pl.DataFrame:
 
     records: list[dict[str, Any]] = []
     for f in files:
+        src, dataset = _parse_source_dataset(f, curated_path)
         try:
-            df = pl.read_parquet(f)
-            src, dataset = _parse_source_dataset(f, curated_path)
+            # 采用 Lazy API (scan_parquet) 极大地降低内存并只计算需要的列
+            df_lazy = pl.scan_parquet(f)
+            columns = df_lazy.columns
 
-            symbols_cnt = 0
-            for sym_col in ["symbol", "ts_code", "stockCode", "ticker"]:
-                if sym_col in df.columns:
-                    symbols_cnt = df[sym_col].drop_nulls().n_unique()
-                    break
-
-            min_d = "N/A"
-            max_d = "N/A"
+            sym_col = next((c for c in ["symbol", "ts_code", "stockCode", "ticker"] if c in columns), None)
             date_col = next(
                 (
                     c
@@ -73,33 +80,43 @@ def run_master_audit(base_dir: str = "data/curated") -> pl.DataFrame:
                         "list_date",
                         "Date",
                     ]
-                    if c in df.columns
+                    if c in columns
                 ),
                 None,
             )
 
-            if date_col and not df.is_empty():
-                vals = df[date_col].drop_nulls().cast(pl.Utf8, strict=False)
-                if not vals.is_empty():
-                    min_d = str(vals.min())[:10]
-                    max_d = str(vals.max())[:10]
+            exprs = [pl.len().alias("rows")]
+            if sym_col:
+                exprs.append(pl.col(sym_col).drop_nulls().n_unique().alias("symbols_count"))
+            else:
+                exprs.append(pl.lit(0).alias("symbols_count"))
+
+            if date_col:
+                exprs.append(pl.col(date_col).drop_nulls().cast(pl.Utf8, strict=False).min().alias("min_date"))
+                exprs.append(pl.col(date_col).drop_nulls().cast(pl.Utf8, strict=False).max().alias("max_date"))
+            else:
+                exprs.append(pl.lit(None).alias("min_date"))
+                exprs.append(pl.lit(None).alias("max_date"))
+
+            # 触发单次图计算
+            res = df_lazy.select(exprs).collect()
+
+            min_val = res["min_date"].item() if "min_date" in res.columns else None
+            max_val = res["max_date"].item() if "max_date" in res.columns else None
 
             records.append(
                 {
                     "source": src,
                     "dataset": dataset,
                     "path": str(f),
-                    "rows": len(df),
-                    "symbols_count": symbols_cnt,
-                    "min_date": min_d,
-                    "max_date": max_d,
-                    "null_count": sum(df[c].null_count() for c in df.columns),
-                    "duplicate_rows": len(df) - len(df.unique()),
+                    "rows": res["rows"].item(),
+                    "symbols_count": res["symbols_count"].item(),
+                    "min_date": str(min_val)[:10] if min_val is not None else "N/A",
+                    "max_date": str(max_val)[:10] if max_val is not None else "N/A",
                     "audit_errors": 0,
                 }
             )
         except Exception as e:
-            src, dataset = _parse_source_dataset(f, curated_path)
             logger.error(f"读取文件 [{f}] 发生审计解析异常: {e}")
             records.append(
                 {
@@ -110,8 +127,6 @@ def run_master_audit(base_dir: str = "data/curated") -> pl.DataFrame:
                     "symbols_count": 0,
                     "min_date": "N/A",
                     "max_date": "N/A",
-                    "null_count": 0,
-                    "duplicate_rows": 0,
                     "audit_errors": 1,
                 }
             )
@@ -144,44 +159,28 @@ def print_master_audit_summary(summary: pl.DataFrame) -> None:
     print("=" * 105)
 
     if not summary.is_empty():
-        print(
-            f"{'数据源':<10} | {'数据集表名':<28} | {'覆盖标的数':<10} | {'落盘总记录数':<12} | "
-            f"{'最早交易日':<10} | {'最新交易日':<10} | {'审计错误'} | {'完备度诊断'}"
-        )
-        print("-" * 105)
-        for row in summary.iter_rows(named=True):
-            src = row["source"]
-            ds = row["dataset"]
-            syms = row["标的数"]
-            rows = row["精炼落盘总记录数"]
-            min_d = row["最早交易日"]
-            max_d = row["最新交易日"]
-            errors = row.get("审计错误数", 0)
-            if errors:
-                diagnosis = "存在文件读取错误"
-            elif rows == 0:
-                diagnosis = "空数据集 (0行)"
-            elif (
-                ds
-                in (
-                    "cn_cpi",
-                    "cn_gdp",
-                    "cn_m",
-                    "cn_pmi",
-                    "cn_ppi",
-                    "sf_month",
-                    "index_classify",
-                    "index_member",
-                )
-                and rows <= 1
-            ):
-                diagnosis = "警告: 记录数严重偏少(<=1行)"
-            else:
-                diagnosis = "已扫描，物理文件完整"
-            print(
-                f"{src:<10} | {ds:<28} | {syms:<10} | {rows:<12,d} | "
-                f"{min_d:<10} | {max_d:<10} | {errors:<8} | {diagnosis}"
+        # 利用 Polars 原生打印，自动处理中文字符对齐问题
+        final_summary = summary.with_columns(
+            pl.when(pl.col("审计错误数") > 0)
+            .then(pl.lit("存在文件读取错误"))
+            .when(pl.col("精炼落盘总记录数") == 0)
+            .then(pl.lit("空数据集 (0行)"))
+            .when(
+                pl.col("dataset").is_in(list(LOW_VOLUME_DATASETS))
+                & (pl.col("精炼落盘总记录数") <= 1)
             )
+            .then(pl.lit("警告: 记录数严重偏少(<=1行)"))
+            .otherwise(pl.lit("已扫描，物理文件完整"))
+            .alias("完备度诊断")
+        )
+
+        with pl.Config(
+            tbl_rows=1000,
+            tbl_width_chars=150,
+            tbl_hide_column_data_types=True,
+            tbl_hide_dataframe_shape=True,
+        ):
+            print(final_summary)
     else:
         print("离线库为空或未包含任何有效 Parquet 数据文件。")
 

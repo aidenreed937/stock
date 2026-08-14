@@ -49,10 +49,10 @@
   },
   "files": {
     "src/stock/data/audit/reconciliation.py": {
-      "lines": 809
+      "lines": 857
     },
     "src/stock/data/backfill.py": {
-      "lines": 478
+      "lines": 474
     },
     "src/stock/data/catalog.py": {
       "lines": 417

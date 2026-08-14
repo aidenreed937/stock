@@ -69,17 +69,24 @@ def _filter_target_date(frame: pl.DataFrame, target_date: date) -> pl.DataFrame:
         return frame
 
     target_plain = target_date.strftime("%Y%m%d")
-    return (
-        frame.with_columns(
-            pl.coalesce([pl.col(col).cast(pl.Utf8, strict=False) for col in date_cols])
-            .str.replace_all("-", "")
-            .str.replace_all("/", "")
-            .str.slice(0, 8)
-            .alias("_audit_date")
-        )
-        .filter(pl.col("_audit_date") == target_plain)
-        .drop("_audit_date")
-    )
+
+    exprs = []
+    for col in date_cols:
+        dtype = frame[col].dtype
+        if dtype == pl.Date:
+            exprs.append(pl.col(col) == target_date)
+        elif dtype == pl.Datetime:
+            exprs.append(pl.col(col).dt.date() == target_date)
+        else:
+            exprs.append(
+                pl.col(col)
+                .cast(pl.Utf8, strict=False)
+                .str.replace_all("-", "")
+                .str.replace_all("/", "")
+                .str.slice(0, 8)
+                == target_plain
+            )
+    return frame.filter(pl.any_horizontal(exprs))
 
 
 def _read_target_frames(
@@ -100,30 +107,33 @@ def _read_target_frames(
     return pl.concat(frames, how="diagonal_relaxed"), errors
 
 
-def _identity_key_set(frame: pl.DataFrame) -> set[tuple[str, str]]:
-    """抽取 symbol + trade_date 主键集合，兼容 RAW 源端列名。"""
+def _extract_identity_keys_frame(frame: pl.DataFrame) -> pl.DataFrame:
+    """抽取 symbol + trade_date 标准主键集合 DataFrame，兼容 RAW 源端列名。"""
     if frame.is_empty():
-        return set()
+        return pl.DataFrame(
+            {"symbol": pl.Series([], dtype=pl.Utf8), "trade_date": pl.Series([], dtype=pl.Utf8)}
+        )
     sym_cols = [col for col in _SYMBOL_COLUMNS if col in frame.columns]
     date_cols = [col for col in _DATE_COLUMNS if col in frame.columns]
     if not sym_cols or not date_cols:
-        return set()
+        return pl.DataFrame(
+            {"symbol": pl.Series([], dtype=pl.Utf8), "trade_date": pl.Series([], dtype=pl.Utf8)}
+        )
 
-    key_frame = frame.select(
-        [
-            pl.coalesce([pl.col(col).cast(pl.Utf8, strict=False) for col in sym_cols]).alias("symbol"),
-            pl.coalesce([pl.col(col).cast(pl.Utf8, strict=False) for col in date_cols])
-            .str.replace_all("-", "")
-            .str.replace_all("/", "")
-            .str.slice(0, 8)
-            .alias("trade_date"),
-        ]
-    ).drop_nulls()
-    return {(symbol, trade_date) for symbol, trade_date in key_frame.iter_rows()}
-
-
-def _format_key_sample(keys: set[tuple[str, str]], limit: int = 20) -> list[str]:
-    return [f"{symbol}@{trade_date}" for symbol, trade_date in sorted(keys)[:limit]]
+    return (
+        frame.select(
+            [
+                pl.coalesce([pl.col(col).cast(pl.Utf8, strict=False) for col in sym_cols]).alias("symbol"),
+                pl.coalesce([pl.col(col).cast(pl.Utf8, strict=False) for col in date_cols])
+                .str.replace_all("-", "")
+                .str.replace_all("/", "")
+                .str.slice(0, 8)
+                .alias("trade_date"),
+            ]
+        )
+        .drop_nulls()
+        .unique()
+    )
 
 
 def _run_raw_curated_reconciliation(
@@ -147,10 +157,27 @@ def _run_raw_curated_reconciliation(
     raw_df, raw_errors = _read_target_frames(raw_files, target_date)
     curated_df, curated_errors = _read_target_frames(curated_files, target_date)
 
-    raw_keys = _identity_key_set(raw_df)
-    curated_keys = _identity_key_set(curated_df)
-    missing_in_curated = raw_keys - curated_keys
-    extra_in_curated = curated_keys - raw_keys
+    raw_keys_df = _extract_identity_keys_frame(raw_df)
+    curated_keys_df = _extract_identity_keys_frame(curated_df)
+
+    raw_key_count = len(raw_keys_df)
+    curated_key_count = len(curated_keys_df)
+
+    # 采用 Polars anti_join 在 Rust 内部完成高效差集比对
+    missing_in_curated_df = raw_keys_df.join(curated_keys_df, on=["symbol", "trade_date"], how="anti")
+    extra_in_curated_df = curated_keys_df.join(raw_keys_df, on=["symbol", "trade_date"], how="anti")
+
+    missing_count = len(missing_in_curated_df)
+    extra_count = len(extra_in_curated_df)
+
+    missing_sample = [
+        f"{row['symbol']}@{row['trade_date']}"
+        for row in missing_in_curated_df.head(20).iter_rows(named=True)
+    ]
+    extra_sample = [
+        f"{row['symbol']}@{row['trade_date']}"
+        for row in extra_in_curated_df.head(20).iter_rows(named=True)
+    ]
 
     reason = ""
     status = "PASSED"
@@ -169,7 +196,7 @@ def _run_raw_curated_reconciliation(
     elif len(raw_df) != len(curated_df):
         status = "FAILED"
         reason = "目标日期 RAW 与 Curated 行数不一致"
-    elif (raw_keys or curated_keys) and raw_keys != curated_keys:
+    elif missing_count > 0 or extra_count > 0:
         status = "FAILED"
         reason = "目标日期 RAW 与 Curated 主键集合不一致"
 
@@ -181,12 +208,12 @@ def _run_raw_curated_reconciliation(
         "curated_files": len(curated_files),
         "raw_count": len(raw_df),
         "curated_count": len(curated_df),
-        "raw_key_count": len(raw_keys),
-        "curated_key_count": len(curated_keys),
-        "missing_in_curated_count": len(missing_in_curated),
-        "extra_in_curated_count": len(extra_in_curated),
-        "missing_in_curated_sample": _format_key_sample(missing_in_curated),
-        "extra_in_curated_sample": _format_key_sample(extra_in_curated),
+        "raw_key_count": raw_key_count,
+        "curated_key_count": curated_key_count,
+        "missing_in_curated_count": missing_count,
+        "extra_in_curated_count": extra_count,
+        "missing_in_curated_sample": missing_sample,
+        "extra_in_curated_sample": extra_sample,
         "raw_errors": raw_errors,
         "curated_errors": curated_errors,
     }
@@ -197,6 +224,7 @@ def run_audit(
     data_source: str = "tushare",
     quiet: bool = False,
     endpoint: str = "stock_daily_bar",
+    basic_df: pl.DataFrame | None = None,
 ) -> dict[str, Any]:
     """对指定单日进行 A 股行情完整性审计对账。
 
@@ -205,6 +233,7 @@ def run_audit(
         data_source: 数据源标识 (默认 tushare)。
         quiet: 是否抑制 stdout 日报表控制台打印 (用于历史区间批量审计时静默模式)。
         endpoint: RAW/Curated 物理对账的数据集名称。
+        basic_df: 外部传入的 stock_basic 缓存 DataFrame（用于批量审计时避免重复磁盘 I/O）。
 
     Returns:
         dict[str, Any]: 单日审计结果统计字典。
@@ -212,19 +241,20 @@ def run_audit(
     logger.info(f"开始对账审计，目标日期: {target_date} [数据源: {data_source}]")
 
     # 1. 检查 stock_basic 基础元数据是否存在
-    basic_pattern = f"data/curated/{data_source}/market=CN/stock_basic"
-    try:
-        basic_files = list(Path(basic_pattern).rglob("*.parquet"))
-        if basic_files:
-            basic_df = pl.read_parquet(basic_files)
-        else:
-            # 兼容 Mock 路径或空情形
-            basic_df = pl.read_parquet(f"{basic_pattern}/data.parquet")
-    except Exception as e:
-        logger.error(
-            f"加载 [{data_source}] stock_basic 数据集失败，请确认是否已执行过基础数据拉取: {e}"
-        )
-        return {}
+    if basic_df is None:
+        basic_pattern = f"data/curated/{data_source}/market=CN/stock_basic"
+        try:
+            basic_files = list(Path(basic_pattern).rglob("*.parquet"))
+            if basic_files:
+                basic_df = pl.read_parquet(basic_files)
+            else:
+                # 兼容 Mock 路径或空情形
+                basic_df = pl.read_parquet(f"{basic_pattern}/data.parquet")
+        except Exception as e:
+            logger.error(
+                f"加载 [{data_source}] stock_basic 数据集失败，请确认是否已执行过基础数据拉取: {e}"
+            )
+            return {}
 
     # 2. 读取对应月份的 daily_bar 数据
     daily_pattern = (
@@ -467,6 +497,20 @@ def run_audit_range(
 
     logger.info(f"成功获取交易日历，共计 {len(open_dates)} 个有效交易日，开始并发审计...")
 
+    # 预先加载一次 stock_basic，避免在每个子线程中重复磁盘 I/O
+    cached_basic_df: pl.DataFrame | None = None
+    basic_pattern = f"data/curated/{data_source}/market=CN/stock_basic"
+    try:
+        basic_files = list(Path(basic_pattern).rglob("*.parquet"))
+        if basic_files:
+            cached_basic_df = pl.read_parquet(basic_files)
+        else:
+            basic_file = Path(f"{basic_pattern}/data.parquet")
+            if basic_file.exists():
+                cached_basic_df = pl.read_parquet(basic_file)
+    except Exception as e:
+        logger.debug(f"预加载 stock_basic 失败，子任务将独立尝试: {e}")
+
     daily_results: list[dict[str, Any]] = []
 
     if max_workers > 1 and len(open_dates) > 1:
@@ -474,7 +518,13 @@ def run_audit_range(
 
         with ThreadPoolExecutor(max_workers=max_workers) as executor:
             future_to_date = {
-                executor.submit(run_audit, d, data_source=data_source, quiet=not show_details): d
+                executor.submit(
+                    run_audit,
+                    d,
+                    data_source=data_source,
+                    quiet=not show_details,
+                    basic_df=cached_basic_df,
+                ): d
                 for d in open_dates
             }
             for fut in as_completed(future_to_date):
@@ -487,7 +537,7 @@ def run_audit_range(
                     logger.error(f"交易日 [{d}] 审计抛出异常: {e}")
     else:
         for d in open_dates:
-            res = run_audit(d, data_source=data_source, quiet=not show_details)
+            res = run_audit(d, data_source=data_source, quiet=not show_details, basic_df=cached_basic_df)
             if res:
                 daily_results.append(res)
 

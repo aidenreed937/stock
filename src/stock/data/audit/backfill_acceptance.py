@@ -278,14 +278,15 @@ def accept_backfill(
                 None,
             )
             if date_col:
-                values = frame[date_col].drop_nulls().to_list()
-                dates.update(_date_key(value) for value in values)
-                periods.update(_period_key(value, frequency) for value in values)
+                # 仅对唯一值提取日期与期间，避免全量转 Python List
+                unique_values = frame[date_col].drop_nulls().unique().to_list()
+                dates.update(_date_key(value) for value in unique_values)
+                periods.update(_period_key(value, frequency) for value in unique_values)
         except Exception as exc:
             errors.append(f"{path}: {exc}")
     if key_frames:
         all_keys = pl.concat(key_frames, how="vertical_relaxed")
-        duplicates = len(all_keys) - len(all_keys.unique())
+        duplicates = len(all_keys) - all_keys.n_unique()
 
     raw_files: list[Path] = []
     raw_rows: int | None = None
