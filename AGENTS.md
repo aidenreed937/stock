@@ -84,7 +84,8 @@ make migrate-data [APPLY=1]           # 存量 Parquet 离线去重与 Schema �
    - `fred`：美联储官方宏观指标（基准利率、CPI、非农、失业率、GDP、利差等）。
 4. **量化投研与分析准则 (Ground Truth First)**：
    - 严格遵循**本地真实数据第一**，所有点位、估值与指标必须通过代码查询本地 Curated 黄金表输出，严禁凭模型记忆虚构；
-   - 严格执行**三层信息分级透明化**（已验证事实 / 机制推断 / 外部背景）与**防过拟合审查**，详见 [`.agents/skills/data-catalog/references/data_query_caveats.md`](file:///Users/mac/workspace/personal/finance/stock/.agents/skills/data-catalog/references/data_query_caveats.md)。
+   - 严格执行**三层信息分级透明化**（已验证事实 / 机制推断 / 外部背景）与**防过拟合审查**；
+   - **严禁无源叙事污染**：本地库无政策或新闻数据表，严禁将外部记忆中的“政策刺激/救市会议”伪装为数据事实写入结论或表格，详见 [`.agents/skills/data-catalog/references/data_query_caveats.md`](file:///Users/mac/workspace/personal/finance/stock/.agents/skills/data-catalog/references/data_query_caveats.md)。
 
 ## 编码与测试规范
 
