@@ -269,6 +269,8 @@ class HistoricalBackfiller:
                     use_raw_cache=not force_refresh,
                     force_refresh=force_refresh,
                 )
+                if self.endpoint in ("report_rc", "forecast", "express", "margin_detail", "hsgt_top10"):
+                    return True
                 return not df.is_empty()
             except Exception as e:
                 logger.error(f"交易日 [{d}] 同步异常: {e}")
