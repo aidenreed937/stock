@@ -139,9 +139,9 @@ FINANCE_ENDPOINTS: dict[str, EndpointMeta] = {
         description="中国经济数据发布日程",
         frequency="daily",
         group="macro_data",
-        primary_keys=["date", "event"],
-        date_columns=["date"],
-        required_columns=["date", "event"],
+        primary_keys=["publish_date", "title"],
+        date_columns=["publish_date"],
+        required_columns=["publish_date", "title"],
     ),
     "forecast": EndpointMeta(
         api_name="forecast",

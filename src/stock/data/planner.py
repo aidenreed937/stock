@@ -58,6 +58,18 @@ def _resolve_required_local_pool(data_source: str, endpoint: str) -> tuple[str, 
     return None
 
 
+_INDEX_ENDPOINTS = {
+    "index_daily",
+    "index_dailybasic",
+    "index_weight",
+    "global_index_daily",
+    "index_daily_bar",
+    "index_valuation",
+    "index_fundamental",
+}
+_FUND_ENDPOINTS = {"fund_daily", "fund_adj", "fund_share", "etf_share_size"}
+
+
 def _watchlist_symbols(
     data_source: str,
     endpoint: str,
@@ -68,16 +80,12 @@ def _watchlist_symbols(
     watchlist = getattr(data_cfg.watchlists, data_source, None)
     if watchlist is None:
         return []
-    if endpoint in {"fund_daily", "fund_adj", "fund_share", "etf_share_size"} and getattr(
-        watchlist, "funds", None
-    ):
+    if endpoint in _FUND_ENDPOINTS and getattr(watchlist, "funds", None):
         return list(watchlist.funds)
-    if (
-        endpoint in per_symbol_endpoints
-        and endpoint != "stock_daily_bar"
-        and getattr(watchlist, "indices", None)
-    ):
+    if endpoint in _INDEX_ENDPOINTS and getattr(watchlist, "indices", None):
         return list(watchlist.indices)
+    if getattr(watchlist, "stocks", None):
+        return list(watchlist.stocks)
     if hasattr(watchlist, "all_symbols"):
         return list(watchlist.all_symbols)
     return list(watchlist) if isinstance(watchlist, list) else []
@@ -100,20 +108,22 @@ def _default_symbols_for_endpoint(
     endpoint: str,
     data_cfg: Any,
     per_symbol_endpoints: set[str],
+    is_watchlist_explicit: bool = False,
 ) -> list[str]:
     """计算接口的回填目标标的列表。"""
     import stock.data.backfill as bf_mod
 
-    local_pool_meta = _resolve_required_local_pool(data_source, endpoint)
-    if local_pool_meta:
-        pool_dataset, pool_label = local_pool_meta
-        pool_fn = getattr(bf_mod, "_load_curated_symbol_pool", _load_curated_symbol_pool)
-        local_symbols = pool_fn(data_source, pool_dataset)
-        if not local_symbols:
-            raise DataFetchError(
-                f"接口 [{endpoint}] 需要本地 {pool_dataset} {pool_label}标的池，请先完成 {pool_dataset} 回填"
-            )
-        return local_symbols
+    if not is_watchlist_explicit:
+        local_pool_meta = _resolve_required_local_pool(data_source, endpoint)
+        if local_pool_meta:
+            pool_dataset, pool_label = local_pool_meta
+            pool_fn = getattr(bf_mod, "_load_curated_symbol_pool", _load_curated_symbol_pool)
+            local_symbols = pool_fn(data_source, pool_dataset)
+            if not local_symbols:
+                raise DataFetchError(
+                    f"接口 [{endpoint}] 需要本地 {pool_dataset} {pool_label}标的池，请先完成 {pool_dataset} 回填"
+                )
+            return local_symbols
 
     symbols = _watchlist_symbols(data_source, endpoint, data_cfg, per_symbol_endpoints)
     return _filter_supported_symbols(symbols, data_source, endpoint, data_cfg)
@@ -124,20 +134,20 @@ def _resolve_target_symbols(
     public_name: str,
     symbol: str | None,
     is_per_sym: bool,
+    is_single: bool,
     data_cfg: Any,
 ) -> list[str]:
     """解析当前接口需要遍历的目标标的代码列表。"""
     if symbol and symbol not in ("all", "watchlist"):
         return [s.strip() for s in symbol.split(",") if s.strip()]
-    if not is_per_sym:
-        # 全市场按日截面端点（per_day），保持全量截面模式，不拆解为 watchlist 个股
+    if not is_per_sym or is_single:
+        # 单表全量同步或全局按日端点，保持单任务模式
         return [""]
-    if symbol == "watchlist" or not symbol:
-        targets = _default_symbols_for_endpoint(
-            data_source, public_name, data_cfg, {public_name}
-        )
-        return targets if targets else [""]
-    return _default_symbols_for_endpoint(data_source, public_name, data_cfg, {public_name})
+    is_watchlist_explicit = symbol == "watchlist"
+    targets = _default_symbols_for_endpoint(
+        data_source, public_name, data_cfg, {public_name}, is_watchlist_explicit=is_watchlist_explicit
+    )
+    return targets if targets else [""]
 
 
 class BackfillPlanner:
@@ -169,7 +179,7 @@ class BackfillPlanner:
             is_single = task_spec.is_single_sync
 
             targets = _resolve_target_symbols(
-                data_source, public_name, symbol, is_per_sym, data_cfg
+                data_source, public_name, symbol, is_per_sym, is_single, data_cfg
             )
             min_supported = cls._resolve_min_supported(data_source, public_name, data_cfg)
 

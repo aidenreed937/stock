@@ -79,9 +79,12 @@ make migrate-data [APPLY=1]           # 存量 Parquet 离线去重与 Schema �
    - CLI 传入 `SYMBOL=watchlist` 时自动路由并对齐各标的的 `base_date`。
 3. **数据源职责分工**：
    - `tushare`：A 股全量行情、每日估值、复权因子、北向持仓、申万行情、场内基金/ETF。
-   - `lixinger`：指数基本面估值、申万 2021 行业成份股图谱及 31 行业估值序列。
+   - `lixinger`：指数基本面估值、申万 2021 行业成份股图谱、31 行业估值序列及中债官方国债收益率与基准利率。
    - `yfinance`：外盘 9 大核心指数、美股科技巨头 K 线、8 大全球宏观资产。
    - `fred`：美联储官方宏观指标（基准利率、CPI、非农、失业率、GDP、利差等）。
+4. **量化投研与分析准则 (Ground Truth First)**：
+   - 严格遵循**本地真实数据第一**，所有点位、估值与指标必须通过代码查询本地 Curated 黄金表输出，严禁凭模型记忆虚构；
+   - 严格执行**三层信息分级透明化**（已验证事实 / 机制推断 / 外部背景）与**防过拟合审查**，详见 [`.agents/skills/data-catalog/references/data_query_caveats.md`](file:///Users/mac/workspace/personal/finance/stock/.agents/skills/data-catalog/references/data_query_caveats.md)。
 
 ## 编码与测试规范
 

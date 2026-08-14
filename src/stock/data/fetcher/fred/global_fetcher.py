@@ -23,7 +23,12 @@ class FredDataFetcher(BaseDataFetcher):
         return []
 
     def fetch_daily_bars_df(
-        self, symbol: str, start_date: date, end_date: date, endpoint: str = "history"
+        self,
+        symbol: str,
+        start_date: date,
+        end_date: date,
+        endpoint: str = "history",
+        **kwargs: Any,
     ) -> pl.DataFrame:
         """实现 BaseDataFetcher 接口。抓取指定 FRED 宏观序列。"""
         if endpoint == "macro_indicators" or symbol == "macro_indicators":

@@ -25,24 +25,31 @@ from stock.utils.logger import logger
 def _resolve_calendar_dates(
     fetcher: BaseDataFetcher, data_source: str, start_date: date, end_date: date
 ) -> list[date]:
-    """获取开市有效交易日列表，支持数据源与工作日降级。"""
+    """获取开市有效交易日列表，支持数据源、本地已落盘日历与工作日降级。"""
     fetch_trade_cal_fn = getattr(fetcher, "fetch_trade_cal", None)
-    if not callable(fetch_trade_cal_fn) or data_source == "fred":
-        cur = start_date
-        cal_dates: list[date] = []
-        while cur <= end_date:
-            cal_dates.append(cur)
-            cur += timedelta(days=1)
-        return cal_dates
+    if callable(fetch_trade_cal_fn) and data_source != "fred":
+        try:
+            res = fetch_trade_cal_fn(start_date, end_date)
+            if isinstance(res, list):
+                dates = [d for d in res if isinstance(d, date)]
+                if dates:
+                    return dates
+        except Exception:
+            pass
 
     try:
-        res = fetch_trade_cal_fn(start_date, end_date)
-        if isinstance(res, list):
-            dates = [d for d in res if isinstance(d, date)]
-            if dates:
-                return dates
-    except Exception as e:
-        logger.warning(f"获取数据源网络交易日历失败 [{e}]，降级使用工作日...")
+        from stock.data.catalog import DataCatalog
+
+        cat = DataCatalog(data_source=data_source)
+        df_cal = cat.load_dataset("stock_daily_bar", start_date=start_date, end_date=end_date)
+        if not df_cal.is_empty() and "trade_date" in df_cal.columns:
+            local_dates = sorted(
+                {d for d in df_cal["trade_date"].to_list() if isinstance(d, date)}
+            )
+            if local_dates:
+                return local_dates
+    except Exception:
+        pass
 
     cur = start_date
     cal_dates = []
@@ -201,8 +208,7 @@ class HistoricalBackfiller:
         # 1. 范围拉取模式 (月频/宏观/静态/按标的历史范围)
         if freq != "daily" or is_per_sym or task_spec.is_single_sync:
             sym_code = self.symbol or self.endpoint
-            # 检查是否全部命中本地缓存
-            if not force_refresh and self.symbol:
+            if not force_refresh and self.symbol and freq == "daily" and (end_date - start_date).days <= 30:
                 open_dates = self._get_open_trading_dates(start_date, end_date, use_cache=True)
                 todo_dates = self._generate_tasks(start_date, end_date, force_refresh=False)
                 if not todo_dates:

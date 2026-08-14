@@ -99,6 +99,30 @@ def _normalize_identity_columns(df: pl.DataFrame) -> tuple[pl.DataFrame, bool]:
     return normalized, changed
 
 
+_KNOWN_FLOAT_COLUMNS = frozenset({
+    "rqyl", "rzye", "rqye", "rzmre", "rzche", "rqchl", "rqmcl", "rzrqye",
+    "open", "high", "low", "close", "volume", "amount", "vol",
+    "pe", "pb", "ps", "pe_ttm", "pb_mrq", "ps_ttm", "dv_ratio", "dv_ttm",
+    "total_mv", "circ_mv", "turnover_rate", "turnover_rate_f", "volume_ratio",
+    "adj_factor", "fd_share", "total_share", "n_shares", "value"
+})
+
+
+def _normalize_numeric_columns(df: pl.DataFrame) -> tuple[pl.DataFrame, bool]:
+    """将历史文件中误存为 String 的已知数值型度量列转换为 Float64。"""
+    normalized = df
+    changed = False
+    for col_name in df.columns:
+        if col_name in _KNOWN_FLOAT_COLUMNS:
+            col_type = df.schema[col_name]
+            if col_type in (pl.Utf8, pl.String):
+                normalized = normalized.with_columns(
+                    pl.col(col_name).cast(pl.Float64, strict=False).alias(col_name)
+                )
+                changed = True
+    return normalized, changed
+
+
 def _infer_data_source(path: Path) -> str | None:
     """从历史数据路径推断数据源名称。"""
     providers = {"tushare", "lixinger", "yfinance", "fred", "mock"}
@@ -269,7 +293,9 @@ def migrate_parquet(
     paths = [path for path in base.rglob("*.parquet") if not _is_artifact(path)] if base.exists() else []
     for path in sorted(paths):
         df = pl.read_parquet(path)
-        normalized, schema_changed = _normalize_identity_columns(df)
+        normalized, id_changed = _normalize_identity_columns(df)
+        normalized, num_changed = _normalize_numeric_columns(normalized)
+        schema_changed = id_changed or num_changed
         keys = _primary_keys(path, normalized.columns)
         deduped = _dedupe_frame(normalized, keys)
         removed = len(df) - len(deduped)

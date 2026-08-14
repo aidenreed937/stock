@@ -237,3 +237,13 @@ def test_catalog_standardized_methods(tmp_path) -> None:
     assert len(summary_df) >= 1
     assert "daily_basic" in summary_df["dataset"].to_list()
     assert summary_df.filter(pl.col("dataset") == "daily_basic")["latest_date"][0] == "2026-08-14"
+
+    # 5. load_bars with alias
+    _make_bar_file(tmp_path, "stock_daily_bar", "CN", 2026, 8)
+    bars_df = catalog.load_bars(symbol="AAA")
+    assert not bars_df.is_empty()
+    assert "symbol" in bars_df.columns
+
+    # 6. load_dataset with alias
+    basic_df = catalog.load_dataset("daily_basic")
+    assert not basic_df.is_empty()

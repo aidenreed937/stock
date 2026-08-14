@@ -162,7 +162,7 @@ _TUSHARE_PROFILES: dict[str, tuple[list[str], dict[str, str], str]] = {
     "sf_month": (["month"], {"social_financing": "CNY100m"}, "macro_monthly"),
     "shibor": (["date"], {"on": "percent", "1w": "percent", "1m": "percent", "1y": "percent"}, "macro_rate"),
     "shibor_lpr": (["date"], {"1y": "percent", "5y": "percent"}, "macro_rate"),
-    "cn_schedule": (["date", "event"], {}, "event"),
+    "cn_schedule": (["publish_date", "title"], {}, "event"),
     "fut_index_daily": (
         ["ts_code", "trade_date", "open", "high", "low", "close"],
         {"close": "point", "vol": "share", "amount": "CNY"},

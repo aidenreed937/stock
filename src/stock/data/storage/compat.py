@@ -107,6 +107,35 @@ class StorageCompat:
         return df.with_columns(expressions) if expressions else df
 
     @staticmethod
+    def normalize_numeric_columns(df: pl.DataFrame) -> pl.DataFrame:
+        """将历史残留或不同分区中误存为 String 的数值度量列安全转为 Float64。"""
+        known_floats = {
+            "rqyl", "rzye", "rqye", "rzmre", "rzche", "rqchl", "rqmcl", "rzrqye",
+            "open", "high", "low", "close", "volume", "amount", "vol",
+            "pe", "pb", "ps", "pe_ttm", "pb_mrq", "ps_ttm", "dv_ratio", "dv_ttm",
+            "total_mv", "circ_mv", "turnover_rate", "turnover_rate_f", "volume_ratio",
+            "adj_factor", "fd_share", "total_share", "n_shares", "value", "yield",
+            "net_mf_amount", "buy_sm_amount", "sell_sm_amount", "buy_md_amount",
+            "sell_md_amount", "buy_lg_amount", "sell_lg_amount", "buy_elg_amount", "sell_elg_amount",
+        }
+        casts = []
+        for col_name in df.columns:
+            if col_name in known_floats and df.schema[col_name] in (pl.Utf8, pl.String):
+                casts.append(pl.col(col_name).cast(pl.Float64, strict=False).alias(col_name))
+        return df.with_columns(casts) if casts else df
+
+    @classmethod
+    def safe_normalize_frame(cls, df: pl.DataFrame) -> pl.DataFrame:
+        """对加载的单个 Parquet 分区执行全套在线容错预规范化（身份别名、日期、时间与度量类型）。"""
+        if df.is_empty():
+            return df
+        norm = cls.normalize_identity_columns(df)
+        norm = cls.safe_cast_date_col(norm, "trade_date")
+        norm = cls.normalize_datetime_columns(norm)
+        norm = cls.normalize_numeric_columns(norm)
+        return norm
+
+    @staticmethod
     def resolve_dedup_keys(
         dataset_name: str,
         source: str | None,
@@ -118,65 +147,7 @@ class StorageCompat:
         ),
     ) -> list[str]:
         """根据任务元数据或契约解析去重键，防止宏观或无标的数据集被常量列过度去重。"""
-        if dataset_name in bar_datasets:
-            return [c for c in ("market", "symbol", "trade_date") if c in merged.columns]
-
-        prov = (source or data_source or "tushare").lower()
-        meta_keys: list[str] = []
-        try:
-            task = resolve_task(prov, dataset_name)
-            api_name = task.api_name
-            meta: Any = None
-            if prov == "tushare":
-                from stock.data.fetcher.tushare.registry import TUSHARE_API_REGISTRY
-
-                meta = TUSHARE_API_REGISTRY.get(api_name)
-            elif prov == "lixinger":
-                from stock.data.fetcher.lixinger.registry import LIXINGER_API_REGISTRY
-
-                meta = LIXINGER_API_REGISTRY.get(api_name)
-            if meta and getattr(meta, "primary_keys", None):
-                meta_keys = list(meta.primary_keys)
-        except Exception:
-            pass
-
-        if meta_keys:
-            mapped_keys: list[str] = []
-            for key in meta_keys:
-                if key in ("ts_code", "stockCode", "code") and "symbol" in merged.columns:
-                    mapped_keys.append("symbol")
-                elif key in ("trade_date", "date", "suspend_date"):
-                    if "trade_date" in merged.columns:
-                        mapped_keys.append("trade_date")
-                    elif "date" in merged.columns:
-                        mapped_keys.append("date")
-                    elif "suspend_date" in merged.columns:
-                        mapped_keys.append("suspend_date")
-                elif key in ("end_date", "report_date"):
-                    if "end_date" in merged.columns:
-                        mapped_keys.append("end_date")
-                    elif "report_date" in merged.columns:
-                        mapped_keys.append("report_date")
-                elif key in merged.columns:
-                    mapped_keys.append(key)
-
-            if mapped_keys:
-                if "market" in merged.columns and "market" not in mapped_keys:
-                    mapped_keys = ["market"] + mapped_keys
-                return list(dict.fromkeys(mapped_keys))
-
-        entity_cols = [
-            c
-            for c in ["symbol", "index_code", "con_code", "stockCode", "ts_code", "code", "exchange_id"]
-            if c in merged.columns
-        ]
-        period_cols = [
-            c
-            for c in ["trade_date", "date", "month", "quarter", "end_date", "in_date", "out_date", "suspend_date"]
-            if c in merged.columns
-        ]
-        dedup_cols = (["market"] if "market" in merged.columns else []) + entity_cols + period_cols
-        return list(dict.fromkeys(dedup_cols)) if (entity_cols or period_cols) else []
+        return _resolve_dedup_keys(dataset_name, source, data_source, merged, bar_datasets)
 
     @staticmethod
     def post_process_dataset(dataset_name: str, df: pl.DataFrame) -> pl.DataFrame:
@@ -196,6 +167,77 @@ class StorageCompat:
     ) -> tuple[list[str], str]:
         """依据 Parquet 文件 Schema 动态构建 SQL 过滤条件与排序列。"""
         return _build_dataset_query_clause(matched_files, symbol, start_date, end_date)
+
+
+def _resolve_dedup_keys(
+    dataset_name: str,
+    source: str | None,
+    data_source: str | None,
+    merged: pl.DataFrame,
+    bar_datasets: tuple[str, ...] | frozenset[str] | set[str] = (
+        "stock_daily_bar",
+        "index_daily_bar",
+    ),
+) -> list[str]:
+    if dataset_name in bar_datasets:
+        return [c for c in ("market", "symbol", "trade_date") if c in merged.columns]
+
+    prov = (source or data_source or "tushare").lower()
+    meta_keys: list[str] = []
+    try:
+        task = resolve_task(prov, dataset_name)
+        api_name = task.api_name
+        meta: Any = None
+        if prov == "tushare":
+            from stock.data.fetcher.tushare.registry import TUSHARE_API_REGISTRY
+
+            meta = TUSHARE_API_REGISTRY.get(api_name)
+        elif prov == "lixinger":
+            from stock.data.fetcher.lixinger.registry import LIXINGER_API_REGISTRY
+
+            meta = LIXINGER_API_REGISTRY.get(api_name)
+        if meta and getattr(meta, "primary_keys", None):
+            meta_keys = list(meta.primary_keys)
+    except Exception:
+        pass
+
+    if meta_keys:
+        mapped_keys: list[str] = []
+        for key in meta_keys:
+            if key in ("ts_code", "stockCode", "code") and "symbol" in merged.columns:
+                mapped_keys.append("symbol")
+            elif key in ("trade_date", "date", "suspend_date"):
+                if "trade_date" in merged.columns:
+                    mapped_keys.append("trade_date")
+                elif "date" in merged.columns:
+                    mapped_keys.append("date")
+                elif "suspend_date" in merged.columns:
+                    mapped_keys.append("suspend_date")
+            elif key in ("end_date", "report_date"):
+                if "end_date" in merged.columns:
+                    mapped_keys.append("end_date")
+                elif "report_date" in merged.columns:
+                    mapped_keys.append("report_date")
+            elif key in merged.columns:
+                mapped_keys.append(key)
+
+        if mapped_keys:
+            if "market" in merged.columns and "market" not in mapped_keys:
+                mapped_keys = ["market"] + mapped_keys
+            return list(dict.fromkeys(mapped_keys))
+
+    entity_cols = [
+        c
+        for c in ["symbol", "index_code", "con_code", "stockCode", "ts_code", "code", "exchange_id"]
+        if c in merged.columns
+    ]
+    period_cols = [
+        c
+        for c in ["trade_date", "date", "month", "quarter", "end_date", "in_date", "out_date", "suspend_date"]
+        if c in merged.columns
+    ]
+    dedup_cols = (["market"] if "market" in merged.columns else []) + entity_cols + period_cols
+    return list(dict.fromkeys(dedup_cols)) if (entity_cols or period_cols) else []
 
 
 def _build_dataset_query_clause(

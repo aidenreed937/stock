@@ -79,7 +79,7 @@ class YFinanceDataFetcher(BaseDataFetcher):
             return []
 
     def fetch_daily_bars_df(
-        self, symbol: str, start_date: date, end_date: date, endpoint: str = "history"
+        self, symbol: str, start_date: date, end_date: date, endpoint: str = "history", **kwargs: Any
     ) -> pl.DataFrame:
         """抓取指定标的行情数据，返回 Polars DataFrame。"""
         meta = YFINANCE_API_REGISTRY.get(endpoint)

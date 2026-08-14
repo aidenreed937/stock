@@ -5,15 +5,39 @@ description: 本地落盘数据资产统一目录 (DataCatalog) 与极速查询�
 
 # 数据资产目录服务 (DataCatalog) 技能指南
 
-本技能为量化投研系统提供统一的**本地落盘数据资产盘点、最新水位嗅探、数据加载与缺口诊断**的标准操作指南。
+本技能为量化投研系统提供统一的**本地落盘数据资产盘点、最新水位嗅探、数据加载与缺口诊断**的标准操作指南。通过 `DataCatalog` 统一入口屏蔽底层物理存储细节，支持 Hive 年月分区自动裁剪、时区容错、主键去重及 OHLC 有效性校验。
 
 ---
 
-## 1. 核心 Python API 速查 (标准调用规范)
+## 1. 全库黄金数据集资产速查表 (Datasets Inventory)
 
-`DataCatalog` 提供了高容错、自动路由别名的标准方法，不再需要手写底层 Parquet 遍历代码：
+| 数据源 (`data_source`) | 核心数据集 (`dataset`) | 业务含义 | 标的粒度 / 典型覆盖 | 关键字段 |
+| :--- | :--- | :--- | :--- | :--- |
+| **`tushare`** | `stock_daily_bar` | A 股全市场个股日 K 线 | 5,000+ A 股 (2013 至今) | `open`, `high`, `low`, `close`, `volume`, `amount(元)` |
+| **`tushare`** | `daily_basic` | A 股每日指标与估值 | 5,000+ A 股 (2013 至今) | `pe_ttm`, `pb`, `ps_ttm`, `dv_ttm`, `total_mv(万)`, `circ_mv` |
+| **`tushare`** | `sw_daily` | 申万行业日线行情 | 439 个行业代码 (31个L1+L2/L3) | `open`, `high`, `low`, `close`, `amount(元)`, `pe`, `pb` |
+| **`tushare`** | `index_classify` | 申万行业代码分类体系 | 一/二/三级行业分类 (SW2014) | `index_code`, `industry_name`, `level`, `industry_code` |
+| **`tushare`** | `index_member` | 申万行业/指数成份股映射 | 历史各期纳入/剔除记录 | `index_code`, `con_code`, `in_date`, `out_date` |
+| **`tushare`** | `adj_factor` | A 股复权因子 | 5,000+ A 股全历史 | `symbol`, `trade_date`, `adj_factor` |
+| **`tushare`** | `fund_daily` | 场内基金与 ETF 日 K 线 | 26 只核心观察池 ETF 等 | `open`, `high`, `low`, `close`, `volume`, `amount` |
+| **`tushare`** | `etf_share_size` | ETF 份额与规模序列 | 核心 ETF 全历史 | `symbol`, `trade_date`, `fd_share`, `n_shares` |
+| **`tushare`** | `moneyflow` | 个股大单小单资金流向 | 全市场个股资金流 | `buy_sm_amount`, `buy_md_amount`, `buy_lg_amount`, `buy_elg_amount` |
+| **`lixinger`** | `sw_2021_constituents` | 申万 2021 行业成份股图谱 | 797 个行业全量挂载关系 | `symbol(行业代码)`, `constituents(成份股数组)` |
+| **`lixinger`** | `sw_2021_l2_fundamental` | 申万 2021 二级行业估值 | 162 个二级行业 12 年连续日度 | `pe_ttm.ew`, `pb.ew`, `ps_ttm.ew`, `dyr.ew`, `mc(元)` |
+| **`lixinger`** | `sw_2021_fundamental` | 申万 2021 一级行业估值 | 31 个一级行业 12 年连续日度 | `pe_ttm.ew`, `pb.ew`, `ps_ttm.ew`, `dyr.ew`, `mc(元)` |
+| **`lixinger`** | `index_fundamental` | 9 大核心指数基本面估值 | 沪深300/中证500/上证50等 | `pe_ttm.mcw`, `pb.mcw`, `dyr.mcw`, `mc` |
+| **`yfinance`** | `stock_daily_bar` | 美股科技巨头日 K 线 | AAPL, MSFT, NVDA, GOOGL 等 | `open`, `high`, `low`, `close`, `volume` |
+| **`yfinance`** | `index_daily_bar` | 外盘核心指数日 K 线 | 标普500, 纳指100, 罗素2000 等 | `open`, `high`, `low`, `close`, `volume` |
+| **`yfinance`** | `macro_indicators` | 全球宏观资产行情 | 黄金、美原油、美元指数、美债等 | `symbol`, `trade_date`, `close`, `volume` |
+| **`fred`** | `macro_indicators` | 美联储官方核心宏观指标 | 基准利率、CPI、非农、失业率、利差 | `symbol`, `trade_date`, `value` |
 
-### ① 一键输出全库/单源资产大盘看板 (`summary`)
+---
+
+## 2. 核心 Python API 速查 (标准调用规范)
+
+`DataCatalog` 提供单例化、类型安全、容错的查询接口，避免直接手写 Parquet 遍历。
+
+### ① 一键输出全库/单源资产看板 (`summary`)
 ```python
 from stock.data.catalog import DataCatalog
 
@@ -23,43 +47,34 @@ catalog = DataCatalog()
 df_all = catalog.summary()
 print(df_all)
 
-# 查看指定数据源 (如 tushare) 资产清单
+# 查看指定数据源资产清单
 df_ts = catalog.summary(data_source="tushare")
 print(df_ts)
 ```
 
-### ② 毫秒级查询指定数据集最新落盘交易日 (`get_latest_trade_date`)
-内置任务短别名自动解析（如传入 `daily` 自动映射到真实目录 `stock_daily_bar`）：
+### ② 毫秒级查询数据集最新落盘日期 (`get_latest_trade_date`)
+内置任务别名自动解析（如传入 `"daily"` 自动映射到 `"stock_daily_bar"`）：
 
 ```python
 from stock.data.catalog import DataCatalog
 
 catalog = DataCatalog()
 
-# 查询 A 股全市场日 K 最新落盘日期 (支持别名 'daily' 或 'stock_daily_bar')
-latest_bar = catalog.get_latest_trade_date("daily", data_source="tushare")
+# A 股全市场日 K 最新日期
+latest_bar = catalog.get_latest_trade_date("stock_daily_bar", data_source="tushare")
 # -> date(2026, 8, 14)
 
-# 查询 ETF 份额规模最新日期
-latest_etf = catalog.get_latest_trade_date("etf_share_size", data_source="tushare")
-# -> date(2026, 8, 13)
+# 申万二级行业估值最新日期
+latest_sw = catalog.get_latest_trade_date("sw_2021_l2_fundamental", data_source="lixinger")
+# -> date(2026, 8, 14)
 
-# 查询美股巨头行情最新日期
+# 美股巨头行情最新日期
 latest_us = catalog.get_latest_trade_date("stock_daily_bar", data_source="yfinance")
 # -> date(2026, 8, 14)
 ```
 
-### ③ 列出已落盘的数据集清单 (`list_datasets`)
-```python
-# 列出全库所有已落盘的数据集名称
-all_datasets = catalog.list_datasets(data_source="all")
-
-# 列出 TuShare 已落盘的数据集名称
-ts_datasets = catalog.list_datasets(data_source="tushare")
-```
-
-### ④ 安全加载行情黄金表用于回测 (`load_daily_bars`)
-自带去重、时钟对齐、别名归一与 OHLC 物理有效性校验：
+### ③ 安全加载日 K 线黄金表 (`load_bars`)
+自带主键去重、时钟对齐、别名归一与 OHLC 物理有效性校验：
 
 ```python
 from datetime import date
@@ -67,49 +82,165 @@ from stock.data.catalog import DataCatalog
 
 catalog = DataCatalog(data_source="tushare")
 
-# 加载贵州茅台 2026 年以来的前复权日 K 线
-df_bars = catalog.load_daily_bars(
-    symbols=["600519.SH"],
+# 加载指定标的区间日 K 线 (自动 Hive 年月分区裁剪)
+df_bars = catalog.load_bars(
+    symbols=["600519.SH", "000858.SZ"],
     start_date=date(2026, 1, 1),
     end_date=date(2026, 8, 14),
-    adjustment="qfq",
+    adjustment="raw",
 )
+```
+
+### ④ 加载通用/基本面/估值数据集 (`load_dataset`)
+支持按标的列表和起止交易日快速过滤：
+
+```python
+from datetime import date
+from stock.data.catalog import DataCatalog
+
+# 加载 A 股个股每日基本面估值表
+catalog_ts = DataCatalog(data_source="tushare")
+df_basic = catalog_ts.load_dataset(
+    "daily_basic",
+    start_date=date(2026, 8, 1),
+    end_date=date(2026, 8, 14),
+    symbols=["600519.SH"],
+)
+
+# 加载理杏仁申万二级行业全历史估值
+catalog_lx = DataCatalog(data_source="lixinger")
+df_sw_val = catalog_lx.load_dataset("sw_2021_l2_fundamental")
 ```
 
 ---
 
-## 2. 终端 CLI 快捷指令
+## 3. 常见投研分析场景实战范例 (Investigative Recipes)
 
-无需进入 Python 代码，终端提供开箱即用的资产盘点命令：
+### 范例 1：申万二级行业最近成交额 Top 5 及估值水平分析
+```python
+from datetime import date
+import polars as pl
+from stock.data.catalog import DataCatalog
+
+cat_lx = DataCatalog(data_source="lixinger")
+cat_ts = DataCatalog(data_source="tushare")
+
+# 1. 读取申万 2021 成份股图谱并提取二级行业
+df_sc = cat_lx.load_dataset("sw_2021_constituents")
+symbols = df_sc["symbol"].to_list()
+l2_codes = [s for s in symbols if s.endswith("00") and not s.endswith("0000")]
+df_l2_sc = df_sc.filter((pl.col("symbol").is_in(l2_codes)) & (pl.col("constituents").list.len() > 0))
+
+# 展平行业与成份股代码
+flat_map = []
+for row in df_l2_sc.to_dicts():
+    ind_code = row["symbol"]
+    for c in row["constituents"]:
+        flat_map.append({"industry_code": ind_code, "stock_code": c["stockCode"]})
+df_con = pl.DataFrame(flat_map)
+
+# 2. 读取最近一个月 (如最近 24 个交易日) 个股日 K 线成交额
+df_bars = cat_ts.load_bars(
+    start_date=date(2026, 7, 14),
+    end_date=date(2026, 8, 14)
+).select(["symbol", "trade_date", "amount"])
+
+df_bars = df_bars.with_columns(pl.col("symbol").str.slice(0, 6).alias("stock_code"))
+
+# 3. 聚合计算行业成交额 (元 -> 亿元)
+df_turnover = df_bars.join(df_con, on="stock_code", how="inner").group_by("industry_code").agg([
+    (pl.col("amount").sum() / 1e8).alias("total_amount_yi"),
+    pl.col("stock_code").n_unique().alias("stock_count")
+]).sort("total_amount_yi", descending=True)
+
+# 4. 关联理杏仁二级行业估值与 12 年历史分位数
+df_l2_val = cat_lx.load_dataset("sw_2021_l2_fundamental")
+latest_val_date = df_l2_val["trade_date"].max()
+# 计算当前行业最新 PE-TTM、PB 及其在 2014~2026 间的历史分位点
+```
+
+### 范例 2：指数基本面估值与历史水位追踪
+```python
+from stock.data.catalog import DataCatalog
+import polars as pl
+
+cat = DataCatalog(data_source="lixinger")
+df_idx = cat.load_dataset("index_fundamental")
+
+# 筛选沪深300 (000300) 最新估值及历史分位数
+hs300 = df_idx.filter(pl.col("symbol") == "000300").sort("trade_date")
+latest = hs300.tail(1).to_dicts()[0]
+
+pe = latest["pe_ttm.mcw"]
+pe_pct = (hs300.filter(pl.col("pe_ttm.mcw") > 0)["pe_ttm.mcw"] < pe).mean() * 100
+print(f"沪深300 最新 PE-TTM: {pe:.2f}, 历史分位数: {pe_pct:.1f}%")
+```
+
+### 范例 3：全库数据健康度与最新落盘交易日快速对齐
+```python
+from stock.data.catalog import DataCatalog
+import polars as pl
+
+cat = DataCatalog()
+summary_df = cat.summary()
+
+# 筛选最新日期落后的数据集
+lagging = summary_df.filter(
+    (pl.col("latest_date") != "N/A") & (pl.col("latest_date") < "2026-08-13")
+)
+print("需关注的滞后数据集:")
+print(lagging)
+```
+
+---
+
+## 4. 规范与避坑指南 (Contracts & Pitfalls)
+
+1. **金额单位口径统一为元 (CNY)**：
+   * `stock_daily_bar`、`sw_daily` 中的 `amount` 经过 Curated 黄金层清洗后统一为**元 (CNY)**，换算为亿元直接除以 `1e8`。
+   * `daily_basic` 中的 `total_mv` 和 `circ_mv` 单位为**万元**。
+2. **Polars 聚合多列重名冲突防范**：
+   * 在使用 Polars 执行 `select([pl.col("date").min(), pl.col("date").max()])` 时，新版 Polars 会因投影重名触发 `DuplicateError`。
+   * **正确写法**：必须使用显式别名：
+     ```python
+     df.select([
+         pl.col("trade_date").min().alias("min_date"),
+         pl.col("trade_date").max().alias("max_date"),
+     ])
+     ```
+3. **Hive 年月分区自动裁剪**：
+   * 在调用 `load_daily_bars` 或 `load_dataset` 时，**强烈建议传入 `start_date` 和 `end_date`**。
+   * `DataCatalog` 底层会自动拦截无交集的 `year=YYYY/month=MM` 目录，只读取目标月份 Parquet 文件，提升查询速度 10~50 倍。
+4. **标的代码规范 (Symbol Conventions)**：
+   * A 股个股：`000001.SZ`, `600519.SH`, `688001.SH`
+   * 申万行业：`801xxx.SI`（Tushare 申万指数）或 6 位纯数字 `270100`（申万 2021 二级行业分类）
+   * 外盘指数：`^GSPC` (标普500), `^IXIC` (纳斯达克), `^DJI` (道琼斯)
+   * 宏观指标：`CPIAUCSL`, `fedfunds`, `t10y2y`, `gdp`
+
+---
+
+## 5. 终端 CLI 运维与数据审计指令
 
 ```bash
 # 1. 全库 Parquet 物理主审计盘点 (包含行数、标的数、起止时间与文件健康度)
 make master-audit
 
-# 2. 因子专项对账审计 (复权因子与申万行业行情覆盖率)
-make audit TYPE=factor
-
-# 3. 估值指标专项对账审计 (daily_basic 与 index_fundamental 对齐率)
+# 2. 估值指标专项对账审计 (daily_basic 与 index_fundamental 对齐率)
 make audit TYPE=valuation
+
+# 3. 因子专项对账审计 (复权因子与申万行业行情覆盖率)
+make audit TYPE=factor
 
 # 4. RAW vs Curated 双向物理对账 (确保清洗过程零丢行)
 make audit TYPE=reconciliation
+
+# 5. 发现数据缺口时快速自动补齐
+make sync SOURCE=tushare
+make backfill START=2014-08-01 END=2026-08-14 SOURCE=lixinger ENDPOINT=sw_2021_l2_fundamental
 ```
 
 ---
 
-## 3. 常见自愈与增量补齐工作流
+## 6. 进阶参考文档 (References)
 
-当通过 `DataCatalog` 发现数据存在缺口时，推荐的标准处置流程：
-
-```mermaid
-flowchart TD
-    A["1. DataCatalog / make master-audit 发现数据日期落后"] --> B{"缺口类型判断"}
-    B -->|日常最新 1~2 天增量| C["make sync SOURCE=tushare\n(自动水位嗅探并快速补齐)"]
-    B -->|历史跨年大范围回填| D["make backfill START=YYYY-MM-DD END=YYYY-MM-DD SOURCE=... ENDPOINT=...\n(批量分片回填)"]
-    B -->|盘后源端数据修正重发| E["make sync SOURCE=tushare FORCE=1\n(穿透缓存强制覆盖当天)"]
-
-    C --> F["2. make audit TYPE=reconciliation 验证对齐"]
-    D --> F
-    E --> F
-```
+* [数据资产查询细节、时滞处理与避坑参考](file:///Users/mac/workspace/personal/finance/stock/.agents/skills/data-catalog/references/data_query_caveats.md)：涵盖资金流向微观穿透 (`moneyflow`)、股债利差时钟 (ERP)、通配符隔离防错、Schema 历史类型容错以及数据集入库时滞对齐矩阵。

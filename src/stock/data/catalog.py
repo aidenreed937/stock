@@ -75,8 +75,9 @@ class DataCatalog:
         dedup: bool = True,
     ) -> pl.DataFrame:
         """读取标准数据集（非行情类也可用），可按标的与日期范围过滤。"""
-        files = _list_parquet_files(self.storage_dir / self.data_source, dataset=dataset, market=market)
-        df = _read_dataset_files(files, dataset, self.data_source, start_date, end_date, symbols)
+        resolved = _resolve_dataset_alias(self.data_source, dataset)
+        files = _list_parquet_files(self.storage_dir / self.data_source, dataset=resolved, market=market)
+        df = _read_dataset_files(files, resolved, self.data_source, start_date, end_date, symbols)
         if df.is_empty():
             return df
         if dedup and "market" in df.columns and "symbol" in df.columns and "trade_date" in df.columns:
@@ -97,12 +98,13 @@ class DataCatalog:
         validate: bool = True,
     ) -> pl.DataFrame:
         """读取行情（K 线）数据并进行时序排序与有效性校验。"""
+        resolved = _resolve_dataset_alias(self.data_source, dataset)
         if symbol is not None:
             symbols = [symbol]
-        files = _list_parquet_files(self.storage_dir / self.data_source, dataset=dataset, market=market)
-        df = _read_dataset_files(files, dataset, self.data_source, start_date, end_date, symbols)
+        files = _list_parquet_files(self.storage_dir / self.data_source, dataset=resolved, market=market)
+        df = _read_dataset_files(files, resolved, self.data_source, start_date, end_date, symbols)
         if df.is_empty():
-            logger.warning(f"DataCatalog 未找到 [{dataset}] 行情数据 (数据源: {self.data_source})")
+            logger.warning(f"DataCatalog 未找到 [{resolved}] 行情数据 (数据源: {self.data_source})")
             return df
 
         if adjustment is not None and "adjustment" in df.columns:
@@ -116,7 +118,7 @@ class DataCatalog:
             df = df.sort(["trade_date", "symbol"])
 
         if validate:
-            _validate_bars(df, dataset)
+            _validate_bars(df, resolved)
         return df
 
     def latest_trade_dates(
@@ -230,10 +232,7 @@ def _read_dataset_files(
         except Exception as e:
             logger.error(f"DataCatalog 读取文件失败 [{path}]: {e}")
             continue
-        if "updated_at" in frame.columns:
-            frame = frame.with_columns(
-                pl.col("updated_at").cast(pl.Datetime(time_unit="us", time_zone="UTC"), strict=False)
-            )
+        frame = StorageCompat.safe_normalize_frame(frame)
         frames.append(frame)
     if not frames:
         return pl.DataFrame()

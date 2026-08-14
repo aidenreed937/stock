@@ -37,3 +37,27 @@ def test_normalize_datetime_columns() -> None:
     df = pl.DataFrame({"updated_at": [now_naive]})
     normalized = StorageCompat.normalize_datetime_columns(df)
     assert normalized.schema["updated_at"] == pl.Datetime("us", "UTC")
+
+
+def test_normalize_numeric_columns() -> None:
+    df = pl.DataFrame({"rqyl": ["12345.6"], "rzye": ["999.0"], "text_col": ["abc"]})
+    normalized = StorageCompat.normalize_numeric_columns(df)
+    assert normalized.schema["rqyl"] == pl.Float64
+    assert normalized.schema["rzye"] == pl.Float64
+    assert normalized.schema["text_col"] == pl.String
+    assert normalized["rqyl"][0] == 12345.6
+
+
+def test_safe_normalize_frame() -> None:
+    df = pl.DataFrame({
+        "ts_code": ["600519.SH"],
+        "date": ["2026-08-14"],
+        "rqyl": ["500000.0"],
+        "updated_at": [datetime(2026, 8, 14, 15, 0, 0, tzinfo=timezone.utc)],
+    })
+    safe_df = StorageCompat.safe_normalize_frame(df)
+    assert "symbol" in safe_df.columns
+    assert "trade_date" in safe_df.columns
+    assert safe_df.schema["trade_date"] == pl.Date
+    assert safe_df.schema["rqyl"] == pl.Float64
+    assert safe_df.schema["updated_at"] == pl.Datetime("us", "UTC")

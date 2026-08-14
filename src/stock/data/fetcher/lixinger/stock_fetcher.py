@@ -12,6 +12,30 @@ from stock.models.market import DailyBar
 from stock.utils.logger import logger
 
 
+_INDUSTRY_CODES_CACHE: dict[str, list[str]] = {}
+
+
+def _resolve_sw_2021_codes(client: LixingerClient, level: str = "one") -> list[str]:
+    """动态获取申万 2021 版行业代码列表 (one=一级, two=二级, three=三级)。"""
+    cache_key = f"sw_2021_{level}"
+    if cache_key in _INDUSTRY_CODES_CACHE:
+        return _INDUSTRY_CODES_CACHE[cache_key]
+
+    try:
+        df_ind = client.query("cn/industry", source="sw_2021")
+        if not df_ind.empty and "level" in df_ind.columns and "stockCode" in df_ind.columns:
+            target_codes = (
+                df_ind[df_ind["level"] == level]["stockCode"].dropna().astype(str).tolist()
+            )
+            if target_codes:
+                _INDUSTRY_CODES_CACHE[cache_key] = sorted(target_codes)
+                return _INDUSTRY_CODES_CACHE[cache_key]
+    except Exception as e:
+        logger.warning(f"动态获取申万 {level} 级行业分类失败: {e}")
+
+    return []
+
+
 class LixingerStockFetcher:
     """理杏仁股票领域专用数据抓取器。"""
 
@@ -96,7 +120,7 @@ class LixingerStockFetcher:
                 curr_start = curr_end + timedelta(days=1)
             if not chunks:
                 return pl.DataFrame()
-            return pl.concat(chunks).unique()
+            return pl.concat(chunks, how="diagonal_relaxed").unique()
 
 
         start_str = start_date.strftime("%Y-%m-%d")
@@ -133,13 +157,8 @@ class LixingerStockFetcher:
                     default_code = lx_indices[0] if lx_indices else "000985"
                     query_kwargs["stockCodes"] = [default_code]
                 elif "industry" in endpoint or "sw_2021" in endpoint:
-                    codes = [
-                        "110000", "210000", "220000", "230000", "240000", "270000",
-                        "280000", "330000", "340000", "350000", "360000", "370000",
-                        "410000", "420000", "430000", "450000", "460000", "480000",
-                        "490000", "510000", "610000", "620000", "630000", "640000",
-                        "650000", "710000", "720000", "730000", "740000", "750000", "760000", "770000"
-                    ]
+                    target_level = "two" if "l2" in endpoint.lower() else "one"
+                    codes = _resolve_sw_2021_codes(self.client, level=target_level)
                     # 申万行业估值接口限制单次只能查询 1 个行业代码，逐个查询并拼接
                     dfs: list[pl.DataFrame] = []
                     for code in codes:

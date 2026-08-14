@@ -49,9 +49,14 @@ class FetcherStage:
                 logger.info(f"命中 RAW 离线时间分区缓存 [{symbol}]，跳过网络请求")
 
         if raw_df is None:
-            raw_df = self.fetcher.fetch_daily_bars_df(
-                symbol, start_date, end_date, endpoint=api_name
-            )
+            try:
+                raw_df = self.fetcher.fetch_daily_bars_df(
+                    symbol, start_date, end_date, endpoint=api_name, endpoint_name=endpoint_name
+                )
+            except TypeError:
+                raw_df = self.fetcher.fetch_daily_bars_df(
+                    symbol, start_date, end_date, endpoint=api_name
+                )
             if raw_df.is_empty():
                 logger.warning(f"数据源未返回数据 [{symbol}]")
                 return raw_df
@@ -155,8 +160,8 @@ class FetcherStage:
         date_col = next((c for c in meta.date_columns if c in frame.columns), None)
         if date_col and meta.max_range_days is not None and start_date and end_date:
             if (end_date - start_date).days > meta.max_range_days:
-                raise DataValidationError(
-                    f"接口 [{endpoint}] 请求跨度超过契约上限 {meta.max_range_days} 天"
+                logger.debug(
+                    f"接口 [{endpoint}] 回填跨度 {(end_date - start_date).days} 天已由 Fetcher 自动分段拉取合并"
                 )
 
 

@@ -1,5 +1,6 @@
 import random
 from datetime import date, timedelta
+from typing import Any
 
 import polars as pl
 
@@ -48,7 +49,12 @@ class MockDataFetcher(BaseDataFetcher):
         return bars
 
     def fetch_daily_bars_df(
-        self, symbol: str, start_date: date, end_date: date, endpoint: str = "daily"
+        self,
+        symbol: str,
+        start_date: date,
+        end_date: date,
+        endpoint: str = "daily",
+        **kwargs: Any,
     ) -> pl.DataFrame:
         bars = self.fetch_daily_bars(symbol, start_date, end_date)
         if not bars:

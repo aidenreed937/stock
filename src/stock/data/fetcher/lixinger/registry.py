@@ -74,7 +74,18 @@ LIXINGER_API_REGISTRY: dict[str, EndpointMeta] = {
     ),
     "cn/industry/fundamental/sw_2021": EndpointMeta(
         api_name="cn/industry/fundamental/sw_2021",
-        description="申万 2021 版行业基本面估值数据",
+        description="申万 2021 版一级行业基本面估值数据",
+        group="fundamental",
+        primary_keys=["stockCode", "date"],
+        date_columns=["date"], required_columns=["stockCode", "date"],
+        update_time="18:00",
+        update_delay_days=0,
+        code_param_name="stockCodes",
+        default_metrics=["pe_ttm.ew", "pb.ew", "ps_ttm.ew", "dyr.ew", "mc"],
+    ),
+    "cn/industry/fundamental/sw_2021_l2": EndpointMeta(
+        api_name="cn/industry/fundamental/sw_2021",
+        description="申万 2021 版二级行业基本面估值数据",
         group="fundamental",
         primary_keys=["stockCode", "date"],
         date_columns=["date"], required_columns=["stockCode", "date"],
@@ -157,9 +168,9 @@ LIXINGER_API_REGISTRY: dict[str, EndpointMeta] = {
     ),
 }
 
-# 增加 CLI 常用短别名映射
 LIXINGER_API_REGISTRY["sw_2021_constituents"] = LIXINGER_API_REGISTRY["cn/industry/constituents/sw_2021"]
 LIXINGER_API_REGISTRY["sw_2021_fundamental"] = LIXINGER_API_REGISTRY["cn/industry/fundamental/sw_2021"]
+LIXINGER_API_REGISTRY["sw_2021_l2_fundamental"] = LIXINGER_API_REGISTRY["cn/industry/fundamental/sw_2021"]
 LIXINGER_API_REGISTRY["index_fundamental"] = LIXINGER_API_REGISTRY["cn/index/fundamental"]
 LIXINGER_API_REGISTRY["fs_non_financial"] = LIXINGER_API_REGISTRY["cn/company/fs/non_financial"]
 LIXINGER_API_REGISTRY["pledge_info"] = LIXINGER_API_REGISTRY["cn/company/hot/ple"]

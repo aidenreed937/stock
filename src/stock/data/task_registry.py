@@ -89,6 +89,7 @@ _CUSTOM_TASKS: dict[tuple[str, str], TaskSpec] = {
     ("lixinger", "company_fundamental"): _make_spec("company_fundamental", "lixinger", "cn/company/fundamental/non_financial", "company_fundamental", fetch_mode="per_symbol", partitioned=False, is_single_sync=True),
     ("lixinger", "index_fundamental"): _make_spec("index_fundamental", "lixinger", "cn/index/fundamental", "index_fundamental", fetch_mode="per_symbol", partitioned=False, is_single_sync=True),
     ("lixinger", "sw_2021_fundamental"): _make_spec("sw_2021_fundamental", "lixinger", "cn/industry/fundamental/sw_2021", "sw_2021_fundamental", fetch_mode="per_symbol", partitioned=False, is_single_sync=True),
+    ("lixinger", "sw_2021_l2_fundamental"): _make_spec("sw_2021_l2_fundamental", "lixinger", "cn/industry/fundamental/sw_2021_l2", "sw_2021_l2_fundamental", fetch_mode="per_symbol", partitioned=False, is_single_sync=True),
     ("lixinger", "sw_2021_constituents"): _make_spec("sw_2021_constituents", "lixinger", "cn/industry/constituents/sw_2021", "sw_2021_constituents", fetch_mode="per_symbol", partitioned=False, is_single_sync=True),
     ("lixinger", "fs_non_financial"): _make_spec("fs_non_financial", "lixinger", "cn/company/fs/non_financial", "fs_non_financial", fetch_mode="per_symbol", partitioned=False, is_single_sync=True),
     ("lixinger", "pledge_info"): _make_spec("pledge_info", "lixinger", "cn/company/hot/ple", "pledge_info", fetch_mode="per_symbol", partitioned=False, is_single_sync=True),
