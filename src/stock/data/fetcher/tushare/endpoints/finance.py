@@ -188,4 +188,13 @@ FINANCE_ENDPOINTS: dict[str, EndpointMeta] = {
         date_columns=["report_date"],
         required_columns=["ts_code", "report_date", "org_name"],
     ),
+    "moneyflow_ind_dc": EndpointMeta(
+        api_name="moneyflow_ind_dc",
+        description="东方财富行业与概念板块资金流向 (含主力/超大单净流入)",
+        frequency="daily",
+        group="money_flow",
+        primary_keys=["trade_date", "ts_code", "content_type"],
+        date_columns=["trade_date"],
+        required_columns=["trade_date", "ts_code", "content_type"],
+    ),
 }
