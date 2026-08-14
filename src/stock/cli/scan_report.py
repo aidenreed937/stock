@@ -6,7 +6,6 @@ from typing import Any, Final
 
 from stock.analytics.industry.classifier import IndustryClassifier
 
-# 宏观周期状态中文名称映射表
 REGIME_CN_NAMES: Final[dict[str, str]] = {
     "OPPORTUNITY_ZONE": "🟢 战略黄金建仓期 (大级别大底)",
     "BUBBLE_RISK": "🔴 周期大顶泡沫区 (极度过热风险)",
@@ -40,213 +39,201 @@ def _get_regime_advice(regime: str) -> tuple[str, str, str]:
     return badge, cn_name, advice
 
 
-def _format_buffett_interpretation(buf_val: float, buf_pctl: float) -> str:
-    """结合证券化率绝对值与10年历史分位数生成客观通俗解读。"""
-    if buf_pctl >= 85.0:
+def _build_one_sentence_summary(data: dict[str, Any]) -> str:
+    """构建一句话结论：裁决核心矛盾，给出仓位与行业配置方向。"""
+    macro = data.get("macro") or {}
+    eyby = macro.get("ey_by") or {}
+    buffett = macro.get("buffett") or {}
+    pbroe = data.get("pbroe") or {}
+    tcr = data.get("tcr") or {}
+
+    eyby_val = eyby.get("ey_by_ratio", 0.0)
+    eyby_pctl = eyby.get("percentile_10y", 0.0)
+    buf_pctl = buffett.get("percentile_10y", 0.0)
+    exp_pct = macro.get("suggested_equity_exposure", 0.7) * 100
+
+    undervalued_raw = pbroe.get("undervalued_industries", [])
+    uv_names = [_resolve_industry_name(c) for c in undervalued_raw[:3]]
+    uv_str = "/".join(uv_names) if uv_names else "低估高股息"
+
+    crowded = [_resolve_industry_name(c) for c in tcr.get("crowded_industries", [])]
+    crowd_str = "/".join(crowded) if crowded else "高位题材"
+
+    if eyby_pctl >= 70.0 and buf_pctl >= 80.0:
         return (
-            f"处于近10年 **{buf_pctl:.1f}% 极高分位** (偏热高位区)。"
-            "全市场总市值相对经济总量扩张显著，整体已非便宜低估区，需警惕估值消化压力。"
+            f"股票性价比处于历史高位（股债比 {eyby_val:.2f}x，10 年 {eyby_pctl:.0f}% 分位），"
+            f"但市场整体水位也到 {buf_pctl:.0f}% 高分位——便宜主要靠超低国债利率，不是全面低估。"
+            f"**保持 {exp_pct:.0f}% 仓位，只买便宜好货（{uv_str}），回避过热板块（{crowd_str}）。**"
         )
-    if buf_pctl >= 70.0:
+    if eyby_pctl >= 70.0:
         return (
-            f"处于近10年 **{buf_pctl:.1f}% 中高分位** (轻度偏高)。"
-            "全市场具备一定估值溢价，需依靠盈利基本面增长消化估值。"
+            f"股票资产处于高性价比战略建仓期（股债比 {eyby_val:.2f}x，"
+            f"10 年 {eyby_pctl:.0f}% 分位）。"
+            f"**保持 {exp_pct:.0f}% 积极仓位，重点配置质优价廉资产（{uv_str}）。**"
         )
-    if buf_pctl >= 30.0:
+    if eyby_pctl < 30.0 or buf_pctl >= 90.0:
         return (
-            f"处于近10年 **{buf_pctl:.1f}% 历史中枢** (常态合理区)。"
-            "总市值与经济总量基本匹配，未见明显系统性泡沫或整体低估。"
-        )
-    if buf_pctl >= 15.0:
-        return (
-            f"处于近10年 **{buf_pctl:.1f}% 偏低分位** (具备安全边际)。"
-            "全市场总市值相对经济总量较为便宜，具备较好中长期配置性价比。"
+            f"市场估值与杠杆处于偏热风险区。"
+            f"**建议将仓位严格控制在 {exp_pct:.0f}% 防御水平，坚决避险。**"
         )
     return (
-        f"处于近10年 **{buf_pctl:.1f}% 极端低估洼地** (历史大底)。"
-        "全市场总市值相对经济总量大幅折价，具备极高长期战略配置价值。"
+        f"宏观估值处于常态中枢区间，无系统性风险。"
+        f"**建议维持 {exp_pct:.0f}% 标准配置，优选 {uv_str}。**"
     )
 
 
-def _format_margin_interpretation(zone_desc: str, ratio: float) -> str:
-    """根据两融杠杆渗透率与区间描述生成对应通俗解读。"""
-    if ratio < 2.2:
-        return f"处于 **{zone_desc}**。杠杆充分出清，筹码结构纯净，无强平负反馈风险。"
-    if ratio < 2.8:
-        return f"处于 **{zone_desc}**。场内杠杆处于常态健康水平，既无爆仓风险也无过度投机。"
-    if ratio <= 3.5:
-        return f"处于 **{zone_desc}**。游资与杠杆资金博弈加剧，波动率开始放大。"
-    return f"处于 **{zone_desc}**。杠杆盘极度拥挤，高度警惕大盘回调时诱发的被动平仓多杀多。"
+def _build_three_signals_table(data: dict[str, Any]) -> list[str]:
+    """构建三个关键信号表格：股票性价比、市场整体水位与短线情绪。"""
+    macro = data.get("macro") or {}
+    eyby = macro.get("ey_by") or {}
+    buffett = macro.get("buffett") or {}
+    breadth = data.get("breadth") or {}
 
-
-def _build_investor_decision_table(info: dict[str, Any]) -> list[str]:
-    """构建通俗版一分钟决策指南表格。"""
-    r_cn, adv = info["regime_cn"], info["summary_advice"]
-    exp, uv = info["exp_pct"], info["undervalued_text"]
-    t1_ind, t1_pct, crowd = info["top1_ind"], info["top1_pct"], info["crowd_text"]
-    row_t1 = f"| 🔥 **最热行业** | **{t1_ind} ({t1_pct:.1f}%)** | {crowd} |"
-    return [
-        "## 🚦 一分钟决策指南（核心结论）",
-        "| 决策维度 | 当前状态 / 信号 | 通俗解读与实操建议 |",
-        "| :--- | :--- | :--- |",
-        f"| 🎯 **大盘总评** | **{r_cn}** | {adv} |",
-        f"| 📊 **建议总仓位** | **{exp:.0f}% (配置上限)** | 保持中高仓位进攻或定投 |",
-        f"| 🛡️ **性价比板块** | **{uv}** | PB-ROE 残差洼地 |",
-        row_t1,
-    ]
-
-
-def _build_investor_macro_section(
-    eyby: dict[str, Any], buffett: dict[str, Any], macro: dict[str, Any]
-) -> list[str]:
-    """构建宏观大势通俗分析段落。"""
     eyby_val = eyby.get("ey_by_ratio", 0.0)
     eyby_pctl = eyby.get("percentile_10y", 0.0)
     buf_val = buffett.get("securitization_ratio", 0.0)
     buf_pctl = buffett.get("percentile_10y", 0.0)
-    buf_mv = buffett.get("total_market_cap_yi", 0.0)
+    r20 = breadth.get("above_ma20_ratio", 0.0)
 
-    lines = [
-        "## 一、宏观天时：现在买股票划算吗？（周期与性价比）",
-        f"- 🌡️ **股债性价比标尺 (EY/BY)**: `{eyby_val:.2f}x`（10年分位: `{eyby_pctl:.1f}%`）",
-        (
-            f"  > 💡 **通俗解读**: 股票隐含收益率是 10 年期国债利率的 **{eyby_val:.2f} 倍**。"
-            f" 历史上仅有约 {100 - eyby_pctl:.1f}% 的悲观大底才具备如此性价比，属于战略建仓期。"
-        ),
-        (
-            f"- 🏛️ **证券化率 (巴菲特指标)**: `{buf_val:.1f}%`"
-            f"（总市值约 `{buf_mv:.0f}` 亿，10年分位: `{buf_pctl:.1f}%`）"
-        ),
-        f"  > 💡 **通俗解读**: {_format_buffett_interpretation(buf_val, buf_pctl)}",
-    ]
-    for d in macro.get("key_drivers", []):
-        if "分歧" in d:
-            lines.append(f"- ⚠️ **{d}**")
-    return lines
+    # 1. 股票性价比
+    if eyby_pctl >= 70.0:
+        ey_status, ey_desc = "🟢 高", f"历史性机会，仅 {100 - eyby_pctl:.0f}% 时间更便宜"
+    elif eyby_pctl >= 30.0:
+        ey_status, ey_desc = "🟡 中", "估值中枢合理，性价比适中"
+    else:
+        ey_status, ey_desc = "🔴 低", "股票吸引力偏弱，注意防御"
 
+    # 2. 市场整体水位
+    if buf_pctl >= 85.0:
+        buf_status = "🟡 偏高" if eyby_pctl >= 70.0 else "🔴 极高"
+        buf_desc = "便宜靠低利率，非全面低估" if eyby_pctl >= 70.0 else "估值偏高，需业绩消化"
+    elif buf_pctl >= 70.0:
+        buf_status, buf_desc = "🟡 中偏高", "全市场具备一定估值溢价"
+    elif buf_pctl >= 30.0:
+        buf_status, buf_desc = "🟢 合理", "总市值与经济总量基本匹配"
+    else:
+        buf_status, buf_desc = "🟢 极低", "全市场大幅折价，深度安全边际"
 
-def _build_investor_industry_section(
-    undervalued_text: str,
-    top1_ind: str,
-    top1_pct: float,
-    crowd_text: str,
-    momentum: dict[str, Any],
-) -> list[str]:
-    """构建中观行业通俗分析段落。"""
-    mom_diag = momentum.get("diagnostics", "常态分化")
-    return [
-        "## 二、中观地利：哪些行业安全？哪些行业太热？（行业攻防地图）",
-        "### 1. 🛡️ 最具性价比的“便宜好货”洼地 (PB-ROE 残差排序)",
-        f"- 重点关注行业: **{undervalued_text}**",
-        "  > 💡 **通俗解读**: 行业市净率低于 ROE 公允水平，属于质优价廉、被错杀的低估值资产。",
-        "",
-        "### 2. ⚠️ 资金拥挤度与轮动雷达",
-        f"- **成交最火热行业**: `{top1_ind}` (单日占 31 行业总成交 `{top1_pct:.1f}%`)",
-        f"- **极端拥挤度状态**: {crowd_text}",
-        f"- **动量剪刀差**: `{momentum.get('spread', 0.0):.1f}%` ({mom_diag})",
-    ]
-
-
-def _build_investor_micro_section(
-    margin: dict[str, Any],
-    breadth: dict[str, Any],
-    sentiment: dict[str, Any],
-    dt_str: str,
-) -> list[str]:
-    """构建微观情绪通俗分析段落。"""
-    m_ratio, m_bal = margin.get("margin_penetration", 0.0), margin.get("margin_balance_yi", 0.0)
-    m_dt = margin.get("trade_date", dt_str)
-    m_tag = f" (截至 {m_dt} T-1)" if m_dt and m_dt != dt_str else ""
-    m_desc = margin.get("zone_desc", "正常")
-
-    r20, r60 = breadth.get("above_ma20_ratio", 0.0), breadth.get("above_ma60_ratio", 0.0)
-    r20_note = "(短线亢奋过热，慎防回踩)" if r20 > 80 else "(短线处于常态)"
-    pb_break, turnover = sentiment.get("pb_break_ratio", 0.0), sentiment.get("turnover_ratio", 0.0)
+    # 3. 短线情绪
+    if r20 > 80.0:
+        br_status, br_desc = "🔴 过热", "短线亢奋，勿追高"
+    elif r20 >= 40.0:
+        br_status, br_desc = "🟢 健康", "短线处于常态健康带"
+    else:
+        br_status, br_desc = "⚪ 冰点", "短线悲观冰点，酝酿反弹"
 
     return [
-        "## 三、微观人和：场内资金与情绪如何？（筹码与博弈健康度）",
-        f"- 💰 **两融杠杆渗透率**: `{m_ratio:.2f}%` (两融余额约 `{m_bal:.0f}` 亿元{m_tag})",
-        f"  > 💡 **通俗解读**: {_format_margin_interpretation(m_desc, m_ratio)}",
-        "- 🧭 **全市场多周期宽度**:",
-        f"  - **短线情绪 (站上 MA20 比例)**: `{r20:.1f}%` {r20_note}",
-        f"  - **中期生命线 (站上 MA60 比例)**: `{r60:.1f}%` (中期趋势修复中)",
-        "- 📉 **破净率与换手率**:",
-        f"  - 全市场破净率 `{pb_break:.2f}%`（资产大面积折价）",
-        f"  - 平均换手率 `{turnover:.2f}%`（活跃度适中）",
+        "## 三个关键信号",
+        "| 维度 | 状态 | 关键数字 | 说明 |",
+        "|---|---|---|---|",
+        f"| 股票性价比 | {ey_status} | 股债比 {eyby_val:.2f}x | {ey_desc} |",
+        f"| 市场整体水位 | {buf_status} | 市值/GDP {buf_val:.1f}% | {buf_desc} |",
+        f"| 短线情绪 | {br_status} | {r20:.0f}% 个股站上 20 日线 | {br_desc} |",
     ]
 
 
-def _build_investor_memo() -> list[str]:
-    """构建投资者实操备忘录。"""
-    return [
-        "## 四、普通投资者实操备忘录",
-        "- ✅ **宜 (DO)**:",
-        "  1. 维持中高仓位（70%~85%），坚定持有被低估的宽基指数与高股息核心资产；",
-        "  2. 遇到盘中分歧回踩时，逢低加仓 PB-ROE 突出的低估值高性价比板块；",
-        "  3. 采取分批定投策略，平滑持仓成本与心理波动。",
-        "- ❌ **忌 (DON'T)**:",
-        "  1. 切忌在战略大底区域过度悲观、空仓等待“绝对最低点”；",
-        "  2. 切忌追涨单日成交占比 >20% 或短线涨幅过大的高拥挤度题材；",
-        "  3. 切忌使用场外高倍杠杆博弈短线波动。",
-    ]
-
-
-def format_investor_report(data: dict[str, Any]) -> str:
-    """生成面向普通投资者阅读体验良好的通俗白话版体检报告。"""
-    dt_str = data.get("trade_date", "")
-    macro = data.get("macro") or {}
-    tcr = data.get("tcr") or {}
+def _build_industry_selection(data: dict[str, Any]) -> list[str]:
+    """构建行业怎么选板块。"""
     pbroe = data.get("pbroe") or {}
-    momentum = data.get("momentum") or {}
-    margin = data.get("margin") or {}
-    breadth = data.get("breadth") or {}
-    sentiment = data.get("sentiment") or {}
+    tcr = data.get("tcr") or {}
 
-    rating_badge, regime_cn, summary_advice = _get_regime_advice(
-        macro.get("regime", "NORMAL_ROTATION")
-    )
-    exp_pct = macro.get("suggested_equity_exposure", 0.7) * 100
+    undervalued_raw = pbroe.get("undervalued_industries", [])
+    undervalued = [_resolve_industry_name(c) for c in undervalued_raw[:4]]
+    uv_text = "、".join(undervalued) if undervalued else "暂无显著偏离板块"
 
     top1_ind = _resolve_industry_name(tcr.get("top1_industry", "无"))
     top1_pct = tcr.get("top1_tcr", 0.0)
     crowded = [_resolve_industry_name(c) for c in tcr.get("crowded_industries", [])]
-    crowd_text = f"⚠️ 极端拥挤行业: `{', '.join(crowded)}`" if crowded else "🟢 无极端拥挤行业"
+
+    if crowded:
+        crowd_line = f"- 🔴 拥挤警戒：**{top1_ind}** 成交占 {top1_pct:.1f}%（>20% 警戒线）"
+    else:
+        crowd_line = f"- 🟢 拥挤警戒：全市场行业成交分布均衡（最高 {top1_ind} 占 {top1_pct:.1f}%）"
+
+    return [
+        "## 行业怎么选",
+        f"- 🟢 低估洼地：**{uv_text}**（质优价廉）",
+        crowd_line,
+    ]
+
+
+def _build_micro_health_line(data: dict[str, Any]) -> list[str]:
+    """构建微观健康度单行内联指标。"""
+    margin = data.get("margin") or {}
+    breadth = data.get("breadth") or {}
+    sentiment = data.get("sentiment") or {}
+
+    m_ratio = margin.get("margin_penetration", 0.0)
+    m_desc = "温和" if 2.2 <= m_ratio <= 2.8 else ("出清" if m_ratio < 2.2 else "偏热")
+
+    pb_break = sentiment.get("pb_break_ratio", 0.0)
+    pb_desc = "大面积折价" if pb_break > 7.0 else ("部分折价" if pb_break >= 4.0 else "常态")
+
+    turnover = sentiment.get("turnover_ratio", 0.0)
+    to_desc = "火热" if turnover > 6.0 else ("适中" if turnover >= 3.0 else "低迷")
+
+    r60 = breadth.get("above_ma60_ratio", 0.0)
+    r60_desc = "多头走强" if r60 > 60.0 else ("修复中" if r60 >= 30.0 else "弱势寻底")
+
+    line = (
+        f"两融杠杆 {m_ratio:.2f}%（{m_desc}） · "
+        f"破净率 {pb_break:.2f}%（{pb_desc}） · "
+        f"换手率 {turnover:.2f}%（{to_desc}） · "
+        f"中期趋势 {r60:.1f}% 站上 60 日线（{r60_desc}）"
+    )
+    return [
+        "## 微观健康度",
+        line,
+    ]
+
+
+def _build_action_memo(data: dict[str, Any]) -> list[str]:
+    """构建精简行动备忘清单。"""
+    macro = data.get("macro") or {}
+    pbroe = data.get("pbroe") or {}
+    tcr = data.get("tcr") or {}
+
+    exp_pct = macro.get("suggested_equity_exposure", 0.7) * 100
+    exp_min = max(20, int(exp_pct - 10))
+    exp_max = min(95, int(exp_pct + 10))
 
     undervalued_raw = pbroe.get("undervalued_industries", [])
-    undervalued = [_resolve_industry_name(c) for c in undervalued_raw[:4]]
-    undervalued_text = ", ".join(undervalued) if undervalued else "暂无显著偏离行业"
+    undervalued = [_resolve_industry_name(c) for c in undervalued_raw[:3]]
+    uv_text = "、".join(undervalued) if undervalued else "低估核心资产"
 
-    table_info = {
-        "regime_cn": regime_cn,
-        "summary_advice": summary_advice,
-        "exp_pct": exp_pct,
-        "undervalued_text": undervalued_text,
-        "top1_ind": top1_ind,
-        "top1_pct": top1_pct,
-        "crowd_text": crowd_text,
-    }
+    crowded = [_resolve_industry_name(c) for c in tcr.get("crowded_industries", [])]
+    avoid_line = (
+        f"❌ 不追{'/'.join(crowded)}等成交占比 >20% 的板块"
+        if crowded
+        else "❌ 不追短线涨幅过大的过热题材"
+    )
 
-    eyby_dict = macro.get("ey_by") or {}
-    buf_dict = macro.get("buffett") or {}
+    return [
+        "## 操作备忘",
+        f"✅ 保持 {exp_min}~{exp_max}% 仓位，定投低估宽基/高股息",
+        f"✅ 回踩加仓{uv_text}",
+        avoid_line,
+        "❌ 不加高倍杠杆",
+    ]
 
+
+def format_investor_report(data: dict[str, Any]) -> str:
+    """生成面向普通投资者清晰干练、一屏结论导向的每日体检报告。"""
+    dt_str = data.get("trade_date", "")
     lines = [
-        "# 📈 A 股量化每日体检报告（投资者通俗版）",
-        f"> **体检基准日**: {dt_str} | **综合评级**: {rating_badge}",
+        f"# 📈 A 股每日体检 · {dt_str}",
         "",
-        "---",
+        "## 一句话结论",
+        _build_one_sentence_summary(data),
         "",
     ]
-    lines.extend(_build_investor_decision_table(table_info))
-    lines.extend(["", "---", ""])
-    lines.extend(_build_investor_macro_section(eyby_dict, buf_dict, macro))
-    lines.extend(["", "---", ""])
-    lines.extend(
-        _build_investor_industry_section(undervalued_text, top1_ind, top1_pct, crowd_text, momentum)
-    )
-    lines.extend(["", "---", ""])
-    lines.extend(_build_investor_micro_section(margin, breadth, sentiment, dt_str))
-    lines.extend(["", "---", ""])
-    lines.extend(_build_investor_memo())
+    lines.extend(_build_three_signals_table(data))
+    lines.append("")
+    lines.extend(_build_industry_selection(data))
+    lines.append("")
+    lines.extend(_build_micro_health_line(data))
+    lines.append("")
+    lines.extend(_build_action_memo(data))
     lines.append("")
     return "\n".join(lines)
 

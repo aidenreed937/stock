@@ -76,8 +76,10 @@ def test_format_reports() -> None:
     }
 
     investor_report = format_investor_report(mock_data)
-    assert "A 股量化每日体检报告（投资者通俗版）" in investor_report
-    assert "一分钟决策指南" in investor_report
+    assert "A 股每日体检" in investor_report
+    assert "一句话结论" in investor_report
+    assert "三个关键信号" in investor_report
+    assert "行业怎么选" in investor_report
     assert "银行" in investor_report  # 480000 成功映射为银行
     assert "85%" in investor_report
 
