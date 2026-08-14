@@ -184,7 +184,7 @@ FINANCE_ENDPOINTS: dict[str, EndpointMeta] = {
         description="卖方机构盈利预测数据 (分析师一致预期)",
         frequency="daily",
         group="financial_statements",
-        primary_keys=["ts_code", "report_date", "org_name"],
+        primary_keys=["ts_code", "report_date", "org_name", "quarter"],
         date_columns=["report_date"],
         required_columns=["ts_code", "report_date", "org_name"],
     ),

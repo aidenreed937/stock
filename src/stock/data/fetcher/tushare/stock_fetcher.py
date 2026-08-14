@@ -57,67 +57,40 @@ class TuShareStockFetcher(BaseDataFetcher):
             )
             return pl.DataFrame()
 
-        # 最外层防御性拦截：针对 margin 接口自动按交易所拆分与最早上线首日过滤
+        # 防御性拦截：针对 margin 接口自动按交易所拆分与最早上线首日过滤
         if endpoint == "margin" and "exchange_id" not in extra_kwargs:
             from stock.constants import EXCHANGE_START_DATES
-            from stock.utils.logger import logger
-
             ex_dates = EXCHANGE_START_DATES.get("margin", {})
-
-            dfs: list[pl.DataFrame] = []
-            for ex in ["SSE", "SZSE", "BSE"]:
-                min_start_str = ex_dates.get(ex)
-                if min_start_str:
-                    min_start_d = date.fromisoformat(min_start_str)
-                    if end_date < min_start_d:
-                        logger.info(
-                            f"接口 [margin] 自动拦截跳过交易所 [{ex}]: 请求终止日 [{end_date}] 早于官方上线首日 [{min_start_d}]"
-                        )
-                        continue
-                    sub_start_d = max(start_date, min_start_d)
-                else:
-                    sub_start_d = start_date
-
-                sub_df = self.fetch_daily_bars_df(
+            dfs = [
+                self.fetch_daily_bars_df(
                     symbol=symbol,
-                    start_date=sub_start_d,
+                    start_date=max(start_date, date.fromisoformat(ex_dates[ex])) if ex in ex_dates else start_date,
                     end_date=end_date,
                     endpoint=endpoint,
                     exchange_id=ex,
                 )
-                if not sub_df.is_empty():
-                    dfs.append(sub_df)
+                for ex in ["SSE", "SZSE", "BSE"]
+                if not (ex in ex_dates and end_date < date.fromisoformat(ex_dates[ex]))
+            ]
+            valid_dfs = [df for df in dfs if not df.is_empty()]
+            return pl.concat(valid_dfs, how="diagonal_relaxed") if valid_dfs else pl.DataFrame()
 
-            if not dfs:
-                return pl.DataFrame()
-            merged = pl.concat(dfs, how="diagonal_relaxed")
-            return merged
-
-        start_str = start_date.strftime("%Y%m%d")
-        end_str = end_date.strftime("%Y%m%d")
-
+        start_str, end_str = start_date.strftime("%Y%m%d"), end_date.strftime("%Y%m%d")
         query_kwargs: dict[str, Any] = dict(extra_kwargs)
         is_real_symbol = symbol and (symbol != endpoint)
 
         if meta.frequency == "event":
             if is_real_symbol:
-                if endpoint in ("index_weight", "index_classify", "index_member"):
-                    query_kwargs["index_code"] = symbol
-                else:
-                    query_kwargs["ts_code"] = symbol
+                query_kwargs["index_code" if endpoint in ("index_weight", "index_classify", "index_member") else "ts_code"] = symbol
             if endpoint == "stock_basic" and not is_real_symbol:
                 query_kwargs["list_status"] = "L"
         else:
             if is_real_symbol:
-                if endpoint in ("index_weight", "index_classify", "index_member"):
-                    query_kwargs["index_code"] = symbol
-                else:
-                    query_kwargs["ts_code"] = symbol
-                query_kwargs["start_date"] = start_str
-                query_kwargs["end_date"] = end_str
+                query_kwargs["index_code" if endpoint in ("index_weight", "index_classify", "index_member") else "ts_code"] = symbol
+                query_kwargs["start_date"], query_kwargs["end_date"] = start_str, end_str
             else:
                 if start_date == end_date:
-                    query_kwargs["trade_date"] = start_str
+                    query_kwargs["report_date" if endpoint == "report_rc" else "trade_date"] = start_str
                 elif (end_date - start_date).days >= (meta.request_window_days or 300):
                     from datetime import timedelta
 

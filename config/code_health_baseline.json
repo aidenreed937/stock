@@ -6,14 +6,6 @@
     "max_file_lines": 400
   },
   "classes": {
-    "src/stock/data/backfill.py::HistoricalBackfiller": {
-      "lines": 222,
-      "methods": 6
-    },
-    "src/stock/data/catalog.py::DataCatalog": {
-      "lines": 238,
-      "methods": 10
-    },
     "src/stock/data/domain/universe.py::UniverseFilter": {
       "lines": 277,
       "methods": 9
@@ -23,7 +15,7 @@
       "methods": 5
     },
     "src/stock/data/fetcher/tushare/stock_fetcher.py::TuShareStockFetcher": {
-      "lines": 231,
+      "lines": 204,
       "methods": 4
     },
     "src/stock/data/fetcher/yfinance/global_fetcher.py::YFinanceDataFetcher": {
@@ -49,13 +41,10 @@
   },
   "files": {
     "src/stock/data/audit/reconciliation.py": {
-      "lines": 857
-    },
-    "src/stock/data/backfill.py": {
-      "lines": 474
+      "lines": 853
     },
     "src/stock/data/catalog.py": {
-      "lines": 417
+      "lines": 411
     }
   }
 }

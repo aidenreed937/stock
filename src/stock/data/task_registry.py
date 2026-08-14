@@ -25,7 +25,7 @@ PER_SYMBOL_DATASETS: frozenset[str] = frozenset({
     "index_daily", "index_dailybasic", "index_weight", "global_index_daily",
     "fund_share", "fund_daily", "fund_adj", "etf_share_size",
     "income", "fina_indicator", "forecast", "express", "balancesheet", "cashflow",
-    "margin_detail", "hk_hold", "report_rc",
+    "margin_detail", "hk_hold",
 })
 
 _EXPLICIT_NON_PARTITIONED: frozenset[str] = frozenset({
@@ -81,6 +81,7 @@ def _make_spec(
 _CUSTOM_TASKS: dict[tuple[str, str], TaskSpec] = {
     ("mock", "stock_daily_bar"): _make_spec("stock_daily_bar", "mock", "daily", "stock_daily_bar", "bar", fetch_mode="per_day", partitioned=True),
     ("tushare", "stock_daily_bar"): _make_spec("stock_daily_bar", "tushare", "daily", "stock_daily_bar", "bar", fetch_mode="per_day", partitioned=True),
+    ("tushare", "report_rc"): _make_spec("report_rc", "tushare", "report_rc", "report_rc", fetch_mode="per_day", partitioned=True),
     ("tushare", "index_daily_bar"): _make_spec("index_daily_bar", "tushare", "index_daily", "index_daily_bar", "bar", fetch_mode="per_symbol", partitioned=False, is_single_sync=True),
     ("yfinance", "macro_indicators"): _make_spec("macro_indicators", "yfinance", "macro_indicators", "macro_indicators", fetch_mode="per_symbol", partitioned=False, is_single_sync=True),
     ("yfinance", "index_valuation"): _make_spec("index_valuation", "yfinance", "index_valuation", "index_valuation", fetch_mode="per_day", partitioned=False, is_single_sync=True),
