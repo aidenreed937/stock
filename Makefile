@@ -24,6 +24,7 @@ install:
 lint:
 	uv run ruff check .
 	uv run mypy src
+	uv run python scripts/lint_class_size.py
 
 format:
 	uv run ruff check --fix .

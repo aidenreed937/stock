@@ -31,3 +31,11 @@ repos:
       - id: conventional-pre-commit
         stages: [commit-msg]
         args: []
+
+  - repo: local
+    hooks:
+      - id: check-class-size
+        name: check class size and method limits
+        entry: uv run python scripts/lint_class_size.py
+        language: system
+        files: ^src/

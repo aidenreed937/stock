@@ -71,16 +71,19 @@ convention = "google"
 
 [tool.ruff.lint.per-file-ignores]
 "tests/*" = ["S101", "S105", "S106", "D"]  # 测试文件中允许使用 assert、硬编码测试 token，且不强制要求 docstring
+"scripts/*" = ["T201", "D"]                # 运维/门禁脚本允许使用标准输出 print，且不强制要求全量 docstring
 
 [tool.ruff.lint.mccabe]
 max-complexity = 10  # 圈复杂度上限 10
 
 [tool.ruff.lint.pylint]
 max-args = 5          # 方法参数上限 5
-max-branches = 12     # 分支数上限 12
+max-branches = 10     # 分支数上限 10
 max-returns = 6       # return 语句上限 6
-max-statements = 50   # 语句数上限 50
-max-public-methods = 15 # 类公共方法上限 15
+max-statements = 40   # 语句数上限 40
+max-public-methods = 10 # 类公共方法上限 10
+max-locals = 15       # 局部变量上限 15
+max-nested-blocks = 5 # 嵌套块深度上限 5
 
 [tool.mypy]
 python_version = "3.12"
@@ -105,4 +108,4 @@ warn_untyped_fields = true
 minversion = "8.0"
 addopts = "-ra -q --cov=src/stock --cov-fail-under=75"
 testpaths = ["tests"]
-pythonpath = ["src"]
+pythonpath = ["src", "."]

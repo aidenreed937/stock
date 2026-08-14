@@ -1,0 +1,64 @@
+{
+  "version": "1.0",
+  "thresholds": {
+    "max_class_lines": 200,
+    "max_class_methods": 10,
+    "max_file_lines": 400
+  },
+  "classes": {
+    "src/stock/data/backfill.py::HistoricalBackfiller": {
+      "lines": 394,
+      "methods": 6
+    },
+    "src/stock/data/catalog.py::DataCatalog": {
+      "lines": 238,
+      "methods": 10
+    },
+    "src/stock/data/domain/universe.py::UniverseFilter": {
+      "lines": 363,
+      "methods": 8
+    },
+    "src/stock/data/fetcher/lixinger/stock_fetcher.py::LixingerStockFetcher": {
+      "lines": 259,
+      "methods": 5
+    },
+    "src/stock/data/fetcher/tushare/stock_fetcher.py::TuShareStockFetcher": {
+      "lines": 231,
+      "methods": 4
+    },
+    "src/stock/data/fetcher/yfinance/global_fetcher.py::YFinanceDataFetcher": {
+      "lines": 263,
+      "methods": 12
+    },
+    "src/stock/data/ops/probe.py::GlobalDataProbe": {
+      "lines": 240,
+      "methods": 6
+    },
+    "src/stock/data/pipeline.py::MarketDataPipeline": {
+      "lines": 288,
+      "methods": 5
+    },
+    "src/stock/data/storage/duckdb_store.py::DuckDBMarketStore": {
+      "lines": 628,
+      "methods": 27
+    },
+    "src/stock/data/storage/raw_store.py::RawDataStorage": {
+      "lines": 231,
+      "methods": 12
+    }
+  },
+  "files": {
+    "src/stock/data/audit/reconciliation.py": {
+      "lines": 570
+    },
+    "src/stock/data/backfill.py": {
+      "lines": 574
+    },
+    "src/stock/data/catalog.py": {
+      "lines": 417
+    },
+    "src/stock/data/storage/duckdb_store.py": {
+      "lines": 644
+    }
+  }
+}
