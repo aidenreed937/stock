@@ -43,12 +43,14 @@ def _build_one_sentence_summary(data: dict[str, Any]) -> str:
     """构建一句话结论：裁决核心矛盾，给出仓位与行业配置方向。"""
     macro = data.get("macro") or {}
     eyby = macro.get("ey_by") or {}
+    all_m = macro.get("all_market") or {}
     buffett = macro.get("buffett") or {}
     pbroe = data.get("pbroe") or {}
     tcr = data.get("tcr") or {}
 
     eyby_val = eyby.get("ey_by_ratio", 0.0)
     eyby_pctl = eyby.get("percentile_10y", 0.0)
+    pb_pctl = all_m.get("pb_percentile_10y", 50.0)
     buf_pctl = buffett.get("percentile_10y", 0.0)
     exp_pct = macro.get("suggested_equity_exposure", 0.7) * 100
 
@@ -59,10 +61,12 @@ def _build_one_sentence_summary(data: dict[str, Any]) -> str:
     crowded = [_resolve_industry_name(c) for c in tcr.get("crowded_industries", [])]
     crowd_str = "/".join(crowded) if crowded else "高位题材"
 
-    if eyby_pctl >= 70.0 and buf_pctl >= 80.0:
+    if eyby_pctl >= 70.0 and (buf_pctl >= 80.0 or pb_pctl > 60.0):
         return (
-            f"股票性价比处于历史高位（股债比 {eyby_val:.2f}x，10 年 {eyby_pctl:.0f}% 分位），"
-            f"但市场整体水位也到 {buf_pctl:.0f}% 高分位——便宜主要靠超低国债利率，不是全面低估。"
+            f"股票性价比处于历史高位（沪深300 股债比 {eyby_val:.2f}x，"
+            f"10 年 {eyby_pctl:.0f}% 分位），"
+            f"但全 A 水位处于 {pb_pctl:.0f}% 中枢偏上，证券化率达 {buf_pctl:.0f}% 高分位——"
+            f"便宜主要靠超低国债利率与大盘蓝筹，全 A 并非全面低估。"
             f"**保持 {exp_pct:.0f}% 仓位，只买便宜好货（{uv_str}），回避过热板块（{crowd_str}）。**"
         )
     if eyby_pctl >= 70.0:
@@ -82,53 +86,78 @@ def _build_one_sentence_summary(data: dict[str, Any]) -> str:
     )
 
 
-def _build_three_signals_table(data: dict[str, Any]) -> list[str]:
-    """构建三个关键信号表格：股票性价比、市场整体水位与短线情绪。"""
+def _render_eyby_row(eyby: dict[str, Any]) -> str:
+    val = eyby.get("ey_by_ratio", 0.0)
+    pctl = eyby.get("percentile_10y", 0.0)
+    if pctl >= 70.0:
+        st, desc = "🟢 高", f"历史性机会，仅 {100 - pctl:.0f}% 时间更便宜"
+    elif pctl >= 30.0:
+        st, desc = "🟡 中", "估值中枢合理，性价比适中"
+    else:
+        st, desc = "🔴 低", "股票吸引力偏弱，注意防御"
+    return (
+        f"| 真实估值 (相对债券) | 股债比 EY/BY (沪深300) | {val:.2f}x | {pctl:.0f}% | {st} {desc} |"
+    )
+
+
+def _render_all_m_row(all_m: dict[str, Any]) -> str:
+    val = all_m.get("pb_ew", 0.0)
+    pctl = all_m.get("pb_percentile_10y", 0.0)
+    if pctl >= 75.0:
+        st, desc = "🔴 偏高", "全 A 整体估值具备一定溢价"
+    elif pctl >= 55.0:
+        st, desc = "🟡 中枢偏上", "估值中枢偏上，全 A 非全面低估"
+    elif pctl >= 30.0:
+        st, desc = "🟢 中枢合理", "资产估值处于历史中枢带"
+    else:
+        st, desc = "🟢 偏低", "全 A 资产深度折价，安全边际高"
+    return (
+        f"| 真实估值 (全 A 资产) | 全 A 水位 (中证全指 PB) | {val:.2f}x | "
+        f"{pctl:.0f}% | {st} {desc} |"
+    )
+
+
+def _render_buf_row(buffett: dict[str, Any]) -> str:
+    val = buffett.get("securitization_ratio", 0.0)
+    pctl = buffett.get("percentile_10y", 0.0)
+    if pctl >= 85.0:
+        st, desc = "🟡 偏高", "规模高位，受超低利率与扩容推升"
+    elif pctl >= 70.0:
+        st, desc = "🟡 中偏高", "总市值相对 GDP 具备一定扩张"
+    elif pctl >= 30.0:
+        st, desc = "🟢 合理", "总市值与经济总量基本匹配"
+    else:
+        st, desc = "🟢 极低", "全市场总市值大幅折价"
+    return f"| 宏观规模水位 | 证券化率 (市值/GDP) | {val:.1f}% | {pctl:.0f}% | {st} {desc} |"
+
+
+def _render_breadth_row(breadth: dict[str, Any]) -> str:
+    r20 = breadth.get("above_ma20_ratio", 0.0)
+    if r20 > 80.0:
+        st, desc = "🔴 过热", "短线亢奋，勿追高"
+    elif r20 >= 40.0:
+        st, desc = "🟢 健康", "短线处于常态健康带"
+    else:
+        st, desc = "⚪ 冰点", "短线悲观冰点，酝酿反弹"
+    return f"| 短线情绪 | 站上 20 日线比例 | {r20:.0f}% | — | {st} {desc} |"
+
+
+def _build_macro_signals_table(data: dict[str, Any]) -> list[str]:
+    """构建宏观四维关键信号表格：区分真实估值、全 A 水位、宏观规模与短线情绪。"""
     macro = data.get("macro") or {}
     eyby = macro.get("ey_by") or {}
+    all_m = macro.get("all_market") or {}
     buffett = macro.get("buffett") or {}
     breadth = data.get("breadth") or {}
 
-    eyby_val = eyby.get("ey_by_ratio", 0.0)
-    eyby_pctl = eyby.get("percentile_10y", 0.0)
-    buf_val = buffett.get("securitization_ratio", 0.0)
-    buf_pctl = buffett.get("percentile_10y", 0.0)
-    r20 = breadth.get("above_ma20_ratio", 0.0)
-
-    # 1. 股票性价比
-    if eyby_pctl >= 70.0:
-        ey_status, ey_desc = "🟢 高", f"历史性机会，仅 {100 - eyby_pctl:.0f}% 时间更便宜"
-    elif eyby_pctl >= 30.0:
-        ey_status, ey_desc = "🟡 中", "估值中枢合理，性价比适中"
-    else:
-        ey_status, ey_desc = "🔴 低", "股票吸引力偏弱，注意防御"
-
-    # 2. 市场整体水位
-    if buf_pctl >= 85.0:
-        buf_status = "🟡 偏高" if eyby_pctl >= 70.0 else "🔴 极高"
-        buf_desc = "便宜靠低利率，非全面低估" if eyby_pctl >= 70.0 else "估值偏高，需业绩消化"
-    elif buf_pctl >= 70.0:
-        buf_status, buf_desc = "🟡 中偏高", "全市场具备一定估值溢价"
-    elif buf_pctl >= 30.0:
-        buf_status, buf_desc = "🟢 合理", "总市值与经济总量基本匹配"
-    else:
-        buf_status, buf_desc = "🟢 极低", "全市场大幅折价，深度安全边际"
-
-    # 3. 短线情绪
-    if r20 > 80.0:
-        br_status, br_desc = "🔴 过热", "短线亢奋，勿追高"
-    elif r20 >= 40.0:
-        br_status, br_desc = "🟢 健康", "短线处于常态健康带"
-    else:
-        br_status, br_desc = "⚪ 冰点", "短线悲观冰点，酝酿反弹"
-
     return [
-        "## 三个关键信号",
-        "| 维度 | 状态 | 关键数字 | 说明 |",
-        "|---|---|---|---|",
-        f"| 股票性价比 | {ey_status} | 股债比 {eyby_val:.2f}x | {ey_desc} |",
-        f"| 市场整体水位 | {buf_status} | 市值/GDP {buf_val:.1f}% | {buf_desc} |",
-        f"| 短线情绪 | {br_status} | {r20:.0f}% 个股站上 20 日线 | {br_desc} |",
+        "## 四个关键信号",
+        "| 类型 | 信号 | 关键数字 | 10年分位 | 说明 / 定性 |",
+        "|---|---|---|---|---|",
+        _render_eyby_row(eyby),
+        _render_all_m_row(all_m),
+        _render_buf_row(buffett),
+        _render_breadth_row(breadth),
     ]
 
 
@@ -200,16 +229,16 @@ def _build_action_memo(data: dict[str, Any]) -> list[str]:
 
     crowded = [_resolve_industry_name(c) for c in tcr.get("crowded_industries", [])]
     avoid_line = (
-        f"❌ 不追{'/'.join(crowded)}等成交占比 >20% 的板块"
+        f"- ❌ 不追{'/'.join(crowded)}等成交占比 >20% 的板块"
         if crowded
-        else "❌ 不追短线涨幅过大的过热题材"
+        else "- ❌ 不追短线涨幅过大的过热题材"
     )
 
     return [
         "## 操作备忘",
         f"- ✅ 保持 {exp_min}~{exp_max}% 仓位，定投低估宽基/高股息",
         f"- ✅ 回踩加仓{uv_text}",
-        f"- {avoid_line}",
+        avoid_line,
         "- ❌ 不加高倍杠杆",
     ]
 
@@ -224,7 +253,7 @@ def format_investor_report(data: dict[str, Any]) -> str:
         _build_one_sentence_summary(data),
         "",
     ]
-    lines.extend(_build_three_signals_table(data))
+    lines.extend(_build_macro_signals_table(data))
     lines.append("")
     lines.extend(_build_industry_selection(data))
     lines.append("")
@@ -240,6 +269,7 @@ def format_pro_report(data: dict[str, Any]) -> str:
     dt_str = data.get("trade_date", "")
     macro = data.get("macro") or {}
     eyby = macro.get("ey_by") or {}
+    all_m = macro.get("all_market") or {}
     buffett = macro.get("buffett") or {}
     tcr = data.get("tcr") or {}
     pbroe = data.get("pbroe") or {}
@@ -252,6 +282,10 @@ def format_pro_report(data: dict[str, Any]) -> str:
         f"{eyby.get('ey_by_ratio', 0.0):.2f}x (PE: {eyby.get('pe_ttm', 0.0):.2f}, "
         f"10Y: {eyby.get('bond_yield_10y', 0.0):.3f}%, "
         f"Pctl: {eyby.get('percentile_10y', 0.0):.1f}%)"
+    )
+    all_m_s = (
+        f"PB: {all_m.get('pb_ew', 0.0):.3f} (Pctl: {all_m.get('pb_percentile_10y', 0.0):.1f}%), "
+        f"PE: {all_m.get('pe_ttm_ew', 0.0):.2f} (Pctl: {all_m.get('pe_percentile_10y', 0.0):.1f}%)"
     )
     buf_s = (
         f"{buffett.get('securitization_ratio', 0.0):.1f}% (MV: "
@@ -268,8 +302,9 @@ def format_pro_report(data: dict[str, Any]) -> str:
         f"## 1. 宏观周期与大类资产定价 (Macro Regime, As-Of: {macro.get('trade_date', dt_str)})",
         f"- **Regime**: `{macro.get('regime', 'NORMAL_ROTATION')}` ({reg_desc})",
         f"- **Exposure Limit**: `{macro.get('suggested_equity_exposure', 0.7) * 100:.1f}%`",
-        f"- **EY/BY Ratio**: `{eyby_s}`",
-        f"- **Buffett Ratio**: `{buf_s}`",
+        f"- **EY/BY Ratio (000300)**: `{eyby_s}`",
+        f"- **All-Market PB (000985)**: `{all_m_s}`",
+        f"- **Buffett Ratio (MV/GDP)**: `{buf_s}`",
         "- **Key Drivers**:",
     ]
     for d in macro.get("key_drivers", []):

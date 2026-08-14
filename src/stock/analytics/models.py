@@ -56,6 +56,20 @@ class BuffettRatioResult(BaseModel):
     is_bubble_overheat: bool = Field(default=False, description="是否处于极端泡沫过热区 (>86%)")
 
 
+class AllMarketValuationResult(BaseModel):
+    """全 A 股市场整体资产水位 (以中证全指 000985 等权 PB 为核心标尺) 计算结果。"""
+
+    trade_date: date = Field(..., description="计算日期")
+    symbol: str = Field(default="000985", description="指数代码 (默认中证全指)")
+    index_name: str = Field(default="中证全指", description="指数中文名称")
+    pb_ew: float = Field(..., description="等权市净率 PB (剔除微利小票盈利分母扭曲)")
+    pb_percentile_10y: float = Field(..., description="过去 10 年 PB 历史分位数 (0~100%)")
+    pe_ttm_ew: float = Field(..., description="等权市盈率 PE-TTM")
+    pe_percentile_10y: float = Field(..., description="过去 10 年 PE 历史分位数 (0~100%)")
+    zone: ValuationZone = Field(..., description="全 A 水位区间判定")
+    zone_desc: str = Field(..., description="中文描述说明")
+
+
 class MacroRegimeResult(BaseModel):
     """宏观四象限状态机综合判定结果。"""
 
@@ -64,6 +78,9 @@ class MacroRegimeResult(BaseModel):
     regime_desc: str = Field(..., description="状态中文描述")
     suggested_equity_exposure: float = Field(..., description="建议权益仓位暴露上限 (0.0 ~ 1.0)")
     ey_by: EYBYRatioResult | None = Field(default=None, description="股债收益比详情")
+    all_market: AllMarketValuationResult | None = Field(
+        default=None, description="全 A 资产水位详情"
+    )
     buffett: BuffettRatioResult | None = Field(default=None, description="证券化率详情")
     key_drivers: list[str] = Field(default_factory=list, description="状态驱动主因")
 

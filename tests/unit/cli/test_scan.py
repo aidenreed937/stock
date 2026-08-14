@@ -35,10 +35,18 @@ def test_format_reports() -> None:
                 "percentile_10y": 88.0,
             },
             "buffett": {
-                "securitization_ratio": 64.0,
-                "total_market_cap_yi": 800000.0,
+                "securitization_ratio": 62.5,
+                "total_market_cap_yi": 780000.0,
                 "gdp_ttm_yi": 1250000.0,
                 "percentile_10y": 15.0,
+            },
+            "all_market": {
+                "symbol": "000985",
+                "index_name": "中证全指",
+                "pb_ew": 2.16,
+                "pb_percentile_10y": 63.0,
+                "pe_ttm_ew": 113.0,
+                "pe_percentile_10y": 88.0,
             },
             "key_drivers": ["股债收益比极高"],
         },
@@ -78,7 +86,8 @@ def test_format_reports() -> None:
     investor_report = format_investor_report(mock_data)
     assert "A 股每日体检" in investor_report
     assert "一句话结论" in investor_report
-    assert "三个关键信号" in investor_report
+    assert "四个关键信号" in investor_report
+    assert "中证全指" in investor_report
     assert "行业怎么选" in investor_report
     assert "银行" in investor_report  # 480000 成功映射为银行
     assert "85%" in investor_report
