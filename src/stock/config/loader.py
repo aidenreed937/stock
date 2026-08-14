@@ -98,6 +98,7 @@ def load_watchlist_config(
 
         a_stocks = [_extract_code(s) for s in a_shares.get("stocks", []) if _extract_code(s)]
         a_indices = [_extract_code(i) for i in a_shares.get("indices", []) if _extract_code(i)]
+        a_funds = [_extract_code(f) for f in a_shares.get("funds", []) if _extract_code(f)]
         lx_stocks = [s.split(".")[0] for s in a_stocks]
         lx_indices = [i.split(".")[0] for i in a_indices]
         g_stocks = [_extract_code(s) for s in global_assets.get("stocks", []) if _extract_code(s)]
@@ -105,8 +106,8 @@ def load_watchlist_config(
         macro_series = [str(m).strip() for m in macro if str(m).strip()]
 
         return WatchlistsConfig(
-            tushare=SourceWatchlistConfig(stocks=a_stocks, indices=a_indices),
-            lixinger=SourceWatchlistConfig(stocks=lx_stocks, indices=lx_indices),
+            tushare=SourceWatchlistConfig(stocks=a_stocks, indices=a_indices, funds=a_funds),
+            lixinger=SourceWatchlistConfig(stocks=lx_stocks, indices=lx_indices, funds=a_funds),
             yfinance=SourceWatchlistConfig(stocks=g_stocks, indices=g_indices),
             fred=SourceWatchlistConfig(macro_series=macro_series),
         )

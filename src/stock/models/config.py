@@ -4,10 +4,11 @@ from pydantic import BaseModel, Field, model_validator
 
 
 class UniverseConfig(BaseModel):
-    """标的范围配置（支持股票与指数解耦）。"""
+    """标的范围配置（支持股票、指数与基金解耦）。"""
 
     stocks: list[str] = Field(default_factory=list, description="股票代码列表")
     indices: list[str] = Field(default_factory=list, description="指数代码列表")
+    funds: list[str] = Field(default_factory=list, description="基金代码列表")
     symbols: list[str] = Field(default_factory=list, description="兼容旧配置的单列表")
 
     @model_validator(mode="before")
@@ -15,7 +16,7 @@ class UniverseConfig(BaseModel):
     def extract_nested_universe(cls, data: object) -> dict[str, object]:
         """将多层级嵌套的统一自选池结构扁平提取。"""
         if not isinstance(data, dict):
-            return {"stocks": [], "indices": [], "symbols": []}
+            return {"stocks": [], "indices": [], "funds": [], "symbols": []}
 
         def _to_code_str(val: object) -> str:
             if isinstance(val, dict):
@@ -24,22 +25,27 @@ class UniverseConfig(BaseModel):
 
         stocks = list(data.get("stocks", []))
         indices = list(data.get("indices", []))
+        funds = list(data.get("funds", []))
         symbols = list(data.get("symbols", []))
 
         if "a_shares" in data and isinstance(data["a_shares"], dict):
             stocks.extend(data["a_shares"].get("stocks", []))
             indices.extend(data["a_shares"].get("indices", []))
+            funds.extend(data["a_shares"].get("funds", []))
         if "global" in data and isinstance(data["global"], dict):
             stocks.extend(data["global"].get("stocks", []))
             indices.extend(data["global"].get("indices", []))
+            funds.extend(data["global"].get("funds", []))
 
         clean_stocks = [_to_code_str(s) for s in stocks if _to_code_str(s)]
         clean_indices = [_to_code_str(i) for i in indices if _to_code_str(i)]
+        clean_funds = [_to_code_str(f) for f in funds if _to_code_str(f)]
         clean_symbols = [_to_code_str(s) for s in symbols if _to_code_str(s)]
 
         return {
             "stocks": clean_stocks,
             "indices": clean_indices,
+            "funds": clean_funds,
             "symbols": clean_symbols,
         }
 
@@ -50,7 +56,7 @@ class UniverseConfig(BaseModel):
             return self.symbols
         seen: set[str] = set()
         result: list[str] = []
-        for item in self.stocks + self.indices:
+        for item in self.stocks + self.indices + self.funds:
             if item not in seen:
                 seen.add(item)
                 result.append(item)
@@ -62,6 +68,7 @@ class SourceWatchlistConfig(BaseModel):
 
     stocks: list[str] = Field(default_factory=list)
     indices: list[str] = Field(default_factory=list)
+    funds: list[str] = Field(default_factory=list)
     macro_series: list[str] = Field(default_factory=list)
 
     @property
@@ -69,7 +76,7 @@ class SourceWatchlistConfig(BaseModel):
         """按配置顺序去重返回该数据源包含的所有标的代码。"""
         seen: set[str] = set()
         res: list[str] = []
-        for s in self.stocks + self.indices + self.macro_series:
+        for s in self.stocks + self.indices + self.funds + self.macro_series:
             if s not in seen:
                 seen.add(s)
                 res.append(s)

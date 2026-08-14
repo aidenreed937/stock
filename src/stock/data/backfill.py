@@ -81,11 +81,9 @@ def _watchlist_symbols(
     watchlist = getattr(data_cfg.watchlists, data_source, None)
     if watchlist is None:
         return []
-    if (
-        endpoint in per_symbol_endpoints
-        and endpoint != "stock_daily_bar"
-        and getattr(watchlist, "indices", None)
-    ):
+    if endpoint in {"fund_daily", "fund_adj", "fund_share", "etf_share_size"} and getattr(watchlist, "funds", None):
+        return list(watchlist.funds)
+    if endpoint in per_symbol_endpoints and endpoint != "stock_daily_bar" and getattr(watchlist, "indices", None):
         return list(watchlist.indices)
     if hasattr(watchlist, "all_symbols"):
         return list(watchlist.all_symbols)
