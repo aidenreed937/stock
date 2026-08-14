@@ -374,7 +374,7 @@ class HistoricalBackfiller:
                 max_workers=max_workers,
                 item_desc=lambda d: f"交易日 [{d}] 全市场数据",
             )
-        elif is_per_symbol_task(self.data_source, self.endpoint):
+        elif is_per_symbol_task(self.data_source, self.endpoint) or bool(self.symbol):
             b_start = min(todo_dates)
             b_end = max(todo_dates)
             try:

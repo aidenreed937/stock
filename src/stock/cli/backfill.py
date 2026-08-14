@@ -99,8 +99,6 @@ def main() -> None:  # noqa: C901, PLR0912, PLR0915
         if args.symbol is not None
         else (yaml_config.get("symbol") or yaml_config.get("default_symbol", "all"))
     )
-    if symbol == "watchlist":
-        symbol = ""
     force_refresh = args.force_refresh or yaml_config.get("force_refresh", False)
 
     def parse_dt(d_str: str | None) -> date | None:

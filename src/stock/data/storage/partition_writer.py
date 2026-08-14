@@ -62,8 +62,9 @@ class ParquetPartitionWriter:
             normalized_dfs = [StorageCompat.normalize_identity_columns(df) for df in dfs]
             if not existing.is_empty() and source is not None:
                 self._validate_frame_source(existing, source, f"已有 Curated 文件 [{file_path}]")
+                meta_cols = {"fetched_at", "source_id", "source_unit_note", "raw_row_count", "clean_row_count"}
                 for df in normalized_dfs:
-                    if set(df.columns) != set(existing.columns):
+                    if (set(df.columns) - meta_cols) != (set(existing.columns) - meta_cols):
                         raise DataValidationError(
                             f"Curated 文件 [{file_path}] schema 不匹配: "
                             f"已有列 {sorted(existing.columns)}，新数据列 {sorted(df.columns)}"
