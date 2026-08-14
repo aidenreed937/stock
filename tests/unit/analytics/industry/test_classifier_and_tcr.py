@@ -13,6 +13,13 @@ def test_industry_classifier_dynamic_resolution() -> None:
     """验证行业分类器能够正确解析 801xxx 及 6 位代码为标准行业中文名称。"""
     classifier = IndustryClassifier()
 
+    l1_codes = classifier.get_l1_codes("SW2021")
+    assert len(l1_codes) == 31
+    assert "801080.SI" in l1_codes
+    assert "801780.SI" in l1_codes
+    assert "801980.SI" in l1_codes  # 美容护理
+    assert "801001.SI" not in l1_codes  # 申万A股综合指数不在一级行业集合中
+
     assert classifier.resolve_name("801080.SI") == "电子"
     assert classifier.resolve_name("270000") == "电子"
     assert classifier.resolve_name("801780.SI") == "银行"
