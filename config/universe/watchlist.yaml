@@ -84,9 +84,9 @@ universe:
         description: "红利低波动策略 (华泰柏瑞)"
 
       # --- 核心行业与主题龙头 ---
-      - code: "512480.SH"
-        name: "半导体ETF"
-        description: "芯片制造与集成电路全产业链 (国联安)"
+      - code: "159995.SZ"
+        name: "芯片ETF"
+        description: "芯片设计、AI算力与晶圆制造龙头 (华夏)"
       - code: "159516.SZ"
         name: "半导体设备ETF"
         description: "半导体材料与高端设备自主可控 (国泰)"
