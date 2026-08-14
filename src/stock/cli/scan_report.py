@@ -158,32 +158,29 @@ def _build_industry_selection(data: dict[str, Any]) -> list[str]:
 
 
 def _build_micro_health_line(data: dict[str, Any]) -> list[str]:
-    """构建微观健康度单行内联指标。"""
+    """构建微观健康度分行指标。"""
     margin = data.get("margin") or {}
     breadth = data.get("breadth") or {}
     sentiment = data.get("sentiment") or {}
 
     m_ratio = margin.get("margin_penetration", 0.0)
-    m_desc = "温和" if 2.2 <= m_ratio <= 2.8 else ("出清" if m_ratio < 2.2 else "偏热")
+    m_desc = "温和健康" if 2.2 <= m_ratio <= 2.8 else ("杠杆出清" if m_ratio < 2.2 else "杠杆偏热")
 
     pb_break = sentiment.get("pb_break_ratio", 0.0)
-    pb_desc = "大面积折价" if pb_break > 7.0 else ("部分折价" if pb_break >= 4.0 else "常态")
+    pb_desc = "大面积折价" if pb_break > 7.0 else ("部分折价" if pb_break >= 4.0 else "常态区间")
 
     turnover = sentiment.get("turnover_ratio", 0.0)
-    to_desc = "火热" if turnover > 6.0 else ("适中" if turnover >= 3.0 else "低迷")
+    to_desc = "交易火热" if turnover > 6.0 else ("情绪适中" if turnover >= 3.0 else "交投低迷")
 
     r60 = breadth.get("above_ma60_ratio", 0.0)
     r60_desc = "多头走强" if r60 > 60.0 else ("修复中" if r60 >= 30.0 else "弱势寻底")
 
-    line = (
-        f"两融杠杆 {m_ratio:.2f}%（{m_desc}） · "
-        f"破净率 {pb_break:.2f}%（{pb_desc}） · "
-        f"换手率 {turnover:.2f}%（{to_desc}） · "
-        f"中期趋势 {r60:.1f}% 站上 60 日线（{r60_desc}）"
-    )
     return [
         "## 微观健康度",
-        line,
+        f"- 两融杠杆：**{m_ratio:.2f}%**（{m_desc}）",
+        f"- 破净比例：**{pb_break:.2f}%**（{pb_desc}）",
+        f"- 市场换手：**{turnover:.2f}%**（{to_desc}）",
+        f"- 中期趋势：**{r60:.1f}%** 站上 60 日线（{r60_desc}）",
     ]
 
 
@@ -210,10 +207,10 @@ def _build_action_memo(data: dict[str, Any]) -> list[str]:
 
     return [
         "## 操作备忘",
-        f"✅ 保持 {exp_min}~{exp_max}% 仓位，定投低估宽基/高股息",
-        f"✅ 回踩加仓{uv_text}",
-        avoid_line,
-        "❌ 不加高倍杠杆",
+        f"- ✅ 保持 {exp_min}~{exp_max}% 仓位，定投低估宽基/高股息",
+        f"- ✅ 回踩加仓{uv_text}",
+        f"- {avoid_line}",
+        "- ❌ 不加高倍杠杆",
     ]
 
 
