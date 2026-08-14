@@ -190,3 +190,19 @@ def test_tushare_stock_endpoints_use_local_stock_basic_pool(monkeypatch) -> None
     )
 
     assert symbols == ["000001.SZ", "600519.SH"]
+
+
+def test_load_curated_symbol_pool_with_ts_code_column() -> None:
+    from stock.data.backfill import _load_curated_symbol_pool
+
+    mock_store = MagicMock()
+    mock_store.query_dataset.return_value = pl.DataFrame(
+        {
+            "ts_code": ["000001.SZ", "600519.SH", None],
+            "name": ["平安银行", "贵州茅台", "空值"],
+        }
+    )
+
+    with patch("stock.data.storage.duckdb_store.DuckDBMarketStore", return_value=mock_store):
+        symbols = _load_curated_symbol_pool("tushare", "stock_basic")
+        assert symbols == ["000001.SZ", "600519.SH"]

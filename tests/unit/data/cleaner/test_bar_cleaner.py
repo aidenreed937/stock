@@ -33,3 +33,47 @@ def test_bar_cleaner_handles_suspended_trading_day() -> None:
     assert suspended_row["low"][0] == 10.0
     assert suspended_row["close"][0] == 10.0
     assert suspended_row["volume"][0] == 0.0
+
+
+def test_bar_cleaner_handles_suspended_zero_close_with_pre_close() -> None:
+    cleaner = BarDataCleaner()
+    # 构造 TuShare 停牌无成交数据 (vol=0, close=0.0/null, pre_close=15.0, open/high/low=0.0)
+    df = pl.DataFrame(
+        {
+            "ts_code": ["600530.SH"],
+            "trade_date": ["20260803"],
+            "open": [0.0],
+            "high": [0.0],
+            "low": [0.0],
+            "close": [0.0],
+            "pre_close": [15.0],
+            "vol": [0.0],
+            "amount": [None],
+        }
+    )
+
+    cleaned = cleaner.clean(df)
+    assert len(cleaned) == 1
+    assert cleaned["close"][0] == 15.0
+    assert cleaned["open"][0] == 15.0
+    assert cleaned["high"][0] == 15.0
+    assert cleaned["low"][0] == 15.0
+    assert cleaned["amount"][0] == 0.0
+
+
+def test_bar_cleaner_deduplicates_mixed_date_formats() -> None:
+    cleaner = BarDataCleaner()
+    df = pl.DataFrame(
+        {
+            "symbol": ["600519.SH", "600519.SH"],
+            "trade_date": ["2026-08-07", "20260807"],
+            "open": [1800.0, 1800.0],
+            "high": [1820.0, 1820.0],
+            "low": [1790.0, 1790.0],
+            "close": [1810.0, 1810.0],
+            "volume": [1000.0, 1000.0],
+            "amount": [1810000.0, 1810000.0],
+        }
+    )
+    cleaned = cleaner.clean(df)
+    assert len(cleaned) == 1

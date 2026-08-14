@@ -53,15 +53,13 @@ def _load_curated_symbol_pool(data_source: str, dataset: str) -> list[str]:
     from stock.data.storage.duckdb_store import DuckDBMarketStore
 
     frame = DuckDBMarketStore(data_source=data_source).query_dataset(dataset=dataset)
-    if frame.is_empty() or "symbol" not in frame.columns:
+    if frame.is_empty():
         return []
-    return sorted(
-        {
-            str(symbol).strip()
-            for symbol in frame.get_column("symbol").drop_nulls().to_list()
-            if str(symbol).strip()
-        }
-    )
+    sym_col = next((c for c in ("symbol", "ts_code", "stockCode", "code") if c in frame.columns), None)
+    if not sym_col:
+        return []
+    vals = frame.get_column(sym_col).drop_nulls().to_list()
+    return sorted({str(s).strip() for s in vals if str(s).strip()})
 
 
 def _tushare_local_pool(endpoint: str) -> tuple[str, str] | None:

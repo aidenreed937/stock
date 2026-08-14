@@ -155,7 +155,7 @@ class TuShareStockFetcher(BaseDataFetcher):
             return pl.DataFrame()
 
         pl_df = pl.from_pandas(pandas_df)
-        if "symbol" not in pl_df.columns and symbol:
+        if "symbol" not in pl_df.columns and is_real_symbol:
             pl_df = pl_df.with_columns(pl.lit(symbol).alias("symbol"))
         # 事件型接口可能返回重复页或重复关系，按注册表自然键去重，保留有效期字段。
         primary_keys = [key for key in meta.primary_keys if key in pl_df.columns]

@@ -72,3 +72,23 @@ def test_tushare_stock_fetcher_trade_cal() -> None:
     fetcher = TuShareStockFetcher(client=mock_client)
     trade_dates = fetcher.fetch_trade_cal(date(2024, 1, 1), date(2024, 1, 3))
     assert trade_dates == [date(2024, 1, 2), date(2024, 1, 3)]
+
+
+def test_tushare_stock_fetcher_non_symbol_endpoint_does_not_inject_symbol() -> None:
+    mock_client = MagicMock()
+    mock_client.query.return_value = pd.DataFrame(
+        {
+            "ts_code": ["000001.SZ"],
+            "trade_date": ["20240102"],
+            "suspend_type": ["S"],
+        }
+    )
+    fetcher = TuShareStockFetcher(client=mock_client)
+    df = fetcher.fetch_daily_bars_df(
+        symbol="suspend_d",
+        start_date=date(2024, 1, 2),
+        end_date=date(2024, 1, 2),
+        endpoint="suspend_d",
+    )
+    assert "ts_code" in df.columns
+    assert "symbol" not in df.columns

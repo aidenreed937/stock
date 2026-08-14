@@ -34,11 +34,26 @@ class BarDataCleaner(BaseDataCleaner):
         sym_col = "symbol" if "symbol" in df.columns else ("ts_code" if "ts_code" in df.columns else "code")
         vol_col = "volume" if "volume" in df.columns else ("vol" if "vol" in df.columns else None)
 
-        # 1. 过滤 null 异常记录
-        null_subset = [c for c in [sym_col, "trade_date", "close"] if c in df.columns]
+        # 1. 过滤 null 异常记录 (标的与交易日必须存在)
+        null_subset = [c for c in [sym_col, "trade_date"] if c in df.columns]
         cleaned_df = df.drop_nulls(subset=null_subset)
 
-        # 对停牌无成交记录 (vol == 0 且 close > 0) 的开高低 0/null 进行合理填充 (对齐 close)
+        # 对停牌无成交记录 (vol == 0) 进行合理填充:
+        # (a) 若 close 为 0/null 且存在有效 pre_close，用 pre_close 填充 close
+        if vol_col and "close" in cleaned_df.columns and "pre_close" in cleaned_df.columns:
+            is_susp_no_close = (
+                (pl.col(vol_col) == 0)
+                & ((pl.col("close") <= 0) | pl.col("close").is_null())
+                & (pl.col("pre_close") > 0)
+            )
+            cleaned_df = cleaned_df.with_columns(
+                pl.when(is_susp_no_close)
+                .then(pl.col("pre_close"))
+                .otherwise(pl.col("close"))
+                .alias("close")
+            )
+
+        # (b) 若 close > 0，对开高低 0/null 对齐 close，amount 缺失/负值填充 0.0
         if vol_col and "close" in cleaned_df.columns:
             is_suspended = (pl.col(vol_col) == 0) & (pl.col("close") > 0)
             fill_exprs = [
@@ -49,6 +64,13 @@ class BarDataCleaner(BaseDataCleaner):
                 for col in ("open", "high", "low")
                 if col in cleaned_df.columns
             ]
+            if "amount" in cleaned_df.columns:
+                fill_exprs.append(
+                    pl.when(is_suspended & ((pl.col("amount") < 0) | pl.col("amount").is_null()))
+                    .then(pl.lit(0.0))
+                    .otherwise(pl.col("amount"))
+                    .alias("amount")
+                )
             if fill_exprs:
                 cleaned_df = cleaned_df.with_columns(fill_exprs)
 
@@ -81,9 +103,18 @@ class BarDataCleaner(BaseDataCleaner):
         if "pct_chg" in cleaned_df.columns:
             cleaned_df = cleaned_df.filter(pl.col("pct_chg").abs() <= 1000.0)
 
-        # 6. 按交易日与标的代码去重
+        # 6. 按交易日与标的代码去重 (先对齐日期格式避免 20260812 与 2026-08-12 重复)
         if sym_col in cleaned_df.columns and "trade_date" in cleaned_df.columns:
-            cleaned_df = cleaned_df.unique(subset=[sym_col, "trade_date"], keep="last")
+            from stock.utils.date import parse_mixed_date
+
+            try:
+                cleaned_df = (
+                    cleaned_df.with_columns(parse_mixed_date("trade_date").alias("_dedup_date"))
+                    .unique(subset=[sym_col, "_dedup_date"], keep="last")
+                    .drop("_dedup_date")
+                )
+            except Exception:
+                cleaned_df = cleaned_df.unique(subset=[sym_col, "trade_date"], keep="last")
 
         final_count = len(cleaned_df)
         dropped_count = initial_count - final_count
