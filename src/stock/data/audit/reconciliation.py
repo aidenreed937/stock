@@ -17,7 +17,7 @@ from stock.data.task_registry import resolve_task
 from stock.utils.logger import logger
 
 _DATE_COLUMNS = ("trade_date", "date", "end_date", "suspend_date", "Date")
-_SYMBOL_COLUMNS = ("symbol", "ts_code", "stockCode", "code", "ticker")
+_SYMBOL_COLUMNS = ("ts_code", "symbol", "stockCode", "code", "ticker")
 
 
 def _is_artifact_path(path: Path) -> bool:
@@ -62,6 +62,22 @@ def _collect_dataset_files(
     return sorted(files)
 
 
+def _clean_date_expr(col_name: str, dtype: pl.DataType) -> pl.Expr:
+    """标准化日期列为 YYYYMMDD 格式的 Polars 表达式。"""
+    if dtype in (pl.Date, pl.Datetime):
+        return pl.col(col_name).dt.strftime("%Y%m%d")
+    return (
+        pl.col(col_name)
+        .cast(pl.Utf8, strict=False)
+        .str.split(" ")
+        .list.first()
+        .str.split("T")
+        .list.first()
+        .str.replace_all("-", "")
+        .str.replace_all("/", "")
+    )
+
+
 def _filter_target_date(frame: pl.DataFrame, target_date: date) -> pl.DataFrame:
     """将不同日期列格式统一后筛选目标日期。"""
     date_cols = [col for col in _DATE_COLUMNS if col in frame.columns]
@@ -69,23 +85,7 @@ def _filter_target_date(frame: pl.DataFrame, target_date: date) -> pl.DataFrame:
         return frame
 
     target_plain = target_date.strftime("%Y%m%d")
-
-    exprs = []
-    for col in date_cols:
-        dtype = frame[col].dtype
-        if dtype == pl.Date:
-            exprs.append(pl.col(col) == target_date)
-        elif dtype == pl.Datetime:
-            exprs.append(pl.col(col).dt.date() == target_date)
-        else:
-            exprs.append(
-                pl.col(col)
-                .cast(pl.Utf8, strict=False)
-                .str.replace_all("-", "")
-                .str.replace_all("/", "")
-                .str.slice(0, 8)
-                == target_plain
-            )
+    exprs = [_clean_date_expr(col, frame[col].dtype) == target_plain for col in date_cols]
     return frame.filter(pl.any_horizontal(exprs))
 
 
@@ -123,12 +123,12 @@ def _extract_identity_keys_frame(frame: pl.DataFrame) -> pl.DataFrame:
     return (
         frame.select(
             [
-                pl.coalesce([pl.col(col).cast(pl.Utf8, strict=False) for col in sym_cols]).alias("symbol"),
-                pl.coalesce([pl.col(col).cast(pl.Utf8, strict=False) for col in date_cols])
-                .str.replace_all("-", "")
-                .str.replace_all("/", "")
-                .str.slice(0, 8)
-                .alias("trade_date"),
+                pl.coalesce([pl.col(c).cast(pl.Utf8, strict=False) for c in sym_cols]).alias(
+                    "symbol"
+                ),
+                pl.coalesce([_clean_date_expr(c, frame[c].dtype) for c in date_cols]).alias(
+                    "trade_date"
+                ),
             ]
         )
         .drop_nulls()
@@ -608,18 +608,18 @@ def run_index_audit(
     wl = getattr(cfg.watchlists, data_source, None)
     all_configured_indices = set(wl.indices) if (wl and hasattr(wl, "indices")) else set()
 
-    # 指数发布/基日地图 (剔除未到发布日的预期标的)
+    # 指数官方真实基准日 (Base Date)，保证数据源提供的早期回溯行情不被误截断
     index_start_dates: dict[str, date] = {
         "000001.SH": date(1990, 12, 19),
         "399001.SZ": date(1994, 7, 20),
-        "000300.SH": date(2005, 4, 8),  # 沪深300发布日
-        "000905.SH": date(2007, 1, 15),  # 中证500发布日
-        "000852.SH": date(2014, 10, 17),  # 中证1000发布日
-        "000985.CSI": date(2013, 1, 15),  # 中证全指发布日
-        "000922.CSI": date(2005, 1, 4),  # 中证红利发布日
-        "399006.SZ": date(2010, 6, 1),  # 创业板指发布日
-        "399102.SZ": date(2010, 6, 1),  # 创业板综发布日
-        "000688.SH": date(2020, 7, 23),  # 科创50发布日
+        "000300.SH": date(2004, 12, 31),  # 沪深300基日 2004-12-31 (发布日 2005-04-08)
+        "000905.SH": date(2004, 12, 31),  # 中证500基日 2004-12-31 (发布日 2007-01-15)
+        "000852.SH": date(2004, 12, 31),  # 中证1000基日 2004-12-31 (发布日 2014-10-17)
+        "000985.CSI": date(2004, 12, 31),  # 中证全指基日 2004-12-31 (发布日 2013-01-15)
+        "000922.CSI": date(2004, 12, 31),  # 中证红利基日 2004-12-31 (发布日 2005-01-04)
+        "399006.SZ": date(2010, 5, 31),  # 创业板指基日 2010-05-31 (发布日 2010-06-01)
+        "399102.SZ": date(2010, 5, 31),  # 创业板综基日 2010-05-31 (发布日 2010-06-01)
+        "000688.SH": date(2019, 12, 31),  # 科创50基日 2019-12-31 (发布日 2020-07-23)
     }
 
     expected_indices = {

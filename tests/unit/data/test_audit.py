@@ -306,3 +306,44 @@ def test_run_sw_daily_audit():
         assert res["expected_count"] == 31
         assert res["actual_count"] == 2
         assert res["actual_symbols"] == ["801010.SI", "801020.SI"]
+
+
+def test_filter_target_date_formats():
+    from datetime import datetime
+    from stock.data.audit.reconciliation import _filter_target_date
+
+    target = date(2026, 8, 1)
+
+    # 1. Date 类型
+    df_date = pl.DataFrame({"trade_date": [date(2026, 8, 1), date(2026, 8, 2)]})
+    assert len(_filter_target_date(df_date, target)) == 1
+
+    # 2. Datetime 类型
+    df_dt = pl.DataFrame({"trade_date": [datetime(2026, 8, 1, 15, 0), datetime(2026, 8, 2, 9, 30)]})
+    assert len(_filter_target_date(df_dt, target)) == 1
+
+    # 3. 包含时间戳的字符串
+    df_str_ts = pl.DataFrame({"trade_date": ["2026-08-01 00:00:00", "2026-08-02 00:00:00"]})
+    assert len(_filter_target_date(df_str_ts, target)) == 1
+
+    # 4. 紧凑型字符串与带斜杠字符串
+    df_mixed = pl.DataFrame({"trade_date": ["20260801", "2026/08/01", "20260802"]})
+    assert len(_filter_target_date(df_mixed, target)) == 2
+
+
+def test_extract_identity_keys_formats():
+    from stock.data.audit.reconciliation import _extract_identity_keys_frame
+
+    # 测试 ts_code 优先及 Date/Datetime/String 日期格式转换
+    df = pl.DataFrame(
+        {
+            "ts_code": ["000001.SZ", "600000.SH"],
+            "symbol": ["ADJ_FACTOR", "ADJ_FACTOR"],
+            "trade_date": [date(2026, 8, 1), date(2026, 8, 2)],
+        }
+    )
+    keys_df = _extract_identity_keys_frame(df)
+    assert len(keys_df) == 2
+    assert "000001.SZ" in keys_df["symbol"].to_list()
+    assert "600000.SH" in keys_df["symbol"].to_list()
+    assert "20260801" in keys_df["trade_date"].to_list()

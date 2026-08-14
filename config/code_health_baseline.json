@@ -43,8 +43,8 @@
       "methods": 14
     },
     "src/stock/data/storage/raw_store.py::RawDataStorage": {
-      "lines": 287,
-      "methods": 12
+      "lines": 332,
+      "methods": 15
     }
   },
   "files": {

@@ -145,17 +145,29 @@ def main() -> None:  # noqa: C901, PLR0912, PLR0915
             data_cfg.concurrency.default_max_workers,
         )
 
+    if not args.start_date:
+        logger.info(
+            f"未显式指定 --start 参数，采用默认回填起始日期 [{start_d}] "
+            f"(来源: {'config/data.yaml' if yaml_config.get('default_start_date') else '系统默认'})"
+        )
+
     from stock.constants import ENDPOINT_START_DATE_OVERRIDES
 
     start_overrides = (
         getattr(data_cfg, "endpoint_start_date_overrides", {}) or ENDPOINT_START_DATE_OVERRIDES
     )
-    if endpoint in start_overrides:
-        min_supported = date.fromisoformat(start_overrides[endpoint])
+    source_endpoint_key = f"{data_source}:{endpoint}"
+    override_date_str = (
+        (start_overrides.get(source_endpoint_key) or start_overrides.get(endpoint))
+        if isinstance(start_overrides, dict)
+        else None
+    )
+    if isinstance(override_date_str, str):
+        min_supported = date.fromisoformat(override_date_str)
         if start_d < min_supported:
             logger.info(
-                f"接口 [{endpoint}] 触发历史起始日自动截断校准: 原 [{start_d}] "
-                f"自动提升至官方上线首日 [{min_supported}]"
+                f"[{data_source}/{endpoint}] 触发历史起始日校准: 原请求区间起点 [{start_d}] "
+                f"自动提升至该接口数据上线首日 [{min_supported}]"
             )
             start_d = min_supported
 
@@ -207,11 +219,18 @@ def main() -> None:  # noqa: C901, PLR0912, PLR0915
             logger.error(str(exc))
             sys.exit(2)
 
+    from stock.data.factory import get_shared_fetcher
     from stock.data.storage.duckdb_store import DuckDBMarketStore
+    from stock.data.storage.raw_store import RawDataStorage
 
+    shared_fetcher = get_shared_fetcher(data_source)
     shared_store = DuckDBMarketStore(data_source=data_source)
+    shared_raw_store = RawDataStorage()
+
     if hasattr(shared_store, "enable_batch_mode"):
         shared_store.enable_batch_mode()
+    if hasattr(shared_raw_store, "enable_batch_mode"):
+        shared_raw_store.enable_batch_mode()
 
     summaries: list[dict[str, object]] = []
     try:
@@ -265,10 +284,15 @@ def main() -> None:  # noqa: C901, PLR0912, PLR0915
                 import stock.data.backfill as backfill_module
 
                 backfiller = backfill_module.HistoricalBackfiller(
-                    data_source=data_source, endpoint=current_ep, symbol=sym
+                    data_source=data_source, endpoint=current_ep, symbol=sym, fetcher=shared_fetcher
                 )
 
                 backfiller.pipeline.store = shared_store
+                backfiller.pipeline.raw_store = shared_raw_store
+                if hasattr(backfiller.pipeline, "fetcher_stage"):
+                    backfiller.pipeline.fetcher_stage.raw_store = shared_raw_store
+                elif hasattr(backfiller.pipeline, "_get_fetcher_stage"):
+                    backfiller.pipeline._get_fetcher_stage().raw_store = shared_raw_store
 
                 summary = backfiller.backfill_range(
                     sym_start_d, end_d, force_refresh=force_refresh, max_workers=workers
@@ -282,16 +306,25 @@ def main() -> None:  # noqa: C901, PLR0912, PLR0915
                         }
                     )
 
-                if idx % 5 == 0 and hasattr(shared_store, "commit"):
-                    shared_store.commit()
-                    shared_store.enable_batch_mode()
+                if idx % 500 == 0:
+                    if hasattr(shared_store, "commit"):
+                        shared_store.commit()
+                        shared_store.enable_batch_mode()
+                    if hasattr(shared_raw_store, "commit"):
+                        shared_raw_store.commit()
+                        shared_raw_store.enable_batch_mode()
 
             if hasattr(shared_store, "commit"):
                 shared_store.commit()
                 shared_store.enable_batch_mode()
+            if hasattr(shared_raw_store, "commit"):
+                shared_raw_store.commit()
+                shared_raw_store.enable_batch_mode()
     finally:
         if hasattr(shared_store, "commit"):
             shared_store.commit()
+        if hasattr(shared_raw_store, "commit"):
+            shared_raw_store.commit()
 
     failed_days = sum(
         value for item in summaries if isinstance(value := item.get("failed_days", 0), int)

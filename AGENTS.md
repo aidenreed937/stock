@@ -2,45 +2,89 @@
 
 ## 项目结构
 
-- `src/stock/`：核心 Python 包，按职责划分为 `data`（Fetcher、Cleaner、Normalizer、Storage ETL 链路）、`analytics`（技术指标与市场分析）、`strategy`（策略与信号）、`models`、`config` 和 `utils`。
+- `src/stock/`：核心 Python 包，按职责划分为 `data`（Fetcher、Cleaner、Normalizer、Storage 2-Tier ETL 链路）、`analytics`（技术指标与市场分析）、`strategy`（策略与信号）、`models`、`config` 和 `utils`。
 - `tests/unit/`：按源码模块组织的单元测试；`tests/integration/`：集成测试目录。
-- `config/`：策略、风险和标的池 YAML 配置；`data/`：本地 RAW/Curated 数据与缓存，不提交敏感信息或临时产物。
-- `docs/`：架构、CLI、数据存储和开发规范；`.github/workflows/ci.yml`：CI 门禁。
+- `config/`：策略、风险和标的池 YAML 配置（其中 `config/universe/watchlist.yaml` 为全系统唯一核心观察池）；`data/`：本地 RAW/Curated 2-Tier 离线 Parquet 数据与缓存，不提交敏感信息或临时产物。
+- `docs/`：架构、CLI、数据存储和开发规范；`.agents/skills/data-pipeline/SKILL.md`：核心数据管道与回填实操指南；`.github/workflows/ci.yml`：CI 门禁。
 
-## 开发命令
+## 环境与沙箱隔离
 
-项目要求 Python 3.12+，使用 `uv` 管理环境和依赖：
-
-```bash
-make install       # 同步依赖并安装 pre-commit
-make run           # 运行 uv run python -m stock.main
-make test          # pytest + 覆盖率，最低 75%
-make lint          # Ruff 检查与 mypy src 严格类型检查
-make format        # Ruff 自动修复并格式化
-make check         # format、lint、test 全流程；可能修改格式
-make backfill START=2026-08-01 END=2026-08-12
-```
-
-### 沙箱隔离与 uv 缓存配置
-
-`uv` 默认会从系统用户全局路径（如 `~/.local/share/uv/`）调用 Python 解释器和依赖缓存。在沙箱限制环境下，访问工作区以外的路径会导致文件系统拦截（`sandbox blocked open`）。
-
-为避免触发外部沙箱权限申请，可将 `uv` 缓存与 Python 安装路径约束在项目工作区内部：
+项目要求 Python 3.12+，使用 `uv` 管理环境和依赖。在沙箱或受限执行环境下，必须将 `uv` 缓存与解释器路径约束在项目内部，避免访问外部目录被拦截：
 
 ```bash
 export UV_CACHE_DIR=.uv_cache
 export UV_PYTHON_INSTALL_DIR=.uv_python
 ```
 
+所有命令优先通过 `make` 或 `uv run` 执行，禁止直接使用系统全局 `python` 或 `pip`。
 
-## 编码规范
+## 标准开发与数据管道命令
 
-使用 4 空格缩进，YAML/Markdown 使用 2 空格；文件采用 LF 并保留末尾换行。Ruff 行宽为 100，遵循 `pyproject.toml` 中的 lint 规则；公共 API 和核心逻辑使用 Google 风格 docstring，函数、方法和变量使用 `snake_case`，类使用 `PascalCase`。业务代码应保持明确类型注解，避免 `print`，使用项目日志工具。
+### 1. 代码质量与测试门禁
 
-## 测试要求
+```bash
+make install       # 同步依赖并安装 pre-commit
+make lint          # Ruff 检查、mypy 类型检查与类规模约束 (lint_class_size)
+make format        # Ruff 自动修复并格式化
+make test          # pytest 单元测试 + 覆盖率 (最低 75%)
+make check         # format、lint、test 全流程门禁
+make run           # 运行主程序 (uv run python -m stock.main)
+```
 
-测试文件命名为 `test_*.py`，测试函数命名为 `test_<behavior>`。新增或修改策略、指标、数据管道时，在对应的 `tests/unit/` 子目录补充测试；外部数据源应使用 mock，不依赖真实 Token 或网络。提交前运行 `uv run pytest tests/unit/<path>` 做局部验证，并确保完整 `uv run pytest` 的覆盖率不低于 75%。
+### 2. 核心数据管道 CLI (`data-pipeline`)
 
-## 提交与 PR
+数据管道回填与审计优先参考 [`.agents/skills/data-pipeline/SKILL.md`](file:///Users/mac/workspace/personal/finance/stock/.agents/skills/data-pipeline/SKILL.md)，标准 CLI 指令统一由 `Makefile` 封装：
 
-提交遵循 Conventional Commits：`<type>(<scope>): <summary>`，例如 `feat(strategy): add MACD signal` 或 `fix(fetcher): handle missing token`。分支使用 `feat/`、`fix/`、`refactor/`、`docs/` 或 `chore/` 前缀。PR 应说明变更目的、影响模块和验证命令；涉及配置、数据格式或 CLI 行为时说明兼容性影响。合并前必须通过 `make check`，并确认没有提交 `.env`、Token、凭据或本地数据文件。
+```bash
+# 1. 历史数据全量回填 (统一 Makefile 入口)
+make backfill START=YYYY-MM-DD END=YYYY-MM-DD SOURCE=<data_source> [ENDPOINT=<endpoint>] [SYMBOL=<symbol>] [FORCE_REFRESH=1]
+
+# 示例：回填 26 只自选 ETF 全历史行情与规模 (自动按上市基日截断)
+make backfill START=2005-01-01 END=2026-08-14 SOURCE=tushare ENDPOINT=fund_daily,etf_share_size,fund_adj SYMBOL=watchlist FORCE_REFRESH=1
+
+# 示例：回填 12 年 A 股 10 大核心指数 K 线
+make backfill START=2014-08-01 END=2026-08-12 SOURCE=tushare ENDPOINT=index_daily
+
+# 示例：回填理杏仁 9 大核心指数 12 年基本面估值
+make backfill START=2014-08-01 END=2026-08-12 SOURCE=lixinger ENDPOINT=index_fundamental
+
+# 示例：回填 yfinance 观察池美股巨头与外盘指数 12 年 K 线
+make backfill START=2014-08-01 END=2026-08-12 SOURCE=yfinance
+
+# 示例：回填 FRED 7 大核心宏观指标 12 年历史
+make backfill START=2014-08-01 END=2026-08-12 SOURCE=fred
+
+# 2. 数据资产主审计与多维对账
+make master-audit                     # 全库 Parquet 物理主审计盘点
+make audit TYPE=master                # 资产盘点 (同 master-audit)
+make audit TYPE=reconciliation        # RAW vs Curated 双向物理对账
+make audit TYPE=valuation             # 估值指标专项对账 (daily_basic 对齐率)
+make audit TYPE=factor                # 技术因子专项对账 (复权因子与行业行情)
+make audit TYPE=all                   # 全套系联动审计
+
+# 3. 运维、质量门禁与探针
+make probe                            # 4 大数据源连通性与时延健康探测
+make validate                         # 离线数据质量规则校验与隔离
+make baseline                         # 生成不可变数据资产基线清单
+make migrate-data [APPLY=1]           # 存量 Parquet 离线去重与 Schema 迁移
+```
+
+## 核心架构与数据流契约
+
+1. **2-Tier 存储架构**：
+   - `data/raw/`：API 原始响应分区快照，按批次追加，保留原始字段。
+   - `data/curated/`：标准化黄金表（`pl.Date` 类型统一、主键去重、单位标准化），为下游策略回测与因子计算的**唯一消费事实标准**。
+2. **统一观察池单一信任源**：
+   - [`config/universe/watchlist.yaml`](file:///Users/mac/workspace/personal/finance/stock/config/universe/watchlist.yaml) 集中管理 A 股核心个股、10 大指数基准日与 26 只核心 ETF 上市基准日。
+   - CLI 传入 `SYMBOL=watchlist` 时自动路由并对齐各标的的 `base_date`。
+3. **数据源职责分工**：
+   - `tushare`：A 股全量行情、每日估值、复权因子、北向持仓、申万行情、场内基金/ETF。
+   - `lixinger`：指数基本面估值、申万 2021 行业成份股图谱及 31 行业估值序列。
+   - `yfinance`：外盘 9 大核心指数、美股科技巨头 K 线、8 大全球宏观资产。
+   - `fred`：美联储官方宏观指标（基准利率、CPI、非农、失业率、GDP、利差等）。
+
+## 编码与测试规范
+
+1. **编码格式**：使用 4 空格缩进，YAML/Markdown 使用 2 空格；LF 换行。Ruff 行宽为 100；类与方法控制规模，遵循 `scripts/lint_class_size.py` 存量基线。
+2. **测试要求**：测试文件命名为 `test_*.py`，函数为 `test_<behavior>`。外部数据源必须使用 mock，不依赖真实 Token 或网络。单测运行 `uv run pytest tests/unit/<path>` 做局部验证，完整 `make test` 覆盖率不得低于 75%。
+3. **提交与 PR 规范**：遵循 Conventional Commits（`<type>(<scope>): <summary>`）。分支使用 `feat/`、`fix/`、`refactor/`、`docs/` 或 `chore/`。合并前必须通过 `make check`。

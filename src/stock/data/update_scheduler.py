@@ -1,10 +1,6 @@
-"""接口更新时刻拦截器模块 (DataUpdateScheduler)。
-
-校验各数据源接口在指定日期下的数据是否已达到数据提供商的盘后/次日结算时间点，防止早于更新时间发起无效网络请求。
-"""
-
 import logging
 from datetime import date, datetime, time, timedelta
+from zoneinfo import ZoneInfo
 
 from stock.config.settings import settings
 from stock.data.fetcher.lixinger.registry import LIXINGER_API_REGISTRY
@@ -13,6 +9,15 @@ from stock.data.fetcher.yfinance.registry import YFINANCE_API_REGISTRY
 from stock.data.task_registry import resolve_task
 
 logger = logging.getLogger(__name__)
+
+_DEFAULT_TZ = ZoneInfo("Asia/Shanghai")
+DATA_SOURCE_TIMEZONES: dict[str, ZoneInfo] = {
+    "tushare": ZoneInfo("Asia/Shanghai"),
+    "lixinger": ZoneInfo("Asia/Shanghai"),
+    "yfinance": ZoneInfo("Asia/Shanghai"),
+    "fred": ZoneInfo("America/New_York"),
+    "mock": ZoneInfo("Asia/Shanghai"),
+}
 
 
 class DataUpdateScheduler:
@@ -40,8 +45,14 @@ class DataUpdateScheduler:
         if data_source == "mock":
             return True
 
+        target_tz = DATA_SOURCE_TIMEZONES.get(data_source, _DEFAULT_TZ)
+
         if current_datetime is None:
-            current_datetime = datetime.now()
+            current_datetime = datetime.now(target_tz)
+        elif current_datetime.tzinfo is None:
+            current_datetime = current_datetime.replace(tzinfo=target_tz)
+        else:
+            current_datetime = current_datetime.astimezone(target_tz)
 
         task = resolve_task(data_source, endpoint)
 
@@ -81,15 +92,15 @@ class DataUpdateScheduler:
             )
             target_time = time(18, 0)
 
-        # 计算理论可获取的最早时间点
+        # 计算理论可获取的最早时间点 (带有时区信息)
         expected_date = target_date + timedelta(days=update_delay_days)
-        expected_ready_dt = datetime.combine(expected_date, target_time)
+        expected_ready_dt = datetime.combine(expected_date, target_time, tzinfo=target_tz)
 
         if current_datetime < expected_ready_dt:
             logger.warning(
                 f"[{data_source}/{endpoint}] 交易日 [{target_date}] 数据未就绪！"
-                f"预计更新时间: {expected_ready_dt.strftime('%Y-%m-%d %H:%M')}, "
-                f"当前时间: {current_datetime.strftime('%Y-%m-%d %H:%M')}，安全跳过该请求。"
+                f"预计更新时间: {expected_ready_dt.strftime('%Y-%m-%d %H:%M %Z')}, "
+                f"当前时间: {current_datetime.strftime('%Y-%m-%d %H:%M %Z')}，安全跳过该请求。"
             )
             return False
 

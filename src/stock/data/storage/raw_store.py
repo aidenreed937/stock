@@ -26,6 +26,34 @@ class RawDataStorage:
             base_dir: RAW 数据根目录，若为 None 则默认从 settings.raw_data_dir 读取。
         """
         self.base_dir = base_dir if base_dir is not None else settings.raw_data_dir
+        self._batch_mode = False
+        self._write_buffer: dict[Path, list[tuple[DatasetKey, pl.DataFrame]]] = {}
+        import threading
+        self._file_lock = threading.Lock()
+
+    def enable_batch_mode(self) -> None:
+        """启用内存攒批模式，延迟到 commit 时再物理落盘，避免 O(N²) 写放大。"""
+        self._batch_mode = True
+        self._write_buffer = {}
+        logger.info("RawDataStorage 已开启攒批写入模式 (Micro-batching)")
+
+    def commit(self) -> None:
+        """将内存中缓冲的 RAW 数据原子合并并写入磁盘。"""
+        if not getattr(self, "_batch_mode", False) or not getattr(self, "_write_buffer", {}):
+            self._batch_mode = False
+            return
+
+        logger.info(f"开始提交 RAW 攒批数据，共涉及 {len(self._write_buffer)} 个目标分区...")
+        for file_path, dfs in self._write_buffer.items():
+            if not dfs:
+                continue
+            self._merge_and_save(file_path, dfs)
+            logger.info(f"RAW 攒批合并落盘成功 -> {file_path}")
+
+        self._write_buffer.clear()
+        self._batch_mode = False
+        logger.info("RAW 攒批提交完成，已自动关闭攒批模式。")
+
 
     @staticmethod
     def _dataset_name(data_source: str, endpoint: str) -> str:
@@ -124,29 +152,46 @@ class RawDataStorage:
         file_path = self._get_dataset_path(key)
         if df.is_empty():
             return file_path
+
+        if getattr(self, "_batch_mode", False):
+            if file_path not in self._write_buffer:
+                self._write_buffer[file_path] = []
+            self._write_buffer[file_path].append((key, df))
+            return file_path
+
+        self._merge_and_save(file_path, [(key, df)])
+        return file_path
+
+    def _merge_and_save(self, file_path: Path, items: list[tuple[DatasetKey, pl.DataFrame]]) -> None:
+        """执行物理合并与覆写。"""
         if not hasattr(self, "_file_lock"):
             import threading
-
             self._file_lock = threading.Lock()
 
         with self._file_lock:
             file_path.parent.mkdir(parents=True, exist_ok=True)
+            existing = pl.DataFrame()
             if file_path.exists():
                 try:
                     existing = pl.read_parquet(file_path)
-                    if not existing.is_empty():
-                        df = pl.concat([existing, df], how="diagonal_relaxed")
-                        dedup_cols = self._primary_keys(key, df)
-                        if dedup_cols:
-                            df = df.unique(subset=dedup_cols, keep="last")
                 except Exception as e:
-                    logger.warning(f"读取合并原有 RAW 文件失败 [{file_path}]: {e}")
-            import threading
+                    logger.warning(f"读取原有 RAW 文件失败 [{file_path}]: {e}")
 
+            dfs_to_concat = [existing] if not existing.is_empty() else []
+            for _, df in items:
+                dfs_to_concat.append(df)
+
+            merged = pl.concat(dfs_to_concat, how="diagonal_relaxed")
+
+            # 使用列表中的第一个 key 来解析主键（假设同文件 key 配置一致）
+            dedup_cols = self._primary_keys(items[0][0], merged)
+            if dedup_cols:
+                merged = merged.unique(subset=dedup_cols, keep="last")
+
+            import threading
             temp_path = file_path.with_suffix(f".{threading.get_ident()}.tmp.parquet")
-            df.write_parquet(temp_path)
+            merged.write_parquet(temp_path)
             temp_path.replace(file_path)
-            return file_path
 
     @staticmethod
     def _primary_keys(key: DatasetKey, df: pl.DataFrame) -> list[str]:

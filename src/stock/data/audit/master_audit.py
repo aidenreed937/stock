@@ -65,7 +65,7 @@ def run_master_audit(base_dir: str = "data/curated") -> pl.DataFrame:
             df_lazy = pl.scan_parquet(f)
             columns = df_lazy.columns
 
-            sym_col = next((c for c in ["symbol", "ts_code", "stockCode", "ticker"] if c in columns), None)
+            sym_col = next((c for c in ["ts_code", "symbol", "stockCode", "ticker"] if c in columns), None)
             date_col = next(
                 (
                     c

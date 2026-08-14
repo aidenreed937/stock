@@ -60,3 +60,17 @@ def test_settings_override_timing() -> None:
     with patch.object(settings, "endpoint_update_time_overrides", {"daily": "17:30"}):
         # 17:15 早于 17:30 -> 未就绪
         assert not DataUpdateScheduler.is_data_ready("daily", target_date, dt_1715, data_source="tushare")
+
+
+def test_timezone_aware_timing() -> None:
+    from zoneinfo import ZoneInfo
+
+    target_date = date(2026, 8, 12)
+
+    # 传入带 UTC 时区的 datetime (对应北京时间 2026-08-12 18:30) -> 已就绪 (tushare 18:00)
+    dt_utc_ready = datetime(2026, 8, 12, 10, 30, tzinfo=ZoneInfo("UTC"))
+    assert DataUpdateScheduler.is_data_ready("daily", target_date, dt_utc_ready, data_source="tushare")
+
+    # 传入带 UTC 时区的 datetime (对应北京时间 2026-08-12 16:30) -> 未就绪
+    dt_utc_not_ready = datetime(2026, 8, 12, 8, 30, tzinfo=ZoneInfo("UTC"))
+    assert not DataUpdateScheduler.is_data_ready("daily", target_date, dt_utc_not_ready, data_source="tushare")

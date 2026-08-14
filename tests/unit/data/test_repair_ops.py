@@ -6,7 +6,7 @@ import polars as pl
 
 from stock.data.ops.repair_daily_basic import clean_partition_daily_basic
 from stock.data.ops.repair_sw_daily import clean_partition_sw_daily
-from stock.data.audit.reconciliation import _identity_key_set, _filter_target_date
+from stock.data.audit.reconciliation import _filter_target_date
 
 
 def test_clean_partition_daily_basic(tmp_path: Path) -> None:
@@ -70,20 +70,6 @@ def test_clean_partition_sw_daily(tmp_path: Path) -> None:
     # 验证保留的是 legacy 记录
     sym801980 = cleaned.filter(pl.col("symbol") == "801980.SI")
     assert sym801980["request_id"][0] == "legacy:sw_daily:test"
-
-
-def test_reconciliation_identity_key_set_null_symbol_fallback() -> None:
-    # 模拟 RAW 文件中包含全空 symbol 列和有效 ts_code 列
-    df = pl.DataFrame({
-        "symbol": [None, None],
-        "ts_code": ["000001.SZ", "600519.SH"],
-        "trade_date": ["20260812", "20260812"],
-    })
-    keys = _identity_key_set(df)
-    assert len(keys) == 2
-    assert ("000001.SZ", "20260812") in keys
-    assert ("600519.SH", "20260812") in keys
-
 
 def test_reconciliation_filter_target_date_multi_format() -> None:
     df = pl.DataFrame({

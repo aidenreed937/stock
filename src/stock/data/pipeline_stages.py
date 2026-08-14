@@ -84,42 +84,27 @@ class FetcherStage:
             return frame
         values = frame.get_column(date_col).cast(pl.Utf8, strict=False)
         if date_col == "quarter":
-            def quarter_value(v: str | None) -> int | None:
-                if not v or "Q" not in v:
-                    return None
-                try:
-                    yr, q = v.split("Q", 1)
-                    return int(yr) * 4 + int(q)
-                except ValueError:
-                    return None
-
             start_val = start_date.year * 4 + ((start_date.month - 1) // 3 + 1)
             end_val = end_date.year * 4 + ((end_date.month - 1) // 3 + 1)
-            keep = [
-                v is not None and start_val <= v <= end_val
-                for v in (quarter_value(item) for item in values.to_list())
-            ]
+            q_str = pl.col(date_col).cast(pl.Utf8, strict=False).str.to_uppercase()
+            yr_expr = q_str.str.extract(r"(\d{4})").cast(pl.Int32, strict=False)
+            q_expr = q_str.str.extract(r"Q(\d)").cast(pl.Int32, strict=False)
+            q_val = yr_expr * 4 + q_expr
+            clipped = frame.filter(q_val.is_between(start_val, end_val))
         elif date_col == "month":
             start_val = start_date.year * 100 + start_date.month
             end_val = end_date.year * 100 + end_date.month
-            keep = []
-            for item in values.to_list():
-                try:
-                    norm = str(item).replace("-", "")[:6]
-                    keep.append(start_val <= int(norm) <= end_val)
-                except (TypeError, ValueError):
-                    keep.append(False)
+            norm_expr = (
+                pl.col(date_col).cast(pl.Utf8, strict=False).str.replace_all("-", "").str.slice(0, 6).cast(pl.Int32, strict=False)
+            )
+            clipped = frame.filter(norm_expr.is_between(start_val, end_val))
         else:
             start_val = int(start_date.strftime("%Y%m%d"))
             end_val = int(end_date.strftime("%Y%m%d"))
-            keep = []
-            for item in values.to_list():
-                try:
-                    norm = str(item).replace("-", "")[:8]
-                    keep.append(start_val <= int(norm) <= end_val)
-                except (TypeError, ValueError):
-                    keep.append(False)
-        clipped = frame.filter(pl.Series("_date_range_keep", keep))
+            norm_expr = (
+                pl.col(date_col).cast(pl.Utf8, strict=False).str.replace_all("-", "").str.slice(0, 8).cast(pl.Int32, strict=False)
+            )
+            clipped = frame.filter(norm_expr.is_between(start_val, end_val))
         if len(clipped) != len(frame):
             logger.warning(
                 f"接口 [{endpoint}] 丢弃源端请求范围外记录 {len(frame) - len(clipped)} 行 "

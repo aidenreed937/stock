@@ -224,12 +224,10 @@ class HistoricalBackfiller:
             self.pipeline = pipeline
             self.fetcher = fetcher or pipeline.fetcher
         else:
-            self.pipeline = create_pipeline(data_source=data_source, endpoint=endpoint)
-            if fetcher is not None:
-                self.fetcher = fetcher
-                self.pipeline.fetcher = fetcher
-            else:
-                self.fetcher = self.pipeline.fetcher
+            self.pipeline = create_pipeline(
+                data_source=data_source, endpoint=endpoint, fetcher=fetcher
+            )
+            self.fetcher = self.pipeline.fetcher
 
     @property
     def frequency(self) -> str:
