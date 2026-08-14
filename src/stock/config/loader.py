@@ -105,9 +105,25 @@ def load_watchlist_config(
         g_indices = [_extract_code(i) for i in global_assets.get("indices", []) if _extract_code(i)]
         macro_series = [str(m).strip() for m in macro if str(m).strip()]
 
+        ts_base_dates: dict[str, str] = {}
+        lx_base_dates: dict[str, str] = {}
+        all_items = (
+            a_shares.get("stocks", []) + a_shares.get("indices", []) + a_shares.get("funds", [])
+        )
+        for item in all_items:
+            if isinstance(item, dict) and item.get("code") and item.get("base_date"):
+                code = str(item["code"]).strip()
+                d_val = str(item["base_date"]).strip()
+                ts_base_dates[code] = d_val
+                lx_base_dates[code.split(".")[0]] = d_val
+
         return WatchlistsConfig(
-            tushare=SourceWatchlistConfig(stocks=a_stocks, indices=a_indices, funds=a_funds),
-            lixinger=SourceWatchlistConfig(stocks=lx_stocks, indices=lx_indices, funds=a_funds),
+            tushare=SourceWatchlistConfig(
+                stocks=a_stocks, indices=a_indices, funds=a_funds, base_dates=ts_base_dates
+            ),
+            lixinger=SourceWatchlistConfig(
+                stocks=lx_stocks, indices=lx_indices, funds=a_funds, base_dates=lx_base_dates
+            ),
             yfinance=SourceWatchlistConfig(stocks=g_stocks, indices=g_indices),
             fred=SourceWatchlistConfig(macro_series=macro_series),
         )

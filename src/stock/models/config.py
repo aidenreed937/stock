@@ -1,6 +1,21 @@
-"""策略及业务 YAML 强类型 Pydantic Schema 定义模块。"""
+from datetime import date, datetime
 
 from pydantic import BaseModel, Field, model_validator
+
+
+def _parse_items_and_dates(items: list[object]) -> tuple[list[str], dict[str, str]]:
+    codes: list[str] = []
+    dates: dict[str, str] = {}
+    for it in items:
+        if isinstance(it, dict):
+            c, d = str(it.get("code", "")).strip(), it.get("base_date")
+        else:
+            c, d = str(it).strip(), None
+        if c:
+            codes.append(c)
+            if d:
+                dates[c] = str(d).strip()
+    return codes, dates
 
 
 class UniverseConfig(BaseModel):
@@ -10,44 +25,37 @@ class UniverseConfig(BaseModel):
     indices: list[str] = Field(default_factory=list, description="指数代码列表")
     funds: list[str] = Field(default_factory=list, description="基金代码列表")
     symbols: list[str] = Field(default_factory=list, description="兼容旧配置的单列表")
+    base_dates: dict[str, str] = Field(default_factory=dict, description="标的基准起始日期映射")
 
     @model_validator(mode="before")
     @classmethod
     def extract_nested_universe(cls, data: object) -> dict[str, object]:
         """将多层级嵌套的统一自选池结构扁平提取。"""
         if not isinstance(data, dict):
-            return {"stocks": [], "indices": [], "funds": [], "symbols": []}
+            return {"stocks": [], "indices": [], "funds": [], "symbols": [], "base_dates": {}}
 
-        def _to_code_str(val: object) -> str:
-            if isinstance(val, dict):
-                return str(val.get("code", "")).strip()
-            return str(val).strip()
-
-        stocks = list(data.get("stocks", []))
-        indices = list(data.get("indices", []))
-        funds = list(data.get("funds", []))
-        symbols = list(data.get("symbols", []))
-
-        if "a_shares" in data and isinstance(data["a_shares"], dict):
-            stocks.extend(data["a_shares"].get("stocks", []))
-            indices.extend(data["a_shares"].get("indices", []))
-            funds.extend(data["a_shares"].get("funds", []))
-        if "global" in data and isinstance(data["global"], dict):
-            stocks.extend(data["global"].get("stocks", []))
-            indices.extend(data["global"].get("indices", []))
-            funds.extend(data["global"].get("funds", []))
-
-        clean_stocks = [_to_code_str(s) for s in stocks if _to_code_str(s)]
-        clean_indices = [_to_code_str(i) for i in indices if _to_code_str(i)]
-        clean_funds = [_to_code_str(f) for f in funds if _to_code_str(f)]
-        clean_symbols = [_to_code_str(s) for s in symbols if _to_code_str(s)]
-
-        return {
-            "stocks": clean_stocks,
-            "indices": clean_indices,
-            "funds": clean_funds,
-            "symbols": clean_symbols,
+        raw_pools: dict[str, list[object]] = {
+            "stocks": list(data.get("stocks", [])),
+            "indices": list(data.get("indices", [])),
+            "funds": list(data.get("funds", [])),
+            "symbols": list(data.get("symbols", [])),
         }
+
+        for scope in ("a_shares", "global"):
+            sub = data.get(scope)
+            if isinstance(sub, dict):
+                for k in ("stocks", "indices", "funds"):
+                    raw_pools[k].extend(sub.get(k, []))
+
+        result: dict[str, object] = {}
+        all_dates: dict[str, str] = {}
+        for k, items in raw_pools.items():
+            codes, dates = _parse_items_and_dates(items)
+            result[k] = codes
+            all_dates.update(dates)
+
+        result["base_dates"] = all_dates
+        return result
 
     @property
     def all_symbols(self) -> list[str]:
@@ -70,6 +78,22 @@ class SourceWatchlistConfig(BaseModel):
     indices: list[str] = Field(default_factory=list)
     funds: list[str] = Field(default_factory=list)
     macro_series: list[str] = Field(default_factory=list)
+    base_dates: dict[str, str] = Field(
+        default_factory=dict, description="标的基准/上市起始日期映射"
+    )
+
+    def get_base_date(self, symbol: str) -> date | None:
+        """获取指定标的的起始基准日期，避免无意义的历史空范围请求。"""
+        if not symbol:
+            return None
+        d_str = self.base_dates.get(symbol) or self.base_dates.get(symbol.split(".")[0])
+        if not d_str:
+            return None
+        try:
+            clean = d_str.strip().replace("-", "")
+            return datetime.strptime(clean, "%Y%m%d").date()
+        except Exception:
+            return None
 
     @property
     def all_symbols(self) -> list[str]:

@@ -39,3 +39,15 @@ def test_load_watchlist_and_data_config() -> None:
     assert data_cfg.backfill.default_start_date == "today-30d"
     assert data_cfg.backfill.default_end_date == "today"
     assert data_cfg.backfill.max_workers == 4
+
+
+def test_watchlist_base_dates() -> None:
+    from datetime import date
+
+    wl = load_watchlist_config()
+    assert wl.tushare.get_base_date("159516.SZ") == date(2023, 7, 27)
+    assert wl.tushare.get_base_date("510300.SH") == date(2012, 5, 28)
+    assert wl.tushare.get_base_date("513920.SH") == date(2024, 1, 5)
+    assert wl.tushare.get_base_date("600519.SH") == date(2001, 8, 27)
+    assert wl.lixinger.get_base_date("600519") == date(2001, 8, 27)
+    assert wl.tushare.get_base_date("NON_EXISTENT") is None

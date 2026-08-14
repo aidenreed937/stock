@@ -244,11 +244,25 @@ def main() -> None:  # noqa: C901, PLR0912, PLR0915
                         )
                     target_symbols = [""]
 
+            src_watchlist = getattr(data_cfg.watchlists, data_source, None)
             for idx, sym in enumerate(target_symbols, 1):
+                sym_start_d = start_d
+                if sym and src_watchlist and hasattr(src_watchlist, "get_base_date"):
+                    try:
+                        base_d = src_watchlist.get_base_date(sym)
+                        if isinstance(base_d, date) and base_d > sym_start_d:
+                            sym_start_d = base_d
+                            if sym_start_d > end_d:
+                                logger.info(
+                                    f"标的 [{sym}] 基准日 [{base_d}] 晚于截止日 [{end_d}]，跳过"
+                                )
+                                continue
+                    except Exception as err:
+                        logger.debug(f"标的 [{sym}] 基准起始日提取异常: {err}")
                 if sym:
                     logger.info(
                         f"===> 处理 [{data_source}/{current_ep}] 标的 [{sym}] "
-                        f"({idx}/{len(target_symbols)})..."
+                        f"({idx}/{len(target_symbols)}) [起始: {sym_start_d}]..."
                     )
                 import stock.data.backfill as backfill_module
 
@@ -259,7 +273,7 @@ def main() -> None:  # noqa: C901, PLR0912, PLR0915
                 backfiller.pipeline.store = shared_store
 
                 summary = backfiller.backfill_range(
-                    start_d, end_d, force_refresh=force_refresh, max_workers=workers
+                    sym_start_d, end_d, force_refresh=force_refresh, max_workers=workers
                 )
                 if isinstance(summary, dict):
                     summaries.append(
