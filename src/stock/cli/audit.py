@@ -19,31 +19,32 @@ def run_audit(
     results: dict[str, Any] = {}
 
     if audit_type_lower in {"master", "all"}:
-        from stock.data.audit.master_audit import run_master_audit
+        from stock.data.audit.master_audit import print_master_audit_summary, run_master_audit
 
         logger.info(f"=== 开始执行 Master 全库主数据审计 [{data_source}] ===")
-        results["master"] = run_master_audit()
+        master_df = run_master_audit()
+        print_master_audit_summary(master_df)
+        results["master"] = master_df
 
     if audit_type_lower in {"reconciliation", "recon", "all"}:
-        from stock.data.audit.reconciliation import main as recon_main
+        from stock.data.audit.reconciliation import run_audit as recon_run_audit
 
-        logger.info(f"=== 开始执行 RAW vs Curated 对账审计 [{data_source}] ===")
-        recon_main()
-        results["reconciliation"] = {"status": "success"}
+        logger.info(f"=== 开始执行 RAW vs Curated 对账审计 [{data_source}] (日期: {t_date}) ===")
+        results["reconciliation"] = recon_run_audit(target_date=t_date, data_source=data_source)
 
     if audit_type_lower in {"acceptance", "all"}:
-        from stock.data.audit.backfill_acceptance import main as acceptance_main
+        from stock.data.audit.backfill_acceptance import accept_backfill
 
         logger.info(f"=== 开始执行全量回填验收测试 [{data_source}] ===")
-        acceptance_main()
-        results["acceptance"] = {"status": "success"}
+        results["acceptance"] = accept_backfill(endpoint="stock_daily_bar")
 
     if audit_type_lower in {"valuation", "all"}:
         from stock.data.audit.valuation_audit import run_daily_basic_audit, run_sw_industry_audit
 
         logger.info(f"=== 开始执行估值指标专项审计 [{data_source}] (日期: {t_date}) ===")
         results["daily_basic"] = run_daily_basic_audit(t_date, data_source=data_source)
-        results["sw_industry"] = run_sw_industry_audit(t_date, data_source=data_source)
+        sw_source = "lixinger" if data_source == "tushare" else data_source
+        results["sw_industry"] = run_sw_industry_audit(t_date, data_source=sw_source)
 
     if audit_type_lower in {"factor", "all"}:
         from stock.data.audit.factor_audit import run_adj_factor_audit, run_sw_daily_audit

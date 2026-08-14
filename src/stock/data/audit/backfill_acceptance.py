@@ -67,12 +67,20 @@ def _meta(endpoint: str) -> Any:
 
 def _endpoint_aliases(endpoint: str) -> set[str]:
     """返回验收所对应的项目任务目录名。"""
+    aliases = {endpoint}
     try:
         from stock.data.task_registry import resolve_task
 
-        return {resolve_task("tushare", endpoint).dataset}
-    except ValueError:
-        return {endpoint}
+        for prov in ("tushare", "lixinger", "yfinance", "fred"):
+            try:
+                task = resolve_task(prov, endpoint)
+                aliases.add(task.dataset)
+                aliases.add(task.task_name)
+            except Exception:
+                pass
+    except Exception:
+        pass
+    return aliases
 
 
 def _column_present(column: str, columns: list[str]) -> bool:

@@ -8,20 +8,21 @@ from stock.cli.audit import main, run_audit
 
 
 def test_run_audit_dispatches_correctly() -> None:
-    with patch("stock.data.audit.master_audit.run_master_audit", return_value={"total": 100}) as mock_master:
+    with patch("stock.data.audit.master_audit.run_master_audit", return_value={"total": 100}) as mock_master, \
+         patch("stock.data.audit.master_audit.print_master_audit_summary"):
         res = run_audit(audit_type="master", data_source="tushare")
         mock_master.assert_called_once()
         assert res["master"] == {"total": 100}
 
-    with patch("stock.data.audit.reconciliation.main") as mock_recon:
+    with patch("stock.data.audit.reconciliation.run_audit", return_value={"integrity_rate": 100.0}) as mock_recon:
         res = run_audit(audit_type="recon", data_source="tushare")
         mock_recon.assert_called_once()
-        assert res["reconciliation"] == {"status": "success"}
+        assert res["reconciliation"] == {"integrity_rate": 100.0}
 
-    with patch("stock.data.audit.backfill_acceptance.main") as mock_acc:
+    with patch("stock.data.audit.backfill_acceptance.accept_backfill", return_value={"status": "PASSED"}) as mock_acc:
         res = run_audit(audit_type="acceptance", data_source="tushare")
         mock_acc.assert_called_once()
-        assert res["acceptance"] == {"status": "success"}
+        assert res["acceptance"] == {"status": "PASSED"}
 
     with patch("stock.data.audit.valuation_audit.run_daily_basic_audit", return_value={}) as mock_val, \
          patch("stock.data.audit.valuation_audit.run_sw_industry_audit", return_value={}) as mock_sw:

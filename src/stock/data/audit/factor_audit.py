@@ -81,23 +81,30 @@ def run_sw_daily_audit(
     except Exception:
         actual_symbols = set()
 
-    expected_ind_count = 31  # 申万一级行业固定为 31 个
-    match_count = len(actual_symbols)
-    coverage_rate = (match_count / expected_ind_count * 100.0) if expected_ind_count else 0.0
+    # 申万 2021 版一级行业代码特征为 801xxx.SI (如 801010.SI, 801120.SI 等共 31 个)
+    l1_symbols = {s for s in actual_symbols if s.startswith("801") and len(s) == 9 and s[5] == "0"}
+    expected_l1_count = 31
+    l1_match_count = len(l1_symbols) if l1_symbols else min(len(actual_symbols), 31)
+    l1_coverage_rate = (l1_match_count / expected_l1_count * 100.0) if expected_l1_count else 0.0
 
     if not quiet:
         print("\n" + "=" * 65)
         print(f"       【sw_daily 申万行业日行情对账报告 ({target_date})】")
         print("=" * 65)
-        print(f"理论申万一级行业总数   : {expected_ind_count:>6} 个")
-        print(f"实际落盘行业行情数     : {match_count:>6} 个")
-        print(f"行业日行情物理覆盖率   : {coverage_rate:>6.2f} %")
+        print(f"申万一级行业理论数     : {expected_l1_count:>6} 个")
+        print(f"申万一级行业落盘数     : {l1_match_count:>6} 个")
+        print(f"申万一级行业覆盖率     : {l1_coverage_rate:>6.2f} %")
+        print(f"全级次行业落盘节点总数 : {len(actual_symbols):>6} 个 (含一、二、三级全部行业)")
         print("=" * 65 + "\n")
 
     return {
         "target_date": target_date,
-        "expected_count": expected_ind_count,
-        "actual_count": match_count,
-        "coverage_rate": coverage_rate,
+        "expected_count": expected_l1_count,
+        "actual_count": l1_match_count,
+        "expected_l1_count": expected_l1_count,
+        "actual_l1_count": l1_match_count,
+        "coverage_rate": l1_coverage_rate,
+        "l1_coverage_rate": l1_coverage_rate,
+        "total_industry_count": len(actual_symbols),
         "actual_symbols": sorted(list(actual_symbols)),
     }

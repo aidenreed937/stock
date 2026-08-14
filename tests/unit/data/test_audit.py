@@ -30,6 +30,8 @@ def test_run_audit_success():
         pattern_str = str(pattern)
         if "stock_basic" in pattern_str:
             return stock_basic_df
+        if "suspend_d" in pattern_str:
+            return pl.DataFrame()
         return daily_df
 
     mock_client = MagicMock()

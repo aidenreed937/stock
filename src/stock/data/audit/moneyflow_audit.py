@@ -29,16 +29,30 @@ def run_hk_hold_audit(
         symbols_count = 0
         total_vol_float = 0.0
 
+    max_date_str = "N/A"
+    try:
+        from pathlib import Path
+        all_hk_files = list(Path(f"data/curated/{data_source}/market=CN/hk_hold").rglob("*.parquet"))
+        if all_hk_files:
+            summary_df = pl.read_parquet(all_hk_files)
+            if "trade_date" in summary_df.columns:
+                max_date_str = str(summary_df["trade_date"].max())[:10]
+    except Exception:
+        pass
+
     if not quiet:
         print("\n" + "=" * 65)
         print(f"       【hk_hold 北向持仓明细对账审计报告 ({target_date})】")
         print("=" * 65)
         print(f"北向资金持仓覆盖股票数 : {symbols_count:>6} 只")
         print(f"北向持股总量 (万股)    : {total_vol_float / 1e4:>10.2f} 万股")
+        if symbols_count == 0 and max_date_str != "N/A":
+            print(f"提示: 本地 hk_hold 自选池最新覆盖至 {max_date_str}，目标日期暂无落盘数据")
         print("=" * 65 + "\n")
 
     return {
         "target_date": target_date,
         "symbols_count": symbols_count,
         "total_vol": total_vol_float,
+        "latest_local_date": max_date_str,
     }

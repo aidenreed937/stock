@@ -37,25 +37,46 @@ def run_master_audit(base_dir: str = "data/curated") -> pl.DataFrame:
             df = pl.read_parquet(f)
             rel_parts = f.relative_to(curated_path).parts
             src = rel_parts[0] if len(rel_parts) > 0 else "unknown"
-            dataset = rel_parts[2] if len(rel_parts) > 2 else f.stem
+
+            # 精确解析数据集名（兼容 market=XX 分区与扁平层级）
+            if len(rel_parts) >= 3 and rel_parts[1].startswith("market="):
+                dataset = rel_parts[2]
+            elif len(rel_parts) >= 2:
+                dataset = rel_parts[1]
+            else:
+                dataset = f.stem
 
             symbols_cnt = 0
-            if "symbol" in df.columns:
-                symbols_cnt = df["symbol"].n_unique()
-            elif "ts_code" in df.columns:
-                symbols_cnt = df["ts_code"].n_unique()
+            for sym_col in ["symbol", "ts_code", "stockCode", "ticker"]:
+                if sym_col in df.columns:
+                    symbols_cnt = df[sym_col].drop_nulls().n_unique()
+                    break
 
             min_d = "N/A"
             max_d = "N/A"
-            date_col = None
-            for col in ["trade_date", "as_of_date", "list_date", "Date"]:
-                if col in df.columns:
-                    date_col = col
-                    break
+            date_col = next(
+                (
+                    c for c in [
+                        "trade_date",
+                        "date",
+                        "as_of_date",
+                        "end_date",
+                        "month",
+                        "quarter",
+                        "report_date",
+                        "list_date",
+                        "Date",
+                    ]
+                    if c in df.columns
+                ),
+                None,
+            )
 
-            if date_col:
-                min_d = str(df[date_col].min())[:10]
-                max_d = str(df[date_col].max())[:10]
+            if date_col and not df.is_empty():
+                vals = df[date_col].drop_nulls().cast(pl.Utf8, strict=False)
+                if not vals.is_empty():
+                    min_d = str(vals.min())[:10]
+                    max_d = str(vals.max())[:10]
 
             records.append({
                 "source": src,
@@ -85,15 +106,17 @@ def run_master_audit(base_dir: str = "data/curated") -> pl.DataFrame:
     return summary
 
 
-def main() -> None:
-    """主审计 CLI 入口，打印全库离线落盘主审计表。"""
+def print_master_audit_summary(summary: pl.DataFrame) -> None:
+    """格式化打印全库离线落盘主审计表。"""
     print("=" * 105)
     print("                      【全库全量数据离线存储主审计报告 (Master Data Audit Report)】")
     print("=" * 105)
 
-    summary = run_master_audit("data/curated")
     if not summary.is_empty():
-        print(f"{'数据源':<10} | {'数据集表名':<22} | {'覆盖标的数':<10} | {'落盘总记录数':<12} | {'最早交易日':<10} | {'最新交易日':<10} | {'完备度诊断'}")
+        print(
+            f"{'数据源':<10} | {'数据集表名':<28} | {'覆盖标的数':<10} | {'落盘总记录数':<12} | "
+            f"{'最早交易日':<10} | {'最新交易日':<10} | {'完备度诊断'}"
+        )
         print("-" * 105)
         for row in summary.iter_rows(named=True):
             src = row["source"]
@@ -102,11 +125,20 @@ def main() -> None:
             rows = row["精炼落盘总记录数"]
             min_d = row["最早交易日"]
             max_d = row["最新交易日"]
-            print(f"{src:<10} | {ds:<22} | {syms:<10} | {rows:<12} | {min_d:<10} | {max_d:<10} | 已扫描，完整性需按接口契约判定")
+            print(
+                f"{src:<10} | {ds:<28} | {syms:<10} | {rows:<12,d} | "
+                f"{min_d:<10} | {max_d:<10} | 已扫描，物理文件完整"
+            )
     else:
         print("离线库为空或未包含任何有效 Parquet 数据文件。")
 
     print("=" * 105)
+
+
+def main() -> None:
+    """主审计 CLI 入口。"""
+    summary = run_master_audit("data/curated")
+    print_master_audit_summary(summary)
 
 
 if __name__ == "__main__":

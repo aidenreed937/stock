@@ -58,6 +58,7 @@ def run_audit(target_date: date, data_source: str = "tushare", quiet: bool = Fal
         actual_symbols = set(day_df["symbol"].unique().to_list())
 
     # 3. 筛选理论上在 target_date 已经上市且未退市的个股
+    sym_col = "symbol" if "symbol" in basic_df.columns else "ts_code"
     if "delist_date" in basic_df.columns and basic_df["delist_date"].dtype != pl.Null:
         basic_df = basic_df.with_columns(
             [
@@ -68,7 +69,7 @@ def run_audit(target_date: date, data_source: str = "tushare", quiet: bool = Fal
         expected_df = basic_df.filter(
             (
                 (pl.col("list_date_d") >= date(1990, 12, 1))
-                | (pl.col("ts_code").is_in(list(actual_symbols)))
+                | (pl.col(sym_col).is_in(list(actual_symbols)))
             )
             & (pl.col("list_date_d") <= target_date)
             & (pl.col("delist_date_d").is_null() | (pl.col("delist_date_d") > target_date))
@@ -80,11 +81,11 @@ def run_audit(target_date: date, data_source: str = "tushare", quiet: bool = Fal
         expected_df = basic_df.filter(
             (
                 (pl.col("list_date_d") >= date(1990, 12, 1))
-                | (pl.col("ts_code").is_in(list(actual_symbols)))
+                | (pl.col(sym_col).is_in(list(actual_symbols)))
             )
             & (pl.col("list_date_d") <= target_date)
         )
-    expected_symbols = set(expected_df["ts_code"].unique().to_list())
+    expected_symbols = set(expected_df[sym_col].unique().to_list())
 
     theoretical_count = len(expected_symbols)
     actual_count = len(actual_symbols)
@@ -100,30 +101,49 @@ def run_audit(target_date: date, data_source: str = "tushare", quiet: bool = Fal
     suspended_symbols: list[str] = []
     unexplained_symbols: list[str] = []
 
-    # 5. 对于缺失的个股，通过 TuShare 停牌接口校验当天是否真实停牌
+    # 5. 对于缺失的个股，优先通过本地落盘的 suspend_d 数据集校验停牌状态，离线优先
     if missing_count > 0:
-        logger.info(f"正在通过 TuShare 停牌接口审计这 {missing_count} 只个股的交易状态...")
+        logger.info(f"正在对 {missing_count} 只缺失个股进行停牌状态对账...")
+        suspend_set: set[str] = set()
+
+        # 优先读取本地 suspend_d 数据
+        local_suspend_path = f"data/curated/{data_source}/market=CN/suspend_d/year={target_date.year:04d}/month={target_date.month:02d}/*.parquet"
         try:
-            client = TuShareClient()
-            trade_date_str = target_date.strftime("%Y%m%d")
-            suspend_df = client.query("suspend_d", trade_date=trade_date_str)
-
-            if suspend_df is not None and len(suspend_df) > 0:
-                if hasattr(suspend_df, "get_column"):
-                    suspend_set = set(suspend_df.get_column("ts_code").unique().to_list())
+            local_sus_df = pl.read_parquet(local_suspend_path)
+            date_col = next((c for c in ["trade_date", "date", "suspend_date"] if c in local_sus_df.columns), None)
+            if date_col:
+                if local_sus_df[date_col].dtype == pl.String:
+                    local_sus_df = local_sus_df.with_columns(
+                        pl.col(date_col).str.to_date("%Y-%m-%d", strict=False).alias("suspend_d_date")
+                    )
                 else:
-                    suspend_set = set(suspend_df["ts_code"].unique().tolist())
+                    local_sus_df = local_sus_df.with_columns(pl.col(date_col).alias("suspend_d_date"))
+                sub_sus = local_sus_df.filter(pl.col("suspend_d_date") == target_date)
+                sym_col_sus = next((c for c in ["symbol", "ts_code"] if c in sub_sus.columns), None)
+                if sym_col_sus:
+                    suspend_set = set(sub_sus[sym_col_sus].drop_nulls().unique().to_list())
+        except Exception:
+            suspend_set = set()
 
-                for sym in missing_symbols:
-                    if sym in suspend_set:
-                        suspended_symbols.append(sym)
+        # 本地未命中时，尝试降级请求远程 TuShare API
+        if not suspend_set:
+            try:
+                client = TuShareClient()
+                trade_date_str = target_date.strftime("%Y%m%d")
+                suspend_df = client.query("suspend_d", trade_date=trade_date_str)
+                if suspend_df is not None and len(suspend_df) > 0:
+                    if hasattr(suspend_df, "get_column"):
+                        suspend_set = set(suspend_df.get_column("ts_code").unique().to_list())
                     else:
-                        unexplained_symbols.append(sym)
+                        suspend_set = set(suspend_df["ts_code"].unique().tolist())
+            except Exception as e:
+                logger.debug(f"调用 TuShare 停牌远程接口降级失败: {e}")
+
+        for sym in missing_symbols:
+            if sym in suspend_set:
+                suspended_symbols.append(sym)
             else:
-                unexplained_symbols = missing_symbols
-        except Exception as e:
-            logger.error(f"调用 TuShare 停牌接口失败: {e}")
-            unexplained_symbols = missing_symbols
+                unexplained_symbols.append(sym)
 
     # 6. 计算最终的数据完整率
     verified_suspended_count = len(suspended_symbols)
@@ -153,7 +173,7 @@ def run_audit(target_date: date, data_source: str = "tushare", quiet: bool = Fal
                 f"\n[警告] 以下 {true_missing_count} 只个股存在异常缺失，请检查网络拉取或尝试重新执行回填："
             )
             for sym in sorted(unexplained_symbols):
-                name_val = expected_df.filter(pl.col("ts_code") == sym)["name"].to_list()
+                name_val = expected_df.filter(pl.col(sym_col) == sym)["name"].to_list()
                 name_str = name_val[0] if name_val else "未知"
                 print(f" - {sym} ({name_str})")
             print("=" * 50)
@@ -342,10 +362,21 @@ def run_index_audit(
             logger.warning(f"数据源 [{data_source}] 未配置指数观察池")
         return {}
 
-    pattern = f"data/curated/{data_source}/market=*/index_daily*/year={target_date.year:04d}/month={target_date.month:02d}/*.parquet"
+    target_year = f"year={target_date.year:04d}"
+    target_month = f"month={target_date.month:02d}"
+    root_path = Path(f"data/curated/{data_source}")
+    matched_files = [
+        p for p in root_path.rglob("*.parquet")
+        if ("index_daily" in p.parts or "index_daily_bar" in p.parts)
+        and "index_dailybasic" not in p.parts
+        and target_year in p.parts
+        and target_month in p.parts
+        and not p.name.endswith((".bak.parquet", ".tmp.parquet"))
+    ] if root_path.exists() else []
+
     try:
-        df = pl.read_parquet(pattern)
-        if not df.is_empty():
+        if matched_files:
+            df = pl.read_parquet(matched_files)
             if df["trade_date"].dtype == pl.String:
                 df = df.with_columns(
                     pl.col("trade_date").str.to_date("%Y-%m-%d").alias("trade_date")
