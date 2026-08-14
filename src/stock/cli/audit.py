@@ -91,11 +91,23 @@ def main() -> None:
         default="tushare",
         help="待审计数据源标识 (默认 tushare)",
     )
+    parser.add_argument(
+        "-d",
+        "--date",
+        dest="date",
+        type=str,
+        default=None,
+        help="指定审计目标日期 (YYYY-MM-DD，默认最新或当日)",
+    )
 
     args = parser.parse_args()
-    logger.info(f"启动数据审计套件: 类型=[{args.audit_type}], 数据源=[{args.source}]")
+    target_dt = date.fromisoformat(args.date) if args.date else None
+    logger.info(
+        f"启动数据审计套件: 类型=[{args.audit_type}], "
+        f"数据源=[{args.source}], 目标日期=[{target_dt or '最新'}]"
+    )
     try:
-        run_audit(audit_type=args.audit_type, data_source=args.source)
+        run_audit(audit_type=args.audit_type, data_source=args.source, target_date=target_dt)
         logger.info("数据审计执行完毕！")
     except Exception as e:
         logger.error(f"数据审计执行失败: {e}")

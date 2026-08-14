@@ -217,6 +217,17 @@ INDEX_VALUATION_CONTRACT = DatasetContract(
 DAILY_BAR_CONTRACT = STOCK_DAILY_BAR_CONTRACT
 
 
+def get_contract_for_dataset(dataset_name: str) -> DatasetContract | None:
+    """根据数据集名称返回对应的契约，若无显式契约则返回 None。"""
+    contracts = {
+        "stock_daily_bar": STOCK_DAILY_BAR_CONTRACT,
+        "daily_bar": STOCK_DAILY_BAR_CONTRACT,
+        "index_daily_bar": INDEX_DAILY_BAR_CONTRACT,
+        "index_valuation": INDEX_VALUATION_CONTRACT,
+    }
+    return contracts.get(dataset_name)
+
+
 def instrument_for_symbol(symbol: str, provider: str) -> InstrumentId | None:  # noqa: C901, PLR0911, PLR0912
     """根据当前支持的代码约定推断跨市场标的身份。空代码表示全市场快照。"""
     if not symbol:
