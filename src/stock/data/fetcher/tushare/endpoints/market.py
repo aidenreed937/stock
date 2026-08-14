@@ -138,4 +138,12 @@ MARKET_ENDPOINTS: dict[str, EndpointMeta] = {
         group="market_indicators",
         primary_keys=["ts_code", "trade_date"],
     ),
+    "fut_index_daily": EndpointMeta(
+        api_name="fut_index_daily",
+        description="南华期货/商品/工业品指数日线行情",
+        group="market_data",
+        primary_keys=["ts_code", "trade_date"],
+        date_columns=["trade_date"],
+        required_columns=["ts_code", "trade_date", "open", "high", "low", "close"],
+    ),
 }

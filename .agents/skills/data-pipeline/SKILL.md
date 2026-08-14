@@ -190,3 +190,22 @@ make audit TYPE=all
    每个数据源均在 `config/data.yaml` 中配置了极速流与安全 Rate Limits（如 `yfinance` 40次/分，理杏仁 30次/分）。若触发限频，系统会自动休眠 60 秒并自动重试，无需人工干预。
 3. **微攒批写入 (Micro-batching)**：
    全市场批量回填（如 `daily_basic`）使用 `DuckDBMarketStore.enable_batch_mode()`，在内存中按月分区分批聚合写入，消除磁盘 I/O 写放大，回填数千个交易日稳定高效。
+
+---
+
+## 7. 新数据接口注册标准流水线 (New Endpoint Registration Checklist)
+
+当系统需要引入新接口（如宏观指标、期货指数、财务报表等）时，必须严格遵守 5 步注册流水线，防止路由或策略漏配：
+
+详细开发指南参考：[`docs/guides/endpoint_registration_guide.md`](file:///Users/mac/workspace/personal/finance/stock/docs/guides/endpoint_registration_guide.md)
+
+1. **步骤 1：Fetcher 接口元数据定义**
+   在对应 Provider 的 `endpoints/` 或 `registry.py` 中实例化 `EndpointMeta`（定义 `primary_keys`、`date_columns`、`required_columns`；**切勿混入 `fetch_mode`**）。
+2. **步骤 2：质量与单位 Profile 绑定**
+   在 Provider 的 `_PROFILES` 字典中为新端点指定必需列、单位映射（如 `CNY100m`、`percent`）和质检 Profile。
+3. **步骤 3：任务路由与分区分流 (`TaskRegistry`)**
+   在 [`src/stock/data/task_registry.py`](file:///Users/mac/workspace/personal/finance/stock/src/stock/data/task_registry.py) 中，将单表数据集加入 `non_part_datasets`，将个股遍历任务加入 `PER_SYMBOL_DATASETS`，并注册任务别名。
+4. **步骤 4：调度规划器策略归类 (`BackfillPlanner`)**
+   在 [`src/stock/data/planner.py`](file:///Users/mac/workspace/personal/finance/stock/src/stock/data/planner.py) 中，将单表同步任务加入 `MARKET_SINGLE_SYNC_ENDPOINTS`，需遍历股票池的任务加入 `TUSHARE_STOCK_POOL_ENDPOINTS`。
+5. **步骤 5：自动化门禁验证**
+   执行 `uv run pytest tests/unit/data/ --no-cov` 与 `make lint` 确保 100% 通过。

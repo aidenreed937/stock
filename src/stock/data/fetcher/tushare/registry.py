@@ -160,7 +160,18 @@ _TUSHARE_PROFILES: dict[str, tuple[list[str], dict[str, str], str]] = {
         "macro_monthly",
     ),
     "sf_month": (["month"], {"social_financing": "CNY100m"}, "macro_monthly"),
+    "shibor": (["date"], {"on": "percent", "1w": "percent", "1m": "percent", "1y": "percent"}, "macro_rate"),
     "shibor_lpr": (["date"], {"1y": "percent", "5y": "percent"}, "macro_rate"),
+    "cn_schedule": (["date", "event"], {}, "event"),
+    "fut_index_daily": (
+        ["ts_code", "trade_date", "open", "high", "low", "close"],
+        {"close": "point", "vol": "share", "amount": "CNY"},
+        "bar",
+    ),
+    "forecast": (["ts_code", "ann_date", "end_date"], {}, "financial_indicator"),
+    "express": (["ts_code", "ann_date", "end_date"], {"revenue": "CNY", "n_income": "CNY"}, "financial_statement"),
+    "balancesheet": (["ts_code", "ann_date", "end_date"], {"total_assets": "CNY"}, "financial_statement"),
+    "cashflow": (["ts_code", "ann_date", "end_date"], {"n_cashflow_act": "CNY"}, "financial_statement"),
 }
 for _endpoint, (_required, _units, _profile) in _TUSHARE_PROFILES.items():
     if _endpoint in TUSHARE_API_REGISTRY:

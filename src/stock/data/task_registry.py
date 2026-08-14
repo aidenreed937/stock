@@ -1,4 +1,4 @@
-"""项目任务名与数据源 API 名称的显式路由表。"""
+"""项目任务名与数据源 API 名称的显式路由表 (SSOT 统一注册模型)。"""
 
 from dataclasses import dataclass
 from typing import Any
@@ -6,7 +6,7 @@ from typing import Any
 
 @dataclass(frozen=True)
 class TaskSpec:
-    """一个公开项目任务到一个上游 API 的固定映射。"""
+    """一个公开项目任务到一个上游 API 的固定映射与调度行为契约。"""
 
     task_name: str
     provider: str
@@ -15,92 +15,86 @@ class TaskSpec:
     frequency: str = "daily"
     quality_profile: str = "generic"
     partitioned: bool = True
-    fetch_mode: str = "per_day"
+    fetch_mode: str = "per_day"  # "per_day" | "per_symbol"
+    is_single_sync: bool = False
+    required_pool: str | None = None
 
 
+# 向后兼容保留的集合别名（内部已统一由 TaskSpec 属性驱动）
 PER_SYMBOL_DATASETS: frozenset[str] = frozenset({
     "index_daily", "index_dailybasic", "index_weight", "global_index_daily",
     "fund_share", "fund_daily", "fund_adj", "etf_share_size",
-    "income", "fina_indicator", "margin_detail", "hk_hold",
+    "income", "fina_indicator", "forecast", "express", "balancesheet", "cashflow",
+    "margin_detail", "hk_hold",
+})
+
+_EXPLICIT_NON_PARTITIONED: frozenset[str] = frozenset({
+    "stock_basic", "index_basic", "index_classify", "index_member", "fund_basic",
+    "cn_cpi", "cn_gdp", "cn_ppi", "cn_pmi", "cn_m", "sf_month", "shibor_lpr",
+    "shibor", "cn_schedule", "fut_index_daily",
+    "margin", "moneyflow_hsgt", "hsgt_top10", "index_daily_bar", "global_index_daily",
+    "financials", "balance_sheet", "cashflow", "dividends", "splits",
+    "index_valuation", "macro_indicators", "index_fundamental",
+    "sw_2021_constituents", "sw_2021_fundamental", "company_fundamental",
+    "fs_non_financial", "pledge_info", "national_debt", "interest_rates",
+    "non_ferrous_metals", "crude_oil",
+})
+
+_EXPLICIT_SINGLE_SYNC: frozenset[str] = frozenset({
+    "moneyflow_hsgt", "hsgt_top10", "margin", "suspend_d",
+    "cn_gdp", "cn_cpi", "cn_ppi", "cn_pmi", "cn_m", "sf_month",
+    "shibor_lpr", "shibor", "cn_schedule", "fut_index_daily",
+    "stock_basic", "index_basic", "index_classify", "index_member", "fund_basic",
+    "sw_2021_constituents", "sw_2021_fundamental", "company_fundamental",
+    "index_fundamental", "fs_non_financial", "pledge_info",
+    "national_debt", "interest_rates", "non_ferrous_metals", "crude_oil",
 })
 
 
-def is_per_symbol_task(provider: str, task_name: str) -> bool:
-    """判断指定数据源与任务是否属于按标的代码拉取模式 (per_symbol)。
-
-    按标的拉取模式支持单次抓取整段历史范围，而按交易日拉取模式 (per_day) 则按天并发拉取全市场。
-    """
-    prov = provider.lower()
-    name = task_name.strip()
-
-    if prov in ("fred", "yfinance") or name in PER_SYMBOL_DATASETS:
-        return True
-
-    try:
-        task = resolve_task(prov, name)
-        if task.dataset in PER_SYMBOL_DATASETS or task.task_name in PER_SYMBOL_DATASETS:
-            return True
-        return task.fetch_mode == "per_symbol"
-    except Exception:
-        return False
-
-
-def is_task_partitioned(provider: str, task_or_dataset: str) -> bool:
-    """判断指定数据源与数据集/任务是否采用 Hive 年月时间分桶存储。
-
-    非分区数据集（如静态基本信息表、宏观单次快照等）直接存储于 ``dataset/data.parquet``。
-    """
-    prov = provider.lower()
-    name = task_or_dataset.strip()
-
-    # 全局免分区分桶数据源
-    if prov in ("fred", "lixinger"):
-        return False
-
-    # 显式免分区的低频/静态/单表数据集集合
-    non_part_datasets = {
-        "stock_basic", "index_basic", "index_classify", "index_member", "fund_basic",
-        "cn_cpi", "cn_gdp", "cn_ppi", "cn_pmi", "cn_m", "sf_month", "shibor_lpr",
-        "margin", "moneyflow_hsgt", "hsgt_top10", "index_daily_bar", "global_index_daily",
-        "financials", "balance_sheet", "cashflow", "dividends", "splits",
-        "index_valuation", "macro_indicators", "index_fundamental",
-        "sw_2021_constituents", "sw_2021_fundamental", "company_fundamental",
-        "fs_non_financial", "pledge_info",
-    }
-    if name in non_part_datasets:
-        return False
-
-    try:
-        task = resolve_task(prov, name)
-        if task.dataset in non_part_datasets:
-            return False
-        if task.frequency in ("static", "event") and task.dataset not in ("suspend_d", "index_weight"):
-            return False
-        return task.partitioned
-    except Exception:
-        return True
-
-
-def _make_spec(task: str, prov: str, api: str, dataset: str, qp: str = "generic") -> TaskSpec:
-    return TaskSpec(task_name=task, provider=prov, api_name=api, dataset=dataset, quality_profile=qp)
+def _make_spec(
+    task: str,
+    prov: str,
+    api: str,
+    dataset: str,
+    qp: str = "generic",
+    fetch_mode: str = "per_day",
+    partitioned: bool = True,
+    is_single_sync: bool = False,
+    required_pool: str | None = None,
+) -> TaskSpec:
+    return TaskSpec(
+        task_name=task,
+        provider=prov,
+        api_name=api,
+        dataset=dataset,
+        quality_profile=qp,
+        fetch_mode=fetch_mode,
+        partitioned=partitioned,
+        is_single_sync=is_single_sync,
+        required_pool=required_pool,
+    )
 
 
 _CUSTOM_TASKS: dict[tuple[str, str], TaskSpec] = {
-    ("mock", "stock_daily_bar"): _make_spec("stock_daily_bar", "mock", "daily", "stock_daily_bar", "bar"),
-    ("tushare", "stock_daily_bar"): _make_spec("stock_daily_bar", "tushare", "daily", "stock_daily_bar", "bar"),
-    ("tushare", "index_daily_bar"): _make_spec("index_daily_bar", "tushare", "index_daily", "index_daily_bar", "bar"),
-    ("yfinance", "macro_indicators"): _make_spec("macro_indicators", "yfinance", "macro_indicators", "macro_indicators"),
-    ("fred", "macro_indicators"): _make_spec("macro_indicators", "fred", "macro_indicators", "macro_indicators"),
-    ("yfinance", "stock_daily_bar"): _make_spec("stock_daily_bar", "yfinance", "history", "stock_daily_bar", "bar"),
-    ("yfinance", "index_daily_bar"): _make_spec("index_daily_bar", "yfinance", "history", "index_daily_bar", "bar"),
-    ("lixinger", "stock_daily_bar"): _make_spec("stock_daily_bar", "lixinger", "cn/company/candlestick", "stock_daily_bar", "bar"),
-    ("lixinger", "index_daily_bar"): _make_spec("index_daily_bar", "lixinger", "cn/index/candlestick", "index_daily_bar", "bar"),
-    ("lixinger", "company_fundamental"): _make_spec("company_fundamental", "lixinger", "cn/company/fundamental/non_financial", "company_fundamental"),
-    ("lixinger", "index_fundamental"): _make_spec("index_fundamental", "lixinger", "cn/index/fundamental", "index_fundamental"),
-    ("lixinger", "sw_2021_fundamental"): _make_spec("sw_2021_fundamental", "lixinger", "cn/industry/fundamental/sw_2021", "sw_2021_fundamental"),
-    ("lixinger", "sw_2021_constituents"): _make_spec("sw_2021_constituents", "lixinger", "cn/industry/constituents/sw_2021", "sw_2021_constituents"),
-    ("lixinger", "fs_non_financial"): _make_spec("fs_non_financial", "lixinger", "cn/company/fs/non_financial", "fs_non_financial"),
-    ("lixinger", "pledge_info"): _make_spec("pledge_info", "lixinger", "cn/company/hot/ple", "pledge_info"),
+    ("mock", "stock_daily_bar"): _make_spec("stock_daily_bar", "mock", "daily", "stock_daily_bar", "bar", fetch_mode="per_day", partitioned=True),
+    ("tushare", "stock_daily_bar"): _make_spec("stock_daily_bar", "tushare", "daily", "stock_daily_bar", "bar", fetch_mode="per_day", partitioned=True),
+    ("tushare", "index_daily_bar"): _make_spec("index_daily_bar", "tushare", "index_daily", "index_daily_bar", "bar", fetch_mode="per_symbol", partitioned=False, is_single_sync=True),
+    ("yfinance", "macro_indicators"): _make_spec("macro_indicators", "yfinance", "macro_indicators", "macro_indicators", fetch_mode="per_symbol", partitioned=False, is_single_sync=True),
+    ("fred", "macro_indicators"): _make_spec("macro_indicators", "fred", "macro_indicators", "macro_indicators", fetch_mode="per_symbol", partitioned=False, is_single_sync=True),
+    ("yfinance", "stock_daily_bar"): _make_spec("stock_daily_bar", "yfinance", "history", "stock_daily_bar", "bar", fetch_mode="per_symbol", partitioned=True),
+    ("yfinance", "index_daily_bar"): _make_spec("index_daily_bar", "yfinance", "history", "index_daily_bar", "bar", fetch_mode="per_symbol", partitioned=False),
+    ("lixinger", "stock_daily_bar"): _make_spec("stock_daily_bar", "lixinger", "cn/company/candlestick", "stock_daily_bar", "bar", fetch_mode="per_symbol", partitioned=False),
+    ("lixinger", "index_daily_bar"): _make_spec("index_daily_bar", "lixinger", "cn/index/candlestick", "index_daily_bar", "bar", fetch_mode="per_symbol", partitioned=False),
+    ("lixinger", "company_fundamental"): _make_spec("company_fundamental", "lixinger", "cn/company/fundamental/non_financial", "company_fundamental", fetch_mode="per_symbol", partitioned=False, is_single_sync=True),
+    ("lixinger", "index_fundamental"): _make_spec("index_fundamental", "lixinger", "cn/index/fundamental", "index_fundamental", fetch_mode="per_symbol", partitioned=False, is_single_sync=True),
+    ("lixinger", "sw_2021_fundamental"): _make_spec("sw_2021_fundamental", "lixinger", "cn/industry/fundamental/sw_2021", "sw_2021_fundamental", fetch_mode="per_symbol", partitioned=False, is_single_sync=True),
+    ("lixinger", "sw_2021_constituents"): _make_spec("sw_2021_constituents", "lixinger", "cn/industry/constituents/sw_2021", "sw_2021_constituents", fetch_mode="per_symbol", partitioned=False, is_single_sync=True),
+    ("lixinger", "fs_non_financial"): _make_spec("fs_non_financial", "lixinger", "cn/company/fs/non_financial", "fs_non_financial", fetch_mode="per_symbol", partitioned=False, is_single_sync=True),
+    ("lixinger", "pledge_info"): _make_spec("pledge_info", "lixinger", "cn/company/hot/ple", "pledge_info", fetch_mode="per_symbol", partitioned=False, is_single_sync=True),
+    ("lixinger", "national_debt"): _make_spec("national_debt", "lixinger", "macro/national-debt", "national_debt", fetch_mode="per_symbol", partitioned=False, is_single_sync=True),
+    ("lixinger", "interest_rates"): _make_spec("interest_rates", "lixinger", "macro/interest-rates", "interest_rates", fetch_mode="per_symbol", partitioned=False, is_single_sync=True),
+    ("lixinger", "non_ferrous_metals"): _make_spec("non_ferrous_metals", "lixinger", "macro/non-ferrous-metals", "non_ferrous_metals", fetch_mode="per_symbol", partitioned=False, is_single_sync=True),
+    ("lixinger", "crude_oil"): _make_spec("crude_oil", "lixinger", "macro/crude-oil", "crude_oil", fetch_mode="per_symbol", partitioned=False, is_single_sync=True),
 }
 
 _ALIASES: dict[tuple[str, str], str] = {
@@ -118,6 +112,10 @@ _ALIASES: dict[tuple[str, str], str] = {
     ("lixinger", "cn/industry/constituents/sw_2021"): "sw_2021_constituents",
     ("lixinger", "cn/company/fs/non_financial"): "fs_non_financial",
     ("lixinger", "cn/company/hot/ple"): "pledge_info",
+    ("lixinger", "macro/national-debt"): "national_debt",
+    ("lixinger", "macro/interest-rates"): "interest_rates",
+    ("lixinger", "macro/non-ferrous-metals"): "non_ferrous_metals",
+    ("lixinger", "macro/crude-oil"): "crude_oil",
 }
 
 _DISABLED_TASKS = {"bak_daily"}
@@ -144,8 +142,75 @@ def _provider_registry(provider: str) -> dict[str, Any]:
     return {}
 
 
+def _derive_task_spec(provider_name: str, requested: str, meta: Any) -> TaskSpec:
+    """根据接口的 group、frequency 等原生元数据，通过约定优于配置自动推导调度与存储策略。"""
+    raw_api_name = getattr(meta, "api_name", None) or getattr(meta, "series_id", requested)
+    api_name = str(raw_api_name)
+    group = str(getattr(meta, "group", ""))
+    frequency = str(getattr(meta, "frequency", "daily"))
+    qp = str(getattr(meta, "quality_profile", "generic"))
+
+    # 1. 推导 fetch_mode 与 required_pool
+    if provider_name in ("fred", "yfinance"):
+        fetch_mode = "per_symbol"
+        required_pool = None
+    elif group in ("financial_statements", "financial_indicator") or requested in (
+        "income", "fina_indicator", "forecast", "express", "balancesheet", "cashflow",
+        "margin_detail", "hk_hold",
+    ):
+        fetch_mode = "per_symbol"
+        required_pool = "stock_basic"
+    elif group == "fund_share" or requested == "fund_share":
+        fetch_mode = "per_symbol"
+        required_pool = "fund_basic"
+    elif requested in (
+        "index_daily", "index_dailybasic", "index_weight", "global_index_daily",
+        "fund_daily", "fund_adj", "etf_share_size",
+    ):
+        fetch_mode = "per_symbol"
+        required_pool = None
+    else:
+        fetch_mode = getattr(meta, "fetch_mode", "per_day")
+        required_pool = None
+
+    # 2. 推导 partitioned (是否采用 Hive 年月分桶)
+    if provider_name in ("fred", "lixinger"):
+        partitioned = False
+    elif requested in _EXPLICIT_NON_PARTITIONED or group in ("macro_data", "basic_info"):
+        partitioned = False
+    elif frequency in ("static", "event") and requested not in ("suspend_d", "index_weight"):
+        partitioned = False
+    else:
+        partitioned = True
+
+    # 3. 推导 is_single_sync (是否单表/宏观全量一次性同步)
+    if requested in _EXPLICIT_SINGLE_SYNC or group in ("macro_data", "basic_info"):
+        is_single_sync = True
+    elif (
+        frequency in ("monthly", "quarterly", "event", "static")
+        and group not in ("financial_statements", "financial_indicator", "market_data", "fund_market")
+        and requested not in ("income", "fina_indicator", "forecast", "express", "balancesheet", "cashflow")
+    ):
+        is_single_sync = True
+    else:
+        is_single_sync = False
+
+    return TaskSpec(
+        task_name=requested,
+        provider=provider_name,
+        api_name=api_name,
+        dataset=requested,
+        frequency=frequency,
+        quality_profile=qp,
+        fetch_mode=fetch_mode,
+        partitioned=partitioned,
+        is_single_sync=is_single_sync,
+        required_pool=required_pool,
+    )
+
+
 def resolve_task(provider: str, task_name: str, symbol: str = "") -> TaskSpec:
-    """解析公开任务名，并返回其唯一上游 API 路由。"""
+    """解析公开任务名，并返回其唯一上游 API 路由及完整调度契约。"""
     provider_name = provider.lower()
     requested = task_name.strip()
     if requested in _DISABLED_TASKS:
@@ -175,26 +240,23 @@ def resolve_task(provider: str, task_name: str, symbol: str = "") -> TaskSpec:
             dataset=requested,
         )
 
-    raw_api_name = getattr(meta, "api_name", None) or getattr(meta, "series_id", requested)
-    api_name = str(raw_api_name)
-    mode = (
-        "per_symbol"
-        if (
-            requested in PER_SYMBOL_DATASETS
-            or getattr(meta, "fetch_mode", None) == "per_symbol"
-            or provider_name in ("fred", "yfinance")
-        )
-        else getattr(meta, "fetch_mode", "per_day")
-    )
-    return TaskSpec(
-        task_name=requested,
-        provider=provider_name,
-        api_name=api_name,
-        dataset=requested,
-        frequency=getattr(meta, "frequency", "daily"),
-        quality_profile=getattr(meta, "quality_profile", "generic"),
-        fetch_mode=mode,
-    )
+    return _derive_task_spec(provider_name, requested, meta)
+
+
+def is_per_symbol_task(provider: str, task_name: str) -> bool:
+    """判断指定数据源与任务是否属于按标的代码拉取模式 (per_symbol)。"""
+    try:
+        return resolve_task(provider, task_name).fetch_mode == "per_symbol"
+    except Exception:
+        return provider.lower() in ("fred", "yfinance")
+
+
+def is_task_partitioned(provider: str, task_or_dataset: str) -> bool:
+    """判断指定数据源与数据集/任务是否采用 Hive 年月时间分桶存储。"""
+    try:
+        return resolve_task(provider, task_or_dataset).partitioned
+    except Exception:
+        return provider.lower() not in ("fred", "lixinger")
 
 
 def resolve_public_task(provider: str, task_name: str, symbol: str = "") -> TaskSpec:

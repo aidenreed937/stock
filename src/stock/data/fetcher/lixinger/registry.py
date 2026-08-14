@@ -115,6 +115,46 @@ LIXINGER_API_REGISTRY: dict[str, EndpointMeta] = {
         default_metrics=["pledge_ratio", "major_shareholder_pledge_ratio"],
         support_batch_prefetch=True,
     ),
+    "macro/national-debt": EndpointMeta(
+        api_name="macro/national-debt",
+        description="国债收益率数据 (含中美国债 3M 至 30Y 期限结构)",
+        group="macro_data",
+        primary_keys=["areaCode", "date"],
+        date_columns=["date"],
+        required_columns=["areaCode", "date"],
+        update_time="18:00",
+        default_metrics=["tcm_y10", "tcm_y1", "tcm_y2", "tcm_y5", "tcm_y30"],
+        default_params={"areaCode": "cn"},
+    ),
+    "macro/interest-rates": EndpointMeta(
+        api_name="macro/interest-rates",
+        description="宏观利率数据 (含 Shibor/同业存单/MLF/LPR/回购定盘利率)",
+        group="macro_data",
+        primary_keys=["areaCode", "date"],
+        date_columns=["date"],
+        required_columns=["areaCode", "date"],
+        update_time="18:00",
+        default_metrics=["shibor_on", "shibor_w1", "shibor_y1", "cdnaaa_y1", "lpr_y1", "lpr_y5", "fdr_d7"],
+        default_params={"areaCode": "cn"},
+    ),
+    "macro/non-ferrous-metals": EndpointMeta(
+        api_name="macro/non-ferrous-metals",
+        description="全球有色金属现货价格数据 (伦敦铜/铝/锌/铅/镍/锡)",
+        group="macro_data",
+        primary_keys=["date"],
+        date_columns=["date"],
+        required_columns=["date"],
+        update_time="18:00",
+    ),
+    "macro/crude-oil": EndpointMeta(
+        api_name="macro/crude-oil",
+        description="国际原油现货价格数据 (WTI 与布伦特原油)",
+        group="macro_data",
+        primary_keys=["date"],
+        date_columns=["date"],
+        required_columns=["date"],
+        update_time="18:00",
+    ),
 }
 
 # 增加 CLI 常用短别名映射
@@ -123,6 +163,10 @@ LIXINGER_API_REGISTRY["sw_2021_fundamental"] = LIXINGER_API_REGISTRY["cn/industr
 LIXINGER_API_REGISTRY["index_fundamental"] = LIXINGER_API_REGISTRY["cn/index/fundamental"]
 LIXINGER_API_REGISTRY["fs_non_financial"] = LIXINGER_API_REGISTRY["cn/company/fs/non_financial"]
 LIXINGER_API_REGISTRY["pledge_info"] = LIXINGER_API_REGISTRY["cn/company/hot/ple"]
+LIXINGER_API_REGISTRY["national_debt"] = LIXINGER_API_REGISTRY["macro/national-debt"]
+LIXINGER_API_REGISTRY["interest_rates"] = LIXINGER_API_REGISTRY["macro/interest-rates"]
+LIXINGER_API_REGISTRY["non_ferrous_metals"] = LIXINGER_API_REGISTRY["macro/non-ferrous-metals"]
+LIXINGER_API_REGISTRY["crude_oil"] = LIXINGER_API_REGISTRY["macro/crude-oil"]
 
 for _meta in {id(meta): meta for meta in LIXINGER_API_REGISTRY.values()}.values():
     if not _meta.required_columns:

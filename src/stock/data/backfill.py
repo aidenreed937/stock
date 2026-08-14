@@ -11,13 +11,9 @@ from stock.data.factory import create_pipeline
 from stock.data.fetcher.base import BaseDataFetcher
 from stock.data.pipeline import MarketDataPipeline
 from stock.data.planner import (
-    MARKET_SINGLE_SYNC_ENDPOINTS,
-    TUSHARE_FUND_POOL_ENDPOINTS,
-    TUSHARE_STOCK_POOL_ENDPOINTS,
     _default_symbols_for_endpoint,
     _filter_supported_symbols,
     _load_curated_symbol_pool,
-    _tushare_local_pool,
     _watchlist_symbols,
 )
 from stock.data.task_registry import is_per_symbol_task, resolve_public_task, resolve_task
@@ -203,7 +199,7 @@ class HistoricalBackfiller:
         is_per_sym = is_per_symbol_task(self.data_source, self.endpoint)
 
         # 1. 范围拉取模式 (月频/宏观/静态/按标的历史范围)
-        if freq != "daily" or is_per_sym or self.endpoint in MARKET_SINGLE_SYNC_ENDPOINTS:
+        if freq != "daily" or is_per_sym or task_spec.is_single_sync:
             sym_code = self.symbol or self.endpoint
             # 检查是否全部命中本地缓存
             if not force_refresh and self.symbol:
@@ -323,9 +319,6 @@ if __name__ == "__main__":
     main()
 
 __all__ = [
-    "MARKET_SINGLE_SYNC_ENDPOINTS",
-    "TUSHARE_STOCK_POOL_ENDPOINTS",
-    "TUSHARE_FUND_POOL_ENDPOINTS",
     "HistoricalBackfiller",
     "resolve_public_task",
     "_default_symbols_for_endpoint",

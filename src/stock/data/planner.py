@@ -16,39 +16,6 @@ from stock.data.task_registry import (
 from stock.exceptions import DataFetchError
 from stock.utils.logger import logger
 
-MARKET_SINGLE_SYNC_ENDPOINTS: frozenset[str] = frozenset(
-    {
-        "moneyflow_hsgt",
-        "hsgt_top10",
-        "margin",
-        "suspend_d",
-        "cn_gdp",
-        "cn_cpi",
-        "cn_ppi",
-        "cn_pmi",
-        "cn_m",
-        "sf_month",
-        "shibor_lpr",
-        "stock_basic",
-        "index_basic",
-        "index_classify",
-        "index_member",
-        "fund_basic",
-        "sw_2021_constituents",
-        "sw_2021_fundamental",
-        "company_fundamental",
-        "index_fundamental",
-        "fs_non_financial",
-        "pledge_info",
-    }
-)
-
-TUSHARE_STOCK_POOL_ENDPOINTS = frozenset(
-    {"income", "fina_indicator", "margin_detail", "hk_hold"}
-)
-TUSHARE_FUND_POOL_ENDPOINTS = frozenset({"fund_share"})
-
-
 @dataclass(frozen=True)
 class BackfillTask:
     """不可变原子回填任务。"""
@@ -78,12 +45,16 @@ def _load_curated_symbol_pool(data_source: str, dataset: str) -> list[str]:
     return sorted({str(s).strip() for s in vals if str(s).strip()})
 
 
-def _tushare_local_pool(endpoint: str) -> tuple[str, str] | None:
-    """返回 TuShare 接口所需本地基础池及其缺失提示。"""
-    if endpoint in TUSHARE_STOCK_POOL_ENDPOINTS:
-        return "stock_basic", "A 股"
-    if endpoint in TUSHARE_FUND_POOL_ENDPOINTS:
-        return "fund_basic", "基金"
+def _resolve_required_local_pool(data_source: str, endpoint: str) -> tuple[str, str] | None:
+    """从任务元数据解析所需本地基础池及其缺失提示。"""
+    try:
+        task_spec = resolve_task(data_source, endpoint)
+        if task_spec.required_pool == "stock_basic":
+            return "stock_basic", "A 股"
+        if task_spec.required_pool == "fund_basic":
+            return "fund_basic", "基金"
+    except Exception:
+        pass
     return None
 
 
@@ -133,7 +104,7 @@ def _default_symbols_for_endpoint(
     """计算接口的回填目标标的列表。"""
     import stock.data.backfill as bf_mod
 
-    local_pool_meta = _tushare_local_pool(endpoint) if data_source == "tushare" else None
+    local_pool_meta = _resolve_required_local_pool(data_source, endpoint)
     if local_pool_meta:
         pool_dataset, pool_label = local_pool_meta
         pool_fn = getattr(bf_mod, "_load_curated_symbol_pool", _load_curated_symbol_pool)
@@ -193,8 +164,8 @@ class BackfillPlanner:
         for raw_ep in endpoints:
             task_spec = resolve_task(data_source, raw_ep)
             public_name = task_spec.task_name
-            is_per_sym = is_per_symbol_task(data_source, public_name)
-            is_single = public_name in MARKET_SINGLE_SYNC_ENDPOINTS
+            is_per_sym = task_spec.fetch_mode == "per_symbol"
+            is_single = task_spec.is_single_sync
 
             targets = _resolve_target_symbols(
                 data_source, public_name, symbol, is_per_sym, data_cfg

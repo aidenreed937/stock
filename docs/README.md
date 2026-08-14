@@ -14,7 +14,12 @@
 
 ### 3. 🚀 开发者指南 (`docs/guides/`)
 - [快速上手指南 (Getting Started)](file:///Users/mac/workspace/personal/finance/stock/docs/guides/getting_started.md) — 基于 `uv` 的环境搭建、本地运行、测试与 Lint 常用指令
+- [数据接口注册完整开发规范与 Checklist](file:///Users/mac/workspace/personal/finance/stock/docs/guides/endpoint_registration_guide.md) — 新增数据源/端点的 5 步标准注册流程与防漏防错清单
 - [多品类市场数据摄取与调度规则手册 (Market Data Ingestion Rules)](file:///Users/mac/workspace/personal/finance/stock/docs/guides/market_data_ingestion_rules.md) — 股票/指数/ETF/行业摄取范式、全市场截面 vs 观察池范围抓取及 DuckDB 架构规范
+
+### 4. 🔬 投研框架与数据底座 (`docs/research/` & `docs/`)
+- [A股量化研究与实盘交易框架 (Research Framework)](file:///Users/mac/workspace/personal/finance/stock/docs/research/a_share_quant_framework.md) — 宏观β四象限、行业轮动、多因子选股与实盘执行闭环
+- [量化系统数据底座与 PIT 设计规范 (Data Foundation Spec)](file:///Users/mac/workspace/personal/finance/stock/docs/data_foundation_spec.md) — PIT 无未来函数财报切片、复权引擎分离与日历对齐
 
 ---
 
