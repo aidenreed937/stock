@@ -46,24 +46,40 @@ class GenericCleaner(BaseDataCleaner):
             for k in self.primary_keys:
                 if k in cleaned_df.columns:
                     target_keys.append(k)
-                elif k == "ts_code" and "symbol" in cleaned_df.columns:
+                elif k in ("ts_code", "stockCode", "code") and "symbol" in cleaned_df.columns:
                     target_keys.append("symbol")
-                elif k == "trade_date" and "date" in cleaned_df.columns:
+                elif k in ("trade_date", "date") and "trade_date" in cleaned_df.columns:
+                    target_keys.append("trade_date")
+                elif k in ("trade_date", "date") and "date" in cleaned_df.columns:
                     target_keys.append("date")
         else:
-            # 默认推理主键
-            for candidate in ["symbol", "ts_code", "trade_date", "end_date", "date"]:
-                if candidate in cleaned_df.columns:
-                    target_keys.append(candidate)
+            # 默认推理主键：综合考虑所有实体列与期间列
+            entity_cols = [
+                c
+                for c in ["index_code", "con_code", "industry_code", "symbol", "ts_code", "stockCode", "code", "exchange_id"]
+                if c in cleaned_df.columns
+            ]
+            period_cols = [
+                c
+                for c in ["trade_date", "date", "month", "quarter", "end_date", "in_date", "out_date", "suspend_date"]
+                if c in cleaned_df.columns
+            ]
+            if ("index_code" in entity_cols or "con_code" in entity_cols) and "symbol" in entity_cols:
+                try:
+                    if cleaned_df["symbol"].n_unique() <= 1:
+                        entity_cols.remove("symbol")
+                except Exception:
+                    pass
+            target_keys = list(dict.fromkeys(entity_cols + period_cols))
 
-        # 月频/季频宏观接口必须保留业务周期；没有 symbol 的数据不能按日期之外的
-        # 通用推断键压成单行。
         if "month" in cleaned_df.columns:
             target_keys = [key for key in target_keys if key not in {"symbol", "ts_code", "date"}]
-            target_keys.append("month")
+            if "month" not in target_keys:
+                target_keys.append("month")
         elif "quarter" in cleaned_df.columns:
             target_keys = [key for key in target_keys if key not in {"symbol", "ts_code", "date"}]
-            target_keys.append("quarter")
+            if "quarter" not in target_keys:
+                target_keys.append("quarter")
 
         # 1. 过滤主键包含 null 的记录
         if target_keys:

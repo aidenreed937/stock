@@ -32,3 +32,17 @@ def test_generic_cleaner_alias_keys() -> None:
     })
     res = cleaner.clean(df)
     assert len(res) == 1
+
+
+def test_generic_cleaner_compound_entity_keys_with_placeholder_symbol() -> None:
+    cleaner = GenericCleaner()
+    # 模拟 index_member 场景：多个成分股记录具有相同的 symbol 常量占位符
+    df = pl.DataFrame({
+        "index_code": ["801812.SI", "801812.SI", "801813.SI"],
+        "con_code": ["002294.SZ", "600461.SH", "002756.SZ"],
+        "in_date": ["20110105", "20070306", "20210104"],
+        "out_date": ["20130628", "20070312", "20211231"],
+        "symbol": ["index_member", "index_member", "index_member"],
+    })
+    res = cleaner.clean(df)
+    assert len(res) == 3

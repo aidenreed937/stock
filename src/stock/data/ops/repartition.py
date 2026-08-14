@@ -27,25 +27,28 @@ def repartition_all_curated(base_dir: str = "data/curated") -> None:
 
     logger.info(f"开始对 [{len(files)}] 个离线 Parquet 文件进行标准交易日重分区归位整理...")
 
-    # 按数据源与数据集分组读取合并
-    dataset_groups: dict[tuple[str, str], list[Path]] = {}
+    # 按数据源、市场与数据集分组读取合并
+    dataset_groups: dict[tuple[str, str, str], list[Path]] = {}
     for f in files:
         rel_parts = f.relative_to(curated_path).parts
         if not rel_parts:
             continue
         src = rel_parts[0]
+        market = "MULTI"
         dataset = ""
         for i, part in enumerate(rel_parts):
-            if part.startswith("market=") and i + 1 < len(rel_parts):
-                dataset = rel_parts[i + 1]
+            if part.startswith("market="):
+                market = part.split("=", 1)[1]
+                if i + 1 < len(rel_parts):
+                    dataset = rel_parts[i + 1]
                 break
         if not dataset:
             dataset = rel_parts[1] if len(rel_parts) > 1 else "unknown"
         if dataset and dataset != "unknown":
-            dataset_groups.setdefault((src, dataset), []).append(f)
+            dataset_groups.setdefault((src, market, dataset), []).append(f)
 
-    for (src, dataset), file_list in dataset_groups.items():
-        logger.info(f"===> 正在处理 [{src}/{dataset}] (共 {len(file_list)} 个原始分区文件)...")
+    for (src, market, dataset), file_list in dataset_groups.items():
+        logger.info(f"===> 正在处理 [{src}/{market}/{dataset}] (共 {len(file_list)} 个原始分区文件)...")
         dfs = []
         for fp in file_list:
             try:
@@ -59,6 +62,37 @@ def repartition_all_curated(base_dir: str = "data/curated") -> None:
             continue
 
         merged_df = pl.concat(dfs, how="diagonal_relaxed")
+        from stock.data.storage.compat import StorageCompat
+
+        merged_df = StorageCompat.normalize_identity_columns(merged_df)
+        meta_updates = []
+        if "data_source" not in merged_df.columns:
+            meta_updates.append(pl.lit(src).alias("data_source"))
+        if "market" not in merged_df.columns:
+            meta_updates.append(pl.lit(market).alias("market"))
+        elif merged_df["market"].null_count() > 0:
+            merged_df = merged_df.with_columns(pl.col("market").fill_null(market))
+        if "schema_version" not in merged_df.columns:
+            meta_updates.append(pl.lit("v2").alias("schema_version"))
+        if "adjustment" not in merged_df.columns:
+            meta_updates.append(pl.lit("raw").alias("adjustment"))
+        if "exchange" not in merged_df.columns or "currency" not in merged_df.columns:
+            from stock.data.normalizer.bar_normalizer import infer_market_exchange_currency
+
+            if "symbol" in merged_df.columns:
+                _, ex_exp, cur_exp = infer_market_exchange_currency(pl.col("symbol"), data_source=src)
+            elif "ts_code" in merged_df.columns:
+                _, ex_exp, cur_exp = infer_market_exchange_currency(pl.col("ts_code"), data_source=src)
+            else:
+                ex_exp = pl.lit("SOURCE")
+                cur_exp = pl.lit("CNY" if src in {"tushare", "lixinger"} else "USD")
+
+            if "exchange" not in merged_df.columns:
+                meta_updates.append(ex_exp.alias("exchange"))
+            if "currency" not in merged_df.columns:
+                meta_updates.append(cur_exp.alias("currency"))
+        if meta_updates:
+            merged_df = merged_df.with_columns(meta_updates)
 
         # 先写入同级临时目录并完成校验，再原子替换旧数据，避免失败造成数据丢失。
         staging = Path(tempfile.mkdtemp(prefix=f".{dataset}.repartition-", dir=curated_path))
@@ -71,7 +105,7 @@ def repartition_all_curated(base_dir: str = "data/curated") -> None:
             staged_store.commit()
             staged_files = list(staging.rglob("*.parquet"))
             if not staged_files:
-                raise RuntimeError(f"重分区未生成输出文件: {src}/{dataset}")
+                raise RuntimeError(f"重分区未生成输出文件: {src}/{market}/{dataset}")
 
             backup = Path(tempfile.mkdtemp(prefix=f".{dataset}.backup-", dir=curated_path))
             try:

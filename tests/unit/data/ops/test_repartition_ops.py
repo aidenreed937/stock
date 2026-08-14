@@ -49,3 +49,34 @@ def test_repartition_all_curated_success(tmp_path: Path) -> None:
     assert p2.exists()
     assert len(pl.read_parquet(p1)) == 1
     assert len(pl.read_parquet(p2)) == 1
+
+
+def test_repartition_all_curated_infers_missing_metadata(tmp_path: Path) -> None:
+    base_dir = tmp_path / "curated"
+    p = base_dir / "yfinance" / "market=US" / "stock_daily_bar" / "year=2024" / "month=01" / "data.parquet"
+    p.parent.mkdir(parents=True, exist_ok=True)
+
+    # 模拟历史遗留缺少 market/data_source 的数据
+    df = pl.DataFrame(
+        {
+            "symbol": ["AAPL", "AAPL"],
+            "trade_date": [date(2024, 1, 15), date(2024, 2, 15)],
+            "open": [180.0, 185.0],
+            "high": [182.0, 187.0],
+            "low": [179.0, 184.0],
+            "close": [181.0, 186.0],
+            "volume": [50000.0, 60000.0],
+            "amount": [9050000.0, 11160000.0],
+        }
+    )
+    df.write_parquet(p)
+
+    repartition_all_curated(str(base_dir))
+
+    p1 = base_dir / "yfinance" / "market=US" / "stock_daily_bar" / "year=2024" / "month=01" / "data.parquet"
+    p2 = base_dir / "yfinance" / "market=US" / "stock_daily_bar" / "year=2024" / "month=02" / "data.parquet"
+    assert p1.exists()
+    assert p2.exists()
+    df1 = pl.read_parquet(p1)
+    assert "data_source" in df1.columns and df1["data_source"][0] == "yfinance"
+    assert "market" in df1.columns and df1["market"][0] == "US"
