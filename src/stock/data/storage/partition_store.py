@@ -13,6 +13,27 @@ from stock.exceptions import DataValidationError
 from stock.utils.logger import logger
 
 
+def _prepare_curated_frame(df: pl.DataFrame, endpoint: str) -> pl.DataFrame:
+    from datetime import datetime, timezone
+
+    if "source_endpoint" not in df.columns:
+        df = df.with_columns(pl.lit(endpoint).alias("source_endpoint"))
+    if "updated_at" not in df.columns:
+        df = df.with_columns(pl.lit(datetime.now(timezone.utc)).cast(pl.Datetime("us", "UTC")).alias("updated_at"))
+    df = df.with_columns(pl.lit("v2").alias("schema_version"))
+    return df
+
+
+def _resolve_market_code(df: pl.DataFrame, fallback_market: str) -> str:
+    if "market" in df.columns and not df.is_empty():
+        m_values = set(df.get_column("market").drop_nulls().unique().to_list())
+        if len(m_values) == 1 and next(iter(m_values)):
+            val = next(iter(m_values))
+            return str(val) if val is not None else fallback_market
+    return fallback_market
+
+
+
 class ParquetPartitionStore:
     """负责本地 Parquet 文件的物理分区路径计算、缓存与状态检查，并将写入委托给 ParquetPartitionWriter。"""
 
@@ -29,6 +50,7 @@ class ParquetPartitionStore:
         self.storage_dir.mkdir(parents=True, exist_ok=True)
         self.writer = ParquetPartitionWriter(data_source=self.data_source)
         self._curated_cache: dict[Path, pl.DataFrame] = {}
+        self._curated_dates_cache: dict[Path, set[str]] = {}
 
     def _get_source_dir(self) -> Path:
         return self._storage_root / self.data_source if self.data_source else self._storage_root
@@ -81,11 +103,12 @@ class ParquetPartitionStore:
     def get_parquet_path(self, endpoint: str, target_date: date, market: str = "MULTI") -> Path:
         target_dataset = self._dataset_name(endpoint)
         src = self.data_source or "tushare"
+        market_code = get_endpoint_market(src, target_dataset) if market == "MULTI" else market
         if not is_task_partitioned(src, target_dataset):
-            return self.storage_dir / f"market={market.upper()}" / target_dataset / "data.parquet"
+            return self.storage_dir / f"market={market_code.upper()}" / target_dataset / "data.parquet"
         return (
             self.storage_dir
-            / f"market={market.upper()}"
+            / f"market={market_code.upper()}"
             / target_dataset
             / f"year={target_date.year:04d}"
             / f"month={target_date.month:02d}"
@@ -96,52 +119,54 @@ class ParquetPartitionStore:
         data_source = self.require_data_source()
         target_dataset = self._dataset_name(endpoint)
         year_month_path = f"year={target_date.year:04d}/month={target_date.month:02d}"
-        matching_files = [
-            p
-            for p in self.storage_dir.glob(f"**/{target_dataset}/{year_month_path}/*.parquet")
-            if not StorageCompat.is_artifact_path(p)
-        ]
+        direct_path = self.get_parquet_path(target_dataset, target_date)
+        if direct_path.exists() and not StorageCompat.is_artifact_path(direct_path):
+            matching_files = [direct_path]
+        else:
+            matching_files = [
+                p
+                for p in self.storage_dir.glob(f"**/{target_dataset}/{year_month_path}/*.parquet")
+                if not StorageCompat.is_artifact_path(p)
+            ]
         if not matching_files:
             return False
+
         date_str_hyphen = target_date.strftime("%Y-%m-%d")
         date_str_plain = target_date.strftime("%Y%m%d")
 
         for file_path in matching_files:
             try:
-                if file_path not in self._curated_cache:
-                    self._curated_cache[file_path] = pl.read_parquet(file_path)
-                df = self._curated_cache[file_path]
-                self.writer._validate_frame_source(df, data_source, f"Curated 文件 [{file_path}]")
-                if "trade_date" in df.columns:
-                    dates_str = set(
-                        df["trade_date"].cast(pl.Utf8, strict=False).drop_nulls().unique().to_list()
-                    )
-                    if date_str_hyphen in dates_str or date_str_plain in dates_str:
-                        if symbol and "symbol" in df.columns:
-                            if symbol not in set(df["symbol"].unique().to_list()):
-                                continue
-                        elif (
-                            not symbol
-                            and "symbol" in df.columns
-                            and "stock_daily_bar" in str(file_path)
-                        ):
+                if file_path not in self._curated_dates_cache:
+                    if file_path not in self._curated_cache:
+                        self._curated_cache[file_path] = pl.read_parquet(file_path)
+                    df = self._curated_cache[file_path]
+                    self.writer._validate_frame_source(df, data_source, f"Curated 文件 [{file_path}]")
+                    if "trade_date" in df.columns:
+                        self._curated_dates_cache[file_path] = set(
+                            df["trade_date"].cast(pl.Utf8, strict=False).drop_nulls().unique().to_list()
+                        )
+                    else:
+                        self._curated_dates_cache[file_path] = set()
+
+                dates_str = self._curated_dates_cache[file_path]
+                if date_str_hyphen in dates_str or date_str_plain in dates_str:
+                    if symbol:
+                        df = self._curated_cache[file_path]
+                        if "symbol" in df.columns and symbol not in set(df["symbol"].unique().to_list()):
+                            continue
+                    elif not symbol and "stock_daily_bar" in str(file_path):
+                        df = self._curated_cache[file_path]
+                        if "symbol" in df.columns:
                             day_df = df.filter(
                                 pl.col("trade_date")
                                 .cast(pl.Utf8, strict=False)
                                 .is_in([date_str_hyphen, date_str_plain])
                             )
-                            min_symbols = (
-                                5
-                                if target_date.year < 1993
-                                else 50
-                                if target_date.year < 1996
-                                else 300
-                                if target_date.year < 2000
-                                else 800
-                            )
+                            min_symbols = 5 if target_date.year < 1993 else 50 if target_date.year < 1996 else 300 if target_date.year < 2000 else 800
                             if len(day_df["symbol"].unique()) < min_symbols:
                                 continue
-                        return True
+                    return True
+
             except Exception as e:
                 logger.warning(f"忽略无效 Curated 缓存 [{file_path}]: {e}")
                 continue
@@ -159,23 +184,13 @@ class ParquetPartitionStore:
             raise DataValidationError("Curated 数据缺少数据源，拒绝写入未绑定来源的数据")
         self.bind_data_source(source)
         endpoint = self._dataset_name(endpoint, source)
-        market_code = get_endpoint_market(source, endpoint)
-        if "market" in df.columns and not df.is_empty():
-            m_values = set(df.get_column("market").drop_nulls().unique().to_list())
-            if len(m_values) == 1 and next(iter(m_values)):
-                market_code = next(iter(m_values))
+        market_code = _resolve_market_code(df, get_endpoint_market(source, endpoint))
 
         if df.is_empty():
             return self.get_parquet_path(endpoint, target_date, market=market_code)
 
         file_path = self.get_parquet_path(endpoint, target_date, market=market_code)
-        if "source_endpoint" not in df.columns:
-            df = df.with_columns(pl.lit(endpoint).alias("source_endpoint"))
-        if "updated_at" not in df.columns:
-            from datetime import datetime, timezone
-            df = df.with_columns(pl.lit(datetime.now(timezone.utc)).cast(pl.Datetime("us", "UTC")).alias("updated_at"))
-        df = df.with_columns(pl.lit("v2").alias("schema_version"))
-
+        df = _prepare_curated_frame(df, endpoint)
         self.writer._validate_frame_source(df, source, f"Curated 数据 [{file_path}]")
         if endpoint in {"daily_bar", "stock_daily_bar", "index_daily_bar", "fund_daily"}:
             DAILY_BAR_CONTRACT.validate(df)
@@ -194,25 +209,17 @@ class ParquetPartitionStore:
     def save_dataset(self, key: DatasetKey, df: pl.DataFrame) -> Path:
         self.bind_data_source(key.provider)
         dataset_name = self._dataset_name(key.dataset, key.provider)
-        market_code = (
+        fallback_market = (
             key.instrument.market
             if key.instrument and key.instrument.market
             else get_endpoint_market(key.provider, dataset_name)
         )
-        if "market" in df.columns and not df.is_empty():
-            m_values = set(df.get_column("market").drop_nulls().unique().to_list())
-            if len(m_values) == 1 and next(iter(m_values)):
-                market_code = next(iter(m_values))
+        market_code = _resolve_market_code(df, fallback_market)
         file_path = self.get_parquet_path(dataset_name, key.end_date, market=market_code)
         if df.is_empty():
             return file_path
-        if "source_endpoint" not in df.columns:
-            df = df.with_columns(pl.lit(key.endpoint).alias("source_endpoint"))
-        if "updated_at" not in df.columns:
-            from datetime import datetime, timezone
-            df = df.with_columns(pl.lit(datetime.now(timezone.utc)).cast(pl.Datetime("us", "UTC")).alias("updated_at"))
-        df = df.with_columns(pl.lit("v2").alias("schema_version"))
 
+        df = _prepare_curated_frame(df, key.endpoint)
         self.writer._validate_frame_source(df, key.provider, f"Curated 数据 [{file_path}]")
         if dataset_name in {"daily_bar", "stock_daily_bar", "index_daily_bar", "fund_daily"}:
             DAILY_BAR_CONTRACT.validate(df)

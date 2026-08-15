@@ -85,8 +85,11 @@ class RawDataStorage:
         self.base_dir = base_dir if base_dir is not None else settings.raw_data_dir
         self._batch_mode = False
         self._write_buffer: dict[Path, list[tuple[DatasetKey, pl.DataFrame]]] = {}
+        self._raw_cache: dict[Path, pl.DataFrame] = {}
+        self._raw_dates_cache: dict[Path, set[str] | None] = {}
         import threading
         self._file_lock = threading.Lock()
+
 
     def enable_batch_mode(self) -> None:
         """启用内存攒批模式，延迟到 commit 时再物理落盘，避免 O(N²) 写放大。"""
@@ -329,15 +332,23 @@ class RawDataStorage:
             path = dataset_dir / year_month_path / "data.parquet"
             if not path.exists() or path.name.endswith(RAW_ARTIFACT_SUFFIXES):
                 continue
-            try:
-                df = pl.read_parquet(path)
-            except Exception as e:
-                logger.warning(f"读取 RAW 日期检查文件失败 [{path}]: {e}")
-                continue
-            if df.is_empty():
-                continue
-            date_col = first_existing_column(df, RAW_RANGE_DATE_COLUMNS)
-            if date_col is None:
+            if path not in self._raw_dates_cache:
+                try:
+                    df = pl.read_parquet(path)
+                    date_col = first_existing_column(df, RAW_RANGE_DATE_COLUMNS)
+                    if date_col is not None:
+                        self._raw_dates_cache[path] = set(
+                            normalize_raw_date_series(df.get_column(date_col)).str.slice(0, 8).drop_nulls().unique().to_list()
+                        )
+                    else:
+                        self._raw_dates_cache[path] = None
+                except Exception as e:
+                    logger.warning(f"读取 RAW 日期检查文件失败 [{path}]: {e}")
+                    continue
+
+
+            dates_set = self._raw_dates_cache[path]
+            if dates_set is None:
                 return True
             target_plain = target_date.strftime("%Y%m%d")
             candidate_dates = {target_plain}
@@ -345,7 +356,7 @@ class RawDataStorage:
             while effective_date.weekday() >= 5:
                 effective_date -= timedelta(days=1)
                 candidate_dates.add(effective_date.strftime("%Y%m%d"))
-            values = normalize_raw_date_series(df.get_column(date_col)).str.slice(0, 8)
-            if values.filter(values.is_in(candidate_dates)).len() > 0:
+            if any(d in dates_set for d in candidate_dates):
                 return True
+
         return False
