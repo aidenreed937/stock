@@ -71,6 +71,8 @@ def test_main_cli_dispatch() -> None:
             target_date=date(2026, 8, 12),
             start_date=None,
             end_date=None,
+            domain=None,
+            frequency=None,
             max_workers=4,
             show_details=False,
         )
@@ -101,6 +103,8 @@ def test_main_cli_range_dispatch() -> None:
             target_date=None,
             start_date=date(2026, 8, 1),
             end_date=date(2026, 8, 14),
+            domain=None,
+            frequency=None,
             max_workers=4,
             show_details=False,
         )

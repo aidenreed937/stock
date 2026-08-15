@@ -95,6 +95,8 @@ class AuditRequest:
     target_date: date | None = None
     start_date: date | None = None
     end_date: date | None = None
+    domain: str | None = None
+    frequency: str | None = None
     raw_root: str | None = None
     min_raw_ratio: float | None = None
     max_workers: int = 4
@@ -166,6 +168,38 @@ def _run_specialized_audits(
         results["hk_hold"] = run_hk_hold_audit(t_date, data_source=data_source)
 
 
+def _run_domain_audit(req: AuditRequest, t_date: date) -> dict[str, Any]:
+    """根据指定的领域或周期过滤并执行通用审计引擎。"""
+    from stock.data.audit.engine import UniversalAuditEngine, print_audit_summary_report
+    from stock.data.audit.registry import AUDIT_DATASET_REGISTRY
+
+    engine = UniversalAuditEngine()
+    t_domain = req.domain.lower() if req.domain else None
+    t_freq = req.frequency.lower() if req.frequency else None
+
+    matched_specs = [
+        spec
+        for spec in AUDIT_DATASET_REGISTRY.values()
+        if (t_domain is None or spec.domain.value == t_domain)
+        and (t_freq is None or spec.frequency.value == t_freq)
+        and (req.data_source in {spec.data_source, "tushare"})
+    ]
+
+    reports = []
+    for spec in matched_specs:
+        logger.info(
+            "=== 执行领域 [%s] 数据集 [%s] 对账审计 (日期: %s) ===",
+            spec.domain.value,
+            spec.dataset,
+            t_date,
+        )
+        rep = engine.audit_single_day(spec.dataset, t_date, data_source=spec.data_source)
+        reports.append(rep)
+
+    print_audit_summary_report(reports)
+    return {"domain_reports": reports}
+
+
 def run_audit(req: AuditRequest | None = None, **kwargs: Any) -> dict[str, Any]:
     """根据类型执行指定的审计套件 (支持单日与历史区间批量对账)。"""
     request = req or AuditRequest(**kwargs)
@@ -177,6 +211,11 @@ def run_audit(req: AuditRequest | None = None, **kwargs: Any) -> dict[str, Any]:
         audit_type_lower, request.data_source, request.target_date
     )
     auto_tag = " [自动探测最新交易日]" if is_auto else ""
+
+    # 若指定了领域或周期，优先走领域通用引擎
+    if request.domain is not None or request.frequency is not None:
+        return _run_domain_audit(request, t_date)
+
     results: dict[str, Any] = {}
 
     if audit_type_lower in {"master", "all"}:
@@ -284,6 +323,31 @@ def main() -> None:
         help="是否打印历史区间每日对账明细",
     )
     parser.add_argument(
+        "--domain",
+        dest="domain",
+        type=str,
+        default=None,
+        choices=[
+            "equity",
+            "industry",
+            "index",
+            "macro_liquidity",
+            "macro_econ",
+            "fundamental",
+            "metadata",
+        ],
+        help="按业务领域过滤审计",
+    )
+    parser.add_argument(
+        "--frequency",
+        "--freq",
+        dest="frequency",
+        type=str,
+        default=None,
+        choices=["daily", "monthly", "quarterly", "static"],
+        help="按时态周期过滤审计",
+    )
+    parser.add_argument(
         "--raw-root",
         default=None,
         help="回填验收时 RAW 数据根目录（启用 RAW/Curated 行数对比）",
@@ -303,6 +367,7 @@ def main() -> None:
     logger.info(
         f"启动数据审计套件: 类型=[{args.audit_type}], "
         f"数据源=[{args.source}], "
+        f"领域=[{args.domain or '全量'}], 周期=[{args.frequency or '全量'}], "
         f"目标范围=[{f'{start_dt} ~ {end_dt}' if start_dt and end_dt else (target_dt or '最新')}]"
     )
     try:
@@ -312,6 +377,8 @@ def main() -> None:
             "target_date": target_dt,
             "start_date": start_dt,
             "end_date": end_dt,
+            "domain": args.domain,
+            "frequency": args.frequency,
             "max_workers": args.max_workers,
             "show_details": args.show_details,
         }
