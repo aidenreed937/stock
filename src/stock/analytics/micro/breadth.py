@@ -9,7 +9,7 @@
     - 宽度顶背离: 指数新高突破，但 MA20 站上率大幅衰竭跌破 50%
 """
 
-from datetime import date
+from datetime import date, timedelta
 
 import polars as pl
 
@@ -130,15 +130,18 @@ class MultiPeriodMarketBreadthAnalyzer:
         self,
         target_date: date | None = None,
         breadth_df: pl.DataFrame | None = None,
+        bars_df: pl.DataFrame | None = None,
         index_df: pl.DataFrame | None = None,
         lookback_days: int = 20,
     ) -> MarketBreadthResult | None:
         """诊断指定日期的市场宽度及顶底背离信号。"""
-        df = (
-            self.calculate_breadth_series(end_date=target_date)
-            if breadth_df is None
-            else breadth_df
-        )
+        if breadth_df is None:
+            start_d = (target_date - timedelta(days=260)) if target_date else None
+            df = self.calculate_breadth_series(
+                start_date=start_d, end_date=target_date, bars_df=bars_df
+            )
+        else:
+            df = breadth_df
         if df.is_empty():
             return None
 

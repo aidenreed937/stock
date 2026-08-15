@@ -162,9 +162,10 @@ class BuffettIndicatorCalculator:
         self,
         target_date: date | None = None,
         window_years: int = 10,
+        daily_basic_df: pl.DataFrame | None = None,
     ) -> BuffettRatioResult | None:
         """计算指定日期的最新证券化率及历史百分位。"""
-        df = self.calculate_series()
+        df = self.calculate_series(end_date=target_date, daily_basic_df=daily_basic_df)
         if df.is_empty():
             return None
 

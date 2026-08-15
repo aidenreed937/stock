@@ -88,9 +88,13 @@ class MarketSentimentAnalyzer:
         self,
         target_date: date | None = None,
         sentiment_df: pl.DataFrame | None = None,
+        daily_basic_df: pl.DataFrame | None = None,
     ) -> MarketSentimentResult | None:
         """诊断指定日期的破净率与换手率情绪极值。"""
-        df = self.calculate_series(end_date=target_date) if sentiment_df is None else sentiment_df
+        if sentiment_df is None:
+            df = self.calculate_series(end_date=target_date, daily_basic_df=daily_basic_df)
+        else:
+            df = sentiment_df
         if df.is_empty():
             return None
 

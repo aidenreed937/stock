@@ -11,6 +11,10 @@
 from __future__ import annotations
 
 from datetime import date
+from typing import TYPE_CHECKING
+
+if TYPE_CHECKING:
+    import polars as pl
 
 from stock.analytics.macro.all_market import AllMarketValuationAnalyzer
 from stock.analytics.macro.buffett import BuffettIndicatorCalculator
@@ -138,13 +142,16 @@ class MacroRegimeAnalyzer:
         self,
         target_date: date | None = None,
         index_symbol: str = "000300",
+        daily_basic_df: pl.DataFrame | None = None,
     ) -> MacroRegimeResult | None:
         """评估指定交易日的宏观周期状态与建议仓位。"""
         eyby_res = self.eyby_calc.calculate_latest(symbol=index_symbol, target_date=target_date)
         all_m_res = self.all_market_analyzer.calculate_latest(
             symbol="000985", target_date=target_date
         )
-        buffett_res = self.buffett_calc.calculate_latest(target_date=target_date)
+        buffett_res = self.buffett_calc.calculate_latest(
+            target_date=target_date, daily_basic_df=daily_basic_df
+        )
 
         if eyby_res is None and buffett_res is None and all_m_res is None:
             return None

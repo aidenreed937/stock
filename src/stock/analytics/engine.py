@@ -10,10 +10,16 @@
 from __future__ import annotations
 
 import json
+from concurrent.futures import ThreadPoolExecutor
 from datetime import date
 from pathlib import Path
-from typing import Any
 
+from stock.analytics.evaluators import (
+    build_action_items,
+    build_signals,
+    evaluate_micro_health,
+    evaluate_one_sentence_summary,
+)
 from stock.analytics.industry.classifier import IndustryClassifier
 from stock.analytics.industry.momentum_spread import IndustryMomentumSpreadAnalyzer
 from stock.analytics.industry.pb_roe import IndustryPBROEAnalyzer
@@ -22,252 +28,71 @@ from stock.analytics.macro.regime import MacroRegimeAnalyzer
 from stock.analytics.micro.breadth import MultiPeriodMarketBreadthAnalyzer
 from stock.analytics.micro.margin import MarginPenetrationCalculator
 from stock.analytics.micro.sentiment import MarketSentimentAnalyzer
-from stock.analytics.models import (
-    DailyMarketScanSummary,
-    MacroRegimeResult,
-    MacroSignalItem,
-    MarketBreadthResult,
-    MarketSentimentResult,
-    MicroHealthSummary,
-)
+from stock.analytics.models import DailyMarketScanSummary
+from stock.data.catalog import DataCatalog
 from stock.utils.logger import logger
-
-
-def _evaluate_one_sentence_summary(
-    macro: MacroRegimeResult | None,
-    undervalued: list[str],
-    crowded: list[str],
-) -> str:
-    """构建一句话核心决策结论。"""
-    if macro is None:
-        return "数据暂缺，建议保持防守仓位并等待数据完整。"
-
-    eyby = macro.ey_by
-    all_m = macro.all_market
-    buffett = macro.buffett
-
-    eyby_val = eyby.ey_by_ratio if eyby else 0.0
-    eyby_pctl = eyby.percentile_10y if eyby else 0.0
-    pb_pctl = all_m.pb_percentile_10y if all_m else 50.0
-    buf_pctl = buffett.percentile_10y if buffett else 0.0
-    exp_pct = macro.suggested_equity_exposure * 100
-
-    uv_str = "/".join(undervalued[:3]) if undervalued else "低估高股息"
-    crowd_str = "/".join(crowded[:2]) if crowded else "高位题材"
-
-    if eyby_pctl >= 70.0 and (buf_pctl >= 80.0 or pb_pctl > 60.0):
-        return (
-            f"股票性价比处于历史高位（沪深300 股债比 {eyby_val:.2f}x，"
-            f"10 年 {eyby_pctl:.0f}% 分位），"
-            f"但全 A 水位处于 {pb_pctl:.0f}% 中枢偏上，证券化率达 {buf_pctl:.0f}% 高分位——"
-            f"便宜主要靠超低国债利率与大盘蓝筹，全 A 并非全面低估。"
-            f"**保持 {exp_pct:.0f}% 仓位，只买便宜好货（{uv_str}），回避过热板块（{crowd_str}）。**"
-        )
-    if eyby_pctl >= 70.0:
-        return (
-            f"股票资产处于高性价比战略建仓期（股债比 {eyby_val:.2f}x，"
-            f"10 年 {eyby_pctl:.0f}% 分位）。"
-            f"**保持 {exp_pct:.0f}% 积极仓位，重点配置质优价廉资产（{uv_str}）。**"
-        )
-    if eyby_pctl < 30.0 or buf_pctl >= 90.0:
-        return (
-            f"市场估值与杠杆处于偏热风险区。"
-            f"**建议将仓位严格控制在 {exp_pct:.0f}% 防御水平，坚决避险。**"
-        )
-    return (
-        f"宏观估值处于常态中枢区间，无系统性风险。"
-        f"**建议维持 {exp_pct:.0f}% 标准配置，优选 {uv_str}。**"
-    )
-
-
-def _build_eyby_signal(macro: MacroRegimeResult | None) -> MacroSignalItem | None:
-    eyby = macro.ey_by if macro else None
-    if not eyby:
-        return None
-    pctl = eyby.percentile_10y
-    if pctl >= 70.0:
-        st, desc = "🟢 高", f"历史性机会，仅 {100 - pctl:.0f}% 时间更便宜"
-    elif pctl >= 30.0:
-        st, desc = "🟡 中", "估值中枢合理，性价比适中"
-    else:
-        st, desc = "🔴 低", "股票吸引力偏弱，注意防御"
-    return MacroSignalItem(
-        category="真实估值 (相对债券)",
-        name="股债比 EY/BY (沪深300)",
-        value_str=f"{eyby.ey_by_ratio:.2f}x",
-        percentile_str=f"{pctl:.0f}%",
-        status=st,
-        description=desc,
-    )
-
-
-def _build_all_m_signal(macro: MacroRegimeResult | None) -> MacroSignalItem | None:
-    all_m = macro.all_market if macro else None
-    if not all_m:
-        return None
-    pctl = all_m.pb_percentile_10y
-    if pctl >= 75.0:
-        st, desc = "🔴 偏高", "全 A 整体估值具备一定溢价"
-    elif pctl >= 55.0:
-        st, desc = "🟡 中枢偏上", "估值中枢偏上，全 A 非全面低估"
-    elif pctl >= 30.0:
-        st, desc = "🟢 中枢合理", "资产估值处于历史中枢带"
-    else:
-        st, desc = "🟢 偏低", "全 A 资产深度折价，安全边际高"
-    return MacroSignalItem(
-        category="真实估值 (全 A 资产)",
-        name="全 A 水位 (中证全指 PB)",
-        value_str=f"{all_m.pb_ew:.2f}x",
-        percentile_str=f"{pctl:.0f}%",
-        status=st,
-        description=desc,
-    )
-
-
-def _build_buffett_signal(macro: MacroRegimeResult | None) -> MacroSignalItem | None:
-    buf = macro.buffett if macro else None
-    if not buf:
-        return None
-    pctl = buf.percentile_10y
-    if pctl >= 85.0:
-        st, desc = "🟡 偏高", "规模高位，受超低利率与扩容推升"
-    elif pctl >= 70.0:
-        st, desc = "🟡 中偏高", "总市值相对 GDP 具备一定扩张"
-    elif pctl >= 30.0:
-        st, desc = "🟢 合理", "总市值与经济总量基本匹配"
-    else:
-        st, desc = "🟢 极低", "全市场总市值大幅折价"
-    return MacroSignalItem(
-        category="宏观规模水位",
-        name="证券化率 (市值/GDP)",
-        value_str=f"{buf.securitization_ratio:.1f}%",
-        percentile_str=f"{pctl:.0f}%",
-        status=st,
-        description=desc,
-    )
-
-
-def _build_breadth_signal(breadth: MarketBreadthResult | None) -> MacroSignalItem | None:
-    if not breadth:
-        return None
-    r20 = breadth.above_ma20_ratio
-    if r20 > 80.0:
-        st, desc = "🔴 过热", "短线亢奋，勿追高"
-    elif r20 >= 40.0:
-        st, desc = "🟢 健康", "短线处于常态健康带"
-    else:
-        st, desc = "⚪ 冰点", "短线悲观冰点，酝酿反弹"
-    return MacroSignalItem(
-        category="短线情绪",
-        name="站上 20 日线比例",
-        value_str=f"{r20:.0f}%",
-        percentile_str="—",
-        status=st,
-        description=desc,
-    )
-
-
-def _build_signals(
-    macro: MacroRegimeResult | None,
-    breadth: MarketBreadthResult | None,
-) -> list[MacroSignalItem]:
-    """生成宏观四维信号列表。"""
-    signals: list[MacroSignalItem] = []
-    for item in [
-        _build_eyby_signal(macro),
-        _build_all_m_signal(macro),
-        _build_buffett_signal(macro),
-        _build_breadth_signal(breadth),
-    ]:
-        if item is not None:
-            signals.append(item)
-    return signals
-
-
-def _evaluate_micro_health(
-    margin_res: Any,
-    sentiment_res: MarketSentimentResult | None,
-    breadth_res: MarketBreadthResult | None,
-) -> MicroHealthSummary:
-    """评估微观健康度状态。"""
-    m_ratio = margin_res.margin_penetration if margin_res else 0.0
-    m_desc = "温和健康" if 2.2 <= m_ratio <= 2.8 else ("杠杆出清" if m_ratio < 2.2 else "杠杆偏热")
-
-    pb_break = sentiment_res.pb_break_ratio if sentiment_res else 0.0
-    pb_desc = "大面积折价" if pb_break > 7.0 else ("部分折价" if pb_break >= 4.0 else "常态区间")
-
-    turnover = sentiment_res.turnover_ratio if sentiment_res else 0.0
-    to_desc = "交易火热" if turnover > 6.0 else ("情绪适中" if turnover >= 3.0 else "交投低迷")
-
-    r60 = breadth_res.above_ma60_ratio if breadth_res else 0.0
-    r60_desc = "多头走强" if r60 > 60.0 else ("修复中" if r60 >= 30.0 else "弱势寻底")
-
-    return MicroHealthSummary(
-        margin_ratio=round(m_ratio, 2),
-        margin_status=m_desc,
-        pb_break_ratio=round(pb_break, 2),
-        pb_break_status=pb_desc,
-        turnover_ratio=round(turnover, 2),
-        turnover_status=to_desc,
-        above_ma60_ratio=round(r60, 1),
-        ma60_status=r60_desc,
-    )
-
-
-def _build_action_items(
-    macro: MacroRegimeResult | None,
-    undervalued: list[str],
-    crowded: list[str],
-) -> list[str]:
-    """生成精简操作备忘清单。"""
-    exp_pct = (macro.suggested_equity_exposure if macro else 0.7) * 100
-    exp_min = max(20, int(exp_pct - 10))
-    exp_max = min(95, int(exp_pct + 10))
-
-    uv_text = "、".join(undervalued[:3]) if undervalued else "低估核心资产"
-    avoid_line = (
-        f"- ❌ 不追{'/'.join(crowded)}等成交占比 >20% 的板块"
-        if crowded
-        else "- ❌ 不追短线涨幅过大的过热题材"
-    )
-
-    return [
-        f"- ✅ 保持 {exp_min}~{exp_max}% 仓位，定投低估宽基/高股息",
-        f"- ✅ 回踩加仓{uv_text}",
-        avoid_line,
-        "- ❌ 不加高倍杠杆",
-    ]
 
 
 class MarketScanEngine:
     """全市场每日量化体检聚合引擎。"""
 
-    def __init__(self) -> None:
+    def __init__(self, catalog: DataCatalog | None = None) -> None:
         """初始化聚合引擎与各领域分析器。"""
+        self.catalog = catalog or DataCatalog(data_source="tushare")
         self.classifier = IndustryClassifier()
         self.regime_analyzer = MacroRegimeAnalyzer()
-        self.tcr_calc = TCRCalculator()
+        self.tcr_calc = TCRCalculator(catalog=self.catalog)
         self.pbroe_analyzer = IndustryPBROEAnalyzer()
-        self.momentum_analyzer = IndustryMomentumSpreadAnalyzer()
-        self.margin_calc = MarginPenetrationCalculator()
-        self.breadth_analyzer = MultiPeriodMarketBreadthAnalyzer()
-        self.sentiment_analyzer = MarketSentimentAnalyzer()
+        self.momentum_analyzer = IndustryMomentumSpreadAnalyzer(catalog=self.catalog)
+        self.margin_calc = MarginPenetrationCalculator(catalog=self.catalog)
+        self.breadth_analyzer = MultiPeriodMarketBreadthAnalyzer(catalog=self.catalog)
+        self.sentiment_analyzer = MarketSentimentAnalyzer(catalog=self.catalog)
 
     def compute(
         self,
         target_date: date | None = None,
         index_symbol: str = "000300",
     ) -> DailyMarketScanSummary:
-        """执行各子系统全量计算并合成研判结论。"""
-        regime_res = self.regime_analyzer.evaluate_regime(
-            target_date=target_date, index_symbol=index_symbol
-        )
-        tcr_res = self.tcr_calc.calculate_daily_tcr(target_date=target_date)
-        pbroe_res = self.pbroe_analyzer.analyze_cross_section(target_date=target_date)
-        momentum_res = self.momentum_analyzer.calculate_spread(target_date=target_date)
-        margin_res = self.margin_calc.calculate_latest(target_date=target_date)
-        breadth_res = self.breadth_analyzer.diagnose_latest(target_date=target_date)
-        sentiment_res = self.sentiment_analyzer.diagnose_latest(target_date=target_date)
+        """执行各子系统全量计算并合成研判结论 (支持共享内存预加载与多核并行)。"""
+        # 1. 预加载共享的 daily_basic (单次读取，供巴菲特、两融、情绪 3 大模块复用)
+        df_daily_basic = self.catalog.load_dataset("daily_basic", end_date=target_date)
+
+        # 2. 多核并发执行 7 大独立分析器
+        with ThreadPoolExecutor(max_workers=6) as executor:
+            f_regime = executor.submit(
+                self.regime_analyzer.evaluate_regime,
+                target_date=target_date,
+                index_symbol=index_symbol,
+                daily_basic_df=df_daily_basic,
+            )
+            f_tcr = executor.submit(self.tcr_calc.calculate_daily_tcr, target_date=target_date)
+            f_pbroe = executor.submit(
+                self.pbroe_analyzer.analyze_cross_section, target_date=target_date
+            )
+            f_mom = executor.submit(
+                self.momentum_analyzer.calculate_spread, target_date=target_date
+            )
+            f_margin = executor.submit(
+                self.margin_calc.calculate_latest,
+                target_date=target_date,
+                daily_basic_df=df_daily_basic,
+            )
+            f_breadth = executor.submit(
+                self.breadth_analyzer.diagnose_latest, target_date=target_date
+            )
+            f_sent = executor.submit(
+                self.sentiment_analyzer.diagnose_latest,
+                target_date=target_date,
+                daily_basic_df=df_daily_basic,
+            )
+
+            regime_res = f_regime.result()
+            tcr_res = f_tcr.result()
+            pbroe_res = f_pbroe.result()
+            momentum_res = f_mom.result()
+            margin_res = f_margin.result()
+            breadth_res = f_breadth.result()
+            sentiment_res = f_sent.result()
 
         eval_date = (
             target_date
@@ -288,10 +113,10 @@ class MarketScanEngine:
         )
         top1_tcr = tcr_res.top1_tcr if tcr_res else 0.0
 
-        one_sentence = _evaluate_one_sentence_summary(regime_res, undervalued, crowded)
-        signals = _build_signals(regime_res, breadth_res)
-        micro_health = _evaluate_micro_health(margin_res, sentiment_res, breadth_res)
-        action_items = _build_action_items(regime_res, undervalued, crowded)
+        one_sentence = evaluate_one_sentence_summary(regime_res, undervalued, crowded)
+        signals = build_signals(regime_res, breadth_res)
+        micro_health = evaluate_micro_health(margin_res, sentiment_res, breadth_res)
+        action_items = build_action_items(regime_res, undervalued, crowded)
 
         return DailyMarketScanSummary(
             trade_date=eval_date,
