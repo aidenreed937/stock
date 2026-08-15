@@ -123,6 +123,24 @@ def _normalize_numeric_columns(df: pl.DataFrame) -> tuple[pl.DataFrame, bool]:
     return normalized, changed
 
 
+def _normalize_schema_version(df: pl.DataFrame, path: Path) -> tuple[pl.DataFrame, bool]:
+    """将历史文件中存留的旧版本标识（如 1.0.0, v1 等）统一规范化为当前生产标准 v2。"""
+    normalized = df
+    changed = False
+    if "schema_version" in normalized.columns:
+        is_non_v2 = (
+            normalized.get_column("schema_version").is_null()
+            | (normalized.get_column("schema_version").cast(pl.Utf8, strict=False) != "v2")
+        ).any()
+        if is_non_v2:
+            normalized = normalized.with_columns(pl.lit("v2").alias("schema_version"))
+            changed = True
+    elif "curated" in path.parts:
+        normalized = normalized.with_columns(pl.lit("v2").alias("schema_version"))
+        changed = True
+    return normalized, changed
+
+
 def _infer_data_source(path: Path) -> str | None:
     """从历史数据路径推断数据源名称。"""
     providers = {"tushare", "lixinger", "yfinance", "fred"}
@@ -175,6 +193,20 @@ def _repair_lineage(df: pl.DataFrame, path: Path) -> tuple[pl.DataFrame, bool]:
         repaired = repaired.with_columns(
             pl.lit(None, dtype=pl.Datetime).alias("updated_at")
         )
+        changed = True
+
+    if "schema_version" in repaired.columns:
+        # 将非 v2 的历史旧版本标识（如 1.0.0, v1 等）统一规范化为当前生产标准 v2
+        is_non_v2 = (
+            repaired.get_column("schema_version").is_null()
+            | (repaired.get_column("schema_version").cast(pl.Utf8, strict=False) != "v2")
+        ).any()
+        if is_non_v2:
+            repaired = repaired.with_columns(pl.lit("v2").alias("schema_version"))
+            changed = True
+    elif "curated" in path.parts:
+        # Curated 黄金表缺少 schema_version 时补入 v2
+        repaired = repaired.with_columns(pl.lit("v2").alias("schema_version"))
         changed = True
 
     return repaired, changed
@@ -295,7 +327,8 @@ def migrate_parquet(
         df = pl.read_parquet(path)
         normalized, id_changed = _normalize_identity_columns(df)
         normalized, num_changed = _normalize_numeric_columns(normalized)
-        schema_changed = id_changed or num_changed
+        normalized, ver_changed = _normalize_schema_version(normalized, path)
+        schema_changed = id_changed or num_changed or ver_changed
         keys = _primary_keys(path, normalized.columns)
         deduped = _dedupe_frame(normalized, keys)
         removed = len(df) - len(deduped)

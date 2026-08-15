@@ -77,3 +77,30 @@ def test_bar_cleaner_deduplicates_mixed_date_formats() -> None:
     )
     cleaned = cleaner.clean(df)
     assert len(cleaned) == 1
+
+
+def test_bar_cleaner_imputes_missing_high_low() -> None:
+    cleaner = BarDataCleaner()
+    # 构造成交量 > 0 但 high/low 为 None 或 <= 0 的非停牌边界记录
+    df = pl.DataFrame(
+        {
+            "symbol": ["302132.SZ", "302133.SZ"],
+            "trade_date": [date(2023, 8, 2), date(2023, 8, 3)],
+            "open": [52.44, 40.0],
+            "high": [None, 0.0],
+            "low": [None, -1.0],
+            "close": [50.96, 42.0],
+            "volume": [372535.6, 100000.0],
+            "amount": [1912653.39, 4100000.0],
+        }
+    )
+    cleaned = cleaner.clean(df)
+    assert len(cleaned) == 2
+
+    row1 = cleaned.filter(pl.col("symbol") == "302132.SZ")
+    assert row1["high"][0] == 52.44  # max(52.44, 50.96)
+    assert row1["low"][0] == 50.96  # min(52.44, 50.96)
+
+    row2 = cleaned.filter(pl.col("symbol") == "302133.SZ")
+    assert row2["high"][0] == 42.0  # max(40.0, 42.0)
+    assert row2["low"][0] == 40.0  # min(40.0, 42.0)

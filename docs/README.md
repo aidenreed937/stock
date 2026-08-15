@@ -10,6 +10,7 @@
 - [系统模块总览 (Overview)](file:///Users/mac/workspace/personal/finance/stock/docs/architecture/overview.md) — 整体分层架构、依赖倒置原则与模块边界
 
 ### 2. 📏 规范与质量控制 (`docs/standards/`)
+- [数据契约与 Schema v2 规范说明 (Schema v2 Spec)](file:///Users/mac/workspace/personal/finance/stock/docs/standards/schema_v2_spec.md) — 强类型 Date、SI 纯计量单位、升序去重与数据血统元数据标准
 - [代码编写规范 (Coding Guidelines)](file:///Users/mac/workspace/personal/finance/stock/docs/standards/coding_guidelines.md) — 命名规范、Python 3.12 强类型约束与领域异常定义
 - [质量防护与工具门禁 (Quality Gates)](file:///Users/mac/workspace/personal/finance/stock/docs/standards/quality_gates.md) — Ruff 超严格规则矩阵、Mypy 严格模式、Pre-commit 与测试门禁
 

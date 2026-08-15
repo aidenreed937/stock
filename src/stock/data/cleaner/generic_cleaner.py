@@ -72,14 +72,12 @@ class GenericCleaner(BaseDataCleaner):
                     pass
             target_keys = list(dict.fromkeys(entity_cols + period_cols))
 
-        if "month" in cleaned_df.columns:
-            target_keys = [key for key in target_keys if key not in {"symbol", "ts_code", "date"}]
-            if "month" not in target_keys:
-                target_keys.append("month")
-        elif "quarter" in cleaned_df.columns:
-            target_keys = [key for key in target_keys if key not in {"symbol", "ts_code", "date"}]
-            if "quarter" not in target_keys:
-                target_keys.append("quarter")
+            # 仅在无实体列（纯宏观时间序列）时对 month/quarter 额外修正
+            if not entity_cols:
+                if "month" in cleaned_df.columns and "month" not in target_keys:
+                    target_keys.append("month")
+                elif "quarter" in cleaned_df.columns and "quarter" not in target_keys:
+                    target_keys.append("quarter")
 
         # 1. 过滤主键包含 null 的记录
         if target_keys:

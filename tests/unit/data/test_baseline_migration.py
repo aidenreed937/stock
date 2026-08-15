@@ -468,3 +468,19 @@ def test_endpoint_contract_rejects_duplicate_primary_keys() -> None:
     except DataValidationError:
         return
     raise AssertionError("duplicate primary keys must fail closed")
+
+
+def test_migration_normalizes_schema_version_to_v2(tmp_path: Path) -> None:
+    path = tmp_path / "curated" / "tushare" / "market=CN" / "daily_basic" / "year=2020" / "month=01" / "data.parquet"
+    path.parent.mkdir(parents=True)
+    pl.DataFrame({
+        "symbol": ["000001.SZ"],
+        "trade_date": [date(2020, 1, 2)],
+        "schema_version": ["1.0.0"],
+    }).write_parquet(path)
+
+    result = migrate_parquet(str(tmp_path), apply=True)
+    assert result["applied"] == 1
+
+    df = pl.read_parquet(path)
+    assert df["schema_version"].to_list() == ["v2"]

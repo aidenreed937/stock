@@ -74,6 +74,9 @@ class BarDataCleaner(BaseDataCleaner):
             if fill_exprs:
                 cleaned_df = cleaned_df.with_columns(fill_exprs)
 
+        # (c) 针对非停牌但 high/low 缺失/非正的记录进行边界补全容错
+        cleaned_df = self._impute_missing_high_low(cleaned_df)
+
         # 2. 过滤非正数值 (价格必须 > 0)
         filter_expr = (
             (pl.col("open") > 0)
@@ -97,11 +100,15 @@ class BarDataCleaner(BaseDataCleaner):
 
         # 4. 数据故障过滤: 换手率超物理极限 (turnover_rate > 300%)
         if "turnover_rate" in cleaned_df.columns:
-            cleaned_df = cleaned_df.filter(pl.col("turnover_rate") <= 300.0)
+            cleaned_df = cleaned_df.filter(
+                pl.col("turnover_rate").is_null() | (pl.col("turnover_rate") <= 300.0)
+            )
 
         # 5. 数据故障过滤: 单日极端飞线跳变 (pct_chg > 1000%，属于典型数据单位错位或误脉冲；排除新股首日合法暴涨)
         if "pct_chg" in cleaned_df.columns:
-            cleaned_df = cleaned_df.filter(pl.col("pct_chg").abs() <= 1000.0)
+            cleaned_df = cleaned_df.filter(
+                pl.col("pct_chg").is_null() | (pl.col("pct_chg").abs() <= 1000.0)
+            )
 
         # 6. 按交易日与标的代码去重 (先对齐日期格式避免 20260812 与 2026-08-12 重复)
         if sym_col in cleaned_df.columns and "trade_date" in cleaned_df.columns:
@@ -149,3 +156,36 @@ class BarDataCleaner(BaseDataCleaner):
                     data_source=data_source,
                 )
         return cleaned
+
+    @staticmethod
+    def _impute_missing_high_low(df: pl.DataFrame) -> pl.DataFrame:
+        """针对非停牌但最高价/最低价缺失的边界异常记录进行补齐容错。
+
+        当 open > 0 且 close > 0 时，若 high 为空或非正，则以 max(open, close) 补齐；
+        若 low 为空或非正，则以 min(open, close) 补齐。
+        """
+        if "open" not in df.columns or "close" not in df.columns:
+            return df
+
+        valid_prices = (pl.col("open") > 0) & (pl.col("close") > 0)
+        fill_exprs: list[pl.Expr] = []
+
+        if "high" in df.columns:
+            fill_exprs.append(
+                pl.when(valid_prices & ((pl.col("high") <= 0) | pl.col("high").is_null()))
+                .then(pl.max_horizontal("open", "close"))
+                .otherwise(pl.col("high"))
+                .alias("high")
+            )
+
+        if "low" in df.columns:
+            fill_exprs.append(
+                pl.when(valid_prices & ((pl.col("low") <= 0) | pl.col("low").is_null()))
+                .then(pl.min_horizontal("open", "close"))
+                .otherwise(pl.col("low"))
+                .alias("low")
+            )
+
+        if fill_exprs:
+            return df.with_columns(fill_exprs)
+        return df
