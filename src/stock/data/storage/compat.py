@@ -151,11 +151,23 @@ class StorageCompat:
 
     @staticmethod
     def post_process_dataset(dataset_name: str, df: pl.DataFrame) -> pl.DataFrame:
-        """对特定数据集做安全后处理（如北向持仓标的代码格式过滤）。"""
+        """对特定数据集做安全后处理（如北向持仓标的代码格式过滤、两融与申万行情冗余字段清理）。"""
         if dataset_name == "hk_hold" and "symbol" in df.columns:
             qualified = df.filter(pl.col("symbol").cast(pl.Utf8, strict=False).str.contains(r"\."))
             if not qualified.is_empty():
                 return qualified
+        if dataset_name == "margin" and "symbol" in df.columns:
+            return df.drop("symbol")
+        if dataset_name == "sw_daily":
+            legacy_cols = [
+                "fetched_at", "field_provenance", "index_id", "index_name",
+                "industry_id", "industry_name", "pct_chg", "scope_note",
+                "source_id", "source_index_code", "source_scope",
+                "source_unit_note", "turnover_amount",
+            ]
+            to_drop = [c for c in legacy_cols if c in df.columns]
+            if to_drop:
+                return df.drop(to_drop)
         return df
 
     @staticmethod

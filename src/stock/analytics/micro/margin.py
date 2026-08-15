@@ -15,6 +15,20 @@ from stock.analytics.models import MarginPenetrationResult
 from stock.data.catalog import DataCatalog
 
 
+def _filter_complete_exchanges(df: pl.DataFrame) -> pl.DataFrame:
+    """过滤确保交易日至少同时涵盖 SSE 与 SZSE 核心两市，避免单边残缺数据扭曲全市场口径。"""
+    if "exchange_id" not in df.columns or df.is_empty():
+        return df
+    valid_dates = (
+        df.filter(pl.col("exchange_id").is_in(["SSE", "SZSE"]))
+        .group_by("trade_date")
+        .agg(pl.col("exchange_id").n_unique().alias("ex_count"))
+        .filter(pl.col("ex_count") >= 2)
+        .select("trade_date")
+    )
+    return df.join(valid_dates, on="trade_date", how="inner")
+
+
 class MarginPenetrationCalculator:
     """全市场两融杠杆渗透率分析器。"""
 
@@ -31,12 +45,11 @@ class MarginPenetrationCalculator:
     ) -> pl.DataFrame:
         """计算每日两融渗透率序列。"""
         # 1. 加载两融全市场总量数据 (margin)
-        if margin_df is None:
-            raw_margin = self.catalog.load_dataset(
-                "margin", start_date=start_date, end_date=end_date
-            )
-        else:
-            raw_margin = margin_df
+        raw_margin = (
+            self.catalog.load_dataset("margin", start_date=start_date, end_date=end_date)
+            if margin_df is None
+            else margin_df
+        )
 
         if raw_margin.is_empty():
             return pl.DataFrame()
@@ -51,9 +64,10 @@ class MarginPenetrationCalculator:
         if bal_col is None:
             return pl.DataFrame()
 
-        # 按 trade_date 汇总两融余额 (元 -> 亿元)
+        filtered_margin = _filter_complete_exchanges(raw_margin)
+
         margin_clean = (
-            raw_margin.select(["trade_date", bal_col])
+            filtered_margin.select(["trade_date", bal_col])
             .drop_nulls()
             .group_by("trade_date")
             .agg((pl.col(bal_col).sum() / 1e8).alias("margin_balance_yi"))

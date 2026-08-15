@@ -97,6 +97,7 @@ def infer_market_exchange_currency(
 ) -> tuple[pl.Expr, pl.Expr, pl.Expr]:
     """根据证券代码前缀/后缀及数据源动态推算市场 (market)、交易所 (exchange) 与交易货币 (currency)。"""
     default_m = "CN" if data_source.lower() in ("tushare", "lixinger") else "US"
+    default_ex = "CN" if data_source.lower() in ("tushare", "lixinger") else "US_EXCHANGE"
     default_cur = "CNY" if data_source.lower() in ("tushare", "lixinger") else "USD"
 
     market_expr = (
@@ -123,7 +124,7 @@ def infer_market_exchange_currency(
         .then(pl.lit("BSE"))
         .when(col_ref.str.to_uppercase().str.ends_with(".HK"))
         .then(pl.lit("HKEX"))
-        .otherwise(pl.lit("US_EXCHANGE"))
+        .otherwise(pl.lit(default_ex))
     )
     currency_expr = (
         pl.when(
@@ -135,6 +136,6 @@ def infer_market_exchange_currency(
         .then(pl.lit("CNY"))
         .when(col_ref.str.to_uppercase().str.ends_with(".HK"))
         .then(pl.lit("HKD"))
-        .otherwise(pl.lit("USD"))
+        .otherwise(pl.lit(default_cur))
     )
     return market_expr, exchange_expr, currency_expr

@@ -64,7 +64,13 @@ class ParquetPartitionWriter:
             existing = pl.read_parquet(file_path) if file_path.exists() else pl.DataFrame()
             if not existing.is_empty():
                 existing = StorageCompat.normalize_identity_columns(existing)
-            normalized_dfs = [StorageCompat.normalize_identity_columns(df) for df in dfs]
+                existing = StorageCompat.post_process_dataset(dataset_name, existing)
+            normalized_dfs = [
+                StorageCompat.post_process_dataset(
+                    dataset_name, StorageCompat.normalize_identity_columns(df)
+                )
+                for df in dfs
+            ]
 
             if not existing.is_empty() and source is not None:
                 self._validate_frame_source(existing, source, f"已有 Curated 文件 [{file_path}]")
