@@ -116,7 +116,7 @@ class UniversalAuditEngine:
         expected_df = provider.get_expected_keys(target_date, target_date)
         suspended_df = provider.get_suspended_keys(target_date, target_date)
 
-        actual_df = cat.load_dataset(dataset, start_date=target_date, end_date=target_date)
+        actual_df = cat.load_dataset(spec.dataset, start_date=target_date, end_date=target_date)
         actual_keys = extract_identity_keys(actual_df)
 
         expected_count, actual_count = len(expected_df), len(actual_keys)
@@ -147,7 +147,7 @@ class UniversalAuditEngine:
             for r in extra_df.head(10).iter_rows(named=True)
         ]
         raw_count, curated_count, raw_curated_status = self._check_raw_curated(
-            dataset, data_source, target_date
+            spec.dataset, data_source, target_date
         )
 
         return AuditReportResult(
@@ -216,7 +216,7 @@ class UniversalAuditEngine:
         if not raw_files and not curated_files:
             return 0, 0, "SKIPPED"
         if not raw_files or not curated_files:
-            return 0, 0, "FAILED"
+            return 0, 0, "RAW_MISSING" if not raw_files else "CURATED_MISSING"
 
         try:
             target_date_str = target_date.strftime("%Y%m%d")
@@ -233,6 +233,10 @@ class UniversalAuditEngine:
             r_cnt, c_cnt = len(raw_keys), len(curated_keys)
             if r_cnt == 0 and c_cnt == 0:
                 return 0, 0, "SKIPPED"
+            if r_cnt == 0 and c_cnt > 0:
+                return 0, c_cnt, "RAW_MISSING"
+            if r_cnt > 0 and c_cnt == 0:
+                return r_cnt, 0, "CURATED_MISSING"
 
             # 跨层主键差集对账
             missing_in_curated = raw_keys.join(

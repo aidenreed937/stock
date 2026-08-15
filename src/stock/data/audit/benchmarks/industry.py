@@ -60,7 +60,7 @@ class IndustryDailyBenchmarkProvider(BenchmarkProvider):
         """动态从落盘元数据表提取行业代码全集，若表未落盘则安全回退至官方代码常量。"""
         if self.data_source == "lixinger":
             try:
-                # 优先从理杏仁成分股图谱元数据中提取一级行业 (后四位为 0000)
+                # 优先从理杏仁成分股图谱元数据中提取一级行业 (后四位为 0000 且属于可交付代码)
                 df_const = self.catalog.load_dataset("sw_2021_constituents")
                 if not df_const.is_empty() and "symbol" in df_const.columns:
                     l1_symbols = (
@@ -70,8 +70,11 @@ class IndustryDailyBenchmarkProvider(BenchmarkProvider):
                         .unique()
                         .to_list()
                     )
-                    if l1_symbols:
-                        return sorted([str(s) for s in l1_symbols])
+                    valid_symbols = [
+                        str(s) for s in l1_symbols if str(s) in LIXINGER_SW_L1_CODES
+                    ]
+                    if valid_symbols:
+                        return sorted(valid_symbols)
             except Exception:
                 pass
             return LIXINGER_SW_L1_CODES

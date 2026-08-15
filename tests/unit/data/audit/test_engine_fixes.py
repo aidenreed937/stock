@@ -143,3 +143,76 @@ def test_factor_audit_sw_daily_exact(tmp_path, monkeypatch) -> None:
         assert res["actual_l1_count"] == 31
         assert res["coverage_rate"] == 100.0
         assert res["total_industry_count"] == 36
+
+
+def test_engine_dataset_alias_resolution() -> None:
+    """测试 engine.audit_single_day 传入别名时，自动以 spec.dataset 加载数据。"""
+    mock_catalog = MagicMock()
+    mock_catalog.data_source = "lixinger"
+    # 当以 sw_2021_fundamental 加载时返回有效数据
+    mock_catalog.load_dataset.side_effect = lambda name, **kw: (
+        pl.DataFrame({"symbol": ["110000"], "trade_date": [date(2026, 8, 14)]})
+        if name == "sw_2021_fundamental"
+        else pl.DataFrame()
+    )
+
+    mock_provider = MagicMock()
+    mock_provider.get_expected_keys.return_value = pl.DataFrame(
+        {"symbol": ["110000"], "trade_date": ["20260814"]}
+    )
+    mock_provider.get_suspended_keys.return_value = pl.DataFrame(
+        {"symbol": pl.Series([], dtype=pl.Utf8), "trade_date": pl.Series([], dtype=pl.Utf8)}
+    )
+
+    with patch("stock.data.audit.engine.resolve_benchmark_provider", return_value=mock_provider):
+        engine = UniversalAuditEngine(catalog=mock_catalog)
+        report = engine.audit_single_day("sw_industry", date(2026, 8, 14), data_source="lixinger")
+
+        # 验证 catalog 以 spec.dataset (sw_2021_fundamental) 被调用
+        mock_catalog.load_dataset.assert_called_with(
+            "sw_2021_fundamental", start_date=date(2026, 8, 14), end_date=date(2026, 8, 14)
+        )
+        assert report.actual_count == 1
+        assert report.integrity_rate == 100.0
+        assert report.status == "PASSED"
+
+
+def test_industry_benchmark_lixinger_empty_shells_filtered() -> None:
+    """测试理杏仁行业基准动态提取时，自动剔除 6 个空壳无数据代码，保留可交付基准。"""
+    from stock.data.audit.benchmarks.industry import IndustryDailyBenchmarkProvider, LIXINGER_SW_L1_CODES
+
+    mock_catalog = MagicMock()
+    mock_catalog.data_source = "lixinger"
+    # 模拟 sw_2021_constituents 包含 38 个后四位 0000 的代码（含空壳）
+    all_38 = LIXINGER_SW_L1_CODES + ["250000", "260000", "310000", "320000", "440000", "470000"]
+    mock_catalog.load_dataset.return_value = pl.DataFrame({"symbol": all_38})
+
+    provider = IndustryDailyBenchmarkProvider(catalog=mock_catalog, data_source="lixinger")
+    codes = provider._get_industry_codes()
+
+    assert len(codes) == len(LIXINGER_SW_L1_CODES)
+    assert "250000" not in codes
+    assert "110000" in codes
+
+
+def test_engine_raw_curated_missing_status(tmp_path) -> None:
+    """测试当 RAW 层无目标日期数据时，_check_raw_curated 返回 RAW_MISSING 而非笼统 FAILED。"""
+    raw_dir = tmp_path / "raw" / "tushare" / "market=CN" / "sw_daily" / "year=2020" / "month=01"
+    curated_dir = tmp_path / "curated" / "tushare" / "market=CN" / "sw_daily" / "year=2026" / "month=08"
+    raw_dir.mkdir(parents=True)
+    curated_dir.mkdir(parents=True)
+
+    # RAW 只有 2020 年数据，Curated 有 2026 年数据
+    pl.DataFrame({"symbol": ["801010.SI"], "trade_date": ["2020-01-02"]}).write_parquet(raw_dir / "data.parquet")
+    pl.DataFrame({"symbol": ["801010.SI"], "trade_date": [date(2026, 8, 14)]}).write_parquet(curated_dir / "data.parquet")
+
+    engine = UniversalAuditEngine()
+    with patch("stock.config.settings.settings.raw_data_dir", tmp_path / "raw"), patch(
+        "stock.config.settings.settings.curated_data_dir", tmp_path / "curated"
+    ):
+        r_cnt, c_cnt, status = engine._check_raw_curated(
+            "sw_daily", "tushare", date(2026, 8, 14)
+        )
+        assert status == "RAW_MISSING"
+        assert r_cnt == 0
+        assert c_cnt == 1
