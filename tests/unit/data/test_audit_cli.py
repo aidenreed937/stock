@@ -58,6 +58,13 @@ def test_run_audit_dispatches_correctly() -> None:
         res = run_audit(audit_type="moneyflow", data_source="tushare")
         mock_mf.assert_called_once()
 
+    with patch(
+        "stock.data.audit.distribution_audit.run_distribution_audit", return_value={"status": "PASSED"}
+    ) as mock_dist:
+        res = run_audit(audit_type="distribution", data_source="tushare", dataset="sw_daily")
+        mock_dist.assert_called_once_with(dataset_name="sw_daily", data_source="tushare")
+        assert res["distribution"] == {"status": "PASSED"}
+
 
 def test_main_cli_dispatch() -> None:
     with (
@@ -73,6 +80,7 @@ def test_main_cli_dispatch() -> None:
             end_date=None,
             domain=None,
             frequency=None,
+            dataset=None,
             max_workers=4,
             show_details=False,
         )
@@ -105,6 +113,7 @@ def test_main_cli_range_dispatch() -> None:
             end_date=date(2026, 8, 14),
             domain=None,
             frequency=None,
+            dataset=None,
             max_workers=4,
             show_details=False,
         )

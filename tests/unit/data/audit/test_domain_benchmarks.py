@@ -43,10 +43,11 @@ def test_registry_lookup() -> None:
 
 def test_equity_benchmark_provider() -> None:
     mock_catalog = MagicMock()
+    # 模拟真实落盘中 suspend_d 的 trade_date 为 Date 类型
     mock_catalog.load_dataset.side_effect = lambda name, **kw: (
         pl.DataFrame({"symbol": ["000001.SZ", "600000.SH"], "list_date": ["19910403", "19991110"]})
         if name == "stock_basic"
-        else pl.DataFrame({"symbol": ["600000.SH"], "trade_date": ["20260814"]})
+        else pl.DataFrame({"symbol": ["600000.SH"], "trade_date": [date(2026, 8, 14)]})
     )
 
     with patch("stock.data.audit.benchmarks.equity.get_trading_calendar", return_value=[date(2026, 8, 14)]):
@@ -59,15 +60,24 @@ def test_equity_benchmark_provider() -> None:
         suspended_df = provider.get_suspended_keys(date(2026, 8, 14), date(2026, 8, 14))
         assert len(suspended_df) == 1
         assert suspended_df["symbol"][0] == "600000.SH"
+        assert suspended_df["trade_date"][0] == "20260814"
 
 
 def test_industry_benchmark_provider() -> None:
     mock_catalog = MagicMock()
+    mock_catalog.load_dataset.return_value = pl.DataFrame()
     with patch("stock.data.audit.benchmarks.industry.get_trading_calendar", return_value=[date(2026, 8, 14)]):
-        provider = IndustryDailyBenchmarkProvider(catalog=mock_catalog)
+        # TuShare 申万行业
+        provider = IndustryDailyBenchmarkProvider(catalog=mock_catalog, data_source="tushare")
         expected_df = provider.get_expected_keys(date(2026, 8, 14), date(2026, 8, 14))
         assert len(expected_df) == 31
         assert "801010.SI" in expected_df["symbol"].to_list()
+
+        # LiXinger 申万行业 (32 个节点)
+        lx_provider = IndustryDailyBenchmarkProvider(catalog=mock_catalog, data_source="lixinger")
+        lx_expected_df = lx_provider.get_expected_keys(date(2026, 8, 14), date(2026, 8, 14))
+        assert len(lx_expected_df) == 32
+        assert "110000" in lx_expected_df["symbol"].to_list()
 
 
 def test_index_benchmark_provider() -> None:
@@ -75,8 +85,10 @@ def test_index_benchmark_provider() -> None:
     with patch("stock.data.audit.benchmarks.index.get_trading_calendar", return_value=[date(2026, 8, 14)]):
         provider = IndexDailyBenchmarkProvider(catalog=mock_catalog)
         expected_df = provider.get_expected_keys(date(2026, 8, 14), date(2026, 8, 14))
-        assert len(expected_df) == 10
-        assert "000300.SH" in expected_df["symbol"].to_list()
+        symbols = expected_df["symbol"].to_list()
+        assert "000300.SH" in symbols
+        assert "000688.SH" in symbols
+        assert "688981.SH" not in symbols
 
 
 def test_macro_calendar_benchmark_provider() -> None:
@@ -98,7 +110,7 @@ def test_universal_audit_engine_single_day() -> None:
         pl.DataFrame({"symbol": ["000001.SZ", "600000.SH"], "list_date": ["19910403", "19991110"]})
         if name == "stock_basic"
         else (
-            pl.DataFrame({"symbol": ["600000.SH"], "trade_date": ["20260814"]})
+            pl.DataFrame({"symbol": ["600000.SH"], "trade_date": [date(2026, 8, 14)]})
             if name == "suspend_d"
             else pl.DataFrame(
                 {"symbol": ["000001.SZ"], "trade_date": [date(2026, 8, 14)], "close": [10.5]}
@@ -143,7 +155,19 @@ def test_resolve_benchmark_provider_routing() -> None:
         domain=AuditDomain.INDUSTRY,
         frequency=AuditFrequency.DAILY,
     )
-    assert isinstance(resolve_benchmark_provider(spec_ind), IndustryDailyBenchmarkProvider)
+    ind_provider = resolve_benchmark_provider(spec_ind)
+    assert isinstance(ind_provider, IndustryDailyBenchmarkProvider)
+    assert ind_provider.data_source == "tushare"
+
+    spec_ind_lx = DatasetAuditSpec(
+        dataset="sw_2021_fundamental",
+        data_source="lixinger",
+        domain=AuditDomain.INDUSTRY,
+        frequency=AuditFrequency.DAILY,
+    )
+    lx_ind_provider = resolve_benchmark_provider(spec_ind_lx)
+    assert isinstance(lx_ind_provider, IndustryDailyBenchmarkProvider)
+    assert lx_ind_provider.data_source == "lixinger"
 
     spec_idx = DatasetAuditSpec(
         dataset="test_idx",

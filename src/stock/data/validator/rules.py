@@ -165,3 +165,111 @@ class CompletenessRule(BaseValidationRule):
             "daily_distribution": date_counts,
             "passed": len(truncated_dates) == 0 and len(anomaly_dates) == 0,
         }
+
+
+class DistributionAuditRule(BaseValidationRule):
+    """数值分布与相邻交易日数量级跳跃 (Step Ratio) 校验规则。
+
+    校验项:
+    1. 相邻交易日截面均值跳跃比率是否在 [min_step_ratio, max_step_ratio] 安全区间内 (专抓万元/元等单位裂痕);
+    2. 非负数值列 (成交额、成交量、市值等) 是否存在非物理负值.
+    """
+
+    def __init__(
+        self,
+        value_cols: list[str] | None = None,
+        max_step_ratio: float = 10.0,
+        min_step_ratio: float = 0.1,
+        non_negative_cols: list[str] | None = None,
+    ) -> None:
+        self.value_cols = value_cols or [
+            "amount",
+            "volume",
+            "vol",
+            "total_mv",
+            "circ_mv",
+            "float_mv",
+            "close",
+            "turnover_rate",
+        ]
+        self.max_step_ratio = max_step_ratio
+        self.min_step_ratio = min_step_ratio
+        self.non_negative_cols = non_negative_cols or [
+            "amount",
+            "volume",
+            "vol",
+            "total_mv",
+            "circ_mv",
+            "float_mv",
+            "turnover_rate",
+            "open",
+            "high",
+            "low",
+            "close",
+        ]
+
+    def audit(self, df: pl.DataFrame) -> dict[str, Any]:
+        if df.is_empty():
+            return {
+                "step_jump_faults": 0,
+                "negative_faults": 0,
+                "anomalies": [],
+                "passed": True,
+            }
+
+        target_cols = [c for c in self.value_cols if c in df.columns]
+        anomalies: list[dict[str, Any]] = []
+        step_jump_faults = 0
+        negative_faults = 0
+
+        for col in target_cols:
+            # 1. 负值校验
+            if col in self.non_negative_cols:
+                neg_count = len(df.filter(pl.col(col) < 0.0))
+                if neg_count > 0:
+                    negative_faults += neg_count
+                    anomalies.append(
+                        {
+                            "column": col,
+                            "type": "NEGATIVE_VALUE",
+                            "count": neg_count,
+                            "detail": f"字段 [{col}] 存在 {neg_count} 条非物理负值记录",
+                        }
+                    )
+
+            # 2. 阶跃跳跃校验 (按日聚合均值)
+            if "trade_date" in df.columns:
+                daily_means = (
+                    df.group_by("trade_date")
+                    .agg(pl.col(col).mean().alias("mean_val"))
+                    .drop_nulls(subset=["mean_val"])
+                    .sort("trade_date")
+                )
+                if len(daily_means) > 1:
+                    jumps = daily_means.with_columns(
+                        (pl.col("mean_val") / pl.col("mean_val").shift(1)).alias("step_ratio")
+                    ).filter(
+                        (pl.col("step_ratio") > self.max_step_ratio)
+                        | (pl.col("step_ratio") < self.min_step_ratio)
+                    )
+                    jump_count = len(jumps)
+                    if jump_count > 0:
+                        step_jump_faults += jump_count
+                        for r in jumps.iter_rows(named=True):
+                            anomalies.append(
+                                {
+                                    "date": str(r["trade_date"]),
+                                    "column": col,
+                                    "type": "STEP_JUMP",
+                                    "ratio": float(r["step_ratio"]),
+                                    "detail": f"{r['trade_date']} 字段 [{col}] 均值跳跃比率为 {r['step_ratio']:.2f}x",
+                                }
+                            )
+
+        passed = step_jump_faults == 0 and negative_faults == 0
+        return {
+            "step_jump_faults": step_jump_faults,
+            "negative_faults": negative_faults,
+            "anomalies": anomalies,
+            "passed": passed,
+        }

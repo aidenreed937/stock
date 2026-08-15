@@ -218,7 +218,10 @@ def test_run_adj_factor_audit():
         patch("pathlib.Path.glob", mock_glob),
         patch(
             "pathlib.Path.rglob",
-            return_value=[Path("data/curated/tushare/market=CN/stock_basic/data.parquet")],
+            return_value=[
+                Path("data/curated/tushare/market=CN/stock_basic/data.parquet"),
+                Path("data/curated/tushare/market=CN/adj_factor/year=2026/month=08/data.parquet"),
+            ],
         ),
         patch("pathlib.Path.exists", return_value=True),
         patch("polars.read_parquet", side_effect=mock_read),
@@ -283,12 +286,22 @@ def test_run_sw_industry_audit():
     const_df = pl.DataFrame({"symbol": ["110000", "210000"]})
     fund_df = pl.DataFrame({"symbol": ["110000"], "trade_date": ["2026-08-01"]})
 
-    def mock_read(pattern: str):
-        if "sw_2021_constituents" in pattern:
+    def mock_read(pattern: object) -> pl.DataFrame:
+        pattern_str = str(pattern)
+        if "sw_2021_constituents" in pattern_str:
             return const_df
         return fund_df
 
-    with patch("polars.read_parquet", side_effect=mock_read):
+    with (
+        patch(
+            "pathlib.Path.rglob",
+            return_value=[
+                Path("data/curated/lixinger/market=CN/sw_2021_constituents/data.parquet"),
+                Path("data/curated/lixinger/market=CN/sw_2021_fundamental/data.parquet"),
+            ],
+        ),
+        patch("polars.read_parquet", side_effect=mock_read),
+    ):
         res = run_sw_industry_audit(date(2026, 8, 1))
         assert res["constituents_industry_count"] == 2
         assert res["actual_industry_count"] == 1
@@ -298,14 +311,14 @@ def test_run_sw_daily_audit():
     from stock.data.audit import run_sw_daily_audit
 
     sw_df = pl.DataFrame(
-        {"symbol": ["801010.SI", "801020.SI"], "trade_date": ["2026-08-01", "2026-08-01"]}
+        {"symbol": ["801010.SI", "801030.SI"], "trade_date": ["2026-08-01", "2026-08-01"]}
     )
 
     with patch("polars.read_parquet", return_value=sw_df):
         res = run_sw_daily_audit(date(2026, 8, 1))
         assert res["expected_count"] == 31
         assert res["actual_count"] == 2
-        assert res["actual_symbols"] == ["801010.SI", "801020.SI"]
+        assert res["actual_symbols"] == ["801010.SI", "801030.SI"]
 
 
 def test_filter_target_date_formats():

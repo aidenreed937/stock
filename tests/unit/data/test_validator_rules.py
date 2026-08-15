@@ -138,3 +138,40 @@ def test_completeness_rule() -> None:
     res_low = rule.audit(df_low)
     assert res_low["passed"] is False
     assert res_low["anomaly_dates_count"] == 1
+
+
+def test_distribution_audit_rule() -> None:
+    from stock.data.validator.rules import DistributionAuditRule
+
+    rule = DistributionAuditRule(value_cols=["amount", "total_mv"], max_step_ratio=10.0, min_step_ratio=0.1)
+
+    # 1. 正常分布数据
+    df_pass = pl.DataFrame({
+        "trade_date": [date(2026, 8, 11), date(2026, 8, 12)],
+        "amount": [1e9, 1.2e9],
+        "total_mv": [1e11, 1.05e11],
+    })
+    res_pass = rule.audit(df_pass)
+    assert res_pass["passed"] is True
+    assert res_pass["step_jump_faults"] == 0
+    assert res_pass["negative_faults"] == 0
+
+    # 2. 存在非物理负值
+    df_neg = pl.DataFrame({
+        "trade_date": [date(2026, 8, 11)],
+        "amount": [-1000.0],
+        "total_mv": [1e11],
+    })
+    res_neg = rule.audit(df_neg)
+    assert res_neg["passed"] is False
+    assert res_neg["negative_faults"] == 1
+
+    # 3. 存在相邻交易日 10,000 倍阶跃跳跃 (万元 vs 元)
+    df_jump = pl.DataFrame({
+        "trade_date": [date(2026, 8, 11), date(2026, 8, 12)],
+        "amount": [1e9, 1e5],  # 10,000x drop
+        "total_mv": [1e11, 1e11],
+    })
+    res_jump = rule.audit(df_jump)
+    assert res_jump["passed"] is False
+    assert res_jump["step_jump_faults"] == 1

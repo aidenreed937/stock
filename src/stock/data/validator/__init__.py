@@ -17,6 +17,7 @@ from stock.data.validator.rules import (
     OhlcLogicRule,
     VolatilityRule,
     CompletenessRule,
+    DistributionAuditRule,
 )
 
 
@@ -44,6 +45,7 @@ class OfflineDataValidator:
                 OhlcLogicRule(),
                 VolatilityRule(),
                 CompletenessRule(),
+                DistributionAuditRule(),
             ]
         )
 
