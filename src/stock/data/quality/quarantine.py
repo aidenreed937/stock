@@ -1,9 +1,12 @@
 """保留清洗阶段被拒绝的数据，避免静默丢弃导致无法审计。"""
 
+import threading
 from datetime import datetime, timezone
 from pathlib import Path
 
 import polars as pl
+
+_quarantine_lock = threading.Lock()
 
 
 class QuarantineStore:
@@ -32,7 +35,14 @@ class QuarantineStore:
             pl.lit(data_source).alias("data_source"),
             pl.lit(datetime.now(timezone.utc)).alias("quarantined_at"),
         )
-        if target.exists():
-            enriched = pl.concat([pl.read_parquet(target), enriched], how="diagonal_relaxed")
-        enriched.write_parquet(target)
+        with _quarantine_lock:
+            if target.exists():
+                try:
+                    existing = pl.read_parquet(target)
+                    enriched = pl.concat([existing, enriched], how="diagonal_relaxed")
+                except Exception:
+                    pass
+            tmp_target = target.with_suffix(".tmp")
+            enriched.write_parquet(tmp_target)
+            tmp_target.replace(target)
         return target

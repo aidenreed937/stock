@@ -261,3 +261,84 @@ def test_raw_storage_batch_buffer_append_uses_file_lock(tmp_path: Path) -> None:
     assert lock.entered == 1
     assert saved_path in store._write_buffer
     assert len(store._write_buffer[saved_path]) == 1
+
+
+def test_raw_storage_sw_daily_legacy_index_id_multi_industry_preserved(tmp_path: Path) -> None:
+    """验证使用 legacy index_id 列名时，多行业依次写入同一分区不会被单行业覆盖。"""
+    from stock.core.contracts import DatasetKey
+
+    store = RawDataStorage(base_dir=tmp_path)
+    target_date = date(2026, 8, 3)
+
+    # 模拟依次写入 31 个申万一级行业
+    for i in range(1, 32):
+        ind_code = f"8010{i:02d}.SI"
+        key = DatasetKey(
+            provider="tushare",
+            dataset="sw_daily",
+            endpoint="sw_daily",
+            start_date=target_date,
+            end_date=target_date,
+        )
+        df_ind = pl.DataFrame(
+            {
+                "trade_date": ["20260803"],
+                "index_id": [ind_code],
+                "index_name": [f"行业_{i}"],
+                "close": [float(i * 10)],
+            }
+        )
+        store.save_dataset(key, df_ind)
+
+    # 验证最终落盘的 RAW 文件包含全部 31 个行业
+    raw_file = tmp_path / "tushare" / "market=CN" / "sw_daily" / "year=2026" / "month=08" / "data.parquet"
+    assert raw_file.exists()
+    df_loaded = pl.read_parquet(raw_file)
+    assert len(df_loaded) == 31
+    assert df_loaded["index_id"].n_unique() == 31
+
+
+def test_raw_storage_heterogeneous_schema_coalesced_dedup(tmp_path: Path) -> None:
+    """验证异构 Schema (部分 index_id，部分 ts_code) 对角线合并时不会发生空值键折叠，且支持幂等更新。"""
+    from stock.core.contracts import DatasetKey
+
+    store = RawDataStorage(base_dir=tmp_path)
+    d = date(2026, 8, 7)
+    key = DatasetKey(
+        provider="tushare",
+        dataset="sw_daily",
+        endpoint="sw_daily",
+        start_date=d,
+        end_date=d,
+    )
+
+    # 批次 1: 存量 legacy 格式 (含 index_id)
+    df_legacy = pl.DataFrame(
+        {
+            "trade_date": ["20260807", "20260807"],
+            "index_id": ["801010.SI", "801020.SI"],
+            "close": [100.0, 200.0],
+        }
+    )
+    store.save_dataset(key, df_legacy)
+
+    # 批次 2: 新接口格式 (含 ts_code，且包含 801010.SI 更新与 850001.SI 新增)
+    df_new = pl.DataFrame(
+        {
+            "trade_date": ["20260807", "20260807"],
+            "ts_code": ["801010.SI", "850001.SI"],
+            "close": [105.0, 300.0],
+        }
+    )
+    store.save_dataset(key, df_new)
+
+    raw_file = tmp_path / "tushare" / "market=CN" / "sw_daily" / "year=2026" / "month=08" / "data.parquet"
+    df_loaded = pl.read_parquet(raw_file)
+
+    # 应该包含 3 个行业 (801010, 801020, 850001)，其中 801010 更新为 105.0
+    assert len(df_loaded) == 3
+    row_801010 = df_loaded.filter(
+        (pl.col("ts_code") == "801010.SI") | (pl.col("index_id") == "801010.SI")
+    )
+    assert len(row_801010) == 1
+    assert row_801010["close"][0] == 105.0

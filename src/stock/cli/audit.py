@@ -160,6 +160,8 @@ def _run_specialized_audits(
         results["distribution"] = run_distribution_audit(
             dataset_name=req.dataset,
             data_source=src,
+            start_date=req.start_date,
+            end_date=req.end_date,
         )
 
 
@@ -192,7 +194,11 @@ def run_audit(req: AuditRequest | None = None, **kwargs: Any) -> dict[str, Any]:
     """根据类型执行指定的审计套件 (支持单日与历史区间批量对账)。"""
     request = req or AuditRequest(**kwargs)
     audit_type_lower = request.audit_type.lower()
-    if request.start_date is not None and request.end_date is not None:
+    if (
+        request.start_date is not None
+        and request.end_date is not None
+        and audit_type_lower in {"reconciliation", "recon", "index"}
+    ):
         return _run_range_audit(request)
 
     t_date, is_auto = _resolve_audit_target_date(

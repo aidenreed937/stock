@@ -30,7 +30,7 @@ PER_SYMBOL_DATASETS: frozenset[str] = frozenset({
 
 _EXPLICIT_NON_PARTITIONED: frozenset[str] = frozenset({
     "stock_basic", "index_basic", "index_classify", "index_member", "fund_basic",
-    "cn_cpi", "cn_gdp", "cn_ppi", "cn_pmi", "cn_m", "sf_month", "shibor_lpr",
+    "trade_cal", "cn_cpi", "cn_gdp", "cn_ppi", "cn_pmi", "cn_m", "sf_month", "shibor_lpr",
     "shibor", "cn_schedule", "fut_index_daily",
     "margin", "moneyflow_hsgt", "hsgt_top10", "index_daily_bar", "global_index_daily",
     "financials", "balance_sheet", "cashflow", "dividends", "splits",
@@ -43,7 +43,7 @@ _EXPLICIT_NON_PARTITIONED: frozenset[str] = frozenset({
 })
 
 _EXPLICIT_SINGLE_SYNC: frozenset[str] = frozenset({
-    "moneyflow_hsgt", "hsgt_top10", "margin", "suspend_d",
+    "moneyflow_hsgt", "hsgt_top10", "margin", "suspend_d", "trade_cal",
     "cn_gdp", "cn_cpi", "cn_ppi", "cn_pmi", "cn_m", "sf_month",
     "shibor_lpr", "shibor", "cn_schedule", "fut_index_daily",
     "stock_basic", "index_basic", "index_classify", "index_member", "fund_basic",
@@ -52,6 +52,7 @@ _EXPLICIT_SINGLE_SYNC: frozenset[str] = frozenset({
     "company_fundamental", "fs_non_financial", "fs_bank", "fs_security", "fs_insurance",
     "pledge_info", "national_debt", "interest_rates", "non_ferrous_metals", "crude_oil",
 })
+
 
 
 def _make_spec(

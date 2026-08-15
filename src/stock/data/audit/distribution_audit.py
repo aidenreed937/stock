@@ -348,6 +348,8 @@ def run_distribution_audit(
     dataset_name: str | None = None,
     data_source: str = "tushare",
     quiet: bool = False,
+    start_date: date | None = None,
+    end_date: date | None = None,
 ) -> dict[str, Any]:
     """CLI / CI 审计入口函数。"""
     auditor = CuratedDistributionAuditor()
@@ -360,7 +362,12 @@ def run_distribution_audit(
     results: dict[str, Any] = {}
     for ds in datasets:
         ds_source = "lixinger" if ds == "index_fundamental" else data_source
-        rep = auditor.audit_dataset(ds, data_source=ds_source)
+        rep = auditor.audit_dataset(
+            ds,
+            data_source=ds_source,
+            start_date=start_date,
+            end_date=end_date,
+        )
         if not rep.passed:
             all_passed = False
         results[ds] = {

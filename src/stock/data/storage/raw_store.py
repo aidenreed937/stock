@@ -15,9 +15,11 @@ from stock.data.storage.raw_schema import (
     RAW_PRIMARY_KEY_FALLBACK_COLUMNS,
     RAW_RANGE_DATE_COLUMNS,
     RAW_SYMBOL_COLUMNS,
+    deduplicate_raw_merged_frame,
     first_existing_column,
     month_key_for,
     normalize_raw_date_series,
+    resolve_raw_primary_keys,
 )
 from stock.data.task_registry import get_endpoint_market, resolve_task
 from stock.utils.logger import logger
@@ -227,11 +229,7 @@ class RawDataStorage:
                 dfs_to_concat.append(df)
 
             merged = pl.concat(dfs_to_concat, how="diagonal_relaxed")
-
-            # 使用列表中的第一个 key 来解析主键（假设同文件 key 配置一致）
-            dedup_cols = self._primary_keys(items[0][0], merged)
-            if dedup_cols:
-                merged = merged.unique(subset=dedup_cols, keep="last")
+            merged = deduplicate_raw_merged_frame(merged, items[0][0] if items else None)
 
             import threading
             temp_path = file_path.with_suffix(f".{threading.get_ident()}.tmp.parquet")
@@ -241,29 +239,7 @@ class RawDataStorage:
     @staticmethod
     def _primary_keys(key: DatasetKey, df: pl.DataFrame) -> list[str]:
         """Resolve registered endpoint keys before falling back to generic identity columns."""
-        meta: object | None = None
-        try:
-            if key.provider == "tushare":
-                from stock.data.fetcher.tushare.registry import TUSHARE_API_REGISTRY
-
-                meta = TUSHARE_API_REGISTRY.get(resolve_task(key.provider, key.endpoint).api_name)
-            elif key.provider == "lixinger":
-                from stock.data.fetcher.lixinger.registry import LIXINGER_API_REGISTRY
-
-                meta = LIXINGER_API_REGISTRY.get(resolve_task(key.provider, key.endpoint).api_name)
-            else:
-                meta = None
-            if meta:
-                keys = [c for c in meta.primary_keys if c in df.columns]
-                if keys:
-                    return keys
-        except Exception as e:
-            logger.debug(f"解析 RAW 主键失败 [{key.provider}/{key.endpoint}]: {e}")
-        return [
-            c
-            for c in RAW_PRIMARY_KEY_FALLBACK_COLUMNS
-            if c in df.columns
-        ]
+        return resolve_raw_primary_keys(key, df)
 
     def load_dataset(self, key: DatasetKey) -> pl.DataFrame | None:  # noqa: PLR0911
         """按数据集和月份读取 RAW 归档数据。"""

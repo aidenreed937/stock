@@ -146,4 +146,13 @@ MARKET_ENDPOINTS: dict[str, EndpointMeta] = {
         date_columns=["trade_date"],
         required_columns=["ts_code", "trade_date", "open", "high", "low", "close"],
     ),
+    "trade_cal": EndpointMeta(
+        api_name="trade_cal",
+        description="A 股各大交易所开闭市交易日历",
+        frequency="static",
+        group="basic_info",
+        primary_keys=["exchange", "cal_date"],
+        date_columns=["cal_date"],
+        required_columns=["exchange", "cal_date", "is_open"],
+    ),
 }

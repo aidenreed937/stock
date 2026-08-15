@@ -1,8 +1,10 @@
 from datetime import date
+from typing import Any
 from unittest.mock import MagicMock
 import pandas as pd
 import polars as pl
 import pytest
+
 
 from stock.data.fetcher.tushare.stock_fetcher import TuShareStockFetcher
 
@@ -92,3 +94,38 @@ def test_tushare_stock_fetcher_non_symbol_endpoint_does_not_inject_symbol() -> N
     )
     assert "ts_code" in df.columns
     assert "symbol" not in df.columns
+
+
+def test_tushare_stock_fetcher_trade_cal_local_catalog(monkeypatch: Any) -> None:
+    mock_df = pl.DataFrame({
+        "cal_date": ["20240102", "20240103"],
+        "is_open": [1, 1],
+    })
+    mock_cat = MagicMock()
+    mock_cat.load_dataset.return_value = mock_df
+
+    monkeypatch.setattr("stock.data.catalog.DataCatalog", lambda **kwargs: mock_cat)
+
+    mock_client = MagicMock()
+    fetcher = TuShareStockFetcher(client=mock_client)
+    trade_dates = fetcher.fetch_trade_cal(date(2024, 1, 2), date(2024, 1, 3))
+    assert trade_dates == [date(2024, 1, 2), date(2024, 1, 3)]
+    mock_client.query.assert_not_called()
+
+
+def test_tushare_stock_fetcher_trade_cal_single_request() -> None:
+    mock_client = MagicMock()
+    mock_client.query.return_value = pd.DataFrame({
+        "cal_date": ["20240102"],
+        "is_open": [1],
+        "exchange": ["SSE"],
+    })
+    fetcher = TuShareStockFetcher(client=mock_client)
+    df = fetcher.fetch_daily_bars_df(
+        symbol="",
+        start_date=date(1990, 1, 1),
+        end_date=date(2026, 1, 1),
+        endpoint="trade_cal",
+    )
+    assert len(df) == 1
+    assert mock_client.query.call_count == 1

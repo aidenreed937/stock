@@ -109,11 +109,17 @@ class TuShareStockFetcher(BaseDataFetcher):
             return self._fetch_all_industry_classifies(meta, symbol)
 
         is_real_symbol = bool(symbol and (symbol != endpoint))
-        if not is_real_symbol and meta.frequency != "event" and start_date != end_date:
+        if (
+            not is_real_symbol
+            and meta.frequency not in ("event", "static")
+            and endpoint != "trade_cal"
+            and start_date != end_date
+        ):
             if (end_date - start_date).days >= (meta.request_window_days or 300):
                 return self._fetch_windowed(
                     symbol, start_date, end_date, endpoint, meta, extra_kwargs
                 )
+
 
         api_to_call, query_kwargs = build_tushare_query(
             meta, symbol, start_date, end_date, extra_kwargs
@@ -156,7 +162,28 @@ class TuShareStockFetcher(BaseDataFetcher):
     def fetch_trade_cal(
         self, start_date: date, end_date: date
     ) -> list[date]:
-        """获取指定日期范围内的 A 股有效开市交易日列表。"""
+        """获取指定日期范围内的 A 股有效开市交易日列表（优先本地黄金表，未命中查询 API）。"""
+        try:
+            from stock.data.catalog import DataCatalog
+
+            cat = DataCatalog(data_source="tushare")
+            df = cat.load_dataset("trade_cal")
+            if not df.is_empty():
+                date_col = "cal_date" if "cal_date" in df.columns else ("trade_date" if "trade_date" in df.columns else "")
+                if date_col:
+                    if "is_open" in df.columns:
+                        df = df.filter(pl.col("is_open").cast(pl.Int32, strict=False) == 1)
+                    raw_dates = df[date_col].to_list()
+                    dates = sorted({
+                        d if isinstance(d, date) else date.fromisoformat(str(d))
+                        for d in raw_dates
+                        if d is not None
+                    })
+                    if dates and dates[0] <= start_date and dates[-1] >= end_date:
+                        return [d for d in dates if start_date <= d <= end_date]
+        except Exception:
+            pass
+
         pandas_df = self.client.query(
             "trade_cal",
             exchange="",

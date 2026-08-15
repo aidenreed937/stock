@@ -216,20 +216,21 @@ def _resolve_dedup_keys(
     if meta_keys:
         mapped_keys: list[str] = []
         for key in meta_keys:
-            if key in ("ts_code", "stockCode", "code") and "symbol" in merged.columns:
-                mapped_keys.append("symbol")
+            if key in ("ts_code", "stockCode", "code", "index_code", "con_code", "index_id", "industry_id"):
+                for cand in (key, "symbol", "ts_code", "stockCode", "code", "index_id", "industry_id", "index_code"):
+                    if cand in merged.columns:
+                        mapped_keys.append(cand)
+                        break
             elif key in ("trade_date", "date", "suspend_date"):
-                if "trade_date" in merged.columns:
-                    mapped_keys.append("trade_date")
-                elif "date" in merged.columns:
-                    mapped_keys.append("date")
-                elif "suspend_date" in merged.columns:
-                    mapped_keys.append("suspend_date")
+                for cand in (key, "trade_date", "date", "suspend_date"):
+                    if cand in merged.columns:
+                        mapped_keys.append(cand)
+                        break
             elif key in ("end_date", "report_date"):
-                if "end_date" in merged.columns:
-                    mapped_keys.append("end_date")
-                elif "report_date" in merged.columns:
-                    mapped_keys.append("report_date")
+                for cand in (key, "end_date", "report_date"):
+                    if cand in merged.columns:
+                        mapped_keys.append(cand)
+                        break
             elif key in merged.columns:
                 mapped_keys.append(key)
 
@@ -240,7 +241,7 @@ def _resolve_dedup_keys(
 
     entity_cols = [
         c
-        for c in ["symbol", "index_code", "con_code", "stockCode", "ts_code", "code", "exchange_id"]
+        for c in ["symbol", "index_code", "con_code", "stockCode", "ts_code", "code", "index_id", "industry_id", "exchange_id"]
         if c in merged.columns
     ]
     period_cols = [

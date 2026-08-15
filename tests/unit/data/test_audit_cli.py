@@ -62,8 +62,11 @@ def test_run_audit_dispatches_correctly() -> None:
         "stock.data.audit.distribution_audit.run_distribution_audit", return_value={"status": "PASSED"}
     ) as mock_dist:
         res = run_audit(audit_type="distribution", data_source="tushare", dataset="sw_daily")
-        mock_dist.assert_called_once_with(dataset_name="sw_daily", data_source="tushare")
+        mock_dist.assert_called_once_with(
+            dataset_name="sw_daily", data_source="tushare", start_date=None, end_date=None
+        )
         assert res["distribution"] == {"status": "PASSED"}
+
 
 
 def test_main_cli_dispatch() -> None:
