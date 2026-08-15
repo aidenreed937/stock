@@ -134,12 +134,6 @@ def _save_scan_artifacts(
         report_path.write_text(format_investor_report(summary), encoding="utf-8")
         report_pro_path.write_text(format_pro_report(summary), encoding="utf-8")
 
-        # 兼容旧单文件路径
-        legacy_path = Path("reports/scan") / f"market_scan_{dt_str.replace('-', '')}.md"
-        legacy_pro_path = Path("reports/scan") / f"market_scan_pro_{dt_str.replace('-', '')}.md"
-        legacy_path.write_text(format_investor_report(summary), encoding="utf-8")
-        legacy_pro_path.write_text(format_pro_report(summary), encoding="utf-8")
-
         logger.info("体检产物已归档至目录: %s", target_dir.resolve())
 
     if args.output:
