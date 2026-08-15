@@ -64,8 +64,7 @@ class TCRCalculator:
         if total_amount <= 0:
             return None
 
-        divisor = 1e8 if total_amount >= 1e10 else 10000.0
-        total_amount_yi = total_amount / divisor
+        total_amount_yi = total_amount / 1e8
 
         industries: list[SingleIndustryTCR] = []
         crowded_names: list[str] = []
@@ -77,7 +76,7 @@ class TCRCalculator:
         for row in sorted_df.iter_rows(named=True):
             code = str(row["symbol"])
             name = name_map.get(code, self.classifier.resolve_name(code))
-            amt_yi = float(row["amount"]) / divisor
+            amt_yi = float(row["amount"]) / 1e8
             tcr = float(row["tcr"])
             is_crowded = tcr >= crowded_threshold
             penalty = min(1.0, max(0.0, (tcr - 15.0) / 10.0))

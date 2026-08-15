@@ -29,6 +29,18 @@ def _filter_complete_exchanges(df: pl.DataFrame) -> pl.DataFrame:
     return df.join(valid_dates, on="trade_date", how="inner")
 
 
+def _resolve_margin_balance_expr(df: pl.DataFrame) -> pl.Expr | None:
+    """提取两融总余额计算表达式 (优先 rzrqye 融资融券余额，或 rzye + rqye 合计)。"""
+    if "rzrqye" in df.columns:
+        return pl.col("rzrqye")
+    if "rzye" in df.columns and "rqye" in df.columns:
+        return pl.col("rzye") + pl.col("rqye")
+    for col in ["rzrqye", "margin_balance", "balance", "total_balance", "rzye"]:
+        if col in df.columns:
+            return pl.col(col)
+    return None
+
+
 class MarginPenetrationCalculator:
     """全市场两融杠杆渗透率分析器。"""
 
@@ -54,23 +66,18 @@ class MarginPenetrationCalculator:
         if raw_margin.is_empty():
             return pl.DataFrame()
 
-        # 提取两融总余额 (rzye + rqye 或 rzye, 单位一般为元)
-        bal_col = None
-        for col in ["rzye", "margin_balance", "balance", "total_balance"]:
-            if col in raw_margin.columns:
-                bal_col = col
-                break
-
-        if bal_col is None:
+        bal_expr = _resolve_margin_balance_expr(raw_margin)
+        if bal_expr is None:
             return pl.DataFrame()
 
         filtered_margin = _filter_complete_exchanges(raw_margin)
 
         margin_clean = (
-            filtered_margin.select(["trade_date", bal_col])
-            .drop_nulls()
+            filtered_margin.with_columns(bal_expr.alias("_bal"))
+            .select(["trade_date", "_bal"])
+            .drop_nulls(subset=["trade_date", "_bal"])
             .group_by("trade_date")
-            .agg((pl.col(bal_col).sum() / 1e8).alias("margin_balance_yi"))
+            .agg((pl.col("_bal").sum() / 1e8).alias("margin_balance_yi"))
             .sort("trade_date")
         )
 

@@ -37,6 +37,12 @@ UNIT_CONVERSION_RULES: dict[str, dict[str, dict[str, tuple[str, float]]]] = {
             "net_mf_vol": ("net_mf_vol", 100.0),
             "net_mf_amount": ("net_mf_amount", 10000.0),
         },
+        "sw_daily": {
+            "vol": ("volume", 100.0),          # TuShare 原始 vol 单位为"手" -> 转换为"股" (* 100)
+            "amount": ("amount", 10000.0),      # TuShare 原始 amount 单位为"万元" -> 转换为"元" (* 10000)
+            "total_mv": ("total_mv", 10000.0),  # TuShare 原始 total_mv 单位为"万元" -> 转换为"元" (* 10000)
+            "float_mv": ("float_mv", 10000.0),  # TuShare 原始 float_mv 单位为"万元" -> 转换为"元" (* 10000)
+        },
     }
 }
 

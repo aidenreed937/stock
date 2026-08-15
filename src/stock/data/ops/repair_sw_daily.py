@@ -60,10 +60,41 @@ def clean_partition_sw_daily(
             subset=["symbol", "trade_date"], keep="last", maintain_order=True
         )
 
+    # 4. 单位归一化自愈：若发现 amount / total_mv / float_mv 为万元单位，将其转换为标准元 (* 10000.0)
+    unit_fixes = []
+    is_wan_record = (
+        (pl.col("amount").is_not_null() & (pl.col("amount") > 0) & (pl.col("amount") < 1e7))
+        | (pl.col("total_mv").is_not_null() & (pl.col("total_mv") > 0) & (pl.col("total_mv") < 1e10))
+    )
+    if "amount" in cleaned.columns:
+        unit_fixes.append(
+            pl.when(is_wan_record & (pl.col("amount") < 1e7))
+            .then(pl.col("amount") * 10000.0)
+            .otherwise(pl.col("amount"))
+            .alias("amount")
+        )
+    if "total_mv" in cleaned.columns:
+        unit_fixes.append(
+            pl.when(is_wan_record & (pl.col("total_mv") < 1e10))
+            .then(pl.col("total_mv") * 10000.0)
+            .otherwise(pl.col("total_mv"))
+            .alias("total_mv")
+        )
+    if "float_mv" in cleaned.columns:
+        unit_fixes.append(
+            pl.when(is_wan_record & (pl.col("float_mv") < 1e10))
+            .then(pl.col("float_mv") * 10000.0)
+            .otherwise(pl.col("float_mv"))
+            .alias("float_mv")
+        )
+    if unit_fixes:
+        cleaned = cleaned.with_columns(unit_fixes)
+
     after_count = len(cleaned)
     removed_count = before_count - after_count
+    has_changes = not cleaned.equals(df)
 
-    if apply and removed_count > 0:
+    if apply and has_changes:
         tmp = curated_path.with_suffix(".tmp.parquet")
         bak = curated_path.with_suffix(".bak.parquet")
         cleaned.write_parquet(tmp)
@@ -76,6 +107,7 @@ def clean_partition_sw_daily(
         "before": before_count,
         "after": after_count,
         "removed": removed_count,
+        "changed": has_changes,
     }
 
 
@@ -100,7 +132,7 @@ def repair_all_sw_daily(
         total_before += res["before"]
         total_after += res["after"]
         total_removed += res["removed"]
-        if res["removed"] > 0:
+        if res.get("changed", False) or res["removed"] > 0:
             changed_files += 1
 
     logger.info(

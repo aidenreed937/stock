@@ -135,7 +135,8 @@ def _render_pro_macro_section(summary: DailyMarketScanSummary, dt_str: str) -> l
     )
     all_m_s = (
         f"PB: {all_m.pb_ew:.3f}{allm_tag} (Pctl: {all_m.pb_percentile_10y:.1f}%), "
-        f"PE: {all_m.pe_ttm_ew:.2f} (Pctl: {all_m.pe_percentile_10y:.1f}%)"
+        f"PE: {all_m.pe_ttm_ew:.2f} (Pctl: {all_m.pe_percentile_10y:.1f}% "
+        f"[⚠️ 等权PE受微利股拉升，以PB为主基准])"
         if all_m
         else "N/A"
     )

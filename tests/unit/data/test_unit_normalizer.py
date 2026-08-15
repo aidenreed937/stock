@@ -45,6 +45,28 @@ def test_unit_normalizer_tushare_daily_basic() -> None:
     assert normalized["circ_mv"][0] == 4000000000.0
 
 
+def test_unit_normalizer_tushare_sw_daily() -> None:
+    raw_df = pl.DataFrame(
+        {
+            "ts_code": ["801010.SI"],
+            "trade_date": ["20260814"],
+            "vol": [200.0],          # 手
+            "amount": [1500.0],       # 万元
+            "total_mv": [120000.0],   # 万元
+            "float_mv": [60000.0],    # 万元
+        }
+    )
+
+    normalizer = UnitNormalizer("tushare", "sw_daily")
+    normalized = normalizer.normalize_units(raw_df)
+
+    assert "volume" in normalized.columns
+    assert normalized["volume"][0] == 20000.0          # 200 手 * 100 = 20000 股
+    assert normalized["amount"][0] == 15000000.0       # 1500 万元 * 10000 = 15000000 元
+    assert normalized["total_mv"][0] == 1200000000.0   # 120000 万元 * 10000 = 1200000000 元
+    assert normalized["float_mv"][0] == 600000000.0    # 60000 万元 * 10000 = 600000000 元
+
+
 def test_unit_normalizer_empty_and_unknown() -> None:
     empty_df = pl.DataFrame()
     normalizer = UnitNormalizer("tushare", "daily")
