@@ -52,7 +52,7 @@
     "pb_break_status": "大面积折价",
     "turnover_ratio": 5.5,
     "turnover_status": "情绪适中",
-    "above_ma60_ratio": 38.4,
+    "above_ma60_ratio": 38.3,
     "ma60_status": "修复中"
   },
   "action_items": [
@@ -137,7 +137,7 @@
       },
       {
         "industry_code": "801730.SI",
-        "industry_name": "电力设备",
+        "industry_name": "电气设备",
         "amount_yi": 1828.76,
         "tcr": 7.19,
         "is_crowded": false,
@@ -169,7 +169,7 @@
       },
       {
         "industry_code": "801030.SI",
-        "industry_name": "基础化工",
+        "industry_name": "化工",
         "amount_yi": 1194.44,
         "tcr": 4.69,
         "is_crowded": false,
@@ -289,7 +289,7 @@
       },
       {
         "industry_code": "801200.SI",
-        "industry_name": "商贸零售",
+        "industry_name": "商业贸易",
         "amount_yi": 163.6,
         "tcr": 0.64,
         "is_crowded": false,
@@ -313,7 +313,7 @@
       },
       {
         "industry_code": "801130.SI",
-        "industry_name": "纺织服装",
+        "industry_name": "纺织服饰",
         "amount_yi": 122.92,
         "tcr": 0.48,
         "is_crowded": false,
@@ -321,7 +321,7 @@
       },
       {
         "industry_code": "801210.SI",
-        "industry_name": "社会服务",
+        "industry_name": "休闲服务",
         "amount_yi": 115.01,
         "tcr": 0.45,
         "is_crowded": false,
@@ -464,7 +464,7 @@
       },
       {
         "symbol": "350000",
-        "name": "纺织服饰",
+        "name": "纺织服装",
         "pb": 1.74,
         "roe": 3.6,
         "fitted_pb": 2.17,
@@ -721,7 +721,7 @@
     "trade_date": "2026-08-13",
     "total_stocks": 5541,
     "above_ma20_ratio": 85.51,
-    "above_ma60_ratio": 38.35,
+    "above_ma60_ratio": 38.33,
     "above_ma120_ratio": 18.28,
     "is_bottom_divergence": false,
     "is_top_divergence": false,

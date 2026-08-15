@@ -137,7 +137,7 @@
       },
       {
         "industry_code": "801730.SI",
-        "industry_name": "电力设备",
+        "industry_name": "电气设备",
         "amount_yi": 1609.18,
         "tcr": 7.5,
         "is_crowded": false,
@@ -169,7 +169,7 @@
       },
       {
         "industry_code": "801030.SI",
-        "industry_name": "化工",
+        "industry_name": "基础化工",
         "amount_yi": 1013.07,
         "tcr": 4.72,
         "is_crowded": false,
@@ -321,7 +321,7 @@
       },
       {
         "industry_code": "801210.SI",
-        "industry_name": "休闲服务",
+        "industry_name": "社会服务",
         "amount_yi": 114.66,
         "tcr": 0.53,
         "is_crowded": false,
@@ -581,7 +581,7 @@
       },
       {
         "symbol": "630000",
-        "name": "电力设备",
+        "name": "电气设备",
         "pb": 2.67,
         "roe": -0.76,
         "fitted_pb": 2.13,
@@ -720,8 +720,8 @@
   "breadth": {
     "trade_date": "2026-08-12",
     "total_stocks": 5541,
-    "above_ma20_ratio": 89.98,
-    "above_ma60_ratio": 43.93,
+    "above_ma20_ratio": 89.97,
+    "above_ma60_ratio": 43.91,
     "above_ma120_ratio": 19.0,
     "is_bottom_divergence": false,
     "is_top_divergence": false,

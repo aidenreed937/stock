@@ -23,5 +23,5 @@
 
 ## 3. 微观博弈与流动性情绪 (Margin As-Of: 2026-08-13)
 - **Margin Penetration**: `2.64%` (Balance: 26497.4 亿)
-- **Breadth**: MA20 `85.5%` | MA60 `38.4%` | MA120 `18.3%`
+- **Breadth**: MA20 `85.5%` | MA60 `38.3%` | MA120 `18.3%`
 - **Sentiment**: PB Break `7.75%` | Turnover `5.50%`
