@@ -169,7 +169,7 @@
       },
       {
         "industry_code": "801030.SI",
-        "industry_name": "基础化工",
+        "industry_name": "化工",
         "amount_yi": 1013.07,
         "tcr": 4.72,
         "is_crowded": false,
@@ -313,7 +313,7 @@
       },
       {
         "industry_code": "801130.SI",
-        "industry_name": "纺织服装",
+        "industry_name": "纺织服饰",
         "amount_yi": 119.96,
         "tcr": 0.56,
         "is_crowded": false,
@@ -321,7 +321,7 @@
       },
       {
         "industry_code": "801210.SI",
-        "industry_name": "社会服务",
+        "industry_name": "休闲服务",
         "amount_yi": 114.66,
         "tcr": 0.53,
         "is_crowded": false,
@@ -455,7 +455,7 @@
       },
       {
         "symbol": "450000",
-        "name": "商业贸易",
+        "name": "商贸零售",
         "pb": 1.6,
         "roe": -3.1,
         "fitted_pb": 2.1,
@@ -464,7 +464,7 @@
       },
       {
         "symbol": "350000",
-        "name": "纺织服装",
+        "name": "纺织服饰",
         "pb": 1.76,
         "roe": 3.64,
         "fitted_pb": 2.2,

@@ -289,7 +289,7 @@
       },
       {
         "industry_code": "801200.SI",
-        "industry_name": "商业贸易",
+        "industry_name": "商贸零售",
         "amount_yi": 163.6,
         "tcr": 0.64,
         "is_crowded": false,
@@ -455,7 +455,7 @@
       },
       {
         "symbol": "450000",
-        "name": "商贸零售",
+        "name": "商业贸易",
         "pb": 1.58,
         "roe": -3.09,
         "fitted_pb": 2.07,
@@ -464,7 +464,7 @@
       },
       {
         "symbol": "350000",
-        "name": "纺织服装",
+        "name": "纺织服饰",
         "pb": 1.74,
         "roe": 3.6,
         "fitted_pb": 2.17,
