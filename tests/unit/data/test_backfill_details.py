@@ -1,14 +1,14 @@
 from datetime import date
-from unittest.mock import MagicMock
 from types import SimpleNamespace
+from unittest.mock import MagicMock, patch
+
+import polars as pl
 import pytest
 
 from stock.data.backfill import (
     HistoricalBackfiller,
-    _default_symbols_for_endpoint,
     _execute_parallel_tasks,
     _filter_supported_symbols,
-    _load_backfill_yaml_config,
     _resolve_calendar_dates,
     _watchlist_symbols,
 )
@@ -45,22 +45,48 @@ def test_filter_supported_symbols() -> None:
     assert filtered == ["600519.SH", "000001.SZ"]
 
 
-def test_resolve_calendar_dates_fallback() -> None:
-    # 1. fetcher without fetch_trade_cal (natural days)
+def test_resolve_calendar_dates_uses_fred_natural_calendar() -> None:
     fetcher_mock = MagicMock(spec=[])
     natural_days = _resolve_calendar_dates(
-        fetcher_mock, "fred", date(2024, 1, 1), date(2024, 1, 3)
+        fetcher_mock, "fred", date(2024, 1, 5), date(2024, 1, 8)
     )
-    assert len(natural_days) == 3
+    assert natural_days == [date(2024, 1, d) for d in range(5, 9)]
 
-    # 2. fetcher with fetch_trade_cal raising exception (weekday fallback)
-    fetcher_err = MagicMock()
-    fetcher_err.fetch_trade_cal.side_effect = Exception("network error")
-    weekdays = _resolve_calendar_dates(
-        fetcher_err, "tushare", date(2024, 1, 5), date(2024, 1, 8)
+
+def test_resolve_calendar_dates_prefers_fetcher_calendar() -> None:
+    fetcher = MagicMock()
+    fetcher.fetch_trade_cal.return_value = [date(2024, 1, 5), date(2024, 1, 8)]
+
+    dates = _resolve_calendar_dates(fetcher, "tushare", date(2024, 1, 5), date(2024, 1, 8))
+
+    assert dates == [date(2024, 1, 5), date(2024, 1, 8)]
+
+
+def test_resolve_calendar_dates_uses_local_calendar_after_fetcher_error() -> None:
+    fetcher = MagicMock()
+    fetcher.fetch_trade_cal.side_effect = Exception("network error")
+    catalog = MagicMock()
+    catalog.load_dataset.return_value = pl.DataFrame(
+        {"trade_date": [date(2024, 1, 5), date(2024, 1, 8)]}
     )
-    # 2024-01-05 (Fri), 2024-01-08 (Mon)
-    assert weekdays == [date(2024, 1, 5), date(2024, 1, 8)]
+
+    with patch("stock.data.catalog.DataCatalog", return_value=catalog):
+        dates = _resolve_calendar_dates(fetcher, "tushare", date(2024, 1, 5), date(2024, 1, 8))
+
+    assert dates == [date(2024, 1, 5), date(2024, 1, 8)]
+
+
+def test_resolve_calendar_dates_fails_without_trusted_calendar() -> None:
+    fetcher = MagicMock()
+    fetcher.fetch_trade_cal.side_effect = Exception("network error")
+    catalog = MagicMock()
+    catalog.load_dataset.return_value = pl.DataFrame()
+
+    with (
+        patch("stock.data.catalog.DataCatalog", return_value=catalog),
+        pytest.raises(DataFetchError, match="可信交易日历"),
+    ):
+        _resolve_calendar_dates(fetcher, "tushare", date(2024, 1, 5), date(2024, 1, 8))
 
 
 def test_execute_parallel_tasks() -> None:

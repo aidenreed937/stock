@@ -13,8 +13,10 @@ from stock.data.pipeline import MarketDataPipeline
 from stock.data.planner import (
     _default_symbols_for_endpoint,
     _filter_supported_symbols,
-    _load_curated_symbol_pool,
     _watchlist_symbols,
+)
+from stock.data.planner import (
+    _load_curated_symbol_pool as _load_curated_symbol_pool,
 )
 from stock.data.task_registry import is_per_symbol_task, resolve_public_task, resolve_task
 from stock.data.update_scheduler import DataUpdateScheduler
@@ -25,22 +27,25 @@ from stock.utils.logger import logger
 def _resolve_calendar_dates(
     fetcher: BaseDataFetcher, data_source: str, start_date: date, end_date: date
 ) -> list[date]:
-    """获取开市有效交易日列表，支持数据源、本地已落盘日历与工作日降级。"""
+    """获取开市有效交易日列表，缺少可信交易日历时 fail-closed。"""
+    if data_source.lower() == "fred":
+        return [start_date + timedelta(days=i) for i in range((end_date - start_date).days + 1)]
+
     fetch_trade_cal_fn = getattr(fetcher, "fetch_trade_cal", None)
-    if callable(fetch_trade_cal_fn) and data_source != "fred":
+    if callable(fetch_trade_cal_fn):
         try:
             res = fetch_trade_cal_fn(start_date, end_date)
             if isinstance(res, list):
                 dates = [d for d in res if isinstance(d, date)]
                 if dates:
                     return dates
-        except Exception:
-            pass
+        except Exception as err:
+            logger.warning(f"[{data_source}] 源端交易日历获取失败，将尝试本地日历: {err}")
 
     try:
         from stock.data.catalog import DataCatalog
 
-        cat = DataCatalog(data_source=data_source)
+        cat = DataCatalog(data_source=data_source.lower())
         df_cal = cat.load_dataset("stock_daily_bar", start_date=start_date, end_date=end_date)
         if not df_cal.is_empty() and "trade_date" in df_cal.columns:
             local_dates = sorted(
@@ -48,16 +53,12 @@ def _resolve_calendar_dates(
             )
             if local_dates:
                 return local_dates
-    except Exception:
-        pass
+    except Exception as err:
+        logger.warning(f"[{data_source}] 本地交易日历读取失败: {err}")
 
-    cur = start_date
-    cal_dates = []
-    while cur <= end_date:
-        if cur.weekday() < 5:
-            cal_dates.append(cur)
-        cur += timedelta(days=1)
-    return cal_dates
+    raise DataFetchError(
+        f"[{data_source}] 缺少 {start_date} ~ {end_date} 的可信交易日历，拒绝按工作日推算。"
+    )
 
 
 def _execute_parallel_tasks(
@@ -297,6 +298,7 @@ def _load_backfill_yaml_config(
 ) -> dict[str, Any]:
     """加载 YAML 回填配置文件。"""
     from pathlib import Path
+
     import yaml
 
     config_path = Path(config_path_str)
