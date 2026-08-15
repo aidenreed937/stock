@@ -113,6 +113,95 @@ def test_execute_planned_tasks_enables_batch_on_backfiller_pipeline() -> None:
     assert summaries[0]["symbol"] == "全市场"
 
 
+def test_execute_planned_tasks_reuses_pipeline_without_reordering_tasks() -> None:
+    class BatchTarget:
+        def __init__(self) -> None:
+            self.enabled = 0
+            self.committed = 0
+
+        def enable_batch_mode(self) -> None:
+            self.enabled += 1
+
+        def commit(self) -> None:
+            self.committed += 1
+
+    class Pipeline:
+        def __init__(self) -> None:
+            self.store = BatchTarget()
+            self.raw_store = BatchTarget()
+
+    instances: list[object] = []
+
+    class Backfiller:
+        def __init__(self, **kwargs: object) -> None:
+            self.symbol = str(kwargs.get("symbol") or "")
+            self.pipeline = kwargs.get("pipeline") or Pipeline()
+            self.fetcher = kwargs.get("fetcher") or object()
+            instances.append(self)
+
+        def backfill_range(
+            self,
+            start_date: date,
+            end_date: date,
+            *,
+            force_refresh: bool = False,
+            max_workers: int = 1,
+        ) -> dict[str, int]:
+            return {
+                "total_days": (end_date - start_date).days + 1,
+                "open_days": 1,
+                "synced_days": 1,
+                "skipped_days": 0,
+                "failed_days": 0,
+            }
+
+    tasks = [
+        BackfillTask(
+            data_source="tushare",
+            endpoint="stock_daily_bar",
+            symbol="000001.SZ",
+            start_date=date(2026, 8, 10),
+            end_date=date(2026, 8, 10),
+            fetch_mode="per_symbol",
+            is_single_sync=False,
+        ),
+        BackfillTask(
+            data_source="tushare",
+            endpoint="index_daily",
+            symbol="000300.SH",
+            start_date=date(2026, 8, 10),
+            end_date=date(2026, 8, 10),
+            fetch_mode="per_symbol",
+            is_single_sync=False,
+        ),
+        BackfillTask(
+            data_source="tushare",
+            endpoint="stock_daily_bar",
+            symbol="000002.SZ",
+            start_date=date(2026, 8, 10),
+            end_date=date(2026, 8, 10),
+            fetch_mode="per_symbol",
+            is_single_sync=False,
+        ),
+    ]
+
+    with patch("stock.data.backfill.HistoricalBackfiller", Backfiller):
+        summaries = _execute_planned_tasks(tasks, force_refresh=False, workers=1)
+
+    assert len(instances) == 3
+    assert instances[0].pipeline is instances[2].pipeline
+    assert instances[0].pipeline is not instances[1].pipeline
+    assert instances[0].pipeline.store.enabled == 1
+    assert instances[0].pipeline.raw_store.enabled == 1
+    assert instances[0].pipeline.store.committed == 1
+    assert instances[0].pipeline.raw_store.committed == 1
+    assert instances[1].pipeline.store.enabled == 1
+    assert instances[1].pipeline.raw_store.enabled == 1
+    assert instances[1].pipeline.store.committed == 1
+    assert instances[1].pipeline.raw_store.committed == 1
+    assert [s["symbol"] for s in summaries] == ["000001.SZ", "000300.SH", "000002.SZ"]
+
+
 def test_backfill_cli_universe_resolution() -> None:
     with (
         patch(

@@ -87,33 +87,98 @@ def _execute_planned_tasks(
     import stock.data.backfill as backfill_module
 
     summaries: list[dict[str, Any]] = []
-    for idx, task in enumerate(tasks, 1):
-        logger.info(
-            f"===> [{idx}/{len(tasks)}] 执行任务 [{task.data_source}/{task.endpoint}] "
-            f"标的: [{task.symbol or '全市场'}] 区间: [{task.start_date} ~ {task.end_date}]"
-        )
-        backfiller = backfill_module.HistoricalBackfiller(
-            data_source=task.data_source,
-            endpoint=task.endpoint,
-            symbol=task.symbol,
-        )
-        batch_targets = _enable_pipeline_batch_mode(backfiller)
-        try:
-            summary = backfiller.backfill_range(
-                task.start_date,
-                task.end_date,
-                force_refresh=force_refresh,
-                max_workers=workers,
+    batch_contexts: dict[tuple[str, str], dict[str, Any]] = {}
+    try:
+        for idx, task in enumerate(tasks, 1):
+            context_key = (task.data_source, task.endpoint)
+            batch_context = batch_contexts.get(context_key)
+            if batch_context is None:
+                backfiller = _create_backfiller(backfill_module, task)
+                batch_context = _create_batch_context(backfiller)
+                batch_contexts[context_key] = batch_context
+            else:
+                batch_context["task_count"] += 1
+                backfiller = _create_backfiller(
+                    backfill_module,
+                    task,
+                    pipeline=batch_context["pipeline"],
+                    fetcher=batch_context["fetcher"],
+                )
+            summaries.append(
+                _execute_one_task(
+                    backfiller,
+                    task,
+                    task_position=(idx, len(tasks)),
+                    force_refresh=force_refresh,
+                    workers=workers,
+                )
             )
-            if not isinstance(summary, dict):
-                summary = {}
-            summary["data_source"] = task.data_source
-            summary["endpoint"] = task.endpoint
-            summary["symbol"] = task.symbol or "全市场"
-            summaries.append(summary)
-        finally:
-            _commit_batch_targets(batch_targets)
+    finally:
+        _commit_batch_contexts(batch_contexts)
     return summaries
+
+
+def _create_backfiller(
+    backfill_module: Any,
+    task: BackfillTask,
+    *,
+    pipeline: Any | None = None,
+    fetcher: Any | None = None,
+) -> Any:
+    kwargs: dict[str, Any] = {
+        "data_source": task.data_source,
+        "endpoint": task.endpoint,
+        "symbol": task.symbol,
+    }
+    if pipeline is not None:
+        kwargs["pipeline"] = pipeline
+    if fetcher is not None:
+        kwargs["fetcher"] = fetcher
+    return backfill_module.HistoricalBackfiller(**kwargs)
+
+
+def _create_batch_context(backfiller: Any) -> dict[str, Any]:
+    return {
+        "pipeline": getattr(backfiller, "pipeline", None),
+        "fetcher": getattr(backfiller, "fetcher", None),
+        "batch_targets": _enable_pipeline_batch_mode(backfiller),
+        "task_count": 1,
+    }
+
+
+def _execute_one_task(
+    backfiller: Any,
+    task: BackfillTask,
+    *,
+    task_position: tuple[int, int],
+    force_refresh: bool,
+    workers: int,
+) -> dict[str, Any]:
+    task_index, total_tasks = task_position
+    logger.info(
+        f"===> [{task_index}/{total_tasks}] 执行任务 [{task.data_source}/{task.endpoint}] "
+        f"标的: [{task.symbol or '全市场'}] 区间: [{task.start_date} ~ {task.end_date}]"
+    )
+    summary = backfiller.backfill_range(
+        task.start_date,
+        task.end_date,
+        force_refresh=force_refresh,
+        max_workers=workers,
+    )
+    summary_data: dict[str, Any] = dict(summary) if isinstance(summary, dict) else {}
+    summary_data["data_source"] = task.data_source
+    summary_data["endpoint"] = task.endpoint
+    summary_data["symbol"] = task.symbol or "全市场"
+    return summary_data
+
+
+def _commit_batch_contexts(batch_contexts: dict[tuple[str, str], dict[str, Any]]) -> None:
+    for (data_source, endpoint), batch_context in batch_contexts.items():
+        logger.info(
+            f"提交任务组 [{data_source}/{endpoint}] 攒批数据，"
+            f"共 {batch_context['task_count']} 个任务"
+        )
+        _commit_batch_targets(batch_context["batch_targets"])
 
 
 def _enable_pipeline_batch_mode(backfiller: Any) -> list[Any]:
