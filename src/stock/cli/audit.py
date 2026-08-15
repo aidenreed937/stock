@@ -2,6 +2,7 @@
 
 import argparse
 import sys
+from dataclasses import dataclass
 from datetime import date
 from typing import Any
 
@@ -85,23 +86,103 @@ def _resolve_audit_target_date(
     return date.today() - timedelta(days=1), True
 
 
-def run_audit(
-    audit_type: str = "master",
-    data_source: str = "tushare",
-    target_date: date | None = None,
-    raw_root: str | None = None,
-    min_raw_ratio: float | None = None,
-) -> dict[str, Any]:
-    """根据类型执行指定的审计套件。"""
-    audit_type_lower = audit_type.lower()
-    t_date, is_auto = _resolve_audit_target_date(audit_type_lower, data_source, target_date)
+@dataclass
+class AuditRequest:
+    """数据审计请求参数模型。"""
+
+    audit_type: str = "master"
+    data_source: str = "tushare"
+    target_date: date | None = None
+    start_date: date | None = None
+    end_date: date | None = None
+    raw_root: str | None = None
+    min_raw_ratio: float | None = None
+    max_workers: int = 4
+    show_details: bool = False
+
+
+def _run_range_audit(req: AuditRequest) -> dict[str, Any]:
+    """执行历史时间段多交易日批量对账。"""
+    start_d = req.start_date
+    end_d = req.end_date
+    logger.info(
+        f"=== 开始执行历史时间段对账审计 [{req.data_source}] (区间: {start_d} ~ {end_d}) ==="
+    )
+    if req.audit_type.lower() == "index" and start_d and end_d:
+        from stock.data.audit.reconciliation import run_index_audit_range
+
+        return {
+            "index_range": run_index_audit_range(
+                start_d,
+                end_d,
+                data_source=req.data_source,
+                max_workers=req.max_workers,
+                show_details=req.show_details,
+            )
+        }
+
+    if start_d and end_d:
+        from stock.data.audit.reconciliation import run_audit_range
+
+        return {
+            "reconciliation_range": run_audit_range(
+                start_d,
+                end_d,
+                data_source=req.data_source,
+                max_workers=req.max_workers,
+                show_details=req.show_details,
+            )
+        }
+    return {}
+
+
+def _run_specialized_audits(
+    audit_type: str,
+    data_source: str,
+    t_date: date,
+    auto_tag: str,
+    results: dict[str, Any],
+) -> None:
+    """执行各专项业务指标（估值、因子、资金流）审计。"""
+    if audit_type in {"valuation", "all"}:
+        from stock.data.audit.valuation_audit import run_daily_basic_audit, run_sw_industry_audit
+
+        logger.info(f"=== 开始执行估值指标专项审计 [{data_source}] (日期: {t_date}{auto_tag}) ===")
+        results["daily_basic"] = run_daily_basic_audit(t_date, data_source=data_source)
+        sw_source = "lixinger" if data_source == "tushare" else data_source
+        results["sw_industry"] = run_sw_industry_audit(t_date, data_source=sw_source)
+
+    if audit_type in {"factor", "all"}:
+        from stock.data.audit.factor_audit import run_adj_factor_audit, run_sw_daily_audit
+
+        logger.info(f"=== 开始执行技术指标因子审计 [{data_source}] (日期: {t_date}{auto_tag}) ===")
+        results["adj_factor"] = run_adj_factor_audit(t_date, data_source=data_source)
+        results["sw_daily"] = run_sw_daily_audit(t_date, data_source=data_source)
+
+    if audit_type in {"moneyflow", "all"}:
+        from stock.data.audit.moneyflow_audit import run_hk_hold_audit
+
+        logger.info(f"=== 开始执行资金流向数据审计 [{data_source}] (日期: {t_date}{auto_tag}) ===")
+        results["hk_hold"] = run_hk_hold_audit(t_date, data_source=data_source)
+
+
+def run_audit(req: AuditRequest | None = None, **kwargs: Any) -> dict[str, Any]:
+    """根据类型执行指定的审计套件 (支持单日与历史区间批量对账)。"""
+    request = req or AuditRequest(**kwargs)
+    audit_type_lower = request.audit_type.lower()
+    if request.start_date is not None and request.end_date is not None:
+        return _run_range_audit(request)
+
+    t_date, is_auto = _resolve_audit_target_date(
+        audit_type_lower, request.data_source, request.target_date
+    )
     auto_tag = " [自动探测最新交易日]" if is_auto else ""
     results: dict[str, Any] = {}
 
     if audit_type_lower in {"master", "all"}:
         from stock.data.audit.master_audit import print_master_audit_summary, run_master_audit
 
-        logger.info(f"=== 开始执行 Master 全库主数据审计 [{data_source}] ===")
+        logger.info(f"=== 开始执行 Master 全库主数据审计 [{request.data_source}] ===")
         master_df = run_master_audit()
         print_master_audit_summary(master_df)
         results["master"] = master_df
@@ -110,45 +191,30 @@ def run_audit(
         from stock.data.audit.reconciliation import run_audit as recon_run_audit
 
         logger.info(
-            f"=== 开始执行 RAW vs Curated 对账审计 [{data_source}] (日期: {t_date}{auto_tag}) ==="
+            "=== 开始执行 RAW vs Curated 对账审计 [%s] (日期: %s%s) ===",
+            request.data_source,
+            t_date,
+            auto_tag,
         )
-        results["reconciliation"] = recon_run_audit(target_date=t_date, data_source=data_source)
+        results["reconciliation"] = recon_run_audit(
+            target_date=t_date, data_source=request.data_source
+        )
 
     if audit_type_lower in {"acceptance", "all"}:
         from stock.data.audit.backfill_acceptance import accept_backfill
 
-        logger.info(f"=== 开始执行全量回填验收测试 [{data_source}] ===")
+        logger.info(f"=== 开始执行全量回填验收测试 [{request.data_source}] ===")
         accept_kwargs: dict[str, Any] = {
             "endpoint": "stock_daily_bar",
-            "data_source": data_source,
+            "data_source": request.data_source,
         }
-        if raw_root is not None:
-            accept_kwargs["raw_root"] = raw_root
-        if min_raw_ratio is not None:
-            accept_kwargs["min_raw_ratio"] = min_raw_ratio
+        if request.raw_root is not None:
+            accept_kwargs["raw_root"] = request.raw_root
+        if request.min_raw_ratio is not None:
+            accept_kwargs["min_raw_ratio"] = request.min_raw_ratio
         results["acceptance"] = accept_backfill(**accept_kwargs)
 
-    if audit_type_lower in {"valuation", "all"}:
-        from stock.data.audit.valuation_audit import run_daily_basic_audit, run_sw_industry_audit
-
-        logger.info(f"=== 开始执行估值指标专项审计 [{data_source}] (日期: {t_date}{auto_tag}) ===")
-        results["daily_basic"] = run_daily_basic_audit(t_date, data_source=data_source)
-        sw_source = "lixinger" if data_source == "tushare" else data_source
-        results["sw_industry"] = run_sw_industry_audit(t_date, data_source=sw_source)
-
-    if audit_type_lower in {"factor", "all"}:
-        from stock.data.audit.factor_audit import run_adj_factor_audit, run_sw_daily_audit
-
-        logger.info(f"=== 开始执行技术指标因子审计 [{data_source}] (日期: {t_date}{auto_tag}) ===")
-        results["adj_factor"] = run_adj_factor_audit(t_date, data_source=data_source)
-        results["sw_daily"] = run_sw_daily_audit(t_date, data_source=data_source)
-
-    if audit_type_lower in {"moneyflow", "all"}:
-        from stock.data.audit.moneyflow_audit import run_hk_hold_audit
-
-        logger.info(f"=== 开始执行资金流向数据审计 [{data_source}] (日期: {t_date}{auto_tag}) ===")
-        results["hk_hold"] = run_hk_hold_audit(t_date, data_source=data_source)
-
+    _run_specialized_audits(audit_type_lower, request.data_source, t_date, auto_tag, results)
     return results
 
 
@@ -191,6 +257,33 @@ def main() -> None:
         help="指定审计目标日期 (YYYY-MM-DD，默认最新或当日)",
     )
     parser.add_argument(
+        "--start",
+        dest="start",
+        type=str,
+        default=None,
+        help="指定历史对账起始日期 (YYYY-MM-DD)",
+    )
+    parser.add_argument(
+        "--end",
+        dest="end",
+        type=str,
+        default=None,
+        help="指定历史对账结束日期 (YYYY-MM-DD)",
+    )
+    parser.add_argument(
+        "--max-workers",
+        dest="max_workers",
+        type=int,
+        default=4,
+        help="批量对账并发线程数 (默认 4)",
+    )
+    parser.add_argument(
+        "--show-details",
+        dest="show_details",
+        action="store_true",
+        help="是否打印历史区间每日对账明细",
+    )
+    parser.add_argument(
         "--raw-root",
         default=None,
         help="回填验收时 RAW 数据根目录（启用 RAW/Curated 行数对比）",
@@ -204,15 +297,23 @@ def main() -> None:
 
     args = parser.parse_args()
     target_dt = date.fromisoformat(args.date) if args.date else None
+    start_dt = date.fromisoformat(args.start) if args.start else None
+    end_dt = date.fromisoformat(args.end) if args.end else None
+
     logger.info(
         f"启动数据审计套件: 类型=[{args.audit_type}], "
-        f"数据源=[{args.source}], 目标日期=[{target_dt or '最新'}]"
+        f"数据源=[{args.source}], "
+        f"目标范围=[{f'{start_dt} ~ {end_dt}' if start_dt and end_dt else (target_dt or '最新')}]"
     )
     try:
         run_kwargs: dict[str, Any] = {
             "audit_type": args.audit_type,
             "data_source": args.source,
             "target_date": target_dt,
+            "start_date": start_dt,
+            "end_date": end_dt,
+            "max_workers": args.max_workers,
+            "show_details": args.show_details,
         }
         if args.raw_root is not None:
             run_kwargs["raw_root"] = args.raw_root

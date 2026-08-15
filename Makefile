@@ -62,7 +62,7 @@ validate:
 	uv run python -m stock.data.validator --endpoint $(or $(ENDPOINT),stock_daily_bar) --strict
 
 audit:
-	uv run python -m stock.cli.audit --type $(or $(TYPE),master) --data-source $(or $(SOURCE),$(DATA_SOURCE),tushare) $(if $(DATE),--date $(DATE))
+	uv run python -m stock.cli.audit --type $(or $(TYPE),master) --data-source $(or $(SOURCE),$(DATA_SOURCE),tushare) $(if $(DATE),--date $(DATE)) $(if $(START),--start $(START)) $(if $(END),--end $(END))
 
 master-audit:
 	uv run python -m stock.cli.audit --type master

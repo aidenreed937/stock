@@ -66,7 +66,43 @@ def test_main_cli_dispatch() -> None:
     ):
         main()
         mock_run.assert_called_once_with(
-            audit_type="master", data_source="tushare", target_date=date(2026, 8, 12)
+            audit_type="master",
+            data_source="tushare",
+            target_date=date(2026, 8, 12),
+            start_date=None,
+            end_date=None,
+            max_workers=4,
+            show_details=False,
+        )
+
+
+def test_main_cli_range_dispatch() -> None:
+    with (
+        patch(
+            "sys.argv",
+            [
+                "audit.py",
+                "-t",
+                "reconciliation",
+                "-s",
+                "tushare",
+                "--start",
+                "2026-08-01",
+                "--end",
+                "2026-08-14",
+            ],
+        ),
+        patch("stock.cli.audit.run_audit") as mock_run,
+    ):
+        main()
+        mock_run.assert_called_once_with(
+            audit_type="reconciliation",
+            data_source="tushare",
+            target_date=None,
+            start_date=date(2026, 8, 1),
+            end_date=date(2026, 8, 14),
+            max_workers=4,
+            show_details=False,
         )
 
 
