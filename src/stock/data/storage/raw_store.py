@@ -9,6 +9,16 @@ import polars as pl
 from stock.config.settings import settings
 from stock.core.contracts import DatasetKey
 from stock.data.storage.compat import StorageCompat
+from stock.data.storage.raw_schema import (
+    RAW_ARTIFACT_SUFFIXES,
+    RAW_DATE_COLUMNS,
+    RAW_PRIMARY_KEY_FALLBACK_COLUMNS,
+    RAW_RANGE_DATE_COLUMNS,
+    RAW_SYMBOL_COLUMNS,
+    first_existing_column,
+    month_key_for,
+    normalize_raw_date_series,
+)
 from stock.data.task_registry import get_endpoint_market, resolve_task
 from stock.utils.logger import logger
 
@@ -41,17 +51,7 @@ def _iter_month_starts(start_date: date, end_date: date) -> list[date]:
 def _dataset_paths_for_key(storage: Any, key: DatasetKey) -> list[Path]:
     paths: list[Path] = []
     for month_start in _iter_month_starts(key.start_date, key.end_date):
-        month_key = DatasetKey(
-            provider=key.provider,
-            dataset=key.dataset,
-            endpoint=key.endpoint,
-            start_date=month_start,
-            end_date=date(month_start.year, month_start.month, 28),
-            instrument=key.instrument,
-            adjustment=key.adjustment,
-            schema_version=key.schema_version,
-        )
-        path = storage._get_dataset_path(month_key)
+        path = storage._get_dataset_path(month_key_for(key, month_start))
         if path not in paths:
             paths.append(path)
     return paths
@@ -158,18 +158,10 @@ class RawDataStorage:
 
     def save_dataset(self, key: DatasetKey, df: pl.DataFrame) -> Path:
         """按数据集和月份幂等合并保存 RAW 归档数据。"""
-        date_col = next(
-            (c for c in ("trade_date", "date", "end_date", "month", "quarter") if c in df.columns),
-            None,
-        )
-        if date_col and not df.is_empty() and date_col in {"trade_date", "date", "end_date"}:
+        date_col = first_existing_column(df, RAW_DATE_COLUMNS)
+        if date_col and not df.is_empty() and date_col in RAW_RANGE_DATE_COLUMNS:
             # 按真实业务日期分桶，避免请求 end_date 造成历史快照串区。
-            raw_str = (
-                df.get_column(date_col)
-                .cast(pl.Utf8, strict=False)
-                .str.replace(r"\.0+$", "")
-                .str.replace_all(r"[^\d]", "")
-            )
+            raw_str = normalize_raw_date_series(df.get_column(date_col))
             valid_months_mask = (raw_str.str.len_chars() >= 6) & (
                 raw_str.str.slice(0, 4).cast(pl.Int32, strict=False) >= 1990
             ) & (
@@ -269,7 +261,7 @@ class RawDataStorage:
             logger.debug(f"解析 RAW 主键失败 [{key.provider}/{key.endpoint}]: {e}")
         return [
             c
-            for c in ["symbol", "stockCode", "ts_code", "code", "trade_date", "date"]
+            for c in RAW_PRIMARY_KEY_FALLBACK_COLUMNS
             if c in df.columns
         ]
 
@@ -283,14 +275,9 @@ class RawDataStorage:
             if df.is_empty():
                 return None
             symbol = key.instrument.symbol if key.instrument is not None else None
-            date_cols = [
-                c for c in ["trade_date", "date", "end_date", "month", "quarter"] if c in df.columns
-            ]
-            if date_cols and any(c in {"trade_date", "date", "end_date"} for c in date_cols):
-                date_col = next(c for c in ["trade_date", "date", "end_date"] if c in df.columns)
-                values = (
-                    df.get_column(date_col).cast(pl.Utf8).str.replace_all("-", "").str.slice(0, 8)
-                )
+            date_col = first_existing_column(df, RAW_RANGE_DATE_COLUMNS)
+            if date_col:
+                values = normalize_raw_date_series(df.get_column(date_col)).str.slice(0, 8)
                 start = key.start_date.strftime("%Y%m%d")
                 end = key.end_date.strftime("%Y%m%d")
                 if values.filter((values >= start) & (values <= end)).len() == 0:
@@ -304,9 +291,7 @@ class RawDataStorage:
                 ):
                     return None
             if symbol:
-                symbol_col = next(
-                    (c for c in ["symbol", "ts_code", "stockCode", "code"] if c in df.columns), None
-                )
+                symbol_col = first_existing_column(df, RAW_SYMBOL_COLUMNS)
                 if symbol_col:
                     filtered = df.filter(pl.col(symbol_col) == symbol)
                     return filtered if not filtered.is_empty() else None
@@ -366,7 +351,7 @@ class RawDataStorage:
         for dataset_name in dataset_names:
             dataset_dir = source_dir / f"market={market.upper()}" / dataset_name
             path = dataset_dir / year_month_path / "data.parquet"
-            if not path.exists() or path.name.endswith((".bak.parquet", ".tmp.parquet")):
+            if not path.exists() or path.name.endswith(RAW_ARTIFACT_SUFFIXES):
                 continue
             try:
                 df = pl.read_parquet(path)
@@ -375,10 +360,7 @@ class RawDataStorage:
                 continue
             if df.is_empty():
                 continue
-            date_col = next(
-                (c for c in ("trade_date", "date", "end_date") if c in df.columns),
-                None,
-            )
+            date_col = first_existing_column(df, RAW_RANGE_DATE_COLUMNS)
             if date_col is None:
                 return True
             target_plain = target_date.strftime("%Y%m%d")
@@ -387,13 +369,7 @@ class RawDataStorage:
             while effective_date.weekday() >= 5:
                 effective_date -= timedelta(days=1)
                 candidate_dates.add(effective_date.strftime("%Y%m%d"))
-            values = (
-                df.get_column(date_col)
-                .cast(pl.Utf8, strict=False)
-                .str.replace_all("-", "")
-                .str.replace_all("/", "")
-                .str.slice(0, 8)
-            )
+            values = normalize_raw_date_series(df.get_column(date_col)).str.slice(0, 8)
             if values.filter(values.is_in(candidate_dates)).len() > 0:
                 return True
         return False
