@@ -13,8 +13,6 @@ import yaml
 
 from stock.config.loader import load_data_config
 from stock.data.planner import BackfillPlanner, BackfillTask
-from stock.data.storage.partition_writer import ParquetPartitionWriter
-from stock.data.storage.raw_store import RawDataStorage
 from stock.utils.logger import logger
 
 
@@ -88,23 +86,19 @@ def _execute_planned_tasks(
     """以攒批事务模式驱动执行规划任务。"""
     import stock.data.backfill as backfill_module
 
-    shared_writer = ParquetPartitionWriter()
-    shared_raw_store = RawDataStorage()
-    shared_writer.enable_batch_mode()
-    shared_raw_store.enable_batch_mode()
-
     summaries: list[dict[str, Any]] = []
-    try:
-        for idx, task in enumerate(tasks, 1):
-            logger.info(
-                f"===> [{idx}/{len(tasks)}] 执行任务 [{task.data_source}/{task.endpoint}] "
-                f"标的: [{task.symbol or '全市场'}] 区间: [{task.start_date} ~ {task.end_date}]"
-            )
-            backfiller = backfill_module.HistoricalBackfiller(
-                data_source=task.data_source,
-                endpoint=task.endpoint,
-                symbol=task.symbol,
-            )
+    for idx, task in enumerate(tasks, 1):
+        logger.info(
+            f"===> [{idx}/{len(tasks)}] 执行任务 [{task.data_source}/{task.endpoint}] "
+            f"标的: [{task.symbol or '全市场'}] 区间: [{task.start_date} ~ {task.end_date}]"
+        )
+        backfiller = backfill_module.HistoricalBackfiller(
+            data_source=task.data_source,
+            endpoint=task.endpoint,
+            symbol=task.symbol,
+        )
+        batch_targets = _enable_pipeline_batch_mode(backfiller)
+        try:
             summary = backfiller.backfill_range(
                 task.start_date,
                 task.end_date,
@@ -117,12 +111,31 @@ def _execute_planned_tasks(
             summary["endpoint"] = task.endpoint
             summary["symbol"] = task.symbol or "全市场"
             summaries.append(summary)
-    finally:
-        if hasattr(shared_writer, "commit"):
-            shared_writer.commit()
-        if hasattr(shared_raw_store, "commit"):
-            shared_raw_store.commit()
+        finally:
+            _commit_batch_targets(batch_targets)
     return summaries
+
+
+def _enable_pipeline_batch_mode(backfiller: Any) -> list[Any]:
+    pipeline = getattr(backfiller, "pipeline", None)
+    targets = [
+        getattr(pipeline, "store", None),
+        getattr(pipeline, "raw_store", None),
+    ]
+    enabled_targets: list[Any] = []
+    for target in targets:
+        enable_batch_mode = getattr(target, "enable_batch_mode", None)
+        if callable(enable_batch_mode):
+            enable_batch_mode()
+            enabled_targets.append(target)
+    return enabled_targets
+
+
+def _commit_batch_targets(targets: list[Any]) -> None:
+    for target in targets:
+        commit = getattr(target, "commit", None)
+        if callable(commit):
+            commit()
 
 
 def _resolve_universe_symbols(universe_name: str | None) -> str | None:

@@ -8,6 +8,18 @@ import polars as pl
 from stock.data.storage.raw_store import RawDataStorage
 
 
+class TrackingLock:
+    def __init__(self) -> None:
+        self.entered = 0
+
+    def __enter__(self) -> "TrackingLock":
+        self.entered += 1
+        return self
+
+    def __exit__(self, exc_type: object, exc: object, traceback: object) -> None:
+        return None
+
+
 def test_raw_storage_save_and_load(tmp_path: Path) -> None:
     store = RawDataStorage(base_dir=tmp_path)
     target_date = date(2026, 8, 12)
@@ -126,3 +138,32 @@ def test_raw_storage_save_dataset_multi_month(tmp_path: Path) -> None:
     assert len(df_26) == 1
     assert df_14["trade_date"][0] == "20140801.0"
     assert df_26["trade_date"][0] == "20260812"
+
+
+def test_raw_storage_batch_buffer_append_uses_file_lock(tmp_path: Path) -> None:
+    from stock.core.contracts import DatasetKey
+
+    store = RawDataStorage(base_dir=tmp_path)
+    lock = TrackingLock()
+    store._file_lock = lock
+    store.enable_batch_mode()
+    key = DatasetKey(
+        provider="tushare",
+        dataset="daily_basic",
+        endpoint="daily_basic",
+        start_date=date(2026, 8, 10),
+        end_date=date(2026, 8, 10),
+    )
+    df = pl.DataFrame(
+        {
+            "ts_code": ["000001.SZ"],
+            "trade_date": ["20260810"],
+            "close": [10.0],
+        }
+    )
+
+    saved_path = store.save_dataset(key, df)
+
+    assert lock.entered == 1
+    assert saved_path in store._write_buffer
+    assert len(store._write_buffer[saved_path]) == 1

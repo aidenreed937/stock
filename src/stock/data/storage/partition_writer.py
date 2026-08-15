@@ -2,10 +2,9 @@
 
 from __future__ import annotations
 
-from datetime import date
-from pathlib import Path
 import threading
-from typing import Callable
+from datetime import date
+from typing import TYPE_CHECKING, Any
 
 import polars as pl
 
@@ -16,6 +15,21 @@ from stock.exceptions import DataValidationError
 from stock.utils.date import parse_mixed_date
 from stock.utils.logger import logger
 
+if TYPE_CHECKING:
+    from collections.abc import Callable
+    from pathlib import Path
+
+
+def _append_write_buffer(
+    lock: Any,
+    write_buffer: dict[Path, list[Any]],
+    file_path: Path,
+    item: Any,
+) -> None:
+    """在共享文件锁下追加 batch 缓冲项。"""
+    with lock:
+        write_buffer.setdefault(file_path, []).append(item)
+
 
 class ParquetPartitionWriter:
     """处理 Parquet 文件的多月份数据动态拆分、内存攒批与并发文件锁原子合并落盘。"""
@@ -23,17 +37,20 @@ class ParquetPartitionWriter:
     _BAR_DATASETS = BAR_DATASETS
 
     def __init__(self, data_source: str | None = None) -> None:
+        """初始化 Parquet 分区写入器。"""
         self.data_source = data_source
         self._batch_mode = False
         self._write_buffer: dict[Path, list[pl.DataFrame]] = {}
         self._file_lock = threading.Lock()
 
     def enable_batch_mode(self) -> None:
+        """启用内存攒批模式。"""
         self._batch_mode = True
         self._write_buffer = {}
         logger.info("ParquetPartitionWriter 已开启攒批写入模式 (Micro-batching)")
 
     def commit(self, cache_updater: Callable[[Path, pl.DataFrame], None] | None = None) -> None:
+        """提交 batch 缓冲区中的所有分区数据。"""
         if not self._batch_mode or not self._write_buffer:
             self._batch_mode = False
             return
@@ -83,7 +100,7 @@ class ParquetPartitionWriter:
                             f"已有列 {sorted(existing.columns)}，新数据列 {sorted(df.columns)}"
                         )
 
-            all_dfs = ([existing] + normalized_dfs) if not existing.is_empty() else normalized_dfs
+            all_dfs = [existing, *normalized_dfs] if not existing.is_empty() else normalized_dfs
             all_dfs = [StorageCompat.normalize_datetime_columns(df) for df in all_dfs]
             merged = pl.concat(all_dfs, how="diagonal_relaxed")
 
@@ -116,7 +133,7 @@ class ParquetPartitionWriter:
                 f"{context}数据源不匹配: 期望 [{data_source}]，实际包含 {sorted(sources)}"
             )
 
-    def save_partitioned(
+    def save_partitioned(  # noqa: PLR0913, PLR0917
         self,
         df: pl.DataFrame,
         dataset_name: str,
@@ -136,7 +153,11 @@ class ParquetPartitionWriter:
             return file_path
 
         date_col = next(
-            (c for c in ["trade_date", "date", "end_date", "as_of_date", "Date"] if c in df.columns),
+            (
+                c
+                for c in ["trade_date", "date", "end_date", "as_of_date", "Date"]
+                if c in df.columns
+            ),
             None,
         )
         if not date_col or df.is_empty():
@@ -183,7 +204,7 @@ class ParquetPartitionWriter:
         cache_updater: Callable[[Path, pl.DataFrame], None] | None = None,
     ) -> None:
         if self._batch_mode:
-            self._write_buffer.setdefault(file_path, []).append(df)
+            _append_write_buffer(self._file_lock, self._write_buffer, file_path, df)
             logger.debug(f"已加入攒批写入缓存 [{dataset_name}] -> {file_path}")
         else:
             merged = self.merge_and_save_parquet(file_path, [df], source=source)

@@ -2,6 +2,7 @@
 
 from datetime import date, timedelta
 from pathlib import Path
+from typing import Any
 
 import polars as pl
 
@@ -10,6 +11,17 @@ from stock.core.contracts import DatasetKey
 from stock.data.storage.compat import StorageCompat
 from stock.data.task_registry import get_endpoint_market, resolve_task
 from stock.utils.logger import logger
+
+
+def _append_write_buffer(
+    lock: Any,
+    write_buffer: dict[Path, list[Any]],
+    file_path: Path,
+    item: Any,
+) -> None:
+    """在共享文件锁下追加 batch 缓冲项。"""
+    with lock:
+        write_buffer.setdefault(file_path, []).append(item)
 
 
 class RawDataStorage:
@@ -154,15 +166,13 @@ class RawDataStorage:
             return file_path
 
         if getattr(self, "_batch_mode", False):
-            if file_path not in self._write_buffer:
-                self._write_buffer[file_path] = []
-            self._write_buffer[file_path].append((key, df))
+            _append_write_buffer(self._file_lock, self._write_buffer, file_path, (key, df))
             return file_path
 
         self._merge_and_save(file_path, [(key, df)])
         return file_path
 
-    def _merge_and_save(self, file_path: Path, items: list[tuple[DatasetKey, pl.DataFrame]]) -> None:
+    def _merge_and_save(self, file_path: Path, items: list[tuple[DatasetKey, pl.DataFrame]]) -> None:  # noqa: E501
         """执行物理合并与覆写。"""
         if not hasattr(self, "_file_lock"):
             import threading
@@ -220,7 +230,7 @@ class RawDataStorage:
             if c in df.columns
         ]
 
-    def load_dataset(self, key: DatasetKey) -> pl.DataFrame | None:
+    def load_dataset(self, key: DatasetKey) -> pl.DataFrame | None:  # noqa: PLR0911
         """按数据集和月份读取 RAW 归档数据。"""
         file_path = self._get_dataset_path(key)
         if not file_path.exists():
