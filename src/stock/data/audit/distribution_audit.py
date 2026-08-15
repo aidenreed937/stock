@@ -1,4 +1,10 @@
-"""Curated 黄金表数值分布与数量级阶跃异动审计模块。"""
+"""Curated 黄金表数值分布与数量级阶跃异动审计模块。
+
+已知限制:
+- 阶跃检测基于全市场按日聚合的均值，局部标的/单一交易所的单位错位会被大多数未受损行稀释而漏检。
+- 分布审计只对"相对突变"敏感（负值、数量级阶跃），无法发现从入库首日即整体错量的持续错误，
+  因其缺少外部基准参考。
+"""
 
 from __future__ import annotations
 
@@ -121,7 +127,8 @@ def _audit_col_distribution(
     anomalies: list[DistributionAnomaly] = []
     neg_count = 0
     if col in NON_NEGATIVE_COLUMNS:
-        neg_df = df.filter(pl.col(col) < 0.0)
+        # 在 strict=False 转换后的数值列上判负，避免原始 dtype 非数值时比较报错
+        neg_df = df.filter(pl.col(col).cast(pl.Float64, strict=False) < 0.0)
         neg_count = len(neg_df)
         for r in neg_df.head(3).iter_rows(named=True):
             d = r["trade_date"]
@@ -146,11 +153,20 @@ def _audit_col_distribution(
             .sort("trade_date")
         )
         if len(daily_agg) > 1:
-            jumps = daily_agg.with_columns(
-                (pl.col("mean_val") / pl.col("mean_val").shift(1)).alias("step_ratio"),
-                pl.col("mean_val").shift(1).alias("prev_mean"),
-            ).filter(
-                (pl.col("step_ratio") > max_step_ratio) | (pl.col("step_ratio") < min_step_ratio)
+            # 阶跃判定使用 |cur|/|prev| 的量级倍数而非带符号比值，避免可正可负列（如净额）
+            # 在 0 附近翻号时产生无意义的负比率误报；并通过近零保护门槛避免前值≈0 时比率
+            # 爆炸成 inf 造成的误报。eps 以全时段均值量级的比例确定，与字段单位无关。
+            scale = _to_float(daily_agg["mean_val"].abs().max()) or 1.0
+            eps = scale * 1e-9
+            jumps = (
+                daily_agg.with_columns(
+                    pl.col("mean_val").shift(1).alias("prev_mean"),
+                    pl.col("mean_val").shift(1).abs().alias("prev_abs"),
+                )
+                .filter(pl.col("prev_mean").is_not_null())
+                .with_columns((pl.col("mean_val").abs() / pl.col("prev_abs")).alias("fold"))
+                .filter(pl.col("prev_abs") >= eps)
+                .filter((pl.col("fold") > max_step_ratio) | (pl.col("fold") < min_step_ratio))
             )
             step_jump_count = len(jumps)
             for r in jumps.iter_rows(named=True):
@@ -166,9 +182,9 @@ def _audit_col_distribution(
                         previous_val=float(r["prev_mean"])
                         if r["prev_mean"] is not None
                         else None,
-                        ratio=round(float(r["step_ratio"]), 4),
+                        ratio=round(float(r["fold"]), 4),
                         detail=f"数量级阶跃异动: 日均值 {r['prev_mean']:.2e} -> {r['mean_val']:.2e} "
-                        f"(跳跃比率: {r['step_ratio']:.2f}x)",
+                        f"(跳跃比率: {r['fold']:.2f}x)",
                     )
                 )
 
@@ -253,13 +269,16 @@ class CuratedDistributionAuditor:
             df = df.filter(pl.col("trade_date") <= end_date)
 
         if df.is_empty():
+            logger.warning(
+                f"数据集 [{dataset_name}] 在目标时间区间内无有效数据，按 fail-closed 视为未通过"
+            )
             return DistributionAuditReport(
                 dataset_name=dataset_name,
                 data_source=data_source,
                 total_rows=0,
                 total_dates=0,
                 date_range=(None, None),
-                passed=True,
+                passed=False,
             )
 
         target_cols = value_cols or DEFAULT_DATASET_NUMERIC_COLS.get(

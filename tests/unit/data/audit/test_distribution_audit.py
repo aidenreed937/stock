@@ -69,6 +69,49 @@ def test_curated_distribution_auditor_detect_step_jump(tmp_path: Path) -> None:
     assert jump_anomalies[0].ratio is not None and jump_anomalies[0].ratio < 0.001
 
 
+def test_curated_distribution_auditor_zero_baseline_no_spurious_jump(tmp_path: Path) -> None:
+    """前日均值≈0 时不应因比率爆炸产生阶跃误报 (除零/近零保护)。"""
+    ds_dir = tmp_path / "tushare" / "market=CN" / "sw_daily" / "year=2026" / "month=08"
+    ds_dir.mkdir(parents=True)
+
+    # 8/11 全市场 amount 均为 0，8/12 恢复正常量级
+    df = pl.DataFrame({
+        "symbol": ["801010.SI", "801080.SI", "801010.SI", "801080.SI"],
+        "trade_date": [date(2026, 8, 11), date(2026, 8, 11), date(2026, 8, 12), date(2026, 8, 12)],
+        "amount": [0.0, 0.0, 1.5e10, 5.0e10],
+    })
+    df.write_parquet(ds_dir / "data.parquet")
+
+    auditor = CuratedDistributionAuditor(base_dir=tmp_path)
+    report = auditor.audit_dataset("sw_daily", data_source="tushare")
+
+    assert report.passed is True
+    assert report.columns_summary["amount"].step_jumps_count == 0
+    assert all(a.anomaly_type != "STEP_JUMP" for a in report.anomalies)
+
+
+def test_curated_distribution_auditor_sign_flip_no_spurious_jump(tmp_path: Path) -> None:
+    """可正可负列在 0 附近翻号（同幅值换号）不应产生阶跃误报。"""
+    ds_dir = tmp_path / "tushare" / "market=CN" / "moneyflow" / "year=2026" / "month=08"
+    ds_dir.mkdir(parents=True)
+
+    # net_mf_amount 8/11 为 +1e5，8/12 幅值相同但符号翻转；量级并未变化故不应判为阶跃
+    df = pl.DataFrame({
+        "symbol": ["000001.SZ", "000001.SZ"],
+        "trade_date": [date(2026, 8, 11), date(2026, 8, 12)],
+        "net_mf_amount": [1.0e5, -1.0e5],
+    })
+    df.write_parquet(ds_dir / "data.parquet")
+
+    auditor = CuratedDistributionAuditor(base_dir=tmp_path)
+    report = auditor.audit_dataset("moneyflow", data_source="tushare",
+                                   value_cols=["net_mf_amount"])
+
+    assert report.passed is True
+    assert report.columns_summary["net_mf_amount"].step_jumps_count == 0
+    assert all(a.anomaly_type != "STEP_JUMP" for a in report.anomalies)
+
+
 def test_curated_distribution_auditor_detect_negative_values(tmp_path: Path) -> None:
     """测试审计器捕捉非物理负值。"""
     ds_dir = tmp_path / "tushare" / "market=CN" / "daily_basic" / "year=2026" / "month=08"
