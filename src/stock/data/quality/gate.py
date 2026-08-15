@@ -1,11 +1,61 @@
 """全库 Curated 数据质量门禁与断言校验系统 (Quality Gate)。"""
 
 from pathlib import Path
+
 import polars as pl
 
-from stock.core.contracts import DatasetContract, STOCK_DAILY_BAR_CONTRACT
+from stock.constants import BAR_DATASETS
+from stock.core.contracts import get_contract_for_dataset
 from stock.exceptions import DataValidationError
 from stock.utils.logger import logger
+
+_BAR_REQUIRED_COLUMNS = {
+    "symbol",
+    "trade_date",
+    "open",
+    "high",
+    "low",
+    "close",
+    "volume",
+    "amount",
+}
+
+
+def _dataset_name_from_path(file: Path) -> str:
+    dataset_name = file.parent.name
+    if dataset_name.startswith("month="):
+        return file.parent.parent.parent.name
+    return dataset_name
+
+
+def _is_quality_bar_file(file: Path) -> bool:
+    dataset_name = _dataset_name_from_path(file)
+    return dataset_name in BAR_DATASETS and not (
+        dataset_name == "stock_daily_bar" and "fred" in file.parts
+    )
+
+
+def _validate_generic_bar_frame(df: pl.DataFrame, dataset_name: str, file: Path) -> bool:
+    missing = sorted(_BAR_REQUIRED_COLUMNS - set(df.columns))
+    if missing:
+        logger.error(f"文件 [{file}] 行情数据集 [{dataset_name}] 缺少必需列: {missing}")
+        return False
+
+    physical_errors = df.filter(
+        (pl.col("open") <= 0)
+        | (pl.col("high") <= 0)
+        | (pl.col("low") <= 0)
+        | (pl.col("close") <= 0)
+        | (pl.col("high") < pl.col("low"))
+        | (pl.col("high") < pl.col("open"))
+        | (pl.col("high") < pl.col("close"))
+        | (pl.col("low") > pl.col("open"))
+        | (pl.col("low") > pl.col("close"))
+    )
+    if not physical_errors.is_empty():
+        logger.error(f"文件 [{file}] 行情 OHLC 物理异常 {len(physical_errors)} 行")
+        return False
+    return True
 
 
 class QualityGate:
@@ -50,16 +100,14 @@ class QualityGate:
         return results
 
     def assert_schema_contracts(self, files: list[Path]) -> bool:
-        """断言所有 parquet 文件契约: Exact Schema、trade_date 为 Date、updated_at 为 UTC Datetime。"""
+        """断言 parquet 文件契约、日期类型与 UTC 更新时间。"""
         for file in files:
             try:
                 df = pl.read_parquet(file)
                 if df.is_empty():
                     continue
 
-                dataset_name = file.parent.name
-                if dataset_name.startswith("month="):
-                    dataset_name = file.parent.parent.parent.name
+                dataset_name = _dataset_name_from_path(file)
 
                 # 校验 trade_date 类型
                 if "trade_date" in df.columns and df["trade_date"].dtype != pl.Date:
@@ -70,7 +118,9 @@ class QualityGate:
                 if "updated_at" in df.columns:
                     dtype = df["updated_at"].dtype
                     if not isinstance(dtype, pl.Datetime) or dtype.time_zone != "UTC":
-                        logger.error(f"文件 [{file}] updated_at 不是 Datetime[us, UTC] 类型: {dtype}")
+                        logger.error(
+                            f"文件 [{file}] updated_at 不是 Datetime[us, UTC] 类型: {dtype}"
+                        )
                         return False
 
                 # 检查废弃统计列
@@ -78,16 +128,20 @@ class QualityGate:
                     logger.error(f"文件 [{file}] 包含废弃的明细统计列")
                     return False
 
-                if dataset_name == "stock_daily_bar" and "fred" not in file.parts:
-                    STOCK_DAILY_BAR_CONTRACT.validate(df)
+                if _is_quality_bar_file(file):
+                    contract = get_contract_for_dataset(dataset_name)
+                    if contract is not None:
+                        contract.validate(df)
+                    elif not _validate_generic_bar_frame(df, dataset_name, file):
+                        return False
             except Exception as e:
                 logger.error(f"文件 [{file}] 契约校验失败: {e}")
                 return False
         return True
 
     def assert_stock_daily_bar_units(self, files: list[Path]) -> bool:
-        """断言 stock_daily_bar 成交额与成交量中位数比例接近 1 (amount / (volume * close) ~ 1)。"""
-        bar_files = [f for f in files if "stock_daily_bar" in str(f)]
+        """断言行情表成交额与成交量中位数比例接近 1 (amount / (volume * close) ~ 1)。"""
+        bar_files = [f for f in files if _is_quality_bar_file(f)]
         if not bar_files:
             return True
 
@@ -113,7 +167,9 @@ class QualityGate:
                 )
                 if "trade_date" in ratio_df.columns:
                     # 逐日计算中位数，确保无任何单日 1000 倍比率异常
-                    daily_medians = ratio_df.group_by("trade_date").agg(pl.col("ratio").median().alias("day_ratio"))
+                    daily_medians = ratio_df.group_by("trade_date").agg(
+                        pl.col("ratio").median().alias("day_ratio")
+                    )
                     for row in daily_medians.iter_rows(named=True):
                         d_val = row["day_ratio"]
                         if d_val is not None:
@@ -121,7 +177,8 @@ class QualityGate:
                             if not (0.7 <= d_ratio <= 1.3):
                                 t_date = row["trade_date"]
                                 logger.error(
-                                    f"文件 [{file}] 在日期 [{t_date}] 单位断言失败! 比率中位数为 {d_ratio:.2f} (期望 0.7~1.3)"
+                                    f"文件 [{file}] 在日期 [{t_date}] 单位断言失败! "
+                                    f"比率中位数为 {d_ratio:.2f} (期望 0.7~1.3)"
                                 )
                                 return False
                 else:
@@ -130,7 +187,8 @@ class QualityGate:
                         median_ratio = float(str(raw_median))
                         if not (0.7 <= median_ratio <= 1.3):
                             logger.error(
-                                f"文件 [{file}] 单位断言失败! 比率中位数为 {median_ratio:.2f} (期望 0.7~1.3)"
+                                f"文件 [{file}] 单位断言失败! "
+                                f"比率中位数为 {median_ratio:.2f} (期望 0.7~1.3)"
                             )
                             return False
             except Exception as e:
@@ -140,7 +198,7 @@ class QualityGate:
 
     def assert_no_mixed_adjustment(self, files: list[Path]) -> bool:
         """断言全库行情 adjustment 统一为 raw，无 normal 或混合复权。"""
-        bar_files = [f for f in files if "stock_daily_bar" in str(f)]
+        bar_files = [f for f in files if _is_quality_bar_file(f)]
         for file in bar_files:
             try:
                 df = pl.read_parquet(file)

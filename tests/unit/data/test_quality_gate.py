@@ -2,6 +2,7 @@
 
 from datetime import date, datetime, timezone
 from pathlib import Path
+
 import polars as pl
 import pytest
 
@@ -72,6 +73,66 @@ def test_quality_gate_fails_on_unit_mismatch(tmp_path: Path) -> None:
     gate = QualityGate(tmp_path)
     assert not gate.assert_stock_daily_bar_units(gate._active_parquet_files())
     assert not run_quality_gate(tmp_path)
+
+
+def test_quality_gate_fails_on_index_bar_missing_ohlc(tmp_path: Path) -> None:
+    now_utc = datetime.now(timezone.utc)
+    target_dir = tmp_path / "tushare" / "market=CN" / "index_daily_bar" / "year=2026" / "month=08"
+    target_dir.mkdir(parents=True, exist_ok=True)
+
+    bad_df = pl.DataFrame(
+        {
+            "symbol": ["000300.SH"],
+            "trade_date": [date(2026, 8, 1)],
+            "open": [4000.0],
+            "close": [4010.0],
+            "volume": [1000.0],
+            "amount": [4010000.0],
+            "data_source": ["tushare"],
+            "source_endpoint": ["index_daily_bar"],
+            "market": ["CN"],
+            "exchange": ["SSE"],
+            "currency": ["CNY"],
+            "adjustment": ["raw"],
+            "schema_version": ["v2"],
+            "updated_at": [now_utc],
+        }
+    )
+    bad_df.write_parquet(target_dir / "data.parquet")
+
+    gate = QualityGate(tmp_path)
+    assert not gate.assert_schema_contracts(gate._active_parquet_files())
+
+
+def test_quality_gate_checks_adjustment_for_fund_daily(tmp_path: Path) -> None:
+    now_utc = datetime.now(timezone.utc)
+    target_dir = tmp_path / "tushare" / "market=CN" / "fund_daily" / "year=2026" / "month=08"
+    target_dir.mkdir(parents=True, exist_ok=True)
+
+    mixed_df = pl.DataFrame(
+        {
+            "symbol": ["510300.SH", "510500.SH"],
+            "trade_date": [date(2026, 8, 1), date(2026, 8, 1)],
+            "open": [4.0, 5.0],
+            "high": [4.1, 5.1],
+            "low": [3.9, 4.9],
+            "close": [4.05, 5.05],
+            "volume": [1000.0, 1000.0],
+            "amount": [4050.0, 5050.0],
+            "data_source": ["tushare", "tushare"],
+            "source_endpoint": ["fund_daily", "fund_daily"],
+            "market": ["CN", "CN"],
+            "exchange": ["SSE", "SSE"],
+            "currency": ["CNY", "CNY"],
+            "adjustment": ["raw", "hfq"],
+            "schema_version": ["v2", "v2"],
+            "updated_at": [now_utc, now_utc],
+        }
+    )
+    mixed_df.write_parquet(target_dir / "data.parquet")
+
+    gate = QualityGate(tmp_path)
+    assert not gate.assert_no_mixed_adjustment(gate._active_parquet_files())
 
 
 def test_quality_gate_fails_on_duplicate_keys(tmp_path: Path) -> None:

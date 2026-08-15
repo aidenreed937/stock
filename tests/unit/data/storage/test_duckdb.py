@@ -32,7 +32,7 @@ def _make_daily_bar_df(
             "exchange": ["SSE"] * days,
             "currency": ["CNY"] * days,
             "adjustment": ["raw"] * days,
-            "schema_version": ["v1"] * days,
+            "schema_version": ["v2"] * days,
         }
     )
 
@@ -157,7 +157,7 @@ def test_store_rejects_schema_mismatch(tmp_path) -> None:
             "exchange": ["SSE"],
             "currency": ["CNY"],
             "adjustment": ["raw"],
-            "schema_version": ["v1"],
+            "schema_version": ["v2"],
         }
     )
     incomplete_df = complete_df.with_columns(pl.lit("test").alias("extra"))
@@ -165,6 +165,18 @@ def test_store_rejects_schema_mismatch(tmp_path) -> None:
 
     with pytest.raises(DataValidationError, match="schema 不匹配"):
         store.save_dataset(key, incomplete_df)
+
+
+def test_store_rejects_explicit_legacy_schema_version(tmp_path) -> None:
+    store = DuckDBMarketStore(storage_dir=tmp_path, data_source="tushare")
+    df = _make_daily_bar_df("TEST.SH", date(2026, 1, 15), days=1).with_columns(
+        pl.lit("v1").alias("schema_version")
+    )
+
+    with pytest.raises(DataValidationError, match="schema_version"):
+        store.save_market_data("daily", date(2026, 1, 15), df)
+
+    assert not list(tmp_path.rglob("*.parquet"))
 
 
 def test_duckdb_store_extra_branches(tmp_path) -> None:
@@ -208,7 +220,7 @@ def test_duckdb_store_extra_branches(tmp_path) -> None:
             "exchange": ["SSE", "SSE"],
             "currency": ["CNY", "CNY"],
             "adjustment": ["raw", "raw"],
-            "schema_version": ["v1", "v1"],
+            "schema_version": ["v2", "v2"],
         }
     )
     store.save_market_data("custom_endpoint", date(2026, 1, 15), df)
@@ -250,7 +262,7 @@ def test_duckdb_store_batch_mode(tmp_path) -> None:
             "exchange": ["SSE"],
             "currency": ["CNY"],
             "adjustment": ["raw"],
-            "schema_version": ["v1"],
+            "schema_version": ["v2"],
         }
     )
     df2 = pl.DataFrame(
@@ -271,12 +283,12 @@ def test_duckdb_store_batch_mode(tmp_path) -> None:
             "exchange": ["SSE"],
             "currency": ["CNY"],
             "adjustment": ["raw"],
-            "schema_version": ["v1"],
+            "schema_version": ["v2"],
         }
     )
 
     file_path1 = store.save_market_data("daily", date(2026, 1, 14), df1)
-    file_path2 = store.save_market_data("daily", date(2026, 1, 15), df2)
+    store.save_market_data("daily", date(2026, 1, 15), df2)
 
     # In batch mode, file should NOT exist yet
     assert not file_path1.exists()
@@ -291,6 +303,35 @@ def test_duckdb_store_batch_mode(tmp_path) -> None:
 
     # Calling commit again when empty should be safe
     store.commit()
+
+
+def test_duckdb_store_batch_commit_validates_existing_file_source(tmp_path) -> None:
+    store = DuckDBMarketStore(storage_dir=tmp_path, data_source="tushare")
+    file_path = store.get_parquet_path("daily_basic", date(2026, 8, 1), market="CN")
+    file_path.parent.mkdir(parents=True)
+    existing = pl.DataFrame(
+        {
+            "symbol": ["000001.SZ"],
+            "trade_date": [date(2026, 8, 1)],
+            "close": [10.0],
+            "data_source": ["yfinance"],
+            "market": ["CN"],
+            "schema_version": ["v2"],
+        }
+    )
+    existing.write_parquet(file_path)
+
+    store.enable_batch_mode()
+    incoming = existing.with_columns(
+        [
+            pl.lit("000002.SZ").alias("symbol"),
+            pl.lit("tushare").alias("data_source"),
+        ]
+    )
+    store.save_market_data("daily_basic", date(2026, 8, 1), incoming)
+
+    with pytest.raises(DataValidationError, match="数据源不匹配"):
+        store.commit()
 
 
 def test_duckdb_store_merges_datetime_columns_with_mixed_timezones(tmp_path) -> None:
@@ -510,6 +551,24 @@ def test_duckdb_store_routes_mixed_date_formats_without_dropping_rows(tmp_path) 
     assert len(saved) == 2
 
 
+def test_duckdb_store_rejects_invalid_dates_without_partial_write(tmp_path) -> None:
+    store = DuckDBMarketStore(storage_dir=tmp_path, data_source="tushare")
+    frame = pl.DataFrame(
+        {
+            "symbol": ["A", "B"],
+            "trade_date": ["20260812", "20261313"],
+            "value": [1.0, 2.0],
+            "data_source": ["tushare", "tushare"],
+            "market": ["CN", "CN"],
+        }
+    )
+
+    with pytest.raises(DataValidationError, match="无法解析的日期"):
+        store.save_market_data("daily_basic", date(2026, 8, 13), frame)
+
+    assert not list(tmp_path.rglob("*.parquet"))
+
+
 def test_duckdb_store_prefers_source_symbol_over_placeholder(tmp_path) -> None:
     store = DuckDBMarketStore(storage_dir=tmp_path, data_source="tushare")
     file_path = store.get_parquet_path("adj_factor", date(2026, 8, 1), market="CN")
@@ -586,14 +645,14 @@ def test_duckdb_store_has_curated_whole_market(tmp_path) -> None:
             "exchange": ["SSE", "SSE"],
             "currency": ["CNY", "CNY"],
             "adjustment": ["raw", "raw"],
-            "schema_version": ["v1", "v1"],
+            "schema_version": ["v2", "v2"],
         }
     )
     store.save_market_data("daily", date(2026, 1, 14), df_small)
 
     # 3. 校验 has_curated 的表现：
     # - 针对特定个股查询（如 TEST1.SH），由于它已被拉取，应返回 True
-    # - 针对全市场查询（symbol=None / symbol=""），由于股票数极少 (< 1000)，不判定为全市场已归档，应返回 False
+    # - 针对全市场查询（symbol=None / symbol=""），股票数极少时不判定为全市场已归档
     assert store.has_curated("daily", date(2026, 1, 14), symbol="TEST1.SH")
     assert not store.has_curated("daily", date(2026, 1, 14), symbol=None)
     assert not store.has_curated("daily", date(2026, 1, 14), symbol="")
@@ -618,7 +677,7 @@ def test_duckdb_store_has_curated_whole_market(tmp_path) -> None:
             "exchange": ["SSE"] * 1005,
             "currency": ["CNY"] * 1005,
             "adjustment": ["raw"] * 1005,
-            "schema_version": ["v1"] * 1005,
+            "schema_version": ["v2"] * 1005,
         }
     )
     store.save_market_data("daily", date(2026, 1, 14), df_large)
@@ -650,7 +709,7 @@ def test_duckdb_store_has_curated_whole_market(tmp_path) -> None:
             "exchange": ["SSE"] * 6,
             "currency": ["CNY"] * 6,
             "adjustment": ["raw"] * 6,
-            "schema_version": ["v1"] * 6,
+            "schema_version": ["v2"] * 6,
         }
     )
     store.save_market_data("daily", date(1991, 12, 18), df_early)
@@ -660,17 +719,47 @@ def test_duckdb_store_has_curated_whole_market(tmp_path) -> None:
     assert store.has_curated("daily", date(1991, 12, 18), symbol=None)
 
 
+def test_duckdb_store_has_curated_requires_symbol_date_intersection(tmp_path) -> None:
+    store = DuckDBMarketStore(storage_dir=tmp_path, data_source="tushare")
+    frame = pl.DataFrame(
+        {
+            "symbol": ["AAA.SZ", "BBB.SZ"],
+            "trade_date": [date(2026, 8, 1), date(2026, 8, 2)],
+            "open": [10.0, 20.0],
+            "high": [11.0, 21.0],
+            "low": [9.0, 19.0],
+            "close": [10.5, 20.5],
+            "volume": [1000.0, 2000.0],
+            "amount": [10500.0, 41000.0],
+            "data_source": ["tushare", "tushare"],
+            "market": ["CN", "CN"],
+            "exchange": ["SZSE", "SZSE"],
+            "currency": ["CNY", "CNY"],
+            "adjustment": ["raw", "raw"],
+            "schema_version": ["v2", "v2"],
+        }
+    )
+    store.save_market_data("daily", date(2026, 8, 2), frame)
+
+    assert store.has_curated("daily", date(2026, 8, 1), symbol="AAA.SZ")
+    assert store.has_curated("daily", date(2026, 8, 2), symbol="BBB.SZ")
+    assert not store.has_curated("daily", date(2026, 8, 2), symbol="AAA.SZ")
+    assert not store.has_curated("daily", date(2026, 8, 1), symbol="BBB.SZ")
+
+
 def test_query_universe_snapshots(tmp_path) -> None:
     store = DuckDBMarketStore(storage_dir=tmp_path, data_source="tushare")
     assert store.query_universe_snapshots().is_empty()
 
     snap_dir = store.storage_dir / "universe_snapshots" / "as_of_date=2026-08-12"
     snap_dir.mkdir(parents=True, exist_ok=True)
-    df_snap = pl.DataFrame({
-        "as_of_date": ["2026-08-12"],
-        "symbol": ["600519"],
-        "ts_code": ["600519.SH"],
-    })
+    df_snap = pl.DataFrame(
+        {
+            "as_of_date": ["2026-08-12"],
+            "symbol": ["600519"],
+            "ts_code": ["600519.SH"],
+        }
+    )
     df_snap.write_parquet(snap_dir / "snapshot.parquet")
 
     res = store.query_universe_snapshots()

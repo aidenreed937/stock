@@ -1,12 +1,14 @@
 from datetime import date
+from types import SimpleNamespace
 from unittest.mock import MagicMock, PropertyMock, mock_open, patch
 
 import polars as pl
-import pytest
 
 from stock.data.backfill import (
     HistoricalBackfiller,
     _default_symbols_for_endpoint,
+)
+from stock.data.backfill import (
     main as backfill_main,
 )
 
@@ -62,6 +64,26 @@ def test_backfill_non_daily_single_request():
             use_raw_cache=True,
             force_refresh=False,
         )
+
+
+def test_backfill_per_symbol_without_symbol_does_not_use_endpoint_as_symbol() -> None:
+    mock_pipeline = MagicMock()
+    mock_pipeline.sync_daily_bars.return_value = pl.DataFrame(
+        {"symbol": ["000300.SH"], "trade_date": ["2026-08-01"], "close": [4000.0]}
+    )
+
+    with patch("stock.data.backfill.create_pipeline", return_value=mock_pipeline):
+        backfiller = HistoricalBackfiller(data_source="tushare", endpoint="index_daily_bar")
+        summary = backfiller.backfill_range(date(2026, 8, 1), date(2026, 8, 1))
+
+    assert summary["synced_days"] == 1
+    mock_pipeline.sync_daily_bars.assert_called_once_with(
+        symbol="",
+        start_date=date(2026, 8, 1),
+        end_date=date(2026, 8, 1),
+        use_raw_cache=True,
+        force_refresh=False,
+    )
 
 
 def test_backfill_per_symbol_all_dates_skipped() -> None:
@@ -235,3 +257,28 @@ def test_planner_watchlist_on_per_day_endpoint_preserves_full_market() -> None:
 
     # fund_daily 是 per_symbol 模式，允许展开 watchlist 基金
     assert len(fund_tasks) >= 1
+
+
+def test_planner_expands_single_sync_index_bar_watchlist() -> None:
+    from stock.data.planner import BackfillPlanner
+
+    watchlist = SimpleNamespace(
+        stocks=["600519.SH"],
+        indices=["000300.SH", "399006.SZ"],
+        funds=[],
+        all_symbols=["600519.SH", "000300.SH", "399006.SZ"],
+        get_base_date=lambda _symbol: None,
+    )
+    data_cfg = SimpleNamespace(watchlists=SimpleNamespace(tushare=watchlist))
+
+    tasks = BackfillPlanner.plan_tasks(
+        data_source="tushare",
+        endpoints=["index_daily_bar"],
+        symbol="watchlist",
+        start_date=date(2026, 8, 1),
+        end_date=date(2026, 8, 10),
+        start_specified=True,
+        data_cfg=data_cfg,
+    )
+
+    assert [task.symbol for task in tasks] == ["000300.SH", "399006.SZ"]

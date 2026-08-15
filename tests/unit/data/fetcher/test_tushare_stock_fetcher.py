@@ -1,10 +1,9 @@
 from datetime import date
 from typing import Any
 from unittest.mock import MagicMock
+
 import pandas as pd
 import polars as pl
-import pytest
-
 
 from stock.data.fetcher.tushare.stock_fetcher import TuShareStockFetcher
 
@@ -129,3 +128,7 @@ def test_tushare_stock_fetcher_trade_cal_single_request() -> None:
     )
     assert len(df) == 1
     assert mock_client.query.call_count == 1
+    _, kwargs = mock_client.query.call_args
+    assert kwargs["start_date"] == "19900101"
+    assert kwargs["end_date"] == "20260101"
+    assert "trade_date" not in kwargs

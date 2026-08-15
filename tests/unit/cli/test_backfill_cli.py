@@ -1,11 +1,12 @@
 """Backfill CLI 单元测试。"""
 
 from datetime import date
+from pathlib import Path
 from unittest.mock import MagicMock, patch
 
 import pytest
 
-from stock.cli.backfill import _execute_planned_tasks, main
+from stock.cli.backfill import _execute_planned_tasks, _resolve_universe_symbols, main
 from stock.data.planner import BackfillTask
 
 
@@ -234,6 +235,32 @@ def test_backfill_cli_universe_resolution() -> None:
 
         main()
         mock_instance.backfill_range.assert_called_once()
+
+
+def test_backfill_cli_nested_watchlist_universe_keeps_watchlist_semantics(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    universe_dir = tmp_path / "config" / "universe"
+    universe_dir.mkdir(parents=True)
+    (universe_dir / "watchlist.yaml").write_text(
+        """
+universe:
+  a_shares:
+    stocks:
+      - code: "600519.SH"
+    indices:
+      - code: "000300.SH"
+  global:
+    stocks:
+      - code: "AAPL"
+  macro:
+    - "FEDFUNDS"
+""",
+        encoding="utf-8",
+    )
+    monkeypatch.chdir(tmp_path)
+
+    assert _resolve_universe_symbols("watchlist") == "watchlist"
 
 
 def test_backfill_cli_exits_nonzero_on_failed_days() -> None:

@@ -3,14 +3,23 @@ from pathlib import Path
 
 import polars as pl
 
-from stock.config.loader import load_strategy_config
+from stock.config.loader import load_data_config, load_strategy_config
 from stock.config.settings import settings
 from stock.data.factory import create_pipeline
 from stock.strategy.runner import StrategyRunner
 from stock.utils.logger import logger, setup_logger
 
-# 默认行情回溯天数常量
-DEFAULT_LOOKBACK_DAYS: int = 90
+
+def _parse_config_date(value: str, today: date) -> date | None:
+    d_clean = value.strip().lower()
+    if not d_clean:
+        return None
+    if d_clean == "today":
+        return today
+    if d_clean.startswith("today-"):
+        offset = d_clean.removeprefix("today-").removesuffix("d")
+        return today - timedelta(days=int(offset)) if offset.isdigit() else None
+    return date.fromisoformat(d_clean)
 
 
 def main() -> None:
@@ -24,13 +33,17 @@ def main() -> None:
     # 2. 从 YAML 配置文件加载策略参数 (消除硬编码)
     config_path = Path("config/strategy/double_sma_rsi.yaml")
     strategy_cfg = load_strategy_config(config_path)
+    data_cfg = load_data_config()
     logger.info(f"成功加载策略配置: [{strategy_cfg.name}] v{strategy_cfg.version}")
 
     # 3. 使用 ETL 管道执行完整数据入库流 (Extract -> Clean -> Normalize -> Load)
-    end_date = date.today()
-    start_date = end_date - timedelta(days=DEFAULT_LOOKBACK_DAYS)
+    today = date.today()
+    end_date = _parse_config_date(data_cfg.backfill.default_end_date, today) or today
+    start_date = _parse_config_date(data_cfg.backfill.default_start_date, today) or (
+        end_date - timedelta(days=30)
+    )
 
-    pipeline = create_pipeline(settings.data_source_mode, endpoint="stock_daily_bar")
+    pipeline = create_pipeline(data_cfg.default_source_mode, endpoint="stock_daily_bar")
     frames = [
         pipeline.sync_daily_bars(symbol, start_date, end_date)
         for symbol in strategy_cfg.universe.all_symbols

@@ -1,6 +1,7 @@
 """UnitNormalizer 单元测试。"""
 
 import polars as pl
+
 from stock.data.normalizer.unit_normalizer import UnitNormalizer
 
 
@@ -26,6 +27,23 @@ def test_unit_normalizer_tushare_daily() -> None:
     assert "vol" not in normalized.columns
     assert normalized["volume"][0] == 10000.0  # 100 手 * 100 = 10000 股
     assert normalized["amount"][0] == 1000000.0  # 1000 千元 * 1000 = 1000000 元
+
+
+def test_unit_normalizer_tushare_stock_daily_bar_alias() -> None:
+    raw_df = pl.DataFrame(
+        {
+            "symbol": ["000001.SZ"],
+            "trade_date": ["20260801"],
+            "vol": [100.0],
+            "amount": [1000.0],
+        }
+    )
+
+    normalizer = UnitNormalizer("tushare", "stock_daily_bar")
+    normalized = normalizer.normalize_units(raw_df)
+
+    assert normalized["volume"][0] == 10000.0
+    assert normalized["amount"][0] == 1000000.0
 
 
 def test_unit_normalizer_tushare_daily_basic() -> None:

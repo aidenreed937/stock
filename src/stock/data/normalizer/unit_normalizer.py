@@ -1,6 +1,5 @@
 """数据源与接口显式单位标准化器 (Unit Normalizer)。"""
 
-from typing import Any
 import polars as pl
 
 from stock.utils.logger import logger
@@ -10,12 +9,18 @@ from stock.utils.logger import logger
 UNIT_CONVERSION_RULES: dict[str, dict[str, dict[str, tuple[str, float]]]] = {
     "tushare": {
         "daily": {
-            "vol": ("volume", 100.0),        # TuShare 原始 vol 单位为"手" -> 转换为"股" (* 100)
-            "amount": ("amount", 1000.0),    # TuShare 原始 amount 单位为"千元" -> 转换为"元" (* 1000)
+            # TuShare 原始 vol 单位为“手”，amount 单位为“千元”。
+            "vol": ("volume", 100.0),
+            "amount": ("amount", 1000.0),
+        },
+        "stock_daily_bar": {
+            "vol": ("volume", 100.0),
+            "amount": ("amount", 1000.0),
         },
         "daily_basic": {
-            "total_mv": ("total_mv", 10000.0),  # TuShare 原始 total_mv 单位为"万元" -> 转换为"元" (* 10000)
-            "circ_mv": ("circ_mv", 10000.0),    # TuShare 原始 circ_mv 单位为"万元" -> 转换为"元" (* 10000)
+            # TuShare 原始 total_mv/circ_mv 单位为“万元”。
+            "total_mv": ("total_mv", 10000.0),
+            "circ_mv": ("circ_mv", 10000.0),
         },
         "moneyflow": {
             "buy_sm_vol": ("buy_sm_vol", 100.0),
@@ -38,10 +43,11 @@ UNIT_CONVERSION_RULES: dict[str, dict[str, dict[str, tuple[str, float]]]] = {
             "net_mf_amount": ("net_mf_amount", 10000.0),
         },
         "sw_daily": {
-            "vol": ("volume", 100.0),          # TuShare 原始 vol 单位为"手" -> 转换为"股" (* 100)
-            "amount": ("amount", 10000.0),      # TuShare 原始 amount 单位为"万元" -> 转换为"元" (* 10000)
-            "total_mv": ("total_mv", 10000.0),  # TuShare 原始 total_mv 单位为"万元" -> 转换为"元" (* 10000)
-            "float_mv": ("float_mv", 10000.0),  # TuShare 原始 float_mv 单位为"万元" -> 转换为"元" (* 10000)
+            # TuShare 原始 vol 单位为“手”，金额和市值字段单位为“万元”。
+            "vol": ("volume", 100.0),
+            "amount": ("amount", 10000.0),
+            "total_mv": ("total_mv", 10000.0),
+            "float_mv": ("float_mv", 10000.0),
         },
     }
 }
@@ -79,7 +85,9 @@ class UnitNormalizer:
         for raw_col, (target_col, multiplier) in self.rules.items():
             if raw_col in df.columns:
                 # 转换类型为 Float64 并乘以倍率
-                expr = (pl.col(raw_col).cast(pl.Float64, strict=False) * multiplier).alias(target_col)
+                expr = (
+                    pl.col(raw_col).cast(pl.Float64, strict=False) * multiplier
+                ).alias(target_col)
                 expressions.append(expr)
                 applied_cols.add(raw_col)
                 if raw_col != target_col and raw_col in df.columns:

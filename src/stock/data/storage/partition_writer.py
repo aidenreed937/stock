@@ -31,6 +31,35 @@ def _append_write_buffer(
         write_buffer.setdefault(file_path, []).append(item)
 
 
+def validate_frame_source(df: pl.DataFrame, data_source: str, context: str) -> None:
+    if "data_source" not in df.columns:
+        raise DataValidationError(f"{context}缺少 data_source 血统字段")
+    sources = set(df.get_column("data_source").drop_nulls().unique().to_list())
+    if not sources:
+        raise DataValidationError(f"{context}中 data_source 字段全为空")
+    if any(s != data_source for s in sources):
+        raise DataValidationError(
+            f"{context}数据源不匹配: 期望 [{data_source}]，实际包含 {sorted(sources)}"
+        )
+
+
+def validate_schema_version(df: pl.DataFrame, context: str) -> None:
+    if "schema_version" not in df.columns or df.is_empty():
+        return
+    versions = {
+        str(v)
+        for v in df.get_column("schema_version")
+        .cast(pl.Utf8, strict=False)
+        .drop_nulls()
+        .unique()
+        .to_list()
+        if str(v)
+    }
+    invalid = versions - {"v2"}
+    if invalid:
+        raise DataValidationError(f"{context}包含旧版或未知 schema_version: {sorted(invalid)}")
+
+
 class ParquetPartitionWriter:
     """处理 Parquet 文件的多月份数据动态拆分、内存攒批与并发文件锁原子合并落盘。"""
 
@@ -40,7 +69,7 @@ class ParquetPartitionWriter:
         """初始化 Parquet 分区写入器。"""
         self.data_source = data_source
         self._batch_mode = False
-        self._write_buffer: dict[Path, list[pl.DataFrame]] = {}
+        self._write_buffer: dict[Path, list[tuple[pl.DataFrame, str]]] = {}
         self._file_lock = threading.Lock()
 
     def enable_batch_mode(self) -> None:
@@ -56,10 +85,16 @@ class ParquetPartitionWriter:
             return
 
         logger.info(f"开始提交攒批数据，共涉及 {len(self._write_buffer)} 个目标文件分区...")
-        for file_path, dfs in self._write_buffer.items():
-            if not dfs:
+        for file_path, items in self._write_buffer.items():
+            if not items:
                 continue
-            merged = self.merge_and_save_parquet(file_path, dfs)
+            sources = {source for _, source in items}
+            if len(sources) != 1:
+                raise DataValidationError(
+                    f"Curated 攒批目标 [{file_path}] 混入多个数据源: {sorted(sources)}"
+                )
+            source = next(iter(sources))
+            merged = self.merge_and_save_parquet(file_path, [df for df, _ in items], source=source)
             if cache_updater is not None:
                 cache_updater(file_path, merged)
             logger.info(f"攒批合并落盘成功 -> {file_path} (合并后共 {len(merged)} 行)")
@@ -82,15 +117,18 @@ class ParquetPartitionWriter:
             if not existing.is_empty():
                 existing = StorageCompat.normalize_identity_columns(existing)
                 existing = StorageCompat.post_process_dataset(dataset_name, existing)
+                validate_schema_version(existing, f"已有 Curated 文件 [{file_path}]")
             normalized_dfs = [
                 StorageCompat.post_process_dataset(
                     dataset_name, StorageCompat.normalize_identity_columns(df)
                 )
                 for df in dfs
             ]
+            for df in normalized_dfs:
+                validate_schema_version(df, f"Curated 新数据 [{file_path}]")
 
             if not existing.is_empty() and source is not None:
-                self._validate_frame_source(existing, source, f"已有 Curated 文件 [{file_path}]")
+                validate_frame_source(existing, source, f"已有 Curated 文件 [{file_path}]")
                 for df in normalized_dfs:
                     if (set(df.columns) - SYSTEM_METADATA_COLUMNS) != (
                         set(existing.columns) - SYSTEM_METADATA_COLUMNS
@@ -121,17 +159,6 @@ class ParquetPartitionWriter:
             temp_path.replace(file_path)
 
         return merged
-
-    def _validate_frame_source(self, df: pl.DataFrame, data_source: str, context: str) -> None:
-        if "data_source" not in df.columns:
-            raise DataValidationError(f"{context}缺少 data_source 血统字段")
-        sources = set(df.get_column("data_source").drop_nulls().unique().to_list())
-        if not sources:
-            raise DataValidationError(f"{context}中 data_source 字段全为空")
-        if any(s != data_source for s in sources):
-            raise DataValidationError(
-                f"{context}数据源不匹配: 期望 [{data_source}]，实际包含 {sorted(sources)}"
-            )
 
     def save_partitioned(  # noqa: PLR0913, PLR0917
         self,
@@ -168,6 +195,12 @@ class ParquetPartitionWriter:
         try:
             parsed = df.with_columns(parse_mixed_date(date_col).alias("_dt"))
             valid = parsed.filter(pl.col("_dt").is_not_null())
+            invalid_count = len(parsed) - len(valid)
+            if invalid_count:
+                raise DataValidationError(
+                    f"Curated 数据集 [{dataset_name}] 日期列 [{date_col}] "
+                    f"包含 {invalid_count} 条无法解析的日期"
+                )
             if valid.is_empty():
                 file_path = path_resolver(dataset_name, fallback_date, market_code)
                 self._save_single(file_path, df, dataset_name, source, cache_updater)
@@ -189,6 +222,8 @@ class ParquetPartitionWriter:
                 last_path = sub_path
 
             return last_path or path_resolver(dataset_name, fallback_date, market_code)
+        except DataValidationError:
+            raise
         except Exception as e:
             logger.warning(f"动态按交易日拆分落盘异常，降级使用统一时间分区: {e}")
             file_path = path_resolver(dataset_name, fallback_date, market_code)
@@ -204,7 +239,7 @@ class ParquetPartitionWriter:
         cache_updater: Callable[[Path, pl.DataFrame], None] | None = None,
     ) -> None:
         if self._batch_mode:
-            _append_write_buffer(self._file_lock, self._write_buffer, file_path, df)
+            _append_write_buffer(self._file_lock, self._write_buffer, file_path, (df, source))
             logger.debug(f"已加入攒批写入缓存 [{dataset_name}] -> {file_path}")
         else:
             merged = self.merge_and_save_parquet(file_path, [df], source=source)

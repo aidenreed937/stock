@@ -122,3 +122,36 @@ def test_market_scan_engine_compute_mocked() -> None:
     assert summary.trade_date == date(2026, 8, 12)
     assert summary.top1_industry == "电子"
     assert "电子" in summary.crowded_industries
+
+
+def test_market_scan_engine_uses_actual_result_date_for_holiday_request() -> None:
+    engine = MarketScanEngine()
+    engine.regime_analyzer = MagicMock()
+    engine.regime_analyzer.evaluate_regime.return_value = MacroRegimeResult(
+        trade_date=date(2026, 8, 14),
+        regime=MacroRegime.OPPORTUNITY_ZONE,
+        regime_desc="机会区",
+        suggested_equity_exposure=0.75,
+    )
+    engine.tcr_calc = MagicMock()
+    engine.tcr_calc.calculate_daily_tcr.return_value = TCRAnalysisResult(
+        trade_date=date(2026, 8, 14),
+        total_amount_yi=10000.0,
+        top1_industry="801080.SI",
+        top1_tcr=25.0,
+        crowded_industries=["801080.SI"],
+    )
+    engine.pbroe_analyzer = MagicMock()
+    engine.pbroe_analyzer.analyze_cross_section.return_value = None
+    engine.momentum_analyzer = MagicMock()
+    engine.momentum_analyzer.calculate_spread.return_value = None
+    engine.margin_calc = MagicMock()
+    engine.margin_calc.calculate_latest.return_value = None
+    engine.breadth_analyzer = MagicMock()
+    engine.breadth_analyzer.diagnose_latest.return_value = None
+    engine.sentiment_analyzer = MagicMock()
+    engine.sentiment_analyzer.diagnose_latest.return_value = None
+
+    summary = engine.compute(target_date=date(2026, 8, 15))
+
+    assert summary.trade_date == date(2026, 8, 14)

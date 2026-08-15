@@ -7,6 +7,7 @@ import polars as pl
 import pytest
 
 from stock.data.catalog import DataCatalog
+from stock.exceptions import DataValidationError
 
 
 def _make_bar_file(tmp_path: Path, dataset: str, market: str, year: int, month: int) -> Path:
@@ -32,7 +33,7 @@ def _make_bar_file(tmp_path: Path, dataset: str, market: str, year: int, month: 
             "exchange": ["SSE", "SSE", "SSE"],
             "currency": ["CNY", "CNY", "CNY"],
             "adjustment": ["raw", "raw", "raw"],
-            "schema_version": ["v1", "v1", "v1"],
+            "schema_version": ["v2", "v2", "v2"],
             "data_source": ["tushare", "tushare", "tushare"],
             "updated_at": [None, None, None],
         }
@@ -131,7 +132,7 @@ def test_dedup_by_primary_key(tmp_path: Path) -> None:
             "exchange": ["SSE", "SSE"],
             "currency": ["CNY", "CNY"],
             "adjustment": ["raw", "raw"],
-            "schema_version": ["v1", "v1"],
+            "schema_version": ["v2", "v2"],
             "data_source": ["tushare", "tushare"],
             "updated_at": [None, None],
         }
@@ -161,7 +162,7 @@ def test_validate_bars_rejects_bad_ohlc(tmp_path: Path) -> None:
             "exchange": ["SSE"],
             "currency": ["CNY"],
             "adjustment": ["raw"],
-            "schema_version": ["v1"],
+            "schema_version": ["v2"],
             "data_source": ["tushare"],
             "updated_at": [None],
         }
@@ -170,6 +171,23 @@ def test_validate_bars_rejects_bad_ohlc(tmp_path: Path) -> None:
     catalog = DataCatalog(data_source="tushare", storage_dir=tmp_path)
     with pytest.raises(Exception, match="OHLC"):
         catalog.load_bars(symbol="AAA")
+
+
+def test_catalog_rejects_legacy_schema_version(tmp_path: Path) -> None:
+    partition = tmp_path / "tushare/market=CN/daily_basic/year=2026/month=08"
+    partition.mkdir(parents=True, exist_ok=True)
+    pl.DataFrame(
+        {
+            "symbol": ["AAA"],
+            "trade_date": [date(2026, 8, 1)],
+            "schema_version": ["v1"],
+            "data_source": ["tushare"],
+        }
+    ).write_parquet(partition / "data.parquet")
+    catalog = DataCatalog(data_source="tushare", storage_dir=tmp_path)
+
+    with pytest.raises(DataValidationError, match="schema_version"):
+        catalog.load_dataset("daily_basic")
 
 
 def test_describe_lists_datasets(tmp_path: Path) -> None:

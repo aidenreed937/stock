@@ -45,7 +45,7 @@
 
 | 目录名称 | 分层定位 | 存储规范 / 路径结构 | 说明与核心作用 |
 | :--- | :--- | :--- | :--- |
-| **`data/raw/`** | **原始归档层**<br>(Raw Landing Zone) | `data/raw/{data_source}/market={market}/{endpoint}/[year=YYYY/month=MM/]data.parquet` | 原汁原味保留 API 响应列与格式，按 `market={market}` 路径与 Curated 层 100% 镜像对称。<br>**主要作用：防重复请求、节省积分、支持本地离线重洗。** |
+| **`data/raw/`** | **原始归档层**<br>(Raw Landing Zone) | `data/raw/{data_source}/market={market}/{dataset}/[year=YYYY/month=MM/]data.parquet` | 原汁原味保留 API 响应列与格式，按 `market={market}` 路径与 Curated 层 100% 镜像对称。<br>**主要作用：防重复请求、节省积分、支持本地离线重洗。** |
 | **`data/curated/`** | **精炼生产层**<br>(Curated Zone) | `data/curated/{data_source}/market={market}/{dataset}/[year=YYYY/month=MM/]data.parquet` | 遵循 [Schema v2 规范](file:///Users/mac/workspace/personal/finance/stock/docs/standards/schema_v2_spec.md)（统一列名、`pl.Date` 类型与 SI 元/股计量单位），按 `market={market}` 隔离并注入 `data_source`、`updated_at` 与 `schema_version="v2"` 血统。<br>**主要作用：供策略回测与分析引擎直接使用。** |
 | **`data/cache/`** | **临时缓存层**<br>(Transient Zone) | `data/cache/*.parquet` | 存储运行过程中的密集型计算中间结果（如长周期特征矩阵），可随时安全清空。 |
 
@@ -54,12 +54,12 @@
 ## 3. RAW 层时间分区设计规范 (Time Partitioning Rules)
 
 ### 3.1 路径与文件名规范
-- **文件路径**：`data/raw/{data_source}/{endpoint}/year={YYYY}/month={MM}/{endpoint}_{YYYYMMDD}.parquet`
-- **目录样例**：`data/raw/tushare/daily/year=2026/month=08/daily_20260812.parquet`
+- **文件路径**：`data/raw/{data_source}/market={market}/{dataset}/year={YYYY}/month={MM}/data.parquet`
+- **目录样例**：`data/raw/tushare/market=CN/stock_daily_bar/year=2026/month=08/data.parquet`
 
 ### 3.2 命名与设计原理
-1. **`daily` (前缀)**：标识 API 接口名（如 `daily` - 日线行情, `income` - 利润表, `daily_basic` - 每日指标）。
-2. **`20260812` (中间日期)**：数据的**业务交易日 (Trade Date)**。固定 8 位补零保证文件按文件名正序排列时天然等于按时间先后升序排列。
+1. **`stock_daily_bar` (数据集目录)**：标识项目标准数据集名，和上游 API 名解耦。
+2. **`year=YYYY/month=MM` (业务日期分区)**：按业务日期落入月份分区，文件名固定为 `data.parquet`。
 3. **小文件防爆与高性能**：按月（`month=MM`）划分子目录，避免因按天划分导致生成上万个嵌套小文件夹，同时兼顾 Polars / DuckDB 谓词下推与分区裁剪开销。
 
 ---

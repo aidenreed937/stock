@@ -41,6 +41,27 @@ def test_load_watchlist_and_data_config() -> None:
     assert data_cfg.backfill.max_workers == 4
 
 
+def test_load_data_config_keeps_planner_fields(tmp_path: Path) -> None:
+    config_path = tmp_path / "data.yaml"
+    config_path.write_text(
+        """
+data:
+  source_endpoint_supports:
+    tushare:
+      index_dailybasic:
+        - "000300.SH"
+  endpoint_start_date_overrides:
+    tushare:index_dailybasic: "2004-12-31"
+""",
+        encoding="utf-8",
+    )
+
+    data_cfg = load_data_config(config_path)
+
+    assert data_cfg.source_endpoint_supports["tushare"]["index_dailybasic"] == ["000300.SH"]
+    assert data_cfg.endpoint_start_date_overrides["tushare:index_dailybasic"] == "2004-12-31"
+
+
 def test_watchlist_base_dates() -> None:
     from datetime import date
 

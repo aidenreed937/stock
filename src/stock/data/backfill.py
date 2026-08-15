@@ -24,6 +24,14 @@ from stock.exceptions import DataFetchError
 from stock.utils.logger import logger
 
 
+def _failed_item_count(item: Any) -> int:
+    if isinstance(item, date):
+        return 1
+    if isinstance(item, tuple):
+        return len(item[1])
+    return 1
+
+
 def _resolve_calendar_dates(
     fetcher: BaseDataFetcher, data_source: str, start_date: date, end_date: date
 ) -> list[date]:
@@ -83,11 +91,11 @@ def _execute_parallel_tasks(
                         synced += res if isinstance(res, int) else 1
                         logger.info(f"[{idx}/{len(items)}] {desc} 回填成功")
                     else:
-                        failed += 1 if isinstance(res, bool) else (len(item[1]) if isinstance(item, tuple) else 1)
+                        failed += 1 if isinstance(res, bool) else _failed_item_count(item)
                         logger.warning(f"[{idx}/{len(items)}] {desc} 回填失败")
                 except Exception as e:
                     logger.error(f"[{idx}/{len(items)}] {desc} 抛出异常: {e}")
-                    failed += 1 if isinstance(item, date) else (len(item[1]) if isinstance(item, tuple) else 1)
+                    failed += _failed_item_count(item)
     else:
         for idx, item in enumerate(items, 1):
             desc = item_desc(item)
@@ -97,11 +105,11 @@ def _execute_parallel_tasks(
                     synced += res if isinstance(res, int) else 1
                     logger.info(f"[{idx}/{len(items)}] {desc} 回填成功")
                 else:
-                    failed += 1 if isinstance(res, bool) else (len(item[1]) if isinstance(item, tuple) else 1)
+                    failed += 1 if isinstance(res, bool) else _failed_item_count(item)
                     logger.warning(f"[{idx}/{len(items)}] {desc} 回填失败")
             except Exception as e:
                 logger.error(f"[{idx}/{len(items)}] {desc} 抛出异常: {e}")
-                failed += 1 if isinstance(item, date) else (len(item[1]) if isinstance(item, tuple) else 1)
+                failed += _failed_item_count(item)
     return synced, failed
 
 
@@ -182,7 +190,9 @@ class HistoricalBackfiller:
             has_raw = True
             raw_store = getattr(self.pipeline, "raw_store", None)
             if not force_refresh and raw_store is not None and hasattr(raw_store, "has_raw"):
-                has_raw = bool(raw_store.has_raw(self.data_source, self.endpoint, trade_date))
+                has_raw = bool(
+                    raw_store.has_raw(self.data_source, self.endpoint, trade_date, self.symbol)
+                )
             if has_curated and has_raw and not force_refresh:
                 continue
 
@@ -208,8 +218,14 @@ class HistoricalBackfiller:
 
         # 1. 范围拉取模式 (月频/宏观/静态/按标的历史范围)
         if freq != "daily" or is_per_sym or task_spec.is_single_sync:
-            sym_code = self.symbol or self.endpoint
-            if not force_refresh and self.symbol and freq == "daily" and (end_date - start_date).days <= 30:
+            sym_code = self.symbol or ("" if is_per_sym else self.endpoint)
+            is_short_daily_symbol_range = (
+                not force_refresh
+                and self.symbol
+                and freq == "daily"
+                and (end_date - start_date).days <= 30
+            )
+            if is_short_daily_symbol_range:
                 open_dates = self._get_open_trading_dates(start_date, end_date, use_cache=True)
                 todo_dates = self._generate_tasks(start_date, end_date, force_refresh=False)
                 if not todo_dates:
@@ -270,7 +286,13 @@ class HistoricalBackfiller:
                     use_raw_cache=not force_refresh,
                     force_refresh=force_refresh,
                 )
-                if self.endpoint in ("report_rc", "forecast", "express", "margin_detail", "hsgt_top10"):
+                if self.endpoint in (
+                    "report_rc",
+                    "forecast",
+                    "express",
+                    "margin_detail",
+                    "hsgt_top10",
+                ):
                     return True
                 return not df.is_empty()
             except Exception as e:

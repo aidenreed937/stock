@@ -9,12 +9,12 @@ from typing import Any
 
 from stock.constants import ENDPOINT_START_DATE_OVERRIDES
 from stock.data.task_registry import (
-    is_per_symbol_task,
     list_available_tasks,
     resolve_task,
 )
 from stock.exceptions import DataFetchError
 from stock.utils.logger import logger
+
 
 @dataclass(frozen=True)
 class BackfillTask:
@@ -68,6 +68,28 @@ _INDEX_ENDPOINTS = {
     "index_fundamental",
 }
 _FUND_ENDPOINTS = {"fund_daily", "fund_adj", "fund_share", "etf_share_size"}
+_YFINANCE_MACRO_SYMBOLS = ["^TNX", "^IRX", "DX-Y.NYB", "CNH=X", "GC=F", "CL=F", "HG=F", "^VIX"]
+_LIXINGER_COMPANY_ENDPOINTS = {
+    "company_fundamental",
+    "fs_non_financial",
+    "fs_bank",
+    "fs_security",
+    "fs_insurance",
+    "pledge_info",
+}
+_LIXINGER_BATCH_SINGLE_ENDPOINTS = {
+    "sw_2021_constituents",
+    "sw_2021_fundamental",
+    "sw_2021_l2_fundamental",
+    "sw_2021_fs_non_financial",
+    "sw_2021_fs_bank",
+    "sw_2021_fs_security",
+    "sw_2021_fs_insurance",
+    "national_debt",
+    "interest_rates",
+    "non_ferrous_metals",
+    "crude_oil",
+}
 
 
 def _watchlist_symbols(
@@ -78,8 +100,12 @@ def _watchlist_symbols(
 ) -> list[str]:
     """从配置观察池解析接口的默认标的。"""
     watchlist = getattr(data_cfg.watchlists, data_source, None)
+    if data_source == "yfinance" and endpoint == "macro_indicators":
+        return _YFINANCE_MACRO_SYMBOLS
     if watchlist is None:
         return []
+    if data_source == "fred":
+        return list(getattr(watchlist, "macro_series", []) or [])
     if endpoint in _FUND_ENDPOINTS and getattr(watchlist, "funds", None):
         return list(watchlist.funds)
     if endpoint in _INDEX_ENDPOINTS and getattr(watchlist, "indices", None):
@@ -121,7 +147,8 @@ def _default_symbols_for_endpoint(
             local_symbols = pool_fn(data_source, pool_dataset)
             if not local_symbols:
                 raise DataFetchError(
-                    f"接口 [{endpoint}] 需要本地 {pool_dataset} {pool_label}标的池，请先完成 {pool_dataset} 回填"
+                    f"接口 [{endpoint}] 需要本地 {pool_dataset} {pool_label}标的池，"
+                    f"请先完成 {pool_dataset} 回填"
                 )
             return local_symbols
 
@@ -140,14 +167,31 @@ def _resolve_target_symbols(
     """解析当前接口需要遍历的目标标的代码列表。"""
     if symbol and symbol not in ("all", "watchlist"):
         return [s.strip() for s in symbol.split(",") if s.strip()]
-    if not is_per_sym or is_single:
+    if not is_per_sym:
         # 单表全量同步或全局按日端点，保持单任务模式
+        return [""]
+    if is_single and not _should_expand_single_sync(data_source, public_name):
         return [""]
     is_watchlist_explicit = symbol == "watchlist"
     targets = _default_symbols_for_endpoint(
-        data_source, public_name, data_cfg, {public_name}, is_watchlist_explicit=is_watchlist_explicit
+        data_source,
+        public_name,
+        data_cfg,
+        {public_name},
+        is_watchlist_explicit=is_watchlist_explicit,
     )
     return targets if targets else [""]
+
+
+def _should_expand_single_sync(data_source: str, endpoint: str) -> bool:
+    """判断 per-symbol single-sync 任务是否应按观察池拆成多个原子任务。"""
+    if endpoint in _LIXINGER_BATCH_SINGLE_ENDPOINTS:
+        return False
+    if data_source in {"fred", "yfinance"}:
+        return True
+    if endpoint in _INDEX_ENDPOINTS or endpoint in _FUND_ENDPOINTS:
+        return True
+    return data_source == "lixinger" and endpoint in _LIXINGER_COMPANY_ENDPOINTS
 
 
 class BackfillPlanner:

@@ -1,6 +1,6 @@
 """RAW 原始数据离线时间分区归档存储引擎。"""
 
-from datetime import date, timedelta
+from datetime import date
 from pathlib import Path
 from typing import Any
 
@@ -9,10 +9,9 @@ import polars as pl
 from stock.config.settings import settings
 from stock.core.contracts import DatasetKey
 from stock.data.storage.compat import StorageCompat
+from stock.data.storage.raw_cache import has_raw_cache
 from stock.data.storage.raw_schema import (
-    RAW_ARTIFACT_SUFFIXES,
     RAW_DATE_COLUMNS,
-    RAW_PRIMARY_KEY_FALLBACK_COLUMNS,
     RAW_RANGE_DATE_COLUMNS,
     RAW_SYMBOL_COLUMNS,
     deduplicate_raw_merged_frame,
@@ -21,7 +20,8 @@ from stock.data.storage.raw_schema import (
     normalize_raw_date_series,
     resolve_raw_primary_keys,
 )
-from stock.data.task_registry import get_endpoint_market, resolve_task
+from stock.exceptions import DataValidationError
+from stock.utils.date import parse_mixed_date
 from stock.utils.logger import logger
 
 
@@ -88,8 +88,8 @@ class RawDataStorage:
         self._raw_cache: dict[Path, pl.DataFrame] = {}
         self._raw_dates_cache: dict[Path, set[str] | None] = {}
         import threading
-        self._file_lock = threading.Lock()
 
+        self._file_lock = threading.Lock()
 
     def enable_batch_mode(self) -> None:
         """启用内存攒批模式，延迟到 commit 时再物理落盘，避免 O(N²) 写放大。"""
@@ -113,7 +113,6 @@ class RawDataStorage:
         self._write_buffer.clear()
         self._batch_mode = False
         logger.info("RAW 攒批提交完成，已自动关闭攒批模式。")
-
 
     @staticmethod
     def _dataset_name(data_source: str, endpoint: str) -> str:
@@ -166,37 +165,36 @@ class RawDataStorage:
         date_col = first_existing_column(df, RAW_DATE_COLUMNS)
         if date_col and not df.is_empty() and date_col in RAW_RANGE_DATE_COLUMNS:
             # 按真实业务日期分桶，避免请求 end_date 造成历史快照串区。
-            raw_str = normalize_raw_date_series(df.get_column(date_col))
-            valid_months_mask = (raw_str.str.len_chars() >= 6) & (
-                raw_str.str.slice(0, 4).cast(pl.Int32, strict=False) >= 1990
-            ) & (
-                raw_str.str.slice(4, 2).cast(pl.Int32, strict=False).is_between(1, 12)
-            )
-            if valid_months_mask.any():
-                month_series = raw_str.str.slice(0, 6)
-                months = (
-                    month_series.filter(valid_months_mask)
-                    .unique()
-                    .drop_nulls()
-                    .to_list()
+            parsed = df.with_columns(parse_mixed_date(date_col).alias("_dt"))
+            valid = parsed.filter(pl.col("_dt").is_not_null())
+            invalid_count = len(parsed) - len(valid)
+            if invalid_count:
+                raise DataValidationError(
+                    f"RAW 数据集 [{key.provider}/{key.dataset}] 日期列 [{date_col}] "
+                    f"包含 {invalid_count} 条无法解析的日期"
                 )
-                if months:
-                    output = self._get_dataset_path(key)
-                    for month in months:
-                        part = df.filter(month_series == month)
-                        y, m = int(month[:4]), int(month[4:6])
-                        part_key = DatasetKey(
-                            provider=key.provider,
-                            dataset=key.dataset,
-                            endpoint=key.endpoint,
-                            start_date=date(y, m, 1),
-                            end_date=date(y, m, 28),
-                            instrument=key.instrument,
-                            adjustment=key.adjustment,
-                            schema_version=key.schema_version,
-                        )
-                        output = self._save_dataset_file(part_key, part)
-                    return output
+            if not valid.is_empty():
+                month_series = valid.get_column("_dt").dt.strftime("%Y%m")
+                months = month_series.unique().drop_nulls().to_list()
+                output = self._get_dataset_path(key)
+                for month in months:
+                    part = valid.filter(pl.col("_dt").dt.strftime("%Y%m") == month).drop("_dt")
+                    y, m = int(month[:4]), int(month[4:6])
+                    part_key = DatasetKey(
+                        provider=key.provider,
+                        dataset=key.dataset,
+                        endpoint=key.endpoint,
+                        start_date=date(y, m, 1),
+                        end_date=date(y, m, 28),
+                        instrument=key.instrument,
+                        adjustment=key.adjustment,
+                        schema_version=key.schema_version,
+                    )
+                    output = self._save_dataset_file(part_key, part)
+                return output
+            raise DataValidationError(
+                f"RAW 数据集 [{key.provider}/{key.dataset}] 日期列 [{date_col}] 无有效日期"
+            )
         return self._save_dataset_file(key, df)
 
     def _save_dataset_file(self, key: DatasetKey, df: pl.DataFrame) -> Path:
@@ -212,10 +210,13 @@ class RawDataStorage:
         self._merge_and_save(file_path, [(key, df)])
         return file_path
 
-    def _merge_and_save(self, file_path: Path, items: list[tuple[DatasetKey, pl.DataFrame]]) -> None:  # noqa: E501
+    def _merge_and_save(
+        self, file_path: Path, items: list[tuple[DatasetKey, pl.DataFrame]]
+    ) -> None:
         """执行物理合并与覆写。"""
         if not hasattr(self, "_file_lock"):
             import threading
+
             self._file_lock = threading.Lock()
 
         with self._file_lock:
@@ -235,6 +236,7 @@ class RawDataStorage:
             merged = deduplicate_raw_merged_frame(merged, items[0][0] if items else None)
 
             import threading
+
             temp_path = file_path.with_suffix(f".{threading.get_ident()}.tmp.parquet")
             merged.write_parquet(temp_path)
             temp_path.replace(file_path)
@@ -259,8 +261,21 @@ class RawDataStorage:
                 values = normalize_raw_date_series(df.get_column(date_col)).str.slice(0, 8)
                 start = key.start_date.strftime("%Y%m%d")
                 end = key.end_date.strftime("%Y%m%d")
-                if values.filter((values >= start) & (values <= end)).len() == 0:
+                in_range_mask = (values >= start) & (values <= end)
+                if values.filter(in_range_mask).len() == 0:
                     return None
+                df = df.filter(in_range_mask)
+                values = values.filter(in_range_mask)
+            symbol = key.instrument.symbol if key.instrument is not None else None
+            if symbol:
+                symbol_col = first_existing_column(df, RAW_SYMBOL_COLUMNS)
+                if symbol_col:
+                    df = df.filter(pl.col(symbol_col).cast(pl.Utf8, strict=False) == str(symbol))
+                    if df.is_empty():
+                        return None
+                    if date_col:
+                        values = normalize_raw_date_series(df.get_column(date_col)).str.slice(0, 8)
+            if date_col:
                 min_value = values.min()
                 max_value = values.max()
                 if (
@@ -269,11 +284,6 @@ class RawDataStorage:
                     and (min_value > start or max_value < end)
                 ):
                     return None
-            if symbol:
-                symbol_col = first_existing_column(df, RAW_SYMBOL_COLUMNS)
-                if symbol_col:
-                    filtered = df.filter(pl.col(symbol_col) == symbol)
-                    return filtered if not filtered.is_empty() else None
             return df
         except Exception as e:
             logger.error(f"读取 RAW 请求缓存失败 [{paths}]: {e}")
@@ -315,48 +325,8 @@ class RawDataStorage:
             logger.error(f"读取 RAW 归档文件失败 [{file_path}]: {e}")
             return None
 
-    def has_raw(self, data_source: str, endpoint: str, target_date: date) -> bool:
+    def has_raw(
+        self, data_source: str, endpoint: str, target_date: date, symbol: str | None = None
+    ) -> bool:
         """判断本地是否存在指定日期的 RAW 归档数据。"""
-        legacy_path = self._get_file_path(data_source, endpoint, target_date)
-        if legacy_path.exists():
-            return True
-        source_dir = self.base_dir / data_source
-        if not source_dir.exists():
-            return False
-        year_month_path = f"year={target_date.year:04d}/month={target_date.month:02d}"
-        task = resolve_task(data_source, endpoint)
-        dataset_names = [task.dataset]
-        market = get_endpoint_market(data_source, task.task_name)
-        for dataset_name in dataset_names:
-            dataset_dir = source_dir / f"market={market.upper()}" / dataset_name
-            path = dataset_dir / year_month_path / "data.parquet"
-            if not path.exists() or path.name.endswith(RAW_ARTIFACT_SUFFIXES):
-                continue
-            if path not in self._raw_dates_cache:
-                try:
-                    df = pl.read_parquet(path)
-                    date_col = first_existing_column(df, RAW_RANGE_DATE_COLUMNS)
-                    if date_col is not None:
-                        self._raw_dates_cache[path] = set(
-                            normalize_raw_date_series(df.get_column(date_col)).str.slice(0, 8).drop_nulls().unique().to_list()
-                        )
-                    else:
-                        self._raw_dates_cache[path] = None
-                except Exception as e:
-                    logger.warning(f"读取 RAW 日期检查文件失败 [{path}]: {e}")
-                    continue
-
-
-            dates_set = self._raw_dates_cache[path]
-            if dates_set is None:
-                return True
-            target_plain = target_date.strftime("%Y%m%d")
-            candidate_dates = {target_plain}
-            effective_date = target_date
-            while effective_date.weekday() >= 5:
-                effective_date -= timedelta(days=1)
-                candidate_dates.add(effective_date.strftime("%Y%m%d"))
-            if any(d in dates_set for d in candidate_dates):
-                return True
-
-        return False
+        return has_raw_cache(self, data_source, endpoint, target_date, symbol)

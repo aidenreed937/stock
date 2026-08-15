@@ -1,4 +1,5 @@
 from datetime import date
+
 import polars as pl
 
 from stock.data.ops.repartition import repartition_all_curated, repartition_dataset
@@ -76,7 +77,7 @@ def test_repartition_dataset_uses_report_end_date_and_preserves_backup(tmp_path)
         "exchange": ["SSE"],
         "currency": ["CNY"],
         "adjustment": ["raw"],
-        "schema_version": ["v1"],
+        "schema_version": ["v2"],
     })
     df.write_parquet(file_dir / "data.parquet")
 

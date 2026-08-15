@@ -1,11 +1,11 @@
 """sw_daily 申万行业日行情数据清洗与去重工具。
 
-负责统一 symbol/index_id 字段，消除 801980.SI 等冗余记录，保障行业日行情按 (symbol, trade_date) 严格唯一。
+负责统一 symbol/index_id 字段，消除冗余记录，并保障行业日行情主键唯一。
 """
 
 import argparse
-from pathlib import Path
 import shutil
+from pathlib import Path
 from typing import Any
 
 import polars as pl
@@ -59,36 +59,6 @@ def clean_partition_sw_daily(
         cleaned = cleaned.sort(["symbol", "trade_date"]).unique(
             subset=["symbol", "trade_date"], keep="last", maintain_order=True
         )
-
-    # 4. 单位归一化自愈：若发现 amount / total_mv / float_mv 为万元单位，将其转换为标准元 (* 10000.0)
-    unit_fixes = []
-    is_wan_record = (
-        (pl.col("amount").is_not_null() & (pl.col("amount") > 0) & (pl.col("amount") < 5e8))
-        | (pl.col("total_mv").is_not_null() & (pl.col("total_mv") > 0) & (pl.col("total_mv") < 1e11))
-    )
-    if "amount" in cleaned.columns:
-        unit_fixes.append(
-            pl.when(is_wan_record & (pl.col("amount") < 5e8))
-            .then(pl.col("amount") * 10000.0)
-            .otherwise(pl.col("amount"))
-            .alias("amount")
-        )
-    if "total_mv" in cleaned.columns:
-        unit_fixes.append(
-            pl.when(is_wan_record & (pl.col("total_mv") < 1e11))
-            .then(pl.col("total_mv") * 10000.0)
-            .otherwise(pl.col("total_mv"))
-            .alias("total_mv")
-        )
-    if "float_mv" in cleaned.columns:
-        unit_fixes.append(
-            pl.when(is_wan_record & (pl.col("float_mv") < 1e11))
-            .then(pl.col("float_mv") * 10000.0)
-            .otherwise(pl.col("float_mv"))
-            .alias("float_mv")
-        )
-    if unit_fixes:
-        cleaned = cleaned.with_columns(unit_fixes)
 
     after_count = len(cleaned)
     removed_count = before_count - after_count
@@ -153,8 +123,16 @@ def repair_all_sw_daily(
 
 def main() -> None:
     parser = argparse.ArgumentParser(description="sw_daily 申万行业行情清洗与去重工具")
-    parser.add_argument("--curated-root", default=str(_CURATED_DIR), help="Curated sw_daily 根目录")
-    parser.add_argument("--apply", action="store_true", help="执行实际写入与替换备份 (默认只读预览)")
+    parser.add_argument(
+        "--curated-root",
+        default=str(_CURATED_DIR),
+        help="Curated sw_daily 根目录",
+    )
+    parser.add_argument(
+        "--apply",
+        action="store_true",
+        help="执行实际写入与替换备份 (默认只读预览)",
+    )
     args = parser.parse_args()
 
     repair_all_sw_daily(args.curated_root, apply=args.apply)

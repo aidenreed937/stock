@@ -218,6 +218,10 @@ def _resolve_universe_symbols(universe_name: str | None) -> str | None:
                 syms = u_def.get("symbols", []) if isinstance(u_def, dict) else []
                 if isinstance(syms, list) and syms:
                     return ",".join(str(s) for s in syms)
+                if isinstance(u_def, dict) and any(
+                    key in u_def for key in ("a_shares", "global", "macro")
+                ):
+                    return "watchlist"
     except Exception as err:
         logger.warning(f"加载 Universe 股票池 [{universe_name}] 失败: {err}")
     return None

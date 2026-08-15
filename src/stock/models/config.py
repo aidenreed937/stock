@@ -209,6 +209,8 @@ class DataConfig(BaseModel):
     concurrency: ConcurrencyConfig = Field(default_factory=ConcurrencyConfig)
     watchlists: WatchlistsConfig = Field(default_factory=WatchlistsConfig)
     backfill: BackfillDefaultsConfig = Field(default_factory=BackfillDefaultsConfig)
+    source_endpoint_supports: dict[str, dict[str, list[str]]] = Field(default_factory=dict)
+    endpoint_start_date_overrides: dict[str, str] = Field(default_factory=dict)
 
 
 class DataConfigFile(BaseModel):

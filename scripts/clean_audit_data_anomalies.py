@@ -10,9 +10,9 @@ logging.basicConfig(level=logging.INFO, format="%(asctime)s - %(levelname)s - %(
 logger = logging.getLogger(__name__)
 
 
-def clean_index_daily(base_dir: Path) -> None:
-    """清洗 tushare index_daily 中 repair_run 且被误认为 US_EXCHANGE 的行。"""
-    target_dir = base_dir / "curated" / "tushare" / "market=CN" / "index_daily"
+def clean_index_daily_bar(base_dir: Path) -> None:
+    """清洗 tushare index_daily_bar 中 repair_run 且被误认为 US_EXCHANGE 的行。"""
+    target_dir = base_dir / "curated" / "tushare" / "market=CN" / "index_daily_bar"
     if not target_dir.exists():
         logger.warning(f"目录 {target_dir} 不存在，跳过。")
         return
@@ -36,7 +36,7 @@ def clean_index_daily(base_dir: Path) -> None:
             clean_df.write_parquet(p)
             total_removed += removed_count
 
-    logger.info(f"[index_daily] 总计移除: {total_removed} 行")
+    logger.info(f"[index_daily_bar] 总计移除: {total_removed} 行")
 
 
 def clean_yfinance_index_daily_bar(base_dir: Path) -> None:
@@ -94,7 +94,7 @@ def main() -> None:
         return
 
     logger.info("=== 开始执行数据清洗 ===")
-    clean_index_daily(base_dir)
+    clean_index_daily_bar(base_dir)
     clean_yfinance_index_daily_bar(base_dir)
     clean_macro_indicators(base_dir)
     logger.info("=== 数据清洗完成 ===")

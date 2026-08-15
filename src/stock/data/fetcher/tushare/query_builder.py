@@ -2,11 +2,11 @@
 
 from datetime import date
 from typing import Any
+
 import pandas as pd
 import polars as pl
 
 from stock.data.fetcher.tushare.registry_meta import EndpointMeta
-
 
 TUSHARE_INDEX_DAILYBASIC_SUPPORTED_CODES = {
     "000001.SH", "399001.SZ", "000300.SH", "000905.SH", "399006.SZ"
@@ -15,7 +15,11 @@ TUSHARE_INDEX_DAILYBASIC_SUPPORTED_CODES = {
 
 def is_index_dailybasic_supported(endpoint: str, symbol: str) -> bool:
     """检查指数代码是否受 index_dailybasic 接口支持。"""
-    if endpoint == "index_dailybasic" and symbol and symbol not in TUSHARE_INDEX_DAILYBASIC_SUPPORTED_CODES:
+    if (
+        endpoint == "index_dailybasic"
+        and symbol
+        and symbol not in TUSHARE_INDEX_DAILYBASIC_SUPPORTED_CODES
+    ):
         return False
     return True
 
@@ -38,15 +42,23 @@ def build_tushare_query(
     end_str = end_date.strftime("%Y%m%d")
     is_real_symbol = bool(symbol and (symbol != endpoint))
     query_kwargs: dict[str, Any] = dict(extra_kwargs)
+    index_code_endpoints = {"index_weight", "index_classify", "index_member"}
+    symbol_param = "index_code" if endpoint in index_code_endpoints else "ts_code"
+
+    if endpoint == "trade_cal":
+        query_kwargs.setdefault("exchange", "")
+        query_kwargs["start_date"] = start_str
+        query_kwargs["end_date"] = end_str
+        return endpoint, query_kwargs
 
     if meta.frequency == "event":
         if is_real_symbol:
-            query_kwargs["index_code" if endpoint in ("index_weight", "index_classify", "index_member") else "ts_code"] = symbol
+            query_kwargs[symbol_param] = symbol
         if endpoint == "stock_basic" and not is_real_symbol:
             query_kwargs["list_status"] = "L"
     else:
         if is_real_symbol:
-            query_kwargs["index_code" if endpoint in ("index_weight", "index_classify", "index_member") else "ts_code"] = symbol
+            query_kwargs[symbol_param] = symbol
             query_kwargs["start_date"], query_kwargs["end_date"] = start_str, end_str
         else:
             if start_date == end_date:

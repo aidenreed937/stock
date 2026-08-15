@@ -4,8 +4,11 @@ from datetime import date
 from pathlib import Path
 
 import polars as pl
+import pytest
 
+from stock.core.contracts import DatasetKey, instrument_for_symbol
 from stock.data.storage.raw_store import RawDataStorage
+from stock.exceptions import DataValidationError
 
 
 class TrackingLock:
@@ -46,6 +49,22 @@ def test_raw_storage_save_and_load(tmp_path: Path) -> None:
     assert loaded_df is not None
     assert len(loaded_df) == 1
     assert loaded_df["ts_code"][0] == "600000.SH"
+
+
+def test_raw_storage_legacy_has_raw_checks_symbol(tmp_path: Path) -> None:
+    store = RawDataStorage(base_dir=tmp_path)
+    target_date = date(2026, 8, 12)
+    dummy_df = pl.DataFrame(
+        {
+            "ts_code": ["600000.SH"],
+            "trade_date": ["20260812"],
+            "close": [10.5],
+        }
+    )
+    store.save_raw("tushare", "daily", target_date, dummy_df)
+
+    assert store.has_raw("tushare", "daily", target_date, symbol="600000.SH")
+    assert not store.has_raw("tushare", "daily", target_date, symbol="000001.SZ")
 
 
 def test_raw_storage_missing_cache(tmp_path: Path) -> None:
@@ -91,9 +110,62 @@ def test_raw_storage_has_raw_requires_target_date_in_month_file(tmp_path: Path) 
     assert not store.has_raw("yfinance", "history", date(2026, 8, 12))
 
 
-def test_raw_storage_save_dataset_multi_month(tmp_path: Path) -> None:
-    from stock.core.contracts import DatasetKey
+def test_raw_storage_has_raw_requires_symbol_date_intersection(tmp_path: Path) -> None:
+    store = RawDataStorage(base_dir=tmp_path)
+    cache_path = (
+        tmp_path
+        / "yfinance"
+        / "market=US"
+        / "stock_daily_bar"
+        / "year=2026"
+        / "month=08"
+        / "data.parquet"
+    )
+    cache_path.parent.mkdir(parents=True)
+    pl.DataFrame(
+        {
+            "symbol": ["AAPL", "MSFT"],
+            "trade_date": ["20260803", "20260804"],
+        }
+    ).write_parquet(cache_path)
 
+    assert not store.has_raw("yfinance", "history", date(2026, 8, 4), symbol="AAPL")
+    assert not store.has_raw("yfinance", "history", date(2026, 8, 3), symbol="MSFT")
+    assert store.has_raw("yfinance", "history", date(2026, 8, 4), symbol="MSFT")
+
+
+def test_raw_storage_load_dataset_requires_symbol_date_intersection(tmp_path: Path) -> None:
+    store = RawDataStorage(base_dir=tmp_path)
+    saved_key = DatasetKey(
+        provider="yfinance",
+        dataset="stock_daily_bar",
+        endpoint="history",
+        start_date=date(2026, 8, 1),
+        end_date=date(2026, 8, 2),
+    )
+    store.save_dataset(
+        saved_key,
+        pl.DataFrame(
+            {
+                "symbol": ["AAPL", "MSFT"],
+                "trade_date": ["20260801", "20260802"],
+                "close": [100.0, 200.0],
+            }
+        ),
+    )
+    requested_key = DatasetKey(
+        provider="yfinance",
+        dataset="stock_daily_bar",
+        endpoint="history",
+        start_date=date(2026, 8, 2),
+        end_date=date(2026, 8, 2),
+        instrument=instrument_for_symbol("AAPL", "yfinance"),
+    )
+
+    assert store.load_dataset(requested_key) is None
+
+
+def test_raw_storage_save_dataset_multi_month(tmp_path: Path) -> None:
     store = RawDataStorage(base_dir=tmp_path)
     df_multi = pl.DataFrame(
         {
@@ -140,9 +212,30 @@ def test_raw_storage_save_dataset_multi_month(tmp_path: Path) -> None:
     assert df_26["trade_date"][0] == "20260812"
 
 
-def test_raw_storage_load_dataset_spans_month_partitions(tmp_path: Path) -> None:
-    from stock.core.contracts import DatasetKey
+def test_raw_storage_rejects_mixed_invalid_dates_without_partial_write(tmp_path: Path) -> None:
+    store = RawDataStorage(base_dir=tmp_path)
+    key = DatasetKey(
+        provider="tushare",
+        dataset="daily_basic",
+        endpoint="daily_basic",
+        start_date=date(2026, 8, 1),
+        end_date=date(2026, 8, 2),
+    )
+    frame = pl.DataFrame(
+        {
+            "ts_code": ["000001.SZ", "000002.SZ"],
+            "trade_date": ["20260801", "20261302"],
+            "close": [10.0, 20.0],
+        }
+    )
 
+    with pytest.raises(DataValidationError, match="无法解析的日期"):
+        store.save_dataset(key, frame)
+
+    assert not list(tmp_path.rglob("*.parquet"))
+
+
+def test_raw_storage_load_dataset_spans_month_partitions(tmp_path: Path) -> None:
     store = RawDataStorage(base_dir=tmp_path)
     key = DatasetKey(
         provider="tushare",
@@ -169,8 +262,6 @@ def test_raw_storage_load_dataset_spans_month_partitions(tmp_path: Path) -> None
 
 
 def test_raw_storage_load_dataset_misses_when_month_partition_missing(tmp_path: Path) -> None:
-    from stock.core.contracts import DatasetKey
-
     store = RawDataStorage(base_dir=tmp_path)
     saved_key = DatasetKey(
         provider="tushare",
@@ -195,8 +286,6 @@ def test_raw_storage_load_dataset_misses_when_month_partition_missing(tmp_path: 
 
 
 def test_raw_storage_preserves_source_fields_without_curated_metadata(tmp_path: Path) -> None:
-    from stock.core.contracts import DatasetKey
-
     store = RawDataStorage(base_dir=tmp_path)
     key = DatasetKey(
         provider="tushare",
@@ -235,8 +324,6 @@ def test_raw_storage_preserves_source_fields_without_curated_metadata(tmp_path: 
 
 
 def test_raw_storage_batch_buffer_append_uses_file_lock(tmp_path: Path) -> None:
-    from stock.core.contracts import DatasetKey
-
     store = RawDataStorage(base_dir=tmp_path)
     lock = TrackingLock()
     store._file_lock = lock
@@ -291,7 +378,9 @@ def test_raw_storage_sw_daily_legacy_index_id_multi_industry_preserved(tmp_path:
         store.save_dataset(key, df_ind)
 
     # 验证最终落盘的 RAW 文件包含全部 31 个行业
-    raw_file = tmp_path / "tushare" / "market=CN" / "sw_daily" / "year=2026" / "month=08" / "data.parquet"
+    raw_file = (
+        tmp_path / "tushare" / "market=CN" / "sw_daily" / "year=2026" / "month=08" / "data.parquet"
+    )
     assert raw_file.exists()
     df_loaded = pl.read_parquet(raw_file)
     assert len(df_loaded) == 31
@@ -299,7 +388,7 @@ def test_raw_storage_sw_daily_legacy_index_id_multi_industry_preserved(tmp_path:
 
 
 def test_raw_storage_heterogeneous_schema_coalesced_dedup(tmp_path: Path) -> None:
-    """验证异构 Schema (部分 index_id，部分 ts_code) 对角线合并时不会发生空值键折叠，且支持幂等更新。"""
+    """验证异构 Schema 对角线合并时不会发生空值键折叠，且支持幂等更新。"""
     from stock.core.contracts import DatasetKey
 
     store = RawDataStorage(base_dir=tmp_path)
@@ -332,7 +421,9 @@ def test_raw_storage_heterogeneous_schema_coalesced_dedup(tmp_path: Path) -> Non
     )
     store.save_dataset(key, df_new)
 
-    raw_file = tmp_path / "tushare" / "market=CN" / "sw_daily" / "year=2026" / "month=08" / "data.parquet"
+    raw_file = (
+        tmp_path / "tushare" / "market=CN" / "sw_daily" / "year=2026" / "month=08" / "data.parquet"
+    )
     df_loaded = pl.read_parquet(raw_file)
 
     # 应该包含 3 个行业 (801010, 801020, 850001)，其中 801010 更新为 105.0

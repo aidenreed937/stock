@@ -4,9 +4,9 @@
 """
 
 import argparse
+import shutil
 from datetime import datetime, timezone
 from pathlib import Path
-import shutil
 from typing import Any
 
 import polars as pl
@@ -146,12 +146,12 @@ def clean_partition_daily_basic(
             curr_expr.alias("currency")
             if "currency" not in cleaned_cur.columns
             else pl.col("currency").fill_null(curr_expr).alias("currency"),
-            pl.lit("None").alias("adjustment")
+            pl.lit("raw").alias("adjustment")
             if "adjustment" not in cleaned_cur.columns
-            else pl.col("adjustment").fill_null("None").alias("adjustment"),
-            pl.lit("1.0.0").alias("schema_version")
+            else pl.col("adjustment").fill_null("raw").alias("adjustment"),
+            pl.lit("v2").alias("schema_version")
             if "schema_version" not in cleaned_cur.columns
-            else pl.col("schema_version").fill_null("1.0.0").alias("schema_version"),
+            else pl.col("schema_version").fill_null("v2").alias("schema_version"),
             pl.lit("daily_basic").alias("source_endpoint")
             if "source_endpoint" not in cleaned_cur.columns
             else pl.col("source_endpoint").fill_null("daily_basic").alias("source_endpoint"),
@@ -271,8 +271,16 @@ def repair_all_daily_basic(
 def main() -> None:
     parser = argparse.ArgumentParser(description="daily_basic 数据质量与量纲修复工具")
     parser.add_argument("--raw-root", default=str(_RAW_DIR), help="RAW daily_basic 根目录")
-    parser.add_argument("--curated-root", default=str(_CURATED_DIR), help="Curated daily_basic 根目录")
-    parser.add_argument("--apply", action="store_true", help="执行实际写入与替换备份 (默认只读预览)")
+    parser.add_argument(
+        "--curated-root",
+        default=str(_CURATED_DIR),
+        help="Curated daily_basic 根目录",
+    )
+    parser.add_argument(
+        "--apply",
+        action="store_true",
+        help="执行实际写入与替换备份 (默认只读预览)",
+    )
     args = parser.parse_args()
 
     repair_all_daily_basic(args.raw_root, args.curated_root, apply=args.apply)

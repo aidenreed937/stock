@@ -74,6 +74,7 @@ def _render_summary(
         {
             "数据源": p.data_source,
             "任务端点": p.endpoint,
+            "标的": p.symbol or "全市场",
             "当前水位": str(p.watermark) if p.watermark else "无数据",
             "规划区间": f"{p.start_date} ~ {p.end_date}",
             "状态/原因": p.reason or p.status,
@@ -83,15 +84,17 @@ def _render_summary(
     if plan_rows:
         logger.info(f"[{src.upper()}] 增量同步规划与就绪状态已生成 ({len(plan_rows)} 项)")
 
-    exec_failed = False
+    exec_failed = any(p.status == "FAILED" for p in plan)
     if results:
         exec_rows = []
         for r in results:
-            if r.status == "FAILED":
+            if r.status in {"FAILED", "NO_DATA"}:
                 exec_failed = True
+            symbol = getattr(r, "symbol", "")
             exec_rows.append(
                 {
                     "任务端点": r.endpoint,
+                    "标的": symbol or "全市场",
                     "同步区间": f"{r.start_date} ~ {r.end_date}",
                     "落盘记录数": r.records,
                     "耗时(秒)": r.duration_s,

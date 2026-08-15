@@ -94,11 +94,20 @@ class MarketScanEngine:
             breadth_res = f_breadth.result()
             sentiment_res = f_sent.result()
 
-        eval_date = (
-            target_date
-            or (regime_res.trade_date if regime_res else None)
-            or (tcr_res.trade_date if tcr_res else date.today())
-        )
+        result_dates = [
+            getattr(result, "trade_date", None)
+            for result in (
+                regime_res,
+                tcr_res,
+                pbroe_res,
+                momentum_res,
+                margin_res,
+                breadth_res,
+                sentiment_res,
+            )
+        ]
+        actual_dates = [value for value in result_dates if isinstance(value, date)]
+        eval_date = max(actual_dates) if actual_dates else (target_date or date.today())
 
         undervalued_raw = pbroe_res.undervalued_industries if pbroe_res else []
         undervalued = [self.classifier.resolve_name(c) for c in undervalued_raw]

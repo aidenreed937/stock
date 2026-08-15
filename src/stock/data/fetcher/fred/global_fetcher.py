@@ -32,7 +32,10 @@ class FredDataFetcher(BaseDataFetcher):
     ) -> pl.DataFrame:
         """实现 BaseDataFetcher 接口。抓取指定 FRED 宏观序列。"""
         if endpoint == "macro_indicators" or symbol == "macro_indicators":
-            return self.fetch_macro_indicators_df(start_date, end_date)
+            series_ids = None if symbol in {"", "macro_indicators"} else [symbol]
+            if series_ids is None:
+                return self.fetch_macro_indicators_df(start_date, end_date)
+            return self.fetch_macro_indicators_df(start_date, end_date, series_ids=series_ids)
         return self.fetch_series_df(symbol, start_date, end_date)
 
     def fetch_series_df(self, series_id: str, start_date: date, end_date: date) -> pl.DataFrame:
