@@ -231,7 +231,7 @@ print(df_sector_rc.head(10))
 
 1. **金额单位口径统一为元 (CNY)**：
    * `stock_daily_bar`、`sw_daily` 中的 `amount` 经过 Curated 黄金层清洗后统一为**元 (CNY)**，换算为亿元直接除以 `1e8`。
-   * `daily_basic` 中的 `total_mv` 和 `circ_mv` 单位为**万元**。
+   * `daily_basic` 中的 `total_mv` 和 `circ_mv` 经过 Curated 黄金层清洗后统一为**元 (CNY)**。
 2. **Polars 聚合多列重名冲突防范**：
    * 在使用 Polars 执行 `select([pl.col("date").min(), pl.col("date").max()])` 时，新版 Polars 会因投影重名触发 `DuplicateError`。
    * **正确写法**：必须使用显式别名：

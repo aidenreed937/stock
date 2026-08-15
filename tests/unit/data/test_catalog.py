@@ -182,6 +182,7 @@ def test_describe_lists_datasets(tmp_path: Path) -> None:
     row = summary.filter(pl.col("dataset") == "stock_daily_bar")
     assert len(row) == 1
     assert row["files"][0] == 2
+    assert row["rows"][0] == 6
 
 
 def test_updated_at_timezone_tolerance(tmp_path: Path) -> None:
@@ -236,7 +237,9 @@ def test_catalog_standardized_methods(tmp_path) -> None:
     summary_df = catalog.summary()
     assert len(summary_df) >= 1
     assert "daily_basic" in summary_df["dataset"].to_list()
-    assert summary_df.filter(pl.col("dataset") == "daily_basic")["latest_date"][0] == "2026-08-14"
+    daily_basic_summary = summary_df.filter(pl.col("dataset") == "daily_basic")
+    assert daily_basic_summary["latest_date"][0] == "2026-08-14"
+    assert daily_basic_summary["total_rows"][0] == 1
 
     # 5. load_bars with alias
     _make_bar_file(tmp_path, "stock_daily_bar", "CN", 2026, 8)
@@ -247,3 +250,28 @@ def test_catalog_standardized_methods(tmp_path) -> None:
     # 6. load_dataset with alias
     basic_df = catalog.load_dataset("daily_basic")
     assert not basic_df.is_empty()
+
+
+def test_latest_trade_dates_scans_all_markets_in_latest_month(tmp_path: Path) -> None:
+    """最新日期不能被同月某个市场文件的较早水位提前截断。"""
+    us_partition = tmp_path / "yfinance/market=US/stock_daily_bar/year=2026/month=08"
+    global_partition = tmp_path / "yfinance/market=GLOBAL/stock_daily_bar/year=2026/month=08"
+    us_partition.mkdir(parents=True, exist_ok=True)
+    global_partition.mkdir(parents=True, exist_ok=True)
+
+    pl.DataFrame(
+        {
+            "symbol": ["AAPL"] * 13,
+            "trade_date": [date(2026, 8, day) for day in range(1, 14)],
+        }
+    ).write_parquet(us_partition / "data.parquet")
+    pl.DataFrame(
+        {
+            "symbol": ["^GSPC"],
+            "trade_date": [date(2026, 8, 14)],
+        }
+    ).write_parquet(global_partition / "data.parquet")
+
+    catalog = DataCatalog(data_source="yfinance", storage_dir=tmp_path)
+
+    assert catalog.get_latest_trade_date("stock_daily_bar") == date(2026, 8, 14)

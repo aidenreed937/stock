@@ -33,7 +33,9 @@ class CatalogDataset:
         if not self.files:
             return None
         try:
-            return int(sum(pl.scan_parquet(f).count().collect().item() for f in self.files))
+            return int(sum(
+                pl.scan_parquet(path).select(pl.len()).collect().item() for path in self.files
+            ))
         except Exception:
             return None
 
@@ -379,8 +381,6 @@ def _scan_latest_trade_dates(files: list[Path], n: int = 1) -> list[date]:
             for d in distinct_df[date_col].to_list():
                 if isinstance(d, date):
                     found.add(d)
-            if len(found) >= max(n * 3, 10):
-                break
         except Exception:
             continue
     return sorted(found, reverse=True)[:n]
