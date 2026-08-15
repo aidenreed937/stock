@@ -140,6 +140,100 @@ def test_raw_storage_save_dataset_multi_month(tmp_path: Path) -> None:
     assert df_26["trade_date"][0] == "20260812"
 
 
+def test_raw_storage_load_dataset_spans_month_partitions(tmp_path: Path) -> None:
+    from stock.core.contracts import DatasetKey
+
+    store = RawDataStorage(base_dir=tmp_path)
+    key = DatasetKey(
+        provider="tushare",
+        dataset="daily_basic",
+        endpoint="daily_basic",
+        start_date=date(2026, 1, 30),
+        end_date=date(2026, 2, 2),
+    )
+    store.save_dataset(
+        key,
+        pl.DataFrame(
+            {
+                "ts_code": ["000001.SZ", "000001.SZ"],
+                "trade_date": ["20260130", "20260202"],
+                "close": [10.0, 10.2],
+            }
+        ),
+    )
+
+    loaded = store.load_dataset(key)
+
+    assert loaded is not None
+    assert loaded.sort("trade_date")["trade_date"].to_list() == ["20260130", "20260202"]
+
+
+def test_raw_storage_load_dataset_misses_when_month_partition_missing(tmp_path: Path) -> None:
+    from stock.core.contracts import DatasetKey
+
+    store = RawDataStorage(base_dir=tmp_path)
+    saved_key = DatasetKey(
+        provider="tushare",
+        dataset="daily_basic",
+        endpoint="daily_basic",
+        start_date=date(2026, 1, 30),
+        end_date=date(2026, 1, 30),
+    )
+    store.save_dataset(
+        saved_key,
+        pl.DataFrame({"ts_code": ["000001.SZ"], "trade_date": ["20260130"], "close": [10.0]}),
+    )
+    requested_key = DatasetKey(
+        provider="tushare",
+        dataset="daily_basic",
+        endpoint="daily_basic",
+        start_date=date(2026, 1, 30),
+        end_date=date(2026, 2, 2),
+    )
+
+    assert store.load_dataset(requested_key) is None
+
+
+def test_raw_storage_preserves_source_fields_without_curated_metadata(tmp_path: Path) -> None:
+    from stock.core.contracts import DatasetKey
+
+    store = RawDataStorage(base_dir=tmp_path)
+    key = DatasetKey(
+        provider="tushare",
+        dataset="daily_basic",
+        endpoint="daily_basic",
+        start_date=date(2026, 8, 12),
+        end_date=date(2026, 8, 12),
+    )
+    raw_df = pl.DataFrame(
+        {
+            "ts_code": ["000001.SZ"],
+            "trade_date": ["20260812"],
+            "vol": [123.45],
+            "amount": [678.9],
+            "vendor_extra": ["source-specific"],
+        }
+    )
+
+    store.save_dataset(key, raw_df)
+    loaded = store.load_dataset(key)
+
+    assert loaded is not None
+    assert loaded.columns == raw_df.columns
+    assert loaded.to_dict(as_series=False) == raw_df.to_dict(as_series=False)
+    assert not {
+        "data_source",
+        "source_endpoint",
+        "request_id",
+        "updated_at",
+        "market",
+        "exchange",
+        "currency",
+        "adjustment",
+        "schema_version",
+    }.intersection(loaded.columns)
+
+
 def test_raw_storage_batch_buffer_append_uses_file_lock(tmp_path: Path) -> None:
     from stock.core.contracts import DatasetKey
 

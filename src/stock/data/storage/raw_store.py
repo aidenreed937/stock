@@ -24,6 +24,49 @@ def _append_write_buffer(
         write_buffer.setdefault(file_path, []).append(item)
 
 
+def _iter_month_starts(start_date: date, end_date: date) -> list[date]:
+    months: list[date] = []
+    current = date(start_date.year, start_date.month, 1)
+    last = date(end_date.year, end_date.month, 1)
+    while current <= last:
+        months.append(current)
+        current = (
+            date(current.year + 1, 1, 1)
+            if current.month == 12
+            else date(current.year, current.month + 1, 1)
+        )
+    return months
+
+
+def _dataset_paths_for_key(storage: Any, key: DatasetKey) -> list[Path]:
+    paths: list[Path] = []
+    for month_start in _iter_month_starts(key.start_date, key.end_date):
+        month_key = DatasetKey(
+            provider=key.provider,
+            dataset=key.dataset,
+            endpoint=key.endpoint,
+            start_date=month_start,
+            end_date=date(month_start.year, month_start.month, 28),
+            instrument=key.instrument,
+            adjustment=key.adjustment,
+            schema_version=key.schema_version,
+        )
+        path = storage._get_dataset_path(month_key)
+        if path not in paths:
+            paths.append(path)
+    return paths
+
+
+def _read_dataset_paths(paths: list[Path]) -> pl.DataFrame | None:
+    if any(not path.exists() for path in paths):
+        return None
+    frames = [pl.read_parquet(path) for path in paths]
+    frames = [frame for frame in frames if not frame.is_empty()]
+    if not frames:
+        return None
+    return frames[0] if len(frames) == 1 else pl.concat(frames, how="diagonal_relaxed")
+
+
 class RawDataStorage:
     """RAW 原始数据存储引擎。
 
@@ -232,14 +275,14 @@ class RawDataStorage:
 
     def load_dataset(self, key: DatasetKey) -> pl.DataFrame | None:  # noqa: PLR0911
         """按数据集和月份读取 RAW 归档数据。"""
-        file_path = self._get_dataset_path(key)
-        if not file_path.exists():
-            return None
+        paths = _dataset_paths_for_key(self, key)
         try:
-            df = pl.read_parquet(file_path)
+            df = _read_dataset_paths(paths)
+            if df is None:
+                return None
             if df.is_empty():
                 return None
-            symbol = key.instrument_slug
+            symbol = key.instrument.symbol if key.instrument is not None else None
             date_cols = [
                 c for c in ["trade_date", "date", "end_date", "month", "quarter"] if c in df.columns
             ]
@@ -269,7 +312,7 @@ class RawDataStorage:
                     return filtered if not filtered.is_empty() else None
             return df
         except Exception as e:
-            logger.error(f"读取 RAW 请求缓存失败 [{file_path}]: {e}")
+            logger.error(f"读取 RAW 请求缓存失败 [{paths}]: {e}")
             return None
 
     def _get_dataset_path(self, key: DatasetKey) -> Path:

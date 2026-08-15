@@ -103,6 +103,46 @@ def test_fetcher_stage_validate_endpoint_frame_exceptions(tmp_path: Path) -> Non
         )
 
 
+def test_fetcher_stage_saves_unclipped_raw_before_returning_clipped_frame() -> None:
+    fetcher = MagicMock()
+    raw_store = MagicMock()
+    raw_store.load_dataset.return_value = None
+    stage = FetcherStage(fetcher, raw_store, data_source="tushare")
+    source_df = pl.DataFrame(
+        {
+            "ts_code": ["600519.SH", "600519.SH", "600519.SH"],
+            "trade_date": ["20240101", "20240102", "20240103"],
+            "open": [10.0, 11.0, 12.0],
+            "high": [10.5, 11.5, 12.5],
+            "low": [9.5, 10.5, 11.5],
+            "close": [10.2, 11.2, 12.2],
+            "vol": [100.0, 110.0, 120.0],
+            "amount": [1000.0, 1100.0, 1200.0],
+        }
+    )
+    fetcher.fetch_daily_bars_df.return_value = source_df
+    key = DatasetKey(
+        provider="tushare",
+        dataset="stock_daily_bar",
+        endpoint="stock_daily_bar",
+        start_date=date(2024, 1, 2),
+        end_date=date(2024, 1, 2),
+    )
+
+    result = stage.extract(
+        symbol="600519.SH",
+        start_date=date(2024, 1, 2),
+        end_date=date(2024, 1, 2),
+        key=key,
+        api_name="daily",
+        endpoint_name="stock_daily_bar",
+    )
+
+    saved_df = raw_store.save_dataset.call_args.args[1]
+    assert saved_df.to_dict(as_series=False) == source_df.to_dict(as_series=False)
+    assert result["trade_date"].to_list() == ["20240102"]
+
+
 def test_normalizer_stage_empty_and_inferred_metadata() -> None:
     stage = NormalizerStage(GenericNormalizer(), data_source="yfinance")
 

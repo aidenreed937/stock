@@ -60,7 +60,6 @@ class FetcherStage:
             if raw_df.is_empty():
                 logger.warning(f"数据源未返回数据 [{symbol}]")
                 return raw_df
-            raw_df = self.clip_date_range(raw_df, start_date, end_date, endpoint_name)
             self.validate_endpoint_frame(raw_df, start_date, end_date, endpoint_name)
             self.raw_store.save_dataset(key, raw_df)
 
