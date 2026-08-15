@@ -9,8 +9,8 @@
 ```
 [ ] 步骤 1: Fetcher 接口元数据定义 (EndpointMeta)
 [ ] 步骤 2: 质量与单位 Profile 绑定 (Registry Profiles)
-[ ] 步骤 3: 任务路由与分区分流 (TaskRegistry)
-[ ] 步骤 4: 调度规划器策略归类 (BackfillPlanner)
+[ ] 步骤 3: 项目任务路由契约 (TaskRegistry / TaskSpec)
+[ ] 步骤 4: 观察池与单次同步策略 (BackfillPlanner)
 [ ] 步骤 5: 自动化测试与 Lint 门禁验证 (pytest & make lint)
 ```
 
@@ -67,18 +67,22 @@
 
 - **文件路径**：[`src/stock/data/task_registry.py`](file:///Users/mac/workspace/personal/finance/stock/src/stock/data/task_registry.py)
 - **规则**：
-  1. **标的遍历集合 (`PER_SYMBOL_DATASETS`)**：如果该接口需要按股票代码逐一回填全历史（如财报、预告），必须加入此集合。
-  2. **免分桶单表集合 (`non_part_datasets`)**：如果是宏观单表、利率序列、指数日线等无需按年月深度分区的表，加入此集合，系统将统一落盘为单个 `data.parquet`。
-  3. **自定义任务与别名 (`_CUSTOM_TASKS` / `_ALIASES`)**：确保 CLI 传入的任务短名称能正确路由至底层 API。
+  1. **公开项目任务名 (`task_name`)**：CLI、文档和调度器统一使用项目任务名，例如 `index_daily_bar`；不要把上游 API 名（如 TuShare `index_daily`）直接写进操作示例。
+  2. **底层 API 路由 (`api_name`)**：在 `TaskSpec` 中显式记录项目任务到上游 API 的映射，确保 `index_daily_bar -> index_daily` 这类解耦关系清晰可测。
+  3. **落盘数据集名 (`dataset`)**：明确 RAW/Curated 的标准数据集目录名，通常与 `task_name` 一致。
+  4. **调度与存储契约**：按接口真实行为设置 `fetch_mode`、`partitioned`、`is_single_sync` 和 `required_pool`。需要本地基础池的任务必须设置 `required_pool`，避免空池静默回填。
+  5. **历史兼容别名 (`_ALIASES`)**：只用于兼容旧 API 名或外部路径；新增文档和 CLI 示例必须使用 `TaskSpec.task_name`。
 
 ---
 
-## 步骤 4：调度规划器策略归类 (`BackfillPlanner`)
+## 步骤 4：观察池与单次同步策略 (`BackfillPlanner`)
 
 - **文件路径**：[`src/stock/data/planner.py`](file:///Users/mac/workspace/personal/finance/stock/src/stock/data/planner.py)
 - **规则**：
-  1. **单表/宏观同步集合 (`MARKET_SINGLE_SYNC_ENDPOINTS`)**：若新端点属于全市场单次同步（无需遍历标的池），必须加入此集合。
-  2. **A 股本地股票池集合 (`TUSHARE_STOCK_POOL_ENDPOINTS`)**：若新端点需要以本地 `stock_basic` 作为标的池依次拉取，加入此集合。
+  1. **观察池路由**：确认 `_watchlist_symbols()` 能按数据源和资产类别解析正确标的池，例如 A 股股票、指数、基金、FRED 宏观序列或 yfinance 宏观资产。
+  2. **单标的基准日**：需要按标的回填的任务必须能读取 `base_date` 并截断无效历史区间。
+  3. **`per_symbol + is_single_sync` 展开策略**：若接口虽然是单文件落盘，但源端仍要求按标的请求，必须由 `_should_expand_single_sync()` 返回 `True`，拆成多个原子任务；真正的行业/宏观批量端点才保留空标的单任务。
+  4. **增量同步一致性**：每日增量同样按单标的水位与 `base_date` 规划。新增端点后需要验证 `DailySyncEngine` 不会传空标的或把任务名误当 API 标的。
 
 ---
 

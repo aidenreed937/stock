@@ -43,8 +43,8 @@ make backfill START=YYYY-MM-DD END=YYYY-MM-DD SOURCE=<data_source> [ENDPOINT=<en
 # 示例：回填 26 只自选 ETF 全历史行情与规模 (自动按上市基日截断)
 make backfill START=2005-01-01 END=2026-08-14 SOURCE=tushare ENDPOINT=fund_daily,etf_share_size,fund_adj SYMBOL=watchlist FORCE_REFRESH=1
 
-# 示例：回填 12 年 A 股 10 大核心指数 K 线
-make backfill START=2014-08-01 END=2026-08-12 SOURCE=tushare ENDPOINT=index_daily
+# 示例：回填 12 年 A 股 10 大核心指数 K 线（项目任务名，底层 API 为 index_daily）
+make backfill START=2014-08-01 END=2026-08-12 SOURCE=tushare ENDPOINT=index_daily_bar
 
 # 示例：回填理杏仁 9 大核心指数 12 年基本面估值
 make backfill START=2014-08-01 END=2026-08-12 SOURCE=lixinger ENDPOINT=index_fundamental

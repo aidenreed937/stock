@@ -28,6 +28,7 @@ description: 涵盖项目全部真实数据源（TuShare、理杏仁 LiXinger、
    - 位于 [`config/universe/watchlist.yaml`](file:///Users/mac/workspace/personal/finance/stock/config/universe/watchlist.yaml)，集中维护 A 股核心标的、10 大 A 股指数（内置官方成立基准日 `base_date`）、全球大盘指数、美股资产与 FRED 宏观序列。
 2. **零配置任务自发现 (`TaskRegistry`)**：
    - 由 [`src/stock/data/task_registry.py`](file:///Users/mac/workspace/personal/finance/stock/src/stock/data/task_registry.py) 集中管理任务技术属性（采集模式 `fetch_mode`、是否深层分区 `partitioned`、质检配置 `quality_profile`）。未显式指定 `ENDPOINT` 时，CLI 会自动自发现可用任务执行批量回填。
+   - CLI 的 `ENDPOINT` 应使用项目任务名（如 `index_daily_bar`），不要直接使用上游 API 名（如 TuShare `index_daily`）；API 名只存在于 `TaskSpec.api_name` 路由层。
 3. **显式单位标准化 (`UnitNormalizer`)**：
    - 彻底消灭数据源单位歧义（TuShare 成交量“手” $\rightarrow$ “股” $\times 100$；成交额“千元” $\rightarrow$ “元” $\times 1000$；市值“万元” $\rightarrow$ “元” $\times 10000$）。
 
@@ -50,8 +51,8 @@ make backfill START=YYYY-MM-DD END=YYYY-MM-DD SOURCE=<data_source> [ENDPOINT=<en
 用于回填 A 股行情、指数 K 线、每日估值、复权因子、申万行业行情、成分流水、卖方研报及业绩预告/快报：
 
 ```bash
-# 1. 回填 12 年 A 股 10 大核心指数 K 线 (000001.SH, 000300.SH, 399006.SZ 等)
-make backfill START=2014-08-01 END=2026-08-14 SOURCE=tushare ENDPOINT=index_daily
+# 1. 回填 12 年 A 股 10 大核心指数 K 线 (底层 TuShare API: index_daily)
+make backfill START=2014-08-01 END=2026-08-14 SOURCE=tushare ENDPOINT=index_daily_bar
 
 # 2. 全市场 A 股每日估值指标全量回填 (自动按交易日并发回填，自动单位归一为元)
 make backfill START=2013-01-04 END=2026-08-14 SOURCE=tushare ENDPOINT=daily_basic
@@ -147,7 +148,7 @@ uv run python -m stock.data.update_scheduler [--source tushare] [--date YYYY-MM-
 ```
 
 ### 4.3 一键极速增量同步与自动化调度 (Fast Daily Sync)
-增量引擎 `DailySyncEngine` 会自动探测本地落盘最新交易日（Watermark），识别时间发布窗口，多端点并发补齐缺口，并在完成后自动运行对账审计。
+增量引擎 `DailySyncEngine` 会自动探测本地落盘最新交易日（Watermark），识别时间发布窗口，多端点并发补齐缺口，并在完成后自动运行对账审计。`per_symbol` 任务会按观察池展开标的，并按单标的水位与 `base_date` 规划；执行结果只要出现 `FAILED` 或 `NO_DATA`，CLI 即以失败退出，防止空跑被误判成功。
 
 #### 1. 统一 CLI 与 Makefile 入口
 ```bash
@@ -179,7 +180,7 @@ make sync SOURCE=all FORCE=1
 ## 5. 数据质量校验、离线运维与统一审计
 
 ### 5.1 数据质量门禁 (Quality Gate & Quarantine)
-在写入 Curated 时强阻断非法数据，将异常数据隔离记录到 `data/quarantine/`：
+清洗阶段会将可归因异常记录写入 `data/quarantine/`；存储与读取阶段对来源、日期、标的交集和 `schema_version="v2"` 执行 fail-closed 校验：
 
 ```bash
 make validate
@@ -247,8 +248,8 @@ make audit TYPE=all
 2. **步骤 2：质量与单位 Profile 绑定**
    在 Provider 的 `_PROFILES` 字典中为新端点指定必需列、单位映射（如 `CNY100m`、`percent`）和质检 Profile。
 3. **步骤 3：任务路由与分区分流 (`TaskRegistry`)**
-   在 [`src/stock/data/task_registry.py`](file:///Users/mac/workspace/personal/finance/stock/src/stock/data/task_registry.py) 中，将单表数据集加入 `non_part_datasets`，将个股遍历任务加入 `PER_SYMBOL_DATASETS`，并注册任务别名。
-4. **步骤 4：调度规划器策略归类 (`BackfillPlanner`)**
-   在 [`src/stock/data/planner.py`](file:///Users/mac/workspace/personal/finance/stock/src/stock/data/planner.py) 中，将单表同步任务加入 `MARKET_SINGLE_SYNC_ENDPOINTS`，需遍历股票池的任务加入 `TUSHARE_STOCK_POOL_ENDPOINTS`。
+   在 [`src/stock/data/task_registry.py`](file:///Users/mac/workspace/personal/finance/stock/src/stock/data/task_registry.py) 中用 `TaskSpec` 明确 `task_name`、`api_name`、`dataset`、`fetch_mode`、`partitioned`、`is_single_sync` 与 `required_pool`。公开 CLI 示例必须使用 `task_name`；`_ALIASES` 仅用于兼容历史 API 名或外部路径。
+4. **步骤 4：观察池与单次同步策略 (`BackfillPlanner`)**
+   在 [`src/stock/data/planner.py`](file:///Users/mac/workspace/personal/finance/stock/src/stock/data/planner.py) 中确认新端点是否需要 watchlist 展开、是否按 `base_date` 截断，以及 `per_symbol + is_single_sync` 是否应由 `_should_expand_single_sync()` 拆成多个原子任务。
 5. **步骤 5：自动化门禁验证**
    执行 `uv run pytest tests/unit/data/ --no-cov` 与 `make lint` 确保 100% 通过。

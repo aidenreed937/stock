@@ -100,8 +100,8 @@ TUSHARE_MAX_WORKERS=4
 ## 6. 全市场历史数据回填器 (HistoricalBackfiller)
 
 - **严格交易日历对齐**：必须要求 Fetcher 提供 `fetch_trade_cal` 接口获取精确开市交易日，严禁粗暴按周一至周五推算（若缺乏日历接口则主动抛出 `DataFetchError` 拦截）。
-- **断点续传与无损跳过**：回填前自动检索 `data/raw/` 时间分区，若已存在当天的 RAW 文件且未开启 `force_refresh` 则自动跳过，保障任务随时中断与恢复。
-- **数据源隔离与 fail-closed 校验**：Curated 默认按 `data_source` 建目录；写入前校验 `data_source`、`DatasetKey.provider`、`daily_bar` 契约和已有文件 schema。来源或 schema 不一致时拒绝写入，不使用隐式列合并。
+- **断点续传与无损跳过**：回填前自动检索 `data/raw/` 与 Curated 时间分区，并校验“业务日期 + 标的”交集；只有目标日期与目标标的都命中时才跳过，避免同月其他标的或其他日期误判为缓存命中。
+- **数据源隔离与 fail-closed 校验**：Curated 默认按 `data_source` 建目录；写入前校验 `data_source`、`DatasetKey.provider`、行情契约（`stock_daily_bar` / `index_daily_bar` / `fund_daily`）和已有文件 `schema_version="v2"`。来源、日期、标的或 schema 不一致时拒绝写入，不使用隐式列合并。
 - **命令行快捷调用**：
   ```bash
   make backfill START=2026-08-01 END=2026-08-12
