@@ -63,26 +63,26 @@ def clean_partition_sw_daily(
     # 4. 单位归一化自愈：若发现 amount / total_mv / float_mv 为万元单位，将其转换为标准元 (* 10000.0)
     unit_fixes = []
     is_wan_record = (
-        (pl.col("amount").is_not_null() & (pl.col("amount") > 0) & (pl.col("amount") < 1e7))
-        | (pl.col("total_mv").is_not_null() & (pl.col("total_mv") > 0) & (pl.col("total_mv") < 1e10))
+        (pl.col("amount").is_not_null() & (pl.col("amount") > 0) & (pl.col("amount") < 5e8))
+        | (pl.col("total_mv").is_not_null() & (pl.col("total_mv") > 0) & (pl.col("total_mv") < 1e11))
     )
     if "amount" in cleaned.columns:
         unit_fixes.append(
-            pl.when(is_wan_record & (pl.col("amount") < 1e7))
+            pl.when(is_wan_record & (pl.col("amount") < 5e8))
             .then(pl.col("amount") * 10000.0)
             .otherwise(pl.col("amount"))
             .alias("amount")
         )
     if "total_mv" in cleaned.columns:
         unit_fixes.append(
-            pl.when(is_wan_record & (pl.col("total_mv") < 1e10))
+            pl.when(is_wan_record & (pl.col("total_mv") < 1e11))
             .then(pl.col("total_mv") * 10000.0)
             .otherwise(pl.col("total_mv"))
             .alias("total_mv")
         )
     if "float_mv" in cleaned.columns:
         unit_fixes.append(
-            pl.when(is_wan_record & (pl.col("float_mv") < 1e10))
+            pl.when(is_wan_record & (pl.col("float_mv") < 1e11))
             .then(pl.col("float_mv") * 10000.0)
             .otherwise(pl.col("float_mv"))
             .alias("float_mv")

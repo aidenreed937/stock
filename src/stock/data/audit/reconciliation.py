@@ -194,12 +194,15 @@ def _run_raw_curated_reconciliation(
     elif raw_errors or curated_errors:
         status = "FAILED"
         reason = "存在 Parquet 读取错误"
-    elif len(raw_df) != len(curated_df):
-        status = "FAILED"
-        reason = "目标日期 RAW 与 Curated 行数不一致"
     elif missing_count > 0 or extra_count > 0:
         status = "FAILED"
         reason = "目标日期 RAW 与 Curated 主键集合不一致"
+    elif curated_key_count != len(curated_df):
+        status = "FAILED"
+        reason = "Curated 黄金表内部存在重复主键"
+    elif len(raw_df) != len(curated_df):
+        status = "PASSED"
+        reason = f"RAW 存在 {len(raw_df) - raw_key_count} 条批次重复记录，Curated 黄金表已权威去重"
 
     return {
         "raw_curated_status": status,
@@ -243,27 +246,24 @@ def run_audit(
 
     # 1. 检查 stock_basic 基础元数据是否存在
     if basic_df is None:
-        basic_pattern = f"data/curated/{data_source}/market=CN/stock_basic"
         try:
-            basic_files = list(Path(basic_pattern).rglob("*.parquet"))
-            if basic_files:
-                basic_df = pl.read_parquet(basic_files)
-            else:
-                # 兼容单文件结构或直接路径
-                basic_df = pl.read_parquet(f"{basic_pattern}/data.parquet")
+            basic_files = [
+                p for p in (settings.curated_data_dir / data_source).rglob("*.parquet")
+                if "stock_basic" in p.parts and not _is_artifact_path(p)
+            ]
+            basic_df = pl.read_parquet(basic_files) if basic_files else pl.DataFrame()
         except Exception as e:
-            logger.error(
-                f"加载 [{data_source}] stock_basic 数据集失败，请确认是否已执行过基础数据拉取: {e}"
-            )
+            logger.error(f"加载 [{data_source}] stock_basic 失败: {e}")
             return {}
 
     # 2. 读取对应月份的 daily_bar 数据
-    daily_pattern = (
-        f"data/curated/{data_source}/market=CN/stock_daily_bar/"
-        f"year={target_date.year:04d}/month={target_date.month:02d}/*.parquet"
-    )
+    year_str, month_str = f"year={target_date.year:04d}", f"month={target_date.month:02d}"
     try:
-        daily_df = pl.read_parquet(daily_pattern)
+        daily_files = [
+            p for p in (settings.curated_data_dir / data_source).rglob("*.parquet")
+            if "stock_daily_bar" in p.parts and year_str in p.parts and month_str in p.parts and not _is_artifact_path(p)
+        ]
+        daily_df = pl.read_parquet(daily_files) if daily_files else pl.DataFrame()
     except Exception:
         daily_df = pl.DataFrame()
 
@@ -327,12 +327,13 @@ def run_audit(
         suspend_set: set[str] = set()
 
         # 优先读取本地 suspend_d 数据
-        local_suspend_path = (
-            f"data/curated/{data_source}/market=CN/suspend_d/"
-            f"year={target_date.year:04d}/month={target_date.month:02d}/*.parquet"
-        )
         try:
-            local_sus_df = pl.read_parquet(local_suspend_path)
+            year_str, month_str = f"year={target_date.year:04d}", f"month={target_date.month:02d}"
+            sus_files = [
+                p for p in (settings.curated_data_dir / data_source).rglob("*.parquet")
+                if "suspend_d" in p.parts and year_str in p.parts and month_str in p.parts and not _is_artifact_path(p)
+            ]
+            local_sus_df = pl.read_parquet(sus_files) if sus_files else pl.DataFrame()
             date_col = next(
                 (c for c in ["trade_date", "date", "suspend_date"] if c in local_sus_df.columns),
                 None,
@@ -497,15 +498,15 @@ def run_audit_range(
 
     # 预先加载一次 stock_basic，避免在每个子线程中重复磁盘 I/O
     cached_basic_df: pl.DataFrame | None = None
-    basic_pattern = f"data/curated/{data_source}/market=CN/stock_basic"
     try:
-        basic_files = list(Path(basic_pattern).rglob("*.parquet"))
+        source_dir = settings.curated_data_dir / data_source
+        basic_files = [
+            p
+            for p in source_dir.rglob("*.parquet")
+            if "stock_basic" in p.parts and not _is_artifact_path(p)
+        ]
         if basic_files:
             cached_basic_df = pl.read_parquet(basic_files)
-        else:
-            basic_file = Path(f"{basic_pattern}/data.parquet")
-            if basic_file.exists():
-                cached_basic_df = pl.read_parquet(basic_file)
     except Exception as e:
         logger.debug(f"预加载 stock_basic 失败，子任务将独立尝试: {e}")
 
@@ -600,31 +601,19 @@ def run_index_audit(
     target_date: date, data_source: str = "tushare", quiet: bool = False
 ) -> dict[str, Any]:
     """对指定单日进行指数观察池完整性审计对账。"""
-    from stock.config.loader import load_data_config
+    from stock.config.loader import load_watchlist_config
 
-    cfg = load_data_config()
-    wl = getattr(cfg.watchlists, data_source, None)
-    all_configured_indices = set(wl.indices) if (wl and hasattr(wl, "indices")) else set()
+    wl = load_watchlist_config()
+    source_wl = getattr(wl, data_source, None)
+    all_configured_indices = set(source_wl.indices) if (source_wl and hasattr(source_wl, "indices")) else set()
+    base_dates = getattr(source_wl, "base_dates", {}) if source_wl else {}
 
-    # 指数官方真实基准日 (Base Date)，保证数据源提供的早期回溯行情不被误截断
-    index_start_dates: dict[str, date] = {
-        "000001.SH": date(1990, 12, 19),
-        "399001.SZ": date(1994, 7, 20),
-        "000300.SH": date(2004, 12, 31),  # 沪深300基日 2004-12-31 (发布日 2005-04-08)
-        "000905.SH": date(2004, 12, 31),  # 中证500基日 2004-12-31 (发布日 2007-01-15)
-        "000852.SH": date(2004, 12, 31),  # 中证1000基日 2004-12-31 (发布日 2014-10-17)
-        "000985.CSI": date(2004, 12, 31),  # 中证全指基日 2004-12-31 (发布日 2013-01-15)
-        "000922.CSI": date(2004, 12, 31),  # 中证红利基日 2004-12-31 (发布日 2005-01-04)
-        "399006.SZ": date(2010, 5, 31),  # 创业板指基日 2010-05-31 (发布日 2010-06-01)
-        "399102.SZ": date(2010, 5, 31),  # 创业板综基日 2010-05-31 (发布日 2010-06-01)
-        "000688.SH": date(2019, 12, 31),  # 科创50基日 2019-12-31 (发布日 2020-07-23)
-    }
-
-    expected_indices = {
-        sym
-        for sym in all_configured_indices
-        if sym not in index_start_dates or index_start_dates[sym] <= target_date
-    }
+    target_date_str = target_date.strftime("%Y-%m-%d")
+    expected_indices: set[str] = set()
+    for sym in all_configured_indices:
+        b_date = base_dates.get(sym) or base_dates.get(sym.split(".")[0])
+        if b_date is None or str(b_date) <= target_date_str:
+            expected_indices.add(sym)
 
     if not expected_indices:
         if not quiet:
@@ -633,7 +622,7 @@ def run_index_audit(
 
     target_year = f"year={target_date.year:04d}"
     target_month = f"month={target_date.month:02d}"
-    root_path = Path(f"data/curated/{data_source}")
+    root_path = settings.curated_data_dir / data_source
     matched_files = (
         [
             p
@@ -642,7 +631,7 @@ def run_index_audit(
             and "index_dailybasic" not in p.parts
             and target_year in p.parts
             and target_month in p.parts
-            and not p.name.endswith((".bak.parquet", ".tmp.parquet"))
+            and not _is_artifact_path(p)
         ]
         if root_path.exists()
         else []

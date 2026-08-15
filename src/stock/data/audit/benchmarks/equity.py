@@ -90,11 +90,16 @@ class EquityDailyBenchmarkProvider(BenchmarkProvider):
                 }
             )
 
+        if df_sus[date_col].dtype in (pl.Date, pl.Datetime):
+            date_expr = pl.col(date_col).dt.strftime("%Y%m%d")
+        else:
+            date_expr = pl.col(date_col).cast(pl.Utf8, strict=False).str.replace_all("-", "")
+
         return (
             df_sus.select(
                 [
-                    pl.col(sym_col).cast(pl.Utf8).alias("symbol"),
-                    pl.col(date_col).cast(pl.Utf8).alias("trade_date"),
+                    pl.col(sym_col).cast(pl.Utf8, strict=False).alias("symbol"),
+                    date_expr.alias("trade_date"),
                 ]
             )
             .drop_nulls()

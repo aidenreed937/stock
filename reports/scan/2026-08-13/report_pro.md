@@ -14,9 +14,9 @@
   - 【结构分化提示】全 A 水位与证券化率偏高，性价比主要受超低国债利率推升，属结构性行情，建议精选低估高股息资产
 
 ## 2. 中观行业轮动与风控 (TCR As-Of: 2026-08-13, PB-ROE As-Of: 2026-08-13)
-- **Total Amount**: `5998.9 亿元`
-- **Top 1 Industry**: `传媒` (12.1%)
-- **Crowded Industries**: `[]`
+- **Total Amount**: `25445.3 亿元`
+- **Top 1 Industry**: `电子` (27.6%)
+- **Crowded Industries**: `['电子']`
 - **PB-ROE Fit**: `R²=0.013 (α: 2.118, β: 0.0149)`
 - **Undervalued Industries**: `['银行', '非银金融', '公用事业']`
 - **Momentum Spread**: `16.5%`

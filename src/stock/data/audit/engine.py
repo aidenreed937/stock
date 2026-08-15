@@ -132,8 +132,8 @@ class UniversalAuditEngine:
         extra_count = len(extra_df)
 
         if expected_count > 0:
-            effective_actual = actual_count + suspended_count
-            integrity_rate = min(100.0, (effective_actual / expected_count) * 100.0)
+            covered_expected = max(0, expected_count - missing_count)
+            integrity_rate = min(100.0, (covered_expected / expected_count) * 100.0)
         else:
             integrity_rate = 100.0 if actual_count > 0 else 0.0
 
@@ -173,17 +173,80 @@ class UniversalAuditEngine:
     def _check_raw_curated(
         self, dataset: str, data_source: str, target_date: date
     ) -> tuple[int, int, str]:
-        raw_dir = settings.raw_data_dir / data_source / dataset
-        curated_dir = settings.curated_data_dir / data_source / dataset
-        if not raw_dir.exists() and not curated_dir.exists():
+        from stock.data.storage.compat import StorageCompat
+
+        raw_base = settings.raw_data_dir / data_source
+        curated_base = settings.curated_data_dir / data_source
+        if not raw_base.exists() and not curated_base.exists():
             return 0, 0, "SKIPPED"
 
-        cat = self._get_catalog(data_source)
+        year_str = f"year={target_date.year:04d}"
+        month_str = f"month={target_date.month:02d}"
+
+        raw_files = [
+            p
+            for p in raw_base.rglob("*.parquet")
+            if dataset in p.parts
+            and year_str in p.parts
+            and month_str in p.parts
+            and not StorageCompat.is_artifact_path(p)
+        ]
+        if not raw_files:
+            raw_files = [
+                p
+                for p in raw_base.rglob("*.parquet")
+                if dataset in p.parts and not StorageCompat.is_artifact_path(p)
+            ]
+
+        curated_files = [
+            p
+            for p in curated_base.rglob("*.parquet")
+            if dataset in p.parts
+            and year_str in p.parts
+            and month_str in p.parts
+            and not StorageCompat.is_artifact_path(p)
+        ]
+        if not curated_files:
+            curated_files = [
+                p
+                for p in curated_base.rglob("*.parquet")
+                if dataset in p.parts and not StorageCompat.is_artifact_path(p)
+            ]
+
+        if not raw_files and not curated_files:
+            return 0, 0, "SKIPPED"
+        if not raw_files or not curated_files:
+            return 0, 0, "FAILED"
+
         try:
-            curated_df = cat.load_dataset(dataset, start_date=target_date, end_date=target_date)
-            c_cnt = len(curated_df)
-            return c_cnt, c_cnt, "PASSED"
-        except Exception:
+            target_date_str = target_date.strftime("%Y%m%d")
+            raw_df = pl.read_parquet(raw_files)
+            raw_keys = extract_identity_keys(raw_df).filter(
+                pl.col("trade_date") == target_date_str
+            )
+
+            curated_df = pl.read_parquet(curated_files)
+            curated_keys = extract_identity_keys(curated_df).filter(
+                pl.col("trade_date") == target_date_str
+            )
+
+            r_cnt, c_cnt = len(raw_keys), len(curated_keys)
+            if r_cnt == 0 and c_cnt == 0:
+                return 0, 0, "SKIPPED"
+
+            # 跨层主键差集对账
+            missing_in_curated = raw_keys.join(
+                curated_keys, on=["symbol", "trade_date"], how="anti"
+            )
+            extra_in_curated = curated_keys.join(
+                raw_keys, on=["symbol", "trade_date"], how="anti"
+            )
+
+            if len(missing_in_curated) == 0 and len(extra_in_curated) == 0:
+                return r_cnt, c_cnt, "PASSED"
+            return r_cnt, c_cnt, "FAILED"
+        except Exception as exc:
+            logger.debug(f"RAW/Curated 对账读取异常: {exc}")
             return 0, 0, "FAILED"
 
     def audit_range(

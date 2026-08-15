@@ -195,8 +195,13 @@ AUDIT_DATASET_REGISTRY: dict[str, DatasetAuditSpec] = {
 
 def get_audit_spec(dataset: str, data_source: str = "tushare") -> DatasetAuditSpec:
     """获取指定数据集的审计规范，未显式声明时自动派生默认规范。"""
-    if dataset in AUDIT_DATASET_REGISTRY:
-        return AUDIT_DATASET_REGISTRY[dataset]
+    # 兼容 sw_industry 别名到 sw_2021_fundamental (lixinger)
+    lookup_name = dataset
+    if dataset == "sw_industry" and data_source == "lixinger":
+        lookup_name = "sw_2021_fundamental"
+
+    if lookup_name in AUDIT_DATASET_REGISTRY:
+        return AUDIT_DATASET_REGISTRY[lookup_name]
 
     return DatasetAuditSpec(
         dataset=dataset,
@@ -219,7 +224,7 @@ def resolve_benchmark_provider(
     if spec.domain == AuditDomain.EQUITY and spec.frequency == AuditFrequency.DAILY:
         return EquityDailyBenchmarkProvider(catalog=catalog)
     if spec.domain == AuditDomain.INDUSTRY and spec.frequency == AuditFrequency.DAILY:
-        return IndustryDailyBenchmarkProvider(catalog=catalog)
+        return IndustryDailyBenchmarkProvider(catalog=catalog, data_source=spec.data_source)
     if spec.domain == AuditDomain.INDEX and spec.frequency == AuditFrequency.DAILY:
         return IndexDailyBenchmarkProvider(catalog=catalog)
     if spec.domain == AuditDomain.MACRO_ECON:

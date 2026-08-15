@@ -4,6 +4,8 @@ from datetime import date
 from pathlib import Path
 from typing import Any
 import polars as pl
+from stock.config.settings import settings
+from stock.data.audit.benchmarks.industry import IndustryDailyBenchmarkProvider
 from stock.data.storage.compat import StorageCompat
 from stock.utils.logger import logger
 
@@ -14,16 +16,19 @@ def run_daily_basic_audit(
     """对比审计 daily_basic (每日估值指标) 与 stock_daily_bar (K线行情) 的 1-to-1 对齐匹配率。"""
     logger.info(f"开始 daily_basic 估值对账审计，目标日期: {target_date} [数据源: {data_source}]")
 
+    source_dir = settings.curated_data_dir / data_source
+    year_str = f"year={target_date.year:04d}"
+    month_str = f"month={target_date.month:02d}"
+
     # 1. 读取行情 K 线记录
-    daily_dir = Path(
-        f"data/curated/{data_source}/market=CN/stock_daily_bar/"
-        f"year={target_date.year:04d}/month={target_date.month:02d}"
-    )
-    daily_files = (
-        [p for p in daily_dir.glob("*.parquet") if not StorageCompat.is_artifact_path(p)]
-        if daily_dir.exists()
-        else []
-    )
+    daily_files = [
+        p
+        for p in source_dir.rglob("*.parquet")
+        if "stock_daily_bar" in p.parts
+        and year_str in p.parts
+        and month_str in p.parts
+        and not StorageCompat.is_artifact_path(p)
+    ]
     try:
         daily_df = pl.read_parquet(daily_files) if daily_files else pl.DataFrame()
         daily_df = StorageCompat.safe_cast_date_col(daily_df, "trade_date")
@@ -34,15 +39,14 @@ def run_daily_basic_audit(
         bar_symbols = set()
 
     # 2. 读取每日指标 daily_basic 记录
-    basic_dir = Path(
-        f"data/curated/{data_source}/market=CN/daily_basic/"
-        f"year={target_date.year:04d}/month={target_date.month:02d}"
-    )
-    basic_files = (
-        [p for p in basic_dir.glob("*.parquet") if not StorageCompat.is_artifact_path(p)]
-        if basic_dir.exists()
-        else []
-    )
+    basic_files = [
+        p
+        for p in source_dir.rglob("*.parquet")
+        if "daily_basic" in p.parts
+        and year_str in p.parts
+        and month_str in p.parts
+        and not StorageCompat.is_artifact_path(p)
+    ]
     try:
         db_df = pl.read_parquet(basic_files) if basic_files else pl.DataFrame()
         db_df = StorageCompat.safe_cast_date_col(db_df, "trade_date")
@@ -86,18 +90,28 @@ def run_sw_industry_audit(
     """审计申万 2021 版行业成分股图谱 (sw_2021_constituents) 与行业全历史估值序列 (sw_2021_fundamental)。"""
     logger.info(f"开始申万行业图谱与估值对账审计，目标日期: {target_date} [数据源: {data_source}]")
 
+    source_dir = settings.curated_data_dir / data_source
+
     # 1. 检查 sw_2021_constituents 行业图谱落盘
-    const_path = f"data/curated/{data_source}/market=CN/sw_2021_constituents/data.parquet"
+    const_files = [
+        p
+        for p in source_dir.rglob("*.parquet")
+        if "sw_2021_constituents" in p.parts and not StorageCompat.is_artifact_path(p)
+    ]
     try:
-        const_df = pl.read_parquet(const_path)
+        const_df = pl.read_parquet(const_files) if const_files else pl.DataFrame()
         const_count = const_df["symbol"].n_unique() if "symbol" in const_df.columns else 0
     except Exception:
         const_count = 0
 
     # 2. 检查 sw_2021_fundamental 在 target_date 的估值记录
-    fund_path = f"data/curated/{data_source}/market=CN/sw_2021_fundamental/data.parquet"
+    fund_files = [
+        p
+        for p in source_dir.rglob("*.parquet")
+        if "sw_2021_fundamental" in p.parts and not StorageCompat.is_artifact_path(p)
+    ]
     try:
-        fund_df = pl.read_parquet(fund_path)
+        fund_df = pl.read_parquet(fund_files) if fund_files else pl.DataFrame()
         fund_df = StorageCompat.safe_cast_date_col(fund_df, "trade_date")
         target_fund = fund_df.filter(pl.col("trade_date") == target_date)
         ind_symbols = set(target_fund["symbol"].unique().to_list()) if "symbol" in target_fund.columns else set()
@@ -105,8 +119,14 @@ def run_sw_industry_audit(
         logger.debug(f"读取 sw_2021_fundamental 对账失败: {exc}")
         ind_symbols = set()
 
-    expected_ind_count = 31  # 申万 2021 版一级行业固定为 31 个
-    match_count = len(ind_symbols)
+    # 动态获取理杏仁一级行业基准并求交集
+    provider = IndustryDailyBenchmarkProvider(data_source=data_source)
+    expected_symbols = set(provider._get_industry_codes())
+    expected_ind_count = len(expected_symbols)
+
+    match_symbols = ind_symbols.intersection(expected_symbols)
+    match_count = len(match_symbols)
+    missing_symbols = expected_symbols - ind_symbols
     coverage_rate = (match_count / expected_ind_count * 100.0) if expected_ind_count else 0.0
 
     if not quiet:
@@ -117,6 +137,8 @@ def run_sw_industry_audit(
         print(f"理论申万一级行业总数   : {expected_ind_count:>6} 个")
         print(f"当日完成估值对账行业数 : {match_count:>6} 个")
         print(f"申万行业估值覆盖率     : {coverage_rate:>6.2f} %")
+        if missing_symbols:
+            print(f"缺失估值的行业数       : {len(missing_symbols)} 个 ({sorted(list(missing_symbols))[:5]})")
         print("=" * 65 + "\n")
 
     return {
@@ -125,4 +147,5 @@ def run_sw_industry_audit(
         "expected_primary_industry_count": expected_ind_count,
         "actual_industry_count": match_count,
         "coverage_rate": coverage_rate,
+        "missing_symbols": sorted(list(missing_symbols)),
     }

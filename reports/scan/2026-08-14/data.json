@@ -1,6 +1,6 @@
 {
   "trade_date": "2026-08-14",
-  "one_sentence_summary": "股票性价比处于历史高位（沪深300 股债比 2.69x，10 年 88% 分位），但全 A 水位处于 58% 中枢偏上，证券化率达 98% 高分位——便宜主要靠超低国债利率与大盘蓝筹，全 A 并非全面低估。**保持 75% 仓位，只买便宜好货（银行/非银金融/公用事业），回避过热板块（高位题材）。**",
+  "one_sentence_summary": "股票性价比处于历史高位（沪深300 股债比 2.69x，10 年 88% 分位），但全 A 水位处于 58% 中枢偏上，证券化率达 98% 高分位——便宜主要靠超低国债利率与大盘蓝筹，全 A 并非全面低估。**保持 75% 仓位，只买便宜好货（银行/非银金融/公用事业），回避过热板块（电子）。**",
   "signals": [
     {
       "category": "真实估值 (相对债券)",
@@ -40,9 +40,11 @@
     "非银金融",
     "公用事业"
   ],
-  "crowded_industries": [],
-  "top1_industry": "基础化工",
-  "top1_tcr": 15.0,
+  "crowded_industries": [
+    "电子"
+  ],
+  "top1_industry": "电子",
+  "top1_tcr": 26.21,
   "micro_health": {
     "margin_ratio": 2.67,
     "margin_status": "温和健康",
@@ -56,7 +58,7 @@
   "action_items": [
     "- ✅ 保持 65~85% 仓位，定投低估宽基/高股息",
     "- ✅ 回踩加仓银行、非银金融、公用事业",
-    "- ❌ 不追短线涨幅过大的过热题材",
+    "- ❌ 不追电子等成交占比 >20% 的板块",
     "- ❌ 不加高倍杠杆"
   ],
   "macro": {
@@ -107,13 +109,69 @@
   },
   "tcr": {
     "trade_date": "2026-08-14",
-    "total_amount_yi": 6311.28,
+    "total_amount_yi": 21387.51,
     "industries": [
+      {
+        "industry_code": "801080.SI",
+        "industry_name": "电子",
+        "amount_yi": 5605.43,
+        "tcr": 26.21,
+        "is_crowded": true,
+        "crowding_penalty": 1.0
+      },
+      {
+        "industry_code": "801770.SI",
+        "industry_name": "通信",
+        "amount_yi": 2016.41,
+        "tcr": 9.43,
+        "is_crowded": false,
+        "crowding_penalty": 0.0
+      },
+      {
+        "industry_code": "801150.SI",
+        "industry_name": "医药生物",
+        "amount_yi": 1703.92,
+        "tcr": 7.97,
+        "is_crowded": false,
+        "crowding_penalty": 0.0
+      },
+      {
+        "industry_code": "801750.SI",
+        "industry_name": "计算机",
+        "amount_yi": 1531.37,
+        "tcr": 7.16,
+        "is_crowded": false,
+        "crowding_penalty": 0.0
+      },
+      {
+        "industry_code": "801730.SI",
+        "industry_name": "电气设备",
+        "amount_yi": 1511.78,
+        "tcr": 7.07,
+        "is_crowded": false,
+        "crowding_penalty": 0.0
+      },
+      {
+        "industry_code": "801890.SI",
+        "industry_name": "机械设备",
+        "amount_yi": 1478.69,
+        "tcr": 6.91,
+        "is_crowded": false,
+        "crowding_penalty": 0.0
+      },
+      {
+        "industry_code": "801050.SI",
+        "industry_name": "有色金属",
+        "amount_yi": 1230.12,
+        "tcr": 5.75,
+        "is_crowded": false,
+        "crowding_penalty": 0.0
+      },
       {
         "industry_code": "801030.SI",
         "industry_name": "基础化工",
         "amount_yi": 946.92,
-        "tcr": 15.0,
+        "tcr": 4.43,
         "is_crowded": false,
         "crowding_penalty": 0.0
       },
@@ -121,7 +179,7 @@
         "industry_code": "801760.SI",
         "industry_name": "传媒",
         "amount_yi": 625.85,
-        "tcr": 9.92,
+        "tcr": 2.93,
         "is_crowded": false,
         "crowding_penalty": 0.0
       },
@@ -129,7 +187,7 @@
         "industry_code": "801160.SI",
         "industry_name": "公用事业",
         "amount_yi": 572.26,
-        "tcr": 9.07,
+        "tcr": 2.68,
         "is_crowded": false,
         "crowding_penalty": 0.0
       },
@@ -137,7 +195,7 @@
         "industry_code": "801880.SI",
         "industry_name": "汽车",
         "amount_yi": 508.38,
-        "tcr": 8.06,
+        "tcr": 2.38,
         "is_crowded": false,
         "crowding_penalty": 0.0
       },
@@ -145,7 +203,7 @@
         "industry_code": "801740.SI",
         "industry_name": "国防军工",
         "amount_yi": 454.46,
-        "tcr": 7.2,
+        "tcr": 2.12,
         "is_crowded": false,
         "crowding_penalty": 0.0
       },
@@ -153,7 +211,7 @@
         "industry_code": "801790.SI",
         "industry_name": "非银金融",
         "amount_yi": 354.09,
-        "tcr": 5.61,
+        "tcr": 1.66,
         "is_crowded": false,
         "crowding_penalty": 0.0
       },
@@ -161,7 +219,7 @@
         "industry_code": "801120.SI",
         "industry_name": "食品饮料",
         "amount_yi": 338.18,
-        "tcr": 5.36,
+        "tcr": 1.58,
         "is_crowded": false,
         "crowding_penalty": 0.0
       },
@@ -169,7 +227,7 @@
         "industry_code": "801710.SI",
         "industry_name": "建筑材料",
         "amount_yi": 321.5,
-        "tcr": 5.09,
+        "tcr": 1.5,
         "is_crowded": false,
         "crowding_penalty": 0.0
       },
@@ -177,7 +235,7 @@
         "industry_code": "801720.SI",
         "industry_name": "建筑装饰",
         "amount_yi": 311.24,
-        "tcr": 4.93,
+        "tcr": 1.46,
         "is_crowded": false,
         "crowding_penalty": 0.0
       },
@@ -185,7 +243,7 @@
         "industry_code": "801780.SI",
         "industry_name": "银行",
         "amount_yi": 214.7,
-        "tcr": 3.4,
+        "tcr": 1.0,
         "is_crowded": false,
         "crowding_penalty": 0.0
       },
@@ -193,7 +251,7 @@
         "industry_code": "801180.SI",
         "industry_name": "房地产",
         "amount_yi": 169.15,
-        "tcr": 2.68,
+        "tcr": 0.79,
         "is_crowded": false,
         "crowding_penalty": 0.0
       },
@@ -201,7 +259,7 @@
         "industry_code": "801170.SI",
         "industry_name": "交通运输",
         "amount_yi": 162.07,
-        "tcr": 2.57,
+        "tcr": 0.76,
         "is_crowded": false,
         "crowding_penalty": 0.0
       },
@@ -209,7 +267,7 @@
         "industry_code": "801110.SI",
         "industry_name": "家用电器",
         "amount_yi": 160.41,
-        "tcr": 2.54,
+        "tcr": 0.75,
         "is_crowded": false,
         "crowding_penalty": 0.0
       },
@@ -217,7 +275,7 @@
         "industry_code": "801970.SI",
         "industry_name": "环保",
         "amount_yi": 156.11,
-        "tcr": 2.47,
+        "tcr": 0.73,
         "is_crowded": false,
         "crowding_penalty": 0.0
       },
@@ -225,7 +283,7 @@
         "industry_code": "801010.SI",
         "industry_name": "农林牧渔",
         "amount_yi": 148.69,
-        "tcr": 2.36,
+        "tcr": 0.7,
         "is_crowded": false,
         "crowding_penalty": 0.0
       },
@@ -233,7 +291,7 @@
         "industry_code": "801200.SI",
         "industry_name": "商贸零售",
         "amount_yi": 143.15,
-        "tcr": 2.27,
+        "tcr": 0.67,
         "is_crowded": false,
         "crowding_penalty": 0.0
       },
@@ -241,7 +299,7 @@
         "industry_code": "801140.SI",
         "industry_name": "轻工制造",
         "amount_yi": 130.98,
-        "tcr": 2.08,
+        "tcr": 0.61,
         "is_crowded": false,
         "crowding_penalty": 0.0
       },
@@ -249,7 +307,7 @@
         "industry_code": "801960.SI",
         "industry_name": "石油石化",
         "amount_yi": 117.3,
-        "tcr": 1.86,
+        "tcr": 0.55,
         "is_crowded": false,
         "crowding_penalty": 0.0
       },
@@ -257,15 +315,15 @@
         "industry_code": "801950.SI",
         "industry_name": "煤炭",
         "amount_yi": 108.65,
-        "tcr": 1.72,
+        "tcr": 0.51,
         "is_crowded": false,
         "crowding_penalty": 0.0
       },
       {
         "industry_code": "801130.SI",
-        "industry_name": "纺织服装",
+        "industry_name": "纺织服饰",
         "amount_yi": 104.5,
-        "tcr": 1.66,
+        "tcr": 0.49,
         "is_crowded": false,
         "crowding_penalty": 0.0
       },
@@ -273,7 +331,7 @@
         "industry_code": "801210.SI",
         "industry_name": "社会服务",
         "amount_yi": 97.72,
-        "tcr": 1.55,
+        "tcr": 0.46,
         "is_crowded": false,
         "crowding_penalty": 0.0
       },
@@ -281,7 +339,7 @@
         "industry_code": "801040.SI",
         "industry_name": "钢铁",
         "amount_yi": 70.87,
-        "tcr": 1.12,
+        "tcr": 0.33,
         "is_crowded": false,
         "crowding_penalty": 0.0
       },
@@ -289,7 +347,7 @@
         "industry_code": "801230.SI",
         "industry_name": "综合",
         "amount_yi": 56.16,
-        "tcr": 0.89,
+        "tcr": 0.26,
         "is_crowded": false,
         "crowding_penalty": 0.0
       },
@@ -297,70 +355,16 @@
         "industry_code": "801980.SI",
         "industry_name": "美容护理",
         "amount_yi": 36.44,
-        "tcr": 0.58,
-        "is_crowded": false,
-        "crowding_penalty": 0.0
-      },
-      {
-        "industry_code": "801080.SI",
-        "industry_name": "电子",
-        "amount_yi": 0.56,
-        "tcr": 0.01,
-        "is_crowded": false,
-        "crowding_penalty": 0.0
-      },
-      {
-        "industry_code": "801770.SI",
-        "industry_name": "通信",
-        "amount_yi": 0.2,
-        "tcr": 0.0,
-        "is_crowded": false,
-        "crowding_penalty": 0.0
-      },
-      {
-        "industry_code": "801150.SI",
-        "industry_name": "医药生物",
-        "amount_yi": 0.17,
-        "tcr": 0.0,
-        "is_crowded": false,
-        "crowding_penalty": 0.0
-      },
-      {
-        "industry_code": "801750.SI",
-        "industry_name": "计算机",
-        "amount_yi": 0.15,
-        "tcr": 0.0,
-        "is_crowded": false,
-        "crowding_penalty": 0.0
-      },
-      {
-        "industry_code": "801730.SI",
-        "industry_name": "电气设备",
-        "amount_yi": 0.15,
-        "tcr": 0.0,
-        "is_crowded": false,
-        "crowding_penalty": 0.0
-      },
-      {
-        "industry_code": "801890.SI",
-        "industry_name": "机械设备",
-        "amount_yi": 0.15,
-        "tcr": 0.0,
-        "is_crowded": false,
-        "crowding_penalty": 0.0
-      },
-      {
-        "industry_code": "801050.SI",
-        "industry_name": "有色金属",
-        "amount_yi": 0.12,
-        "tcr": 0.0,
+        "tcr": 0.17,
         "is_crowded": false,
         "crowding_penalty": 0.0
       }
     ],
-    "crowded_industries": [],
-    "top1_industry": "基础化工",
-    "top1_tcr": 15.0
+    "crowded_industries": [
+      "电子"
+    ],
+    "top1_industry": "电子",
+    "top1_tcr": 26.21
   },
   "pbroe": {
     "trade_date": "2026-08-14",
