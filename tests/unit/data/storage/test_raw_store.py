@@ -323,6 +323,132 @@ def test_raw_storage_preserves_source_fields_without_curated_metadata(tmp_path: 
     }.intersection(loaded.columns)
 
 
+def test_raw_storage_margin_deduplicates_mixed_date_formats(tmp_path: Path) -> None:
+    store = RawDataStorage(base_dir=tmp_path)
+    key = DatasetKey(
+        provider="tushare",
+        dataset="margin",
+        endpoint="margin",
+        start_date=date(2024, 1, 2),
+        end_date=date(2024, 1, 2),
+    )
+    raw_df = pl.DataFrame(
+        {
+            "trade_date": ["20240102", "2024-01-02", "20240102"],
+            "exchange_id": ["SSE", "SSE", "SZSE"],
+            "rzye": [100.0, 100.0, 200.0],
+        }
+    )
+
+    store.save_dataset(key, raw_df)
+    loaded = pl.read_parquet(tmp_path / "tushare" / "market=CN" / "margin" / "data.parquet")
+    normalized = loaded.with_columns(
+        pl.col("trade_date")
+        .cast(pl.Utf8, strict=False)
+        .str.replace_all("-", "")
+        .alias("_trade_date")
+    )
+
+    assert len(loaded) == 2
+    assert normalized.group_by(["_trade_date", "exchange_id"]).len().filter(
+        pl.col("len") > 1
+    ).is_empty()
+    assert "symbol" not in loaded.columns
+
+
+def test_raw_storage_margin_cache_requires_trade_date_exchange_coverage(tmp_path: Path) -> None:
+    store = RawDataStorage(base_dir=tmp_path)
+    target_date = date(2026, 8, 14)
+    key = DatasetKey(
+        provider="tushare",
+        dataset="margin",
+        endpoint="margin",
+        start_date=target_date,
+        end_date=target_date,
+    )
+    partial = pl.DataFrame(
+        {
+            "trade_date": ["20260814"],
+            "exchange_id": ["SSE"],
+            "rzye": [100.0],
+        }
+    )
+    complete = pl.DataFrame(
+        {
+            "trade_date": ["20260814", "20260814", "20260814"],
+            "exchange_id": ["SSE", "SZSE", "BSE"],
+            "rzye": [100.0, 200.0, 3.0],
+        }
+    )
+
+    store.save_dataset(key, partial)
+    assert store.load_dataset(key) is None
+    assert not store.has_raw("tushare", "margin", target_date)
+    assert (tmp_path / "tushare/market=CN/margin/data.parquet").exists()
+
+    store.save_dataset(key, complete)
+    loaded = store.load_dataset(key)
+    assert loaded is not None
+    assert set(loaded["exchange_id"].to_list()) == {"SSE", "SZSE", "BSE"}
+    assert store.has_raw("tushare", "margin", target_date)
+
+
+def test_raw_storage_margin_cache_uses_exchange_start_dates(tmp_path: Path) -> None:
+    store = RawDataStorage(base_dir=tmp_path)
+    target_date = date(2022, 8, 12)
+    key = DatasetKey(
+        provider="tushare",
+        dataset="margin",
+        endpoint="margin",
+        start_date=target_date,
+        end_date=target_date,
+    )
+    store.save_dataset(
+        key,
+        pl.DataFrame(
+            {
+                "trade_date": ["20220812", "20220812"],
+                "exchange_id": ["SSE", "SZSE"],
+                "rzye": [100.0, 200.0],
+            }
+        ),
+    )
+
+    assert store.load_dataset(key) is not None
+    assert store.has_raw("tushare", "margin", target_date)
+
+
+def test_raw_storage_replaces_incompatible_cache_with_recoverable_backup(
+    tmp_path: Path,
+) -> None:
+    store = RawDataStorage(base_dir=tmp_path)
+    key = DatasetKey(
+        provider="lixinger",
+        dataset="sw_2021_constituents",
+        endpoint="sw_2021_constituents",
+        start_date=date(2026, 8, 15),
+        end_date=date(2026, 8, 15),
+    )
+    legacy = pl.DataFrame({"symbol": ["110000"], "constituents": [[]]})
+    fresh = pl.DataFrame(
+        {"industryCode": ["110000"], "stockCode": ["600519"], "market": ["CN"]}
+    )
+
+    store.save_dataset(key, legacy)
+    store.save_dataset(key, fresh, replace_existing=True)
+
+    active = tmp_path / "lixinger" / "market=CN" / "sw_2021_constituents" / "data.parquet"
+    backup = (
+        tmp_path
+        / "lixinger"
+        / "market=CN"
+        / "sw_2021_constituents"
+        / "data.legacy.bak.parquet"
+    )
+    assert pl.read_parquet(active).columns == fresh.columns
+    assert pl.read_parquet(backup).columns == legacy.columns
+
+
 def test_raw_storage_batch_buffer_append_uses_file_lock(tmp_path: Path) -> None:
     store = RawDataStorage(base_dir=tmp_path)
     lock = TrackingLock()
@@ -385,6 +511,39 @@ def test_raw_storage_sw_daily_legacy_index_id_multi_industry_preserved(tmp_path:
     df_loaded = pl.read_parquet(raw_file)
     assert len(df_loaded) == 31
     assert df_loaded["index_id"].n_unique() == 31
+
+
+def test_raw_storage_constituents_preserves_stock_across_industries(tmp_path: Path) -> None:
+    """成分股 RAW 必须按行业代码和股票代码联合去重。"""
+    store = RawDataStorage(base_dir=tmp_path)
+    target_date = date(2026, 8, 14)
+    key = DatasetKey(
+        provider="lixinger",
+        dataset="sw_2021_constituents",
+        endpoint="sw_2021_constituents",
+        start_date=target_date,
+        end_date=target_date,
+    )
+
+    store.save_dataset(
+        key,
+        pl.DataFrame(
+            {
+                "industryCode": ["110000", "220000", "110000"],
+                "stockCode": ["600519", "600519", "600519"],
+                "market": ["a", "a", "a"],
+            }
+        ),
+    )
+
+    loaded = pl.read_parquet(
+        tmp_path / "lixinger" / "market=CN" / "sw_2021_constituents" / "data.parquet"
+    )
+    assert len(loaded) == 2
+    assert set(zip(loaded["industryCode"], loaded["stockCode"], strict=True)) == {
+        ("110000", "600519"),
+        ("220000", "600519"),
+    }
 
 
 def test_raw_storage_heterogeneous_schema_coalesced_dedup(tmp_path: Path) -> None:

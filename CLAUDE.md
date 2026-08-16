@@ -42,6 +42,8 @@ export UV_PYTHON_INSTALL_DIR=.uv_python
 
 （Makefile 的部分 target 已内联这两个变量。）
 
+- **严禁轮询后台任务状态 (No Polling)**：运行命令时合理设置超时优先同步获取输出；若命令切入后台，严禁循环查询状态死等，直接结束当轮调用等待系统事件自动唤醒。
+
 ### 业务命令（多用带参数的 make target）
 
 ```bash

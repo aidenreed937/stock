@@ -16,6 +16,7 @@ class EndpointMeta:
     rate_limit_per_min: int = 180
     update_time: str = "18:00"
     update_delay_days: int = 0
+    delay_in_trading_days: bool = False
     date_columns: list[str] = field(default_factory=list)
     required_columns: list[str] = field(default_factory=list)
     units: dict[str, str] = field(default_factory=dict)

@@ -62,6 +62,29 @@ def test_tushare_stock_fetcher_margin_exchange_split() -> None:
     assert len(df) == 3
 
 
+def test_tushare_stock_fetcher_margin_drops_non_source_symbol() -> None:
+    mock_client = MagicMock()
+    mock_client.query.return_value = pd.DataFrame(
+        {
+            "trade_date": ["20240102"],
+            "exchange_id": ["SSE"],
+            "symbol": ["margin"],
+            "rzye": [100.0],
+        }
+    )
+    fetcher = TuShareStockFetcher(client=mock_client)
+
+    df = fetcher.fetch_daily_bars_df(
+        symbol="",
+        start_date=date(2024, 1, 2),
+        end_date=date(2024, 1, 2),
+        endpoint="margin",
+        exchange_id="SSE",
+    )
+
+    assert "symbol" not in df.columns
+
+
 def test_tushare_stock_fetcher_trade_cal() -> None:
     mock_client = MagicMock()
     mock_client.query.return_value = pd.DataFrame(

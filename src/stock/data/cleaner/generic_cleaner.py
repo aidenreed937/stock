@@ -6,6 +6,34 @@ from stock.data.cleaner.base import BaseDataCleaner
 from stock.utils.logger import logger
 
 
+LIXINGER_INDEX_FUNDAMENTAL_METRICS = (
+    "pe_ttm.ew",
+    "pe_ttm.mcw",
+    "pb.ew",
+    "pb.mcw",
+    "ps_ttm.ew",
+    "ps_ttm.mcw",
+    "dyr.ew",
+    "dyr.mcw",
+    "mc",
+)
+
+
+def filter_lixinger_index_fundamental_placeholders(
+    df: pl.DataFrame,
+) -> tuple[pl.DataFrame, int]:
+    """过滤 LiXinger 指数估值接口返回的全指标为空占位行。"""
+    metric_columns = [
+        column for column in LIXINGER_INDEX_FUNDAMENTAL_METRICS if column in df.columns
+    ]
+    if df.is_empty() or not metric_columns:
+        return df, 0
+
+    placeholder = pl.all_horizontal([pl.col(column).is_null() for column in metric_columns])
+    filtered = df.filter(~placeholder)
+    return filtered, len(df) - len(filtered)
+
+
 class GenericCleaner(BaseDataCleaner):
     """通用数据清洗器，适用于非 K 线行情接口（如每日指标、财报、股票基础列表等）。
 
@@ -98,3 +126,16 @@ class GenericCleaner(BaseDataCleaner):
             logger.debug(f"通用数据清洗完成: 校验 {final_count} 条记录完全合规")
 
         return cleaned_df
+
+
+class LixingerIndexFundamentalCleaner(GenericCleaner):
+    """清洗 LiXinger 指数估值数据并剔除非交易日空指标占位行。"""
+
+    def clean(self, df: pl.DataFrame) -> pl.DataFrame:
+        """过滤全指标为空的占位行，再执行通用主键清洗。"""
+        filtered, placeholder_count = filter_lixinger_index_fundamental_placeholders(df)
+        if placeholder_count:
+            logger.info(
+                f"LiXinger 指数估值清洗完成: 过滤 {placeholder_count} 条非交易日空指标占位行"
+            )
+        return super().clean(filtered)

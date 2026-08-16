@@ -6,6 +6,8 @@ import polars as pl
 
 from stock.constants import BAR_DATASETS
 from stock.core.contracts import get_contract_for_dataset
+from stock.data.quality.margin_coverage import margin_coverage_issues
+from stock.data.quality.margin_quality import margin_quality_issues, margin_quality_report
 from stock.exceptions import DataValidationError
 from stock.utils.logger import logger
 
@@ -69,7 +71,8 @@ class QualityGate:
         if not self.curated_dir.exists():
             return []
         return [
-            f for f in self.curated_dir.rglob("*.parquet")
+            f
+            for f in self.curated_dir.rglob("*.parquet")
             if not f.name.endswith((".bak.parquet", ".tmp.parquet"))
         ]
 
@@ -89,6 +92,7 @@ class QualityGate:
             "stock_daily_bar_units": self.assert_stock_daily_bar_units(files),
             "no_mixed_adjustment": self.assert_no_mixed_adjustment(files),
             "no_duplicate_keys": self.assert_no_duplicate_keys(files),
+            "margin_quality": self.assert_margin_quality(files),
         }
 
         all_passed = all(results.values())
@@ -139,9 +143,30 @@ class QualityGate:
                 return False
         return True
 
+    def assert_margin_quality(self, files: list[Path]) -> bool:
+        """断言两融数值关系和交易所覆盖符合质量规则。"""
+        margin_files = [f for f in files if _dataset_name_from_path(f) == "margin"]
+        for file in margin_files:
+            try:
+                df = pl.read_parquet(file)
+                if df.is_empty():
+                    continue
+                value_issues = margin_quality_issues(df)
+                coverage_issues = margin_coverage_issues(df)
+                for warning in margin_quality_report(df).warnings:
+                    logger.warning(f"文件 [{file}] 两融时间序列质量告警: {warning}")
+                if value_issues or coverage_issues:
+                    issues = [*coverage_issues, *value_issues]
+                    logger.error(f"文件 [{file}] 两融质量校验失败: {'; '.join(issues)}")
+                    return False
+            except Exception as e:
+                logger.error(f"文件 [{file}] 两融质量校验异常: {e}")
+                return False
+        return True
+
     def assert_stock_daily_bar_units(self, files: list[Path]) -> bool:
         """断言行情表成交额与成交量中位数比例接近 1 (amount / (volume * close) ~ 1)。"""
-        bar_files = [f for f in files if _is_quality_bar_file(f)]
+        bar_files = [f for f in files if _dataset_name_from_path(f) == "stock_daily_bar"]
         if not bar_files:
             return True
 
@@ -264,5 +289,6 @@ def run_quality_gate(curated_dir: str = "data/curated") -> bool:
 
 if __name__ == "__main__":
     import sys
+
     success = run_quality_gate()
     sys.exit(0 if success else 1)

@@ -107,22 +107,42 @@ def load_watchlist_config(
 
         ts_base_dates: dict[str, str] = {}
         lx_base_dates: dict[str, str] = {}
-        all_items = (
-            a_shares.get("stocks", []) + a_shares.get("indices", []) + a_shares.get("funds", [])
+        lx_stock_base_dates: dict[str, str] = {}
+        lx_index_base_dates: dict[str, str] = {}
+        lx_fund_base_dates: dict[str, str] = {}
+        categorized_items = (
+            ("stock", a_shares.get("stocks", [])),
+            ("index", a_shares.get("indices", [])),
+            ("fund", a_shares.get("funds", [])),
         )
-        for item in all_items:
-            if isinstance(item, dict) and item.get("code") and item.get("base_date"):
-                code = str(item["code"]).strip()
-                d_val = str(item["base_date"]).strip()
-                ts_base_dates[code] = d_val
-                lx_base_dates[code.split(".")[0]] = d_val
+        category_maps = {
+            "stock": lx_stock_base_dates,
+            "index": lx_index_base_dates,
+            "fund": lx_fund_base_dates,
+        }
+        for category, items in categorized_items:
+            for item in items:
+                if isinstance(item, dict) and item.get("code") and item.get("base_date"):
+                    code = str(item["code"]).strip()
+                    d_val = str(item["base_date"]).strip()
+                    ts_base_dates[code] = d_val
+                    short_code = code.split(".")[0]
+                    category_maps[category][short_code] = d_val
+                    # 保留单参数调用的兼容语义，重复短代码优先采用股票基准日。
+                    lx_base_dates.setdefault(short_code, d_val)
 
         return WatchlistsConfig(
             tushare=SourceWatchlistConfig(
                 stocks=a_stocks, indices=a_indices, funds=a_funds, base_dates=ts_base_dates
             ),
             lixinger=SourceWatchlistConfig(
-                stocks=lx_stocks, indices=lx_indices, funds=a_funds, base_dates=lx_base_dates
+                stocks=lx_stocks,
+                indices=lx_indices,
+                funds=a_funds,
+                base_dates=lx_base_dates,
+                stock_base_dates=lx_stock_base_dates,
+                index_base_dates=lx_index_base_dates,
+                fund_base_dates=lx_fund_base_dates,
             ),
             yfinance=SourceWatchlistConfig(stocks=g_stocks, indices=g_indices),
             fred=SourceWatchlistConfig(macro_series=macro_series),

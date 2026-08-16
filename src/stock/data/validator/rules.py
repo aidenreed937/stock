@@ -1,4 +1,6 @@
 from abc import ABC, abstractmethod
+from collections.abc import Mapping
+from datetime import date, datetime
 from typing import Any
 
 import polars as pl
@@ -83,10 +85,78 @@ class OhlcLogicRule(BaseValidationRule):
 class VolatilityRule(BaseValidationRule):
     """涨跌幅、波动率、极端值及换手率校验规则。"""
 
+    def __init__(self, listing_dates: Mapping[str, date] | None = None) -> None:
+        """初始化上市日期映射，用于豁免上市首日合法极端涨跌。"""
+        self.listing_dates = dict(listing_dates or {})
+
+    @staticmethod
+    def _date_value(value: object) -> date | None:
+        if isinstance(value, datetime):
+            return value.date()
+        if isinstance(value, date):
+            return value
+        text = str(value).strip().replace("-", "")
+        if len(text) >= 8 and text[:8].isdigit():
+            try:
+                return date(int(text[:4]), int(text[4:6]), int(text[6:8]))
+            except ValueError:
+                return None
+        return None
+
+    def _with_listing_dates(self, df: pl.DataFrame) -> pl.DataFrame:
+        if "trade_date" not in df.columns:
+            return df
+
+        from stock.utils.date import parse_mixed_date
+
+        work = df.with_columns(parse_mixed_date("trade_date").alias("_bar_date"))
+        if "list_date" in work.columns:
+            return work.with_columns(parse_mixed_date("list_date").alias("_listing_date"))
+        if not self.listing_dates:
+            return work
+
+        symbol_col = next(
+            (
+                column
+                for column in ("symbol", "ts_code", "stockCode", "code")
+                if column in work.columns
+            ),
+            None,
+        )
+        if symbol_col is None:
+            return work
+
+        listing_rows = [
+            {"_listing_symbol": str(symbol), "_listing_date": listed_date}
+            for symbol, value in self.listing_dates.items()
+            if (listed_date := self._date_value(value)) is not None
+        ]
+        if not listing_rows:
+            return work
+
+        listing_df = pl.DataFrame(listing_rows)
+        return work.with_columns(
+            pl.col(symbol_col).cast(pl.Utf8, strict=False).alias("_listing_symbol")
+        ).join(listing_df, on="_listing_symbol", how="left")
+
     def audit(self, df: pl.DataFrame) -> dict[str, Any]:
+        """校验涨跌幅公式、极端涨跌和换手率上限。"""
         calc_diff_count = 0
+        listing_day_calc_exemptions = 0
+        work = self._with_listing_dates(df) if "trade_date" in df.columns else df
+        has_listing_dates = {"_bar_date", "_listing_date"}.issubset(work.columns)
+        listing_day_mask = (
+            (
+                pl.col("_bar_date").is_not_null()
+                & pl.col("_listing_date").is_not_null()
+                & (pl.col("_bar_date") == pl.col("_listing_date"))
+            )
+            if has_listing_dates
+            else pl.lit(False)
+        )
+
         if "pre_close" in df.columns and "pct_chg" in df.columns and "close" in df.columns:
-            diff_df = df.filter(pl.col("pre_close") > 0).with_columns(
+            diff_df = work.filter(pl.col("pre_close") > 0).with_columns(
                 (
                     ((pl.col("close") - pl.col("pre_close")) / pl.col("pre_close") * 100)
                     - pl.col("pct_chg")
@@ -95,12 +165,20 @@ class VolatilityRule(BaseValidationRule):
                 .alias("diff")
             )
             # 允许 0.1% 内的尾数舍入浮点误差
-            calc_diff_count = len(diff_df.filter(pl.col("diff") > 0.1))
+            listing_day_calc_exemptions = len(
+                diff_df.filter((pl.col("diff") > 0.1) & listing_day_mask)
+            )
+            calc_diff_count = len(diff_df.filter((pl.col("diff") > 0.1) & ~listing_day_mask))
 
+        listing_day_spike_count = 0
         spike_fault_count = 0
         if "pct_chg" in df.columns:
-            # 标记单日涨幅绝对值超出 1000% 的飞线故障
-            spike_fault_count = len(df.filter(pl.col("pct_chg").abs() > 1000.0))
+            spike_mask = pl.col("pct_chg").abs() > 1000.0
+            if has_listing_dates:
+                listing_day_spike_count = len(work.filter(spike_mask & listing_day_mask))
+            spike_fault_count = len(work.filter(spike_mask))
+            if has_listing_dates:
+                spike_fault_count -= listing_day_spike_count
 
         turnover_fault_count = 0
         if "turnover_rate" in df.columns:
@@ -108,7 +186,9 @@ class VolatilityRule(BaseValidationRule):
 
         return {
             "calc_diff_errors": calc_diff_count,
+            "listing_day_calc_exemptions": listing_day_calc_exemptions,
             "spike_faults": spike_fault_count,
+            "listing_day_spike_exemptions": listing_day_spike_count,
             "turnover_faults": turnover_fault_count,
             "passed": calc_diff_count == 0 and spike_fault_count == 0 and turnover_fault_count == 0,
         }
@@ -171,7 +251,7 @@ class DistributionAuditRule(BaseValidationRule):
     """数值分布与相邻交易日数量级跳跃 (Step Ratio) 校验规则。
 
     校验项:
-    1. 相邻交易日截面均值跳跃比率是否在 [min_step_ratio, max_step_ratio] 安全区间内 (专抓万元/元等单位裂痕);
+    1. 相邻交易日截面均值跳跃比率是否在安全区间内 (专抓万元/元等单位裂痕);
     2. 非负数值列 (成交额、成交量、市值等) 是否存在非物理负值.
     """
 
@@ -262,7 +342,10 @@ class DistributionAuditRule(BaseValidationRule):
                                     "column": col,
                                     "type": "STEP_JUMP",
                                     "ratio": float(r["step_ratio"]),
-                                    "detail": f"{r['trade_date']} 字段 [{col}] 均值跳跃比率为 {r['step_ratio']:.2f}x",
+                                    "detail": (
+                                        f"{r['trade_date']} 字段 [{col}] 均值跳跃比率为 "
+                                        f"{r['step_ratio']:.2f}x"
+                                    ),
                                 }
                             )
 

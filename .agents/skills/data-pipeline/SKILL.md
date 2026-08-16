@@ -31,6 +31,7 @@ description: 涵盖项目全部真实数据源（TuShare、理杏仁 LiXinger、
    - CLI 的 `ENDPOINT` 应使用项目任务名（如 `index_daily_bar`），不要直接使用上游 API 名（如 TuShare `index_daily`）；API 名只存在于 `TaskSpec.api_name` 路由层。
 3. **显式单位标准化 (`UnitNormalizer`)**：
    - 彻底消灭数据源单位歧义（TuShare 成交量“手” $\rightarrow$ “股” $\times 100$；成交额“千元” $\rightarrow$ “元” $\times 1000$；市值“万元” $\rightarrow$ “元” $\times 10000$）。
+   - 单位处理遵循 **RAW 保真、Curated 标准单位、分析层无倍率**：RAW 只保存 API 原始字段和原始单位；所有金额、成交量、市值等单位转换只能在 `UnitNormalizer` 所在的 RAW -> Curated 清洗链路执行；Curated 是下游唯一消费契约，分析指标、因子、回测和扫描代码不得再写 `* 10000`、`* 1_000_000` 等数据源倍率。
 
 ---
 
@@ -162,7 +163,29 @@ make sync SOURCE=tushare DATE=YYYY-MM-DD
 make sync SOURCE=all FORCE=1
 ```
 
-#### 2. 宿主机标准 Crontab 调度模板 (分时 3 波次)
+#### 2. LiXinger TaskBundle 调度
+增量同步支持将相关原子任务按组传入。bundle 只在计划入口展开，展开后每个子任务仍独立探测水位、执行、失败重试、路由、落盘和审计：
+
+```bash
+# 行情：股票与指数 K 线
+make sync SOURCE=lixinger ENDPOINT=market_bundle
+
+# 行业：申万 2021 成份、估值与四类行业财报
+make sync SOURCE=lixinger ENDPOINT=industry_bundle
+
+# 公司：公司基本面、四类财报与质押
+make sync SOURCE=lixinger ENDPOINT=company_bundle
+
+# 宏观：国债、利率、有色金属与原油
+make sync SOURCE=lixinger ENDPOINT=macro_bundle
+
+# 指数：指数基本面估值
+make sync SOURCE=lixinger ENDPOINT=index_bundle
+```
+
+当前 bundle 名只用于增量同步调度，不会出现在公开原子 task 列表，也不会合并子任务的数据集或水位。
+
+#### 3. 宿主机标准 Crontab 调度模板 (分时 3 波次)
 量化系统采用无状态定时唤起，通过 Crontab 配置 3 波次同步任务：
 ```crontab
 # 波次 1 (工作日 17:15): A 股日 K 与场内 ETF 行情
@@ -234,6 +257,25 @@ make audit TYPE=all
    每个数据源均在 `config/data.yaml` 中配置了极速流与安全 Rate Limits（如 `yfinance` 40次/分，理杏仁 30次/分）。若触发限频，系统会自动休眠 60 秒并自动重试，无需人工干预。
 3. **微攒批写入 (Micro-batching)**：
    全市场批量回填（如 `daily_basic`）使用 `DuckDBMarketStore.enable_batch_mode()`，在内存中按月分区分批聚合写入，消除磁盘 I/O 写放大，回填数千个交易日稳定高效。
+4. **Curated schema 演进（所有数据源通用）**：
+   TuShare、LiXinger、Yahoo Finance、FRED 的 Curated 写入都会经过统一 Parquet 写入器。凡是已有 `data.parquet` 非空，后续新增或删除业务列，都可能触发 schema 校验。扩展宽表字段时，除源端 registry/default fields 外，必须同步清洗规则、单位/标准化、审计字段、写入器 schema 兼容和单测。若回填已成功拉取并清洗，但提交时报：
+   ```text
+   Curated 文件 [...] schema 不匹配: 已有列 [...]，新数据列 [...]
+   ```
+   这是旧 Parquet schema 与新业务列集合不一致，不是 API 拉取失败。优先在 `src/stock/data/storage/partition_writer.py` 为该数据集的**已知合法新增列**做受控对齐，或执行显式迁移；不要删除现有 Parquet 后重跑。若差异来自历史残留的冗余身份列（例如全市场单行时间序列历史上带有固定 `symbol`，新数据按真实主键只保留 `trade_date`），优先在 `src/stock/data/storage/compat.py` 的 `StorageCompat.post_process_dataset()` 为该数据集做确定性后处理，不要把冗余列加入写入器通用白名单。修复后可直接重跑同一条 `make backfill ... FORCE_REFRESH=1`。案例：`index_fundamental` 新增 `pe_ttm.mcw/pb.mcw/ps_ttm.mcw/dyr.mcw` 时，需要允许这些已知估值列从旧 schema 平滑补空合并；`moneyflow_hsgt` 历史 Curated 带 dummy `symbol` 而新数据不带时，应在 `StorageCompat.post_process_dataset("moneyflow_hsgt", ...)` 统一删除冗余 `symbol`。
+5. **单位口径修复与新增接口防遗漏**：
+   - 新增或修复 endpoint 时，先核验上游真实单位，再同步更新 Provider registry 的字段单位声明与 `src/stock/data/normalizer/unit_normalizer.py` 的显式倍率规则。
+   - RAW 不做乘法，不为分析便利改历史原值；已有错误 Curated 必须从 RAW 全历史重放，只重建 Curated。
+   - Curated 金额字段统一为元，成交量统一为股/份，市值统一为元；`market`、`currency`、`exchange` 等 metadata 必须在入库后满足数据集契约。
+   - 分析层只做聚合、比值、窗口统计和业务语义计算，不得根据数据源字段名补乘或补除倍率。若发现分析层出现 `* 10000`、`* 1_000_000` 等源口径修正，优先回到入库清洗层修复。
+   - 回填验收除行数、主键、日期外，必须抽样验证 RAW 原值到 Curated 标准单位的倍率是否正确。例如 `moneyflow` 为 TuShare “万元”乘 `10000`，`moneyflow_hsgt` 为 TuShare “百万元”乘 `1_000_000`，`stock_daily_bar.amount` 为“千元”乘 `1000`。
+6. **LiXinger 403 权限/次数异常**：
+   若返回 `403` 且消息包含 `Exceed maximum access time, please purchase Open API.`，按理杏仁开放平台权限或访问次数耗尽处理。最多在用户明确要求时重试一次；若仍为 403，不要循环重试，直接报告需要恢复 API 权限/额度。
+7. **字段扩展回填后的落盘核验**：
+   回填成功后，用本地 Curated Parquet 核验行数、日期范围和新增字段非空数，避免只看到命令成功但字段为空：
+   ```bash
+   UV_CACHE_DIR=.uv_cache UV_PYTHON_INSTALL_DIR=.uv_python uv run python -c 'import polars as pl; p="data/curated/<source>/market=<market>/<dataset>/data.parquet"; df=pl.read_parquet(p); cols=["<new_col_1>","<new_col_2>"]; d=next((c for c in ["trade_date","date","end_date"] if c in df.columns), None); print("rows", len(df)); print("date_range", (df[d].min(), df[d].max()) if d else None); print("columns", [c for c in cols if c in df.columns]); print("non_null", {c: df[c].drop_nulls().len() for c in cols if c in df.columns})'
+   ```
 
 ---
 
@@ -246,10 +288,10 @@ make audit TYPE=all
 1. **步骤 1：Fetcher 接口元数据定义**
    在对应 Provider 的 `endpoints/` 或 `registry.py` 中实例化 `EndpointMeta`（定义 `primary_keys`、`date_columns`、`required_columns`；**切勿混入 `fetch_mode`**）。
 2. **步骤 2：质量与单位 Profile 绑定**
-   在 Provider 的 `_PROFILES` 字典中为新端点指定必需列、单位映射（如 `CNY100m`、`percent`）和质检 Profile。
+   在 Provider 的 `_PROFILES` 字典中为新端点指定必需列、单位映射（如 `CNY100m`、`percent`）和质检 Profile；凡存在上游非标准单位的数值字段，必须同步在 `UnitNormalizer` 中声明 RAW -> Curated 倍率，禁止把倍率修正留给分析层。
 3. **步骤 3：任务路由与分区分流 (`TaskRegistry`)**
    在 [`src/stock/data/task_registry.py`](file:///Users/mac/workspace/personal/finance/stock/src/stock/data/task_registry.py) 中用 `TaskSpec` 明确 `task_name`、`api_name`、`dataset`、`fetch_mode`、`partitioned`、`is_single_sync` 与 `required_pool`。公开 CLI 示例必须使用 `task_name`；`_ALIASES` 仅用于兼容历史 API 名或外部路径。
 4. **步骤 4：观察池与单次同步策略 (`BackfillPlanner`)**
    在 [`src/stock/data/planner.py`](file:///Users/mac/workspace/personal/finance/stock/src/stock/data/planner.py) 中确认新端点是否需要 watchlist 展开、是否按 `base_date` 截断，以及 `per_symbol + is_single_sync` 是否应由 `_should_expand_single_sync()` 拆成多个原子任务。
 5. **步骤 5：自动化门禁验证**
-   执行 `uv run pytest tests/unit/data/ --no-cov` 与 `make lint` 确保 100% 通过。
+   执行 `uv run pytest tests/unit/data/ --no-cov` 与 `make lint` 确保 100% 通过；涉及单位规则时，还必须从 RAW 重放 Curated 并核验主键、行数、日期范围、字段类型、metadata 与样例倍率。

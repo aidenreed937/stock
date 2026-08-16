@@ -2,6 +2,11 @@
 
 from stock.data.cleaner.bar_cleaner import BarDataCleaner
 from stock.data.cleaner.base import BaseDataCleaner
-from stock.data.cleaner.generic_cleaner import GenericCleaner
+from stock.data.cleaner.generic_cleaner import GenericCleaner, LixingerIndexFundamentalCleaner
 
-__all__ = ["BaseDataCleaner", "BarDataCleaner", "GenericCleaner"]
+__all__ = [
+    "BarDataCleaner",
+    "BaseDataCleaner",
+    "GenericCleaner",
+    "LixingerIndexFundamentalCleaner",
+]

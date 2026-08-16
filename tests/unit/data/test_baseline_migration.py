@@ -1,6 +1,7 @@
 import json
 from datetime import date, datetime, timezone
 from pathlib import Path
+from unittest.mock import patch
 
 import polars as pl
 
@@ -260,9 +261,13 @@ def test_backfill_acceptance_normalizes_compact_boundary_dates(tmp_path: Path) -
         }
     ).write_parquet(curated / "data.parquet")
 
-    report = accept_backfill(
-        str(tmp_path), "adj_factor", date(2026, 8, 12), date(2026, 8, 13)
-    )
+    with patch(
+        "stock.data.update_scheduler.DataUpdateScheduler.get_trading_days",
+        return_value=(date(2026, 8, 12), date(2026, 8, 13)),
+    ):
+        report = accept_backfill(
+            str(tmp_path), "adj_factor", date(2026, 8, 12), date(2026, 8, 13)
+        )
 
     assert report["missing_boundary_dates"] == []
     assert report["status"] == "PASSED"
@@ -283,11 +288,75 @@ def test_backfill_acceptance_fails_on_internal_daily_gap(tmp_path: Path) -> None
         }
     ).write_parquet(curated / "data.parquet")
 
-    report = accept_backfill(
-        str(tmp_path), "adj_factor", date(2026, 8, 12), date(2026, 8, 14)
-    )
+    with patch(
+        "stock.data.update_scheduler.DataUpdateScheduler.get_trading_days",
+        return_value=(date(2026, 8, 12), date(2026, 8, 13), date(2026, 8, 14)),
+    ):
+        report = accept_backfill(
+            str(tmp_path), "adj_factor", date(2026, 8, 12), date(2026, 8, 14)
+        )
 
     assert report["missing_dates"] == ["2026-08-13"]
+    assert report["status"] == "FAILED"
+
+
+def test_backfill_acceptance_ignores_statutory_holidays_from_trade_calendar(
+    tmp_path: Path,
+) -> None:
+    curated = tmp_path / "adj_factor"
+    curated.mkdir()
+    pl.DataFrame(
+        {
+            "symbol": ["A", "A"],
+            "trade_date": ["20230120", "20230130"],
+            "adj_factor": [1.0, 1.1],
+            "data_source": ["tushare", "tushare"],
+            "source_endpoint": ["adj_factor", "adj_factor"],
+            "request_id": ["r1", "r2"],
+            "updated_at": ["2023-01-20", "2023-01-30"],
+        }
+    ).write_parquet(curated / "data.parquet")
+
+    with patch(
+        "stock.data.update_scheduler.DataUpdateScheduler.get_trading_days",
+        return_value=(date(2023, 1, 20), date(2023, 1, 30)),
+    ):
+        report = accept_backfill(
+            str(tmp_path), "adj_factor", date(2023, 1, 20), date(2023, 1, 30)
+        )
+
+    assert report["missing_dates"] == []
+    assert report["calendar_error"] is None
+    assert report["status"] == "PASSED"
+
+
+def test_backfill_acceptance_fails_closed_when_trade_calendar_unavailable(
+    tmp_path: Path,
+) -> None:
+    curated = tmp_path / "adj_factor"
+    curated.mkdir()
+    pl.DataFrame(
+        {
+            "symbol": ["A"],
+            "trade_date": ["20230120"],
+            "adj_factor": [1.0],
+            "data_source": ["tushare"],
+            "source_endpoint": ["adj_factor"],
+            "request_id": ["r1"],
+            "updated_at": ["2023-01-20"],
+        }
+    ).write_parquet(curated / "data.parquet")
+
+    with patch(
+        "stock.data.update_scheduler.DataUpdateScheduler.get_trading_days",
+        return_value=(),
+    ):
+        report = accept_backfill(
+            str(tmp_path), "adj_factor", date(2023, 1, 20), date(2023, 1, 30)
+        )
+
+    assert report["missing_dates"] == []
+    assert "可信交易日历" in report["calendar_error"]
     assert report["status"] == "FAILED"
 
 
@@ -442,6 +511,53 @@ def test_backfill_acceptance_fails_when_curated_rows_drop_below_raw_ratio(
     assert report["curated_raw_ratio"] == 0.5
     assert report["raw_ratio_passed"] is False
     assert report["status"] == "FAILED"
+
+
+def test_backfill_acceptance_reconciles_cleaned_raw_history(tmp_path: Path) -> None:
+    raw_dir = tmp_path / "raw" / "lixinger" / "market=CN" / "index_daily_bar"
+    curated_dir = tmp_path / "curated" / "lixinger" / "market=CN" / "index_daily_bar"
+    raw_dir.mkdir(parents=True)
+    curated_dir.mkdir(parents=True)
+
+    pl.DataFrame(
+        {
+            "stockCode": ["000001", "000300", "399001"],
+            "date": ["2026-08-01"] * 3,
+            "open": [10.0, 11.0, 0.0],
+            "high": [10.0, 11.0, 0.0],
+            "low": [10.0, 11.0, 0.0],
+            "close": [10.0, 11.0, 0.0],
+        }
+    ).write_parquet(raw_dir / "data.parquet")
+    pl.DataFrame(
+        {
+            "symbol": ["000001", "000300"],
+            "trade_date": ["2026-08-01"] * 2,
+            "open": [10.0, 11.0],
+            "high": [10.0, 11.0],
+            "low": [10.0, 11.0],
+            "close": [10.0, 11.0],
+            "data_source": ["lixinger"] * 2,
+            "source_endpoint": ["cn/index/candlestick"] * 2,
+            "request_id": ["r1", "r2"],
+            "updated_at": ["2026-08-01"] * 2,
+        }
+    ).write_parquet(curated_dir / "data.parquet")
+
+    report = accept_backfill(
+        str(tmp_path / "curated"),
+        "index_daily_bar",
+        data_source="lixinger",
+        raw_root=str(tmp_path / "raw"),
+    )
+
+    assert report["raw_rows"] == 3
+    assert report["raw_effective_rows"] == 2
+    assert report["raw_filtered_rows"] == 1
+    assert report["raw_curated_status"] == "PASSED"
+    assert report["raw_missing_in_curated_count"] == 0
+    assert report["raw_extra_in_curated_count"] == 0
+    assert report["status"] == "PASSED"
 
 
 def test_bar_cleaner_quarantines_rejected_rows(tmp_path: Path) -> None:

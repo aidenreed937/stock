@@ -5,7 +5,7 @@ import polars as pl
 from stock.utils.logger import logger
 
 # 声明不同数据源与 API endpoint 的显式单位转换规则
-# 映射结构: { data_source: { endpoint: { raw_column: (target_column, multiplier) } } }
+# 映射：数据源 -> 接口 -> 原始列 -> (目标列, 倍率)
 UNIT_CONVERSION_RULES: dict[str, dict[str, dict[str, tuple[str, float]]]] = {
     "tushare": {
         "daily": {
@@ -41,6 +41,14 @@ UNIT_CONVERSION_RULES: dict[str, dict[str, dict[str, tuple[str, float]]]] = {
             "sell_elg_amount": ("sell_elg_amount", 10000.0),
             "net_mf_vol": ("net_mf_vol", 100.0),
             "net_mf_amount": ("net_mf_amount", 10000.0),
+        },
+        "moneyflow_hsgt": {
+            "ggt_ss": ("ggt_ss", 1_000_000.0),
+            "ggt_sz": ("ggt_sz", 1_000_000.0),
+            "hgt": ("hgt", 1_000_000.0),
+            "sgt": ("sgt", 1_000_000.0),
+            "north_money": ("north_money", 1_000_000.0),
+            "south_money": ("south_money", 1_000_000.0),
         },
         "sw_daily": {
             # TuShare 原始 vol 单位为“手”，金额和市值字段单位为“万元”。
@@ -79,19 +87,42 @@ class UnitNormalizer:
         if df.is_empty() or not self.rules:
             return df
 
+        normalized, rejected = self.normalize_units_with_quarantine(df)
+        if not rejected.is_empty():
+            logger.warning(
+                f"接口 [{self.data_source}/{self.endpoint}] 存在 {len(rejected)} 条"
+                "无法可靠判定单位的记录，已跳过"
+            )
+        return normalized
+
+    def normalize_units_with_quarantine(
+        self, df: pl.DataFrame
+    ) -> tuple[pl.DataFrame, pl.DataFrame]:
+        """标准化单位，并返回无法可靠判定单位的原始记录。
+
+        TuShare 的行情 RAW 历史中存在逐行混合的金额单位。行情数据不能按
+        分区或月份整体乘倍率，因此先按血统说明判定，缺少说明时再按
+        ``amount / (vol * close)`` 的数量级逐行判定。
+        """
+        if df.is_empty() or not self.rules:
+            return df, df.head(0)
+
+        if self.data_source == "tushare" and self.endpoint in {"daily", "stock_daily_bar"}:
+            return self._normalize_tushare_bar_units(df)
+
+        return self._normalize_configured_units(df), df.head(0)
+
+    def _normalize_configured_units(self, df: pl.DataFrame) -> pl.DataFrame:
+        """应用没有逐行混合单位的静态转换规则。"""
         expressions: list[pl.Expr] = []
-        applied_cols: set[str] = set()
 
         for raw_col, (target_col, multiplier) in self.rules.items():
             if raw_col in df.columns:
                 # 转换类型为 Float64 并乘以倍率
-                expr = (
-                    pl.col(raw_col).cast(pl.Float64, strict=False) * multiplier
-                ).alias(target_col)
+                expr = (pl.col(raw_col).cast(pl.Float64, strict=False) * multiplier).alias(
+                    target_col
+                )
                 expressions.append(expr)
-                applied_cols.add(raw_col)
-                if raw_col != target_col and raw_col in df.columns:
-                    applied_cols.add(raw_col)
 
         if not expressions:
             return df
@@ -105,10 +136,120 @@ class UnitNormalizer:
 
         # 若原始列名与目标列名不同，移除旧原始列
         cols_to_drop = [
-            raw_col for raw_col, (target_col, _) in self.rules.items()
+            raw_col
+            for raw_col, (target_col, _) in self.rules.items()
             if raw_col != target_col and raw_col in transformed.columns
         ]
         if cols_to_drop:
             transformed = transformed.drop(cols_to_drop)
 
         return transformed
+
+    @staticmethod
+    def _infer_tushare_bar_amount_factor(
+        work: pl.DataFrame,
+    ) -> tuple[pl.DataFrame, str, list[str]]:
+        """按血统说明或价格关系推断单行成交额倍率。"""
+        ratio_column = "__amount_volume_price_ratio"
+        factor_column = "__amount_unit_factor"
+        note = (
+            pl.col("source_unit_note").cast(pl.Utf8, strict=False).fill_null("").str.to_lowercase()
+            if "source_unit_note" in work.columns
+            else pl.lit("")
+        )
+        ratio_expr = (
+            pl.col("amount").cast(pl.Float64, strict=False)
+            / (
+                pl.col("vol").cast(pl.Float64, strict=False)
+                * pl.col("close").cast(pl.Float64, strict=False)
+            )
+            if "close" in work.columns
+            else pl.lit(None, dtype=pl.Float64)
+        )
+        work = work.with_columns(ratio_expr.alias(ratio_column))
+        note_is_normalized = note.str.contains("normalized|归一|标准化|already.*yuan|已归一.*元")
+        note_is_thousand_yuan = note.str.contains(
+            "thousand\\s*yuan|ten-thousand\\s*yuan|千元|万元|千人民币|万人民币"
+        )
+        inferred_factor = (
+            pl.when(note_is_normalized)
+            .then(pl.lit(1.0))
+            .when(note_is_thousand_yuan)
+            .then(pl.lit(1000.0))
+            .when(
+                (pl.col("amount").cast(pl.Float64, strict=False) == 0)
+                & (pl.col("vol").cast(pl.Float64, strict=False) >= 0)
+            )
+            .then(pl.lit(1000.0))
+            .when(pl.col("amount").is_null() & (pl.col("vol").cast(pl.Float64, strict=False) == 0))
+            .then(pl.lit(1000.0))
+            .when(pl.col(ratio_column).is_between(0.005, 1.0, closed="both"))
+            .then(pl.lit(1000.0))
+            .when(pl.col(ratio_column).is_between(10.0, 1000.0, closed="both"))
+            .then(pl.lit(1.0))
+            .otherwise(None)
+        )
+        if "close" not in work.columns:
+            inferred_factor = (
+                pl.when(note_is_normalized)
+                .then(pl.lit(1.0))
+                .when(note_is_thousand_yuan)
+                .then(pl.lit(1000.0))
+                .otherwise(None)
+            )
+        return (
+            work.with_columns(inferred_factor.alias(factor_column)),
+            factor_column,
+            [ratio_column, factor_column],
+        )
+
+    def _normalize_tushare_bar_units(self, df: pl.DataFrame) -> tuple[pl.DataFrame, pl.DataFrame]:
+        """逐行处理 TuShare 日线的成交量与成交额单位。"""
+        has_raw_volume = "vol" in df.columns
+        has_standard_volume = "volume" in df.columns
+        has_amount = "amount" in df.columns
+
+        if not has_raw_volume and not has_standard_volume:
+            return df, df.head(0)
+
+        work = df.with_row_index("__unit_row")
+        helper_columns: list[str] = []
+        factor_column = "__amount_unit_factor"
+
+        if has_amount and has_raw_volume:
+            work, factor_column, helper_columns = self._infer_tushare_bar_amount_factor(work)
+        elif has_amount:
+            # 没有 vol 时只能是已经含有标准 volume 的数据；不得再按 TuShare
+            # 原始成交量规则放大成交额。
+            work = work.with_columns(pl.lit(1.0).alias(factor_column))
+            helper_columns.append(factor_column)
+
+        if has_amount:
+            rejected = work.filter(pl.col(factor_column).is_null())
+            work = work.filter(pl.col(factor_column).is_not_null())
+        else:
+            rejected = work.head(0)
+
+        if has_raw_volume:
+            volume_expr = (pl.col("vol").cast(pl.Float64, strict=False) * 100.0).alias("volume")
+        else:
+            volume_expr = pl.col("volume").cast(pl.Float64, strict=False).alias("volume")
+
+        expressions = [volume_expr]
+        if has_amount:
+            expressions.append(
+                (pl.col("amount").cast(pl.Float64, strict=False) * pl.col(factor_column)).alias(
+                    "amount"
+                )
+            )
+        transformed = work.with_columns(expressions)
+
+        if helper_columns:
+            transformed = transformed.drop(helper_columns)
+            rejected = rejected.drop(helper_columns)
+        transformed = transformed.drop("__unit_row")
+        rejected = rejected.drop("__unit_row")
+        if "vol" in transformed.columns:
+            transformed = transformed.drop("vol")
+
+        return transformed, rejected

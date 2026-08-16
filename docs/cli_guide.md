@@ -64,7 +64,22 @@ uv run python -m stock.data.backfill \
 
 ---
 
-## 2. 全库物理存储主审计 CLI (Master Audit CLI)
+## 2. 增量同步工具 (Daily Sync CLI)
+
+```bash
+# 默认同步指定数据源的全部公开原子任务
+make sync SOURCE=lixinger
+
+# 使用 TaskBundle 调度 LiXinger 行业相关任务
+make sync SOURCE=lixinger ENDPOINT=industry_bundle
+
+# 多个 bundle 或原子 task 可混合传入；展开后仍逐个任务独立执行
+make sync SOURCE=lixinger ENDPOINT=market_bundle,macro_bundle
+```
+
+可用 LiXinger bundle：`market_bundle`、`industry_bundle`、`company_bundle`、`macro_bundle`、`index_bundle`。bundle 仅是调度输入，不合并数据集、水位或失败状态。
+
+## 3. 全库物理存储主审计 CLI (Master Audit CLI)
 
 基于 Polars 物理扫描全库全部 Parquet 文件，输出全表覆盖标的数、最小/最大交易日与完备度诊断：
 

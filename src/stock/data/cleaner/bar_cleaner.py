@@ -1,13 +1,99 @@
 """K 线日线数据清洗器实现。"""
 
+from datetime import date, datetime
+from pathlib import Path
+from typing import Mapping
+
 import polars as pl
 
+from stock.config.settings import settings
 from stock.data.cleaner.base import BaseDataCleaner
 from stock.utils.logger import logger
 
 
 class BarDataCleaner(BaseDataCleaner):
     """日 K 线数据清洗器，负责过滤逻辑错误记录、去重与空值剔除。"""
+
+    def __init__(self, listing_dates: Mapping[str, date] | None = None) -> None:
+        self.listing_dates = dict(listing_dates or {})
+
+    @staticmethod
+    def _date_value(value: object) -> date | None:
+        if isinstance(value, datetime):
+            return value.date()
+        if isinstance(value, date):
+            return value
+        text = str(value).strip().replace("-", "")
+        if len(text) >= 8 and text[:8].isdigit():
+            try:
+                return date(int(text[:4]), int(text[4:6]), int(text[6:8]))
+            except ValueError:
+                return None
+        return None
+
+    def _exclude_pre_listing(self, df: pl.DataFrame) -> tuple[pl.DataFrame, pl.DataFrame]:
+        """隔离已知上市日前记录；缺少上市日的标的保留并交由审计提示。"""
+        if not self.listing_dates or "trade_date" not in df.columns:
+            return df, df.head(0)
+
+        symbol_col = next(
+            (column for column in ("symbol", "stockCode", "ts_code", "code") if column in df.columns),
+            None,
+        )
+        if symbol_col is None:
+            return df, df.head(0)
+
+        listing_rows = [
+            {"__listing_symbol": str(symbol), "__listing_date": listed_date}
+            for symbol, value in self.listing_dates.items()
+            if (listed_date := self._date_value(value)) is not None
+        ]
+        if not listing_rows:
+            return df, df.head(0)
+
+        from stock.utils.date import parse_mixed_date
+
+        listing_df = pl.DataFrame(listing_rows)
+        indexed = df.with_row_index("__bar_row").with_columns(
+            pl.col(symbol_col).cast(pl.Utf8, strict=False).alias("__listing_symbol"),
+            parse_mixed_date("trade_date").alias("__bar_date"),
+        ).join(listing_df, on="__listing_symbol", how="left")
+        before_listing = (
+            pl.col("__listing_date").is_not_null()
+            & pl.col("__bar_date").is_not_null()
+            & (pl.col("__bar_date") < pl.col("__listing_date"))
+        )
+        rejected = indexed.filter(before_listing)
+        kept = indexed.filter(~before_listing)
+        helper_columns = [
+            "__bar_row",
+            "__listing_symbol",
+            "__bar_date",
+            "__listing_date",
+        ]
+        return kept.drop(helper_columns), rejected.drop(helper_columns)
+
+    @staticmethod
+    def load_listing_dates(
+        data_source: str = "tushare", curated_root: str | Path | None = None
+    ) -> dict[str, date]:
+        """从本地 stock_basic 快照加载上市日期，供在线与离线清洗共用。"""
+        root = Path(curated_root) if curated_root is not None else settings.curated_data_dir
+        path = root / data_source / "market=CN" / "stock_basic" / "data.parquet"
+        if not path.exists():
+            return {}
+        try:
+            frame = pl.read_parquet(path)
+            if not {"symbol", "list_date"}.issubset(frame.columns):
+                return {}
+            return {
+                str(row["symbol"]): listed
+                for row in frame.select(["symbol", "list_date"]).iter_rows(named=True)
+                if (listed := BarDataCleaner._date_value(row["list_date"])) is not None
+            }
+        except Exception as exc:
+            logger.warning(f"读取 stock_basic 上市日期失败 [{path}]: {exc}")
+            return {}
 
     def clean(self, df: pl.DataFrame) -> pl.DataFrame:
         """清洗日 K 线行情数据。
@@ -29,14 +115,18 @@ class BarDataCleaner(BaseDataCleaner):
             return df
 
         initial_count = len(df)
+        cleaned_df, _ = self._exclude_pre_listing(df)
 
         # 自动识别列名别名 (支持原始与标准化后的数据帧)
-        sym_col = "symbol" if "symbol" in df.columns else ("ts_code" if "ts_code" in df.columns else "code")
-        vol_col = "volume" if "volume" in df.columns else ("vol" if "vol" in df.columns else None)
+        sym_col = next(
+            (col for col in ("symbol", "stockCode", "ts_code", "code") if col in cleaned_df.columns),
+            None,
+        )
+        vol_col = "volume" if "volume" in cleaned_df.columns else ("vol" if "vol" in cleaned_df.columns else None)
 
         # 1. 过滤 null 异常记录 (标的与交易日必须存在)
         null_subset = [c for c in [sym_col, "trade_date"] if c in df.columns]
-        cleaned_df = df.drop_nulls(subset=null_subset)
+        cleaned_df = cleaned_df.drop_nulls(subset=null_subset)
 
         # 对停牌无成交记录 (vol == 0) 进行合理填充:
         # (a) 若 close 为 0/null 且存在有效 pre_close，用 pre_close 填充 close
@@ -104,14 +194,10 @@ class BarDataCleaner(BaseDataCleaner):
                 pl.col("turnover_rate").is_null() | (pl.col("turnover_rate") <= 300.0)
             )
 
-        # 5. 数据故障过滤: 单日极端飞线跳变 (pct_chg > 1000%，属于典型数据单位错位或误脉冲；排除新股首日合法暴涨)
-        if "pct_chg" in cleaned_df.columns:
-            cleaned_df = cleaned_df.filter(
-                pl.col("pct_chg").is_null() | (pl.col("pct_chg").abs() <= 1000.0)
-            )
+        # 5. 极端涨跌保留；上市首日涨跌可能合法，非首日异常由质量审计告警。
 
         # 6. 按交易日与标的代码去重 (先对齐日期格式避免 20260812 与 2026-08-12 重复)
-        if sym_col in cleaned_df.columns and "trade_date" in cleaned_df.columns:
+        if sym_col and sym_col in cleaned_df.columns and "trade_date" in cleaned_df.columns:
             from stock.utils.date import parse_mixed_date
 
             try:
@@ -127,7 +213,9 @@ class BarDataCleaner(BaseDataCleaner):
         dropped_count = initial_count - final_count
 
         if dropped_count > 0:
-            logger.info(f"数据清洗完成: 原始 {initial_count} 条，剔除脏数据 {dropped_count} 条，剩余 {final_count} 条")
+            logger.info(
+                f"数据清洗完成: 原始 {initial_count} 条，剔除脏数据 {dropped_count} 条，剩余 {final_count} 条"
+            )
         else:
             logger.debug(f"数据清洗完成: 校验 {final_count} 条记录完全合规")
 
@@ -143,13 +231,40 @@ class BarDataCleaner(BaseDataCleaner):
         quarantine: object | None = None,
     ) -> pl.DataFrame:
         """清洗并将被过滤记录按原因写入隔离区。"""
-        cleaned = self.clean(df)
-        if quarantine is not None and len(cleaned) < len(df):
-            from stock.data.quality.quarantine import QuarantineStore
+        from stock.data.quality.quarantine import QuarantineStore
 
-            if isinstance(quarantine, QuarantineStore):
+        eligible, pre_listing = self._exclude_pre_listing(df)
+        cleaned = self.clean(eligible)
+        if isinstance(quarantine, QuarantineStore):
+            if not pre_listing.is_empty():
                 quarantine.write(
-                    df.join(cleaned, on=df.columns, how="anti"),
+                    pre_listing,
+                    endpoint=endpoint,
+                    reason="trade_date_before_list_date",
+                    request_id=request_id,
+                    data_source=data_source,
+                )
+            if len(cleaned) < len(eligible):
+                key_columns = [
+                    column
+                    for column in (
+                        "symbol",
+                        "stockCode",
+                        "ts_code",
+                        "code",
+                        "trade_date",
+                        "date",
+                        "datetime",
+                    )
+                    if column in eligible.columns and column in cleaned.columns
+                ]
+                rejected = (
+                    eligible.join(cleaned.select(key_columns).unique(), on=key_columns, how="anti")
+                    if key_columns
+                    else eligible.head(0)
+                )
+                quarantine.write(
+                    rejected,
                     endpoint=endpoint,
                     reason="bar_validation_rejected",
                     request_id=request_id,

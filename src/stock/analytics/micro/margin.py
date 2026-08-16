@@ -13,20 +13,14 @@ import polars as pl
 
 from stock.analytics.models import MarginPenetrationResult
 from stock.data.catalog import DataCatalog
+from stock.data.quality.margin_coverage import filter_complete_margin_dates
 
 
 def _filter_complete_exchanges(df: pl.DataFrame) -> pl.DataFrame:
-    """过滤确保交易日至少同时涵盖 SSE 与 SZSE 核心两市，避免单边残缺数据扭曲全市场口径。"""
+    """过滤交易所覆盖完整的交易日，避免残缺数据扭曲全市场口径。"""
     if "exchange_id" not in df.columns or df.is_empty():
         return df
-    valid_dates = (
-        df.filter(pl.col("exchange_id").is_in(["SSE", "SZSE"]))
-        .group_by("trade_date")
-        .agg(pl.col("exchange_id").n_unique().alias("ex_count"))
-        .filter(pl.col("ex_count") >= 2)
-        .select("trade_date")
-    )
-    return df.join(valid_dates, on="trade_date", how="inner")
+    return filter_complete_margin_dates(df)
 
 
 def _resolve_margin_balance_expr(df: pl.DataFrame) -> pl.Expr | None:
@@ -81,7 +75,7 @@ class MarginPenetrationCalculator:
             .sort("trade_date")
         )
 
-        # 2. 加载全市场流通市值 (daily_basic circ_mv 单位: 万元 -> 亿元)
+        # 2. 加载全市场流通市值 (Curated 标准单位: 元 -> 亿元展示)
         if daily_basic_df is None:
             raw_basic = self.catalog.load_dataset(
                 "daily_basic", start_date=start_date, end_date=end_date

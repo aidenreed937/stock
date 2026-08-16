@@ -131,11 +131,15 @@ make run
 
 在处理 TuShare API 在线数据与本地 DuckDB Curated 数据仓库时，需特别注意数值单位的归一化映射：
 
+单位转换只允许发生在 RAW -> Curated 入库清洗链路。RAW 保留 API 原始单位，Curated 统一为元、股/份等标准单位，分析层默认直接消费 Curated，不得额外乘除数据源倍率。
+
 | 数据集 | 字段名称 (`Field`) | 在线 API 原始单位 | 本地 DuckDB 归档单位 | 换算公式 / 阈值比较说明 |
 | :--- | :--- | :--- | :--- | :--- |
 | `daily_basic` | `circ_mv` (流通市值) | 万元 | **元 (Yuan)** | $15\text{ 亿元} = 15 \times 10^8 = 1.5 \times 10^9\text{ 元}$ |
 | `daily_basic` | `total_mv` (总市值) | 万元 | **元 (Yuan)** | $15\text{ 亿元} = 1.5 \times 10^9\text{ 元}$ |
 | `stock_daily_bar` | `amount` (成交额) | 元 / 千元 | **元 (Yuan)** | $3000\text{ 万元} = 3 \times 10^7\text{ 元}$ |
+| `moneyflow` | `*_amount`, `net_mf_amount` | 万元 | **元 (Yuan)** | RAW 原值 $\times 10000$ |
+| `moneyflow_hsgt` | `ggt_ss`, `ggt_sz`, `hgt`, `sgt`, `north_money`, `south_money` | 百万元 | **元 (Yuan)** | RAW 原值 $\times 1000000$ |
 
 > [!CAUTION]
 > **开发规约避坑提醒**：在编写策略或初筛过滤逻辑（如 `UniverseFilter`）时，所有基于 DuckDB 本地库的市值比较必须统一换算为**元（RMB）**作为基准，禁止直接套用 TuShare 在线 API 的“万元”口径（会导致市值阈值被误降 $10000$ 倍而失效）。

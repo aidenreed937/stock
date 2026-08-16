@@ -46,3 +46,25 @@ class QuarantineStore:
             enriched.write_parquet(tmp_target)
             tmp_target.replace(target)
         return target
+
+    def write_file(
+        self,
+        frame: pl.DataFrame,
+        *,
+        endpoint: str,
+        reason: str,
+        request_id: str = "",
+        data_source: str = "",
+    ) -> Path:
+        """以独立文件记录一次历史治理结果，避免与运行时隔离批次混写。"""
+        target = self.root / f"endpoint={endpoint}" / "history_repair.parquet"
+        target.parent.mkdir(parents=True, exist_ok=True)
+        enriched = frame.with_columns(
+            pl.lit(reason).alias("quarantine_reason"),
+            pl.lit(endpoint).alias("source_endpoint"),
+            pl.lit(request_id).alias("request_id"),
+            pl.lit(data_source).alias("data_source"),
+            pl.lit(datetime.now(timezone.utc)).alias("quarantined_at"),
+        )
+        enriched.write_parquet(target)
+        return target

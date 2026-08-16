@@ -22,6 +22,10 @@ class DatasetAuditSpec:
     frequency: AuditFrequency
     min_expected_ratio: float = 0.98  # 最小容忍覆盖率 (如 98%)
     is_partitioned: bool = True
+    raw_reconciliation_exempt: bool = False
+    raw_reconciliation_reason: str = ""
+    lineage_status: str = "raw_backed"
+    source_endpoint: str = ""
 
 
 # 全库核心数据集审计规则注册表
@@ -90,6 +94,19 @@ AUDIT_DATASET_REGISTRY: dict[str, DatasetAuditSpec] = {
         domain=AuditDomain.INDUSTRY,
         frequency=AuditFrequency.DAILY,
         min_expected_ratio=1.0,
+        raw_reconciliation_exempt=True,
+        raw_reconciliation_reason="LiXinger 行业估值接口当前返回 403，暂按 Curated-only 数据集审计",
+        lineage_status="raw_backed",
+        source_endpoint="cn/industry/fundamental/sw_2021",
+    ),
+    "sw_2021_l2_fundamental": DatasetAuditSpec(
+        dataset="sw_2021_l2_fundamental",
+        data_source="lixinger",
+        domain=AuditDomain.INDUSTRY,
+        frequency=AuditFrequency.DAILY,
+        min_expected_ratio=1.0,
+        lineage_status="raw_backed",
+        source_endpoint="cn/industry/fundamental/sw_2021",
     ),
     # 3. 大盘指数领域 (INDEX - DAILY)
     "index_daily": DatasetAuditSpec(

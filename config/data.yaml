@@ -14,6 +14,30 @@ data:
     yfinance_max_workers: 4
     default_max_workers: 4
 
+  # 理杏仁指数目录不包含 399102（创业板综），保留统一观察池但不提交给理杏仁任务。
+  source_endpoint_supports:
+    lixinger:
+      index_daily_bar:
+        - "000001"
+        - "399001"
+        - "000300"
+        - "000905"
+        - "000852"
+        - "000985"
+        - "000922"
+        - "399006"
+        - "000688"
+      index_fundamental:
+        - "000001"
+        - "399001"
+        - "000300"
+        - "000905"
+        - "000852"
+        - "000985"
+        - "000922"
+        - "399006"
+        - "000688"
+
   # 默认回填策略与参数
   backfill:
     default_start_date: "today-30d"

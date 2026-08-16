@@ -22,6 +22,7 @@ from stock.data.catalog_ops import (
 from stock.data.catalog_ops import (
     validate_schema_version as _validate_schema_version,
 )
+from stock.data.quality.margin_coverage import filter_complete_margin_dates
 from stock.data.storage.compat import StorageCompat
 from stock.exceptions import DataValidationError
 from stock.utils.logger import logger
@@ -301,6 +302,9 @@ def _read_dataset_files(
         symbol_col = "symbol" if "symbol" in df.columns else None
         if symbol_col is not None:
             df = df.filter(pl.col(symbol_col).is_in(symbols))
+
+    if data_source == "tushare" and dataset == "margin":
+        df = filter_complete_margin_dates(df, start_date=start_date, end_date=end_date)
 
     return df
 

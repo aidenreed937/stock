@@ -7,6 +7,11 @@ import polars as pl
 
 from stock.config.settings import settings
 from stock.core.contracts import DAILY_BAR_CONTRACT, DatasetKey
+from stock.data.quality.margin_coverage import (
+    is_margin_complete,
+    is_margin_date_complete,
+    margin_coverage_issues,
+)
 from stock.data.storage.compat import StorageCompat
 from stock.data.storage.partition_writer import ParquetPartitionWriter, validate_frame_source
 from stock.data.task_registry import get_endpoint_market, is_task_partitioned
@@ -198,6 +203,12 @@ class ParquetPartitionStore:
                         if "trade_date" in df.columns
                         else df
                     )
+                    if (
+                        data_source == "tushare"
+                        and target_dataset == "margin"
+                        and not is_margin_date_complete(day_df, target_date)
+                    ):
+                        continue
                     if symbol:
                         if "symbol" not in day_df.columns:
                             continue
@@ -245,6 +256,15 @@ class ParquetPartitionStore:
 
         file_path = self.get_parquet_path(endpoint, target_date, market=market_code)
         df = _prepare_curated_frame(df, endpoint)
+        if (
+            source == "tushare"
+            and endpoint == "margin"
+            and not is_margin_complete(df, start_date=target_date, end_date=target_date)
+        ):
+            issues = margin_coverage_issues(df, start_date=target_date, end_date=target_date)
+            raise DataValidationError(
+                f"Curated 数据集 [margin] 交易所覆盖不完整: {'; '.join(issues)}"
+            )
         validate_frame_source(df, source, f"Curated 数据 [{file_path}]")
         if endpoint in {"daily_bar", "stock_daily_bar", "index_daily_bar", "fund_daily"}:
             DAILY_BAR_CONTRACT.validate(df)
@@ -274,6 +294,15 @@ class ParquetPartitionStore:
             return file_path
 
         df = _prepare_curated_frame(df, key.endpoint)
+        if (
+            key.provider == "tushare"
+            and dataset_name == "margin"
+            and not is_margin_complete(df, start_date=key.start_date, end_date=key.end_date)
+        ):
+            issues = margin_coverage_issues(df, start_date=key.start_date, end_date=key.end_date)
+            raise DataValidationError(
+                f"Curated 数据集 [margin] 交易所覆盖不完整: {'; '.join(issues)}"
+            )
         validate_frame_source(df, key.provider, f"Curated 数据 [{file_path}]")
         if dataset_name in {"daily_bar", "stock_daily_bar", "index_daily_bar", "fund_daily"}:
             DAILY_BAR_CONTRACT.validate(df)

@@ -8,7 +8,6 @@ from typing import Any
 
 import polars as pl
 
-from stock.config.settings import settings
 from stock.data.audit.benchmarks.base import get_trading_calendar
 from stock.data.audit.domains import AuditReportResult
 from stock.data.audit.registry import get_audit_spec, resolve_benchmark_provider
@@ -173,85 +172,20 @@ class UniversalAuditEngine:
     def _check_raw_curated(
         self, dataset: str, data_source: str, target_date: date
     ) -> tuple[int, int, str]:
-        from stock.data.storage.compat import StorageCompat
+        from stock.data.audit.reconciliation import _run_raw_curated_reconciliation
 
-        raw_base = settings.raw_data_dir / data_source
-        curated_base = settings.curated_data_dir / data_source
-        if not raw_base.exists() and not curated_base.exists():
-            return 0, 0, "SKIPPED"
-
-        year_str = f"year={target_date.year:04d}"
-        month_str = f"month={target_date.month:02d}"
-
-        raw_files = [
-            p
-            for p in raw_base.rglob("*.parquet")
-            if dataset in p.parts
-            and year_str in p.parts
-            and month_str in p.parts
-            and not StorageCompat.is_artifact_path(p)
-        ]
-        if not raw_files:
-            raw_files = [
-                p
-                for p in raw_base.rglob("*.parquet")
-                if dataset in p.parts and not StorageCompat.is_artifact_path(p)
-            ]
-
-        curated_files = [
-            p
-            for p in curated_base.rglob("*.parquet")
-            if dataset in p.parts
-            and year_str in p.parts
-            and month_str in p.parts
-            and not StorageCompat.is_artifact_path(p)
-        ]
-        if not curated_files:
-            curated_files = [
-                p
-                for p in curated_base.rglob("*.parquet")
-                if dataset in p.parts and not StorageCompat.is_artifact_path(p)
-            ]
-
-        if not raw_files and not curated_files:
-            return 0, 0, "SKIPPED"
-        if not raw_files or not curated_files:
-            return 0, 0, "RAW_MISSING" if not raw_files else "CURATED_MISSING"
-
-        try:
-            target_date_str = target_date.strftime("%Y%m%d")
-            raw_df = pl.read_parquet(raw_files)
-            raw_keys = extract_identity_keys(raw_df).filter(
-                pl.col("trade_date") == target_date_str
-            )
-
-            curated_df = pl.read_parquet(curated_files)
-            curated_keys = extract_identity_keys(curated_df).filter(
-                pl.col("trade_date") == target_date_str
-            )
-
-            r_cnt, c_cnt = len(raw_keys), len(curated_keys)
-            if r_cnt == 0 and c_cnt == 0:
-                return 0, 0, "SKIPPED"
-            if r_cnt == 0 and c_cnt > 0:
-                return 0, c_cnt, "RAW_MISSING"
-            if r_cnt > 0 and c_cnt == 0:
-                return r_cnt, 0, "CURATED_MISSING"
-
-            # 跨层主键差集对账
-            missing_in_curated = raw_keys.join(
-                curated_keys, on=["symbol", "trade_date"], how="anti"
-            )
-            extra_in_curated = curated_keys.join(
-                raw_keys, on=["symbol", "trade_date"], how="anti"
-            )
-
-            if len(missing_in_curated) == 0 and len(extra_in_curated) == 0:
-                return r_cnt, c_cnt, "PASSED"
-            return r_cnt, c_cnt, "FAILED"
-        except Exception as exc:
-            logger.debug(f"RAW/Curated 对账读取异常: {exc}")
-            return 0, 0, "FAILED"
+        result = _run_raw_curated_reconciliation(
+            target_date=target_date,
+            data_source=data_source,
+            endpoint=dataset,
+        )
+        status = result["raw_curated_status"]
+        if status == "FAILED":
+            if not result["raw_files"] and result["curated_files"]:
+                status = "RAW_MISSING"
+            elif result["raw_files"] and not result["curated_files"]:
+                status = "CURATED_MISSING"
+        return result["raw_count"], result["curated_count"], status
 
     def audit_range(
         self,

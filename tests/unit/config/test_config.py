@@ -1,3 +1,4 @@
+from datetime import date
 from pathlib import Path
 
 from stock.config.loader import load_data_config, load_strategy_config, load_watchlist_config
@@ -72,3 +73,10 @@ def test_watchlist_base_dates() -> None:
     assert wl.tushare.get_base_date("600519.SH") == date(2001, 8, 27)
     assert wl.lixinger.get_base_date("600519") == date(2001, 8, 27)
     assert wl.tushare.get_base_date("NON_EXISTENT") is None
+
+
+def test_lixinger_short_code_base_dates_are_category_specific() -> None:
+    wl = load_watchlist_config()
+
+    assert wl.lixinger.get_base_date("000001", "stock") == date(1991, 4, 3)
+    assert wl.lixinger.get_base_date("000001", "index") == date(1990, 12, 19)

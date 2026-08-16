@@ -158,6 +158,13 @@ class StorageCompat:
                 return qualified
         if dataset_name == "margin" and "symbol" in df.columns:
             return df.drop("symbol")
+        if dataset_name == "moneyflow_hsgt":
+            normalized = df.drop("symbol") if "symbol" in df.columns else df
+            return normalized.with_columns(
+                pl.lit("CN").alias("market"),
+                pl.lit("CNY").alias("currency"),
+                pl.lit("SOURCE").alias("exchange"),
+            )
         if dataset_name == "sw_daily":
             legacy_cols = [
                 "fetched_at", "field_provenance", "index_id", "index_name",

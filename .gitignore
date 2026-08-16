@@ -38,6 +38,7 @@ data/*
 !data/curated/
 !data/cache/
 !data/**/.gitkeep
+data/audit/
 *.parquet
 *.feather
 *.db

@@ -6,13 +6,21 @@
     "max_file_lines": 400
   },
   "classes": {
+    "src/stock/data/cleaner/bar_cleaner.py::BarDataCleaner": {
+      "lines": 293,
+      "methods": 7
+    },
     "src/stock/data/domain/universe.py::UniverseFilter": {
       "lines": 277,
       "methods": 9
     },
-    "src/stock/data/fetcher/lixinger/stock_fetcher.py::LixingerStockFetcher": {
-      "lines": 259,
+    "src/stock/data/fetcher/lixinger/client.py::LixingerClient": {
+      "lines": 231,
       "methods": 5
+    },
+    "src/stock/data/fetcher/lixinger/stock_fetcher.py::LixingerStockFetcher": {
+      "lines": 202,
+      "methods": 4
     },
     "src/stock/data/fetcher/yfinance/global_fetcher.py::YFinanceDataFetcher": {
       "lines": 336,
@@ -22,25 +30,56 @@
       "lines": 240,
       "methods": 6
     },
+    "src/stock/data/pipeline_stages.py::FetcherStage": {
+      "lines": 244,
+      "methods": 4
+    },
+    "src/stock/data/quality/gate.py::QualityGate": {
+      "lines": 214,
+      "methods": 8
+    },
     "src/stock/data/storage/duckdb_store.py::DuckDBMarketStore": {
-      "lines": 189,
+      "lines": 195,
       "methods": 23
     },
     "src/stock/data/storage/partition_store.py::ParquetPartitionStore": {
-      "lines": 214,
+      "lines": 235,
       "methods": 14
     },
     "src/stock/data/storage/raw_store.py::RawDataStorage": {
-      "lines": 332,
-      "methods": 15
+      "lines": 302,
+      "methods": 16
+    },
+    "src/stock/data/sync.py::DailySyncEngine": {
+      "lines": 211,
+      "methods": 5
+    },
+    "src/stock/data/update_scheduler.py::DataUpdateScheduler": {
+      "lines": 274,
+      "methods": 9
     }
   },
   "files": {
-    "src/stock/data/audit/reconciliation.py": {
-      "lines": 853
+    "src/stock/analytics/metrics/calculators/flow.py": {
+      "lines": 498
     },
-    "src/stock/data/catalog.py": {
-      "lines": 411
+    "src/stock/data/audit/backfill_acceptance.py": {
+      "lines": 522
+    },
+    "src/stock/data/audit/reconciliation.py": {
+      "lines": 1033
+    },
+    "src/stock/data/ops/rebuild_stock_daily_bar.py": {
+      "lines": 487
+    },
+    "src/stock/data/pipeline_stages.py": {
+      "lines": 401
+    },
+    "src/stock/data/sync.py": {
+      "lines": 430
+    },
+    "src/stock/data/task_registry.py": {
+      "lines": 479
     }
   }
 }

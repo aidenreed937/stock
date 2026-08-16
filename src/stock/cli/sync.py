@@ -133,6 +133,7 @@ def main() -> None:
             endpoints=ep_list,
             force=args.force,
             run_audit_gate=not args.no_audit,
+            target_date_is_explicit=args.date is not None,
         )
         if _render_summary(src, plan, results, audit_res):
             has_failure = True

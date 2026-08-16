@@ -2,7 +2,7 @@
 
 import polars as pl
 
-from stock.data.cleaner.generic_cleaner import GenericCleaner
+from stock.data.cleaner.generic_cleaner import GenericCleaner, LixingerIndexFundamentalCleaner
 
 
 def test_generic_cleaner_empty() -> None:
@@ -46,3 +46,42 @@ def test_generic_cleaner_compound_entity_keys_with_placeholder_symbol() -> None:
     })
     res = cleaner.clean(df)
     assert len(res) == 3
+
+
+def test_lixinger_index_fundamental_cleaner_drops_only_empty_metric_rows() -> None:
+    cleaner = LixingerIndexFundamentalCleaner(primary_keys=["stockCode", "date"])
+    df = pl.DataFrame(
+        {
+            "stockCode": ["000300", "000905", "000300"],
+            "date": ["2022-04-05", "2026-08-14", "2026-08-14"],
+            "pe_ttm.ew": [None, 12.0, None],
+            "pe_ttm.mcw": [None, 11.0, 13.0],
+            "pb.ew": [None, 1.5, None],
+            "pb.mcw": [None, 1.4, None],
+            "ps_ttm.ew": [None, 1.2, None],
+            "ps_ttm.mcw": [None, 1.1, None],
+            "dyr.ew": [None, 0.03, None],
+            "dyr.mcw": [None, 0.028, None],
+            "mc": [None, 100.0, None],
+        }
+    )
+
+    result = cleaner.clean(df)
+
+    assert set(result["stockCode"].to_list()) == {"000905", "000300"}
+
+    legacy_df = pl.DataFrame(
+        {
+            "stockCode": ["000300", "000905"],
+            "date": ["2022-04-05", "2026-08-14"],
+            "pe_ttm.ew": [None, 12.0],
+            "pb.ew": [None, 1.5],
+            "ps_ttm.ew": [None, 1.2],
+            "dyr.ew": [None, 0.03],
+            "mc": [None, 100.0],
+        }
+    )
+
+    legacy_result = cleaner.clean(legacy_df)
+
+    assert legacy_result["stockCode"].to_list() == ["000905"]

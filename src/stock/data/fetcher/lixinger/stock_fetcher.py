@@ -7,11 +7,26 @@ import polars as pl
 
 from stock.config.loader import load_data_config
 from stock.data.fetcher.lixinger.client import LixingerClient
-from stock.data.fetcher.lixinger.registry import EndpointMeta, LIXINGER_API_REGISTRY
+from stock.data.fetcher.lixinger.registry import LIXINGER_API_REGISTRY, EndpointMeta
+from stock.data.task_registry import resolve_task
+from stock.exceptions import DataFetchError
 from stock.models.market import DailyBar
 from stock.utils.logger import logger
 
 _INDUSTRY_TABLE_CACHE: Any = None
+
+
+def _resolve_endpoint_meta(endpoint: str) -> tuple[str, EndpointMeta]:
+    """将公开 task 或完整路径统一解析为真实 API 路由与元数据。"""
+    try:
+        api_name = resolve_task("lixinger", endpoint).api_name
+    except ValueError:
+        api_name = endpoint
+
+    meta = LIXINGER_API_REGISTRY.get(api_name)
+    if meta is None and api_name != endpoint:
+        meta = LIXINGER_API_REGISTRY.get(endpoint)
+    return api_name, meta or EndpointMeta(api_name=api_name, description=api_name)
 
 
 def _resolve_sw_2021_industry_codes(
@@ -31,17 +46,23 @@ def _resolve_sw_2021_industry_codes(
 
         # 1. 银行行业接口 -> 动态筛选包含“银行”的分类
         if "/bank" in endpoint:
-            mask = df_ind["name"].str.contains("银行", na=False) & (df_ind["level"].isin(["one", "two"]))
+            mask = df_ind["name"].str.contains("银行", na=False) & (
+                df_ind["level"].isin(["one", "two"])
+            )
             return sorted(df_ind[mask]["stockCode"].dropna().astype(str).unique().tolist())
 
         # 2. 证券行业接口 -> 动态筛选包含“证券”的分类
         if "/security" in endpoint:
-            mask = df_ind["name"].str.contains("证券", na=False) & (df_ind["level"].isin(["one", "two"]))
+            mask = df_ind["name"].str.contains("证券", na=False) & (
+                df_ind["level"].isin(["one", "two"])
+            )
             return sorted(df_ind[mask]["stockCode"].dropna().astype(str).unique().tolist())
 
         # 3. 保险行业接口 -> 动态筛选包含“保险”的分类
         if "/insurance" in endpoint:
-            mask = df_ind["name"].str.contains("保险", na=False) & (df_ind["level"].isin(["one", "two"]))
+            mask = df_ind["name"].str.contains("保险", na=False) & (
+                df_ind["level"].isin(["one", "two"])
+            )
             return sorted(df_ind[mask]["stockCode"].dropna().astype(str).unique().tolist())
 
         # 4. 非金融行业接口 -> 动态排除“银行”与“非银金融”
@@ -53,6 +74,8 @@ def _resolve_sw_2021_industry_codes(
         mask = df_ind["level"] == level
         return sorted(df_ind[mask]["stockCode"].dropna().astype(str).unique().tolist())
 
+    except DataFetchError:
+        raise
     except Exception as e:
         logger.warning(f"动态获取申万行业分类失败: {e}")
         return []
@@ -91,40 +114,63 @@ def _get_lixinger_universe() -> list[str]:
 def _fetch_batch_index_fundamentals(
     client: LixingerClient, meta: EndpointMeta, query_kwargs: dict[str, Any]
 ) -> pl.DataFrame:
-    """遍历观察池配置中的指数代码，逐个查询并拼接。"""
+    """按理杏仁指数接口约束批量查询观察池代码并拼接。"""
     data_conf = load_data_config()
     lx_indices = data_conf.watchlists.lixinger.indices
-    dfs: list[pl.DataFrame] = []
-    for code in lx_indices:
-        sub_kwargs = dict(query_kwargs)
-        sub_kwargs["stockCodes"] = [code]
-        try:
-            sub_df = client.query(meta.api_name, **sub_kwargs)
-            if not sub_df.empty:
-                dfs.append(pl.from_pandas(sub_df))
-        except Exception as err:
-            logger.debug(f"理杏仁指数代码 [{code}] 查询跳过或不适用: {err}")
-    if not dfs:
+    supported = (
+        getattr(data_conf, "source_endpoint_supports", {})
+        .get("lixinger", {})
+        .get("index_fundamental", [])
+    )
+    if supported:
+        supported_set = set(supported)
+        lx_indices = [code for code in lx_indices if code in supported_set]
+    batch_kwargs = dict(query_kwargs)
+    if batch_kwargs.get("startDate") == batch_kwargs.get("endDate"):
+        batch_kwargs["date"] = batch_kwargs.pop("startDate")
+        batch_kwargs.pop("endDate", None)
+    try:
+        result = client.query_batch(meta.api_name, lx_indices, **batch_kwargs)
+    except DataFetchError:
+        raise
+    except Exception as err:
+        logger.debug(f"理杏仁指数批量查询失败: {err}")
         return pl.DataFrame()
-    return pl.concat(dfs, how="diagonal_relaxed")
+    return pl.from_pandas(result) if not result.empty else pl.DataFrame()
 
 
 def _fetch_batch_sw_industries(
-    client: LixingerClient, meta: EndpointMeta, endpoint: str, query_kwargs: dict[str, Any]
+    client: LixingerClient,
+    meta: EndpointMeta,
+    endpoint: str,
+    query_kwargs: dict[str, Any],
+    level: str | None = None,
 ) -> pl.DataFrame:
-    """申万行业估值/财务接口限制单次只能查询 1 个行业代码，逐个查询并拼接。"""
-    target_level = "two" if "l2" in endpoint.lower() else "one"
+    """按 API 约束抓取申万行业数据；同日请求按最多 100 个代码批量合并。"""
+    target_level = level or ("two" if "l2" in endpoint.lower() else "one")
     codes = _resolve_sw_2021_industry_codes(client, endpoint=endpoint, level=target_level)
+    same_day = query_kwargs.get("startDate") == query_kwargs.get("endDate")
+    if same_day and query_kwargs.get("startDate"):
+        batch_kwargs = dict(query_kwargs)
+        batch_kwargs["date"] = batch_kwargs.pop("startDate")
+        batch_kwargs.pop("endDate", None)
+        code_groups = [codes[i : i + 100] for i in range(0, len(codes), 100)]
+    else:
+        batch_kwargs = query_kwargs
+        code_groups = [[code] for code in codes]
+
     dfs: list[pl.DataFrame] = []
-    for code in codes:
-        sub_kwargs = dict(query_kwargs)
-        sub_kwargs["stockCodes"] = [code]
+    for code_group in code_groups:
+        sub_kwargs = dict(batch_kwargs)
+        sub_kwargs["stockCodes"] = code_group
         try:
             sub_df = client.query(meta.api_name, **sub_kwargs)
             if not sub_df.empty:
                 dfs.append(pl.from_pandas(sub_df))
+        except DataFetchError:
+            raise
         except Exception as err:
-            logger.debug(f"理杏仁行业代码 [{code}] 查询跳过或不适用: {err}")
+            logger.debug(f"理杏仁行业代码批次 [{code_group}] 查询跳过或不适用: {err}")
     if not dfs:
         return pl.DataFrame()
     return pl.concat(dfs, how="diagonal_relaxed")
@@ -147,9 +193,9 @@ class LixingerStockFetcher:
         **kwargs: Any,
     ) -> pl.DataFrame:
         """抓取指定股票或全市场在给定日期范围内的行情/估值数据。"""
-        meta = LIXINGER_API_REGISTRY.get(
-            endpoint, EndpointMeta(api_name=endpoint, description=endpoint)
-        )
+        task_endpoint = str(kwargs.pop("endpoint_name", "") or "")
+        requested_endpoint = task_endpoint or endpoint
+        endpoint, meta = _resolve_endpoint_meta(endpoint)
         if (end_date - start_date).days > 3200 and endpoint != "cn/industry/constituents/sw_2021":
             chunks: list[pl.DataFrame] = []
             curr_start = start_date
@@ -159,7 +205,7 @@ class LixingerStockFetcher:
                     symbol=symbol,
                     start_date=curr_start,
                     end_date=curr_end,
-                    endpoint=endpoint,
+                    endpoint=requested_endpoint,
                     **kwargs,
                 )
                 if not chunk_df.is_empty():
@@ -190,7 +236,7 @@ class LixingerStockFetcher:
                 not raw_code
                 or raw_code == endpoint
                 or raw_code == meta.api_name
-                or raw_code in LIXINGER_API_REGISTRY
+                or _resolve_endpoint_meta(raw_code)[0] == endpoint
                 or raw_code.startswith("sw_2021")
                 or "fundamental" in raw_code
                 or "candlestick" in raw_code
@@ -202,15 +248,26 @@ class LixingerStockFetcher:
                 else:
                     query_kwargs["stockCodes"] = [raw_code]
             elif not query_kwargs.get("stockCodes") and not query_kwargs.get("stockCode"):
-                if "index" in endpoint or endpoint == "cn/index/fundamental":
+                if endpoint == "cn/index/fundamental":
                     return _fetch_batch_index_fundamentals(self.client, meta, query_kwargs)
                 if "industry" in endpoint or "sw_2021" in endpoint:
-                    return _fetch_batch_sw_industries(self.client, meta, endpoint, query_kwargs)
+                    industry_level = "two" if "l2" in requested_endpoint.lower() else None
+                    return _fetch_batch_sw_industries(
+                        self.client, meta, endpoint, query_kwargs, level=industry_level
+                    )
 
         query_kwargs.update(kwargs)
         pandas_df = self.client.query(meta.api_name, **query_kwargs)
         if pandas_df.empty:
             return pl.DataFrame()
+
+        # 指数 K 线响应不带 stockCode，使用本次请求的指数代码补齐主键。
+        if endpoint == "cn/index/candlestick" and raw_code:
+            pandas_df = pandas_df.copy()
+            if "stockCode" not in pandas_df.columns:
+                pandas_df.insert(0, "stockCode", raw_code)
+            else:
+                pandas_df["stockCode"] = pandas_df["stockCode"].fillna(raw_code)
 
         if "constituents" in endpoint and "constituents" in pandas_df.columns:
             rows: list[dict[str, Any]] = []
@@ -226,11 +283,11 @@ class LixingerStockFetcher:
 
         return pl.from_pandas(pandas_df)
 
-    def fetch_daily_bars(
-        self, symbol: str, start_date: date, end_date: date
-    ) -> list[DailyBar]:
+    def fetch_daily_bars(self, symbol: str, start_date: date, end_date: date) -> list[DailyBar]:
         """抓取数据并转换为 DailyBar 模型列表。"""
-        df = self.fetch_daily_bars_df(symbol, start_date, end_date, endpoint="cn/company/candlestick")
+        df = self.fetch_daily_bars_df(
+            symbol, start_date, end_date, endpoint="cn/company/candlestick"
+        )
         if df.is_empty():
             return []
 
@@ -259,10 +316,19 @@ class LixingerStockFetcher:
             )
         return bars
 
-    def fetch_trade_cal(
-        self, start_date: date, end_date: date
-    ) -> list[date]:
+    def fetch_trade_cal(self, start_date: date, end_date: date) -> list[date]:
         """获取指定日期范围内的有效交易日列表。"""
+        try:
+            from stock.data.update_scheduler import DataUpdateScheduler
+
+            local_calendar = DataUpdateScheduler.get_trading_days(
+                start_date, end_date, data_source="tushare"
+            )
+            if local_calendar:
+                return list(local_calendar)
+        except Exception as e:
+            logger.debug(f"读取本地 TuShare trade_cal 失败，继续查询理杏仁日历: {e}")
+
         start_str = start_date.strftime("%Y-%m-%d")
         end_str = end_date.strftime("%Y-%m-%d")
 
@@ -277,28 +343,32 @@ class LixingerStockFetcher:
             )
         except Exception as e:
             logger.warning(
-                f"理杏仁指数 K 线日历获取失败 ({e})，尝试降级使用 TuShare 交易日历或工作日列表..."
+                f"理杏仁指数 K 线日历获取失败 ({e})，尝试使用 TuShare 交易日历..."
             )
             try:
                 from stock.data.fetcher.tushare.facade import TuShareDataFetcher
-                return TuShareDataFetcher().fetch_trade_cal(start_date, end_date)
-            except Exception:
-                fallback_dates: list[date] = []
-                curr = start_date
-                while curr <= end_date:
-                    if curr.weekday() < 5:
-                        fallback_dates.append(curr)
-                    curr += timedelta(days=1)
-                return fallback_dates
+
+                dates = TuShareDataFetcher().fetch_trade_cal(start_date, end_date)
+                if dates:
+                    return dates
+            except Exception as fallback_error:
+                logger.debug(f"TuShare 交易日历获取失败: {fallback_error}")
+            raise DataFetchError(
+                f"缺少 {start_date} ~ {end_date} 的可信交易日历，拒绝按工作日推算"
+            ) from e
 
         if pandas_df.empty or "date" not in pandas_df.columns:
-            weekday_dates: list[date] = []
-            curr = start_date
-            while curr <= end_date:
-                if curr.weekday() < 5:
-                    weekday_dates.append(curr)
-                curr += timedelta(days=1)
-            return weekday_dates
+            try:
+                from stock.data.fetcher.tushare.facade import TuShareDataFetcher
+
+                dates = TuShareDataFetcher().fetch_trade_cal(start_date, end_date)
+                if dates:
+                    return dates
+            except Exception as fallback_error:
+                logger.debug(f"TuShare 交易日历获取失败: {fallback_error}")
+            raise DataFetchError(
+                f"理杏仁未返回有效交易日历: {start_date} ~ {end_date}，拒绝按工作日推算"
+            )
 
         parsed_dates: list[date] = []
         for d_val in pandas_df["date"].to_list():

@@ -28,6 +28,15 @@ def test_backfill_daily_multi_worker():
 
     with (
         patch("stock.data.backfill.create_pipeline", return_value=mock_pipeline),
+        patch(
+            "stock.data.backfill.DataUpdateScheduler.get_trading_days",
+            return_value=(
+                date(2026, 8, 1),
+                date(2026, 8, 2),
+                date(2026, 9, 1),
+                date(2026, 9, 2),
+            ),
+        ),
         patch("stock.data.backfill.DataUpdateScheduler.is_data_ready", return_value=True),
     ):
         backfiller = HistoricalBackfiller(data_source="tushare", endpoint="daily")

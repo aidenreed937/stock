@@ -15,6 +15,11 @@ from stock.exceptions import DataFetchError
 from stock.utils.logger import logger
 from stock.utils.rate_limiter import RateLimiter
 
+MAX_STOCK_CODES = 100
+
+_SHARED_LIMITERS: dict[tuple[str, int], RateLimiter] = {}
+_SHARED_LIMITERS_LOCK = threading.Lock()
+
 
 class LixingerClient:
     """理杏仁开放平台 HTTP API 底层客户端。
@@ -59,13 +64,17 @@ class LixingerClient:
         self._session = requests.Session()
 
     def _get_rate_limiter(self, api_path: str) -> RateLimiter:
-        """根据接口类型获取独立的 RateLimiter 实例。"""
-        with self._limiter_lock:
-            if api_path not in self._limiters:
-                meta = LIXINGER_API_REGISTRY.get(api_path)
-                limit = meta.rate_limit_per_min if meta else self.default_rate_limit
-                self._limiters[api_path] = RateLimiter(max_requests=limit)
-            return self._limiters[api_path]
+        """根据接口类型获取当前进程共享的 RateLimiter 实例。"""
+        meta = LIXINGER_API_REGISTRY.get(api_path)
+        limit = meta.rate_limit_per_min if meta else self.default_rate_limit
+        limiter_key = (api_path, limit)
+        with _SHARED_LIMITERS_LOCK:
+            limiter = _SHARED_LIMITERS.get(limiter_key)
+            if limiter is None:
+                limiter = RateLimiter(max_requests=limit)
+                _SHARED_LIMITERS[limiter_key] = limiter
+            self._limiters[api_path] = limiter
+            return limiter
 
     def query(self, api_path: str, **kwargs: Any) -> pd.DataFrame:
         """执行理杏仁 API POST 查询请求并转化为 pandas DataFrame。
@@ -178,6 +187,38 @@ class LixingerClient:
 
         return pd.DataFrame()
 
+    def query_batch(
+        self, api_path: str, stock_codes: list[str] | tuple[str, ...], **kwargs: Any
+    ) -> pd.DataFrame:
+        """按理杏仁接口约束批量查询并合并多个股票或指数代码。"""
+        if "stockCodes" in kwargs:
+            raise DataFetchError("query_batch 不应同时传入 stockCodes 参数")
+        if not isinstance(stock_codes, (list, tuple)):
+            raise DataFetchError("理杏仁批量查询 stock_codes 必须是数组")
+
+        codes = [str(code).strip() for code in stock_codes]
+        if not codes or any(not code for code in codes):
+            raise DataFetchError("理杏仁批量查询 stock_codes 不能为空")
+
+        # 理杏仁的历史区间请求带 startDate 时只能传一个代码；date 查询才可按 100 个代码批量。
+        start_value = kwargs.get("startDate") or kwargs.get("start_date")
+        if start_value and len(codes) > 1:
+            code_groups = [[code] for code in codes]
+        else:
+            code_groups = [
+                codes[index : index + MAX_STOCK_CODES]
+                for index in range(0, len(codes), MAX_STOCK_CODES)
+            ]
+
+        frames: list[pd.DataFrame] = []
+        for code_group in code_groups:
+            frame = self.query(api_path, stockCodes=code_group, **kwargs)
+            if not frame.empty:
+                frames.append(frame)
+        if not frames:
+            return pd.DataFrame()
+        return pd.concat(frames, ignore_index=True, sort=False)
+
     @staticmethod
     def _validate_date_range(api_path: str, kwargs: dict[str, Any]) -> None:
         """在 HTTP 请求前执行理杏仁文档的最长十年时间窗约束。"""
@@ -185,9 +226,10 @@ class LixingerClient:
         if stock_codes is not None:
             if not isinstance(stock_codes, (list, tuple)):
                 raise DataFetchError(f"理杏仁接口 [{api_path}] stockCodes 必须是数组")
-            if not 1 <= len(stock_codes) <= 100:
+            if not 1 <= len(stock_codes) <= MAX_STOCK_CODES:
                 raise DataFetchError(
-                    f"理杏仁接口 [{api_path}] stockCodes 数量必须在 1~100 之间，实际 {len(stock_codes)}"
+                    f"理杏仁接口 [{api_path}] stockCodes 数量必须在 1~{MAX_STOCK_CODES} 之间，"
+                    f"实际 {len(stock_codes)}"
                 )
         start_value = kwargs.get("startDate") or kwargs.get("start_date")
         end_value = kwargs.get("endDate") or kwargs.get("end_date")

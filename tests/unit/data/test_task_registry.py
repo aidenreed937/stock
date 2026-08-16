@@ -1,9 +1,14 @@
 """TaskRegistry 与 is_task_partitioned 单元测试。"""
 
+import pytest
+
 from stock.data.task_registry import (
+    expand_task_targets,
     is_per_symbol_task,
     is_task_partitioned,
+    list_available_bundles,
     list_available_tasks,
+    resolve_bundle,
     resolve_task,
 )
 
@@ -62,3 +67,50 @@ def test_task_spec_properties() -> None:
     assert task.quality_profile == "bar"
     assert task.partitioned is True
     assert task.fetch_mode == "per_day"
+
+
+def test_lixinger_l2_task_uses_the_documented_shared_api_route() -> None:
+    task = resolve_task("lixinger", "sw_2021_l2_fundamental")
+
+    assert task.api_name == "cn/industry/fundamental/sw_2021"
+
+
+def test_lixinger_task_bundles() -> None:
+    assert list_available_bundles("lixinger") == [
+        "market_bundle",
+        "industry_bundle",
+        "company_bundle",
+        "macro_bundle",
+        "index_bundle",
+    ]
+    assert list_available_bundles("tushare") == []
+
+    industry = resolve_bundle("lixinger", "industry_bundle")
+    assert industry.provider == "lixinger"
+    assert industry.tasks == (
+        "sw_2021_constituents",
+        "sw_2021_fundamental",
+        "sw_2021_l2_fundamental",
+        "sw_2021_fs_non_financial",
+        "sw_2021_fs_bank",
+        "sw_2021_fs_security",
+        "sw_2021_fs_insurance",
+    )
+    assert "industry_bundle" not in list_available_tasks("lixinger")
+
+
+def test_expand_task_targets_keeps_atomic_tasks_and_deduplicates() -> None:
+    assert expand_task_targets("lixinger", ["industry_bundle", "sw_2021_fundamental"]) == [
+        "sw_2021_constituents",
+        "sw_2021_fundamental",
+        "sw_2021_l2_fundamental",
+        "sw_2021_fs_non_financial",
+        "sw_2021_fs_bank",
+        "sw_2021_fs_security",
+        "sw_2021_fs_insurance",
+    ]
+
+
+def test_resolve_task_rejects_bundle_name() -> None:
+    with pytest.raises(ValueError, match="任务包"):
+        resolve_task("lixinger", "industry_bundle")

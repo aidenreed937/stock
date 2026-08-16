@@ -9,6 +9,7 @@ from stock.utils.logger import logger
 # 常见外部数据源别名映射表 (例如 TuShare / AKShare -> 内部统一规范列名)
 COLUMN_MAPPING = {
     "ts_code": "symbol",
+    "stockCode": "symbol",
     "code": "symbol",
     "vol": "volume",
     "date": "trade_date",
@@ -34,6 +35,44 @@ STANDARD_COLUMNS = [
     "schema_version",
     "updated_at",
 ]
+
+# TuShare 个股日线的 Curated 固定列集合。RAW 中的 scope_note/source_scope
+# 属于旧批次附加元数据，证据仍保留在 RAW，不进入下游黄金表。
+CURATED_STOCK_DAILY_BAR_COLUMNS = (
+    "symbol",
+    "trade_date",
+    "open",
+    "high",
+    "low",
+    "close",
+    "volume",
+    "amount",
+    "name",
+    "pre_close",
+    "change",
+    "pct_chg",
+    "source_unit_note",
+    "source_id",
+    "fetched_at",
+    "data_source",
+    "source_endpoint",
+    "request_id",
+    "updated_at",
+    "market",
+    "exchange",
+    "currency",
+    "adjustment",
+    "schema_version",
+)
+
+_CURATED_BAR_FLOAT_COLUMNS = frozenset(
+    {"open", "high", "low", "close", "volume", "amount", "pre_close", "change", "pct_chg"}
+)
+_CURATED_BAR_STRING_COLUMNS = frozenset(
+    set(CURATED_STOCK_DAILY_BAR_COLUMNS)
+    - _CURATED_BAR_FLOAT_COLUMNS
+    - {"trade_date", "updated_at"}
+)
 
 
 class BarDataNormalizer(BaseDataNormalizer):
@@ -84,7 +123,11 @@ class BarDataNormalizer(BaseDataNormalizer):
 
         # 5. 按统一的标准列名过滤并排序
         existing_std_cols = [c for c in STANDARD_COLUMNS if c in normalized_df.columns]
-        other_cols = [c for c in normalized_df.columns if c not in STANDARD_COLUMNS and c not in ("raw_row_count", "clean_row_count")]
+        other_cols = [
+            c
+            for c in normalized_df.columns
+            if c not in STANDARD_COLUMNS and c not in ("raw_row_count", "clean_row_count")
+        ]
 
         normalized_df = normalized_df.select(existing_std_cols + other_cols)
         logger.debug(f"数据标准化完成，包含列: {normalized_df.columns}")
@@ -92,10 +135,39 @@ class BarDataNormalizer(BaseDataNormalizer):
         return normalized_df
 
 
+def _curated_bar_column_expr(df: pl.DataFrame, column: str) -> pl.Expr:
+    if column not in df.columns:
+        if column in _CURATED_BAR_FLOAT_COLUMNS:
+            return pl.lit(None, dtype=pl.Float64).alias(column)
+        elif column == "trade_date":
+            return pl.lit(None, dtype=pl.Date).alias(column)
+        elif column == "updated_at":
+            return pl.lit(None, dtype=pl.Datetime("us", "UTC")).alias(column)
+        return pl.lit(None, dtype=pl.Utf8).alias(column)
+    if column in _CURATED_BAR_FLOAT_COLUMNS:
+        return pl.col(column).cast(pl.Float64, strict=False).alias(column)
+    if column in _CURATED_BAR_STRING_COLUMNS:
+        return pl.col(column).cast(pl.Utf8, strict=False).alias(column)
+    if column == "trade_date":
+        return parse_mixed_date("trade_date").alias(column)
+    return pl.col(column).cast(pl.Datetime("us", "UTC"), strict=False).alias(column)
+
+
+def normalize_stock_daily_bar_curated_schema(df: pl.DataFrame) -> pl.DataFrame:
+    """将 TuShare 个股日线整理为稳定的 Curated Schema。"""
+    if df.is_empty():
+        return df
+
+    expressions = [
+        _curated_bar_column_expr(df, column) for column in CURATED_STOCK_DAILY_BAR_COLUMNS
+    ]
+    return df.with_columns(expressions).select(list(CURATED_STOCK_DAILY_BAR_COLUMNS))
+
+
 def infer_market_exchange_currency(
     col_ref: pl.Expr, data_source: str = "tushare"
 ) -> tuple[pl.Expr, pl.Expr, pl.Expr]:
-    """根据证券代码前缀/后缀及数据源动态推算市场 (market)、交易所 (exchange) 与交易货币 (currency)。"""
+    """根据证券代码与数据源推算市场、交易所与交易货币。"""
     default_m = "CN" if data_source.lower() in ("tushare", "lixinger") else "US"
     default_ex = "CN" if data_source.lower() in ("tushare", "lixinger") else "US_EXCHANGE"
     default_cur = "CNY" if data_source.lower() in ("tushare", "lixinger") else "USD"

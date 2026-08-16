@@ -1,4 +1,4 @@
-.PHONY: help install lint format test check run scan backfill baseline migrate-data cleanup-data backfill-accept
+.PHONY: help install lint format test check run scan backfill baseline migrate-data cleanup-data backfill-accept repair-stock-daily-bar
 
 help:
 	@echo "Available commands:"
@@ -14,6 +14,7 @@ help:
 	@echo "  make migrate-data [APPLY=1] - Preview/apply local dedup migration"
 	@echo "  make cleanup-data [APPLY=1] [OLDER_THAN_DAYS=7] - Preview/clean stale Parquet artifacts"
 	@echo "  make backfill-accept ENDPOINT=stock_daily_bar - Run fail-closed backfill acceptance"
+	@echo "  make repair-stock-daily-bar [APPLY=1] - Replay stock_daily_bar RAW into staged Curated"
 	@echo "  make probe    - Run global data source connectivity probe"
 	@echo "  make validate - Run offline data quality validator"
 	@echo "  make filter-universe - Generate filtered stock universe based on liquidity"
@@ -57,17 +58,27 @@ cleanup-data:
 	UV_CACHE_DIR=.uv_cache UV_PYTHON_INSTALL_DIR=.uv_python uv run python -m stock.data.ops.cleanup_artifacts --root $(or $(ROOT),data) --older-than-days $(or $(OLDER_THAN_DAYS),7) $(if $(filter 1 true yes,$(APPLY)),--apply)
 
 backfill-accept:
-	uv run python -m stock.data.audit.backfill_acceptance --root $(or $(ROOT),data/curated) --endpoint $(ENDPOINT) --data-source $(or $(SOURCE),$(DATA_SOURCE),tushare) $(if $(START),--start $(START)) $(if $(END),--end $(END))
+	UV_CACHE_DIR=.uv_cache UV_PYTHON_INSTALL_DIR=.uv_python uv run python -m stock.data.audit.backfill_acceptance --root $(or $(ROOT),data/curated) --raw-root $(or $(RAW_ROOT),data/raw) --endpoint $(ENDPOINT) --data-source $(or $(SOURCE),$(DATA_SOURCE),tushare) $(if $(START),--start $(START)) $(if $(END),--end $(END))
+
+repair-stock-daily-bar:
+	UV_CACHE_DIR=.uv_cache UV_PYTHON_INSTALL_DIR=.uv_python uv run python -m stock.data.ops.rebuild_stock_daily_bar \
+		$(if $(RAW_ROOT),--raw-root $(RAW_ROOT)) \
+		$(if $(CURATED_ROOT),--curated-root $(CURATED_ROOT)) \
+		$(if $(STOCK_BASIC),--stock-basic $(STOCK_BASIC)) \
+		$(if $(TEMP_ROOT),--temp-root $(TEMP_ROOT)) \
+		$(if $(QUARANTINE_ROOT),--quarantine-root $(QUARANTINE_ROOT)) \
+		$(if $(BACKUP_ROOT),--backup-root $(BACKUP_ROOT)) \
+		$(if $(filter 1 true yes,$(APPLY)),--apply)
 
 probe:
 	uv run python -m stock.data.ops.probe
 
 validate:
-	uv run python -m stock.data.quality.gate
-	uv run python -m stock.data.validator --endpoint $(or $(ENDPOINT),stock_daily_bar) --strict
+	UV_CACHE_DIR=.uv_cache UV_PYTHON_INSTALL_DIR=.uv_python uv run python -m stock.data.quality.gate
+	UV_CACHE_DIR=.uv_cache UV_PYTHON_INSTALL_DIR=.uv_python uv run python -m stock.data.validator --endpoint $(or $(ENDPOINT),stock_daily_bar) --strict
 
 audit:
-	uv run python -m stock.cli.audit --type $(or $(TYPE),master) --data-source $(or $(SOURCE),$(DATA_SOURCE),tushare) $(if $(DATE),--date $(DATE)) $(if $(START),--start $(START)) $(if $(END),--end $(END)) $(if $(DOMAIN),--domain $(DOMAIN)) $(if $(FREQ),--frequency $(FREQ))
+	UV_CACHE_DIR=.uv_cache UV_PYTHON_INSTALL_DIR=.uv_python uv run python -m stock.cli.audit --type $(or $(TYPE),master) --data-source $(or $(SOURCE),$(DATA_SOURCE),tushare) $(if $(DATE),--date $(DATE)) $(if $(START),--start $(START)) $(if $(END),--end $(END)) $(if $(DOMAIN),--domain $(DOMAIN)) $(if $(FREQ),--frequency $(FREQ))
 
 master-audit:
 	uv run python -m stock.cli.audit --type master

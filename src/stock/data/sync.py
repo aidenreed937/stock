@@ -16,7 +16,8 @@ from typing import Any
 from stock.config.loader import load_data_config
 from stock.data.catalog import DataCatalog
 from stock.data.factory import create_pipeline
-from stock.data.task_registry import list_available_tasks, resolve_task
+from stock.data.planner import _filter_supported_symbols, _should_expand_single_sync
+from stock.data.task_registry import expand_task_targets, resolve_task
 from stock.data.update_scheduler import DataUpdateScheduler
 
 logger = logging.getLogger(__name__)
@@ -68,7 +69,7 @@ class SyncExecutionResult:
 def _sniff_watermarks(
     catalog: DataCatalog, data_source: str, endpoints: list[str] | None = None
 ) -> dict[str, date | None]:
-    targets = endpoints or list_available_tasks(data_source)
+    targets = expand_task_targets(data_source, endpoints)
     watermarks: dict[str, date | None] = {}
     for ep in targets:
         try:
@@ -83,7 +84,9 @@ def _sniff_watermarks(
 
 def _sync_symbols_for_task(data_source: str, endpoint: str) -> list[str]:
     task = resolve_task(data_source, endpoint)
-    if task.fetch_mode != "per_symbol":
+    if task.fetch_mode != "per_symbol" or (
+        task.is_single_sync and not _should_expand_single_sync(data_source, task.task_name)
+    ):
         return [""]
 
     try:
@@ -102,7 +105,8 @@ def _sync_symbols_for_task(data_source: str, endpoint: str) -> list[str]:
     if task.task_name in _FUND_ENDPOINTS or task.dataset in _FUND_ENDPOINTS:
         return list(getattr(watchlist, "funds", []) or [])
     if task.task_name in _INDEX_ENDPOINTS or task.dataset in _INDEX_ENDPOINTS:
-        return list(getattr(watchlist, "indices", []) or [])
+        indices = list(getattr(watchlist, "indices", []) or [])
+        return _filter_supported_symbols(indices, data_source, task.task_name, data_cfg)
     stocks = list(getattr(watchlist, "stocks", []) or [])
     if stocks:
         return stocks
@@ -133,7 +137,7 @@ def _symbol_watermark(
     return None
 
 
-def _symbol_base_date(data_source: str, symbol: str) -> date | None:
+def _symbol_base_date(data_source: str, symbol: str, endpoint: str = "") -> date | None:
     if not symbol:
         return None
     try:
@@ -141,11 +145,34 @@ def _symbol_base_date(data_source: str, symbol: str) -> date | None:
         watchlist = getattr(data_cfg.watchlists, data_source, None)
         get_base_date = getattr(watchlist, "get_base_date", None)
         if callable(get_base_date):
-            base_date = get_base_date(symbol)
+            asset_type = "index" if endpoint in _INDEX_ENDPOINTS else "fund" if endpoint in _FUND_ENDPOINTS else "stock"
+            try:
+                base_date = get_base_date(symbol, asset_type)
+            except TypeError:
+                base_date = get_base_date(symbol)
             return base_date if isinstance(base_date, date) else None
     except Exception:
         return None
     return None
+
+
+def _resolve_sync_target_date(
+    data_source: str,
+    endpoint: str,
+    target_date: date,
+    target_date_is_explicit: bool,
+) -> date | None:
+    """为默认增量同步解析 T+1 端点实际应补的最近交易日。"""
+    if target_date_is_explicit:
+        return target_date
+
+    meta = DataUpdateScheduler.get_endpoint_update_meta(data_source, endpoint)
+    if not meta.delay_in_trading_days:
+        return target_date
+
+    return DataUpdateScheduler.get_latest_trading_date(
+        target_date, data_source=data_source, strictly_before=True
+    )
 
 
 def _run_sync_task(task: SyncTaskItem, force_refresh: bool) -> SyncExecutionResult:
@@ -208,10 +235,11 @@ class DailySyncEngine:
         endpoints: list[str] | None = None,
         force: bool = False,
         current_datetime: datetime | None = None,
+        target_date_is_explicit: bool = True,
     ) -> list[SyncTaskItem]:
         """结合落盘水位与更新时间窗口，生成最小必要增量同步任务计划。"""
         t_target = target_date or date.today()
-        targets = endpoints or list_available_tasks(self.data_source)
+        targets = expand_task_targets(self.data_source, endpoints)
         watermarks = self.sniff_watermarks(targets)
 
         plan: list[SyncTaskItem] = []
@@ -233,9 +261,35 @@ class DailySyncEngine:
                     )
                 )
                 continue
+
+            sync_target = _resolve_sync_target_date(
+                self.data_source, ep, t_target, target_date_is_explicit
+            )
+            if sync_target is None:
+                for sym in symbols:
+                    plan.append(
+                        SyncTaskItem(
+                            data_source=self.data_source,
+                            endpoint=ep,
+                            dataset=task.dataset,
+                            start_date=t_target,
+                            end_date=t_target,
+                            watermark=_symbol_watermark(
+                                self.catalog, self.data_source, task.dataset, sym
+                            )
+                            if sym
+                            else watermarks.get(ep),
+                            status="SKIPPED",
+                            is_ready=False,
+                            reason="交易日历不可用",
+                            symbol=sym,
+                        )
+                    )
+                continue
+
             ready = DataUpdateScheduler.is_data_ready(
                 endpoint=ep,
-                target_date=t_target,
+                target_date=sync_target,
                 current_datetime=current_datetime,
                 data_source=self.data_source,
             )
@@ -248,8 +302,8 @@ class DailySyncEngine:
                             data_source=self.data_source,
                             endpoint=ep,
                             dataset=task.dataset,
-                            start_date=t_target,
-                            end_date=t_target,
+                            start_date=sync_target,
+                            end_date=sync_target,
                             watermark=_symbol_watermark(
                                 self.catalog, self.data_source, task.dataset, sym
                             )
@@ -269,14 +323,14 @@ class DailySyncEngine:
                     if sym
                     else watermarks.get(ep)
                 )
-                if not force and w_date is not None and w_date >= t_target:
+                if not force and w_date is not None and w_date >= sync_target:
                     plan.append(
                         SyncTaskItem(
                             data_source=self.data_source,
                             endpoint=ep,
                             dataset=task.dataset,
-                            start_date=t_target,
-                            end_date=t_target,
+                            start_date=sync_target,
+                            end_date=sync_target,
                             watermark=w_date,
                             status="UP_TO_DATE",
                             is_ready=True,
@@ -290,10 +344,12 @@ class DailySyncEngine:
                 if w_date is not None:
                     start_d = w_date + timedelta(days=1)
                     # 若水位已经是当天或更晚，且处于 force 模式，覆盖更新当天
-                    start_d = min(start_d, t_target)
+                    start_d = min(start_d, sync_target)
                 else:
-                    base_date = _symbol_base_date(self.data_source, sym)
-                    start_d = base_date if base_date and base_date <= t_target else t_target
+                    base_date = _symbol_base_date(self.data_source, sym, ep)
+                    start_d = (
+                        base_date if base_date and base_date <= sync_target else sync_target
+                    )
 
                 plan.append(
                     SyncTaskItem(
@@ -301,11 +357,11 @@ class DailySyncEngine:
                         endpoint=ep,
                         dataset=task.dataset,
                         start_date=start_d,
-                        end_date=t_target,
+                        end_date=sync_target,
                         watermark=w_date,
                         status="PENDING",
                         is_ready=True,
-                        reason=f"待增量 ({start_d} ~ {t_target})",
+                        reason=f"待增量 ({start_d} ~ {sync_target})",
                         symbol=sym,
                     )
                 )
@@ -339,10 +395,16 @@ class DailySyncEngine:
         endpoints: list[str] | None = None,
         force: bool = False,
         run_audit_gate: bool = True,
+        target_date_is_explicit: bool = True,
     ) -> tuple[list[SyncTaskItem], list[SyncExecutionResult], dict[str, Any] | None]:
         """一站式完成增量计划生成、执行与质量对账。"""
         t_target = target_date or date.today()
-        plan = self.build_sync_plan(target_date=t_target, endpoints=endpoints, force=force)
+        plan = self.build_sync_plan(
+            target_date=t_target,
+            endpoints=endpoints,
+            force=force,
+            target_date_is_explicit=target_date_is_explicit,
+        )
         exec_results = self.execute_plan(plan, force_refresh=force)
 
         audit_result: dict[str, Any] | None = None
@@ -351,8 +413,16 @@ class DailySyncEngine:
                 from stock.data.audit.reconciliation import run_audit
 
                 logger.info(f"增量同步完成，正在触发 [{t_target}] 质量对账门禁...")
+                audit_date = next(
+                    (
+                        result.end_date
+                        for result in exec_results
+                        if result.endpoint == "stock_daily_bar" and result.status == "SUCCESS"
+                    ),
+                    t_target,
+                )
                 audit_result = run_audit(
-                    target_date=t_target, data_source=self.data_source, quiet=True
+                    target_date=audit_date, data_source=self.data_source, quiet=True
                 )
             except Exception as e:
                 logger.warning(f"增量后自动审计异常: {e}")

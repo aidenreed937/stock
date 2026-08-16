@@ -26,7 +26,16 @@ DEFAULT_DATASET_NUMERIC_COLS: dict[str, list[str]] = {
     "stock_daily_bar": ["amount", "volume", "open", "high", "low", "close"],
     "daily": ["amount", "vol", "close"],
     "margin": ["rzrqye", "rzye", "rqye"],
-    "index_fundamental": ["pe_ttm.ew", "pb.ew", "ps_ttm.ew", "dyr.ew"],
+    "index_fundamental": [
+        "pe_ttm.ew",
+        "pe_ttm.mcw",
+        "pb.ew",
+        "pb.mcw",
+        "ps_ttm.ew",
+        "ps_ttm.mcw",
+        "dyr.ew",
+        "dyr.mcw",
+    ],
     "fund_daily": ["amount", "volume", "close"],
     "moneyflow": ["buy_sm_amount", "sell_sm_amount", "net_mf_amount"],
 }

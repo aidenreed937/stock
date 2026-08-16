@@ -7,7 +7,8 @@ import polars as pl
 import pytest
 
 from stock.cli.sync import main as sync_cli_main
-from stock.data.sync import DailySyncEngine, SyncTaskItem
+from stock.data.sync import DailySyncEngine, SyncTaskItem, _sync_symbols_for_task
+from stock.data.update_scheduler import DataUpdateScheduler
 
 
 def test_sniff_watermarks() -> None:
@@ -70,6 +71,34 @@ def test_build_sync_plan_uptodate() -> None:
     ):
         plan = engine.build_sync_plan(target_date=date(2026, 8, 13), endpoints=["stock_daily_bar"])
         assert plan[0].status == "UP_TO_DATE"
+
+
+def test_build_sync_plan_retries_previous_trading_day_for_default_margin_sync() -> None:
+    engine = DailySyncEngine(data_source="tushare")
+    friday = date(2026, 8, 14)
+
+    with (
+        patch.object(engine, "sniff_watermarks", return_value={"margin": date(2026, 8, 13)}),
+        patch.object(
+            DataUpdateScheduler,
+            "get_latest_trading_date",
+            return_value=friday,
+        ) as latest_trading_date,
+        patch("stock.data.update_scheduler.DataUpdateScheduler.is_data_ready", return_value=True),
+    ):
+        plan = engine.build_sync_plan(
+            target_date=date(2026, 8, 15),
+            endpoints=["margin"],
+            target_date_is_explicit=False,
+        )
+
+    assert len(plan) == 1
+    assert plan[0].status == "PENDING"
+    assert plan[0].start_date == friday
+    assert plan[0].end_date == friday
+    latest_trading_date.assert_called_once_with(
+        date(2026, 8, 15), data_source="tushare", strictly_before=True
+    )
 
 
 def test_execute_plan_success_and_error() -> None:
@@ -154,6 +183,78 @@ def test_build_sync_plan_expands_per_symbol_with_symbol_watermark() -> None:
     assert all(item.status == "PENDING" for item in plan)
     assert plan[0].start_date == date(2026, 8, 13)
     assert plan[1].start_date == date(2010, 1, 1)
+
+
+def test_build_sync_plan_expands_task_bundle_into_atomic_tasks() -> None:
+    engine = DailySyncEngine(data_source="lixinger")
+    bundle_tasks = [
+        "sw_2021_constituents",
+        "sw_2021_fundamental",
+        "sw_2021_l2_fundamental",
+        "sw_2021_fs_non_financial",
+        "sw_2021_fs_bank",
+        "sw_2021_fs_security",
+        "sw_2021_fs_insurance",
+    ]
+
+    with (
+        patch.object(
+            engine,
+            "sniff_watermarks",
+            return_value=dict.fromkeys(bundle_tasks),
+        ) as sniff_watermarks,
+        patch("stock.data.sync._sync_symbols_for_task", return_value=[""]),
+        patch("stock.data.update_scheduler.DataUpdateScheduler.is_data_ready", return_value=True),
+    ):
+        plan = engine.build_sync_plan(target_date=date(2026, 8, 13), endpoints=["industry_bundle"])
+
+    assert [item.endpoint for item in plan] == bundle_tasks
+    assert all(item.status == "PENDING" for item in plan)
+    sniff_watermarks.assert_called_once_with(bundle_tasks)
+
+
+def test_sync_symbols_keeps_lixinger_batch_tasks_single() -> None:
+    class Watchlist:
+        def __init__(self) -> None:
+            self.stocks = ["600519.SH", "000001.SZ"]
+
+    class Watchlists:
+        lixinger = Watchlist()
+
+    class DataCfg:
+        watchlists = Watchlists()
+
+    with patch("stock.data.sync.load_data_config", return_value=DataCfg()):
+        assert _sync_symbols_for_task("lixinger", "index_fundamental") == [""]
+        assert _sync_symbols_for_task("lixinger", "sw_2021_fundamental") == [""]
+        assert _sync_symbols_for_task("lixinger", "national_debt") == [""]
+        assert _sync_symbols_for_task("lixinger", "company_fundamental") == [
+            "600519.SH",
+            "000001.SZ",
+        ]
+
+
+def test_sync_symbols_filters_lixinger_unsupported_index() -> None:
+    class Watchlist:
+        def __init__(self) -> None:
+            self.indices = ["000001", "399102", "399001"]
+
+    class Watchlists:
+        def __init__(self) -> None:
+            self.lixinger = Watchlist()
+
+    class DataCfg:
+        def __init__(self) -> None:
+            self.watchlists = Watchlists()
+            self.source_endpoint_supports = {
+                "lixinger": {"index_daily_bar": ["000001", "399001"]}
+            }
+
+    with patch("stock.data.sync.load_data_config", return_value=DataCfg()):
+        assert _sync_symbols_for_task("lixinger", "index_daily_bar") == [
+            "000001",
+            "399001",
+        ]
 
 
 def test_execute_plan_passes_task_symbol_to_pipeline() -> None:

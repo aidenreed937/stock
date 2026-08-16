@@ -8,7 +8,7 @@
 
 ```
 [ ] 步骤 1: Fetcher 接口元数据定义 (EndpointMeta)
-[ ] 步骤 2: 质量与单位 Profile 绑定 (Registry Profiles)
+[ ] 步骤 2: 质量与单位 Profile 绑定 (Registry Profiles + UnitNormalizer)
 [ ] 步骤 3: 项目任务路由契约 (TaskRegistry / TaskSpec)
 [ ] 步骤 4: 观察池与单次同步策略 (BackfillPlanner)
 [ ] 步骤 5: 自动化测试与 Lint 门禁验证 (pytest & make lint)
@@ -42,7 +42,7 @@
 - **文件路径**：[`src/stock/data/fetcher/lixinger/registry.py`](file:///Users/mac/workspace/personal/finance/stock/src/stock/data/fetcher/lixinger/registry.py)
 - **规则**：
   - 在 `LIXINGER_API_REGISTRY` 中注册完整 API 路径（如 `macro/national-debt`），并设置 `default_metrics` 与 `default_params`。
-  - 在文件下方增加 CLI 短别名映射（如 `LIXINGER_API_REGISTRY["national_debt"] = ...`）。
+  - 在 `TaskRegistry` 中注册公开短 task，并通过 `TaskSpec.api_name` 映射到完整 API 路径；不要在 Provider registry 中重复添加短 key。
 
 ---
 
@@ -51,6 +51,8 @@
 - **文件路径**：[`src/stock/data/fetcher/tushare/registry.py`](file:///Users/mac/workspace/personal/finance/stock/src/stock/data/fetcher/tushare/registry.py)
 - **规则**：
   - 在 `_TUSHARE_PROFILES` 字典中为新接口声明必需列、单位映射（如 `CNY100m`、`percent`、`point`）以及质检 Profile 类型（如 `bar`、`macro_monthly`、`macro_rate`、`financial_statement`）。
+  - 对存在源端非标准单位的数值字段，必须同时在 [`src/stock/data/normalizer/unit_normalizer.py`](file:///Users/mac/workspace/personal/finance/stock/src/stock/data/normalizer/unit_normalizer.py) 声明 RAW -> Curated 倍率规则；Provider registry 负责记录源单位语义，`UnitNormalizer` 负责执行倍率转换。
+  - 单位处理遵循 **RAW 保真、Curated 标准单位、分析层无倍率**：RAW 只保留 API 原始响应；Curated 统一为元、股/份、强类型日期和标准 metadata；分析指标、因子、回测和扫描代码不得再按数据源字段补乘或补除倍率。
 
 ```python
 "shibor": (["date"], {"on": "percent", "1w": "percent", "1m": "percent", "1y": "percent"}, "macro_rate"),
@@ -60,6 +62,17 @@
     "bar",
 ),
 ```
+
+常见单位转换位置：
+
+| 数据集 | 源端单位 | Curated 标准单位 | 处理位置 |
+| :--- | :--- | :--- | :--- |
+| `stock_daily_bar.amount` | TuShare 千元 | 元 | `UnitNormalizer` |
+| `daily_basic.total_mv/circ_mv` | TuShare 万元 | 元 | `UnitNormalizer` |
+| `moneyflow` 金额字段 | TuShare 万元 | 元 | `UnitNormalizer` |
+| `moneyflow_hsgt` 金额字段 | TuShare 百万元 | 元 | `UnitNormalizer` |
+
+若已有 Curated 口径错误，修复顺序必须是：先改 registry 与 `UnitNormalizer`，再从 RAW 全历史重放 Curated，最后验收 RAW/Curated 主键、行数、日期范围、字段类型、metadata 与样例倍率。不要修改 RAW 原值，也不要在分析层补偿倍率。
 
 ---
 
@@ -98,4 +111,13 @@ uv run pytest tests/unit/data/ --no-cov
 make lint
 ```
 
-通过以上 5 步即可保证新接口在采集、质检、存储与任务调度各环节的一致性与稳定性。
+涉及单位规则的接口还必须补充以下验收：
+
+```bash
+# 从 RAW 重放或强制刷新后，执行回填验收
+make backfill-accept ENDPOINT=<task_name> SOURCE=<data_source>
+```
+
+验收时至少确认：RAW/Curated 主键集合一致、行数一致、日期范围一致、Curated 金额/成交量字段类型正确、`market/currency/exchange` metadata 正确、抽样值符合源单位到 Curated 标准单位的倍率。
+
+通过以上 5 步即可保证新接口在采集、质检、存储、任务调度与下游分析各环节的一致性与稳定性。

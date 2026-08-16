@@ -52,7 +52,9 @@ class MarketDataPipeline:
         if cleaner is not None:
             self.cleaner = cleaner
         elif profile == "bar":
-            self.cleaner = BarDataCleaner()
+            self.cleaner = BarDataCleaner(
+                listing_dates=BarDataCleaner.load_listing_dates(data_source)
+            )
         else:
             self.cleaner = GenericCleaner()
 
@@ -150,6 +152,7 @@ class MarketDataPipeline:
             instrument=instrument,
             api_name=task.api_name,
             request_id=key.request_id,
+            dataset=dataset,
         )
 
         # 4. 精炼落盘 (Load to Curated Store)

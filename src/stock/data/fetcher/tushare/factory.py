@@ -28,7 +28,7 @@ def create_tushare_pipeline(
     meta = TUSHARE_API_REGISTRY.get(task.api_name)
     cleaner: BaseDataCleaner
     if meta and meta.quality_profile == "bar":
-        cleaner = BarDataCleaner()
+        cleaner = BarDataCleaner(listing_dates=BarDataCleaner.load_listing_dates("tushare"))
     else:
         p_keys = meta.primary_keys if meta else None
         cleaner = GenericCleaner(primary_keys=p_keys)

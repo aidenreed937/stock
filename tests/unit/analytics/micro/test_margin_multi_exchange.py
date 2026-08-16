@@ -81,3 +81,26 @@ def test_margin_calculator_strictly_respects_target_date() -> None:
     assert res is not None
     assert res.trade_date == date(2026, 8, 12)
     assert res.margin_balance_yi == pytest.approx(26500.0, 1.0)
+
+
+def test_margin_calculator_excludes_incomplete_exchange_date() -> None:
+    margin_df = pl.DataFrame(
+        {
+            "trade_date": [date(2026, 8, 14), date(2026, 8, 14)],
+            "exchange_id": ["SSE", "SZSE"],
+            "rzye": [1.0e12, 1.0e12],
+        }
+    )
+    basic_df = pl.DataFrame(
+        {
+            "trade_date": [date(2026, 8, 14)],
+            "circ_mv": [1.0e14],
+        }
+    )
+
+    result = MarginPenetrationCalculator().calculate_series(
+        margin_df=margin_df,
+        daily_basic_df=basic_df,
+    )
+
+    assert result.is_empty()

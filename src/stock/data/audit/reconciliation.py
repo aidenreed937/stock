@@ -11,6 +11,7 @@ import polars as pl
 from stock.config.settings import settings
 from stock.data.audit.factor_audit import run_adj_factor_audit, run_sw_daily_audit
 from stock.data.audit.moneyflow_audit import run_hk_hold_audit
+from stock.data.audit.registry import get_audit_spec
 from stock.data.audit.valuation_audit import run_daily_basic_audit, run_sw_industry_audit
 from stock.data.fetcher.tushare.client import TuShareClient
 from stock.data.storage.compat import StorageCompat
@@ -19,6 +20,13 @@ from stock.utils.logger import logger
 
 _DATE_COLUMNS = ("trade_date", "date", "end_date", "suspend_date", "Date")
 _SYMBOL_COLUMNS = ("ts_code", "symbol", "stockCode", "code", "ticker")
+_KEY_COLUMN_ALIASES: dict[str, tuple[str, ...]] = {
+    "symbol": ("symbol", "ts_code", "stockCode", "code", "ticker"),
+    "trade_date": ("trade_date", "date", "Date", "end_date", "ann_date"),
+    "industry_code": ("industry_code", "industryCode"),
+    "index_code": ("index_code", "indexCode"),
+    "area_code": ("area_code", "areaCode"),
+}
 
 
 def _is_artifact_path(path: Path) -> bool:
@@ -108,12 +116,29 @@ def _read_target_frames(
     return pl.concat(frames, how="diagonal_relaxed"), errors
 
 
-def _extract_identity_keys_frame(frame: pl.DataFrame) -> pl.DataFrame:
+def _extract_identity_keys_frame(
+    frame: pl.DataFrame,
+    primary_keys: list[str] | None = None,
+) -> pl.DataFrame:
     """抽取 symbol + trade_date 标准主键集合 DataFrame，兼容 RAW 源端列名。"""
     if frame.is_empty():
-        return pl.DataFrame(
-            {"symbol": pl.Series([], dtype=pl.Utf8), "trade_date": pl.Series([], dtype=pl.Utf8)}
-        )
+        names = [_canonical_key_name(key) for key in (primary_keys or ["symbol", "trade_date"])]
+        return pl.DataFrame({name: pl.Series([], dtype=pl.Utf8) for name in names})
+    if primary_keys:
+        expressions: list[pl.Expr] = []
+        for key in primary_keys:
+            output_name = _canonical_key_name(key)
+            candidates = _KEY_COLUMN_ALIASES.get(output_name, (key,))
+            source = next((column for column in candidates if column in frame.columns), None)
+            if source is None:
+                return pl.DataFrame()
+            if output_name == "trade_date":
+                expression = _clean_date_expr(source, frame[source].dtype)
+            else:
+                expression = pl.col(source).cast(pl.Utf8, strict=False)
+            expressions.append(expression.alias(output_name))
+        return frame.select(expressions).drop_nulls().unique()
+
     sym_cols = [col for col in _SYMBOL_COLUMNS if col in frame.columns]
     date_cols = [col for col in _DATE_COLUMNS if col in frame.columns]
     if not sym_cols or not date_cols:
@@ -137,12 +162,134 @@ def _extract_identity_keys_frame(frame: pl.DataFrame) -> pl.DataFrame:
     )
 
 
+def _canonical_key_name(key: str) -> str:
+    """将源端注册主键映射为 RAW/Curated 共用的对账列名。"""
+    return {
+        "stockCode": "symbol",
+        "ts_code": "symbol",
+        "code": "symbol",
+        "ticker": "symbol",
+        "date": "trade_date",
+        "Date": "trade_date",
+        "industryCode": "industry_code",
+        "indexCode": "index_code",
+        "areaCode": "area_code",
+    }.get(key, key)
+
+
+def _registered_primary_keys(data_source: str, endpoint: str) -> list[str]:
+    """读取任务对应源端注册表的主键，静态关系表也必须按完整复合键对账。"""
+    try:
+        task = resolve_task(data_source, endpoint)
+        registry_name = {
+            "tushare": "stock.data.fetcher.tushare.registry",
+            "lixinger": "stock.data.fetcher.lixinger.registry",
+            "yfinance": "stock.data.fetcher.yfinance.registry",
+            "fred": "stock.data.fetcher.fred.registry",
+        }[data_source]
+        registry_attr = {
+            "tushare": "TUSHARE_API_REGISTRY",
+            "lixinger": "LIXINGER_API_REGISTRY",
+            "yfinance": "YFINANCE_API_REGISTRY",
+            "fred": "FRED_API_REGISTRY",
+        }[data_source]
+        module = __import__(registry_name, fromlist=[registry_attr])
+        meta = getattr(module, registry_attr).get(task.api_name)
+        return list(getattr(meta, "primary_keys", []) or [])
+    except (KeyError, ImportError, ValueError, AttributeError):
+        return []
+
+
+def _clean_raw_bar_frame(
+    endpoint: str, data_source: str, frame: pl.DataFrame
+) -> tuple[pl.DataFrame, int]:
+    """按实际 ETL 清洗规则生成可与 Curated 对账的 RAW 有效集合。"""
+    task = None
+    try:
+        task = resolve_task(data_source, endpoint)
+        is_bar = task.dataset in {"stock_daily_bar", "index_daily_bar"}
+    except ValueError:
+        is_bar = endpoint in {"stock_daily_bar", "index_daily_bar"}
+    if not is_bar or not {"open", "high", "low", "close"}.issubset(frame.columns):
+        return frame, 0
+
+    from stock.data.cleaner.bar_cleaner import BarDataCleaner
+    from stock.data.normalizer.unit_normalizer import UnitNormalizer
+
+    working = frame
+    if data_source == "tushare" and (task is None or task.dataset == "stock_daily_bar"):
+        endpoint_name = task.task_name if task is not None else endpoint
+        working, _ = UnitNormalizer(data_source, endpoint_name).normalize_units_with_quarantine(
+            working
+        )
+
+    listing_dates = (
+        BarDataCleaner.load_listing_dates(data_source)
+        if data_source == "tushare" and (task is None or task.dataset == "stock_daily_bar")
+        else {}
+    )
+    cleaner = BarDataCleaner(listing_dates=listing_dates)
+    eligible, _ = cleaner._exclude_pre_listing(working)
+    cleaned = cleaner.clean(eligible)
+    return cleaned, len(frame) - len(cleaned)
+
+
+def _clean_raw_frame(
+    endpoint: str, data_source: str, frame: pl.DataFrame
+) -> tuple[pl.DataFrame, int]:
+    """按实际 ETL 清洗规则生成可与 Curated 对账的 RAW 有效集合。"""
+    cleaned, filtered_count = _clean_raw_bar_frame(endpoint, data_source, frame)
+    if data_source != "lixinger":
+        return cleaned, filtered_count
+
+    try:
+        task = resolve_task(data_source, endpoint)
+    except ValueError:
+        task = None
+    if task is None or task.dataset != "index_fundamental":
+        return cleaned, filtered_count
+
+    from stock.data.cleaner.generic_cleaner import (
+        filter_lixinger_index_fundamental_placeholders,
+    )
+
+    cleaned, placeholder_count = filter_lixinger_index_fundamental_placeholders(cleaned)
+    return cleaned, filtered_count + placeholder_count
+
+
 def _run_raw_curated_reconciliation(
     target_date: date,
     data_source: str,
     endpoint: str = "stock_daily_bar",
 ) -> dict[str, Any]:
     """执行 RAW 与 Curated 的物理文件、行数和主键对账。"""
+    audit_spec = get_audit_spec(endpoint, data_source)
+    if audit_spec.raw_reconciliation_exempt:
+        logger.warning(
+            f"跳过 [{data_source}/{endpoint}] RAW vs Curated 物理对账: "
+            f"{audit_spec.raw_reconciliation_reason}"
+        )
+        return {
+            "raw_curated_status": "SKIPPED",
+            "raw_curated_reason": audit_spec.raw_reconciliation_reason,
+            "raw_curated_match": None,
+            "raw_curated_exempt": True,
+            "raw_files": 0,
+            "curated_files": 0,
+            "raw_count": 0,
+            "raw_effective_count": 0,
+            "raw_filtered_count": 0,
+            "curated_count": 0,
+            "raw_key_count": 0,
+            "curated_key_count": 0,
+            "missing_in_curated_count": 0,
+            "extra_in_curated_count": 0,
+            "missing_in_curated_sample": [],
+            "extra_in_curated_sample": [],
+            "raw_errors": [],
+            "curated_errors": [],
+        }
+
     raw_files = _collect_dataset_files(
         settings.raw_data_dir,
         data_source,
@@ -157,28 +304,58 @@ def _run_raw_curated_reconciliation(
     )
     raw_df, raw_errors = _read_target_frames(raw_files, target_date)
     curated_df, curated_errors = _read_target_frames(curated_files, target_date)
+    raw_count = len(raw_df)
+    raw_df, raw_filtered_count = _clean_raw_frame(endpoint, data_source, raw_df)
 
-    raw_keys_df = _extract_identity_keys_frame(raw_df)
-    curated_keys_df = _extract_identity_keys_frame(curated_df)
+    primary_keys = _registered_primary_keys(data_source, endpoint)
+    raw_keys_df = _extract_identity_keys_frame(raw_df, primary_keys=primary_keys)
+    curated_keys_df = _extract_identity_keys_frame(curated_df, primary_keys=primary_keys)
+
+    join_keys = [column for column in raw_keys_df.columns if column in curated_keys_df.columns]
+    if (
+        not join_keys
+        or set(join_keys) != set(raw_keys_df.columns)
+        or set(join_keys) != set(curated_keys_df.columns)
+    ):
+        return {
+            "raw_curated_status": "FAILED",
+            "raw_curated_reason": "RAW 与 Curated 无法按注册主键构造统一对账键",
+            "raw_curated_match": False,
+            "raw_curated_exempt": False,
+            "raw_files": len(raw_files),
+            "curated_files": len(curated_files),
+            "raw_count": raw_count,
+            "raw_effective_count": len(raw_df),
+            "raw_filtered_count": raw_filtered_count,
+            "curated_count": len(curated_df),
+            "raw_key_count": len(raw_keys_df),
+            "curated_key_count": len(curated_keys_df),
+            "missing_in_curated_count": 0,
+            "extra_in_curated_count": 0,
+            "missing_in_curated_sample": [],
+            "extra_in_curated_sample": [],
+            "raw_errors": raw_errors,
+            "curated_errors": curated_errors,
+        }
 
     raw_key_count = len(raw_keys_df)
     curated_key_count = len(curated_keys_df)
 
     # 采用 Polars anti_join 在 Rust 内部完成高效差集比对
-    missing_in_curated_df = raw_keys_df.join(curated_keys_df, on=["symbol", "trade_date"], how="anti")
-    extra_in_curated_df = curated_keys_df.join(raw_keys_df, on=["symbol", "trade_date"], how="anti")
+    missing_in_curated_df = raw_keys_df.join(curated_keys_df, on=join_keys, how="anti")
+    extra_in_curated_df = curated_keys_df.join(raw_keys_df, on=join_keys, how="anti")
 
     missing_count = len(missing_in_curated_df)
     extra_count = len(extra_in_curated_df)
 
-    missing_sample = [
-        f"{row['symbol']}@{row['trade_date']}"
-        for row in missing_in_curated_df.head(20).iter_rows(named=True)
-    ]
-    extra_sample = [
-        f"{row['symbol']}@{row['trade_date']}"
-        for row in extra_in_curated_df.head(20).iter_rows(named=True)
-    ]
+    def _sample(frame: pl.DataFrame) -> list[str]:
+        return [
+            "@".join(str(row[column]) for column in join_keys)
+            for row in frame.head(20).iter_rows(named=True)
+        ]
+
+    missing_sample = _sample(missing_in_curated_df)
+    extra_sample = _sample(extra_in_curated_df)
 
     reason = ""
     status = "PASSED"
@@ -200,17 +377,28 @@ def _run_raw_curated_reconciliation(
     elif curated_key_count != len(curated_df):
         status = "FAILED"
         reason = "Curated 黄金表内部存在重复主键"
-    elif len(raw_df) != len(curated_df):
+    elif raw_filtered_count or len(raw_df) != len(curated_df):
         status = "PASSED"
-        reason = f"RAW 存在 {len(raw_df) - raw_key_count} 条批次重复记录，Curated 黄金表已权威去重"
+        reason_parts: list[str] = []
+        if raw_filtered_count:
+            reason_parts.append(f"RAW 清洗过滤 {raw_filtered_count} 条无效记录")
+        raw_duplicate_count = len(raw_df) - raw_key_count
+        if raw_duplicate_count:
+            reason_parts.append(
+                f"RAW 存在 {raw_duplicate_count} 条批次重复记录，Curated 黄金表已权威去重"
+            )
+        reason = "；".join(reason_parts) or "Curated 黄金表已权威去重"
 
     return {
         "raw_curated_status": status,
         "raw_curated_reason": reason,
         "raw_curated_match": status == "PASSED" if status != "SKIPPED" else None,
+        "raw_curated_exempt": False,
         "raw_files": len(raw_files),
         "curated_files": len(curated_files),
-        "raw_count": len(raw_df),
+        "raw_count": raw_count,
+        "raw_effective_count": len(raw_df),
+        "raw_filtered_count": raw_filtered_count,
         "curated_count": len(curated_df),
         "raw_key_count": raw_key_count,
         "curated_key_count": curated_key_count,
@@ -248,7 +436,8 @@ def run_audit(
     if basic_df is None:
         try:
             basic_files = [
-                p for p in (settings.curated_data_dir / data_source).rglob("*.parquet")
+                p
+                for p in (settings.curated_data_dir / data_source).rglob("*.parquet")
                 if "stock_basic" in p.parts and not _is_artifact_path(p)
             ]
             basic_df = pl.read_parquet(basic_files) if basic_files else pl.DataFrame()
@@ -260,8 +449,12 @@ def run_audit(
     year_str, month_str = f"year={target_date.year:04d}", f"month={target_date.month:02d}"
     try:
         daily_files = [
-            p for p in (settings.curated_data_dir / data_source).rglob("*.parquet")
-            if "stock_daily_bar" in p.parts and year_str in p.parts and month_str in p.parts and not _is_artifact_path(p)
+            p
+            for p in (settings.curated_data_dir / data_source).rglob("*.parquet")
+            if "stock_daily_bar" in p.parts
+            and year_str in p.parts
+            and month_str in p.parts
+            and not _is_artifact_path(p)
         ]
         daily_df = pl.read_parquet(daily_files) if daily_files else pl.DataFrame()
     except Exception:
@@ -330,8 +523,12 @@ def run_audit(
         try:
             year_str, month_str = f"year={target_date.year:04d}", f"month={target_date.month:02d}"
             sus_files = [
-                p for p in (settings.curated_data_dir / data_source).rglob("*.parquet")
-                if "suspend_d" in p.parts and year_str in p.parts and month_str in p.parts and not _is_artifact_path(p)
+                p
+                for p in (settings.curated_data_dir / data_source).rglob("*.parquet")
+                if "suspend_d" in p.parts
+                and year_str in p.parts
+                and month_str in p.parts
+                and not _is_artifact_path(p)
             ]
             local_sus_df = pl.read_parquet(sus_files) if sus_files else pl.DataFrame()
             date_col = next(
@@ -445,24 +642,14 @@ def run_audit(
 
 
 def get_trading_calendar(start_date: date, end_date: date) -> list[date]:
-    """获取指定时间段内的开市交易日列表（优先尝试从 Fetcher 获取，失败时按工作日自动降级）。"""
+    """获取指定时间段内的开市交易日列表，缺少日历时返回空列表。"""
     try:
-        from stock.data.fetcher.tushare.facade import TuShareDataFetcher
+        from stock.data.update_scheduler import DataUpdateScheduler
 
-        fetcher = TuShareDataFetcher()
-        cal = fetcher.fetch_trade_cal(start_date, end_date)
-        if isinstance(cal, list) and cal:
-            return [d for d in cal if isinstance(d, date)]
+        return list(DataUpdateScheduler.get_trading_days(start_date, end_date, "tushare"))
     except Exception as e:
-        logger.debug(f"无法获取数据源交易日历: {e}，使用工作日降级策略")
-
-    cur = start_date
-    dates: list[date] = []
-    while cur <= end_date:
-        if cur.weekday() < 5:
-            dates.append(cur)
-        cur += timedelta(days=1)
-    return dates
+        logger.warning(f"无法获取 TuShare 交易日历，拒绝按工作日推算: {e}")
+        return []
 
 
 def run_audit_range(
@@ -536,7 +723,9 @@ def run_audit_range(
                     logger.error(f"交易日 [{d}] 审计抛出异常: {e}")
     else:
         for d in open_dates:
-            res = run_audit(d, data_source=data_source, quiet=not show_details, basic_df=cached_basic_df)
+            res = run_audit(
+                d, data_source=data_source, quiet=not show_details, basic_df=cached_basic_df
+            )
             if res:
                 daily_results.append(res)
 
@@ -605,7 +794,9 @@ def run_index_audit(
 
     wl = load_watchlist_config()
     source_wl = getattr(wl, data_source, None)
-    all_configured_indices = set(source_wl.indices) if (source_wl and hasattr(source_wl, "indices")) else set()
+    all_configured_indices = (
+        set(source_wl.indices) if (source_wl and hasattr(source_wl, "indices")) else set()
+    )
     base_dates = getattr(source_wl, "base_dates", {}) if source_wl else {}
 
     target_date_str = target_date.strftime("%Y-%m-%d")

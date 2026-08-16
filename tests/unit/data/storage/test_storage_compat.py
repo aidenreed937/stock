@@ -61,3 +61,24 @@ def test_safe_normalize_frame() -> None:
     assert safe_df.schema["trade_date"] == pl.Date
     assert safe_df.schema["rqyl"] == pl.Float64
     assert safe_df.schema["updated_at"] == pl.Datetime("us", "UTC")
+
+
+def test_post_process_moneyflow_hsgt_drops_legacy_symbol() -> None:
+    df = pl.DataFrame(
+        {
+            "symbol": ["moneyflow_hsgt"],
+            "trade_date": ["2026-08-14"],
+            "north_money": ["1.0"],
+            "market": ["US"],
+            "currency": ["USD"],
+            "exchange": ["US_EXCHANGE"],
+        }
+    )
+
+    normalized = StorageCompat.post_process_dataset("moneyflow_hsgt", df)
+
+    assert "symbol" not in normalized.columns
+    assert normalized.columns == ["trade_date", "north_money", "market", "currency", "exchange"]
+    assert normalized["market"].to_list() == ["CN"]
+    assert normalized["currency"].to_list() == ["CNY"]
+    assert normalized["exchange"].to_list() == ["SOURCE"]

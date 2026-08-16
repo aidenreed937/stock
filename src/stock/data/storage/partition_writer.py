@@ -20,6 +20,22 @@ if TYPE_CHECKING:
     from pathlib import Path
 
 
+_OPTIONAL_BAR_COLUMNS = frozenset({"backwardComplexFactor", "complexFactor"})
+_OPTIONAL_INDEX_FUNDAMENTAL_COLUMNS = frozenset(
+    {
+        "pe_ttm.ew",
+        "pe_ttm.mcw",
+        "pb.ew",
+        "pb.mcw",
+        "ps_ttm.ew",
+        "ps_ttm.mcw",
+        "dyr.ew",
+        "dyr.mcw",
+        "mc",
+    }
+)
+
+
 def _append_write_buffer(
     lock: Any,
     write_buffer: dict[Path, list[Any]],
@@ -58,6 +74,56 @@ def validate_schema_version(df: pl.DataFrame, context: str) -> None:
     invalid = versions - {"v2"}
     if invalid:
         raise DataValidationError(f"{context}包含旧版或未知 schema_version: {sorted(invalid)}")
+
+
+def _align_optional_bar_columns(
+    existing: pl.DataFrame, incoming: list[pl.DataFrame], dataset_name: str
+) -> tuple[pl.DataFrame, list[pl.DataFrame]]:
+    """兼容行情源端可选字段增删，同时保留未知字段变更的严格校验。"""
+    if dataset_name not in BAR_DATASETS or existing.is_empty() or not incoming:
+        return existing, incoming
+
+    existing_columns = set(existing.columns)
+    incoming_columns = set().union(*(set(frame.columns) for frame in incoming))
+    optional_columns = (existing_columns | incoming_columns) & _OPTIONAL_BAR_COLUMNS
+
+    for column in optional_columns:
+        if column not in existing_columns:
+            dtype = next(frame.schema[column] for frame in incoming if column in frame.columns)
+            existing = existing.with_columns(pl.lit(None, dtype=dtype).alias(column))
+        incoming = [
+            frame
+            if column in frame.columns
+            else frame.with_columns(pl.lit(None, dtype=existing.schema[column]).alias(column))
+            for frame in incoming
+        ]
+
+    return existing, incoming
+
+
+def _align_optional_index_fundamental_columns(
+    existing: pl.DataFrame, incoming: list[pl.DataFrame], dataset_name: str
+) -> tuple[pl.DataFrame, list[pl.DataFrame]]:
+    """兼容指数估值新增已知指标列，同时保留未知字段变更的严格校验。"""
+    if dataset_name != "index_fundamental" or existing.is_empty() or not incoming:
+        return existing, incoming
+
+    existing_columns = set(existing.columns)
+    incoming_columns = set().union(*(set(frame.columns) for frame in incoming))
+    optional_columns = (existing_columns | incoming_columns) & _OPTIONAL_INDEX_FUNDAMENTAL_COLUMNS
+
+    for column in optional_columns:
+        if column not in existing_columns:
+            dtype = next(frame.schema[column] for frame in incoming if column in frame.columns)
+            existing = existing.with_columns(pl.lit(None, dtype=dtype).alias(column))
+        incoming = [
+            frame
+            if column in frame.columns
+            else frame.with_columns(pl.lit(None, dtype=existing.schema[column]).alias(column))
+            for frame in incoming
+        ]
+
+    return existing, incoming
 
 
 class ParquetPartitionWriter:
@@ -126,6 +192,13 @@ class ParquetPartitionWriter:
             ]
             for df in normalized_dfs:
                 validate_schema_version(df, f"Curated 新数据 [{file_path}]")
+
+            existing, normalized_dfs = _align_optional_bar_columns(
+                existing, normalized_dfs, dataset_name
+            )
+            existing, normalized_dfs = _align_optional_index_fundamental_columns(
+                existing, normalized_dfs, dataset_name
+            )
 
             if not existing.is_empty() and source is not None:
                 validate_frame_source(existing, source, f"已有 Curated 文件 [{file_path}]")

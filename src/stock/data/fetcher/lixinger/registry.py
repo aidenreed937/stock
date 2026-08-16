@@ -59,7 +59,17 @@ LIXINGER_API_REGISTRY: dict[str, EndpointMeta] = {
         update_time="18:00",
         update_delay_days=0,
         code_param_name="stockCodes",
-        default_metrics=["pe_ttm.ew", "pb.ew", "ps_ttm.ew", "dyr.ew", "mc"],
+        default_metrics=[
+            "pe_ttm.ew",
+            "pe_ttm.mcw",
+            "pb.ew",
+            "pb.mcw",
+            "ps_ttm.ew",
+            "ps_ttm.mcw",
+            "dyr.ew",
+            "dyr.mcw",
+            "mc",
+        ],
     ),
     "cn/index/candlestick": EndpointMeta(
         api_name="cn/index/candlestick",
@@ -83,23 +93,12 @@ LIXINGER_API_REGISTRY: dict[str, EndpointMeta] = {
         code_param_name="stockCodes",
         default_metrics=["pe_ttm.ew", "pb.ew", "ps_ttm.ew", "dyr.ew", "mc"],
     ),
-    "cn/industry/fundamental/sw_2021_l2": EndpointMeta(
-        api_name="cn/industry/fundamental/sw_2021",
-        description="申万 2021 版二级行业基本面估值数据",
-        group="fundamental",
-        primary_keys=["stockCode", "date"],
-        date_columns=["date"], required_columns=["stockCode", "date"],
-        update_time="18:00",
-        update_delay_days=0,
-        code_param_name="stockCodes",
-        default_metrics=["pe_ttm.ew", "pb.ew", "ps_ttm.ew", "dyr.ew", "mc"],
-    ),
     "cn/industry/constituents/sw_2021": EndpointMeta(
         api_name="cn/industry/constituents/sw_2021",
         description="申万 2021 版行业成分股列表",
         group="basic_info",
-        primary_keys=["stockCode", "date"],
-        date_columns=["date"], required_columns=["stockCode", "date"],
+        primary_keys=["industryCode", "stockCode"],
+        required_columns=["industryCode", "stockCode", "market"],
         update_time="18:00",
         update_delay_days=0,
         code_param_name="stockCodes",
@@ -156,6 +155,8 @@ LIXINGER_API_REGISTRY: dict[str, EndpointMeta] = {
         date_columns=["date"],
         required_columns=["date"],
         update_time="18:00",
+        default_metrics=["l_cu_p", "l_zn_p", "l_pb_p", "l_al_p", "l_ni_p", "l_sn_p"],
+        default_params={"areaCode": "us"},
     ),
     "macro/crude-oil": EndpointMeta(
         api_name="macro/crude-oil",
@@ -165,6 +166,8 @@ LIXINGER_API_REGISTRY: dict[str, EndpointMeta] = {
         date_columns=["date"],
         required_columns=["date"],
         update_time="18:00",
+        default_metrics=["wti_co_sp", "brent_co_sp"],
+        default_params={"areaCode": "us"},
     ),
     "cn/industry/fs/sw_2021/non_financial": EndpointMeta(
         api_name="cn/industry/fs/sw_2021/non_financial",
@@ -266,24 +269,6 @@ LIXINGER_API_REGISTRY: dict[str, EndpointMeta] = {
         support_batch_prefetch=True,
     ),
 }
-
-LIXINGER_API_REGISTRY["sw_2021_constituents"] = LIXINGER_API_REGISTRY["cn/industry/constituents/sw_2021"]
-LIXINGER_API_REGISTRY["sw_2021_fundamental"] = LIXINGER_API_REGISTRY["cn/industry/fundamental/sw_2021"]
-LIXINGER_API_REGISTRY["sw_2021_l2_fundamental"] = LIXINGER_API_REGISTRY["cn/industry/fundamental/sw_2021"]
-LIXINGER_API_REGISTRY["sw_2021_fs_non_financial"] = LIXINGER_API_REGISTRY["cn/industry/fs/sw_2021/non_financial"]
-LIXINGER_API_REGISTRY["sw_2021_fs_bank"] = LIXINGER_API_REGISTRY["cn/industry/fs/sw_2021/bank"]
-LIXINGER_API_REGISTRY["sw_2021_fs_security"] = LIXINGER_API_REGISTRY["cn/industry/fs/sw_2021/security"]
-LIXINGER_API_REGISTRY["sw_2021_fs_insurance"] = LIXINGER_API_REGISTRY["cn/industry/fs/sw_2021/insurance"]
-LIXINGER_API_REGISTRY["index_fundamental"] = LIXINGER_API_REGISTRY["cn/index/fundamental"]
-LIXINGER_API_REGISTRY["fs_non_financial"] = LIXINGER_API_REGISTRY["cn/company/fs/non_financial"]
-LIXINGER_API_REGISTRY["fs_bank"] = LIXINGER_API_REGISTRY["cn/company/fs/bank"]
-LIXINGER_API_REGISTRY["fs_security"] = LIXINGER_API_REGISTRY["cn/company/fs/security"]
-LIXINGER_API_REGISTRY["fs_insurance"] = LIXINGER_API_REGISTRY["cn/company/fs/insurance"]
-LIXINGER_API_REGISTRY["pledge_info"] = LIXINGER_API_REGISTRY["cn/company/hot/ple"]
-LIXINGER_API_REGISTRY["national_debt"] = LIXINGER_API_REGISTRY["macro/national-debt"]
-LIXINGER_API_REGISTRY["interest_rates"] = LIXINGER_API_REGISTRY["macro/interest-rates"]
-LIXINGER_API_REGISTRY["non_ferrous_metals"] = LIXINGER_API_REGISTRY["macro/non-ferrous-metals"]
-LIXINGER_API_REGISTRY["crude_oil"] = LIXINGER_API_REGISTRY["macro/crude-oil"]
 
 for _meta in {id(meta): meta for meta in LIXINGER_API_REGISTRY.values()}.values():
     if not _meta.required_columns:

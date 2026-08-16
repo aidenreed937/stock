@@ -81,12 +81,29 @@ class SourceWatchlistConfig(BaseModel):
     base_dates: dict[str, str] = Field(
         default_factory=dict, description="标的基准/上市起始日期映射"
     )
+    stock_base_dates: dict[str, str] = Field(default_factory=dict)
+    index_base_dates: dict[str, str] = Field(default_factory=dict)
+    fund_base_dates: dict[str, str] = Field(default_factory=dict)
 
-    def get_base_date(self, symbol: str) -> date | None:
+    def get_base_date(self, symbol: str, asset_type: str | None = None) -> date | None:
         """获取指定标的的起始基准日期，避免无意义的历史空范围请求。"""
         if not symbol:
             return None
-        d_str = self.base_dates.get(symbol) or self.base_dates.get(symbol.split(".")[0])
+        category_maps = {
+            "stock": self.stock_base_dates,
+            "stocks": self.stock_base_dates,
+            "index": self.index_base_dates,
+            "indices": self.index_base_dates,
+            "fund": self.fund_base_dates,
+            "funds": self.fund_base_dates,
+        }
+        selected = category_maps.get(asset_type or "", {})
+        d_str = (
+            selected.get(symbol)
+            or selected.get(symbol.split(".")[0])
+            or self.base_dates.get(symbol)
+            or self.base_dates.get(symbol.split(".")[0])
+        )
         if not d_str:
             return None
         try:

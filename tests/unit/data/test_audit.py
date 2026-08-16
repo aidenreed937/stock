@@ -262,6 +262,116 @@ def test_raw_curated_reconciliation_detects_key_mismatch(tmp_path, monkeypatch):
     assert result["missing_in_curated_count"] == 1
 
 
+def test_raw_bar_reconciliation_reuses_units_and_listing_dates(monkeypatch):
+    from stock.data.audit.reconciliation import _clean_raw_bar_frame
+    from stock.data.cleaner.bar_cleaner import BarDataCleaner
+
+    monkeypatch.setattr(
+        BarDataCleaner,
+        "load_listing_dates",
+        staticmethod(
+            lambda data_source: {
+                "000001.SZ": date(2026, 8, 2),
+                "000002.SZ": date(2020, 1, 1),
+            }
+        ),
+    )
+    raw = pl.DataFrame(
+        {
+            "ts_code": ["000001.SZ", "000002.SZ"],
+            "trade_date": ["20260801", "20260805"],
+            "open": [10.0, 20.0],
+            "high": [10.5, 20.5],
+            "low": [9.5, 19.5],
+            "close": [10.0, 20.0],
+            "vol": [100.0, 100.0],
+            "amount": [100.0, 200000.0],
+            "source_unit_note": [
+                "native unit: thousand yuan",
+                "amount is normalized to yuan",
+            ],
+        }
+    )
+
+    cleaned, filtered_count = _clean_raw_bar_frame("stock_daily_bar", "tushare", raw)
+
+    assert filtered_count == 1
+    assert cleaned["ts_code"].to_list() == ["000002.SZ"]
+    assert cleaned["volume"].to_list() == [10000.0]
+    assert cleaned["amount"].to_list() == [200000.0]
+
+
+def test_raw_lixinger_index_fundamental_filters_empty_holiday_rows() -> None:
+    from stock.data.audit.reconciliation import _clean_raw_frame
+
+    raw = pl.DataFrame(
+        {
+            "stockCode": ["000300", "000905", "000852"],
+            "date": ["2022-04-05", "2026-08-14", "2026-08-14"],
+            "pe_ttm.ew": [None, 12.0, None],
+            "pe_ttm.mcw": [None, 11.0, None],
+            "pb.ew": [None, 1.5, None],
+            "pb.mcw": [None, 1.4, 1.3],
+            "ps_ttm.ew": [None, 1.2, None],
+            "ps_ttm.mcw": [None, 1.1, None],
+            "dyr.ew": [None, 0.03, None],
+            "dyr.mcw": [None, 0.028, None],
+            "mc": [None, 100.0, None],
+        }
+    )
+
+    cleaned, filtered_count = _clean_raw_frame("index_fundamental", "lixinger", raw)
+
+    assert filtered_count == 1
+    assert cleaned["stockCode"].to_list() == ["000905", "000852"]
+
+
+def test_raw_curated_reconciliation_exempts_lixinger_curated_only_dataset() -> None:
+    from stock.data.audit.reconciliation import _run_raw_curated_reconciliation
+
+    result = _run_raw_curated_reconciliation(date(2026, 8, 14), "lixinger", "sw_2021_fundamental")
+
+    assert result["raw_curated_status"] == "SKIPPED"
+    assert result["raw_curated_exempt"] is True
+    assert "403" in result["raw_curated_reason"]
+
+
+def test_raw_curated_reconciliation_uses_lixinger_composite_primary_key(
+    tmp_path, monkeypatch
+) -> None:
+    from stock.data.audit.reconciliation import _run_raw_curated_reconciliation
+
+    raw_root = tmp_path / "raw"
+    curated_root = tmp_path / "curated"
+    monkeypatch.setattr("stock.data.audit.reconciliation.settings.raw_data_dir", raw_root)
+    monkeypatch.setattr("stock.data.audit.reconciliation.settings.curated_data_dir", curated_root)
+
+    raw_dir = raw_root / "lixinger" / "market=CN" / "sw_2021_constituents"
+    curated_dir = curated_root / "lixinger" / "market=CN" / "sw_2021_constituents"
+    raw_dir.mkdir(parents=True)
+    curated_dir.mkdir(parents=True)
+    pl.DataFrame(
+        {
+            "industryCode": ["110000", "110000", "220000"],
+            "stockCode": ["600519", "000001", "600519"],
+        }
+    ).write_parquet(raw_dir / "data.parquet")
+    pl.DataFrame(
+        {
+            "industryCode": ["110000", "110000", "220000"],
+            "symbol": ["600519", "000001", "600519"],
+        }
+    ).write_parquet(curated_dir / "data.parquet")
+
+    result = _run_raw_curated_reconciliation(date(2026, 8, 14), "lixinger", "sw_2021_constituents")
+
+    assert result["raw_curated_status"] == "PASSED"
+    assert result["raw_key_count"] == 3
+    assert result["curated_key_count"] == 3
+    assert result["missing_in_curated_count"] == 0
+    assert result["extra_in_curated_count"] == 0
+
+
 def test_run_hk_hold_audit():
     from stock.data.audit.reconciliation import run_hk_hold_audit
 

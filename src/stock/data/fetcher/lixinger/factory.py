@@ -4,7 +4,7 @@ from __future__ import annotations
 
 from stock.data.cleaner.bar_cleaner import BarDataCleaner
 from stock.data.cleaner.base import BaseDataCleaner
-from stock.data.cleaner.generic_cleaner import GenericCleaner
+from stock.data.cleaner.generic_cleaner import GenericCleaner, LixingerIndexFundamentalCleaner
 from stock.data.fetcher.lixinger.facade import LixingerDataFetcher
 from stock.data.fetcher.lixinger.registry import LIXINGER_API_REGISTRY
 from stock.data.normalizer import BarDataNormalizer, BaseDataNormalizer, GenericNormalizer
@@ -35,7 +35,12 @@ def create_lixinger_pipeline(
     else:
         meta = LIXINGER_API_REGISTRY.get(task.api_name)
         p_keys = meta.primary_keys if meta else None
-        cleaner = GenericCleaner(primary_keys=p_keys)
+        cleaner_cls = (
+            LixingerIndexFundamentalCleaner
+            if task.dataset == "index_fundamental"
+            else GenericCleaner
+        )
+        cleaner = cleaner_cls(primary_keys=p_keys)
         normalizer = GenericNormalizer()
     return MarketDataPipeline(
         fetcher=active_fetcher,

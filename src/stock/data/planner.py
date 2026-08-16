@@ -78,6 +78,7 @@ _LIXINGER_COMPANY_ENDPOINTS = {
     "pledge_info",
 }
 _LIXINGER_BATCH_SINGLE_ENDPOINTS = {
+    "index_fundamental",
     "sw_2021_constituents",
     "sw_2021_fundamental",
     "sw_2021_l2_fundamental",
@@ -237,6 +238,13 @@ class BackfillPlanner:
                     sym=sym,
                     src_watchlist=src_watchlist,
                     min_supported=min_supported,
+                    asset_type=(
+                        "index"
+                        if public_name in _INDEX_ENDPOINTS
+                        else "fund"
+                        if public_name in _FUND_ENDPOINTS
+                        else "stock"
+                    ),
                 )
                 if task_start > end_date:
                     logger.info(
@@ -280,6 +288,7 @@ class BackfillPlanner:
         sym: str,
         src_watchlist: Any,
         min_supported: date | None,
+        asset_type: str = "stock",
     ) -> date:
         task_start = start_date
         if not start_specified and (not is_per_sym or is_single or frequency != "daily"):
@@ -287,7 +296,10 @@ class BackfillPlanner:
 
         if sym and src_watchlist and hasattr(src_watchlist, "get_base_date"):
             try:
-                base_d = src_watchlist.get_base_date(sym)
+                try:
+                    base_d = src_watchlist.get_base_date(sym, asset_type)
+                except TypeError:
+                    base_d = src_watchlist.get_base_date(sym)
                 if isinstance(base_d, date) and (not start_specified or base_d > task_start):
                     task_start = base_d
             except Exception as err:

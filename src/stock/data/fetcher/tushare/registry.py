@@ -116,7 +116,18 @@ _TUSHARE_PROFILES: dict[str, tuple[list[str], dict[str, str], str]] = {
         {"rzye": "CNY10k", "rqye": "CNY10k"},
         "margin_detail",
     ),
-    "moneyflow_hsgt": (["trade_date"], {"net_mf_amount": "CNY10k"}, "northbound_flow"),
+    "moneyflow_hsgt": (
+        ["trade_date"],
+        {
+            "ggt_ss": "CNY1m",
+            "ggt_sz": "CNY1m",
+            "hgt": "CNY1m",
+            "sgt": "CNY1m",
+            "north_money": "CNY1m",
+            "south_money": "CNY1m",
+        },
+        "northbound_flow",
+    ),
     "hsgt_top10": (
         ["trade_date", "ts_code", "market_type"],
         {"buy_amount": "CNY10k", "sell_amount": "CNY10k"},

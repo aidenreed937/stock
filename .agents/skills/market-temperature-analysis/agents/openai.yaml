@@ -1,0 +1,4 @@
+interface:
+  display_name: "市场温度计分析"
+  short_description: "Six-dimensional market temperature workflow"
+  default_prompt: "Use $market-temperature-analysis to analyze the latest 20 trading days with the six-dimensional market thermometer."

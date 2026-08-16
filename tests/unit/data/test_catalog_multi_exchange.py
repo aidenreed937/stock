@@ -45,12 +45,12 @@ def test_load_dataset_dedup_true_duplicates(tmp_path: Path) -> None:
     margin_dir.mkdir(parents=True, exist_ok=True)
     file_path = margin_dir / "data.parquet"
 
-    # 同一日期的 SSE 有两条记录（旧批次 13000，新批次 13552）
+    # 2022 年北交所尚未纳入两融汇总口径，同一日期的 SSE 有两条记录。
     df = pl.DataFrame(
         {
             "market": ["CN", "CN", "CN"],
             "symbol": ["margin", "margin", "margin"],
-            "trade_date": [date(2026, 8, 12), date(2026, 8, 12), date(2026, 8, 12)],
+            "trade_date": [date(2022, 8, 12), date(2022, 8, 12), date(2022, 8, 12)],
             "exchange_id": ["SSE", "SSE", "SZSE"],
             "rzye": [13000.0, 13552.0, 12837.0],
             "data_source": ["tushare", "tushare", "tushare"],
@@ -62,11 +62,29 @@ def test_load_dataset_dedup_true_duplicates(tmp_path: Path) -> None:
     catalog = DataCatalog(data_source="tushare", storage_dir=tmp_path)
     loaded = catalog.load_dataset("margin")
 
-    # 应该去重为 2 行（1 条 SSE 最新 + 1 条 SZSE）
+    # 应该去重为 2 行（1 条 SSE 最新 + 1 条 SZSE），且该日覆盖完整。
     assert len(loaded) == 2
     sse_row = loaded.filter(pl.col("exchange_id") == "SSE")
     assert len(sse_row) == 1
     assert sse_row["rzye"][0] == 13552.0
+
+
+def test_load_dataset_excludes_incomplete_margin_date(tmp_path: Path) -> None:
+    margin_dir = tmp_path / "tushare/market=CN/margin"
+    margin_dir.mkdir(parents=True, exist_ok=True)
+    pl.DataFrame(
+        {
+            "trade_date": [date(2026, 8, 14), date(2026, 8, 14)],
+            "exchange_id": ["SSE", "SZSE"],
+            "rzye": [100.0, 200.0],
+            "data_source": ["tushare", "tushare"],
+            "source_endpoint": ["margin", "margin"],
+        }
+    ).write_parquet(margin_dir / "data.parquet")
+
+    catalog = DataCatalog(data_source="tushare", storage_dir=tmp_path)
+
+    assert catalog.load_dataset("margin").is_empty()
 
 
 import pytest

@@ -1,10 +1,11 @@
 """RAW 缓存命中检查辅助函数。"""
 
-from datetime import date, timedelta
+from datetime import date
 from typing import Any
 
 import polars as pl
 
+from stock.data.quality.margin_coverage import is_margin_date_complete
 from stock.data.storage.raw_schema import (
     RAW_ARTIFACT_SUFFIXES,
     RAW_RANGE_DATE_COLUMNS,
@@ -31,12 +32,15 @@ def _legacy_raw_has_symbol(storage: Any, path: Any, symbol: str | None) -> bool:
 
 
 def _candidate_dates(target_date: date) -> set[str]:
-    target_plain = target_date.strftime("%Y%m%d")
-    dates = {target_plain}
-    effective_date = target_date
-    while effective_date.weekday() >= 5:
-        effective_date -= timedelta(days=1)
-        dates.add(effective_date.strftime("%Y%m%d"))
+    dates = {target_date.strftime("%Y%m%d")}
+    try:
+        from stock.data.update_scheduler import DataUpdateScheduler
+
+        latest_trading_date = DataUpdateScheduler.get_latest_trading_date(target_date)
+        if latest_trading_date is not None:
+            dates.add(latest_trading_date.strftime("%Y%m%d"))
+    except Exception as exc:
+        logger.debug(f"获取最近交易日失败，仅检查目标日期 [{target_date}]: {exc}")
     return dates
 
 
@@ -94,6 +98,22 @@ def _raw_path_matches_symbol(path: Any, symbol: str) -> bool:
     )
 
 
+def _raw_path_matches_margin_date(path: Any, target_date: date) -> bool:
+    try:
+        frame = pl.read_parquet(path)
+    except Exception as e:
+        logger.warning(f"读取 RAW 两融覆盖检查文件失败 [{path}]: {e}")
+        return False
+    return is_margin_date_complete(frame, target_date)
+
+
+def _is_margin_endpoint(data_source: str, endpoint: str) -> bool:
+    try:
+        return resolve_task(data_source, endpoint).dataset == "margin"
+    except Exception:
+        return endpoint == "margin"
+
+
 def has_raw_cache(
     storage: Any,
     data_source: str,
@@ -102,8 +122,14 @@ def has_raw_cache(
     symbol: str | None = None,
 ) -> bool:
     """判断 RAW 缓存是否覆盖指定日期和可选标的。"""
+    is_margin = _is_margin_endpoint(data_source, endpoint)
     legacy_path = storage._get_file_path(data_source, endpoint, target_date)
     if legacy_path.exists():
+        if is_margin:
+            return any(
+                _raw_path_matches_margin_date(legacy_path, date.fromisoformat(candidate))
+                for candidate in _candidate_dates(target_date)
+            )
         return _legacy_raw_has_symbol(storage, legacy_path, symbol)
     source_dir = storage.base_dir / data_source
     if not source_dir.exists():
@@ -115,7 +141,11 @@ def has_raw_cache(
     dataset_dir = source_dir / f"market={market.upper()}" / task.dataset
     candidate_dates = _candidate_dates(target_date)
 
-    for path in [dataset_dir / year_month_path / "data.parquet"]:
+    candidate_paths = [
+        dataset_dir / "data.parquet",
+        dataset_dir / year_month_path / "data.parquet",
+    ]
+    for path in candidate_paths:
         if not path.exists() or path.name.endswith(RAW_ARTIFACT_SUFFIXES):
             continue
         try:
@@ -123,10 +153,17 @@ def has_raw_cache(
         except Exception:
             continue
         if dates_set is None:
+            if is_margin:
+                continue
             if not symbol or _raw_path_matches_symbol(path, symbol):
                 return True
             continue
         if not any(d in dates_set for d in candidate_dates):
+            continue
+        if is_margin and not any(
+            _raw_path_matches_margin_date(path, date.fromisoformat(candidate))
+            for candidate in candidate_dates
+        ):
             continue
         if symbol and not _raw_path_matches_symbol_date(path, candidate_dates, symbol):
             continue

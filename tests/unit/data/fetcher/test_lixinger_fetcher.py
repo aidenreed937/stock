@@ -1,6 +1,7 @@
 """理杏仁 (Lixinger) 抓取组件单元测试文件。"""
 
 from datetime import date, datetime
+from types import SimpleNamespace
 from unittest.mock import MagicMock, patch
 
 import pandas as pd
@@ -16,6 +17,13 @@ from stock.data.fetcher.lixinger import (
 )
 from stock.data.update_scheduler import DataUpdateScheduler
 from stock.exceptions import DataFetchError
+
+
+def test_lixinger_clients_share_rate_limiter_per_api() -> None:
+    first = LixingerClient(token="mock_token", rate_limit_per_min=7)
+    second = LixingerClient(token="mock_token", rate_limit_per_min=7)
+
+    assert first._get_rate_limiter("test/api") is second._get_rate_limiter("test/api")
 
 
 def test_lixinger_client_query_success() -> None:
@@ -45,6 +53,67 @@ def test_lixinger_client_query_success() -> None:
         assert len(df) == 1
         assert df["stockCode"].iloc[0] == "600519"
         assert df["pe_ttm"].iloc[0] == 25.5
+
+
+def test_lixinger_client_query_batch_uses_one_request_for_date_query() -> None:
+    client = LixingerClient(token="mock_token")
+    mock_resp = MagicMock()
+    mock_resp.status_code = 200
+    mock_resp.json.return_value = {
+        "code": 0,
+        "data": [
+            {"stockCode": "000001", "date": "2026-08-14"},
+            {"stockCode": "000300", "date": "2026-08-14"},
+        ],
+    }
+
+    with patch.object(client._session, "post", return_value=mock_resp) as post:
+        df = client.query_batch(
+            "cn/index/fundamental",
+            ["000001", "000300"],
+            date="2026-08-14",
+        )
+
+    assert len(df) == 2
+    assert post.call_count == 1
+    assert post.call_args.kwargs["json"]["stockCodes"] == ["000001", "000300"]
+
+
+def test_lixinger_client_query_batch_splits_at_one_hundred_codes() -> None:
+    client = LixingerClient(token="mock_token")
+    codes = [f"{index:06d}" for index in range(101)]
+    frames = [
+        pd.DataFrame({"stockCode": codes[:100]}),
+        pd.DataFrame({"stockCode": codes[100:]}),
+    ]
+
+    with patch.object(client, "query", side_effect=frames) as query:
+        df = client.query_batch("cn/index/fundamental", codes, date="2026-08-14")
+
+    assert len(df) == 101
+    assert query.call_count == 2
+    assert len(query.call_args_list[0].kwargs["stockCodes"]) == 100
+    assert query.call_args_list[1].kwargs["stockCodes"] == [codes[100]]
+
+
+def test_lixinger_client_query_batch_falls_back_to_single_codes_for_history() -> None:
+    client = LixingerClient(token="mock_token")
+    with patch.object(
+        client,
+        "query",
+        return_value=pd.DataFrame({"stockCode": ["000001"]}),
+    ) as query:
+        client.query_batch(
+            "cn/index/fundamental",
+            ["000001", "000300"],
+            startDate="2026-01-01",
+            endDate="2026-08-14",
+        )
+
+    assert [call.kwargs["stockCodes"] for call in query.call_args_list] == [
+        ["000001"],
+        ["000300"],
+    ]
 
 
 def test_lixinger_client_errors() -> None:
@@ -153,6 +222,56 @@ def test_lixinger_stock_fetcher() -> None:
     assert trade_dates == [start_d]
 
 
+def test_lixinger_index_fundamental_uses_batch_stock_codes() -> None:
+    mock_client = MagicMock()
+    mock_client.query_batch.return_value = pd.DataFrame(
+        {
+            "stockCode": ["000001", "000300"],
+            "date": ["2026-08-10", "2026-08-10"],
+            "pe_ttm.ew": [10.0, 12.0],
+        }
+    )
+    config = SimpleNamespace(
+        watchlists=SimpleNamespace(
+            lixinger=SimpleNamespace(indices=["000001", "000300", "399102"])
+        ),
+        source_endpoint_supports={
+            "lixinger": {"index_fundamental": ["000001", "000300"]}
+        },
+    )
+    fetcher = LixingerStockFetcher(client=mock_client)
+
+    with patch(
+        "stock.data.fetcher.lixinger.stock_fetcher.load_data_config",
+        return_value=config,
+    ):
+        df = fetcher.fetch_daily_bars_df(
+            symbol="",
+            start_date=date(2026, 8, 10),
+            end_date=date(2026, 8, 10),
+            endpoint="index_fundamental",
+        )
+
+    assert len(df) == 2
+    mock_client.query_batch.assert_called_once()
+    args, kwargs = mock_client.query_batch.call_args
+    assert args[:2] == ("cn/index/fundamental", ["000001", "000300"])
+    assert kwargs["date"] == "2026-08-10"
+    assert "startDate" not in kwargs
+    assert "endDate" not in kwargs
+    assert kwargs["metricsList"] == [
+        "pe_ttm.ew",
+        "pe_ttm.mcw",
+        "pb.ew",
+        "pb.mcw",
+        "ps_ttm.ew",
+        "ps_ttm.mcw",
+        "dyr.ew",
+        "dyr.mcw",
+        "mc",
+    ]
+
+
 def test_lixinger_constituents_are_flattened() -> None:
     mock_client = MagicMock()
     mock_client.query.return_value = pd.DataFrame([
@@ -172,6 +291,14 @@ def test_lixinger_facade_and_factory() -> None:
     pipeline = create_lixinger_pipeline("company_fundamental")
     assert pipeline.data_source == "lixinger"
     assert pipeline.endpoint == "company_fundamental"
+
+
+def test_lixinger_index_fundamental_factory_uses_placeholder_cleaner() -> None:
+    from stock.data.cleaner.generic_cleaner import LixingerIndexFundamentalCleaner
+
+    pipeline = create_lixinger_pipeline("index_fundamental")
+
+    assert isinstance(pipeline.cleaner, LixingerIndexFundamentalCleaner)
 
 
 def test_lixinger_update_scheduler() -> None:

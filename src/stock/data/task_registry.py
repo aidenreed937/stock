@@ -20,6 +20,15 @@ class TaskSpec:
     required_pool: str | None = None
 
 
+@dataclass(frozen=True)
+class TaskBundle:
+    """一组可由调度入口展开的原子项目任务。"""
+
+    bundle_name: str
+    provider: str
+    tasks: tuple[str, ...]
+
+
 # 向后兼容保留的集合别名（内部已统一由 TaskSpec 属性驱动）
 PER_SYMBOL_DATASETS: frozenset[str] = frozenset({
     "index_daily", "index_dailybasic", "index_weight", "global_index_daily",
@@ -95,7 +104,7 @@ _CUSTOM_TASKS: dict[tuple[str, str], TaskSpec] = {
     ("lixinger", "company_fundamental"): _make_spec("company_fundamental", "lixinger", "cn/company/fundamental/non_financial", "company_fundamental", fetch_mode="per_symbol", partitioned=False, is_single_sync=True),
     ("lixinger", "index_fundamental"): _make_spec("index_fundamental", "lixinger", "cn/index/fundamental", "index_fundamental", fetch_mode="per_symbol", partitioned=False, is_single_sync=True),
     ("lixinger", "sw_2021_fundamental"): _make_spec("sw_2021_fundamental", "lixinger", "cn/industry/fundamental/sw_2021", "sw_2021_fundamental", fetch_mode="per_symbol", partitioned=False, is_single_sync=True),
-    ("lixinger", "sw_2021_l2_fundamental"): _make_spec("sw_2021_l2_fundamental", "lixinger", "cn/industry/fundamental/sw_2021_l2", "sw_2021_l2_fundamental", fetch_mode="per_symbol", partitioned=False, is_single_sync=True),
+    ("lixinger", "sw_2021_l2_fundamental"): _make_spec("sw_2021_l2_fundamental", "lixinger", "cn/industry/fundamental/sw_2021", "sw_2021_l2_fundamental", fetch_mode="per_symbol", partitioned=False, is_single_sync=True),
     ("lixinger", "sw_2021_constituents"): _make_spec("sw_2021_constituents", "lixinger", "cn/industry/constituents/sw_2021", "sw_2021_constituents", fetch_mode="per_symbol", partitioned=False, is_single_sync=True),
     ("lixinger", "sw_2021_fs_non_financial"): _make_spec("sw_2021_fs_non_financial", "lixinger", "cn/industry/fs/sw_2021/non_financial", "sw_2021_fs_non_financial", fetch_mode="per_symbol", partitioned=False, is_single_sync=True),
     ("lixinger", "sw_2021_fs_bank"): _make_spec("sw_2021_fs_bank", "lixinger", "cn/industry/fs/sw_2021/bank", "sw_2021_fs_bank", fetch_mode="per_symbol", partitioned=False, is_single_sync=True),
@@ -110,6 +119,49 @@ _CUSTOM_TASKS: dict[tuple[str, str], TaskSpec] = {
     ("lixinger", "interest_rates"): _make_spec("interest_rates", "lixinger", "macro/interest-rates", "interest_rates", fetch_mode="per_symbol", partitioned=False, is_single_sync=True),
     ("lixinger", "non_ferrous_metals"): _make_spec("non_ferrous_metals", "lixinger", "macro/non-ferrous-metals", "non_ferrous_metals", fetch_mode="per_symbol", partitioned=False, is_single_sync=True),
     ("lixinger", "crude_oil"): _make_spec("crude_oil", "lixinger", "macro/crude-oil", "crude_oil", fetch_mode="per_symbol", partitioned=False, is_single_sync=True),
+}
+
+_TASK_BUNDLES: dict[tuple[str, str], TaskBundle] = {
+    ("lixinger", "market_bundle"): TaskBundle(
+        bundle_name="market_bundle",
+        provider="lixinger",
+        tasks=("stock_daily_bar", "index_daily_bar"),
+    ),
+    ("lixinger", "industry_bundle"): TaskBundle(
+        bundle_name="industry_bundle",
+        provider="lixinger",
+        tasks=(
+            "sw_2021_constituents",
+            "sw_2021_fundamental",
+            "sw_2021_l2_fundamental",
+            "sw_2021_fs_non_financial",
+            "sw_2021_fs_bank",
+            "sw_2021_fs_security",
+            "sw_2021_fs_insurance",
+        ),
+    ),
+    ("lixinger", "company_bundle"): TaskBundle(
+        bundle_name="company_bundle",
+        provider="lixinger",
+        tasks=(
+            "company_fundamental",
+            "fs_non_financial",
+            "fs_bank",
+            "fs_security",
+            "fs_insurance",
+            "pledge_info",
+        ),
+    ),
+    ("lixinger", "macro_bundle"): TaskBundle(
+        bundle_name="macro_bundle",
+        provider="lixinger",
+        tasks=("national_debt", "interest_rates", "non_ferrous_metals", "crude_oil"),
+    ),
+    ("lixinger", "index_bundle"): TaskBundle(
+        bundle_name="index_bundle",
+        provider="lixinger",
+        tasks=("index_fundamental",),
+    ),
 }
 
 _ALIASES: dict[tuple[str, str], str] = {
@@ -132,6 +184,47 @@ _ALIASES: dict[tuple[str, str], str] = {
 }
 
 _DISABLED_TASKS = {"bak_daily"}
+
+
+def list_available_bundles(provider: str) -> list[str]:
+    """返回指定数据源下已注册的调度任务包名称。"""
+    prov = provider.lower()
+    return [
+        bundle.bundle_name
+        for (bundle_provider, _), bundle in _TASK_BUNDLES.items()
+        if bundle_provider == prov
+    ]
+
+
+def resolve_bundle(provider: str, bundle_name: str) -> TaskBundle:
+    """解析任务包，并返回其原子任务列表。"""
+    provider_name = provider.lower()
+    requested = bundle_name.strip()
+    bundle = _TASK_BUNDLES.get((provider_name, requested))
+    if bundle is None:
+        raise ValueError(f"未知任务包 [{provider_name}/{bundle_name}]。")
+    return bundle
+
+
+def expand_task_targets(provider: str, endpoints: list[str] | None = None) -> list[str]:
+    """将任务包展开为去重后的原子任务；未指定端点时保持全量任务自发现。"""
+    provider_name = provider.lower()
+    if not endpoints:
+        return list_available_tasks(provider_name)
+
+    expanded: list[str] = []
+    seen: set[str] = set()
+    for endpoint in endpoints:
+        requested = endpoint.strip()
+        if not requested:
+            continue
+        bundle = _TASK_BUNDLES.get((provider_name, requested))
+        targets = bundle.tasks if bundle is not None else (requested,)
+        for target in targets:
+            if target not in seen:
+                expanded.append(target)
+                seen.add(target)
+    return expanded
 
 
 def _provider_registry(provider: str) -> dict[str, Any]:
@@ -230,6 +323,11 @@ def resolve_task(provider: str, task_name: str, symbol: str = "") -> TaskSpec:
         raise ValueError(
             f"项目任务 [{provider_name}/{task_name}] 已停用；请使用 stock_daily_bar。"
         )
+    if (provider_name, requested) in _TASK_BUNDLES:
+        raise ValueError(
+            f"[{provider_name}/{task_name}] 是任务包，不是原子任务；"
+            "请先通过 expand_task_targets 展开。"
+        )
     if (provider_name, requested) in _ALIASES:
         requested = _ALIASES[(provider_name, requested)]
 
@@ -279,6 +377,11 @@ def resolve_public_task(provider: str, task_name: str, symbol: str = "") -> Task
     if requested in _DISABLED_TASKS:
         raise ValueError(
             f"项目任务 [{provider_name}/{task_name}] 已停用；请使用 stock_daily_bar。"
+        )
+    if (provider_name, requested) in _TASK_BUNDLES:
+        raise ValueError(
+            f"[{provider_name}/{task_name}] 是任务包，不是公开原子任务；"
+            "请在调度入口中展开。"
         )
     if (provider_name, requested) in _ALIASES or "/" in requested:
         raise ValueError(

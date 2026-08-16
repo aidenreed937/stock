@@ -85,13 +85,17 @@ def post_process_tushare_frame(
     meta: EndpointMeta,
     symbol: str,
 ) -> pl.DataFrame:
-    """将 TuShare Pandas 返回结果统一转换为 Polars DataFrame，并注入 symbol 与主键去重。"""
+    """将 TuShare 响应转换为 Polars，并按接口契约处理实体列与主键。"""
     if pandas_df.empty:
         return pl.DataFrame()
 
     pl_df = pl.from_pandas(pandas_df)
     is_real_symbol = bool(symbol and (symbol != meta.api_name))
-    if "symbol" not in pl_df.columns and is_real_symbol:
+    if meta.api_name == "margin":
+        # margin 是交易所汇总表，symbol 不是上游字段，也不能由任务名补写。
+        if "symbol" in pl_df.columns:
+            pl_df = pl_df.drop("symbol")
+    elif "symbol" not in pl_df.columns and is_real_symbol:
         pl_df = pl_df.with_columns(pl.lit(symbol).alias("symbol"))
 
     primary_keys = [key for key in meta.primary_keys if key in pl_df.columns]

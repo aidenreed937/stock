@@ -7,6 +7,7 @@ import polars as pl
 
 from stock.constants import BAR_DATASETS
 from stock.core.contracts import DatasetKey
+from stock.data.quality.margin_coverage import filter_complete_margin_dates
 from stock.data.storage.compat import StorageCompat
 from stock.data.storage.partition_store import ParquetPartitionStore
 from stock.data.storage.query_engine import DuckDBQueryEngine
@@ -122,12 +123,15 @@ class DuckDBMarketStore:
             for path in self._active_parquet_paths()
             if any(target_dataset.replace("*", "") in part for part in path.parts)
         ]
-        return self.query_engine.query_dataset(
+        result = self.query_engine.query_dataset(
             matched_files=matched_files,
             symbol=symbol,
             start_date=start_date,
             end_date=end_date,
         )
+        if self.data_source == "tushare" and target_dataset == "margin":
+            return filter_complete_margin_dates(result, start_date=start_date, end_date=end_date)
+        return result
 
     def query_daily_bars(
         self, symbol: str, endpoint: str = "stock_daily_bar", min_price: float | None = None
@@ -173,13 +177,16 @@ class DuckDBMarketStore:
         if not matched_files:
             logger.warning(f"本地无 {target_endpoint} 分区 Parquet 缓存文件")
             return pl.DataFrame()
-        return self.query_engine.query_history(
+        result = self.query_engine.query_history(
             matched_files=matched_files,
             data_source=data_source,
             start_date=start_date,
             end_date=end_date,
             symbols=symbols,
         )
+        if data_source == "tushare" and target_endpoint == "margin":
+            return filter_complete_margin_dates(result, start_date=start_date, end_date=end_date)
+        return result
 
     def get_max_trade_date(self, symbol: str, endpoint: str = "stock_daily_bar") -> date | None:
         df = self.query_daily_bars(symbol=symbol, endpoint=endpoint)

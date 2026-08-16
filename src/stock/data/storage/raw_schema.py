@@ -103,11 +103,36 @@ def deduplicate_raw_merged_frame(
     """对异构合并后的 RAW DataFrame 执行聚合防折叠唯一性去重。"""
     entity_present = [c for c in RAW_ENTITY_COLUMNS if c in merged.columns]
     date_present = [c for c in RAW_DATE_CANDIDATE_COLUMNS if c in merged.columns]
-
     temp_cols: list[str] = []
-    dedup_subset: list[str] = []
 
-    if entity_present:
+    registered_keys = resolve_raw_primary_keys(key, merged) if key is not None else []
+    dedup_subset: list[str] = []
+    if registered_keys:
+        for registered_key in registered_keys:
+            if registered_key in date_present:
+                if "_dedup_date" not in dedup_subset:
+                    raw_date_exprs = [normalize_raw_date_series(pl.col(c)) for c in date_present]
+                    merged = merged.with_columns(
+                        pl.coalesce(raw_date_exprs).alias("_dedup_date")
+                    )
+                    dedup_subset.append("_dedup_date")
+                    temp_cols.append("_dedup_date")
+            elif registered_key in RAW_ENTITY_COLUMNS:
+                if len(entity_present) > 1:
+                    if "_dedup_entity" not in dedup_subset:
+                        merged = merged.with_columns(
+                            pl.coalesce([pl.col(c) for c in entity_present]).alias(
+                                "_dedup_entity"
+                            )
+                        )
+                        dedup_subset.append("_dedup_entity")
+                        temp_cols.append("_dedup_entity")
+                elif registered_key in merged.columns:
+                    dedup_subset.append(registered_key)
+            elif registered_key in merged.columns:
+                dedup_subset.append(registered_key)
+
+    if not registered_keys and entity_present:
         if len(entity_present) > 1:
             merged = merged.with_columns(
                 pl.coalesce([pl.col(c) for c in entity_present]).alias("_dedup_entity")
@@ -117,7 +142,7 @@ def deduplicate_raw_merged_frame(
         else:
             dedup_subset.append(entity_present[0])
 
-    if date_present:
+    if not registered_keys and date_present:
         raw_date_exprs = [normalize_raw_date_series(pl.col(c)) for c in date_present]
         merged = merged.with_columns(
             pl.coalesce(raw_date_exprs).alias("_dedup_date")
@@ -125,21 +150,19 @@ def deduplicate_raw_merged_frame(
         dedup_subset.append("_dedup_date")
         temp_cols.append("_dedup_date")
 
-    for k in (
-        "exchange_id",
-        "market_type",
-        "report_type",
-        "con_code",
-        "in_date",
-        "out_date",
-        "src",
-        "adj_factor",
-    ):
-        if k in merged.columns and k not in dedup_subset:
-            dedup_subset.append(k)
-
-    if not dedup_subset and key is not None:
-        dedup_subset = resolve_raw_primary_keys(key, merged)
+    if not registered_keys:
+        for k in (
+            "exchange_id",
+            "market_type",
+            "report_type",
+            "con_code",
+            "in_date",
+            "out_date",
+            "src",
+            "adj_factor",
+        ):
+            if k in merged.columns and k not in dedup_subset:
+                dedup_subset.append(k)
 
     if dedup_subset:
         merged = merged.unique(subset=dedup_subset, keep="last")

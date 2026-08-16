@@ -18,6 +18,17 @@
 - **事实单一信任源（Single Source of Truth）**：Curated 黄金表按事实主键升序去重，作为回测与因子计算的唯一消费标准；
 - **全链路血统追踪（Full Data Lineage）**：每个分区均附带数据源、接口、请求指纹与 schema 版本标识。
 
+### 3. 单位处理分层原则
+
+Schema v2 的单位契约遵循 **RAW 保真、Curated 标准单位、分析层无倍率**：
+
+- **RAW 层**只保存 API 原始字段、原始类型与原始单位，不为下游分析做乘法或口径改写。
+- **RAW -> Curated 清洗层**是单位倍率转换的唯一执行点，显式规则集中在 `UnitNormalizer`，例如千元转元、万元转元、百万元转元、手转股。
+- **Curated 层**对外提供统一消费契约：金额为元，成交量为股/份，市值为元，日期为 `pl.Date`，metadata 满足数据集约束。
+- **Analytics 层**只能按 Curated 标准单位做聚合、比值、窗口统计和业务语义计算，不得再写数据源倍率修正。
+
+新增或修复接口时，必须先确认上游真实单位，再同步更新 Provider registry 的单位声明、`UnitNormalizer` 的倍率规则和 RAW 重放验收。若已有 Curated 口径错误，应保留 RAW 原值并只重建 Curated。
+
 ---
 
 ## 二、Schema v2 核心技术规范

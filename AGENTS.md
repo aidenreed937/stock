@@ -18,6 +18,8 @@ export UV_PYTHON_INSTALL_DIR=.uv_python
 
 所有命令优先通过 `make` 或 `uv run` 执行，禁止直接使用系统全局 `python` 或 `pip`。
 
+- **严禁轮询后台任务状态 (No Polling)**：运行命令时合理设置 `WaitMsBeforeAsync` 优先同步获取输出；若切入后台，严禁循环调用 `manage_task(Action='status')`，必须直接停止调用工具（Yield Turn）等待系统事件自动唤醒。
+
 ## 标准开发与数据管道命令
 
 ### 1. 代码质量与测试门禁

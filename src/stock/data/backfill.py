@@ -39,6 +39,16 @@ def _resolve_calendar_dates(
     if data_source.lower() == "fred":
         return [start_date + timedelta(days=i) for i in range((end_date - start_date).days + 1)]
 
+    if data_source.lower() in {"tushare", "lixinger"}:
+        try:
+            local_calendar = DataUpdateScheduler.get_trading_days(
+                start_date, end_date, data_source="tushare"
+            )
+            if local_calendar:
+                return list(local_calendar)
+        except Exception as err:
+            logger.warning(f"[{data_source}] 本地 TuShare trade_cal 读取失败，将尝试源端日历: {err}")
+
     fetch_trade_cal_fn = getattr(fetcher, "fetch_trade_cal", None)
     if callable(fetch_trade_cal_fn):
         try:
@@ -48,21 +58,7 @@ def _resolve_calendar_dates(
                 if dates:
                     return dates
         except Exception as err:
-            logger.warning(f"[{data_source}] 源端交易日历获取失败，将尝试本地日历: {err}")
-
-    try:
-        from stock.data.catalog import DataCatalog
-
-        cat = DataCatalog(data_source=data_source.lower())
-        df_cal = cat.load_dataset("stock_daily_bar", start_date=start_date, end_date=end_date)
-        if not df_cal.is_empty() and "trade_date" in df_cal.columns:
-            local_dates = sorted(
-                {d for d in df_cal["trade_date"].to_list() if isinstance(d, date)}
-            )
-            if local_dates:
-                return local_dates
-    except Exception as err:
-        logger.warning(f"[{data_source}] 本地交易日历读取失败: {err}")
+            logger.warning(f"[{data_source}] 源端交易日历获取失败，无法建立可信日历: {err}")
 
     raise DataFetchError(
         f"[{data_source}] 缺少 {start_date} ~ {end_date} 的可信交易日历，拒绝按工作日推算。"

@@ -2,7 +2,6 @@ from datetime import date
 from types import SimpleNamespace
 from unittest.mock import MagicMock, patch
 
-import polars as pl
 import pytest
 
 from stock.data.backfill import (
@@ -55,23 +54,45 @@ def test_resolve_calendar_dates_uses_fred_natural_calendar() -> None:
 
 def test_resolve_calendar_dates_prefers_fetcher_calendar() -> None:
     fetcher = MagicMock()
-    fetcher.fetch_trade_cal.return_value = [date(2024, 1, 5), date(2024, 1, 8)]
+    fetcher.fetch_trade_cal.return_value = [date(2024, 1, 4)]
 
-    dates = _resolve_calendar_dates(fetcher, "tushare", date(2024, 1, 5), date(2024, 1, 8))
+    with patch(
+        "stock.data.backfill.DataUpdateScheduler.get_trading_days",
+        return_value=(date(2024, 1, 5), date(2024, 1, 8)),
+    ):
+        dates = _resolve_calendar_dates(
+            fetcher, "tushare", date(2024, 1, 5), date(2024, 1, 8)
+        )
 
     assert dates == [date(2024, 1, 5), date(2024, 1, 8)]
+    fetcher.fetch_trade_cal.assert_not_called()
 
 
 def test_resolve_calendar_dates_uses_local_calendar_after_fetcher_error() -> None:
     fetcher = MagicMock()
     fetcher.fetch_trade_cal.side_effect = Exception("network error")
-    catalog = MagicMock()
-    catalog.load_dataset.return_value = pl.DataFrame(
-        {"trade_date": [date(2024, 1, 5), date(2024, 1, 8)]}
-    )
 
-    with patch("stock.data.catalog.DataCatalog", return_value=catalog):
-        dates = _resolve_calendar_dates(fetcher, "tushare", date(2024, 1, 5), date(2024, 1, 8))
+    with patch(
+        "stock.data.backfill.DataUpdateScheduler.get_trading_days",
+        return_value=(date(2024, 1, 5), date(2024, 1, 8)),
+    ):
+        dates = _resolve_calendar_dates(
+            fetcher, "tushare", date(2024, 1, 5), date(2024, 1, 8)
+        )
+
+    assert dates == [date(2024, 1, 5), date(2024, 1, 8)]
+
+
+def test_resolve_calendar_dates_uses_source_after_local_calendar_unavailable() -> None:
+    fetcher = MagicMock()
+    fetcher.fetch_trade_cal.return_value = [date(2024, 1, 5), date(2024, 1, 8)]
+
+    with patch(
+        "stock.data.backfill.DataUpdateScheduler.get_trading_days", return_value=()
+    ):
+        dates = _resolve_calendar_dates(
+            fetcher, "tushare", date(2024, 1, 5), date(2024, 1, 8)
+        )
 
     assert dates == [date(2024, 1, 5), date(2024, 1, 8)]
 
@@ -79,11 +100,9 @@ def test_resolve_calendar_dates_uses_local_calendar_after_fetcher_error() -> Non
 def test_resolve_calendar_dates_fails_without_trusted_calendar() -> None:
     fetcher = MagicMock()
     fetcher.fetch_trade_cal.side_effect = Exception("network error")
-    catalog = MagicMock()
-    catalog.load_dataset.return_value = pl.DataFrame()
 
     with (
-        patch("stock.data.catalog.DataCatalog", return_value=catalog),
+        patch("stock.data.backfill.DataUpdateScheduler.get_trading_days", return_value=()),
         pytest.raises(DataFetchError, match="可信交易日历"),
     ):
         _resolve_calendar_dates(fetcher, "tushare", date(2024, 1, 5), date(2024, 1, 8))

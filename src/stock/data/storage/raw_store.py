@@ -1,5 +1,8 @@
 """RAW 原始数据离线时间分区归档存储引擎。"""
 
+import shutil
+import threading
+from contextlib import ExitStack
 from datetime import date
 from pathlib import Path
 from typing import Any
@@ -8,6 +11,7 @@ import polars as pl
 
 from stock.config.settings import settings
 from stock.core.contracts import DatasetKey
+from stock.data.quality.margin_coverage import is_margin_complete
 from stock.data.storage.compat import StorageCompat
 from stock.data.storage.raw_cache import has_raw_cache
 from stock.data.storage.raw_schema import (
@@ -23,6 +27,20 @@ from stock.data.storage.raw_schema import (
 from stock.exceptions import DataValidationError
 from stock.utils.date import parse_mixed_date
 from stock.utils.logger import logger
+
+_FILE_LOCKS_GUARD = threading.Lock()
+_FILE_LOCKS: dict[Path, threading.Lock] = {}
+
+
+def _shared_file_lock(file_path: Path) -> threading.Lock:
+    """返回当前进程内按目标文件复用的读写锁。"""
+    resolved_path = file_path.resolve()
+    with _FILE_LOCKS_GUARD:
+        lock = _FILE_LOCKS.get(resolved_path)
+        if lock is None:
+            lock = threading.Lock()
+            _FILE_LOCKS[resolved_path] = lock
+        return lock
 
 
 def _append_write_buffer(
@@ -60,9 +78,12 @@ def _dataset_paths_for_key(storage: Any, key: DatasetKey) -> list[Path]:
 
 
 def _read_dataset_paths(paths: list[Path]) -> pl.DataFrame | None:
-    if any(not path.exists() for path in paths):
-        return None
-    frames = [pl.read_parquet(path) for path in paths]
+    with ExitStack() as stack:
+        for path in sorted(paths, key=str):
+            stack.enter_context(_shared_file_lock(path))
+        if any(not path.exists() for path in paths):
+            return None
+        frames = [pl.read_parquet(path) for path in paths]
     frames = [frame for frame in frames if not frame.is_empty()]
     if not frames:
         return None
@@ -85,16 +106,16 @@ class RawDataStorage:
         self.base_dir = base_dir if base_dir is not None else settings.raw_data_dir
         self._batch_mode = False
         self._write_buffer: dict[Path, list[tuple[DatasetKey, pl.DataFrame]]] = {}
+        self._replace_paths: set[Path] = set()
         self._raw_cache: dict[Path, pl.DataFrame] = {}
         self._raw_dates_cache: dict[Path, set[str] | None] = {}
-        import threading
-
         self._file_lock = threading.Lock()
 
     def enable_batch_mode(self) -> None:
         """启用内存攒批模式，延迟到 commit 时再物理落盘，避免 O(N²) 写放大。"""
         self._batch_mode = True
         self._write_buffer = {}
+        self._replace_paths = set()
         logger.info("RawDataStorage 已开启攒批写入模式 (Micro-batching)")
 
     def commit(self) -> None:
@@ -107,10 +128,13 @@ class RawDataStorage:
         for file_path, dfs in self._write_buffer.items():
             if not dfs:
                 continue
-            self._merge_and_save(file_path, dfs)
+            self._merge_and_save(
+                file_path, dfs, replace_existing=file_path in self._replace_paths
+            )
             logger.info(f"RAW 攒批合并落盘成功 -> {file_path}")
 
         self._write_buffer.clear()
+        self._replace_paths.clear()
         self._batch_mode = False
         logger.info("RAW 攒批提交完成，已自动关闭攒批模式。")
 
@@ -160,7 +184,9 @@ class RawDataStorage:
         )
         return file_path
 
-    def save_dataset(self, key: DatasetKey, df: pl.DataFrame) -> Path:
+    def save_dataset(
+        self, key: DatasetKey, df: pl.DataFrame, *, replace_existing: bool = False
+    ) -> Path:
         """按数据集和月份幂等合并保存 RAW 归档数据。"""
         date_col = first_existing_column(df, RAW_DATE_COLUMNS)
         if date_col and not df.is_empty() and date_col in RAW_RANGE_DATE_COLUMNS:
@@ -190,36 +216,53 @@ class RawDataStorage:
                         adjustment=key.adjustment,
                         schema_version=key.schema_version,
                     )
-                    output = self._save_dataset_file(part_key, part)
+                    output = self._save_dataset_file(
+                        part_key, part, replace_existing=replace_existing
+                    )
                 return output
             raise DataValidationError(
                 f"RAW 数据集 [{key.provider}/{key.dataset}] 日期列 [{date_col}] 无有效日期"
             )
-        return self._save_dataset_file(key, df)
+        return self._save_dataset_file(key, df, replace_existing=replace_existing)
 
-    def _save_dataset_file(self, key: DatasetKey, df: pl.DataFrame) -> Path:
+    def _save_dataset_file(
+        self, key: DatasetKey, df: pl.DataFrame, *, replace_existing: bool = False
+    ) -> Path:
         """保存单个逻辑分区文件。"""
         file_path = self._get_dataset_path(key)
         if df.is_empty():
             return file_path
 
         if getattr(self, "_batch_mode", False):
+            if replace_existing:
+                self._replace_paths.add(file_path)
             _append_write_buffer(self._file_lock, self._write_buffer, file_path, (key, df))
             return file_path
 
-        self._merge_and_save(file_path, [(key, df)])
+        self._merge_and_save(file_path, [(key, df)], replace_existing=replace_existing)
         return file_path
 
+    @staticmethod
+    def _backup_legacy_file(file_path: Path) -> None:
+        """在替换旧 RAW 文件前保留可恢复副本。"""
+        backup_path = file_path.with_name(f"{file_path.stem}.legacy.bak.parquet")
+        if backup_path.exists():
+            return
+        try:
+            shutil.copy2(file_path, backup_path)
+            logger.warning(f"旧 RAW 文件已保留备份 -> {backup_path}")
+        except Exception as exc:
+            logger.warning(f"保留旧 RAW 文件备份失败 [{file_path}]: {exc}")
+
     def _merge_and_save(
-        self, file_path: Path, items: list[tuple[DatasetKey, pl.DataFrame]]
+        self,
+        file_path: Path,
+        items: list[tuple[DatasetKey, pl.DataFrame]],
+        *,
+        replace_existing: bool = False,
     ) -> None:
         """执行物理合并与覆写。"""
-        if not hasattr(self, "_file_lock"):
-            import threading
-
-            self._file_lock = threading.Lock()
-
-        with self._file_lock:
+        with _shared_file_lock(file_path):
             file_path.parent.mkdir(parents=True, exist_ok=True)
             existing = pl.DataFrame()
             if file_path.exists():
@@ -227,6 +270,18 @@ class RawDataStorage:
                     existing = pl.read_parquet(file_path)
                 except Exception as e:
                     logger.warning(f"读取原有 RAW 文件失败 [{file_path}]: {e}")
+                    self._backup_legacy_file(file_path)
+
+            incoming_columns = {
+                column for _, frame in items for column in frame.columns
+            }
+            if (
+                replace_existing
+                and not existing.is_empty()
+                and not incoming_columns.issubset(existing.columns)
+            ):
+                self._backup_legacy_file(file_path)
+                existing = pl.DataFrame()
 
             dfs_to_concat = [existing] if not existing.is_empty() else []
             for _, df in items:
@@ -235,11 +290,11 @@ class RawDataStorage:
             merged = pl.concat(dfs_to_concat, how="diagonal_relaxed")
             merged = deduplicate_raw_merged_frame(merged, items[0][0] if items else None)
 
-            import threading
-
             temp_path = file_path.with_suffix(f".{threading.get_ident()}.tmp.parquet")
             merged.write_parquet(temp_path)
             temp_path.replace(file_path)
+            self._raw_cache.pop(file_path, None)
+            self._raw_dates_cache.pop(file_path, None)
 
     @staticmethod
     def _primary_keys(key: DatasetKey, df: pl.DataFrame) -> list[str]:
@@ -283,6 +338,13 @@ class RawDataStorage:
                     and isinstance(max_value, str)
                     and (min_value > start or max_value < end)
                 ):
+                    return None
+            if key.dataset == "margin" or key.endpoint == "margin":
+                if not is_margin_complete(df, start_date=key.start_date, end_date=key.end_date):
+                    logger.warning(
+                        f"拒绝命中不完整两融 RAW 缓存 [{key.provider}/{key.endpoint}] "
+                        f"({key.start_date} ~ {key.end_date})"
+                    )
                     return None
             return df
         except Exception as e:

@@ -86,3 +86,21 @@ def test_normalizers_parse_mixed_date_formats_without_dropping_rows():
 
     assert [str(value) for value in generic["trade_date"]] == expected
     assert [str(value) for value in bars["trade_date"]] == expected
+
+
+def test_bar_normalizer_maps_lixinger_stock_code_to_symbol():
+    normalized = BarDataNormalizer().normalize(
+        pl.DataFrame(
+            {
+                "stockCode": ["600519"],
+                "date": ["2024-08-01"],
+                "open": [1800.0],
+                "high": [1810.0],
+                "low": [1790.0],
+                "close": [1805.0],
+            }
+        )
+    )
+
+    assert normalized["symbol"].to_list() == ["600519"]
+    assert "stockCode" not in normalized.columns

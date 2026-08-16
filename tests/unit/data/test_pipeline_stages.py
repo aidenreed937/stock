@@ -1,6 +1,7 @@
 from datetime import date
 from pathlib import Path
 from unittest.mock import MagicMock
+
 import polars as pl
 import pytest
 
@@ -13,6 +14,8 @@ from stock.data.pipeline_stages import (
     FetcherStage,
     NormalizerStage,
 )
+from stock.data.quality.quarantine import QuarantineStore
+from stock.data.storage.raw_store import RawDataStorage
 from stock.exceptions import DataValidationError
 
 
@@ -103,6 +106,25 @@ def test_fetcher_stage_validate_endpoint_frame_exceptions(tmp_path: Path) -> Non
         )
 
 
+def test_fetcher_stage_validates_normalized_margin_primary_key() -> None:
+    stage = FetcherStage(MagicMock(), MagicMock(), data_source="tushare")
+    mixed_date_df = pl.DataFrame(
+        {
+            "trade_date": ["20240102", "2024-01-02"],
+            "exchange_id": ["SSE", "SSE"],
+            "rzye": [100.0, 100.0],
+        }
+    )
+
+    with pytest.raises(DataValidationError, match="主键重复"):
+        stage.validate_endpoint_frame(
+            mixed_date_df,
+            start_date=date(2024, 1, 2),
+            end_date=date(2024, 1, 2),
+            endpoint="margin",
+        )
+
+
 def test_fetcher_stage_saves_unclipped_raw_before_returning_clipped_frame() -> None:
     fetcher = MagicMock()
     raw_store = MagicMock()
@@ -141,6 +163,123 @@ def test_fetcher_stage_saves_unclipped_raw_before_returning_clipped_frame() -> N
     saved_df = raw_store.save_dataset.call_args.args[1]
     assert saved_df.to_dict(as_series=False) == source_df.to_dict(as_series=False)
     assert result["trade_date"].to_list() == ["20240102"]
+
+
+def test_fetcher_stage_quarantines_incomplete_margin_after_raw_save(tmp_path: Path) -> None:
+    fetcher = MagicMock()
+    fetcher.fetch_daily_bars_df.return_value = pl.DataFrame(
+        {
+            "trade_date": ["20260814"],
+            "exchange_id": ["SSE"],
+            "rzye": [100.0],
+            "rqye": [1.0],
+        }
+    )
+    raw_store = RawDataStorage(base_dir=tmp_path / "raw")
+    stage = FetcherStage(
+        fetcher,
+        raw_store,
+        data_source="tushare",
+        quarantine=QuarantineStore(tmp_path / "quarantine"),
+    )
+    target_date = date(2026, 8, 14)
+    key = DatasetKey(
+        provider="tushare",
+        dataset="margin",
+        endpoint="margin",
+        start_date=target_date,
+        end_date=target_date,
+    )
+
+    with pytest.raises(DataValidationError, match="交易所覆盖不完整"):
+        stage.extract(
+            symbol="margin",
+            start_date=target_date,
+            end_date=target_date,
+            key=key,
+            api_name="margin",
+            endpoint_name="margin",
+        )
+
+    raw_path = tmp_path / "raw/tushare/market=CN/margin/data.parquet"
+    quarantine_path = tmp_path / "quarantine/endpoint=margin/records.parquet"
+    assert raw_path.exists()
+    assert raw_store.load_dataset(key) is None
+    assert not raw_store.has_raw("tushare", "margin", target_date)
+    assert quarantine_path.exists()
+    assert (
+        "incomplete_exchange_coverage"
+        in pl.read_parquet(quarantine_path)["quarantine_reason"].to_list()[0]
+    )
+
+
+def test_curated_stage_rejects_incomplete_margin() -> None:
+    store = MagicMock()
+    stage = CuratedStorageStage(store)
+    target_date = date(2026, 8, 14)
+    key = DatasetKey(
+        provider="tushare",
+        dataset="margin",
+        endpoint="margin",
+        start_date=target_date,
+        end_date=target_date,
+    )
+    df = pl.DataFrame(
+        {
+            "trade_date": [target_date],
+            "exchange_id": ["SSE"],
+            "rzye": [100.0],
+        }
+    )
+
+    with pytest.raises(DataValidationError, match="交易所覆盖不完整"):
+        stage.load(key, df, "margin")
+    store.save_dataset.assert_not_called()
+
+
+def test_fetcher_stage_refreshes_incompatible_lixinger_cache() -> None:
+    fetcher = MagicMock()
+    raw_store = MagicMock()
+    raw_store.load_dataset.return_value = pl.DataFrame(
+        {"symbol": ["110000"], "constituents": [[]]}
+    )
+    fresh_df = pl.DataFrame(
+        {"industryCode": ["110000"], "stockCode": ["600519"], "market": ["CN"]}
+    )
+    fetcher.fetch_daily_bars_df.return_value = fresh_df
+    stage = FetcherStage(fetcher, raw_store, data_source="lixinger")
+    key = DatasetKey(
+        provider="lixinger",
+        dataset="sw_2021_constituents",
+        endpoint="sw_2021_constituents",
+        start_date=date(2026, 8, 15),
+        end_date=date(2026, 8, 15),
+    )
+
+    result = stage.extract(
+        symbol="",
+        start_date=date(2026, 8, 15),
+        end_date=date(2026, 8, 15),
+        key=key,
+        api_name="cn/industry/constituents/sw_2021",
+        endpoint_name="sw_2021_constituents",
+    )
+
+    assert result.equals(fresh_df)
+    raw_store.save_dataset.assert_called_once_with(key, fresh_df, replace_existing=True)
+
+
+def test_fetcher_stage_accepts_normalized_lixinger_cache_aliases() -> None:
+    stage = FetcherStage(MagicMock(), MagicMock(), data_source="lixinger")
+
+    stage.validate_endpoint_frame(
+        pl.DataFrame(
+            {"symbol": ["110000"], "trade_date": ["2024-01-02"], "pe_ttm.ew": [20.0]}
+        ),
+        start_date=date(2024, 1, 2),
+        end_date=date(2024, 1, 2),
+        endpoint="sw_2021_fundamental",
+    )
 
 
 def test_normalizer_stage_empty_and_inferred_metadata() -> None:

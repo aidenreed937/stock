@@ -6,18 +6,19 @@ from typing import Any
 
 import polars as pl
 
+from stock.data.cleaner.bar_cleaner import BarDataCleaner
 from stock.data.storage.duckdb_store import DuckDBMarketStore
 from stock.data.task_registry import resolve_task
-from stock.utils.logger import logger, setup_logger
+from stock.utils.logger import setup_logger
 
 from stock.data.validator.rules import (
     BaseValidationRule,
-    NullCheckRule,
-    PrimaryKeyRule,
-    OhlcLogicRule,
-    VolatilityRule,
     CompletenessRule,
     DistributionAuditRule,
+    NullCheckRule,
+    OhlcLogicRule,
+    PrimaryKeyRule,
+    VolatilityRule,
 )
 
 
@@ -36,6 +37,10 @@ class OfflineDataValidator:
             rules: 校验规则链，若为 None 则默认组装日线全套校验规则。
         """
         self.store = store or DuckDBMarketStore()
+        data_source = getattr(self.store, "data_source", None)
+        if not isinstance(data_source, str) or not data_source:
+            data_source = "tushare"
+        listing_dates = BarDataCleaner.load_listing_dates(data_source)
         self.rules = (
             rules
             if rules is not None
@@ -43,14 +48,17 @@ class OfflineDataValidator:
                 NullCheckRule(),
                 PrimaryKeyRule(),
                 OhlcLogicRule(),
-                VolatilityRule(),
+                VolatilityRule(listing_dates=listing_dates),
                 CompletenessRule(),
                 DistributionAuditRule(),
             ]
         )
 
     def audit_daily_bars(
-        self, endpoint: str = "stock_daily_bar", start_date: date | None = None, end_date: date | None = None
+        self,
+        endpoint: str = "stock_daily_bar",
+        start_date: date | None = None,
+        end_date: date | None = None,
     ) -> dict[str, Any]:
         """对本地存储的日线行情数据执行完整性与准确性离线审计。
 
@@ -76,7 +84,9 @@ class OfflineDataValidator:
         all_passed = True
         rules = self.rules
         task = resolve_task(self.store.data_source or "tushare", endpoint)
-        if task.task_name == "stock_daily_bar" and any(isinstance(rule, CompletenessRule) for rule in rules):
+        if task.task_name == "stock_daily_bar" and any(
+            isinstance(rule, CompletenessRule) for rule in rules
+        ):
             expected_counts = self._historical_expected_counts(df)
             rules = [
                 CompletenessRule(
@@ -144,7 +154,10 @@ class OfflineDataValidator:
 def _parse_args() -> argparse.Namespace:
     parser = argparse.ArgumentParser(description="本地存储行情数据离线质量审计工具")
     parser.add_argument(
-        "--endpoint", type=str, default="stock_daily_bar", help="审计的项目任务名 (默认: stock_daily_bar)"
+        "--endpoint",
+        type=str,
+        default="stock_daily_bar",
+        help="审计的项目任务名 (默认: stock_daily_bar)",
     )
     parser.add_argument("--strict", action="store_true", help="异常时以非零状态退出")
     return parser.parse_args()

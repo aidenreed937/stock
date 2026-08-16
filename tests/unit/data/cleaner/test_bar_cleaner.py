@@ -1,6 +1,10 @@
 from datetime import date
+from pathlib import Path
+
 import polars as pl
+
 from stock.data.cleaner.bar_cleaner import BarDataCleaner
+from stock.data.quality.quarantine import QuarantineStore
 
 
 def test_bar_cleaner_handles_suspended_trading_day() -> None:
@@ -104,3 +108,55 @@ def test_bar_cleaner_imputes_missing_high_low() -> None:
     row2 = cleaned.filter(pl.col("symbol") == "302133.SZ")
     assert row2["high"][0] == 42.0  # max(40.0, 42.0)
     assert row2["low"][0] == 40.0  # min(40.0, 42.0)
+
+
+def test_bar_cleaner_quarantine_handles_integer_amount_after_repair(tmp_path: Path) -> None:
+    cleaner = BarDataCleaner()
+    df = pl.DataFrame(
+        {
+            "stockCode": ["399001", "399002"],
+            "date": ["2026-08-13", "2026-08-13"],
+            "open": [0, 10],
+            "high": [0, 9],
+            "low": [0, 8],
+            "close": [10, -1],
+            "volume": [0, 100],
+            "amount": [0, 1000],
+        }
+    )
+
+    cleaned = cleaner.clean_with_quarantine(
+        df,
+        endpoint="index_daily_bar",
+        quarantine=QuarantineStore(tmp_path),
+    )
+
+    assert cleaned["stockCode"].to_list() == ["399001"]
+    quarantined = pl.read_parquet(tmp_path / "endpoint=index_daily_bar" / "records.parquet")
+    assert quarantined["stockCode"].to_list() == ["399002"]
+
+
+def test_bar_cleaner_quarantines_rows_before_listing_date(tmp_path: Path) -> None:
+    cleaner = BarDataCleaner({"000001.SZ": date(2026, 8, 5)})
+    df = pl.DataFrame(
+        {
+            "symbol": ["000001.SZ", "000001.SZ"],
+            "trade_date": [date(2026, 8, 4), date(2026, 8, 5)],
+            "open": [10.0, 10.0],
+            "high": [10.5, 10.5],
+            "low": [9.5, 9.5],
+            "close": [10.0, 10.0],
+            "volume": [1000.0, 1000.0],
+            "amount": [10000.0, 10000.0],
+        }
+    )
+
+    cleaned = cleaner.clean_with_quarantine(
+        df,
+        endpoint="stock_daily_bar",
+        quarantine=QuarantineStore(tmp_path),
+    )
+
+    assert cleaned["trade_date"].to_list() == [date(2026, 8, 5)]
+    quarantined = pl.read_parquet(tmp_path / "endpoint=stock_daily_bar" / "records.parquet")
+    assert quarantined["quarantine_reason"].to_list() == ["trade_date_before_list_date"]
