@@ -81,6 +81,36 @@ def test_default_store_isolated_by_data_source(tmp_path, monkeypatch) -> None:
     assert yfinance_store.storage_dir == tmp_path / "curated" / "yfinance"
 
 
+def test_yfinance_macro_curated_market_is_global(tmp_path) -> None:
+    store = DuckDBMarketStore(storage_dir=tmp_path, data_source="yfinance")
+    key = DatasetKey(
+        provider="yfinance",
+        dataset="macro_indicators",
+        endpoint="macro_indicators",
+        start_date=date(2026, 8, 13),
+        end_date=date(2026, 8, 14),
+        instrument=instrument_for_symbol("GC=F", "yfinance"),
+    )
+    frame = pl.DataFrame(
+        {
+            "symbol": ["GC=F"],
+            "trade_date": [date(2026, 8, 14)],
+            "close": [100.0],
+            "data_source": ["yfinance"],
+            "market": ["US"],
+            "exchange": ["US_EXCHANGE"],
+            "currency": ["USD"],
+        }
+    )
+
+    path = store.save_dataset(key, frame)
+
+    assert path == tmp_path / "yfinance/market=GLOBAL/macro_indicators/data.parquet"
+    saved = pl.read_parquet(path)
+    assert saved["market"].unique().to_list() == ["GLOBAL"]
+    assert saved["exchange"].unique().to_list() == ["GLOBAL"]
+
+
 def test_pipeline_binds_explicit_store_to_source_directory(tmp_path) -> None:
     from stock.data.pipeline import MarketDataPipeline
 

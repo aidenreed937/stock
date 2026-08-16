@@ -13,7 +13,7 @@ from stock.core.contracts import (
 from stock.data.cleaner.base import BaseDataCleaner
 from stock.data.fetcher.base import BaseDataFetcher
 from stock.data.normalizer.bar_normalizer import (
-    infer_market_exchange_currency,
+    infer_metadata_expressions,
     normalize_stock_daily_bar_curated_schema,
 )
 from stock.data.normalizer.base import BaseDataNormalizer
@@ -332,27 +332,9 @@ class NormalizerStage:
         if normalized_df.is_empty():
             return normalized_df
 
-        if instrument:
-            market_expr = pl.lit(instrument.market)
-            exchange_expr = pl.lit(instrument.exchange)
-            currency_expr = pl.lit(instrument.currency)
-        else:
-            if "ts_code" in normalized_df.columns:
-                col_ref = pl.col("ts_code")
-                market_expr, exchange_expr, currency_expr = infer_market_exchange_currency(
-                    col_ref, data_source=self.data_source
-                )
-            elif "symbol" in normalized_df.columns:
-                col_ref = pl.col("symbol")
-                market_expr, exchange_expr, currency_expr = infer_market_exchange_currency(
-                    col_ref, data_source=self.data_source
-                )
-            else:
-                market_expr = pl.lit("CN" if self.data_source in {"tushare", "lixinger"} else "US")
-                exchange_expr = pl.lit("SOURCE")
-                currency_expr = pl.lit(
-                    "CNY" if self.data_source in {"tushare", "lixinger"} else "USD"
-                )
+        market_expr, exchange_expr, currency_expr = infer_metadata_expressions(
+            normalized_df, instrument, self.data_source, api_name, dataset
+        )
 
         now_utc = datetime.now(timezone.utc)
         source_endpoint = dataset or api_name

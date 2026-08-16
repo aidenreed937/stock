@@ -2,7 +2,9 @@ from datetime import date
 from unittest.mock import MagicMock, patch
 
 import pandas as pd
+import polars as pl
 
+from stock.data.cleaner.macro_cleaner import MacroDataCleaner
 from stock.data.fetcher.yfinance.client import YFinanceClient
 from stock.data.fetcher.yfinance.factory import create_yfinance_pipeline
 from stock.data.fetcher.yfinance.global_fetcher import YFinanceDataFetcher
@@ -321,6 +323,50 @@ def test_fetch_macro_indicators() -> None:
         assert not macro_df.is_empty()
         assert len(macro_df) == 1
         assert macro_df["symbol"][0] == "^TNX"
+        mock_ticker_instance.history.assert_called_once_with(
+            start="2026-08-10",
+            end="2026-08-12",
+            interval="1d",
+            auto_adjust=False,
+            repair=True,
+        )
+
+
+def test_fetch_macro_indicators_preserves_signed_values() -> None:
+    client = MagicMock(spec=YFinanceClient)
+    client.query_history.return_value = pd.DataFrame(
+        {
+            "Open": [-0.012],
+            "High": [-0.010],
+            "Low": [-0.013],
+            "Close": [-0.011],
+            "Volume": [0.0],
+        },
+        index=pd.to_datetime(["2026-08-10"]),
+    )
+    fetcher = YFinanceDataFetcher(client=client)
+
+    macro_df = fetcher.fetch_macro_indicators_df(
+        start_date=date(2026, 8, 10),
+        end_date=date(2026, 8, 11),
+        symbols=["^IRX"],
+    )
+
+    assert macro_df["close"][0] == -0.011
+    assert macro_df["amount"][0] == 0.0
+    client.query_history.assert_called_once_with(
+        symbol="^IRX",
+        start_date_str="2026-08-10",
+        end_date_str="2026-08-12",
+        auto_adjust=False,
+        repair=True,
+    )
+
+
+def test_create_yfinance_macro_pipeline_uses_macro_cleaner() -> None:
+    pipeline = create_yfinance_pipeline(endpoint="macro_indicators")
+
+    assert isinstance(pipeline.cleaner, MacroDataCleaner)
 
 
 def test_fetch_daily_bars_df_dispatches_macro_indicators() -> None:
@@ -354,10 +400,13 @@ def test_yfinance_macro_registry_declares_global_hg_f_route() -> None:
     assert meta.group == "macro_data"
 
     fetcher = YFinanceDataFetcher(client=YFinanceClient())
-    with patch.object(fetcher, "fetch_batch_daily_bars_df", return_value=MagicMock()) as batch:
+    with patch(
+        "stock.data.fetcher.yfinance.macro_fetcher.fetch_macro_daily_bars_df",
+        return_value=pl.DataFrame(),
+    ) as macro:
         fetcher.fetch_macro_indicators_df(date(2026, 8, 10), date(2026, 8, 11))
 
-    symbols = batch.call_args.args[0]
+    symbols = [call.args[1] for call in macro.call_args_list]
     assert "GC=F" in symbols
     assert "CL=F" in symbols
     assert "HG=F" in symbols

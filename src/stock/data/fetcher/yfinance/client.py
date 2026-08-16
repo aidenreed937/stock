@@ -220,13 +220,27 @@ class YFinanceClient:
         start_date_str: str,
         end_date_str: str,
         proxy: str,
+        history_options: dict[str, Any] | None = None,
     ) -> pd.DataFrame:
         session = self._get_session(proxy)
         ticker = yf.Ticker(symbol, session=session)
-        return ticker.history(start=start_date_str, end=end_date_str, interval="1d")
+        history_kwargs: dict[str, Any] = {
+            "start": start_date_str,
+            "end": end_date_str,
+            "interval": "1d",
+        }
+        if history_options:
+            history_kwargs.update(history_options)
+        return ticker.history(**history_kwargs)
 
     def query_history(
-        self, symbol: str, start_date_str: str, end_date_str: str
+        self,
+        symbol: str,
+        start_date_str: str,
+        end_date_str: str,
+        *,
+        auto_adjust: bool | None = None,
+        repair: bool | None = None,
     ) -> pd.DataFrame:
         """调用 yfinance 接口拉取历史行情。
 
@@ -234,15 +248,29 @@ class YFinanceClient:
             symbol: 标的代码。
             start_date_str: 开始日期字符串 (YYYY-MM-DD)。
             end_date_str: 结束日期字符串 (YYYY-MM-DD)。
+            auto_adjust: 是否使用 yfinance 自动复权；None 表示采用上游默认值。
+            repair: 是否启用 yfinance 的历史价格修复。
         """
         last_result = pd.DataFrame()
         last_error: Exception | None = None
+        history_options = {
+            key: value
+            for key, value in {
+                "auto_adjust": auto_adjust,
+                "repair": repair,
+            }.items()
+            if value is not None
+        }
         for attempt in range(self.MAX_ATTEMPTS):
             self.rate_limiter.acquire()
             proxy = self._next_proxy()
             try:
                 last_result = self._query_history_once(
-                    symbol, start_date_str, end_date_str, proxy
+                    symbol,
+                    start_date_str,
+                    end_date_str,
+                    proxy,
+                    history_options=history_options,
                 )
                 last_error = None
                 if not last_result.empty:

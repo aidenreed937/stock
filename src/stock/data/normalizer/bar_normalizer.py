@@ -2,6 +2,7 @@
 
 import polars as pl
 
+from stock.core.contracts import InstrumentId
 from stock.data.normalizer.base import BaseDataNormalizer
 from stock.utils.date import parse_mixed_date
 from stock.utils.logger import logger
@@ -211,3 +212,30 @@ def infer_market_exchange_currency(
         .otherwise(pl.lit(default_cur))
     )
     return market_expr, exchange_expr, currency_expr
+
+
+def infer_metadata_expressions(
+    normalized_df: pl.DataFrame,
+    instrument: InstrumentId | None,
+    data_source: str,
+    api_name: str,
+    dataset: str | None,
+) -> tuple[pl.Expr, pl.Expr, pl.Expr]:
+    """根据任务、标的和数据源推算血缘市场元数据。"""
+    if data_source == "yfinance" and (
+        dataset == "macro_indicators" or api_name == "macro_indicators"
+    ):
+        return pl.lit("GLOBAL"), pl.lit("GLOBAL"), pl.lit("USD")
+    if instrument:
+        return pl.lit(instrument.market), pl.lit(instrument.exchange), pl.lit(instrument.currency)
+
+    if "ts_code" in normalized_df.columns:
+        col_ref = pl.col("ts_code")
+    elif "symbol" in normalized_df.columns:
+        col_ref = pl.col("symbol")
+    else:
+        market = "CN" if data_source in {"tushare", "lixinger"} else "US"
+        exchange = "SOURCE" if data_source in {"tushare", "lixinger"} else "US_EXCHANGE"
+        currency = "CNY" if data_source in {"tushare", "lixinger"} else "USD"
+        return pl.lit(market), pl.lit(exchange), pl.lit(currency)
+    return infer_market_exchange_currency(col_ref, data_source=data_source)

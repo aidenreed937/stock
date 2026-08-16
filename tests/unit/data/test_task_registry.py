@@ -88,6 +88,12 @@ def test_task_spec_properties() -> None:
     assert not limit_list.is_single_sync
 
 
+def test_yfinance_macro_task_uses_macro_quality_profile() -> None:
+    task = resolve_task("yfinance", "macro_indicators")
+
+    assert task.quality_profile == "macro"
+
+
 def test_lixinger_l2_task_uses_the_documented_shared_api_route() -> None:
     task = resolve_task("lixinger", "sw_2021_l2_fundamental")
 

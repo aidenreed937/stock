@@ -36,7 +36,10 @@ def _reject_legacy_schema_version(df: pl.DataFrame, context: str) -> None:
         raise DataValidationError(f"{context}包含旧版或未知 schema_version: {sorted(invalid)}")
 
 
-def _prepare_curated_frame(df: pl.DataFrame, endpoint: str) -> pl.DataFrame:
+def _prepare_curated_frame(
+    df: pl.DataFrame, endpoint: str, data_source: str | None = None
+) -> pl.DataFrame:
+    df = _normalize_yfinance_macro_frame(df, data_source, endpoint)
     _reject_legacy_schema_version(df, f"Curated 数据集 [{endpoint}] ")
     if "source_endpoint" not in df.columns:
         df = df.with_columns(pl.lit(endpoint).alias("source_endpoint"))
@@ -54,13 +57,39 @@ def _date_matches_expr(target_date: date) -> pl.Expr:
     return as_text.is_in([target_date.strftime("%Y-%m-%d"), target_date.strftime("%Y%m%d")])
 
 
-def _resolve_market_code(df: pl.DataFrame, fallback_market: str) -> str:
+def _resolve_market_code(
+    df: pl.DataFrame,
+    fallback_market: str,
+    data_source: str | None = None,
+    endpoint: str = "",
+) -> str:
+    if data_source == "yfinance" and endpoint == "macro_indicators":
+        return "GLOBAL"
     if "market" in df.columns and not df.is_empty():
         m_values = set(df.get_column("market").drop_nulls().unique().to_list())
         if len(m_values) == 1 and next(iter(m_values)):
             val = next(iter(m_values))
             return str(val) if val is not None else fallback_market
     return fallback_market
+
+
+def _resolve_source_market_code(df: pl.DataFrame, source: str, endpoint: str) -> str:
+    return _resolve_market_code(df, get_endpoint_market(source, endpoint), source, endpoint)
+
+
+def _normalize_yfinance_macro_frame(
+    df: pl.DataFrame, data_source: str | None, endpoint: str
+) -> pl.DataFrame:
+    """将 yfinance 宏观数据的逻辑市场统一为 GLOBAL。"""
+    if data_source != "yfinance" or endpoint != "macro_indicators" or df.is_empty():
+        return df
+
+    expressions = [pl.lit("GLOBAL").alias("market")]
+    if "exchange" in df.columns:
+        expressions.append(pl.lit("GLOBAL").alias("exchange"))
+    if "currency" in df.columns:
+        expressions.append(pl.lit("USD").alias("currency"))
+    return df.with_columns(expressions)
 
 
 def _active_parquet_paths(storage_dir: Path) -> list[Path]:
@@ -249,13 +278,13 @@ class ParquetPartitionStore:
             raise DataValidationError("Curated 数据缺少数据源，拒绝写入未绑定来源的数据")
         self.bind_data_source(source)
         endpoint = self._dataset_name(endpoint, source)
-        market_code = _resolve_market_code(df, get_endpoint_market(source, endpoint))
+        market_code = _resolve_source_market_code(df, source, endpoint)
 
         if df.is_empty():
             return self.get_parquet_path(endpoint, target_date, market=market_code)
 
         file_path = self.get_parquet_path(endpoint, target_date, market=market_code)
-        df = _prepare_curated_frame(df, endpoint)
+        df = _prepare_curated_frame(df, endpoint, source)
         if (
             source == "tushare"
             and endpoint == "margin"
@@ -288,12 +317,12 @@ class ParquetPartitionStore:
             if key.instrument and key.instrument.market
             else get_endpoint_market(key.provider, dataset_name)
         )
-        market_code = _resolve_market_code(df, fallback_market)
+        market_code = _resolve_market_code(df, fallback_market, key.provider, dataset_name)
         file_path = self.get_parquet_path(dataset_name, key.end_date, market=market_code)
         if df.is_empty():
             return file_path
 
-        df = _prepare_curated_frame(df, key.endpoint)
+        df = _prepare_curated_frame(df, key.endpoint, key.provider)
         if (
             key.provider == "tushare"
             and dataset_name == "margin"

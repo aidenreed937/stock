@@ -92,7 +92,7 @@ _CUSTOM_TASKS: dict[tuple[str, str], TaskSpec] = {
     ("tushare", "forecast"): _make_spec("forecast", "tushare", "forecast", "forecast", fetch_mode="per_day", partitioned=True),
     ("tushare", "express"): _make_spec("express", "tushare", "express", "express", fetch_mode="per_day", partitioned=True),
     ("tushare", "index_daily_bar"): _make_spec("index_daily_bar", "tushare", "index_daily", "index_daily_bar", "bar", fetch_mode="per_symbol", partitioned=False, is_single_sync=True),
-    ("yfinance", "macro_indicators"): _make_spec("macro_indicators", "yfinance", "macro_indicators", "macro_indicators", fetch_mode="per_symbol", partitioned=False, is_single_sync=True),
+    ("yfinance", "macro_indicators"): _make_spec("macro_indicators", "yfinance", "macro_indicators", "macro_indicators", "macro", fetch_mode="per_symbol", partitioned=False, is_single_sync=True),
     ("yfinance", "index_valuation"): _make_spec("index_valuation", "yfinance", "index_valuation", "index_valuation", fetch_mode="per_day", partitioned=False, is_single_sync=True),
     ("fred", "macro_indicators"): _make_spec("macro_indicators", "fred", "macro_indicators", "macro_indicators", fetch_mode="per_symbol", partitioned=False, is_single_sync=True),
     ("yfinance", "stock_daily_bar"): _make_spec("stock_daily_bar", "yfinance", "history", "stock_daily_bar", "bar", fetch_mode="per_symbol", partitioned=True),

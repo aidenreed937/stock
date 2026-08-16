@@ -306,6 +306,26 @@ def test_normalizer_stage_empty_and_inferred_metadata() -> None:
     assert res_cn["exchange"][0] == "SSE"
     assert res_cn["currency"][0] == "CNY"
 
+    # yfinance 宏观端点的逻辑市场固定为 GLOBAL，不受标的后缀推断影响。
+    macro_inst = InstrumentId(
+        provider="yfinance",
+        symbol="DX-Y.NYB",
+        market="NYB",
+        exchange="NYB_EXCHANGE",
+        currency="USD",
+    )
+    df_macro = pl.DataFrame({"symbol": ["DX-Y.NYB"], "trade_date": ["20240801"]})
+    res_macro = stage.normalize(
+        df_macro,
+        macro_inst,
+        "macro_indicators",
+        "req_macro",
+        dataset="macro_indicators",
+    )
+    assert res_macro["market"][0] == "GLOBAL"
+    assert res_macro["exchange"][0] == "GLOBAL"
+    assert res_macro["currency"][0] == "USD"
+
 
 def test_curated_storage_stage(tmp_path: Path) -> None:
     store = MagicMock()

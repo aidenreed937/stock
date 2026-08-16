@@ -36,6 +36,18 @@ def test_dataset_key_properties() -> None:
     assert key.market_slug == "market=CN"
     assert key.instrument_slug == "600519.SH"
 
+    macro_key = DatasetKey(
+        provider="yfinance",
+        dataset="macro_indicators",
+        endpoint="macro_indicators",
+        start_date=date(2026, 8, 1),
+        end_date=date(2026, 8, 14),
+        instrument=InstrumentId(
+            symbol="GC=F", market="US", exchange="US_EXCHANGE", currency="USD", provider="yfinance"
+        ),
+    )
+    assert macro_key.market_slug == "market=GLOBAL"
+
 
 def test_contract_missing_columns() -> None:
     contract = DatasetContract(

@@ -6,6 +6,7 @@ import polars as pl
 
 from stock.data.fetcher.base import BaseDataFetcher
 from stock.data.fetcher.yfinance.client import YFinanceClient
+from stock.data.fetcher.yfinance.macro_fetcher import fetch_macro_indicators_df
 from stock.data.fetcher.yfinance.registry import YFINANCE_API_REGISTRY
 from stock.models.market import DailyBar, IndexValuation
 
@@ -79,7 +80,12 @@ class YFinanceDataFetcher(BaseDataFetcher):
             return []
 
     def fetch_daily_bars_df(
-        self, symbol: str, start_date: date, end_date: date, endpoint: str = "history", **kwargs: Any
+        self,
+        symbol: str,
+        start_date: date,
+        end_date: date,
+        endpoint: str = "history",
+        **kwargs: Any,
     ) -> pl.DataFrame:
         """抓取指定标的行情数据，返回 Polars DataFrame。"""
         meta = YFINANCE_API_REGISTRY.get(endpoint)
@@ -336,15 +342,4 @@ class YFinanceDataFetcher(BaseDataFetcher):
         symbols: list[str] | None = None,
     ) -> pl.DataFrame:
         """一行代码批量同步全球核心宏观指标 (美债收益率、美元指数、汇率、大宗商品、VIX)。"""
-        default_macro_symbols = [
-            "^TNX",  # 美国 10 年期国债收益率
-            "^IRX",  # 美国 3 个月期国债收益率
-            "DX-Y.NYB",  # 美元指数
-            "CNH=X",  # 离岸人民币 (USD/CNH)
-            "GC=F",  # 黄金期货
-            "CL=F",  # 原油期货
-            "HG=F",  # 铜期货
-            "^VIX",  # 恐慌指数
-        ]
-        target_symbols = symbols or default_macro_symbols
-        return self.fetch_batch_daily_bars_df(target_symbols, start_date, end_date)
+        return fetch_macro_indicators_df(self.client, start_date, end_date, symbols=symbols)

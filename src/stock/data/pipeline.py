@@ -7,6 +7,7 @@ from stock.core.contracts import DatasetKey, instrument_for_symbol
 from stock.data.cleaner.bar_cleaner import BarDataCleaner
 from stock.data.cleaner.base import BaseDataCleaner
 from stock.data.cleaner.generic_cleaner import GenericCleaner
+from stock.data.cleaner.macro_cleaner import MacroDataCleaner
 from stock.data.fetcher.base import BaseDataFetcher
 from stock.data.normalizer.bar_normalizer import BarDataNormalizer
 from stock.data.normalizer.base import BaseDataNormalizer
@@ -55,6 +56,8 @@ class MarketDataPipeline:
             self.cleaner = BarDataCleaner(
                 listing_dates=BarDataCleaner.load_listing_dates(data_source)
             )
+        elif profile == "macro":
+            self.cleaner = MacroDataCleaner()
         else:
             self.cleaner = GenericCleaner()
 
