@@ -38,6 +38,7 @@ data/*
 !data/curated/
 !data/cache/
 !data/**/.gitkeep
+data/proxy
 data/audit/
 *.parquet
 *.feather
