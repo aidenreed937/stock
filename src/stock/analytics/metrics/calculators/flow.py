@@ -2,6 +2,7 @@
 
 import polars as pl
 
+from stock.analytics.metrics.calculators.percentile import rolling_percentile
 from stock.analytics.metrics.context import MetricContext
 from stock.analytics.metrics.datasets.loaders import load_metric_dataset
 from stock.analytics.metrics.spec import (
@@ -248,19 +249,8 @@ def _rolling_zscore(df: pl.DataFrame, column: str, window: int) -> pl.Expr:
     return ((pl.col(column) - mean) / (std + 1e-8)).alias(f"{column}_zscore_{window}d")
 
 
-def _percentile_rank(values: pl.Series) -> float | None:
-    if values.is_empty() or values[-1] is None or values.null_count() > 0:
-        return None
-    current = values[-1]
-    return float((values <= current).sum()) / len(values) * 100.0
-
-
 def _rolling_percentile(column: str, window: int) -> pl.Expr:
-    return (
-        pl.col(column)
-        .rolling_map(_percentile_rank, window_size=window, min_samples=window)
-        .alias(f"{column}_percentile_{window}d")
-    )
+    return rolling_percentile(column, f"{column}_percentile_{window}d", window)
 
 
 def _select_metric(frame: pl.DataFrame, spec: MetricSpec) -> pl.DataFrame:

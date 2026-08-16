@@ -26,6 +26,8 @@ def test_industry_classifier_dynamic_resolution() -> None:
     assert classifier.resolve_name("480000") == "银行"
     assert classifier.resolve_name("801980.SI") == "美容护理"
     assert classifier.resolve_name("770000") == "美容护理"
+    assert classifier.resolve_name("801030.SI") == "基础化工"
+    assert classifier.resolve_name("801730.SI") == "电力设备"
     assert classifier.resolve_name("640000") == "机械设备"
     assert classifier.resolve_name("650000") == "国防军工"
     assert classifier.resolve_name("710000") == "计算机"

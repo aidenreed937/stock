@@ -1,4 +1,4 @@
-.PHONY: help install lint format test check run scan backfill baseline migrate-data cleanup-data backfill-accept repair-stock-daily-bar
+.PHONY: help install lint format test check run scan market-temperature industry-structure backfill baseline migrate-data cleanup-data backfill-accept repair-stock-daily-bar
 
 help:
 	@echo "Available commands:"
@@ -9,6 +9,8 @@ help:
 	@echo "  make check    - Run format, lint, and test (recommended before commit)"
 	@echo "  make run      - Run the main application"
 	@echo "  make scan     - Run 3-layer market scan (e.g., make scan [DATE=YYYY-MM-DD] [FORMAT=markdown])"
+	@echo "  make market-temperature - Generate market temperature artifacts under data/analytics"
+	@echo "  make industry-structure - Generate SW industry structure artifacts under data/analytics"
 	@echo "  make backfill - Backfill historical data (e.g., make backfill START=2026-08-01 END=2026-08-12)"
 	@echo "  make baseline - Generate immutable data inventory"
 	@echo "  make migrate-data [APPLY=1] - Preview/apply local dedup migration"
@@ -100,3 +102,9 @@ monitor:
 
 scan:
 	UV_CACHE_DIR=.uv_cache UV_PYTHON_INSTALL_DIR=.uv_python uv run python -m stock.cli.scan $(if $(DATE),--date $(DATE)) $(if $(SYMBOL),--symbol $(SYMBOL)) $(if $(FORMAT),--format $(FORMAT)) $(if $(OUTPUT),--output $(OUTPUT)) $(if $(RECOMPUTE),--recompute) $(if $(SAVE),--save)
+
+market-temperature:
+	UV_CACHE_DIR=.uv_cache UV_PYTHON_INSTALL_DIR=.uv_python uv run python -m stock.cli.market_temperature $(if $(DATE),--date $(DATE)) $(if $(CONFIG),--config $(CONFIG)) $(if $(OUTPUT_ROOT),--output-root $(OUTPUT_ROOT)) $(if $(NO_LATEST),--no-latest) $(if $(SKIP_METRICS),--skip-metrics)
+
+industry-structure:
+	UV_CACHE_DIR=.uv_cache UV_PYTHON_INSTALL_DIR=.uv_python uv run python -m stock.cli.industry_structure $(if $(DATE),--date $(DATE)) $(if $(CONFIG),--config $(CONFIG)) $(if $(OUTPUT_ROOT),--output-root $(OUTPUT_ROOT)) $(if $(NO_LATEST),--no-latest)

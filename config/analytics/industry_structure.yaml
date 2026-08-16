@@ -1,0 +1,82 @@
+industry_structure:
+  schema_version: 1
+  title: "申万行业结构分析"
+  artifact_root: "data/analytics/industry_structure"
+  main_window: 20
+  short_windows: [5, 10]
+  medium_windows: [60, 120]
+  classification: "SW2021"
+  benchmark: "000985"
+
+  score_weights:
+    momentum: 0.40
+    valuation: 0.25
+    fundamental: 0.15
+    crowding: 0.20
+
+  fundamental_blend:
+    stale_after_days: 90
+    official_weight: 0.70
+    fast_weight: 0.30
+    stale_official_weight: 0.40
+    stale_fast_weight: 0.60
+
+  datasets:
+    - data_source: tushare
+      dataset: sw_daily
+      required: true
+      note: "申万行业指数行情，行业动量和成交拥挤度主数据"
+    - data_source: tushare
+      dataset: index_classify
+      required: false
+      static: true
+      note: "申万行业分类字典，用于识别 SW2021 一级行业"
+    - data_source: tushare
+      dataset: index_daily
+      required: false
+      note: "宽基指数行情，用于行业相对收益基准；缺失时回退为行业中位数"
+    - data_source: tushare
+      dataset: index_member
+      required: false
+      static: true
+      note: "申万行业成份股映射，用于把预告、快报和研报关联到行业"
+    - data_source: tushare
+      dataset: forecast
+      required: false
+      date_column: ann_date
+      note: "业绩预告，用于快速基本面确认"
+    - data_source: tushare
+      dataset: express
+      required: false
+      date_column: ann_date
+      note: "业绩快报，用于快速基本面确认"
+    - data_source: tushare
+      dataset: report_rc
+      required: false
+      date_column: report_date
+      note: "卖方盈利预测，用于快速基本面确认"
+    - data_source: lixinger
+      dataset: sw_2021_fundamental
+      required: false
+      note: "申万2021一级行业估值"
+    - data_source: lixinger
+      dataset: sw_2021_constituents
+      required: false
+      static: true
+      note: "申万2021行业成份股图谱，用于补充快速基本面行业映射"
+    - data_source: lixinger
+      dataset: sw_2021_fs_non_financial
+      required: false
+      note: "申万2021非金融行业季频财报"
+    - data_source: lixinger
+      dataset: sw_2021_fs_bank
+      required: false
+      note: "申万2021银行行业季频财报"
+    - data_source: lixinger
+      dataset: sw_2021_fs_security
+      required: false
+      note: "申万2021证券行业季频财报"
+    - data_source: lixinger
+      dataset: sw_2021_fs_insurance
+      required: false
+      note: "申万2021保险行业季频财报"

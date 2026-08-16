@@ -44,11 +44,13 @@ class IndustryClassifier:
             return frozenset(codes)
         return frozenset()
 
-    def get_name_map(self) -> dict[str, str]:
+    def get_name_map(self, src: str | None = "SW2021") -> dict[str, str]:
         """动态构建行业代码（包含 801xxx.SI 与 6 位数字代码）到中文名称映射字典。"""
         mapping: dict[str, str] = {}
         df = self._load_classify_df()
         if not df.is_empty():
+            if src is not None and "src" in df.columns:
+                df = df.filter(pl.col("src") == src)
             for row in df.to_dicts():
                 name = str(row.get("industry_name") or "")
                 if not name:
@@ -61,10 +63,10 @@ class IndustryClassifier:
                             mapping[val.split(".")[0]] = name
         return mapping
 
-    def resolve_name(self, code_or_name: str) -> str:
+    def resolve_name(self, code_or_name: str, src: str | None = "SW2021") -> str:
         """解析任意代码为标准行业中文名称。若无匹配则返回原名称/代码。"""
         clean = code_or_name.strip()
-        name_map = self.get_name_map()
+        name_map = self.get_name_map(src)
         if clean in name_map:
             return name_map[clean]
         prefix = clean.split(".")[0]

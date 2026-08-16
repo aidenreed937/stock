@@ -1,0 +1,374 @@
+market_temperature:
+  schema_version: 1
+  title: "A 股六维市场温度计"
+  artifact_root: "data/analytics/market_temperature"
+  main_window: 20
+  short_windows: [5, 10]
+
+  metric_values:
+    enabled: true
+
+  dimensions:
+    - id: valuation
+      name: "估值面"
+      weight: 0.20
+      role: "估值水位与股债性价比"
+      metrics:
+        - metric_id: valuation_temperature
+          aggregation: mean
+          direction: positive
+          weight: 0.50
+        - metric_id: pe_percentile_5y
+          aggregation: mean
+          direction: positive
+          weight: 0.20
+        - metric_id: pb_percentile_5y
+          aggregation: mean
+          direction: positive
+          weight: 0.20
+        - metric_id: equity_risk_premium
+          aggregation: mean
+          direction: inverse
+          weight: 0.10
+
+    - id: fund_flow
+      name: "资金面"
+      weight: 0.20
+      role: "杠杆资金、主力资金与成交活跃度"
+      metrics:
+        - metric_id: margin_buy_share
+          aggregation: latest
+          direction: positive
+          weight: 0.00
+        - metric_id: margin_buy_share_zscore_60d
+          aggregation: latest
+          direction: positive
+          weight: 0.25
+        - metric_id: margin_penetration
+          aggregation: latest
+          direction: positive
+          weight: 0.00
+        - metric_id: margin_penetration_percentile_1250d
+          aggregation: latest
+          direction: positive
+          weight: 0.20
+        - metric_id: margin_balance_growth_20d
+          aggregation: latest
+          direction: positive
+          weight: 0.20
+        - metric_id: main_money_net_inflow_share
+          aggregation: latest
+          direction: positive
+          weight: 0.20
+        - metric_id: market_amount_percentile_1250d
+          aggregation: latest
+          direction: positive
+          weight: 0.15
+
+    - id: sentiment
+      name: "情绪面"
+      weight: 0.15
+      role: "换手、上涨扩散和交易热度"
+      metrics:
+        - metric_id: turnover_rate_percentile_1250d
+          aggregation: latest
+          direction: positive
+          weight: 0.40
+        - metric_id: market_turnover_rate
+          aggregation: latest
+          direction: positive
+          weight: 0.00
+        - metric_id: advance_share
+          aggregation: latest
+          direction: positive
+          weight: 0.25
+        - metric_id: limit_event_temperature
+          source: derived
+          direction: positive
+          weight: 0.25
+        - metric_id: investor_account_temperature
+          source: derived
+          direction: positive
+          weight: 0.10
+        - metric_id: limit_up_count_temperature
+          source: derived
+          direction: positive
+          weight: 0.00
+        - metric_id: limit_down_count_temperature
+          source: derived
+          direction: positive
+          weight: 0.00
+        - metric_id: limit_up_down_strength_temperature
+          source: derived
+          direction: positive
+          weight: 0.00
+        - metric_id: limit_seal_success_temperature
+          source: derived
+          direction: positive
+          weight: 0.00
+
+    - id: technical
+      name: "技术面"
+      weight: 0.15
+      role: "趋势、动量、广度与超买超卖"
+      metrics:
+        - metric_id: return_20d
+          aggregation: median
+          direction: positive
+          weight: 0.20
+        - metric_id: rsi_14d
+          aggregation: median
+          direction: positive
+          weight: 0.20
+        - metric_id: ma_bias_20d
+          aggregation: median
+          direction: positive
+          weight: 0.15
+        - metric_id: above_ma20_share
+          aggregation: latest
+          direction: positive
+          weight: 0.20
+        - metric_id: above_ma60_share
+          aggregation: latest
+          direction: positive
+          weight: 0.15
+        - metric_id: new_high_share_252d
+          aggregation: latest
+          direction: positive
+          weight: 0.05
+        - metric_id: new_low_share_252d
+          aggregation: latest
+          direction: inverse
+          weight: 0.05
+
+    - id: fundamental
+      name: "基本面"
+      weight: 0.15
+      role: "季频盈利底座与最近预期变化"
+      metrics:
+        - metric_id: fs_revenue_growth_temperature
+          source: derived
+          direction: positive
+          weight: 0.20
+        - metric_id: fs_profit_growth_temperature
+          source: derived
+          direction: positive
+          weight: 0.25
+        - metric_id: fs_roe_temperature
+          source: derived
+          direction: positive
+          weight: 0.10
+        - metric_id: forecast_positive_temperature
+          source: derived
+          direction: positive
+          weight: 0.20
+        - metric_id: report_revision_temperature
+          source: derived
+          direction: positive
+          weight: 0.25
+
+    - id: macro_liquidity
+      name: "宏观流动性"
+      weight: 0.15
+      role: "利率、货币信用与外部流动性状态"
+      metrics:
+        - metric_id: equity_bond_yield_ratio
+          aggregation: mean
+          direction: inverse
+          weight: 0.00
+        - metric_id: dividend_bond_spread
+          aggregation: mean
+          direction: inverse
+          weight: 0.00
+        - metric_id: macro_bond_yield_10y_temperature
+          source: derived
+          direction: positive
+          weight: 0.18
+        - metric_id: macro_shibor_on_temperature
+          source: derived
+          direction: positive
+          weight: 0.12
+        - metric_id: macro_real_rate_temperature
+          source: derived
+          direction: positive
+          weight: 0.10
+        - metric_id: macro_m2_yoy_temperature
+          source: derived
+          direction: positive
+          weight: 0.08
+        - metric_id: macro_m1_m2_gap_temperature
+          source: derived
+          direction: positive
+          weight: 0.06
+        - metric_id: macro_social_finance_stock_temperature
+          source: derived
+          direction: positive
+          weight: 0.06
+        - metric_id: macro_external_environment_temperature
+          source: derived
+          direction: positive
+          weight: 0.40
+        - metric_id: macro_sp500_20d_return_temperature
+          source: derived
+          direction: positive
+          weight: 0.00
+        - metric_id: macro_nasdaq_20d_return_temperature
+          source: derived
+          direction: positive
+          weight: 0.00
+        - metric_id: macro_usd_index_temperature
+          source: derived
+          direction: positive
+          weight: 0.00
+        - metric_id: macro_usd_index_20d_change_temperature
+          source: derived
+          direction: positive
+          weight: 0.00
+        - metric_id: macro_vix_temperature
+          source: derived
+          direction: positive
+          weight: 0.00
+        - metric_id: macro_us_10y_temperature
+          source: derived
+          direction: positive
+          weight: 0.00
+        - metric_id: macro_copper_20d_return_temperature
+          source: derived
+          direction: positive
+          weight: 0.00
+
+  datasets:
+    - data_source: tushare
+      dataset: stock_daily_bar
+      dimension: technical
+      required: true
+      note: "A 股全市场日 K，20 日主窗口锚点"
+    - data_source: tushare
+      dataset: daily_basic
+      dimension: valuation
+      required: true
+      note: "全市场估值、换手率与成交活跃度"
+    - data_source: tushare
+      dataset: margin
+      dimension: fund_flow
+      required: false
+      note: "融资融券余额与融资买入"
+    - data_source: tushare
+      dataset: moneyflow
+      dimension: fund_flow
+      required: false
+      max_lag_days: 2
+      note: "个股资金流，通常晚于行情一个交易日"
+    - data_source: tushare
+      dataset: moneyflow_hsgt
+      dimension: fund_flow
+      required: false
+      note: "北向资金相关字段，输出需披露字段语义限制"
+    - data_source: tushare
+      dataset: stk_limit
+      dimension: sentiment
+      required: false
+      note: "每日涨跌停价格表，只作为价格上下限支撑，不等同涨跌停事件"
+    - data_source: tushare
+      dataset: limit_list_d
+      dimension: sentiment
+      required: false
+      note: "涨跌停和炸板事件表，用于涨停/跌停/炸板情绪温度"
+    - data_source: tushare
+      dataset: opt_basic
+      dimension: sentiment
+      required: false
+      static: true
+      note: "期权静态合约表；当前只做水位披露，暂不直接进入温度"
+    - data_source: tushare
+      dataset: opt_daily
+      dimension: sentiment
+      required: false
+      note: "期权日行情；当前只做水位披露，隐含波动率指标待定义"
+    - data_source: tushare
+      dataset: forecast
+      dimension: fundamental
+      required: false
+      date_column: ann_date
+      note: "业绩预告，作为最近 20 日基本面事件补充"
+    - data_source: tushare
+      dataset: report_rc
+      dimension: fundamental
+      required: false
+      date_column: report_date
+      note: "分析师盈利预测，作为预期上修/下修补充"
+    - data_source: lixinger
+      dataset: index_fundamental
+      dimension: valuation
+      required: true
+      note: "核心指数估值与股息率"
+    - data_source: lixinger
+      dataset: national_debt
+      dimension: macro_liquidity
+      required: true
+      max_lag_days: 7
+      note: "中国国债收益率，股债性价比依赖"
+    - data_source: lixinger
+      dataset: sw_2021_fundamental
+      dimension: fundamental
+      required: false
+      note: "申万一级行业估值，基本面底座"
+    - data_source: lixinger
+      dataset: sw_2021_fs_non_financial
+      dimension: fundamental
+      required: false
+      note: "非金融行业季频财报"
+    - data_source: lixinger
+      dataset: sw_2021_fs_bank
+      dimension: fundamental
+      required: false
+      note: "银行行业季频财报"
+    - data_source: lixinger
+      dataset: sw_2021_fs_security
+      dimension: fundamental
+      required: false
+      note: "证券行业季频财报"
+    - data_source: lixinger
+      dataset: sw_2021_fs_insurance
+      dimension: fundamental
+      required: false
+      note: "保险行业季频财报"
+    - data_source: lixinger
+      dataset: investor_accounts
+      dimension: sentiment
+      required: false
+      date_column: trade_date
+      note: "月度新增投资者账户，用于情绪面慢变量"
+    - data_source: tushare
+      dataset: shibor
+      dimension: macro_liquidity
+      required: false
+      note: "银行间短端资金价格"
+    - data_source: tushare
+      dataset: cn_m
+      dimension: macro_liquidity
+      required: false
+      date_column: month
+      note: "M1/M2 月度货币数据"
+    - data_source: tushare
+      dataset: sf_month
+      dimension: macro_liquidity
+      required: false
+      date_column: month
+      note: "社融月度数据"
+    - data_source: tushare
+      dataset: cn_cpi
+      dimension: macro_liquidity
+      required: false
+      date_column: month
+      note: "中国 CPI 月度数据"
+    - data_source: yfinance
+      dataset: index_daily_bar
+      dimension: macro_liquidity
+      required: false
+      note: "标普500、纳斯达克等外盘指数历史行情，用于外部环境收益分位"
+    - data_source: yfinance
+      dataset: macro_indicators
+      dimension: macro_liquidity
+      required: false
+      note: "美股、VIX、美元、美债等外部环境代理；铜缺失时披露并重归一"

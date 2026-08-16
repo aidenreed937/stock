@@ -4,6 +4,7 @@ from datetime import date, timedelta
 
 import polars as pl
 
+from stock.analytics.metrics.calculators.percentile import rolling_percentile
 from stock.analytics.metrics.context import MetricContext
 from stock.analytics.metrics.datasets.loaders import load_metric_dataset
 from stock.analytics.metrics.spec import EntityType, MetricCalculator, MetricDomain, MetricSpec
@@ -90,19 +91,8 @@ def _with_missing_float_columns(df: pl.DataFrame, columns: tuple[str, ...]) -> p
     return df.with_columns(missing) if missing else df
 
 
-def _percentile_rank(values: pl.Series) -> float | None:
-    if values.is_empty() or values[-1] is None or values.null_count() > 0:
-        return None
-    current = values[-1]
-    return float((values <= current).sum()) / len(values) * 100.0
-
-
 def _rolling_percentile(column: str, output: str, window: int) -> pl.Expr:
-    return (
-        pl.col(column)
-        .rolling_map(_percentile_rank, window_size=window, min_samples=window)
-        .alias(output)
-    )
+    return rolling_percentile(column, output, window)
 
 
 def _rolling_zscore(column: str, output: str, window: int) -> pl.Expr:

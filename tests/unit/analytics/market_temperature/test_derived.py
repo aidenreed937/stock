@@ -1,0 +1,275 @@
+"""市场温度计派生指标测试。"""
+
+from datetime import date, timedelta
+from pathlib import Path
+
+import polars as pl
+import pytest
+
+from stock.analytics.market_temperature.derived import (
+    _external_environment_row,
+    _external_macro_rows,
+    _forecast_rows,
+    _investor_account_frame,
+    _investor_account_rows,
+    _limit_event_daily_frame,
+    _limit_event_rows,
+    _percentile_temperature,
+    _report_revision_rows,
+    _return_frame,
+)
+
+
+class FakeCatalog:
+    data_source = "tushare"
+    storage_dir = Path("data/curated")
+
+    def __init__(self, datasets: dict[str, pl.DataFrame]) -> None:
+        self.datasets = datasets
+
+    def load_dataset(self, dataset: str) -> pl.DataFrame:
+        return self.datasets.get(dataset, pl.DataFrame())
+
+
+def test_forecast_rows_calculates_positive_forecast_share() -> None:
+    catalog = FakeCatalog(
+        {
+            "forecast": pl.DataFrame(
+                {
+                    "symbol": ["AAA", "BBB", "CCC"],
+                    "ann_date": ["20260721", "20260722", "20260723"],
+                    "end_date": ["20260630", "20260630", "20260630"],
+                    "type": ["预增", "首亏", "略减"],
+                    "p_change_min": [None, -10.0, 30.0],
+                    "p_change_max": [None, -5.0, 50.0],
+                }
+            )
+        }
+    )
+
+    rows = _forecast_rows(
+        catalog,
+        date(2026, 8, 14),
+        (date(2026, 7, 20), date(2026, 8, 14)),
+    )
+
+    assert rows[0]["status"] == "ok"
+    assert rows[0]["sample_size"] == 3
+    assert rows[0]["value_float"] == pytest.approx(66.6666667)
+
+
+def test_report_revision_rows_calculates_up_revision_share() -> None:
+    catalog = FakeCatalog(
+        {
+            "report_rc": pl.DataFrame(
+                {
+                    "symbol": ["AAA", "AAA", "BBB", "BBB", "CCC"],
+                    "org_name": ["org1", "org1", "org2", "org2", "org3"],
+                    "quarter": ["2026Q2", "2026Q2", "2026Q2", "2026Q2", "2026Q2"],
+                    "report_date": [
+                        "20260701",
+                        "20260721",
+                        "20260702",
+                        "20260722",
+                        "20260723",
+                    ],
+                    "np": [100.0, 120.0, 200.0, 150.0, 80.0],
+                }
+            )
+        }
+    )
+
+    rows = _report_revision_rows(
+        catalog,
+        date(2026, 8, 14),
+        (date(2026, 7, 20), date(2026, 8, 14)),
+    )
+
+    assert rows[0]["status"] == "ok"
+    assert rows[0]["sample_size"] == 2
+    assert rows[0]["value_float"] == pytest.approx(50.0)
+
+
+def test_limit_event_daily_frame_counts_up_down_and_broken_limit() -> None:
+    frame = pl.DataFrame(
+        {
+            "trade_date": [
+                date(2026, 1, 1),
+                date(2026, 1, 1),
+                date(2026, 1, 1),
+                date(2026, 1, 1),
+            ],
+            "limit": ["U", "U", "D", "Z"],
+        }
+    )
+
+    result = _limit_event_daily_frame(frame).to_dicts()[0]
+
+    assert result["_up_count"] == pytest.approx(2.0)
+    assert result["_down_count"] == pytest.approx(1.0)
+    assert result["_break_count"] == pytest.approx(1.0)
+    assert result["_up_down_ratio"] == pytest.approx(2 / 3)
+    assert result["_seal_success_ratio"] == pytest.approx(2 / 3)
+
+
+def test_limit_event_rows_builds_composite_temperature() -> None:
+    catalog = FakeCatalog(
+        {
+            "limit_list_d": pl.DataFrame(
+                {
+                    "trade_date": [
+                        date(2026, 1, 1),
+                        date(2026, 1, 1),
+                        date(2026, 1, 2),
+                        date(2026, 1, 2),
+                        date(2026, 1, 2),
+                        date(2026, 1, 3),
+                        date(2026, 1, 3),
+                        date(2026, 1, 3),
+                    ],
+                    "limit": ["U", "D", "U", "U", "Z", "U", "U", "U"],
+                }
+            )
+        }
+    )
+
+    rows = _limit_event_rows(catalog, date(2026, 1, 3))
+    rows_by_metric = {str(row["metric_id"]): row for row in rows}
+
+    assert rows_by_metric["limit_up_count_temperature"]["status"] == "ok"
+    assert rows_by_metric["limit_down_count_temperature"]["status"] == "ok"
+    assert rows_by_metric["limit_event_temperature"]["status"] == "ok"
+    assert rows_by_metric["limit_event_temperature"]["sample_size"] == 4
+    assert "up=3; down=0; break=0" in rows_by_metric["limit_event_temperature"]["note"]
+
+
+def test_investor_account_rows_use_monthly_new_accounts_percentile() -> None:
+    catalog = FakeCatalog(
+        {
+            "investor_accounts": pl.DataFrame(
+                {
+                    "trade_date": [
+                        date(2026, 1, 31),
+                        date(2026, 2, 28),
+                        date(2026, 3, 31),
+                    ],
+                    "nni_m": [100.0, 200.0, 300.0],
+                    "n_non_ni_m": [10.0, 20.0, 30.0],
+                }
+            )
+        }
+    )
+
+    rows = _investor_account_rows(catalog, date(2026, 3, 31))
+
+    assert rows[0]["metric_id"] == "investor_account_temperature"
+    assert rows[0]["status"] == "ok"
+    assert rows[0]["value_float"] == pytest.approx(100.0)
+    assert rows[0]["sample_size"] == 3
+    assert "latest_value=330" in rows[0]["note"]
+
+
+def test_investor_account_frame_ignores_rows_without_monthly_new_values() -> None:
+    frame = pl.DataFrame(
+        {
+            "trade_date": [date(2026, 1, 31), date(2026, 2, 28)],
+            "nni_m": [100.0, None],
+            "n_non_ni_m": [10.0, None],
+        }
+    )
+
+    result = _investor_account_frame(frame)
+
+    assert result.height == 1
+    assert result["_new_investor_accounts"][0] == pytest.approx(110.0)
+
+
+def test_percentile_temperature_supports_inverse_direction() -> None:
+    frame = pl.DataFrame(
+        {
+            "trade_date": [date(2026, 1, 1), date(2026, 1, 2), date(2026, 1, 3)],
+            "value": [1.0, 2.0, 3.0],
+        }
+    )
+
+    temperature, latest_value, latest_date, sample_size = _percentile_temperature(
+        frame,
+        "value",
+        date(2026, 1, 3),
+        date_col="trade_date",
+        inverse=True,
+    )
+
+    assert temperature == pytest.approx(0.0)
+    assert latest_value == pytest.approx(3.0)
+    assert latest_date == date(2026, 1, 3)
+    assert sample_size == 3
+
+
+def test_return_frame_calculates_window_return_for_symbol() -> None:
+    dates = [date(2026, 1, 1) + timedelta(days=offset) for offset in range(22)]
+    frame = pl.DataFrame(
+        {
+            "trade_date": [*dates, *dates],
+            "symbol": ["^GSPC"] * 22 + ["^IXIC"] * 22,
+            "close": [100.0 + offset for offset in range(22)]
+            + [200.0 + offset for offset in range(22)],
+        }
+    )
+
+    result = _return_frame(frame, "^GSPC", 20)
+    value = result.filter(pl.col("trade_date") == dates[20])["_return"][0]
+
+    assert value == pytest.approx(0.20)
+
+
+def test_external_environment_row_averages_available_components_only() -> None:
+    rows = [
+        _component("macro_sp500_20d_return_temperature", 60.0),
+        _component("macro_nasdaq_20d_return_temperature", 80.0),
+        _component("macro_vix_temperature", 40.0),
+        _component("macro_usd_index_20d_change_temperature", 20.0),
+        _component("macro_us_10y_temperature", 100.0),
+        _component("macro_copper_20d_return_temperature", None, status="insufficient"),
+    ]
+
+    row = _external_environment_row(rows, date(2026, 8, 14))
+
+    assert row["status"] == "ok"
+    assert row["value_float"] == pytest.approx(60.0)
+    assert row["sample_size"] == 5
+    assert "macro_copper_20d_return_temperature" in row["note"]
+
+
+def test_external_macro_rows_use_index_daily_bar_for_us_index_returns() -> None:
+    dates = [date(2026, 1, 1) + timedelta(days=offset) for offset in range(25)]
+    catalog = FakeCatalog(
+        {
+            "index_daily_bar": pl.DataFrame(
+                {
+                    "trade_date": [*dates, *dates],
+                    "symbol": ["^GSPC"] * 25 + ["^IXIC"] * 25,
+                    "close": [100.0 + offset for offset in range(25)]
+                    + [200.0 + offset for offset in range(25)],
+                }
+            ),
+            "macro_indicators": pl.DataFrame(
+                schema={"trade_date": pl.Date, "symbol": pl.Utf8, "close": pl.Float64}
+            ),
+        }
+    )
+
+    rows = _external_macro_rows(catalog, date(2026, 1, 25))
+    rows_by_metric = {str(row["metric_id"]): row for row in rows}
+
+    assert rows_by_metric["macro_sp500_20d_return_temperature"]["status"] == "ok"
+    assert rows_by_metric["macro_nasdaq_20d_return_temperature"]["status"] == "ok"
+    assert rows_by_metric["macro_external_environment_temperature"]["sample_size"] == 2
+
+
+def _component(metric_id: str, value: float | None, *, status: str = "ok") -> dict[str, object]:
+    return {
+        "metric_id": metric_id,
+        "status": status,
+        "value_float": value,
+    }
