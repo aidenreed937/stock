@@ -146,6 +146,7 @@ def load_watchlist_config(
             ),
             yfinance=SourceWatchlistConfig(stocks=g_stocks, indices=g_indices),
             fred=SourceWatchlistConfig(macro_series=macro_series),
+            alphavantage=SourceWatchlistConfig(macro_series=["CNH=X"]),
         )
     except Exception:
         return WatchlistsConfig()

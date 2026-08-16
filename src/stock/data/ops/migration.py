@@ -41,9 +41,12 @@ def _primary_keys(path: Path, columns: list[str]) -> list[str]:
             for column in ("market", "symbol", "trade_date")
             if column in columns
         ]
+    if "alphavantage" in path.parts:
+        return [column for column in ("symbol", "trade_date") if column in columns]
     for module_name, registry_name in (
         ("stock.data.fetcher.tushare.registry", "TUSHARE_API_REGISTRY"),
         ("stock.data.fetcher.lixinger.registry", "LIXINGER_API_REGISTRY"),
+        ("stock.data.fetcher.alphavantage.registry", "ALPHAVANTAGE_API_REGISTRY"),
     ):
         try:
             module = __import__(module_name, fromlist=[registry_name])
@@ -143,7 +146,7 @@ def _normalize_schema_version(df: pl.DataFrame, path: Path) -> tuple[pl.DataFram
 
 def _infer_data_source(path: Path) -> str | None:
     """从历史数据路径推断数据源名称。"""
-    providers = {"tushare", "lixinger", "yfinance", "fred"}
+    providers = {"tushare", "lixinger", "yfinance", "fred", "alphavantage"}
     return next((part for part in path.parts if part in providers), None)
 
 

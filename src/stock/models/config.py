@@ -131,6 +131,7 @@ class WatchlistsConfig(BaseModel):
     tushare: SourceWatchlistConfig = Field(default_factory=SourceWatchlistConfig)
     lixinger: SourceWatchlistConfig = Field(default_factory=SourceWatchlistConfig)
     fred: SourceWatchlistConfig = Field(default_factory=SourceWatchlistConfig)
+    alphavantage: SourceWatchlistConfig = Field(default_factory=SourceWatchlistConfig)
 
 
 class SMAIndicatorConfig(BaseModel):
@@ -194,6 +195,9 @@ class RateLimitsConfig(BaseModel):
     tushare_per_min: int = Field(default=180, gt=0, description="TuShare 每分钟最大请求数")
     yfinance_per_min: int = Field(default=40, gt=0, description="YFinance 每分钟最大请求数")
     lixinger_per_min: int = Field(default=30, gt=0, description="理杏仁每分钟最大请求数")
+    alpha_vantage_per_min: int = Field(
+        default=5, gt=0, description="Alpha Vantage 每分钟最大请求数"
+    )
 
 
 class ConcurrencyConfig(BaseModel):
@@ -202,6 +206,9 @@ class ConcurrencyConfig(BaseModel):
     tushare_max_workers: int = Field(default=4, gt=0, description="TuShare 抓取最大并发线程数")
     lixinger_max_workers: int = Field(default=4, gt=0, description="理杏仁抓取最大并发线程数")
     yfinance_max_workers: int = Field(default=4, gt=0, description="YFinance 抓取最大并发线程数")
+    alphavantage_max_workers: int = Field(
+        default=1, gt=0, description="Alpha Vantage 抓取最大并发线程数"
+    )
     default_max_workers: int = Field(default=4, gt=0, description="默认通用抓取最大并发线程数")
 
 

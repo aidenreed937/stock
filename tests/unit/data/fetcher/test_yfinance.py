@@ -407,6 +407,7 @@ def test_yfinance_macro_registry_declares_global_hg_f_route() -> None:
         fetcher.fetch_macro_indicators_df(date(2026, 8, 10), date(2026, 8, 11))
 
     symbols = [call.args[1] for call in macro.call_args_list]
+    assert "CNH=X" not in symbols
     assert "GC=F" in symbols
     assert "CL=F" in symbols
     assert "HG=F" in symbols

@@ -148,7 +148,7 @@ class DataCatalog:
         market: str | None = None,
         n: int = 1,
     ) -> list[date]:
-        """返回数据集中最近 N 个交易日（降序）。"""
+        """返回数据集中最近 N 个交易日或月度期间起始日（降序）。"""
         resolved = _resolve_dataset_alias(self.data_source, dataset)
         files = _list_parquet_files(
             self.storage_dir / self.data_source, dataset=resolved, market=market

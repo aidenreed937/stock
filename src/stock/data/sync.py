@@ -32,7 +32,7 @@ _INDEX_ENDPOINTS = {
     "index_fundamental",
 }
 _FUND_ENDPOINTS = {"fund_daily", "fund_adj", "fund_share", "etf_share_size"}
-_YFINANCE_MACRO_SYMBOLS = ["^TNX", "^IRX", "DX-Y.NYB", "CNH=X", "GC=F", "CL=F", "HG=F", "^VIX"]
+_YFINANCE_MACRO_SYMBOLS = ["^TNX", "^IRX", "DX-Y.NYB", "GC=F", "CL=F", "HG=F", "^VIX"]
 
 
 @dataclass(frozen=True)
@@ -96,8 +96,8 @@ def _sync_symbols_for_task(data_source: str, endpoint: str) -> list[str]:
         logger.warning(f"加载同步标的池失败 [{data_source}/{endpoint}]: {exc}")
         watchlist = None
 
-    if data_source == "yfinance" and task.dataset == "macro_indicators":
-        return _YFINANCE_MACRO_SYMBOLS
+    if data_source in {"yfinance", "alphavantage"} and task.dataset == "macro_indicators":
+        return _YFINANCE_MACRO_SYMBOLS if data_source == "yfinance" else ["CNH=X"]
     if watchlist is None:
         return []
     if data_source == "fred":

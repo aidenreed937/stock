@@ -2,8 +2,10 @@
 
 from __future__ import annotations
 
+import json
 from dataclasses import dataclass
 from datetime import date, datetime
+from pathlib import Path
 from typing import TYPE_CHECKING, Any
 
 from stock.analytics.data_quality import build_quality_report, render_quality_report_markdown
@@ -27,8 +29,6 @@ from stock.analytics.market_temperature.templates import (
 )
 
 if TYPE_CHECKING:
-    from pathlib import Path
-
     import polars as pl
 
 
@@ -51,6 +51,7 @@ class MarketTemperatureRunResult:
 def run_market_temperature(  # noqa: PLR0913
     *,
     target_date: date | None = None,
+    comparison_date: date | None = None,
     config_path: Path | str = DEFAULT_CONFIG_PATH,
     output_root: Path | str | None = None,
     update_latest: bool = True,
@@ -61,7 +62,8 @@ def run_market_temperature(  # noqa: PLR0913
     config = load_market_temperature_config(config_path).with_artifact_root(output_root)
     as_of_date, trade_dates = resolve_trade_window(config, target_date, storage_dir=storage_dir)
     paths = build_run_paths(as_of_date, config.artifact_root)
-    manifest = _build_manifest(config, as_of_date, trade_dates, paths)
+    comparison = _load_comparison(config.artifact_root, comparison_date)
+    manifest = _build_manifest(config, as_of_date, trade_dates, paths, comparison=comparison)
     facts = collect_facts(
         config,
         as_of_date=as_of_date,
@@ -94,6 +96,7 @@ def run_market_temperature(  # noqa: PLR0913
         manifest=manifest,
         scores=scores,
         facts=facts,
+        comparison=comparison,
     )
     write_artifacts(
         paths,
@@ -128,9 +131,11 @@ def _build_manifest(
     as_of_date: date,
     trade_dates: tuple[date, ...],
     paths: MarketTemperatureRunPaths,
+    *,
+    comparison: dict[str, Any] | None = None,
 ) -> dict[str, Any]:
     run_id = paths.run_dir.name
-    return {
+    manifest = {
         "schema_version": config.schema_version,
         "title": config.title,
         "run_id": run_id,
@@ -151,3 +156,37 @@ def _build_manifest(
             "quality_report_json": paths.quality_report_json.name,
         },
     }
+    if comparison:
+        previous_manifest = comparison.get("previous_manifest", {})
+        if isinstance(previous_manifest, dict):
+            manifest["comparison"] = {
+                "previous_as_of_date": previous_manifest.get("as_of_date"),
+                "previous_run_id": previous_manifest.get("run_id"),
+            }
+    return manifest
+
+
+def _load_comparison(
+    artifact_root: Path | str,
+    comparison_date: date | None,
+) -> dict[str, Any] | None:
+    if comparison_date is None:
+        return None
+    run_root = Path(artifact_root) / "runs" / f"as_of={comparison_date.isoformat()}"
+    run_dirs = sorted(path for path in run_root.glob("run_*") if path.is_dir())
+    if not run_dirs:
+        raise FileNotFoundError(f"未找到对比日期的市场温度计产物: {comparison_date.isoformat()}")
+    previous_run = run_dirs[-1]
+    return {
+        "previous_manifest": _read_json(previous_run / "manifest.json"),
+        "previous_scores": _read_json(previous_run / "scores.json"),
+    }
+
+
+def _read_json(path: Path) -> dict[str, Any]:
+    if not path.exists():
+        raise FileNotFoundError(f"缺少对比产物文件: {path}")
+    payload = json.loads(path.read_text(encoding="utf-8"))
+    if not isinstance(payload, dict):
+        raise ValueError(f"对比产物不是 JSON 对象: {path}")
+    return payload

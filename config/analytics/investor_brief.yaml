@@ -1,0 +1,9 @@
+investor_brief:
+  schema_version: 1
+  title: "A 股投资者简报"
+  artifact_root: "data/analytics/investor_brief"
+  market_temperature_root: "data/analytics/market_temperature"
+  industry_structure_root: "data/analytics/industry_structure"
+  max_candidate_industries: 5
+  max_risk_industries: 5
+  max_lagging_industries: 3

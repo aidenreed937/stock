@@ -227,6 +227,16 @@ AUDIT_DATASET_REGISTRY: dict[str, DatasetAuditSpec] = {
 
 def get_audit_spec(dataset: str, data_source: str = "tushare") -> DatasetAuditSpec:
     """获取指定数据集的审计规范，未显式声明时自动派生默认规范。"""
+    if data_source == "alphavantage" and dataset in {"fx_daily", "macro_indicators"}:
+        return DatasetAuditSpec(
+            dataset=dataset,
+            data_source=data_source,
+            domain=AuditDomain.MACRO_LIQUIDITY,
+            frequency=AuditFrequency.DAILY,
+            min_expected_ratio=1.0,
+            is_partitioned=False,
+            source_endpoint="FX_DAILY",
+        )
     # 兼容 sw_industry 别名到 sw_2021_fundamental (lixinger)
     lookup_name = dataset
     if dataset == "sw_industry" and data_source == "lixinger":

@@ -29,6 +29,69 @@ def _resolve_endpoint_meta(endpoint: str) -> tuple[str, EndpointMeta]:
     return api_name, meta or EndpointMeta(api_name=api_name, description=api_name)
 
 
+def _lixinger_month(value: Any) -> str | None:
+    """将理杏仁 UTC 时间戳映射为业务月份 YYYYMM。"""
+    if value is None:
+        return None
+    text = str(value)
+    if len(text) >= 7 and text[4] == "-" and text[6] == "-":
+        return f"{text[:4]}{text[5:7]}"
+    digits = "".join(char for char in text if char.isdigit())
+    return digits[:6] if len(digits) >= 6 else None
+
+
+def _scaled_value(value: Any, divisor: float = 1.0) -> float | None:
+    if value is None:
+        return None
+    try:
+        return float(value) / divisor
+    except (TypeError, ValueError):
+        return None
+
+
+def _flatten_lixinger_macro_frame(pandas_df: Any, dataset: str) -> pl.DataFrame:
+    """展开理杏仁宏观接口嵌套指标，并统一到现有月频黄金表口径。"""
+    if pandas_df.empty:
+        return pl.DataFrame()
+
+    rows: list[dict[str, Any]] = []
+    for record in pandas_df.to_dict(orient="records"):
+        month = _lixinger_month(record.get("date"))
+        if month is None:
+            continue
+        metrics = record.get("m") or {}
+        row: dict[str, Any] = {"symbol": dataset, "month": month}
+        if dataset == "cn_m":
+            for metric in ("m0", "m1", "m2"):
+                values = metrics.get(metric) or {}
+                row[metric] = _scaled_value(values.get("t"), divisor=100_000_000.0)
+                yoy = _scaled_value(values.get("t_y2y"))
+                row[f"{metric}_yoy"] = yoy * 100.0 if yoy is not None else None
+                row[f"{metric}_mom"] = None
+        else:
+            values = metrics.get("sf") or {}
+            row["stk_endval"] = _scaled_value(values.get("t"), divisor=100_000_000.0)
+            yoy = _scaled_value(values.get("t_y2y"))
+            row["stk_endval_yoy"] = yoy * 100.0 if yoy is not None else None
+        rows.append(row)
+
+    if not rows:
+        return pl.DataFrame()
+
+    frame = pl.DataFrame(rows).sort("month")
+    if dataset == "cn_m":
+        frame = frame.with_columns(
+            [
+                pl.when(pl.col(metric).shift(1) > 0)
+                .then((pl.col(metric) / pl.col(metric).shift(1) - 1.0) * 100.0)
+                .otherwise(None)
+                .alias(f"{metric}_mom")
+                for metric in ("m0", "m1", "m2")
+            ]
+        )
+    return frame
+
+
 def _resolve_sw_2021_industry_codes(
     client: LixingerClient,
     endpoint: str = "",
@@ -260,6 +323,10 @@ class LixingerStockFetcher:
         pandas_df = self.client.query(meta.api_name, **query_kwargs)
         if pandas_df.empty:
             return pl.DataFrame()
+
+        if endpoint in {"macro/money-supply", "macro/social-financing"}:
+            dataset = "cn_m" if endpoint == "macro/money-supply" else "sf_month"
+            return _flatten_lixinger_macro_frame(pandas_df, dataset)
 
         # 指数 K 线响应不带 stockCode，使用本次请求的指数代码补齐主键。
         if endpoint == "cn/index/candlestick" and raw_code:

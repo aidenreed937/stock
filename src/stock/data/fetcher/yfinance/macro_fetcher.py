@@ -83,7 +83,6 @@ DEFAULT_MACRO_SYMBOLS = (
     "^TNX",
     "^IRX",
     "DX-Y.NYB",
-    "CNH=X",
     "GC=F",
     "CL=F",
     "HG=F",

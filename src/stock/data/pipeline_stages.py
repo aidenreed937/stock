@@ -24,7 +24,7 @@ from stock.data.quality.quarantine import QuarantineStore
 from stock.data.storage.duckdb_store import DuckDBMarketStore
 from stock.data.storage.raw_schema import RAW_DATE_CANDIDATE_COLUMNS, normalize_raw_date_series
 from stock.data.storage.raw_store import RawDataStorage
-from stock.data.task_registry import is_task_partitioned, resolve_task
+from stock.data.task_registry import _provider_registry, is_task_partitioned, resolve_task
 from stock.exceptions import DataValidationError
 from stock.utils.logger import logger
 
@@ -214,14 +214,7 @@ class FetcherStage:
         meta: Any | None = None
         try:
             task = resolve_task(self.data_source, endpoint)
-            if self.data_source == "tushare":
-                from stock.data.fetcher.tushare.registry import TUSHARE_API_REGISTRY
-
-                meta = TUSHARE_API_REGISTRY.get(task.api_name)
-            elif self.data_source == "lixinger":
-                from stock.data.fetcher.lixinger.registry import LIXINGER_API_REGISTRY
-
-                meta = LIXINGER_API_REGISTRY.get(task.api_name)
+            meta = _provider_registry(self.data_source).get(task.api_name)
         except Exception:
             meta = None
         if not meta:

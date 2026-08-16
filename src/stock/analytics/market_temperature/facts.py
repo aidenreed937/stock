@@ -166,7 +166,7 @@ def _dataset_rows(
         note = item.note
         sample_size: int | None = None
         try:
-            latest = _latest_dataset_date(catalog, item)
+            latest = _latest_dataset_date(catalog, item, as_of_date)
             if latest is None:
                 if item.static:
                     sample_size = _static_dataset_sample_size(catalog, item.dataset)
@@ -202,7 +202,7 @@ def _dataset_rows(
                     "as_of_date": as_of_date,
                     "window": 0,
                     "metric_id": "latest_trade_date",
-                    "source": "DataCatalog.get_latest_trade_date",
+                    "source": "DataCatalog.load_dataset(end_date=as_of_date)",
                     "status": status,
                     "note": note,
                 },
@@ -220,13 +220,29 @@ def _static_dataset_sample_size(catalog: DataCatalog, dataset: str) -> int:
         return 0
 
 
-def _latest_dataset_date(catalog: DataCatalog, item: DatasetConfig) -> date | None:
-    if not item.date_column:
-        return catalog.get_latest_trade_date(item.dataset)
-    frame = catalog.load_dataset(item.dataset)
-    if frame.is_empty() or item.date_column not in frame.columns:
+def _latest_dataset_date(
+    catalog: DataCatalog,
+    item: DatasetConfig,
+    as_of_date: date,
+) -> date | None:
+    date_column = item.date_column or "trade_date"
+    latest_dates = catalog.latest_trade_dates(item.dataset, n=1)
+    if latest_dates and latest_dates[0] <= as_of_date:
+        return latest_dates[0]
+
+    lookback_days = max(item.max_lag_days * 2, 14)
+    frame = catalog.load_dataset(
+        item.dataset,
+        start_date=as_of_date - timedelta(days=lookback_days),
+        end_date=as_of_date,
+    )
+    if frame.is_empty() or date_column not in frame.columns:
         return None
-    dates = _date_values(frame[item.date_column].drop_nulls().to_list())
+    dates = [
+        value
+        for value in _date_values(frame[date_column].drop_nulls().to_list())
+        if value <= as_of_date
+    ]
     return max(dates) if dates else None
 
 

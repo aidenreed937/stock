@@ -68,7 +68,7 @@ _INDEX_ENDPOINTS = {
     "index_fundamental",
 }
 _FUND_ENDPOINTS = {"fund_daily", "fund_adj", "fund_share", "etf_share_size"}
-_YFINANCE_MACRO_SYMBOLS = ["^TNX", "^IRX", "DX-Y.NYB", "CNH=X", "GC=F", "CL=F", "HG=F", "^VIX"]
+_YFINANCE_MACRO_SYMBOLS = ["^TNX", "^IRX", "DX-Y.NYB", "GC=F", "CL=F", "HG=F", "^VIX"]
 _LIXINGER_COMPANY_ENDPOINTS = {
     "company_fundamental",
     "fs_non_financial",
@@ -104,6 +104,8 @@ def _watchlist_symbols(
     watchlist = getattr(data_cfg.watchlists, data_source, None)
     if data_source == "yfinance" and endpoint == "macro_indicators":
         return _YFINANCE_MACRO_SYMBOLS
+    if data_source == "alphavantage" and endpoint == "fx_daily":
+        return ["CNH=X"]
     if watchlist is None:
         return []
     if data_source == "fred":
@@ -189,7 +191,7 @@ def _should_expand_single_sync(data_source: str, endpoint: str) -> bool:
     """判断 per-symbol single-sync 任务是否应按观察池拆成多个原子任务。"""
     if endpoint in _LIXINGER_BATCH_SINGLE_ENDPOINTS:
         return False
-    if data_source in {"fred", "yfinance"}:
+    if data_source in {"alphavantage", "fred", "yfinance"}:
         return True
     if endpoint in _INDEX_ENDPOINTS or endpoint in _FUND_ENDPOINTS:
         return True

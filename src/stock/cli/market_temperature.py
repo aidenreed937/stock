@@ -32,6 +32,12 @@ def _build_parser() -> argparse.ArgumentParser:
         help="市场温度计 YAML 配置路径",
     )
     parser.add_argument(
+        "--compare-date",
+        dest="comparison_date",
+        default=None,
+        help="指定前期基准日期，读取该日期已落盘产物并在人读报告中加入跨期驱动变化表",
+    )
+    parser.add_argument(
         "-o",
         "--output-root",
         dest="output_root",
@@ -59,9 +65,11 @@ def main() -> None:
     parser = _build_parser()
     args = parser.parse_args()
     target_date = _parse_date(args.target_date)
+    comparison_date = _parse_date(args.comparison_date)
     try:
         result = run_market_temperature(
             target_date=target_date,
+            comparison_date=comparison_date,
             config_path=Path(args.config_path),
             output_root=args.output_root,
             update_latest=bool(args.update_latest),

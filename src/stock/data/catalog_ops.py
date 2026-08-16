@@ -77,12 +77,19 @@ def scan_latest_trade_dates(files: list[Path], n: int = 1) -> list[date]:
         try:
             df_lazy = pl.scan_parquet(path)
             cols = df_lazy.collect_schema().names()
-            date_col = next((c for c in ("trade_date", "date", "Date") if c in cols), None)
+            date_col = next((c for c in ("trade_date", "date", "Date", "month") if c in cols), None)
             if not date_col:
                 continue
-            distinct_df = StorageCompat.safe_cast_date_col(
-                df_lazy.select(pl.col(date_col).drop_nulls().unique()).collect(), date_col
-            )
+            selected = df_lazy.select(pl.col(date_col).drop_nulls().unique())
+            if date_col == "month":
+                distinct_df = selected.with_columns(
+                    pl.col(date_col)
+                    .cast(pl.Utf8, strict=False)
+                    .str.strptime(pl.Date, "%Y%m", strict=False)
+                    .alias(date_col)
+                ).drop_nulls().collect()
+            else:
+                distinct_df = StorageCompat.safe_cast_date_col(selected.collect(), date_col)
             for d in distinct_df[date_col].to_list():
                 if isinstance(d, date):
                     found.add(d)

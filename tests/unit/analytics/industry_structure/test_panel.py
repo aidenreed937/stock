@@ -22,6 +22,7 @@ def test_build_industry_panel_adds_fast_fundamental_fields(tmp_path: Path) -> No
     _write_index_member(storage_dir)
     _write_lixinger_constituents_with_conflict(storage_dir)
     _write_fast_fundamental_inputs(storage_dir)
+    _write_moneyflow_inputs(storage_dir, trade_dates)
 
     panel = build_industry_panel(
         _config(),
@@ -44,6 +45,13 @@ def test_build_industry_panel_adds_fast_fundamental_fields(tmp_path: Path) -> No
     assert coal["report_rc_down_count"] == 0
     assert bank["forecast_positive_share"] == 0.0
     assert bank["report_rc_revision_ratio"] == 0.0
+    assert coal["moneyflow_date"] == as_of_date
+    assert coal["moneyflow_sample_size"] == 20
+    assert coal["moneyflow_stock_count"] == 1
+    assert coal["money_net_inflow_share_20d"] == 1.0
+    assert coal["large_money_net_inflow_share_20d"] == 0.8
+    assert coal["money_net_inflow_share_5d"] == 1.0
+    assert bank["money_net_inflow_share_20d"] == -0.5
 
 
 def _config() -> IndustryStructureConfig:
@@ -222,6 +230,42 @@ def _write_fast_fundamental_inputs(storage_dir: Path) -> None:
             },
         ],
     )
+
+
+def _write_moneyflow_inputs(storage_dir: Path, trade_dates: tuple[date, ...]) -> None:
+    moneyflow_rows = []
+    bar_rows = []
+    for trade_date in trade_dates:
+        moneyflow_rows.extend(
+            [
+                {
+                    "symbol": "000001.SZ",
+                    "trade_date": trade_date,
+                    "net_mf_amount": 10.0,
+                    "buy_elg_amount": 6.0,
+                    "buy_lg_amount": 4.0,
+                    "sell_elg_amount": 1.0,
+                    "sell_lg_amount": 1.0,
+                },
+                {
+                    "symbol": "000002.SZ",
+                    "trade_date": trade_date,
+                    "net_mf_amount": -5.0,
+                    "buy_elg_amount": 1.0,
+                    "buy_lg_amount": 1.0,
+                    "sell_elg_amount": 3.0,
+                    "sell_lg_amount": 3.0,
+                },
+            ]
+        )
+        bar_rows.extend(
+            [
+                {"symbol": "000001.SZ", "trade_date": trade_date, "amount": 1000.0},
+                {"symbol": "000002.SZ", "trade_date": trade_date, "amount": 1000.0},
+            ]
+        )
+    _write_dataset(storage_dir, "tushare", "moneyflow", moneyflow_rows)
+    _write_dataset(storage_dir, "tushare", "stock_daily_bar", bar_rows)
 
 
 def _write_dataset(

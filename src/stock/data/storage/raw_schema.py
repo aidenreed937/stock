@@ -64,6 +64,10 @@ def resolve_raw_primary_keys(key: DatasetKey, df: pl.DataFrame) -> list[str]:
             from stock.data.fetcher.lixinger.registry import LIXINGER_API_REGISTRY
 
             meta = LIXINGER_API_REGISTRY.get(resolve_task(key.provider, key.endpoint).api_name)
+        elif key.provider == "alphavantage":
+            from stock.data.fetcher.alphavantage.registry import ALPHAVANTAGE_API_REGISTRY
+
+            meta = ALPHAVANTAGE_API_REGISTRY.get(resolve_task(key.provider, key.endpoint).api_name)
     except Exception as e:
         logger.debug(f"解析 RAW 主键失败 [{key.provider}/{key.endpoint}]: {e}")
 

@@ -6,6 +6,11 @@ from typing import TYPE_CHECKING, Any
 
 import polars as pl
 
+from stock.analytics.watermark_text import (
+    human_watermark_issue_lines,
+    human_watermark_latest_text,
+)
+
 if TYPE_CHECKING:
     from stock.analytics.market_temperature.config import MarketTemperatureConfig
 
@@ -27,6 +32,12 @@ _METRIC_LABELS = {
     "limit_down_count_temperature": "跌停家数反向温度",
     "limit_up_down_strength_temperature": "涨跌停强弱温度",
     "limit_seal_success_temperature": "封板成功率温度",
+    "option_risk_temperature": "期权风险温度",
+    "option_put_call_volume_ratio_temperature": "认沽/认购成交量比温度",
+    "option_put_call_oi_ratio_temperature": "认沽/认购持仓比温度",
+    "option_amount_temperature": "期权成交额温度",
+    "option_open_interest_temperature": "期权持仓量温度",
+    "option_near_month_amount_share_temperature": "近月期权成交占比温度",
     "return_20d": "20日收益中位数",
     "rsi_14d": "RSI中位数",
     "ma_bias_20d": "20日均线乖离中位数",
@@ -51,6 +62,12 @@ _METRIC_LABELS = {
     "macro_vix_temperature": "VIX外部温度",
     "macro_us_10y_temperature": "美债10年收益率温度",
     "macro_copper_20d_return_temperature": "铜价20日收益温度",
+    "macro_gold_20d_return_pressure": "黄金20日收益压力",
+    "macro_oil_20d_return_pressure": "原油20日收益压力",
+    "macro_safe_haven_pressure_temperature": "避险压力",
+    "macro_inflation_pressure_temperature": "通胀压力",
+    "macro_demand_pressure_temperature": "需求压力",
+    "macro_external_pressure_temperature": "总体外部压力",
     "macro_fred_t10y2y_temperature": "美国期限利差温度",
     "macro_fred_fedfunds_temperature": "美国政策利率温度",
     "macro_fred_walcl_temperature": "美联储资产负债表温度",
@@ -134,6 +151,7 @@ _PREFERRED_METRICS = {
         "limit_event_temperature",
         "limit_up_count_temperature",
         "limit_seal_success_temperature",
+        "option_risk_temperature",
     ),
     "technical": ("return_20d", "rsi_14d", "above_ma20_share", "above_ma60_share"),
     "fundamental": (
@@ -143,11 +161,17 @@ _PREFERRED_METRICS = {
     ),
     "macro_liquidity": (
         "macro_external_environment_temperature",
+        "macro_external_pressure_temperature",
+        "macro_safe_haven_pressure_temperature",
+        "macro_inflation_pressure_temperature",
+        "macro_demand_pressure_temperature",
         "macro_sp500_20d_return_temperature",
         "macro_nasdaq_20d_return_temperature",
         "macro_bond_yield_10y_temperature",
         "macro_shibor_on_temperature",
         "macro_real_rate_temperature",
+        "macro_gold_20d_return_pressure",
+        "macro_oil_20d_return_pressure",
         "macro_cnh_20d_change_temperature",
         "macro_fred_t10y2y_temperature",
         "macro_fred_fedfunds_temperature",
@@ -230,6 +254,7 @@ def render_human_report_markdown(
     manifest: dict[str, Any],
     scores: dict[str, Any],
     facts: pl.DataFrame,
+    comparison: dict[str, Any] | None = None,
 ) -> str:
     """渲染面向人工阅读的 Markdown 报告。"""
     composite = scores["composite"]
@@ -242,12 +267,22 @@ def render_human_report_markdown(
         f"- 基准日期: {manifest['as_of_date']}",
         f"- 观察窗口: {window_text}",
         f"- 综合温度: {_temperature_text(temperature)} / 100",
-        f"- 状态: {composite['status']}",
+        f"- 系统性风险: {_systemic_risk_level(scores)}",
+        f"- 状态: {_report_status_label(composite.get('status'))}",
         "",
         "## 一句话结论",
         "",
         _one_line_summary(dimensions, temperature),
         "",
+        "## 读法总览",
+        "",
+        *_human_reading_brief(dimensions, scores, facts),
+        "",
+        *_cross_period_change_section(
+            comparison=comparison,
+            current_manifest=manifest,
+            current_scores=scores,
+        ),
         "## 数据质量提示",
         "",
         *_human_quality_brief(facts),
@@ -259,6 +294,10 @@ def render_human_report_markdown(
         "## 系统性风险",
         "",
         *_systemic_risk_section(scores),
+        "",
+        "## 外部压力提示",
+        "",
+        *_external_pressure_section(facts),
         "",
         "## 后续跟踪",
         "",
@@ -378,6 +417,76 @@ def _one_line_summary(dimensions: list[dict[str, Any]], temperature: object) -> 
     )
 
 
+def _human_reading_brief(
+    dimensions: list[dict[str, Any]], scores: dict[str, Any], facts: pl.DataFrame
+) -> list[str]:
+    composite = scores.get("composite", {})
+    composite_temperature = composite.get("temperature") if isinstance(composite, dict) else None
+    valid = [item for item in dimensions if _as_float(item.get("temperature")) is not None]
+    hot = [item for item in valid if (_as_float(item.get("temperature")) or 0.0) >= 70]
+    cold = [item for item in valid if (_as_float(item.get("temperature")) or 0.0) < 40]
+    lines = [
+        "- 先定市场环境: "
+        f"综合温度 {_temperature_text(composite_temperature)}，"
+        f"系统性风险 {_systemic_risk_level(scores)}；"
+        "它回答的是整体风险偏好和追高安全边际，不直接等同于行业方向。"
+    ]
+    if hot:
+        lines.append(f"- 高温来源: {_dimension_list_text(hot)}；这些维度决定风险上沿。")
+    if cold:
+        lines.append(
+            f"- 拖累来源: {_dimension_list_text(cold)}；这些维度说明行情质量尚未全面确认。"
+        )
+
+    valuation = _dimension_temperature(dimensions, "valuation")
+    fund_flow = _dimension_temperature(dimensions, "fund_flow")
+    sentiment = _dimension_temperature(dimensions, "sentiment")
+    technical = _dimension_temperature(dimensions, "technical")
+    fundamental = _dimension_temperature(dimensions, "fundamental")
+    macro = _dimension_temperature(dimensions, "macro_liquidity")
+
+    if (
+        technical is not None
+        and technical < 40
+        and any(value is not None and value >= 70 for value in (valuation, fund_flow, sentiment))
+    ):
+        lines.append(
+            "- 最容易误读: 技术面低温不是低风险，而是趋势广度弱；"
+            "它衡量最近20个交易日的中位收益和均线宽度，不等同于基准日当天涨跌；"
+            "如果估值、资金或情绪同时偏热，通常表示热度集中在少数方向。"
+        )
+    investor_temperature = _metric_float(facts, "investor_account_temperature")
+    if investor_temperature is not None and investor_temperature >= 80:
+        if sentiment is not None and sentiment < 65:
+            lines.append(
+                "- 慢变量情绪: 月度新增投资者处于高温，但日频情绪未同步过热；"
+                "这代表参与热度水位高，不代表基准日全面亢奋。"
+            )
+        else:
+            lines.append(
+                "- 慢变量情绪: 月度新增投资者处于高温，"
+                "需和换手、上涨家数、涨跌停事件一起判断情绪拥挤。"
+            )
+    if valuation is not None and valuation >= 80:
+        lines.append(
+            "- 估值约束: 估值高温主要由价格和估值分位驱动，"
+            "含义是安全边际收缩，不代表盈利已经同步改善。"
+        )
+    if fund_flow is not None and fund_flow >= 70 and technical is not None and technical < 40:
+        lines.append(
+            "- 资金读法: 资金面高温但技术面偏冷时，重点看资金是否集中在少数方向，"
+            "需要用行业结构报告验证扩散程度。"
+        )
+    if fundamental is not None and macro is not None:
+        lines.append(
+            "- 慢变量读法: 基本面和宏观流动性更多是底座；"
+            "月频、季频指标只能说明最新状态，不能解释最近20个交易日内的每一次波动。"
+        )
+    if _has_pending_short_term(scores):
+        lines.append("- 短线节奏: 5/10日短线温度尚未形成正式分数，短节奏优先看行业报告。")
+    return lines
+
+
 def _systemic_risk_section(scores: dict[str, Any]) -> list[str]:
     risk = scores.get("systemic_risk", {})
     if not isinstance(risk, dict) or not risk:
@@ -390,12 +499,139 @@ def _systemic_risk_section(scores: dict[str, Any]) -> list[str]:
     warnings = _text_items(risk.get("warnings"))
     offsets = _text_items(risk.get("offsets"))
     if red_flags:
-        lines.append(f"- 主要风险: {'；'.join(red_flags)}")
+        lines.append(f"- 主要风险: {_join_text_items(red_flags)}")
     if warnings:
-        lines.append(f"- 观察信号: {'；'.join(warnings)}")
+        lines.append(f"- 观察信号: {_join_text_items(warnings)}")
     if offsets:
-        lines.append(f"- 缓冲因素: {'；'.join(offsets)}")
+        lines.append(f"- 缓冲因素: {_join_text_items(offsets)}")
     return lines
+
+
+def _cross_period_change_section(
+    *,
+    comparison: dict[str, Any] | None,
+    current_manifest: dict[str, Any],
+    current_scores: dict[str, Any],
+) -> list[str]:
+    previous_manifest = (
+        comparison.get("previous_manifest") if isinstance(comparison, dict) else None
+    )
+    previous_scores = comparison.get("previous_scores") if isinstance(comparison, dict) else None
+    if not isinstance(previous_manifest, dict):
+        previous_manifest = None
+    if not isinstance(previous_scores, dict):
+        previous_scores = None
+    if not previous_scores:
+        return []
+
+    previous_date = (
+        str(previous_manifest.get("as_of_date")) if isinstance(previous_manifest, dict) else "前期"
+    )
+    current_date = str(current_manifest.get("as_of_date") or "本期")
+    previous_dimensions = _dimension_rows_by_id(previous_scores)
+    current_dimensions = list(current_scores.get("dimensions", []))
+    rows: list[tuple[str, float | None, float | None, str]] = [
+        (
+            "综合温度",
+            _score_composite_temperature(previous_scores),
+            _score_composite_temperature(current_scores),
+            "总温度接近时，不代表市场状态相同；要看内部驱动迁移。",
+        )
+    ]
+
+    for current in current_dimensions:
+        dimension_id = str(current.get("dimension_id") or "")
+        previous = previous_dimensions.get(dimension_id)
+        previous_temperature = (
+            _as_float(previous.get("temperature")) if isinstance(previous, dict) else None
+        )
+        current_temperature = _as_float(current.get("temperature"))
+        focus, _ = _DIMENSION_FOCUS.get(dimension_id, ("维度", ""))
+        rows.append(
+            (
+                str(current.get("name") or _DIMENSION_LABELS.get(dimension_id) or dimension_id),
+                previous_temperature,
+                current_temperature,
+                f"{focus}的跨期变化。",
+            )
+        )
+
+    lines = [
+        "## 跨期驱动变化",
+        "",
+        f"- 对比基准: {previous_date} -> {current_date}",
+        "- 读法: 先看综合温度是否变化，再看是哪几个维度驱动了变化，"
+        "避免只因总分接近而误判状态相同。",
+        "",
+        "| 项目 | 前期 | 本期 | 变化 | 读法 |",
+        "|---|---:|---:|---:|---|",
+    ]
+    for name, previous_temperature, current_temperature, comment in rows:
+        delta = (
+            current_temperature - previous_temperature
+            if previous_temperature is not None and current_temperature is not None
+            else None
+        )
+        previous_text = _temperature_text(previous_temperature)
+        current_text = _temperature_text(current_temperature)
+        delta_text = _delta_text(delta)
+        comment_text = _cross_period_comment(name, delta, comment)
+        lines.append(
+            f"| {name} | {previous_text} | {current_text} | {delta_text} | {comment_text} |"
+        )
+    lines.append("")
+    return lines
+
+
+def _dimension_rows_by_id(scores: dict[str, Any]) -> dict[str, dict[str, Any]]:
+    dimensions = scores.get("dimensions", [])
+    if not isinstance(dimensions, list):
+        return {}
+    return {
+        str(item.get("dimension_id")): item
+        for item in dimensions
+        if isinstance(item, dict) and item.get("dimension_id")
+    }
+
+
+def _score_composite_temperature(scores: dict[str, Any]) -> float | None:
+    composite = scores.get("composite", {})
+    if not isinstance(composite, dict):
+        return None
+    return _as_float(composite.get("temperature"))
+
+
+def _delta_text(value: float | None) -> str:
+    return "不可判定" if value is None else f"{value:+.2f}"
+
+
+def _cross_period_comment(name: str, delta: float | None, fallback: str) -> str:
+    if delta is None:
+        return fallback
+    absolute = abs(delta)
+    if name == "综合温度" and absolute < 3:
+        return "总分接近，重点看内部驱动是否换挡。"
+    if absolute < 5:
+        return "变化不大。"
+    direction = "升温" if delta > 0 else "降温"
+    strength = "明显" if absolute >= 20 else ""
+    return f"{strength}{direction}，{fallback}"
+
+
+def _systemic_risk_level(scores: dict[str, Any]) -> str:
+    risk = scores.get("systemic_risk", {})
+    if not isinstance(risk, dict) or not risk:
+        return "不可判定"
+    return str(risk.get("level") or "不可判定")
+
+
+def _dimension_list_text(rows: list[dict[str, Any]]) -> str:
+    parts = [
+        f"{item.get('name', '')} {_temperature_text(item.get('temperature'))}"
+        for item in rows
+        if item.get("name")
+    ]
+    return "、".join(parts) if parts else "无"
 
 
 def _dimension_comment(dimension_id: str, temperature: object) -> str:
@@ -451,9 +687,11 @@ def _human_quality_brief(facts: pl.DataFrame) -> list[str]:
         row for row in issues if str(row.get("status")) in {"error", "missing", "future"}
     ]
     if hard_issues:
-        lines.append(f"- 硬约束: {_watermark_issue_text(hard_issues[:5])}。")
+        lines.append("- 硬约束: 存在缺失、异常或日期越界的数据，详见质量报告。")
+        lines.extend(human_watermark_issue_lines(hard_issues, max_groups=5))
     elif issues:
-        lines.append(f"- 水位提醒: {_watermark_issue_text(issues[:5])}。")
+        lines.append("- 水位提醒: 存在更新偏慢或样本不足的数据，主报告仅保留影响摘要。")
+        lines.extend(human_watermark_issue_lines(issues, max_groups=5))
     else:
         lines.append("- 核心水位未发现硬错误。")
 
@@ -464,7 +702,8 @@ def _human_quality_brief(facts: pl.DataFrame) -> list[str]:
     ]
     if fund_rows:
         lines.append(
-            f"- 资金确认: {_watermark_latest_text(fund_rows)}；资金流和两融指标以各自事实日期为准。"
+            f"- 资金确认: {human_watermark_latest_text(fund_rows)}；"
+            "资金流和两融指标以各自事实日期为准。"
         )
 
     slow_rows = [
@@ -476,7 +715,8 @@ def _human_quality_brief(facts: pl.DataFrame) -> list[str]:
     if slow_rows:
         lines.append(
             "- 慢变量: "
-            f"{_watermark_latest_text(slow_rows[:6])}；月频/季频数据只代表最新状态或底座。"
+            f"{human_watermark_latest_text(slow_rows, max_groups=6)}；"
+            "月频/季频数据只代表最新状态或底座。"
         )
     return lines
 
@@ -537,8 +777,18 @@ def _key_divergence_section(dimensions: list[dict[str, Any]], facts: pl.DataFram
 def _follow_up_section(
     dimensions: list[dict[str, Any]], facts: pl.DataFrame, scores: dict[str, Any]
 ) -> list[str]:
+    fund_flow = _dimension_temperature(dimensions, "fund_flow")
+    if fund_flow is not None and fund_flow >= 50:
+        fund_flow_line = (
+            "- 资金确认: 观察资金面高温能否延续，尤其是两融余额、主力净流入是否继续改善；"
+            "若趋势广度不跟随，高资金分可能只是集中交易。"
+        )
+    else:
+        fund_flow_line = (
+            "- 资金确认: 观察资金面温度是否回到50以上，以及两融余额、主力净流入是否由收缩转为改善。"
+        )
     lines = [
-        "- 资金确认: 观察资金面温度是否回到50以上，以及两融余额、主力净流入是否由收缩转为改善。",
+        fund_flow_line,
         "- 趋势确认: 观察站上60日线占比是否继续提高，避免只有20日修复而中期趋势未确认。",
     ]
     investor_temperature = _metric_float(facts, "investor_account_temperature")
@@ -551,8 +801,74 @@ def _follow_up_section(
     ):
         lines.append("- 慢变量更新: 月频宏观和季频财报更新后再复核基本面、宏观流动性分数。")
     if _has_pending_short_term(scores):
-        lines.append("- 短线温度: 5/10日短线温度仍为 pending，短节奏暂不要当成正式温度分。")
+        lines.append("- 短线温度: 5/10日短线温度仍待接入或待计算，短节奏暂不要当成正式温度分。")
     return lines
+
+
+def _external_pressure_section(facts: pl.DataFrame) -> list[str]:
+    metric_ids = (
+        "macro_external_pressure_temperature",
+        "macro_safe_haven_pressure_temperature",
+        "macro_inflation_pressure_temperature",
+        "macro_demand_pressure_temperature",
+    )
+    rows = [_metric_row_by_id(facts, metric_id) for metric_id in metric_ids]
+    available = [
+        row for row in rows if row is not None and _as_float(row.get("value_float")) is not None
+    ]
+    if not available:
+        return ["- 暂无外部压力项事实；该模块只作风险背景，不进入综合温度。"]
+
+    lines = [
+        "- 口径: 分数越高代表外盘对 A 股的额外压力越大；该模块默认 weight=0，不进入六维综合温度。",
+        "",
+        "| 压力项 | 分数 | 分档 | 读法 |",
+        "|---|---:|---|---|",
+    ]
+    for row in available:
+        metric_id = str(row["metric_id"])
+        value = _as_float(row.get("value_float"))
+        name = _METRIC_LABELS.get(metric_id, metric_id)
+        band = _pressure_band(value)
+        comment = _pressure_comment(metric_id, value)
+        lines.append(f"| {name} | {_temperature_text(value)} | {band} | {comment} |")
+    return lines
+
+
+def _pressure_band(value: object) -> str:
+    pressure = _as_float(value)
+    if pressure is None:
+        return "不可判定"
+    if pressure >= 80:
+        return "高压力"
+    if pressure >= 60:
+        return "中等偏高"
+    if pressure >= 40:
+        return "中性"
+    return "压力不明显"
+
+
+def _pressure_comment(metric_id: str, value: object) -> str:
+    pressure = _as_float(value)
+    if pressure is None:
+        return "样本不足，不能解读。"
+    if metric_id == "macro_external_pressure_temperature":
+        base = "取避险、通胀、需求三类压力的最大值，用于提示外盘风险来源。"
+    elif metric_id == "macro_safe_haven_pressure_temperature":
+        base = "观察黄金、VIX 和美股是否共同指向避险交易。"
+    elif metric_id == "macro_inflation_pressure_temperature":
+        base = "观察原油、美债收益率和美国CPI是否共同形成估值分母压力。"
+    elif metric_id == "macro_demand_pressure_temperature":
+        base = "观察铜、原油和美股是否共同指向全球需求走弱。"
+    else:
+        base = "仅作外部背景观察。"
+    if pressure >= 80:
+        return f"压力高，{base}"
+    if pressure >= 60:
+        return f"压力偏高，{base}"
+    if pressure >= 40:
+        return f"压力中性，{base}"
+    return f"压力不明显，{base}"
 
 
 def _human_fact_sections(facts: pl.DataFrame) -> list[str]:
@@ -634,29 +950,6 @@ def _watermark_rows(facts: pl.DataFrame) -> list[dict[str, Any]]:
     return facts.filter(pl.col("category") == "data_watermark").to_dicts()
 
 
-def _watermark_issue_text(rows: list[dict[str, Any]]) -> str:
-    return "；".join(
-        "{source}.{dataset}={status}({latest})".format(
-            source=row.get("data_source", ""),
-            dataset=row.get("dataset", ""),
-            status=row.get("status", ""),
-            latest=row.get("value_text") or "无日期",
-        )
-        for row in rows
-    )
-
-
-def _watermark_latest_text(rows: list[dict[str, Any]]) -> str:
-    return "、".join(
-        "{source}.{dataset}={latest}".format(
-            source=row.get("data_source", ""),
-            dataset=row.get("dataset", ""),
-            latest=row.get("value_text") or "无日期",
-        )
-        for row in rows
-    )
-
-
 def _has_dataset_status(facts: pl.DataFrame, dataset_prefix: str, statuses: set[str]) -> bool:
     for row in _watermark_rows(facts):
         dataset = str(row.get("dataset") or "")
@@ -684,15 +977,7 @@ def _human_limit_sections(facts: pl.DataFrame) -> list[str]:
         watermarks.filter(pl.col("status") != "ok").to_dicts() if not watermarks.is_empty() else []
     )
     if issues:
-        for row in issues:
-            lines.append(
-                "- {source}.{dataset}: {status}，{note}".format(
-                    source=row["data_source"],
-                    dataset=row["dataset"],
-                    status=row["status"],
-                    note=row["note"],
-                )
-            )
+        lines.extend(human_watermark_issue_lines(issues, max_groups=8))
     else:
         lines.append("- 本次配置内核心数据水位未发现异常。")
     lines.extend(
@@ -700,7 +985,10 @@ def _human_limit_sections(facts: pl.DataFrame) -> list[str]:
             "- 资金流数据可能晚于行情日，资金结论以指标事实中的 metric_date 为准。",
             "- 季频财报和月频宏观数据只代表最新状态，不代表最近20个交易日内的边际变化。",
             "- 涨跌停事件来自 limit_list_d，不包含 ST 股票统计；stk_limit 只代表涨跌停价格。",
-            "- 期权合约与日行情当前只做水位披露，未定义隐含波动率前不进入温度。",
+            (
+                "- 期权合约与日行情仅用于PCR、成交额、持仓和近月合约热度观察；"
+                "未定义隐含波动率前不进入主温度。"
+            ),
             "- 本报告只基于本地 Curated 数据和已定义指标，不纳入新闻、政策文本或信用利差。",
         ]
     )
@@ -716,6 +1004,10 @@ def _text_items(value: object) -> list[str]:
     if not isinstance(value, list):
         return []
     return [str(item) for item in value if str(item)]
+
+
+def _join_text_items(items: list[str]) -> str:
+    return "；".join(item.rstrip("。；; ") for item in items if item.strip())
 
 
 def _temperature_band(value: object) -> str:
@@ -735,6 +1027,17 @@ def _temperature_band(value: object) -> str:
 
 def _score_temperature(item: dict[str, Any]) -> float:
     return _as_float(item.get("temperature")) or 0.0
+
+
+def _report_status_label(value: object) -> str:
+    status = str(value or "")
+    return {
+        "ready": "可用",
+        "partial": "部分可用",
+        "insufficient": "样本不足",
+        "failed": "失败",
+        "pending": "待计算",
+    }.get(status, status or "未知")
 
 
 def _as_float(value: object) -> float | None:

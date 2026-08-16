@@ -8,11 +8,7 @@ from zoneinfo import ZoneInfo
 import polars as pl
 
 from stock.config.settings import settings
-from stock.data.fetcher.fred.registry import FRED_API_REGISTRY
-from stock.data.fetcher.lixinger.registry import LIXINGER_API_REGISTRY
-from stock.data.fetcher.tushare.registry import TUSHARE_API_REGISTRY
-from stock.data.fetcher.yfinance.registry import YFINANCE_API_REGISTRY
-from stock.data.task_registry import resolve_task
+from stock.data.task_registry import _provider_registry, resolve_task
 from stock.utils.date import parse_mixed_date
 
 logger = logging.getLogger(__name__)
@@ -23,6 +19,7 @@ DATA_SOURCE_TIMEZONES: dict[str, ZoneInfo] = {
     "lixinger": ZoneInfo("Asia/Shanghai"),
     "yfinance": ZoneInfo("Asia/Shanghai"),
     "fred": ZoneInfo("America/New_York"),
+    "alphavantage": ZoneInfo("Asia/Shanghai"),
 }
 
 
@@ -53,29 +50,16 @@ class DataUpdateScheduler:
         delay_in_trading_days = False
         freq = task.frequency
 
-        if data_source == "yfinance":
-            meta_yf = YFINANCE_API_REGISTRY.get(task.api_name)
-            if meta_yf:
-                update_time_str = meta_yf.update_time
-                update_delay_days = meta_yf.update_delay_days
-                freq = getattr(meta_yf, "frequency", freq)
-        elif data_source == "lixinger":
-            meta_lx = LIXINGER_API_REGISTRY.get(task.api_name)
-            if meta_lx:
-                update_time_str = meta_lx.update_time
-                update_delay_days = meta_lx.update_delay_days
-                freq = getattr(meta_lx, "frequency", freq)
-        elif data_source == "fred":
-            meta_fred = FRED_API_REGISTRY.get(task.api_name)
-            if meta_fred:
-                freq = getattr(meta_fred, "frequency", freq)
-        else:
-            meta_ts = TUSHARE_API_REGISTRY.get(task.api_name)
-            if meta_ts:
-                update_time_str = meta_ts.update_time
-                update_delay_days = meta_ts.update_delay_days
-                delay_in_trading_days = getattr(meta_ts, "delay_in_trading_days", False)
-                freq = getattr(meta_ts, "frequency", freq)
+        meta = (_provider_registry(data_source) or _provider_registry("tushare")).get(
+            task.api_name
+        )
+        if meta:
+            freq = getattr(meta, "frequency", freq)
+            if data_source != "fred":
+                update_time_str = meta.update_time
+                update_delay_days = meta.update_delay_days
+            if data_source == "tushare":
+                delay_in_trading_days = getattr(meta, "delay_in_trading_days", False)
 
         # 支持全局 Settings 配置项覆盖 update_time (HH:MM 格式)
         if task.task_name in settings.endpoint_update_time_overrides:
@@ -175,6 +159,10 @@ class DataUpdateScheduler:
         start_date: date, end_date: date, data_source: str
     ) -> tuple[date, ...]:
         """读取本地交易日历，缺失时尝试上游；不做工作日猜测。"""
+        if data_source == "alphavantage":
+            from stock.data.fetcher.alphavantage.global_fetcher import AlphaVantageDataFetcher
+
+            return tuple(AlphaVantageDataFetcher().fetch_trade_cal(start_date, end_date))
         if data_source != "tushare":
             return ()
 

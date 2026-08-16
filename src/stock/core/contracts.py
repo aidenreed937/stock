@@ -49,8 +49,8 @@ class DatasetKey:
     @property
     def market_slug(self) -> str:
         """返回用于 Hive 目录划分的市场标识 (优先使用标的市场，否则读取接口源头注册表元数据)。"""
-        if self.provider.lower() == "yfinance" and (
-            self.dataset == "macro_indicators" or self.endpoint == "macro_indicators"
+        if self.provider.lower() in {"alphavantage", "yfinance"} and (
+            self.dataset == "macro_indicators" or self.endpoint in {"macro_indicators", "fx_daily"}
         ):
             from stock.data.task_registry import get_endpoint_market
 

@@ -35,6 +35,13 @@ BASE_PANEL_SCHEMA: dict[str, Any] = {
     "amount_yi": pl.Float64,
     "tcr": pl.Float64,
     "tcr_percentile": pl.Float64,
+    "moneyflow_date": pl.Date,
+    "moneyflow_sample_size": pl.Int64,
+    "moneyflow_stock_count": pl.Int64,
+    "money_net_inflow_yi_20d": pl.Float64,
+    "money_net_inflow_share_20d": pl.Float64,
+    "large_money_net_inflow_share_20d": pl.Float64,
+    "money_net_inflow_share_5d": pl.Float64,
     "pe_ttm": pl.Float64,
     "pb": pl.Float64,
     "dividend_yield": pl.Float64,
@@ -73,6 +80,14 @@ _FS_DATASETS = (
 
 @dataclass(frozen=True, slots=True)
 class _FastFundamentalContext:
+    config: IndustryStructureConfig
+    as_of_date: date
+    trade_dates: tuple[date, ...]
+    industry_codes: list[object]
+
+
+@dataclass(frozen=True, slots=True)
+class _IndustryMoneyflowContext:
     config: IndustryStructureConfig
     as_of_date: date
     trade_dates: tuple[date, ...]
@@ -126,6 +141,18 @@ def build_industry_panel(
         panel = panel.join(fundamentals, on="industry_code", how="left")
     if not fast_fundamentals.is_empty():
         panel = panel.join(fast_fundamentals, on="industry_code", how="left")
+    moneyflow = _industry_moneyflow_panel(
+        cat_ts,
+        cat_lx,
+        _IndustryMoneyflowContext(
+            config=config,
+            as_of_date=as_of_date,
+            trade_dates=trade_dates,
+            industry_codes=market_panel["industry_code"].to_list(),
+        ),
+    )
+    if not moneyflow.is_empty():
+        panel = panel.join(moneyflow, on="industry_code", how="left")
     panel = _coalesce_industry_names(panel)
     return _select_base_panel_columns(panel)
 
@@ -645,6 +672,160 @@ def _report_revision_panel(
         .otherwise(None)
         .alias("report_rc_revision_ratio")
     )
+
+
+def _industry_moneyflow_panel(
+    cat_ts: DataCatalog,
+    cat_lx: DataCatalog,
+    context: _IndustryMoneyflowContext,
+) -> pl.DataFrame:
+    config = context.config
+    as_of_date = context.as_of_date
+    trade_dates = context.trade_dates
+    industry_codes = context.industry_codes
+    codes = [str(value) for value in industry_codes if value is not None]
+    if not codes or not trade_dates:
+        return pl.DataFrame()
+    stock_map = _stock_industry_map(cat_ts, cat_lx, config, as_of_date)
+    if stock_map.is_empty():
+        return pl.DataFrame({"industry_code": codes})
+    window_dates = trade_dates[-config.main_window :]
+    window_start = window_dates[0]
+    flow = _moneyflow_base_frame(cat_ts, window_start, as_of_date)
+    if flow.is_empty():
+        return pl.DataFrame({"industry_code": codes})
+    bars = _stock_amount_frame(cat_ts, window_start, as_of_date)
+    joined = flow.join(stock_map, on="stock_key", how="inner").filter(
+        pl.col("industry_code").is_in(codes)
+    )
+    if joined.is_empty():
+        return pl.DataFrame({"industry_code": codes})
+    if not bars.is_empty():
+        joined = joined.join(bars, on=["stock_key", "trade_date"], how="left")
+    if "_amount" not in joined.columns:
+        joined = joined.with_columns(pl.lit(None, dtype=pl.Float64).alias("_amount"))
+    latest_flow_date = cast("date", joined["trade_date"].max())
+    valid_dates = sorted(
+        {value for value in joined["trade_date"].to_list() if value <= latest_flow_date}
+    )
+    recent5 = set(valid_dates[-5:])
+    grouped = (
+        joined.with_columns(pl.col("trade_date").is_in(recent5).alias("_is_recent5"))
+        .group_by("industry_code")
+        .agg(
+            pl.col("trade_date").max().alias("moneyflow_date"),
+            pl.len().alias("moneyflow_sample_size"),
+            pl.col("stock_key").n_unique().alias("moneyflow_stock_count"),
+            pl.col("_net_amount").sum().alias("_net_20d"),
+            pl.col("_large_net_amount").sum().alias("_large_net_20d"),
+            pl.col("_amount").sum().alias("_amount_20d"),
+            pl.col("_net_amount").drop_nulls().len().alias("_net_count_20d"),
+            pl.col("_amount").drop_nulls().len().alias("_amount_count_20d"),
+            pl.when(pl.col("_is_recent5"))
+            .then(pl.col("_net_amount"))
+            .otherwise(0.0)
+            .sum()
+            .alias("_net_5d"),
+            pl.when(pl.col("_is_recent5"))
+            .then(pl.col("_amount"))
+            .otherwise(0.0)
+            .sum()
+            .alias("_amount_5d"),
+            pl.when(pl.col("_is_recent5"))
+            .then(pl.col("_net_amount"))
+            .otherwise(None)
+            .drop_nulls()
+            .len()
+            .alias("_net_count_5d"),
+            pl.when(pl.col("_is_recent5"))
+            .then(pl.col("_amount"))
+            .otherwise(None)
+            .drop_nulls()
+            .len()
+            .alias("_amount_count_5d"),
+        )
+        .with_columns(
+            pl.when(pl.col("_net_count_20d") > 0)
+            .then(pl.col("_net_20d") / 1e8)
+            .otherwise(None)
+            .alias("money_net_inflow_yi_20d"),
+            pl.when(
+                (pl.col("_net_count_20d") > 0)
+                & (pl.col("_amount_count_20d") > 0)
+                & (pl.col("_amount_20d") > 0)
+            )
+            .then(pl.col("_net_20d") / pl.col("_amount_20d") * 100.0)
+            .otherwise(None)
+            .alias("money_net_inflow_share_20d"),
+            pl.when((pl.col("_amount_count_20d") > 0) & (pl.col("_amount_20d") > 0))
+            .then(pl.col("_large_net_20d") / pl.col("_amount_20d") * 100.0)
+            .otherwise(None)
+            .alias("large_money_net_inflow_share_20d"),
+            pl.when(
+                (pl.col("_net_count_5d") > 0)
+                & (pl.col("_amount_count_5d") > 0)
+                & (pl.col("_amount_5d") > 0)
+            )
+            .then(pl.col("_net_5d") / pl.col("_amount_5d") * 100.0)
+            .otherwise(None)
+            .alias("money_net_inflow_share_5d"),
+        )
+    )
+    return grouped.select(
+        "industry_code",
+        "moneyflow_date",
+        "moneyflow_sample_size",
+        "moneyflow_stock_count",
+        "money_net_inflow_yi_20d",
+        "money_net_inflow_share_20d",
+        "large_money_net_inflow_share_20d",
+        "money_net_inflow_share_5d",
+    )
+
+
+def _moneyflow_base_frame(
+    catalog: DataCatalog,
+    start_date: date,
+    as_of_date: date,
+) -> pl.DataFrame:
+    raw = _load_dataset(catalog, "moneyflow", start_date=start_date, end_date=as_of_date)
+    required = {"symbol", "trade_date"}
+    if raw.is_empty() or not required.issubset(raw.columns):
+        return pl.DataFrame()
+    buy_large = _sum_optional_columns(raw, ("buy_lg_amount", "buy_elg_amount"))
+    sell_large = _sum_optional_columns(raw, ("sell_lg_amount", "sell_elg_amount"))
+    return raw.select(
+        pl.col("symbol").cast(pl.String).str.slice(0, 6).alias("stock_key"),
+        "trade_date",
+        _optional_numeric_expr(raw, ("net_mf_amount",), "_net_amount"),
+        (buy_large - sell_large).alias("_large_net_amount"),
+    ).drop_nulls(subset=["stock_key", "trade_date"])
+
+
+def _stock_amount_frame(
+    catalog: DataCatalog,
+    start_date: date,
+    as_of_date: date,
+) -> pl.DataFrame:
+    raw = _load_dataset(catalog, "stock_daily_bar", start_date=start_date, end_date=as_of_date)
+    if raw.is_empty() or not {"symbol", "trade_date", "amount"}.issubset(raw.columns):
+        return pl.DataFrame()
+    return raw.select(
+        pl.col("symbol").cast(pl.String).str.slice(0, 6).alias("stock_key"),
+        "trade_date",
+        pl.col("amount").cast(pl.Float64, strict=False).alias("_amount"),
+    ).drop_nulls(subset=["stock_key", "trade_date"])
+
+
+def _sum_optional_columns(frame: pl.DataFrame, columns: tuple[str, ...]) -> pl.Expr:
+    expressions = [
+        pl.col(column).cast(pl.Float64, strict=False).fill_null(0.0)
+        for column in columns
+        if column in frame.columns
+    ]
+    if not expressions:
+        return pl.lit(0.0)
+    return sum(expressions, start=pl.lit(0.0))
 
 
 def _stock_industry_map(

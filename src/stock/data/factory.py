@@ -21,7 +21,7 @@ def get_shared_fetcher(data_source: str, **kwargs: Any) -> BaseDataFetcher:
     """获取或初始化全局共享的 Fetcher 实例（保障全生命周期共享 RateLimiter 与元数据缓存）。
 
     Args:
-        data_source: 数据源标识 (tushare, lixinger, yfinance, fred).
+        data_source: 数据源标识 (tushare, lixinger, yfinance, fred, alphavantage).
         **kwargs: 附加初始化参数（如 proxy, token, url 等）。
 
     Returns:
@@ -59,6 +59,14 @@ def get_shared_fetcher(data_source: str, **kwargs: Any) -> BaseDataFetcher:
 
         proxy = kwargs.get("proxy") or getattr(settings, "fred_proxy", None)
         fetcher = create_fred_fetcher(proxy=proxy)
+    elif ds == "alphavantage":
+        from stock.data.fetcher.alphavantage.factory import create_alphavantage_fetcher
+
+        fetcher = create_alphavantage_fetcher(
+            api_key=kwargs.get("api_key"),
+            proxy=kwargs.get("proxy"),
+            rate_limit_per_min=kwargs.get("rate_limit_per_min"),
+        )
     else:
         from stock.data.fetcher.tushare.factory import create_tushare_fetcher
 
@@ -110,6 +118,12 @@ def create_pipeline(
 
         ff = active_fetcher if isinstance(active_fetcher, FredDataFetcher) else None
         return create_fred_pipeline(endpoint=endpoint, fetcher=ff)
+    elif ds == "alphavantage":
+        from stock.data.fetcher.alphavantage.factory import create_alphavantage_pipeline
+        from stock.data.fetcher.alphavantage.global_fetcher import AlphaVantageDataFetcher
+
+        af = active_fetcher if isinstance(active_fetcher, AlphaVantageDataFetcher) else None
+        return create_alphavantage_pipeline(endpoint=endpoint, fetcher=af)
     else:
         from stock.data.fetcher.tushare.facade import TuShareDataFetcher
         from stock.data.fetcher.tushare.factory import create_tushare_pipeline

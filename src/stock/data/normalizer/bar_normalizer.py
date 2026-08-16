@@ -222,8 +222,9 @@ def infer_metadata_expressions(
     dataset: str | None,
 ) -> tuple[pl.Expr, pl.Expr, pl.Expr]:
     """根据任务、标的和数据源推算血缘市场元数据。"""
-    if data_source == "yfinance" and (
-        dataset == "macro_indicators" or api_name == "macro_indicators"
+    if data_source in {"alphavantage", "yfinance"} and (
+        dataset == "macro_indicators"
+        or api_name in {"macro_indicators", "FX_DAILY"}
     ):
         return pl.lit("GLOBAL"), pl.lit("GLOBAL"), pl.lit("USD")
     if instrument:

@@ -93,6 +93,7 @@ _CUSTOM_TASKS: dict[tuple[str, str], TaskSpec] = {
     ("tushare", "express"): _make_spec("express", "tushare", "express", "express", fetch_mode="per_day", partitioned=True),
     ("tushare", "index_daily_bar"): _make_spec("index_daily_bar", "tushare", "index_daily", "index_daily_bar", "bar", fetch_mode="per_symbol", partitioned=False, is_single_sync=True),
     ("yfinance", "macro_indicators"): _make_spec("macro_indicators", "yfinance", "macro_indicators", "macro_indicators", "macro", fetch_mode="per_symbol", partitioned=False, is_single_sync=True),
+    ("alphavantage", "fx_daily"): _make_spec("fx_daily", "alphavantage", "FX_DAILY", "macro_indicators", "macro", fetch_mode="per_symbol", partitioned=False, is_single_sync=True),
     ("yfinance", "index_valuation"): _make_spec("index_valuation", "yfinance", "index_valuation", "index_valuation", fetch_mode="per_day", partitioned=False, is_single_sync=True),
     ("fred", "macro_indicators"): _make_spec("macro_indicators", "fred", "macro_indicators", "macro_indicators", fetch_mode="per_symbol", partitioned=False, is_single_sync=True),
     ("yfinance", "stock_daily_bar"): _make_spec("stock_daily_bar", "yfinance", "history", "stock_daily_bar", "bar", fetch_mode="per_symbol", partitioned=True),
@@ -118,6 +119,28 @@ _CUSTOM_TASKS: dict[tuple[str, str], TaskSpec] = {
     ("lixinger", "non_ferrous_metals"): _make_spec("non_ferrous_metals", "lixinger", "macro/non-ferrous-metals", "non_ferrous_metals", fetch_mode="per_symbol", partitioned=False, is_single_sync=True),
     ("lixinger", "crude_oil"): _make_spec("crude_oil", "lixinger", "macro/crude-oil", "crude_oil", fetch_mode="per_symbol", partitioned=False, is_single_sync=True),
     ("lixinger", "investor_accounts"): TaskSpec(task_name="investor_accounts", provider="lixinger", api_name="macro/investor", dataset="investor_accounts", frequency="monthly", fetch_mode="per_day", partitioned=False, is_single_sync=True),
+    ("lixinger", "cn_m"): TaskSpec(
+        task_name="cn_m",
+        provider="lixinger",
+        api_name="macro/money-supply",
+        dataset="cn_m",
+        frequency="monthly",
+        quality_profile="macro_monthly",
+        fetch_mode="per_day",
+        partitioned=False,
+        is_single_sync=True,
+    ),
+    ("lixinger", "sf_month"): TaskSpec(
+        task_name="sf_month",
+        provider="lixinger",
+        api_name="macro/social-financing",
+        dataset="sf_month",
+        frequency="monthly",
+        quality_profile="macro_monthly",
+        fetch_mode="per_day",
+        partitioned=False,
+        is_single_sync=True,
+    ),
 }
 _TASK_BUNDLES: dict[tuple[str, str], TaskBundle] = {
     ("lixinger", "market_bundle"): TaskBundle(
@@ -153,7 +176,15 @@ _TASK_BUNDLES: dict[tuple[str, str], TaskBundle] = {
     ("lixinger", "macro_bundle"): TaskBundle(
         bundle_name="macro_bundle",
         provider="lixinger",
-        tasks=("national_debt", "interest_rates", "non_ferrous_metals", "crude_oil", "investor_accounts"),
+        tasks=(
+            "national_debt",
+            "interest_rates",
+            "non_ferrous_metals",
+            "crude_oil",
+            "investor_accounts",
+            "cn_m",
+            "sf_month",
+        ),
     ),
     ("lixinger", "index_bundle"): TaskBundle(
         bundle_name="index_bundle",
@@ -166,6 +197,8 @@ _ALIASES: dict[tuple[str, str], str] = {
     ("tushare", "daily"): "stock_daily_bar",
     ("tushare", "daily_bar"): "stock_daily_bar",
     ("yfinance", "history"): "stock_daily_bar",
+    ("alphavantage", "FX_DAILY"): "fx_daily",
+    ("alphavantage", "macro_indicators"): "fx_daily",
     ("fred", "history"): "macro_indicators",
     ("lixinger", "cn/company/candlestick"): "stock_daily_bar",
     ("lixinger", "cn/index/candlestick"): "index_daily_bar",
@@ -180,6 +213,8 @@ _ALIASES: dict[tuple[str, str], str] = {
     ("lixinger", "macro/non-ferrous-metals"): "non_ferrous_metals",
     ("lixinger", "macro/crude-oil"): "crude_oil",
     ("lixinger", "macro/investor"): "investor_accounts",
+    ("lixinger", "macro/money-supply"): "cn_m",
+    ("lixinger", "macro/social-financing"): "sf_month",
 }
 
 _DISABLED_TASKS = {"bak_daily", "stk_account"}
@@ -228,23 +263,18 @@ def expand_task_targets(provider: str, endpoints: list[str] | None = None) -> li
 
 def _provider_registry(provider: str) -> dict[str, Any]:
     """按需加载 Provider 注册表，避免任务模块与各 Fetcher 形成循环依赖。"""
-    if provider == "tushare":
-        from stock.data.fetcher.tushare.registry import TUSHARE_API_REGISTRY
-
-        return TUSHARE_API_REGISTRY
-    if provider == "yfinance":
-        from stock.data.fetcher.yfinance.registry import YFINANCE_API_REGISTRY
-
-        return YFINANCE_API_REGISTRY
-    if provider == "lixinger":
-        from stock.data.fetcher.lixinger.registry import LIXINGER_API_REGISTRY
-
-        return LIXINGER_API_REGISTRY
-    if provider == "fred":
-        from stock.data.fetcher.fred.registry import FRED_API_REGISTRY
-
-        return FRED_API_REGISTRY
-    return {}
+    registry_imports = {
+        "tushare": ("stock.data.fetcher.tushare.registry", "TUSHARE_API_REGISTRY"),
+        "yfinance": ("stock.data.fetcher.yfinance.registry", "YFINANCE_API_REGISTRY"),
+        "lixinger": ("stock.data.fetcher.lixinger.registry", "LIXINGER_API_REGISTRY"),
+        "fred": ("stock.data.fetcher.fred.registry", "FRED_API_REGISTRY"),
+        "alphavantage": ("stock.data.fetcher.alphavantage.registry", "ALPHAVANTAGE_API_REGISTRY"),
+    }
+    module_path, registry_name = registry_imports.get(provider, ("", ""))
+    if not module_path:
+        return {}
+    module = __import__(module_path, fromlist=[registry_name])
+    return getattr(module, registry_name)  # type: ignore[no-any-return]
 
 
 def _derive_task_spec(provider_name: str, requested: str, meta: Any) -> TaskSpec:
@@ -470,6 +500,9 @@ def get_endpoint_market(provider: str, endpoint: str) -> str:
         if meta_fr and hasattr(meta_fr, "market"):
             return str(meta_fr.market)
         return "US"
+    if provider_lower == "alphavantage":
+        meta = _provider_registry(provider_lower).get(api_name)
+        return str(getattr(meta, "market", "GLOBAL"))
     return "MULTI"
 
 

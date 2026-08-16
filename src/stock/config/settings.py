@@ -33,7 +33,10 @@ class Settings(BaseSettings):
     lixinger_url: str = "https://open.lixinger.com"
     lxr_token: str = ""
     lxr_url: str = ""
-    data_source_mode: Literal["tushare", "yfinance", "lixinger", "fred"] = "tushare"
+    alpha_vantage_api_key: str = ""
+    alpha_vantage_url: str = "https://www.alphavantage.co/query"
+    alpha_vantage_proxy: str = ""
+    data_source_mode: Literal["tushare", "yfinance", "lixinger", "fred", "alphavantage"] = "tushare"
     endpoint_update_time_overrides: dict[str, str] = {}
 
     @property

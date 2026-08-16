@@ -293,3 +293,15 @@ def test_latest_trade_dates_scans_all_markets_in_latest_month(tmp_path: Path) ->
     catalog = DataCatalog(data_source="yfinance", storage_dir=tmp_path)
 
     assert catalog.get_latest_trade_date("stock_daily_bar") == date(2026, 8, 14)
+
+
+def test_latest_trade_dates_parses_month_only_macro_dataset(tmp_path: Path) -> None:
+    dataset_dir = tmp_path / "lixinger/market=CN/cn_m"
+    dataset_dir.mkdir(parents=True, exist_ok=True)
+    pl.DataFrame({"symbol": ["cn_m", "cn_m"], "month": ["202606", "202607"]}).write_parquet(
+        dataset_dir / "data.parquet"
+    )
+
+    catalog = DataCatalog(data_source="lixinger", storage_dir=tmp_path)
+
+    assert catalog.latest_trade_dates("cn_m") == [date(2026, 7, 1)]

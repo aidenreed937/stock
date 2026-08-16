@@ -36,6 +36,14 @@ def test_create_pipeline_fred():
     assert pipeline.data_source == "fred"
 
 
+def test_create_pipeline_alphavantage():
+    clear_fetcher_cache()
+    pipeline = create_pipeline("alphavantage", "fx_daily")
+    assert isinstance(pipeline, MarketDataPipeline)
+    assert pipeline.data_source == "alphavantage"
+    assert pipeline.endpoint == "fx_daily"
+
+
 def test_create_pipeline_default():
     clear_fetcher_cache()
     pipeline = create_pipeline("unknown_source", "stock_daily_bar")

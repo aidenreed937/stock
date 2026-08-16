@@ -62,6 +62,23 @@ uv run python -m stock.data.backfill \
     --end 2026-08-12
 ```
 
+#### 场景 5：使用 Alpha Vantage 回填 `CNH=X` 离岸人民币历史
+
+Alpha Vantage 的 `fx_daily` 使用 `FX_DAILY` 接口，回填默认配置为每分钟 5 次请求、1 个 Worker；需要先配置 API key：
+
+```bash
+export ALPHA_VANTAGE_API_KEY="你的真实API_KEY"
+make backfill \
+    START=2014-08-01 \
+    END=2026-08-14 \
+    SOURCE=alphavantage \
+    ENDPOINT=fx_daily \
+    SYMBOL="CNH=X" \
+    FORCE_REFRESH=1
+```
+
+回填后可检查 `data/curated/alphavantage/market=GLOBAL/macro_indicators/data.parquet` 的日期覆盖和行数。
+
 ---
 
 ## 2. 增量同步工具 (Daily Sync CLI)
@@ -78,6 +95,12 @@ make sync SOURCE=lixinger ENDPOINT=market_bundle,macro_bundle
 ```
 
 可用 LiXinger bundle：`market_bundle`、`industry_bundle`、`company_bundle`、`macro_bundle`、`index_bundle`。bundle 仅是调度输入，不合并数据集、水位或失败状态。
+
+Alpha Vantage 增量同步只有 `fx_daily` 一个任务。由于 `make sync` CLI 默认使用 4 个 Worker，执行时显式设置单并发：
+
+```bash
+make sync SOURCE=alphavantage ENDPOINT=fx_daily WORKERS=1
+```
 
 ## 3. 全库物理存储主审计 CLI (Master Audit CLI)
 

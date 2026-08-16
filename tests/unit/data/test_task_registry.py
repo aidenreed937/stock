@@ -94,6 +94,21 @@ def test_yfinance_macro_task_uses_macro_quality_profile() -> None:
     assert task.quality_profile == "macro"
 
 
+def test_alphavantage_fx_task_uses_registered_route_and_global_market() -> None:
+    task = resolve_task("alphavantage", "fx_daily")
+
+    assert task.api_name == "FX_DAILY"
+    assert task.dataset == "macro_indicators"
+    assert task.fetch_mode == "per_symbol"
+    assert task.is_single_sync is True
+    assert task.partitioned is False
+    assert "FX_DAILY" not in list_available_tasks("alphavantage")
+
+    from stock.data.task_registry import get_endpoint_market
+
+    assert get_endpoint_market("alphavantage", "fx_daily") == "GLOBAL"
+
+
 def test_lixinger_l2_task_uses_the_documented_shared_api_route() -> None:
     task = resolve_task("lixinger", "sw_2021_l2_fundamental")
 
@@ -122,6 +137,8 @@ def test_lixinger_task_bundles() -> None:
         "sw_2021_fs_insurance",
     )
     assert "industry_bundle" not in list_available_tasks("lixinger")
+
+    assert expand_task_targets("lixinger", ["macro_bundle"])[-2:] == ["cn_m", "sf_month"]
 
 
 def test_expand_task_targets_keeps_atomic_tasks_and_deduplicates() -> None:
@@ -152,6 +169,18 @@ def test_registered_new_data_source_tasks_have_explicit_routes() -> None:
     assert investor_accounts.frequency == "monthly"
     assert investor_accounts.partitioned is False
     assert investor_accounts.is_single_sync is True
+
+    money = resolve_task("lixinger", "cn_m")
+    assert money.api_name == "macro/money-supply"
+    assert money.dataset == "cn_m"
+    assert money.frequency == "monthly"
+    assert not money.partitioned
+
+    social_financing = resolve_task("lixinger", "sf_month")
+    assert social_financing.api_name == "macro/social-financing"
+    assert social_financing.dataset == "sf_month"
+    assert social_financing.frequency == "monthly"
+    assert not social_financing.partitioned
 
     with pytest.raises(ValueError, match="已停用"):
         resolve_task("tushare", "stk_account")

@@ -300,6 +300,77 @@ def test_lixinger_investor_accounts_use_macro_investor_route() -> None:
     )
 
 
+def test_lixinger_money_supply_flattens_nested_values_and_units() -> None:
+    mock_client = MagicMock()
+    mock_client.query.return_value = pd.DataFrame(
+        [
+            {
+                "date": "2026-06-29T16:00:00.000Z",
+                "m": {
+                    "m0": {"t": 14500000000000, "t_y2y": 0.02},
+                    "m1": {"t": 114000000000000, "t_y2y": -0.01},
+                    "m2": {"t": 350000000000000, "t_y2y": 0.08},
+                },
+            },
+            {
+                "date": "2026-07-30T16:00:00.000Z",
+                "m": {
+                    "m0": {"t": 14800000000000, "t_y2y": 0.03},
+                    "m1": {"t": 115000000000000, "t_y2y": 0.01},
+                    "m2": {"t": 355000000000000, "t_y2y": 0.07},
+                },
+            },
+        ]
+    )
+    fetcher = LixingerStockFetcher(client=mock_client)
+
+    frame = fetcher.fetch_daily_bars_df(
+        "", date(2026, 6, 1), date(2026, 8, 17), endpoint="cn_m"
+    )
+
+    assert frame["month"].to_list() == ["202606", "202607"]
+    assert frame["m1"].to_list() == [1_140_000.0, 1_150_000.0]
+    assert frame["m1_yoy"].to_list() == [-1.0, 1.0]
+    assert frame["m1_mom"].to_list() == [None, pytest.approx(0.87719298)]
+    mock_client.query.assert_called_once_with(
+        "macro/money-supply",
+        areaCode="cn",
+        metricsList=[
+            "m.m0.t",
+            "m.m0.t_y2y",
+            "m.m1.t",
+            "m.m1.t_y2y",
+            "m.m2.t",
+            "m.m2.t_y2y",
+        ],
+        startDate="2026-06-01",
+        endDate="2026-08-17",
+    )
+
+
+def test_lixinger_social_financing_flattens_stock_and_yoy() -> None:
+    mock_client = MagicMock()
+    mock_client.query.return_value = pd.DataFrame(
+        [
+            {
+                "date": "2026-07-30T16:00:00.000Z",
+                "m": {"sf": {"t": 463270000000000, "t_y2y": 0.074}},
+            }
+        ]
+    )
+    fetcher = LixingerStockFetcher(client=mock_client)
+
+    frame = fetcher.fetch_daily_bars_df(
+        "", date(2026, 7, 1), date(2026, 8, 17), endpoint="sf_month"
+    )
+
+    row = frame.to_dicts()[0]
+    assert row["symbol"] == "sf_month"
+    assert row["month"] == "202607"
+    assert row["stk_endval"] == pytest.approx(4_632_700.0)
+    assert row["stk_endval_yoy"] == pytest.approx(7.4)
+
+
 def test_lixinger_constituents_are_flattened() -> None:
     mock_client = MagicMock()
     mock_client.query.return_value = pd.DataFrame([

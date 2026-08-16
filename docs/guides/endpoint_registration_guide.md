@@ -1,6 +1,6 @@
 # 数据接口注册完整开发规范与 Checklist
 
-为了避免在新增数据接口（TuShare、理杏仁、yfinance、FRED 等）时发生配置遗漏或参数错误，系统确立了标准的 **5 步注册流水线**。任何新端点的接入必须按顺序完整覆盖以下 5 个模块。
+为了避免在新增数据接口（TuShare、理杏仁、yfinance、FRED、Alpha Vantage 等）时发生配置遗漏或参数错误，系统确立了标准的 **5 步注册流水线**。任何新端点的接入必须按顺序完整覆盖以下 5 个模块。
 
 ---
 
@@ -43,6 +43,14 @@
 - **规则**：
   - 在 `LIXINGER_API_REGISTRY` 中注册完整 API 路径（如 `macro/national-debt`），并设置 `default_metrics` 与 `default_params`。
   - 在 `TaskRegistry` 中注册公开短 task，并通过 `TaskSpec.api_name` 映射到完整 API 路径；不要在 Provider registry 中重复添加短 key。
+
+### Alpha Vantage
+- **文件路径**：[`src/stock/data/fetcher/alphavantage/registry.py`](file:///Users/mac/workspace/personal/finance/stock/src/stock/data/fetcher/alphavantage/registry.py)
+- **规则**：
+  - `fx_daily` 是项目公开任务名，`TaskSpec.api_name` 映射到上游 `FX_DAILY`；CLI 不直接使用上游函数名。
+  - `CNH=X` 映射为 `from_symbol=USD`、`to_symbol=CNH`，使用 `outputsize=full` 拉取一次完整历史后按请求日期裁剪。
+  - 数据集复用 `macro_indicators`，市场固定为 `GLOBAL`，API key 从 `ALPHA_VANTAGE_API_KEY` 读取。
+  - `config/data.yaml` 配置为每分钟 5 次请求；回填默认使用 1 个 Worker，增量同步需显式传入 `WORKERS=1`。
 
 ---
 

@@ -1,11 +1,11 @@
 ---
 name: data-pipeline
-description: 涵盖项目全部真实数据源（TuShare、理杏仁 LiXinger、Yahoo Finance yfinance、美联储 FRED）的历史数据回填 (Backfill) 与每日增量采集 (Incremental Ingestion) 操作指南与最佳实践。包含 CLI 快捷命令、配置路由、并发控制、断点续传、数据审计对账与质量校验规则。
+description: 涵盖项目全部真实数据源（TuShare、理杏仁 LiXinger、Yahoo Finance yfinance、美联储 FRED、Alpha Vantage）的历史数据回填 (Backfill) 与每日增量采集 (Incremental Ingestion) 操作指南与最佳实践。包含 CLI 快捷命令、配置路由、并发控制、断点续传、数据审计对账与质量校验规则。
 ---
 
 # 核心数据管道 (Data Pipeline) - 历史回填与增量采集操作指南
 
-本技能提供项目中全部 **4 大真实数据源**（TuShare、理杏仁 LiXinger、Yahoo Finance yfinance、美联储 FRED）的历史数据全量回填（Backfill）与每日增量采集（Incremental Ingestion）的标准操作流程、CLI 命令手册、自动化路由机制与质量审计规范。
+本技能提供项目中全部 **5 大真实数据源**（TuShare、理杏仁 LiXinger、Yahoo Finance yfinance、美联储 FRED、Alpha Vantage）的历史数据全量回填（Backfill）与每日增量采集（Incremental Ingestion）的标准操作流程、CLI 命令手册、自动化路由机制与质量审计规范。
 
 ---
 
@@ -15,10 +15,11 @@ description: 涵盖项目全部真实数据源（TuShare、理杏仁 LiXinger、
 
 | 数据源 (`data_source`) | 核心职责与涵盖数据 | 默认更新频率 | 限频规则与保护时间 | 离线存储落盘路径 |
 | :--- | :--- | :--- | :--- | :--- |
-| **`tushare`** | A 股全量行情、指数日线、每日估值 (PE/PB/市值)、复权因子、北向持仓、申万行业、场内基金、宏观经济 | 每日盘后 | 180次/分；北京时间 18:00 后 | `data/curated/tushare/market=CN/` |
-| **`lixinger`** | 9 大核心 A 股指数基本面估值、申万 2021 行业成份股图谱、申万 31 行业历史估值序列、公司基本面 | 每日盘后 | 30次/分；单次跨度 $\le 10$ 年 | `data/curated/lixinger/market=CN/` |
-| **`yfinance`** | 外盘 9 大核心指数 K 线、美股科技巨头 K 线、8 大全球宏观资产、历史拆股与分红 | 每日/事件 | 40次/分；北京时间次日 06:00 后 | `data/curated/yfinance/market=US\|GLOBAL...` |
+| **`tushare`** | A 股全量行情、指数日线、每日估值 (PE/PB/市值)、复权因子、北向持仓、申万行业、场内基金、CPI/PPI/PMI 等宏观经济 | 每日盘后 | 180次/分；北京时间 18:00 后 | `data/curated/tushare/market=CN/` |
+| **`lixinger`** | 9 大核心 A 股指数基本面估值、申万 2021 行业成份股图谱、申万 31 行业历史估值序列、公司基本面、M1/M2 与社融月度数据 | 每日盘后/月频发布 | 30次/分；单次跨度 $\le 10$ 年 | `data/curated/lixinger/market=CN/` |
+| **`yfinance`** | 外盘 9 大核心指数 K 线、美股科技巨头 K 线、7 大全球宏观资产、历史拆股与分红 | 每日/事件 | 40次/分；北京时间次日 06:00 后 | `data/curated/yfinance/market=US\|GLOBAL...` |
 | **`fred`** | 美联储官方宏观经济数据（基准利率、CPI、失业率、非农、GDP、美债利差、美联储资产） | 月度/季度/日线 | 120次/分；自然日历匹配 | `data/curated/fred/market=US/` |
+| **`alphavantage`** | USD/CNH 外汇日线（兼容 Yahoo `CNH=X`） | 每日 | 5次/分；回填默认 1 并发；北京时间 06:00 后 | `data/curated/alphavantage/market=GLOBAL/` |
 
 ---
 
@@ -46,7 +47,7 @@ make backfill START=YYYY-MM-DD END=YYYY-MM-DD SOURCE=<data_source> [ENDPOINT=<en
 
 ---
 
-### 3.2 四大真实数据源回填实操指南
+### 3.2 五大真实数据源回填实操指南
 
 #### ① TuShare (`SOURCE=tushare`)
 用于回填 A 股行情、指数 K 线、每日估值、复权因子、申万行业行情、成分流水、卖方研报及业绩预告/快报：
@@ -101,7 +102,7 @@ make backfill START=2020-01-01 END=2026-08-14 SOURCE=lixinger ENDPOINT=sw_2021_f
 # 1. 一键全量回填观察池（美股科技巨头 + 外盘 9 大核心指数 12 年 K 线）
 make backfill START=2014-08-01 END=2026-08-12 SOURCE=yfinance
 
-# 2. 回填 8 大全球宏观资产 12 年历史 (美债10年/3月、美元指数、离岸人民币、黄金、原油、铜、VIX)
+# 2. 回填 7 大全球宏观资产 12 年历史 (美债10年/3月、美元指数、黄金、原油、铜、VIX)
 make backfill START=2014-08-01 END=2026-08-12 SOURCE=yfinance ENDPOINT=macro_indicators
 
 # 3. 回填指定美股 (如 NVDA) 12 年历史 K 线
@@ -122,6 +123,18 @@ make backfill START=2014-08-01 END=2026-08-12 SOURCE=fred
 # 2. 回填指定的单个宏观指标 (如美联储有效利率 FEDFUNDS)
 make backfill SOURCE=fred SYMBOL=FEDFUNDS START=2014-08-01 END=2026-08-12
 ```
+
+#### ⑤ Alpha Vantage (`SOURCE=alphavantage`)
+
+用于补齐 Yahoo Finance `CNH=X` 对应的 USD/CNH 离岸人民币历史。先设置 `ALPHA_VANTAGE_API_KEY`，任务使用 `fx_daily`，上游 API 名 `FX_DAILY` 仅存在于路由层：
+
+```bash
+export ALPHA_VANTAGE_API_KEY='你的真实API_KEY'
+make backfill START=2014-08-01 END=2026-08-14 \
+  SOURCE=alphavantage ENDPOINT=fx_daily SYMBOL='CNH=X' FORCE_REFRESH=1
+```
+
+该任务使用 `outputsize=full` 一次拉取历史，再按日期范围裁剪；Curated 落盘路径为 `data/curated/alphavantage/market=GLOBAL/macro_indicators/data.parquet`。
 
 ---
 
@@ -159,8 +172,14 @@ make sync
 # 2. 补齐指定数据源或指定日期缺口
 make sync SOURCE=tushare DATE=YYYY-MM-DD
 
-# 3. 全数据源一键增量并强制覆盖刷新
+# 3. 全数据源一键增量并强制覆盖刷新（含 Alpha Vantage）
 make sync SOURCE=all FORCE=1
+```
+
+Alpha Vantage 当前只注册 `fx_daily` 一个增量任务。`make sync` CLI 默认使用 4 个 Worker，执行 Alpha Vantage 增量时应显式限制为单并发：
+
+```bash
+make sync SOURCE=alphavantage ENDPOINT=fx_daily WORKERS=1
 ```
 
 #### 2. LiXinger TaskBundle 调度
@@ -176,7 +195,7 @@ make sync SOURCE=lixinger ENDPOINT=industry_bundle
 # 公司：公司基本面、四类财报与质押
 make sync SOURCE=lixinger ENDPOINT=company_bundle
 
-# 宏观：国债、利率、有色金属与原油
+# 宏观：国债、利率、有色金属、原油、M1/M2 与社融
 make sync SOURCE=lixinger ENDPOINT=macro_bundle
 
 # 指数：指数基本面估值
@@ -254,7 +273,7 @@ make audit TYPE=all
    export UV_PYTHON_INSTALL_DIR=.uv_python
    ```
 2. **频率限制自动休眠**：
-   每个数据源均在 `config/data.yaml` 中配置了极速流与安全 Rate Limits（如 `yfinance` 40次/分，理杏仁 30次/分）。若触发限频，系统会自动休眠 60 秒并自动重试，无需人工干预。
+   每个数据源均在 `config/data.yaml` 中配置了极速流与安全 Rate Limits（如 `yfinance` 40次/分，理杏仁 30次/分，Alpha Vantage 5次/分）。若触发限频，系统会自动休眠 60 秒并自动重试，无需人工干预。
 3. **微攒批写入 (Micro-batching)**：
    全市场批量回填（如 `daily_basic`）使用 `DuckDBMarketStore.enable_batch_mode()`，在内存中按月分区分批聚合写入，消除磁盘 I/O 写放大，回填数千个交易日稳定高效。
 4. **Curated schema 演进（所有数据源通用）**：

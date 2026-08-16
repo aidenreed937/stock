@@ -27,6 +27,7 @@ SCORED_PANEL_SCHEMA: dict[str, Any] = {
     "fundamental_status": pl.Utf8,
     "crowding_temperature": pl.Float64,
     "crowding_score": pl.Float64,
+    "fund_flow_score": pl.Float64,
     "structure_score": pl.Float64,
     "structure_rank": pl.Int64,
     "tags": pl.Utf8,
@@ -55,6 +56,7 @@ def score_industry_panel(
     _apply_cross_percentile(rows, "express_profit_growth_median", "_express_profit_pct")
     _apply_cross_percentile(rows, "express_roe_median", "_express_roe_pct")
     _apply_cross_percentile(rows, "report_rc_revision_ratio", "_report_revision_pct")
+    _apply_fund_flow_percentiles(rows)
 
     for row in rows:
         row["momentum_score"] = _mean_available(
@@ -92,6 +94,11 @@ def score_industry_panel(
             crowding_temperature = _as_float(row.get("tcr"))
         row["crowding_temperature"] = _clip(crowding_temperature)
         row["crowding_score"] = _inverse(row.get("crowding_temperature"))
+        row["fund_flow_score"] = _mean_available(
+            row.get("_money_inflow_pct"),
+            row.get("_large_money_inflow_pct"),
+            row.get("_short_money_inflow_pct"),
+        )
         row["structure_score"] = _weighted_score(config, row)
         row["tags"] = "、".join(_tags(row))
         row["status"] = "ok" if row["structure_score"] is not None else "insufficient"
@@ -125,6 +132,9 @@ def _build_scores(config: IndustryStructureConfig, panel: pl.DataFrame) -> dict[
         "fundamental_leaders": _top_rows(rows, "fundamental_score"),
         "fast_fundamental_leaders": _top_rows(rows, "fast_fundamental_score"),
         "fundamental_status_counts": _count_by_text(rows, "fundamental_status"),
+        "top_fund_flow": _top_rows(rows, "fund_flow_score"),
+        "fund_flow_confirmed": _tagged_rows(rows, "资金确认"),
+        "fund_flow_pressure": _tagged_rows(rows, "资金流出压力"),
         "top_crowding": _top_rows(rows, "crowding_temperature"),
         "crowded_risk": _tagged_rows(rows, "拥挤风险"),
         "undervalued_improving": _tagged_rows(rows, "低估改善"),
@@ -149,6 +159,9 @@ def _empty_scores(config: IndustryStructureConfig) -> dict[str, Any]:
         "fundamental_leaders": [],
         "fast_fundamental_leaders": [],
         "fundamental_status_counts": {},
+        "top_fund_flow": [],
+        "fund_flow_confirmed": [],
+        "fund_flow_pressure": [],
         "top_crowding": [],
         "crowded_risk": [],
         "undervalued_improving": [],
@@ -171,6 +184,11 @@ def _methodology(config: IndustryStructureConfig) -> dict[str, Any]:
             "tcr_percentile": "该行业自身历史 TCR 分位，越高代表成交越集中。",
             "crowding_temperature": "等于 TCR 历史分位，越高越拥挤。",
             "crowding_score": "100-crowding_temperature，越高代表越不拥挤。",
+            "fund_flow_score": (
+                "由行业20日主力净流入成交占比、大单/超大单净流入成交占比、"
+                "5日主力净流入成交占比的横截面分位等权合成；仅作资金确认观察，"
+                "不并入结构总分。"
+            ),
         },
         "subscores": {
             "momentum_score": {
@@ -215,6 +233,15 @@ def _methodology(config: IndustryStructureConfig) -> dict[str, Any]:
                 "direction": "越不拥挤越高",
                 "normalization": "行业自身历史反向分位，0-100。",
             },
+            "fund_flow_score": {
+                "components": [
+                    "money_net_inflow_share_20d 横截面分位",
+                    "large_money_net_inflow_share_20d 横截面分位",
+                    "money_net_inflow_share_5d 横截面分位",
+                ],
+                "direction": "越流入越高",
+                "normalization": "基准日申万一级行业横截面分位，0-100；观察项不入结构总分。",
+            },
         },
         "tag_rules": {
             "强势主线": "momentum_score>=75 且 return_20d>0。",
@@ -223,6 +250,8 @@ def _methodology(config: IndustryStructureConfig) -> dict[str, Any]:
             "超跌修复": "return_20d<0 且 return_5d>0。",
             "景气承压": "fundamental_score<40。",
             "相对占优": "relative_return_20d>0。",
+            "资金确认": "fund_flow_score>=70 且 money_net_inflow_share_20d>0。",
+            "资金流出压力": "fund_flow_score<=30 且 money_net_inflow_share_20d<0。",
             "中性观察": "不满足以上标签时使用。",
         },
         "group_rules": {
@@ -232,6 +261,8 @@ def _methodology(config: IndustryStructureConfig) -> dict[str, Any]:
             "强势主线": "带有强势主线标签，按 structure_score 降序。",
             "低估改善": "带有低估改善标签，按 structure_score 降序。",
             "拥挤风险": "带有拥挤风险标签，按 structure_score 降序；标签可与其他标签重叠。",
+            "资金确认": "带有资金确认标签，按 structure_score 降序；只作验证方向。",
+            "资金流出压力": "带有资金流出压力标签，按 structure_score 降序；用于风险排查。",
             "落后方向": "structure_score 升序后5；不是互斥标签。",
         },
         "data_mapping": (
@@ -339,6 +370,8 @@ def _tags(row: dict[str, Any]) -> list[str]:
     valuation = _as_float(row.get("valuation_score"))
     fundamental = _as_float(row.get("fundamental_score"))
     crowding = _as_float(row.get("crowding_temperature"))
+    fund_flow = _as_float(row.get("fund_flow_score"))
+    money_inflow = _as_float(row.get("money_net_inflow_share_20d"))
     return_20d = _as_float(row.get("return_20d"))
     return_5d = _as_float(row.get("return_5d"))
     relative_return = _as_float(row.get("relative_return_20d"))
@@ -354,16 +387,31 @@ def _tags(row: dict[str, Any]) -> list[str]:
         tags.append("景气承压")
     if relative_return is not None and relative_return > 0:
         tags.append("相对占优")
+    if fund_flow is not None and money_inflow is not None and fund_flow >= 70 and money_inflow > 0:
+        tags.append("资金确认")
+    if fund_flow is not None and money_inflow is not None and fund_flow <= 30 and money_inflow < 0:
+        tags.append("资金流出压力")
     return tags or ["中性观察"]
 
 
 def _score_note(row: dict[str, Any]) -> str:
     available = [
         key
-        for key in ("momentum_score", "valuation_score", "fundamental_score", "crowding_score")
+        for key in (
+            "momentum_score",
+            "valuation_score",
+            "fundamental_score",
+            "crowding_score",
+        )
         if _as_float(row.get(key)) is not None
     ]
-    return f"available_subscores={','.join(available)}"
+    observations = []
+    if _as_float(row.get("fund_flow_score")) is not None:
+        observations.append("fund_flow_score")
+    note = f"available_subscores={','.join(available)}"
+    if observations:
+        note = f"{note}; available_observations={','.join(observations)}"
+    return note
 
 
 def _apply_cross_percentile(
@@ -389,6 +437,16 @@ def _apply_cross_percentile(
     for index, row in enumerate(rows):
         if all(index != item[0] for item in values):
             row[target] = None
+
+
+def _apply_fund_flow_percentiles(rows: list[dict[str, Any]]) -> None:
+    _apply_cross_percentile(rows, "money_net_inflow_share_20d", "_money_inflow_pct")
+    _apply_cross_percentile(
+        rows,
+        "large_money_net_inflow_share_20d",
+        "_large_money_inflow_pct",
+    )
+    _apply_cross_percentile(rows, "money_net_inflow_share_5d", "_short_money_inflow_pct")
 
 
 def _top_rows(rows: list[dict[str, Any]], key: str, limit: int = 5) -> list[dict[str, Any]]:
@@ -418,6 +476,11 @@ def _summary_row(row: dict[str, Any], score_key: str) -> dict[str, Any]:
         "return_20d": _round_or_none(row.get("return_20d")),
         "return_60d": _round_or_none(row.get("return_60d")),
         "tcr": _round_or_none(row.get("tcr")),
+        "fund_flow_score": _round_or_none(row.get("fund_flow_score")),
+        "money_net_inflow_share_20d": _round_or_none(row.get("money_net_inflow_share_20d")),
+        "large_money_net_inflow_share_20d": _round_or_none(
+            row.get("large_money_net_inflow_share_20d")
+        ),
         "fundamental_status": row.get("fundamental_status"),
         "tags": row.get("tags", ""),
     }
@@ -464,9 +527,17 @@ def _trend_diagnostics(rows: list[dict[str, Any]], top_limit: int = 10) -> dict[
         for row in ok_rows
         if (value := _as_float(row.get("return_60d"))) is not None and value > 0
     )
-    if top_rows and len(top_negative_60d) / len(top_rows) >= 0.6:
+    positive_20d_share = positive_20d_count / len(ok_rows) if ok_rows else 0.0
+    top_negative_60d_share = len(top_negative_60d) / len(top_rows) if top_rows else 0.0
+    if top_rows and top_negative_60d_share >= 0.6 and positive_20d_share >= 0.6:
         status = "short_rebound_medium_unconfirmed"
         message = "结构领先行业多数60日收益仍为负，当前更像短期修复，中期趋势尚未全面确认。"
+    elif top_rows and top_negative_60d_share >= 0.6:
+        status = "localized_strength_weak_breadth"
+        message = (
+            "结构领先行业多数60日收益仍为负，且20日上涨行业扩散不足，"
+            "当前更像局部强势、整体偏弱，中期趋势尚未全面确认。"
+        )
     elif median_20d is not None and median_60d is not None and median_20d > 0 > median_60d:
         status = "short_rebound_medium_unconfirmed"
         message = "行业20日中位收益转正但60日中位收益仍为负，短线强于中期。"

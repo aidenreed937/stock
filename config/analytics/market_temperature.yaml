@@ -106,6 +106,30 @@ market_temperature:
           source: derived
           direction: positive
           weight: 0.00
+        - metric_id: option_risk_temperature
+          source: derived
+          direction: positive
+          weight: 0.00
+        - metric_id: option_put_call_volume_ratio_temperature
+          source: derived
+          direction: positive
+          weight: 0.00
+        - metric_id: option_put_call_oi_ratio_temperature
+          source: derived
+          direction: positive
+          weight: 0.00
+        - metric_id: option_amount_temperature
+          source: derived
+          direction: positive
+          weight: 0.00
+        - metric_id: option_open_interest_temperature
+          source: derived
+          direction: positive
+          weight: 0.00
+        - metric_id: option_near_month_amount_share_temperature
+          source: derived
+          direction: positive
+          weight: 0.00
 
     - id: technical
       name: "技术面"
@@ -236,6 +260,30 @@ market_temperature:
           source: derived
           direction: positive
           weight: 0.00
+        - metric_id: macro_gold_20d_return_pressure
+          source: derived
+          direction: positive
+          weight: 0.00
+        - metric_id: macro_oil_20d_return_pressure
+          source: derived
+          direction: positive
+          weight: 0.00
+        - metric_id: macro_safe_haven_pressure_temperature
+          source: derived
+          direction: positive
+          weight: 0.00
+        - metric_id: macro_inflation_pressure_temperature
+          source: derived
+          direction: positive
+          weight: 0.00
+        - metric_id: macro_demand_pressure_temperature
+          source: derived
+          direction: positive
+          weight: 0.00
+        - metric_id: macro_external_pressure_temperature
+          source: derived
+          direction: positive
+          weight: 0.00
         - metric_id: macro_cnh_20d_change_temperature
           source: derived
           direction: positive
@@ -333,7 +381,7 @@ market_temperature:
       static: true
       cadence: static
       quality_tier: background
-      note: "期权静态合约表；当前只做水位披露，暂不直接进入温度"
+      note: "期权静态合约表；用于期权成交风险观察，未计算隐含波动率"
     - data_source: tushare
       dataset: opt_daily
       dimension: sentiment
@@ -341,7 +389,7 @@ market_temperature:
       max_lag_days: 5
       cadence: trading_daily
       quality_tier: background
-      note: "期权日行情；当前只做水位披露，隐含波动率指标待定义"
+      note: "期权日行情；用于PCR、成交额、持仓和近月合约热度观察，不进入主温度"
     - data_source: tushare
       dataset: forecast
       dimension: fundamental
@@ -431,7 +479,7 @@ market_temperature:
       cadence: trading_daily
       quality_tier: confirming
       note: "银行间短端资金价格"
-    - data_source: tushare
+    - data_source: lixinger
       dataset: cn_m
       dimension: macro_liquidity
       required: false
@@ -440,7 +488,7 @@ market_temperature:
       cadence: monthly
       quality_tier: slow
       note: "M1/M2 月度货币数据"
-    - data_source: tushare
+    - data_source: lixinger
       dataset: sf_month
       dimension: macro_liquidity
       required: false
@@ -473,7 +521,15 @@ market_temperature:
       max_lag_days: 3
       cadence: trading_daily
       quality_tier: confirming
-      note: "美股、VIX、美元、美债等外部环境代理；铜缺失时披露并重归一"
+      note: "VIX、美元、美债、铜等外部环境代理；黄金和原油用于外部压力观察"
+    - data_source: alphavantage
+      dataset: macro_indicators
+      dimension: macro_liquidity
+      required: false
+      max_lag_days: 3
+      cadence: trading_daily
+      quality_tier: background
+      note: "Alpha Vantage USD/CNH 外汇日线，用于人民币汇率压力观察项"
     - data_source: fred
       dataset: macro_indicators
       dimension: macro_liquidity

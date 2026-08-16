@@ -21,7 +21,7 @@ def _build_parser() -> argparse.ArgumentParser:
         dest="source",
         type=str,
         default="tushare",
-        help="数据源标识 (tushare / yfinance / lixinger / fred / all, 默认 tushare)",
+        help="数据源标识 (tushare / yfinance / lixinger / fred / alphavantage / all, 默认 tushare)",
     )
     parser.add_argument(
         "-d",
@@ -122,7 +122,11 @@ def main() -> None:
     ep_list = (
         [e.strip() for e in args.endpoints.split(",") if e.strip()] if args.endpoints else None
     )
-    sources = ["tushare", "yfinance", "lixinger", "fred"] if args.source == "all" else [args.source]
+    sources = (
+        ["tushare", "yfinance", "lixinger", "fred", "alphavantage"]
+        if args.source == "all"
+        else [args.source]
+    )
 
     logger.info(f"启动极速增量数据同步: 目标日=[{target_dt}], 数据源=[{args.source}]")
     has_failure = False

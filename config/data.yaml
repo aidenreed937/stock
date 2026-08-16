@@ -1,21 +1,25 @@
 # 全局数据源、基准与历史回填配置文件
 data:
   default_benchmark_index_code: "000001"  # 交易日历基准指数代码 (上证指数)
-  default_source_mode: "tushare"           # 默认主数据源 (tushare / lixinger / yfinance / fred)
+  default_source_mode: "tushare"           # 默认主数据源 (tushare / lixinger / yfinance / fred / alphavantage)
 
   rate_limits:
     tushare_per_min: 180
     yfinance_per_min: 40
     lixinger_per_min: 30
+    alpha_vantage_per_min: 5
 
   concurrency:
     tushare_max_workers: 4
     lixinger_max_workers: 4
     yfinance_max_workers: 4
+    alphavantage_max_workers: 1
     default_max_workers: 4
 
-  # 理杏仁指数目录不包含 399102（创业板综），保留统一观察池但不提交给理杏仁任务。
   source_endpoint_supports:
+    alphavantage:
+      fx_daily:
+        - "CNH=X"
     lixinger:
       index_daily_bar:
         - "000001"

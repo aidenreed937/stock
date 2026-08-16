@@ -42,6 +42,8 @@ UV_CACHE_DIR=.uv_cache UV_PYTHON_INSTALL_DIR=.uv_python uv run python -m stock.c
 - `tushare.index_classify`：申万行业分类静态字典，用于识别 SW2021 一级行业；该表没有交易日期列，水位显示为 `static` 属正常；
 - `tushare.index_daily`：宽基基准收益，缺失时用行业 20 日收益中位数回退；
 - `tushare.index_member`：申万行业成份股映射，用于把个股级预告、快报和研报映射到一级行业；
+- `tushare.moneyflow`：个股主力资金流，用于按申万成分聚合行业资金确认观察项；
+- `tushare.stock_daily_bar`：个股成交额，用作行业资金净流入占比分母；
 - `tushare.forecast`：业绩预告，按最近 20 个交易日公告聚合行业正向预告占比和预告增速中位数；
 - `tushare.express`：业绩快报，按最近 20 个交易日公告聚合行业净利润增速和 ROE 中位数；净利润增速由 `n_income` 相对 `yoy_net_profit` 手工计算，`yoy_net_profit` 在本地表中是上年同期净利润金额，不是同比百分比；
 - `tushare.report_rc`：卖方盈利预测，按最近 20 个交易日研报计算同机构同报告期上修比例；
@@ -67,6 +69,17 @@ UV_CACHE_DIR=.uv_cache UV_PYTHON_INSTALL_DIR=.uv_python uv run python -m stock.c
 | 拥挤度约束 | 20% | 越不拥挤越高 | TCR 历史反向分位 |
 
 同时保留 `crowding_temperature`，该字段越高表示行业越拥挤，和 `crowding_score` 方向相反。
+
+行业资金流当前是观察项，不并入结构总分：
+
+- `money_net_inflow_share_20d = 最近20个行业资金流交易日主力净流入 / 同窗口行业个股成交额 * 100`；
+- `large_money_net_inflow_share_20d = 最近20个行业资金流交易日大单+超大单净流入 / 同窗口行业个股成交额 * 100`；
+- `money_net_inflow_share_5d = 最近5个行业资金流交易日主力净流入 / 同窗口行业个股成交额 * 100`；
+- `fund_flow_score` 为上述三个占比的申万一级行业横截面分位等权平均；
+- `资金确认` 表示 `fund_flow_score >= 70` 且 `money_net_inflow_share_20d > 0`；
+- `资金流出压力` 表示 `fund_flow_score <= 30` 且 `money_net_inflow_share_20d < 0`。
+
+资金流数据通常晚于行情一日，报告必须披露 `moneyflow_date` 和数据水位；若 `moneyflow`、行业映射或个股成交额缺失，只展示缺失，不把缺失当作 0 流入。
 
 TCR 定义：
 
@@ -124,6 +137,8 @@ TCR 定义：
 - `超跌修复`：`return_20d < 0` 且 `return_5d > 0`；
 - `景气承压`：`fundamental_score < 40`；
 - `相对占优`：`relative_return_20d > 0`；
+- `资金确认`：`fund_flow_score >= 70` 且 `money_net_inflow_share_20d > 0`；
+- `资金流出压力`：`fund_flow_score <= 30` 且 `money_net_inflow_share_20d < 0`；
 - `中性观察`：不满足以上标签时使用。
 
 分组规则：
@@ -132,6 +147,7 @@ TCR 定义：
 - 动量主线：`momentum_score` 降序前 5；
 - 低估线索：`valuation_score` 降序前 5；
 - 强势主线/低估改善/拥挤风险：满足对应标签后按 `structure_score` 降序；
+- 资金确认/资金流出压力：满足对应标签后按 `structure_score` 降序，仅作行情质量验证和风险排查；
 - 落后方向：`structure_score` 升序后 5，即当前动量、估值、基本面和拥挤约束合成后最靠后的行业。
 
 标签和分组不是互斥关系。同一行业可以同时出现“强势主线”和“拥挤风险”，也可以在“落后方向”中带有其他风险标签。
@@ -158,5 +174,5 @@ TCR 定义：
 - 快速基本面依赖个股到申万一级行业的映射。优先使用 `tushare.index_member + index_classify`，再用 `lixinger.sw_2021_constituents` 补充；若两者都不可用，快速基本面只能输出缺失，不能用行业名称猜测映射。
 - `forecast` 只能称为“业绩预告改善/承压”，只有能与一致预期或历史口径匹配时才称“超预期”。`report_rc` 反映卖方预测修正，不等同真实财报改善。
 - 若结构领先行业多数 60 日收益仍为负，报告应提示“短期修复强于中期趋势，中期趋势未全面确认”。
-- 行业资金流目前不硬算。没有稳定行业颗粒度资金表时，不把主力或北向行业资金纳入结构分。
+- 行业资金流由个股 `moneyflow` 按申万成分映射聚合，当前只作资金确认观察项，不并入结构分；没有稳定北向行业颗粒度数据时，不硬算北向行业资金。
 - 行业结构分应与六维市场温度交叉使用：市场过热时重点看拥挤风险，市场偏冷时重点看低估改善和超跌修复。

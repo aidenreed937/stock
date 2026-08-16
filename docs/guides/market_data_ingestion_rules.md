@@ -128,10 +128,13 @@ make backfill START=2014-01-01 END=2026-08-14 SOURCE=tushare ENDPOINT=daily_basi
 # 4.1 FRED 宏观时序全量历史一键回填 (自动 1970~至今)
 make backfill SOURCE=fred
 
-# 4.2 中国月度 CPI/PPI/PMI/M2 全量历史一键回填 (自动统计局首发~至今)
-make backfill SOURCE=tushare ENDPOINT=cn_cpi,cn_ppi,cn_pmi,cn_m,sf_month
+# 4.2 中国月度 CPI/PPI/PMI 全量历史一键回填 (自动统计局首发~至今)
+make backfill SOURCE=tushare ENDPOINT=cn_cpi,cn_ppi,cn_pmi
 
-# 4.3 自选 ETF 全量历史一键回填 (自动按各 ETF 上市首日全量拉取)
+# 4.3 理杏仁 M1/M2 与社融月度数据
+make backfill SOURCE=lixinger ENDPOINT=cn_m,sf_month
+
+# 4.4 自选 ETF 全量历史一键回填 (自动按各 ETF 上市首日全量拉取)
 make backfill SOURCE=tushare ENDPOINT=fund_daily,etf_share_size,fund_adj SYMBOL=watchlist
 
 # 5. 执行全套 Parquet 物理对账审计

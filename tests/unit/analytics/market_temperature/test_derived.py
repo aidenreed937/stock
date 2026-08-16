@@ -9,11 +9,14 @@ import pytest
 from stock.analytics.market_temperature.derived import (
     _external_environment_row,
     _external_macro_rows,
+    _external_pressure_rows,
     _forecast_rows,
     _investor_account_frame,
     _investor_account_rows,
     _limit_event_daily_frame,
     _limit_event_rows,
+    _option_daily_frame,
+    _option_rows,
     _percentile_temperature,
     _report_revision_rows,
     _return_frame,
@@ -144,6 +147,40 @@ def test_limit_event_rows_builds_composite_temperature() -> None:
     assert "up=3; down=0; break=0" in rows_by_metric["limit_event_temperature"]["note"]
 
 
+def test_option_rows_builds_pcr_observation_temperatures() -> None:
+    dates = [date(2026, 1, day) for day in (1, 2, 3)]
+    basic = pl.DataFrame(
+        {
+            "symbol": ["C1", "P1"],
+            "call_put": ["C", "P"],
+            "s_month": ["202601", "202601"],
+        }
+    )
+    daily = pl.DataFrame(
+        {
+            "symbol": ["C1", "P1", "C1", "P1", "C1", "P1"],
+            "trade_date": [dates[0], dates[0], dates[1], dates[1], dates[2], dates[2]],
+            "vol": [100.0, 50.0, 100.0, 100.0, 100.0, 200.0],
+            "amount": [100.0, 50.0, 100.0, 100.0, 100.0, 200.0],
+            "oi": [1000.0, 800.0, 1000.0, 900.0, 1000.0, 1200.0],
+        }
+    )
+    frame = _option_daily_frame(daily, basic)
+
+    latest = frame.tail(1).to_dicts()[0]
+    assert latest["_put_call_volume_ratio"] == pytest.approx(2.0)
+    assert latest["_put_call_oi_ratio"] == pytest.approx(1.2)
+    assert latest["_near_month_amount_share"] == pytest.approx(100.0)
+
+    rows = _option_rows(FakeCatalog({"opt_daily": daily, "opt_basic": basic}), dates[-1])
+    rows_by_metric = {str(row["metric_id"]): row for row in rows}
+
+    assert rows_by_metric["option_put_call_volume_ratio_temperature"]["status"] == "ok"
+    assert rows_by_metric["option_put_call_oi_ratio_temperature"]["status"] == "ok"
+    assert rows_by_metric["option_risk_temperature"]["value_float"] == pytest.approx(100.0)
+    assert "不是隐含波动率" in rows_by_metric["option_risk_temperature"]["note"]
+
+
 def test_investor_account_rows_use_monthly_new_accounts_percentile() -> None:
     catalog = FakeCatalog(
         {
@@ -242,9 +279,39 @@ def test_external_environment_row_averages_available_components_only() -> None:
     assert "macro_copper_20d_return_temperature" in row["note"]
 
 
+def test_external_pressure_rows_build_pressure_components_and_total() -> None:
+    rows = [
+        _component("macro_gold_20d_return_pressure", 90.0),
+        _component("macro_oil_20d_return_pressure", 80.0),
+        _component("macro_vix_temperature", 20.0),
+        _component("macro_sp500_20d_return_temperature", 30.0),
+        _component("macro_nasdaq_20d_return_temperature", 40.0),
+        _component("macro_us_10y_temperature", 30.0),
+        _component("macro_fred_cpi_yoy_temperature", 20.0),
+        _component("macro_copper_20d_return_temperature", 20.0),
+    ]
+
+    pressure_rows = _external_pressure_rows(rows, date(2026, 8, 14))
+    rows_by_metric = {str(row["metric_id"]): row for row in pressure_rows}
+
+    assert rows_by_metric["macro_safe_haven_pressure_temperature"]["value_float"] == (
+        pytest.approx(75.0)
+    )
+    assert rows_by_metric["macro_inflation_pressure_temperature"]["value_float"] == (
+        pytest.approx(76.6666667)
+    )
+    assert rows_by_metric["macro_demand_pressure_temperature"]["value_float"] == (
+        pytest.approx(57.5)
+    )
+    assert rows_by_metric["macro_external_pressure_temperature"]["value_float"] == (
+        pytest.approx(76.6666667)
+    )
+
+
 def test_external_macro_rows_use_index_daily_bar_for_us_index_returns() -> None:
     dates = [date(2026, 1, 1) + timedelta(days=offset) for offset in range(25)]
-    catalog = FakeCatalog(
+    macro_dates = [date(2026, 1, 1) + timedelta(days=offset) for offset in range(25)]
+    yfinance_catalog = FakeCatalog(
         {
             "index_daily_bar": pl.DataFrame(
                 {
@@ -256,6 +323,19 @@ def test_external_macro_rows_use_index_daily_bar_for_us_index_returns() -> None:
             ),
             "macro_indicators": pl.DataFrame(
                 {
+                    "trade_date": [*macro_dates, *macro_dates],
+                    "symbol": ["GC=F"] * 25 + ["CL=F"] * 25,
+                    "close": [100.0 + offset for offset in range(25)]
+                    + [80.0 + offset for offset in range(25)],
+                },
+                schema={"trade_date": pl.Date, "symbol": pl.Utf8, "close": pl.Float64},
+            ),
+        }
+    )
+    alphavantage_catalog = FakeCatalog(
+        {
+            "macro_indicators": pl.DataFrame(
+                {
                     "trade_date": dates,
                     "symbol": ["CNH=X"] * 25,
                     "close": [7.0 - offset * 0.01 for offset in range(25)],
@@ -265,12 +345,14 @@ def test_external_macro_rows_use_index_daily_bar_for_us_index_returns() -> None:
         }
     )
 
-    rows = _external_macro_rows(catalog, date(2026, 1, 25))
+    rows = _external_macro_rows(yfinance_catalog, alphavantage_catalog, date(2026, 1, 25))
     rows_by_metric = {str(row["metric_id"]): row for row in rows}
 
     assert rows_by_metric["macro_sp500_20d_return_temperature"]["status"] == "ok"
     assert rows_by_metric["macro_nasdaq_20d_return_temperature"]["status"] == "ok"
     assert rows_by_metric["macro_cnh_20d_change_temperature"]["status"] == "ok"
+    assert rows_by_metric["macro_gold_20d_return_pressure"]["status"] == "ok"
+    assert rows_by_metric["macro_oil_20d_return_pressure"]["status"] == "ok"
     assert rows_by_metric["macro_external_environment_temperature"]["sample_size"] == 2
 
 

@@ -63,7 +63,10 @@ def _resolve_market_code(
     data_source: str | None = None,
     endpoint: str = "",
 ) -> str:
-    if data_source == "yfinance" and endpoint == "macro_indicators":
+    if data_source in {"alphavantage", "yfinance"} and endpoint in {
+        "macro_indicators",
+        "fx_daily",
+    }:
         return "GLOBAL"
     if "market" in df.columns and not df.is_empty():
         m_values = set(df.get_column("market").drop_nulls().unique().to_list())
@@ -81,7 +84,10 @@ def _normalize_yfinance_macro_frame(
     df: pl.DataFrame, data_source: str | None, endpoint: str
 ) -> pl.DataFrame:
     """将 yfinance 宏观数据的逻辑市场统一为 GLOBAL。"""
-    if data_source != "yfinance" or endpoint != "macro_indicators" or df.is_empty():
+    if data_source not in {"alphavantage", "yfinance"} or endpoint not in {
+        "macro_indicators",
+        "fx_daily",
+    } or df.is_empty():
         return df
 
     expressions = [pl.lit("GLOBAL").alias("market")]

@@ -51,6 +51,20 @@ industry_structure:
       quality_tier: core
       note: "申万行业成份股映射，用于把预告、快报和研报关联到行业"
     - data_source: tushare
+      dataset: stock_daily_bar
+      required: false
+      max_lag_days: 0
+      cadence: trading_daily
+      quality_tier: confirming
+      note: "A股个股成交额，用作行业资金流净流入占比分母"
+    - data_source: tushare
+      dataset: moneyflow
+      required: false
+      max_lag_days: 2
+      cadence: trading_daily
+      quality_tier: confirming
+      note: "个股资金流，按申万成分聚合为行业资金确认观察项，不进入结构总分"
+    - data_source: tushare
       dataset: forecast
       required: false
       date_column: ann_date

@@ -191,7 +191,7 @@ codegraph_explore: src/stock/analytics/metrics MetricEngine MetricContext BUILTI
 | 创新高/新低家数 | 已有 `new_high_share_252d`, `new_low_share_252d` | 纳入技术/市场宽度 |
 | 涨停/跌停/炸板事件 | 已有 `tushare.limit_list_d`，覆盖 2020-01-01 至 2026-08-14；`limit=U/D/Z` 分别代表涨停/跌停/炸板 | 纳入情绪面扩展 |
 | 新增开户数 | 已有 `lixinger.investor_accounts`，字段含 `nni_m`, `n_non_ni_m`, `ni`, `non_ni` | 作为月频慢情绪低权重入分 |
-| 期权合约与日行情 | 已有 `tushare.opt_basic` 静态合约表和 `tushare.opt_daily` 日行情 | 当前只做水位披露；隐含波动率或期权成交情绪公式未定义前不入分 |
+| 期权合约与日行情 | 已有 `tushare.opt_basic` 静态合约表和 `tushare.opt_daily` 日行情 | 可计算 PCR、成交额、持仓量和近月成交占比观察温度；默认 `weight: 0`，不进入主温度；当前未定义隐含波动率 |
 | 中国信用利差 AA-AAA | 无稳定本地信用利差表 | 不入分 |
 | 中国 CPI / 实际利率 | 已有 `tushare.cn_cpi.nt_yoy`，可与 10 年国债组合 | 可作为宏观流动性辅助 |
 
@@ -384,10 +384,11 @@ codegraph_explore: src/stock/analytics/metrics MetricEngine MetricContext BUILTI
 - `lixinger.national_debt.tcm_y10`：中国10年国债，低利率对应高流动性温度。
 - `tushare.shibor.on`：短端资金价格，低利率对应高流动性温度。
 - `tushare.cn_cpi.nt_yoy`：中国 CPI 同比，可与 10 年国债计算实际利率辅助项。
-- `tushare.cn_m.m2_yoy`、`m1_yoy - m2_yoy`。
-- `tushare.sf_month.stk_endval` 同比。
+- `lixinger.cn_m.m2_yoy`、`m1_yoy - m2_yoy`。
+- `lixinger.sf_month.stk_endval` 同比。
 - `yfinance.index_daily_bar`: `^GSPC`, `^IXIC` 作为美股指数收益代理。
-- `yfinance.macro_indicators`: `^VIX`, `DX-Y.NYB`, `^TNX` 作为外部环境核心代理；`HG=F` 铜价若本地有稳定数据则纳入，缺失时不硬算；`GC=F` 黄金和原油只作背景展示。
+- `yfinance.macro_indicators`: `^VIX`, `DX-Y.NYB`, `^TNX` 作为外部环境核心代理；`HG=F` 铜价若本地有稳定数据则纳入，缺失时不硬算；`GC=F` 黄金和 `CL=F` 原油用于外部压力观察。
+- `alphavantage.macro_indicators`: `CNH=X` / USD-CNH 外汇日线，只作人民币汇率压力观察项。
 
 当前 `src/stock/analytics/metrics/calculators/macro.py` 没有内置宏观计算器。宏观流动性需要直接查询本地宏观数据表后做历史分位温度化。
 
@@ -400,9 +401,9 @@ codegraph_explore: src/stock/analytics/metrics MetricEngine MetricContext BUILTI
 | `macro_bond_yield_10y_temperature` | `lixinger.national_debt.tcm_y10` 历史反向分位 |
 | `macro_shibor_on_temperature` | `tushare.shibor.on` 历史反向分位 |
 | `macro_real_rate_temperature` | 月末 10 年国债收益率 - `tushare.cn_cpi.nt_yoy / 100`，历史反向分位 |
-| `macro_m2_yoy_temperature` | `tushare.cn_m.m2_yoy` 历史分位 |
+| `macro_m2_yoy_temperature` | `lixinger.cn_m.m2_yoy` 历史分位 |
 | `macro_m1_m2_gap_temperature` | `m1_yoy - m2_yoy` 历史分位 |
-| `macro_social_finance_stock_temperature` | `tushare.sf_month.stk_endval` 同比历史分位 |
+| `macro_social_finance_stock_temperature` | `lixinger.sf_month.stk_endval` 同比历史分位 |
 | `macro_sp500_20d_return_temperature` | `^GSPC` 20 日收益历史分位 |
 | `macro_nasdaq_20d_return_temperature` | `^IXIC` 20 日收益历史分位 |
 | `macro_vix_temperature` | `^VIX` 历史反向分位 |
@@ -410,8 +411,14 @@ codegraph_explore: src/stock/analytics/metrics MetricEngine MetricContext BUILTI
 | `macro_us_10y_temperature` | `^TNX` 历史反向分位 |
 | `macro_copper_20d_return_temperature` | `HG=F` 铜价 20 日收益历史分位；本地缺失时标记 `insufficient` |
 | `macro_external_environment_temperature` | 上述外部环境可用核心子项等权平均；缺失子项披露并对可用子项重归一 |
+| `macro_gold_20d_return_pressure` | `GC=F` 黄金 20 日收益历史分位，权重为 0，仅作避险压力观察 |
+| `macro_oil_20d_return_pressure` | `CL=F` 原油 20 日收益历史分位，权重为 0，仅作通胀压力观察 |
+| `macro_safe_haven_pressure_temperature` | 黄金上涨、VIX 升温、美股下跌压力可用子项等权平均；权重为 0 |
+| `macro_inflation_pressure_temperature` | 原油上涨、美债收益率上行、美国 CPI 压力可用子项等权平均；权重为 0 |
+| `macro_demand_pressure_temperature` | 铜、原油、美股走弱压力可用子项等权平均；权重为 0 |
+| `macro_external_pressure_temperature` | 避险、通胀、需求三类压力可用子项最大值；权重为 0，仅作风险提示 |
 | `macro_usd_index_temperature` | `DX-Y.NYB` 水平历史反向分位，权重为 0，仅作辅助观察 |
-| `macro_cnh_20d_change_temperature` | `CNH=X` 离岸人民币 USD/CNH 20 日变化历史反向分位，权重为 0，仅作人民币贬值压力观察 |
+| `macro_cnh_20d_change_temperature` | Alpha Vantage `CNH=X` 离岸人民币 USD/CNH 20 日变化历史反向分位，权重为 0，仅作人民币贬值压力观察 |
 | `macro_fred_t10y2y_temperature` | FRED `T10Y2Y` 期限利差历史分位，权重为 0，仅作美国期限结构背景观察 |
 | `macro_fred_fedfunds_temperature` | FRED `FEDFUNDS` 政策利率历史反向分位，权重为 0，仅作美国政策利率背景观察 |
 | `macro_fred_walcl_temperature` | FRED `WALCL` 美联储资产负债表规模历史分位，权重为 0，仅作美国流动性背景观察 |
@@ -422,7 +429,7 @@ codegraph_explore: src/stock/analytics/metrics MetricEngine MetricContext BUILTI
 
 默认配置中，宏观流动性维度内部权重为国内流动性 60%、外部环境 40%。外部环境只通过 `macro_external_environment_temperature` 入分；单项外盘指标权重为 0，用于事实披露和解释，避免重复加权。
 
-FRED 美国宏观背景项不进入 `macro_external_environment_temperature`，也不进入六维综合温度。它们用于解释外部利率、期限结构、资产负债表、通胀、就业和 GDP 周期状态；月频/季频项只代表最新可得状态，不代表最近 20 个 A 股交易日内发生了边际变化。
+外部压力项不进入 `macro_external_environment_temperature`，也不进入六维综合温度；其方向与主温度相反，分数越高代表外盘对 A 股的额外压力越大。FRED 美国宏观背景项不进入 `macro_external_environment_temperature`，也不进入六维综合温度。它们用于解释外部利率、期限结构、资产负债表、通胀、就业和 GDP 周期状态；月频/季频项只代表最新可得状态，不代表最近 20 个 A 股交易日内发生了边际变化。
 
 周频或周度重采样可以作为敏感性分析，但不是默认口径。默认仍使用最近 20 个已落盘 A 股交易日。
 

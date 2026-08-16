@@ -8,7 +8,7 @@ from typing import Any
 
 import polars as pl
 
-_KNOWN_PROVIDERS = {"tushare", "lixinger", "yfinance", "fred"}
+_KNOWN_PROVIDERS = {"tushare", "lixinger", "yfinance", "fred", "alphavantage"}
 
 
 def _keys(endpoint: str, columns: list[str], data_source: str = "tushare") -> list[str]:
@@ -69,25 +69,10 @@ def _key_frame(endpoint: str, frame: pl.DataFrame, data_source: str = "tushare")
 
 def _meta(endpoint: str, data_source: str = "tushare") -> Any:
     try:
-        from stock.data.task_registry import resolve_task
+        from stock.data.task_registry import _provider_registry, resolve_task
 
         task = resolve_task(data_source, endpoint)
-        if data_source == "tushare":
-            from stock.data.fetcher.tushare.registry import TUSHARE_API_REGISTRY
-
-            return TUSHARE_API_REGISTRY.get(task.api_name)
-        if data_source == "lixinger":
-            from stock.data.fetcher.lixinger.registry import LIXINGER_API_REGISTRY
-
-            return LIXINGER_API_REGISTRY.get(task.api_name)
-        if data_source == "yfinance":
-            from stock.data.fetcher.yfinance.registry import YFINANCE_API_REGISTRY
-
-            return YFINANCE_API_REGISTRY.get(task.api_name)
-        if data_source == "fred":
-            from stock.data.fetcher.fred.registry import FRED_API_REGISTRY
-
-            return FRED_API_REGISTRY.get(task.api_name)
+        return _provider_registry(data_source).get(task.api_name)
     except Exception:
         pass
     return None
@@ -99,7 +84,7 @@ def _endpoint_aliases(endpoint: str) -> set[str]:
     try:
         from stock.data.task_registry import resolve_task
 
-        for prov in ("tushare", "lixinger", "yfinance", "fred"):
+        for prov in ("tushare", "lixinger", "yfinance", "fred", "alphavantage"):
             try:
                 task = resolve_task(prov, endpoint)
                 aliases.add(task.dataset)
