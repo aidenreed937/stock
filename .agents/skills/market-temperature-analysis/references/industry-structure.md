@@ -30,6 +30,8 @@ UV_CACHE_DIR=.uv_cache UV_PYTHON_INSTALL_DIR=.uv_python uv run python -m stock.c
 - `report.md`
 - `report.json`
 - `human_report.md`
+- `quality_report.md`
+- `quality_report.json`
 - `latest/`
 
 ## 数据源
@@ -48,6 +50,8 @@ UV_CACHE_DIR=.uv_cache UV_PYTHON_INSTALL_DIR=.uv_python uv run python -m stock.c
 - `lixinger.sw_2021_fs_*`：申万行业季频正式财报，计算收入/利润增速和 ROE 底座。
 
 缺失数据必须披露为 `missing`、`unavailable` 或 `insufficient`，不要用模型记忆补值。
+
+`quality_report.md/json` 会基于 `config/analytics/industry_structure.yaml` 的数据集配置披露口径和水位。`sw_daily` 是行业结构主锚点，必须覆盖基准日；`index_classify`、`index_member` 和 `sw_2021_constituents` 是静态或映射类数据，用样本可用性判断；`sw_2021_fs_*` 是季频慢变量，超过配置滞后阈值时只作为质量警告，并由基本面合成规则降权。
 
 ## 评分口径
 

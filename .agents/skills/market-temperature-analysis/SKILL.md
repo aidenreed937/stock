@@ -30,9 +30,10 @@ UV_CACHE_DIR=.uv_cache UV_PYTHON_INSTALL_DIR=.uv_python uv run python -m stock.c
 - `scores.json`：六维温度、综合温度、状态和合成说明；
 - `report.md` / `report.json`：面向阅读和机器消费的报告；
 - `human_report.md`：面向人工阅读的结论版报告；
+- `quality_report.md` / `quality_report.json`：口径、窗口、水位、滞后和质量约束报告；
 - `latest/`：最近一次成功运行的同名文件副本。
 
-当前代码已实现“配置 / 事实 / 评分结构 / 输出模板 / 产物写入”分离。`scores.json` 已接入六维温度合成和系统性风险摘要：MetricEngine 指标和 DataCatalog 派生指标先在 `facts.parquet` 落为事实，再按 `config/analytics/market_temperature.yaml` 中的方向与权重温度化。权重为 0 的指标只作事实展示，不参与维度分。系统性风险只基于六维温度之间的共振和背离，不使用新闻、政策或模型记忆。
+当前代码已实现“配置 / 事实 / 评分结构 / 输出模板 / 质量报告 / 产物写入”分离。`scores.json` 已接入六维温度合成和系统性风险摘要：MetricEngine 指标和 DataCatalog 派生指标先在 `facts.parquet` 落为事实，再按 `config/analytics/market_temperature.yaml` 中的方向与权重温度化。权重为 0 的指标只作事实展示，不参与维度分。系统性风险只基于六维温度之间的共振和背离，不使用新闻、政策或模型记忆。`quality_report.md/json` 只基于 manifest、facts 和 YAML 数据配置生成，不重算指标。
 
 申万行业结构分析使用独立产物管线：
 
@@ -42,7 +43,7 @@ make industry-structure DATE=YYYY-MM-DD
 UV_CACHE_DIR=.uv_cache UV_PYTHON_INSTALL_DIR=.uv_python uv run python -m stock.cli.industry_structure --date YYYY-MM-DD
 ```
 
-默认配置在 `config/analytics/industry_structure.yaml`。产物写入 `data/analytics/industry_structure/`，包括 `industry_panel.parquet`、`scores.json`、`report.md`、`human_report.md` 和 `latest/` 副本。行业结构分只用于行业排序和轮动判断，不并入六维综合温度。
+默认配置在 `config/analytics/industry_structure.yaml`。产物写入 `data/analytics/industry_structure/`，包括 `industry_panel.parquet`、`scores.json`、`report.md`、`human_report.md`、`quality_report.md/json` 和 `latest/` 副本。行业结构分只用于行业排序和轮动判断，不并入六维综合温度。
 
 行业结构默认权重为动量 40%、估值 25%、基本面 15%、拥挤度 20%。行业基本面由理杏仁 `sw_2021_fs_*` 正式财报和 Tushare `forecast` / `express` / `report_rc` 快速确认项合成；正式财报超过配置天数未更新时自动降权，默认从 70% 降到 40%，快速项从 30% 提到 60%。TCR 使用最近 20 个行业交易日的行业成交额占全部申万一级行业成交额比例均值，并以行业自身历史分位转换为拥挤温度。结构健康度单独输出，核心看 20 日行业扩散、60 日中期确认、Top 行业中期收益和拥挤行业占比。落后方向使用 `lagging_or_weak`，即结构分倒序靠后的行业，用于补充观察弱势和回避方向。
 
@@ -67,7 +68,8 @@ UV_CACHE_DIR=.uv_cache UV_PYTHON_INSTALL_DIR=.uv_python uv run python -m stock.c
 8. 需要择时或短线节奏判断时，按 `references/scoring.md` 计算 5 日/10 日短线温度，作为附加输出，不并入主综合温度权重。
 9. 用 `MarketScanEngine.compute(target_date=latest, index_symbol="000300")` 获取宏观象限、低估行业、拥挤行业、市场健康度，作为交叉校验。
 10. 对指标做 0-100 温度归一。分数越高表示越热、越拥挤、越偏进攻；反向指标用 `100 - 分位温度` 或负向 Z-score 转换，利率类低位对应更高流动性温度。
-11. 输出时先给综合温度、系统性风险和一句话判断，再列“解读顺序”说明各维度时效性，然后列六维表格；若计算了短线温度，放在主表之后作为节奏参考；最后写结构健康度、结构机会、风险和数据水位限制。
+11. 输出前检查 `quality_report.md/json`：硬错误不得忽略；软警告必须在数据限制或口径说明里解释。
+12. 输出时先给综合温度、系统性风险和一句话判断，再列“解读顺序”说明各维度时效性，然后列六维表格；若计算了短线温度，放在主表之后作为节奏参考；最后写结构健康度、结构机会、风险和数据水位限制。
 
 ## 六维定义
 
@@ -110,7 +112,9 @@ UV_CACHE_DIR=.uv_cache UV_PYTHON_INSTALL_DIR=.uv_python uv run python -m stock.c
 
 宏观月频、季频数据使用最新可得值的历史分位，只代表当前状态，不代表最近 20 个交易日内发生了边际变化。
 
-外盘观察归入宏观流动性维度的“外部环境”子项，默认占宏观维度内部 40%，国内利率和货币信用占 60%。外部环境核心指标为标普500/纳斯达克 20 日收益、VIX 水平、美元指数 20 日变化、美债10年收益率、铜价 20 日收益；美股和铜正向映射，VIX、美元、美债反向映射。黄金和原油方向不稳定，只作背景展示，不直接纳入综合温度；铜等本地缺失项必须披露为数据缺口并对可用子项重归一，不允许用外部记忆补值。
+外盘观察归入宏观流动性维度的“外部环境”子项，默认占宏观维度内部 40%，国内利率和货币信用占 60%。外部环境核心指标为标普500/纳斯达克 20 日收益、VIX 水平、美元指数 20 日变化、美债10年收益率、铜价 20 日收益；美股和铜正向映射，VIX、美元、美债反向映射。`CNH=X` 离岸人民币只作人民币汇率压力观察项，默认 `weight: 0`，不进入外部环境合成。黄金和原油方向不稳定，只作背景展示，不直接纳入综合温度；铜等本地缺失项必须披露为数据缺口并对可用子项重归一，不允许用外部记忆补值。
+
+FRED 美国宏观背景归入宏观流动性维度的观察项，默认 `weight: 0`，只落 facts 和报告展示，不参与 `macro_external_environment_temperature` 或综合温度。当前观察项包括 `T10Y2Y` 期限利差、`FEDFUNDS` 政策利率、`WALCL` 美联储资产负债表、`CPIAUCSL` 同比、`UNRATE`、`PAYEMS` 同比和 `GDP` 同比；政策利率、通胀和失业率使用反向历史分位，期限利差、资产负债表、非农同比和 GDP 同比使用正向历史分位。月频/季频项只能解释最新美国宏观背景，不要写成最近 20 个 A 股交易日内的边际变化。
 
 `limit_list_d` 已可作为涨跌停/炸板事件表纳入情绪面；`limit=U` 计为涨停，`D` 计为跌停，`Z` 计为炸板。`stk_limit` 只代表涨跌停价格，不等同事件明细。`lixinger.investor_accounts` 已可作为月度新增投资者慢变量纳入情绪面，不能解释为最近 20 个交易日内的开户变化。`opt_basic` 和 `opt_daily` 已落盘，但当前未定义隐含波动率或期权成交情绪公式，只做水位披露，不进入综合温度。项目没有新闻舆情、政策文本、隐含波动率或中国信用利差 AA-AAA 的稳定本地表。除非用户明确要求联网并给出来源，否则不要把无本地表支撑的维度纳入综合温度。
 

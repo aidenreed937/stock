@@ -30,14 +30,18 @@ data/analytics/market_temperature/
 │   ├── scores.json
 │   ├── report.md
 │   ├── human_report.md
-│   └── report.json
+│   ├── report.json
+│   ├── quality_report.md
+│   └── quality_report.json
 └── latest/
     ├── manifest.json
     ├── facts.parquet
     ├── scores.json
     ├── report.md
     ├── human_report.md
-    └── report.json
+    ├── report.json
+    ├── quality_report.md
+    └── quality_report.json
 ```
 
 `facts.parquet` 是事实层唯一来源；`scores.json`、技术明细报告和人工阅读报告可以基于事实与配置反复重算。当前综合温度已接入 0-100 温度化公式，所有入分指标必须先落为事实，再按配置权重合成；权重为 0 的指标只用于事实披露和解释，不参与维度分。
@@ -54,6 +58,34 @@ data/analytics/market_temperature/
 - 主窗口：最近 20 个已落盘 A 股交易日，来自 `DataCatalog(data_source="tushare").latest_trade_dates("stock_daily_bar", n=20)`。
 - 历史分位窗口：默认 5 年交易日或可用全历史；若 5 年窗口样本不足，必须说明。
 - 主日期：`tushare.stock_daily_bar` 最新交易日；其他数据源按各自最新日期对齐并披露。
+
+## 口径与质量约束
+
+每次运行会生成 `quality_report.md/json`。质量报告只读取 `manifest + facts + config`，不重新计算指标。
+
+硬约束：
+
+- 报告基准日、manifest 和事实表 `as_of_date` 必须一致；
+- 20 日主窗口必须覆盖配置要求的已落盘交易日数量；
+- 必需数据集必须可用，并满足 `max_lag_days`；
+- 非水位事实里的 `metric_date/latest_date/report_date/ann_window` 等实际指标日期不得晚于基准日。
+
+软约束：
+
+- 可选数据集若配置 `max_lag_days`，超限时标为质量警告；
+- 静态表用样本数判断可用性，不要求交易日期；
+- 月频、季频和事件型数据按配置披露频率与滞后，不解释成 20 日边际变化。
+
+数据配置字段：
+
+| 字段 | 作用 |
+|---|---|
+| `required` | 是否为硬依赖，缺失或滞后会形成硬错误 |
+| `max_lag_days` | 相对基准日允许的最大滞后天数 |
+| `static` | 静态字典或合约表，无交易日期列 |
+| `date_column` | 非 `trade_date` 日期列，如 `ann_date`、`report_date`、`month` |
+| `cadence` | 数据频率说明，如 `trading_daily`、`monthly`、`quarterly`、`event`、`static` |
+| `quality_tier` | 质量层级说明，如 `core`、`confirming`、`slow`、`background` |
 
 ## 默认权重
 
@@ -379,8 +411,18 @@ codegraph_explore: src/stock/analytics/metrics MetricEngine MetricContext BUILTI
 | `macro_copper_20d_return_temperature` | `HG=F` 铜价 20 日收益历史分位；本地缺失时标记 `insufficient` |
 | `macro_external_environment_temperature` | 上述外部环境可用核心子项等权平均；缺失子项披露并对可用子项重归一 |
 | `macro_usd_index_temperature` | `DX-Y.NYB` 水平历史反向分位，权重为 0，仅作辅助观察 |
+| `macro_cnh_20d_change_temperature` | `CNH=X` 离岸人民币 USD/CNH 20 日变化历史反向分位，权重为 0，仅作人民币贬值压力观察 |
+| `macro_fred_t10y2y_temperature` | FRED `T10Y2Y` 期限利差历史分位，权重为 0，仅作美国期限结构背景观察 |
+| `macro_fred_fedfunds_temperature` | FRED `FEDFUNDS` 政策利率历史反向分位，权重为 0，仅作美国政策利率背景观察 |
+| `macro_fred_walcl_temperature` | FRED `WALCL` 美联储资产负债表规模历史分位，权重为 0，仅作美国流动性背景观察 |
+| `macro_fred_cpi_yoy_temperature` | FRED `CPIAUCSL` 同比历史反向分位，权重为 0，仅作美国通胀压力背景观察 |
+| `macro_fred_unrate_temperature` | FRED `UNRATE` 失业率历史反向分位，权重为 0，仅作美国就业压力背景观察 |
+| `macro_fred_payems_yoy_temperature` | FRED `PAYEMS` 非农就业人数同比历史分位，权重为 0，仅作美国就业周期背景观察 |
+| `macro_fred_gdp_yoy_temperature` | FRED `GDP` 同比历史分位，权重为 0，仅作美国季度经济底座背景观察 |
 
 默认配置中，宏观流动性维度内部权重为国内流动性 60%、外部环境 40%。外部环境只通过 `macro_external_environment_temperature` 入分；单项外盘指标权重为 0，用于事实披露和解释，避免重复加权。
+
+FRED 美国宏观背景项不进入 `macro_external_environment_temperature`，也不进入六维综合温度。它们用于解释外部利率、期限结构、资产负债表、通胀、就业和 GDP 周期状态；月频/季频项只代表最新可得状态，不代表最近 20 个 A 股交易日内发生了边际变化。
 
 周频或周度重采样可以作为敏感性分析，但不是默认口径。默认仍使用最近 20 个已落盘 A 股交易日。
 
