@@ -51,7 +51,15 @@ def build_tushare_query(
         query_kwargs["end_date"] = end_str
         return endpoint, query_kwargs
 
-    if meta.frequency == "event":
+    if endpoint == "stk_account":
+        if start_date == end_date:
+            query_kwargs["date"] = start_str
+        else:
+            query_kwargs["start_date"] = start_str
+            query_kwargs["end_date"] = end_str
+        return endpoint, query_kwargs
+
+    if meta.frequency in ("event", "static"):
         if is_real_symbol:
             query_kwargs[symbol_param] = symbol
         if endpoint == "stock_basic" and not is_real_symbol:

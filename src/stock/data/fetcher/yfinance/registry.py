@@ -36,6 +36,16 @@ YFINANCE_API_REGISTRY: dict[str, YFinanceEndpointMeta] = {
         update_time="06:00",
         update_delay_days=0,
     ),
+    "macro_indicators": YFinanceEndpointMeta(
+        api_name="macro_indicators",
+        description="全球宏观资产日线行情（含 GC=F 黄金、CL=F 原油和 HG=F 铜期货）",
+        market="GLOBAL",
+        frequency="daily",
+        group="macro_data",
+        primary_keys=["symbol", "trade_date"],
+        update_time="06:00",
+        update_delay_days=1,
+    ),
     "financials": YFinanceEndpointMeta(
         api_name="financials",
         description="利润表 (包含营收、净利润、毛利、EBITDA)",

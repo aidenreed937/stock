@@ -15,6 +15,10 @@ TUSHARE_API_REGISTRY: dict[str, EndpointMeta] = {
 # 公开项目任务名与 TuShare API 名称分离；采集器只通过 api_name 发起请求。
 TUSHARE_TASK_REGISTRY: dict[str, EndpointMeta] = {
     "stock_daily_bar": TUSHARE_API_REGISTRY["daily"],
+    "stk_limit": TUSHARE_API_REGISTRY["stk_limit"],
+    "limit_list_d": TUSHARE_API_REGISTRY["limit_list_d"],
+    "opt_basic": TUSHARE_API_REGISTRY["opt_basic"],
+    "opt_daily": TUSHARE_API_REGISTRY["opt_daily"],
 }
 
 # 对已注册但尚未逐项声明的接口，至少从自然键生成结构化基础契约
@@ -75,6 +79,31 @@ _TUSHARE_PROFILES: dict[str, tuple[list[str], dict[str, str], str]] = {
             "total_mv": "CNY10k",
         },
         "market_indicator",
+    ),
+    "stk_limit": (
+        ["ts_code", "trade_date", "up_limit", "down_limit"],
+        {
+            "pre_close": "CNY/share",
+            "up_limit": "CNY/share",
+            "down_limit": "CNY/share",
+        },
+        "market_indicator",
+    ),
+    "limit_list_d": (
+        ["ts_code", "trade_date", "limit"],
+        {
+            "close": "CNY/share",
+            "pct_chg": "percent",
+            "amount": "CNY",
+            "limit_amount": "CNY",
+            "float_mv": "CNY",
+            "total_mv": "CNY",
+            "turnover_ratio": "percent",
+            "fd_amount": "CNY",
+            "open_times": "count",
+            "limit_times": "count",
+        },
+        "event",
     ),
     "index_dailybasic": (
         ["ts_code", "trade_date"],
@@ -178,6 +207,37 @@ _TUSHARE_PROFILES: dict[str, tuple[list[str], dict[str, str], str]] = {
         ["ts_code", "trade_date", "open", "high", "low", "close"],
         {"close": "point", "vol": "share", "amount": "CNY"},
         "bar",
+    ),
+    "opt_basic": (
+        ["ts_code", "exchange", "name"],
+        {"exercise_price": "CNY/contract", "list_price": "CNY/contract"},
+        "static",
+    ),
+    "opt_daily": (
+        ["ts_code", "trade_date", "close", "settle"],
+        {
+            "pre_settle": "CNY/contract",
+            "pre_close": "CNY/contract",
+            "open": "CNY/contract",
+            "high": "CNY/contract",
+            "low": "CNY/contract",
+            "close": "CNY/contract",
+            "settle": "CNY/contract",
+            "vol": "contract",
+            "amount": "CNY10k",
+            "oi": "contract",
+        },
+        "options_daily",
+    ),
+    "stk_account": (
+        ["date"],
+        {
+            "weekly_new": "10k_account",
+            "total": "10k_account",
+            "weekly_hold": "10k_account",
+            "weekly_trade": "10k_account",
+        },
+        "macro_weekly",
     ),
     "forecast": (["ts_code", "ann_date", "end_date"], {}, "financial_indicator"),
     "express": (["ts_code", "ann_date", "end_date"], {"revenue": "CNY", "n_income": "CNY"}, "financial_statement"),

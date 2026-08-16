@@ -272,6 +272,34 @@ def test_lixinger_index_fundamental_uses_batch_stock_codes() -> None:
     ]
 
 
+def test_lixinger_investor_accounts_use_macro_investor_route() -> None:
+    mock_client = MagicMock()
+    mock_client.query.return_value = pd.DataFrame(
+        {
+            "date": ["2026-08-10"],
+            "nni_m": [12.0],
+            "n_non_ni_m": [0.4],
+        }
+    )
+    fetcher = LixingerStockFetcher(client=mock_client)
+
+    result = fetcher.fetch_daily_bars_df(
+        symbol="",
+        start_date=date(2026, 8, 1),
+        end_date=date(2026, 8, 10),
+        endpoint="investor_accounts",
+    )
+
+    assert result.get_column("nni_m").to_list() == [12.0]
+    mock_client.query.assert_called_once_with(
+        "macro/investor",
+        areaCode="cn",
+        metricsList=["ni", "non_ni", "nni_m", "n_non_ni_m"],
+        startDate="2026-08-01",
+        endDate="2026-08-10",
+    )
+
+
 def test_lixinger_constituents_are_flattened() -> None:
     mock_client = MagicMock()
     mock_client.query.return_value = pd.DataFrame([

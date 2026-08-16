@@ -47,11 +47,12 @@ def get_shared_fetcher(data_source: str, **kwargs: Any) -> BaseDataFetcher:
             token=kwargs.get("token"), url=kwargs.get("url")
         )
     elif ds == "yfinance":
-        from stock.config.settings import settings
         from stock.data.fetcher.yfinance.factory import create_yfinance_fetcher
 
-        proxy = kwargs.get("proxy") or (settings.yfinance_proxy if settings.yfinance_proxy else None)
-        fetcher = create_yfinance_fetcher(proxy=proxy)
+        fetcher = create_yfinance_fetcher(
+            proxy=kwargs.get("proxy"),
+            proxy_pool_file=kwargs.get("proxy_pool_file"),
+        )
     elif ds == "fred":
         from stock.config.settings import settings
         from stock.data.fetcher.fred.factory import create_fred_fetcher

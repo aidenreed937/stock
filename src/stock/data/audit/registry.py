@@ -52,6 +52,21 @@ AUDIT_DATASET_REGISTRY: dict[str, DatasetAuditSpec] = {
         frequency=AuditFrequency.DAILY,
         min_expected_ratio=0.999,
     ),
+    "stk_limit": DatasetAuditSpec(
+        dataset="stk_limit",
+        data_source="tushare",
+        domain=AuditDomain.EQUITY,
+        frequency=AuditFrequency.DAILY,
+        min_expected_ratio=0.98,
+    ),
+    "limit_list_d": DatasetAuditSpec(
+        dataset="limit_list_d",
+        data_source="tushare",
+        domain=AuditDomain.EQUITY,
+        frequency=AuditFrequency.DAILY,
+        # 该接口只返回涨停、跌停和炸板事件，不是全市场逐股行情全集。
+        min_expected_ratio=0.0,
+    ),
     "moneyflow": DatasetAuditSpec(
         dataset="moneyflow",
         data_source="tushare",

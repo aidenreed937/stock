@@ -11,6 +11,7 @@ from stock.data.cleaner.bar_cleaner import BarDataCleaner
 from stock.data.fetcher.tushare.client import RateLimiter, TuShareClient
 from stock.data.fetcher.tushare.facade import TuShareDataFetcher
 from stock.data.fetcher.tushare.factory import create_tushare_pipeline
+from stock.data.fetcher.tushare.query_builder import build_tushare_query
 from stock.data.fetcher.tushare.registry import TUSHARE_API_REGISTRY
 from stock.data.fetcher.tushare.slicer import batch_slice_and_merge
 from stock.exceptions import DataFetchError
@@ -25,6 +26,47 @@ def test_tushare_registry() -> None:
     daily_meta = TUSHARE_API_REGISTRY["daily"]
     assert daily_meta.api_name == "daily"
     assert "ts_code" in daily_meta.primary_keys
+
+    stk_limit = TUSHARE_API_REGISTRY["stk_limit"]
+    assert stk_limit.primary_keys == ["ts_code", "trade_date"]
+    assert stk_limit.units["up_limit"] == "CNY/share"
+    assert stk_limit.request_window_days == 1
+    assert stk_limit.max_rows_per_request == 5800
+
+    limit_list = TUSHARE_API_REGISTRY["limit_list_d"]
+    assert limit_list.primary_keys == ["ts_code", "trade_date", "limit"]
+    assert limit_list.required_columns == ["ts_code", "trade_date", "limit"]
+    assert limit_list.units["amount"] == "CNY"
+    assert limit_list.units["turnover_ratio"] == "percent"
+    assert limit_list.max_rows_per_request == 2500
+
+
+def test_tushare_option_inputs_and_stopped_account_endpoint_are_registered() -> None:
+    opt_basic = TUSHARE_API_REGISTRY["opt_basic"]
+    assert opt_basic.primary_keys == ["ts_code"]
+    assert opt_basic.frequency == "static"
+
+    opt_daily = TUSHARE_API_REGISTRY["opt_daily"]
+    assert opt_daily.primary_keys == ["ts_code", "trade_date"]
+    assert opt_daily.request_window_days == 1
+    assert opt_daily.units["amount"] == "CNY10k"
+
+    stk_account = TUSHARE_API_REGISTRY["stk_account"]
+    assert stk_account.frequency == "weekly"
+    assert stk_account.required_columns == ["date"]
+
+
+def test_static_tushare_endpoint_does_not_add_date_filter() -> None:
+    meta = TUSHARE_API_REGISTRY["opt_basic"]
+    _, query_kwargs = build_tushare_query(
+        meta,
+        "opt_basic",
+        date(2026, 8, 1),
+        date(2026, 8, 12),
+        {},
+    )
+
+    assert query_kwargs == {}
 
 
 def test_tushare_factory_uses_bar_cleaner_for_bar_profiles() -> None:
@@ -189,3 +231,33 @@ def test_tushare_full_market_endpoint_uses_small_request_window() -> None:
         ("20260101", "20260130"),
         ("20260131", "20260301"),
     ]
+
+
+def test_tushare_limit_endpoints_query_by_trade_date() -> None:
+    fetcher = TuShareDataFetcher(token="test_token")
+    fetcher.client._pro_api = MagicMock()
+    fetcher.client._pro_api.query.return_value = pd.DataFrame(
+        {
+            "ts_code": ["000001.SZ"],
+            "trade_date": ["20260812"],
+            "up_limit": [12.34],
+            "down_limit": [10.10],
+        }
+    )
+
+    fetcher.fetch_daily_bars_df(
+        "", date(2026, 8, 12), date(2026, 8, 12), endpoint="stk_limit"
+    )
+    fetcher.client._pro_api.query.assert_called_once_with("stk_limit", trade_date="20260812")
+
+    fetcher.client._pro_api.query.return_value = pd.DataFrame(
+        {
+            "ts_code": ["000001.SZ"],
+            "trade_date": ["20260812"],
+            "limit": ["U"],
+        }
+    )
+    fetcher.fetch_daily_bars_df(
+        "", date(2026, 8, 12), date(2026, 8, 12), endpoint="limit_list_d"
+    )
+    fetcher.client._pro_api.query.assert_called_with("limit_list_d", trade_date="20260812")

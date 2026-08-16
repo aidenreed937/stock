@@ -28,6 +28,7 @@ class Settings(BaseSettings):
     tushare_url: str = "http://api.tushare.pro"
     akshare_proxy: str = ""
     yfinance_proxy: str = ""
+    yfinance_proxy_pool_file: Path = Path("data/proxy")
     lixinger_token: str = ""
     lixinger_url: str = "https://open.lixinger.com"
     lxr_token: str = ""

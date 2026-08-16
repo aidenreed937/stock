@@ -62,8 +62,6 @@ _EXPLICIT_SINGLE_SYNC: frozenset[str] = frozenset({
     "pledge_info", "national_debt", "interest_rates", "non_ferrous_metals", "crude_oil",
 })
 
-
-
 def _make_spec(
     task: str,
     prov: str,
@@ -119,8 +117,8 @@ _CUSTOM_TASKS: dict[tuple[str, str], TaskSpec] = {
     ("lixinger", "interest_rates"): _make_spec("interest_rates", "lixinger", "macro/interest-rates", "interest_rates", fetch_mode="per_symbol", partitioned=False, is_single_sync=True),
     ("lixinger", "non_ferrous_metals"): _make_spec("non_ferrous_metals", "lixinger", "macro/non-ferrous-metals", "non_ferrous_metals", fetch_mode="per_symbol", partitioned=False, is_single_sync=True),
     ("lixinger", "crude_oil"): _make_spec("crude_oil", "lixinger", "macro/crude-oil", "crude_oil", fetch_mode="per_symbol", partitioned=False, is_single_sync=True),
+    ("lixinger", "investor_accounts"): TaskSpec(task_name="investor_accounts", provider="lixinger", api_name="macro/investor", dataset="investor_accounts", frequency="monthly", fetch_mode="per_day", partitioned=False, is_single_sync=True),
 }
-
 _TASK_BUNDLES: dict[tuple[str, str], TaskBundle] = {
     ("lixinger", "market_bundle"): TaskBundle(
         bundle_name="market_bundle",
@@ -155,7 +153,7 @@ _TASK_BUNDLES: dict[tuple[str, str], TaskBundle] = {
     ("lixinger", "macro_bundle"): TaskBundle(
         bundle_name="macro_bundle",
         provider="lixinger",
-        tasks=("national_debt", "interest_rates", "non_ferrous_metals", "crude_oil"),
+        tasks=("national_debt", "interest_rates", "non_ferrous_metals", "crude_oil", "investor_accounts"),
     ),
     ("lixinger", "index_bundle"): TaskBundle(
         bundle_name="index_bundle",
@@ -181,9 +179,10 @@ _ALIASES: dict[tuple[str, str], str] = {
     ("lixinger", "macro/interest-rates"): "interest_rates",
     ("lixinger", "macro/non-ferrous-metals"): "non_ferrous_metals",
     ("lixinger", "macro/crude-oil"): "crude_oil",
+    ("lixinger", "macro/investor"): "investor_accounts",
 }
 
-_DISABLED_TASKS = {"bak_daily"}
+_DISABLED_TASKS = {"bak_daily", "stk_account"}
 
 
 def list_available_bundles(provider: str) -> list[str]:

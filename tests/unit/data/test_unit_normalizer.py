@@ -129,6 +129,33 @@ def test_unit_normalizer_tushare_daily_basic() -> None:
     assert normalized["circ_mv"][0] == 4000000000.0
 
 
+def test_unit_normalizer_tushare_limit_endpoints_preserves_native_units() -> None:
+    raw_df = pl.DataFrame(
+        {
+            "ts_code": ["000001.SZ"],
+            "trade_date": ["20260814"],
+            "close": [10.0],
+            "amount": [123456789.0],
+            "float_mv": [9876543210.0],
+            "limit": ["U"],
+        }
+    )
+
+    normalized = UnitNormalizer("tushare", "limit_list_d").normalize_units(raw_df)
+
+    assert normalized.equals(raw_df)
+    assert UnitNormalizer("tushare", "stk_limit").normalize_units(
+        pl.DataFrame(
+            {
+                "ts_code": ["000001.SZ"],
+                "trade_date": ["20260814"],
+                "up_limit": [11.0],
+                "down_limit": [9.0],
+            }
+        )
+    ).get_column("up_limit")[0] == 11.0
+
+
 def test_unit_normalizer_tushare_sw_daily() -> None:
     raw_df = pl.DataFrame(
         {

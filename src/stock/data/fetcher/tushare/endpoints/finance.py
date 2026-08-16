@@ -191,4 +191,14 @@ FINANCE_ENDPOINTS: dict[str, EndpointMeta] = {
         date_columns=["report_date"],
         required_columns=["ts_code", "report_date", "org_name"],
     ),
+    "stk_account": EndpointMeta(
+        api_name="stk_account",
+        description="股票账户开户数据（官方已停止更新）",
+        frequency="weekly",
+        group="macro_data",
+        primary_keys=["date"],
+        date_columns=["date"],
+        required_columns=["date"],
+        update_delay_days=1,
+    ),
 }

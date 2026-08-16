@@ -90,6 +90,7 @@ _LIXINGER_BATCH_SINGLE_ENDPOINTS = {
     "interest_rates",
     "non_ferrous_metals",
     "crude_oil",
+    "investor_accounts",
 }
 
 

@@ -6,6 +6,7 @@ import pandas as pd
 from stock.data.fetcher.yfinance.client import YFinanceClient
 from stock.data.fetcher.yfinance.factory import create_yfinance_pipeline
 from stock.data.fetcher.yfinance.global_fetcher import YFinanceDataFetcher
+from stock.data.fetcher.yfinance.registry import YFINANCE_API_REGISTRY
 
 
 def test_yfinance_fetcher() -> None:
@@ -62,6 +63,140 @@ def test_yfinance_fetcher_empty() -> None:
 
         df = fetcher.fetch_daily_bars_df("^GSPC", date(2026, 1, 1), date(2026, 1, 2))
         assert df.is_empty()
+
+
+def test_yfinance_retry_keeps_proxy_aware_session() -> None:
+    client = YFinanceClient(proxy="http://mock-proxy")
+    first_session = MagicMock(name="first_session")
+    retry_session = MagicMock(name="retry_session")
+    first_ticker = MagicMock(name="first_ticker")
+    retry_ticker = MagicMock(name="retry_ticker")
+    retry_ticker.history.return_value = pd.DataFrame(
+        {
+            "Open": [100.0],
+            "High": [101.0],
+            "Low": [99.0],
+            "Close": [100.5],
+            "Volume": [1000.0],
+        },
+        index=pd.to_datetime(["2026-01-02"]),
+    )
+    first_ticker.history.side_effect = RuntimeError("proxy request failed")
+
+    with (
+        patch.object(client, "_get_session", side_effect=[first_session, retry_session]),
+        patch.object(client.rate_limiter, "acquire") as acquire,
+        patch("stock.data.fetcher.yfinance.client.time.sleep") as sleep,
+        patch("stock.data.fetcher.yfinance.client.random.uniform", return_value=0.0),
+        patch("yfinance.Ticker", side_effect=[first_ticker, retry_ticker]) as ticker_cls,
+    ):
+        result = client.query_history("^GSPC", "2026-01-01", "2026-01-03")
+
+    assert not result.empty
+    assert acquire.call_count == 2
+    sleep.assert_called_once_with(client.RETRY_DELAY_SECONDS)
+    assert ticker_cls.call_args_list[0].kwargs["session"] is first_session
+    assert ticker_cls.call_args_list[1].kwargs["session"] is retry_session
+
+
+def test_yfinance_proxy_pool_rotates_on_retry(tmp_path) -> None:
+    pool_file = tmp_path / "yfinance.txt"
+    pool_file.write_text(
+        "http://proxy-a\n# disabled\nhttp://proxy-b\nhttp://proxy-a\n",
+        encoding="utf-8",
+    )
+    client = YFinanceClient(proxy_pool_file=pool_file)
+    client._proxy_index = 0
+    first_ticker = MagicMock(name="first_ticker")
+    retry_ticker = MagicMock(name="retry_ticker")
+    retry_ticker.history.return_value = pd.DataFrame(
+        {
+            "Open": [100.0],
+            "High": [101.0],
+            "Low": [99.0],
+            "Close": [100.5],
+            "Volume": [1000.0],
+        },
+        index=pd.to_datetime(["2026-01-02"]),
+    )
+    first_ticker.history.side_effect = RuntimeError("proxy request failed")
+    selected_proxies: list[str | None] = []
+
+    def fake_get_session(proxy: str | None = None) -> MagicMock:
+        selected_proxies.append(proxy)
+        return MagicMock()
+
+    with (
+        patch.object(client, "_get_session", side_effect=fake_get_session),
+        patch.object(client.rate_limiter, "acquire"),
+        patch("stock.data.fetcher.yfinance.client.time.sleep"),
+        patch("stock.data.fetcher.yfinance.client.random.uniform", return_value=0.0),
+        patch("yfinance.Ticker", side_effect=[first_ticker, retry_ticker]),
+    ):
+        result = client.query_history("^GSPC", "2026-01-01", "2026-01-03")
+
+    assert not result.empty
+    assert client.proxy_pool == ("http://proxy-a", "http://proxy-b")
+    assert selected_proxies == ["http://proxy-a", "http://proxy-b"]
+
+
+def test_yfinance_rate_limit_uses_exponential_backoff_and_more_proxies(tmp_path) -> None:
+    pool_file = tmp_path / "yfinance.txt"
+    pool_file.write_text(
+        "http://proxy-a\nhttp://proxy-b\nhttp://proxy-c\n",
+        encoding="utf-8",
+    )
+    client = YFinanceClient(proxy_pool_file=pool_file)
+    client._proxy_index = 0
+
+    tickers = [MagicMock(name=f"ticker-{index}") for index in range(3)]
+    tickers[0].history.side_effect = RuntimeError("Too Many Requests. Rate limited.")
+    tickers[1].history.side_effect = RuntimeError("Too Many Requests. Rate limited.")
+    tickers[2].history.return_value = pd.DataFrame(
+        {
+            "Open": [100.0],
+            "High": [101.0],
+            "Low": [99.0],
+            "Close": [100.5],
+            "Volume": [1.0],
+        },
+        index=pd.to_datetime(["2026-01-02"]),
+    )
+
+    with (
+        patch.object(client, "_get_session", return_value=MagicMock()),
+        patch.object(client.rate_limiter, "acquire"),
+        patch("stock.data.fetcher.yfinance.client.time.sleep") as sleep,
+        patch("stock.data.fetcher.yfinance.client.random.uniform", return_value=0.0),
+        patch("yfinance.Ticker", side_effect=tickers),
+    ):
+        result = client.query_history("^GSPC", "2026-01-01", "2026-01-03")
+
+    assert not result.empty
+    assert sleep.call_args_list == [
+        ((client.RATE_LIMIT_RETRY_DELAY_SECONDS,), {}),
+        ((client.RATE_LIMIT_RETRY_DELAY_SECONDS * 2,), {}),
+    ]
+    assert client._proxy_unavailable_until.keys() == {
+        "http://proxy-a",
+        "http://proxy-b",
+    }
+
+
+def test_yfinance_proxy_pool_loads_txt_files_from_directory(tmp_path) -> None:
+    pool_dir = tmp_path / "proxy"
+    pool_dir.mkdir()
+    (pool_dir / "100个节点.txt").write_text(
+        "user:password@proxy-a:3129\nhttp://proxy-b:8080\n",
+        encoding="utf-8",
+    )
+
+    client = YFinanceClient(proxy_pool_file=pool_dir)
+
+    assert client.proxy_pool == (
+        "http://user:password@proxy-a:3129",
+        "http://proxy-b:8080",
+    )
 
 
 def test_create_yfinance_pipeline() -> None:
@@ -213,6 +348,21 @@ def test_fetch_daily_bars_df_dispatches_macro_indicators() -> None:
     )
 
 
+def test_yfinance_macro_registry_declares_global_hg_f_route() -> None:
+    meta = YFINANCE_API_REGISTRY["macro_indicators"]
+    assert meta.market == "GLOBAL"
+    assert meta.group == "macro_data"
+
+    fetcher = YFinanceDataFetcher(client=YFinanceClient())
+    with patch.object(fetcher, "fetch_batch_daily_bars_df", return_value=MagicMock()) as batch:
+        fetcher.fetch_macro_indicators_df(date(2026, 8, 10), date(2026, 8, 11))
+
+    symbols = batch.call_args.args[0]
+    assert "GC=F" in symbols
+    assert "CL=F" in symbols
+    assert "HG=F" in symbols
+
+
 def test_yfinance_fetcher_trade_cal() -> None:
     client = YFinanceClient()
     fetcher = YFinanceDataFetcher(client=client)
@@ -256,7 +406,10 @@ def test_yfinance_fetcher_financials_and_actions() -> None:
         mock_instance.quarterly_financials = pd.DataFrame(
             {"2024-01-01": [100.0, 50.0]}, index=["Total Revenue", "Net Income"]
         )
-        mock_instance.dividends = pd.Series([0.5, 0.6], index=[pd.Timestamp("2024-01-01"), pd.Timestamp("2024-04-01")])
+        mock_instance.dividends = pd.Series(
+            [0.5, 0.6],
+            index=[pd.Timestamp("2024-01-01"), pd.Timestamp("2024-04-01")],
+        )
         mock_ticker_cls.return_value = mock_instance
 
         df_fin = fetcher.fetch_financials_df("AAPL", statement_type="financials", freq="quarterly")

@@ -30,6 +30,8 @@ def test_is_task_partitioned_rules() -> None:
     assert is_task_partitioned("tushare", "daily_basic")
     assert is_task_partitioned("tushare", "moneyflow")
     assert is_task_partitioned("tushare", "adj_factor")
+    assert is_task_partitioned("tushare", "stk_limit")
+    assert is_task_partitioned("tushare", "limit_list_d")
 
 
 def test_is_per_symbol_task_rules() -> None:
@@ -46,6 +48,8 @@ def test_is_per_symbol_task_rules() -> None:
     assert not is_per_symbol_task("tushare", "daily_basic")
     assert not is_per_symbol_task("tushare", "moneyflow")
     assert not is_per_symbol_task("tushare", "adj_factor")
+    assert not is_per_symbol_task("tushare", "stk_limit")
+    assert not is_per_symbol_task("tushare", "limit_list_d")
 
 
 def test_list_available_tasks() -> None:
@@ -53,6 +57,9 @@ def test_list_available_tasks() -> None:
     assert "stock_daily_bar" in tushare_tasks
     assert "daily_basic" in tushare_tasks
     assert "adj_factor" in tushare_tasks
+    assert "stk_limit" in tushare_tasks
+    assert "limit_list_d" in tushare_tasks
+    assert "limit_list" not in tushare_tasks
     assert "income" in tushare_tasks
     assert "bak_daily" not in tushare_tasks
 
@@ -67,6 +74,18 @@ def test_task_spec_properties() -> None:
     assert task.quality_profile == "bar"
     assert task.partitioned is True
     assert task.fetch_mode == "per_day"
+
+    stk_limit = resolve_task("tushare", "stk_limit")
+    assert stk_limit.api_name == "stk_limit"
+    assert stk_limit.dataset == "stk_limit"
+    assert stk_limit.quality_profile == "market_indicator"
+    assert not stk_limit.is_single_sync
+
+    limit_list = resolve_task("tushare", "limit_list_d")
+    assert limit_list.api_name == "limit_list_d"
+    assert limit_list.dataset == "limit_list_d"
+    assert limit_list.quality_profile == "event"
+    assert not limit_list.is_single_sync
 
 
 def test_lixinger_l2_task_uses_the_documented_shared_api_route() -> None:
@@ -114,3 +133,19 @@ def test_expand_task_targets_keeps_atomic_tasks_and_deduplicates() -> None:
 def test_resolve_task_rejects_bundle_name() -> None:
     with pytest.raises(ValueError, match="任务包"):
         resolve_task("lixinger", "industry_bundle")
+
+
+def test_registered_new_data_source_tasks_have_explicit_routes() -> None:
+    opt_daily = resolve_task("tushare", "opt_daily")
+    assert opt_daily.api_name == "opt_daily"
+    assert opt_daily.quality_profile == "options_daily"
+    assert opt_daily.partitioned is True
+
+    investor_accounts = resolve_task("lixinger", "investor_accounts")
+    assert investor_accounts.api_name == "macro/investor"
+    assert investor_accounts.frequency == "monthly"
+    assert investor_accounts.partitioned is False
+    assert investor_accounts.is_single_sync is True
+
+    with pytest.raises(ValueError, match="已停用"):
+        resolve_task("tushare", "stk_account")

@@ -22,6 +22,7 @@ class EndpointMeta:
     required_columns: list[str] = field(default_factory=list)
     max_range_days: int | None = 3650
     pagination_required: bool = False
+    frequency: str = "daily"
 
 
 
@@ -168,6 +169,19 @@ LIXINGER_API_REGISTRY: dict[str, EndpointMeta] = {
         update_time="18:00",
         default_metrics=["wti_co_sp", "brent_co_sp"],
         default_params={"areaCode": "us"},
+    ),
+    "macro/investor": EndpointMeta(
+        api_name="macro/investor",
+        description="A 股投资者存量与新增账户数据",
+        frequency="monthly",
+        group="macro_data",
+        primary_keys=["date"],
+        date_columns=["date"],
+        required_columns=["date"],
+        update_time="18:00",
+        default_metrics=["ni", "non_ni", "nni_m", "n_non_ni_m"],
+        default_params={"areaCode": "cn"},
+        max_range_days=3650,
     ),
     "cn/industry/fs/sw_2021/non_financial": EndpointMeta(
         api_name="cn/industry/fs/sw_2021/non_financial",
