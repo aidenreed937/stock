@@ -1,0 +1,154 @@
+# 市场温度计架构边界
+
+## 目的
+
+本文件说明 `src/stock/analytics/metrics`、`src/stock/analytics/market_temperature` 与 `src/stock/analytics/industry_structure` 的关系，避免后续扩展时把“通用指标计算”“六维温度计应用”和“行业结构分析”混在一起。
+
+## 总体关系
+
+`metrics` 是通用指标计算层，负责把本地黄金表计算成可复用指标。
+
+`market_temperature` 是六维市场温度计应用层，负责把通用指标和温度计专用派生事实组织成一次分析产物。
+
+`industry_structure` 是申万行业结构应用层，负责把行业动量、估值、基本面和拥挤度组织成行业排序与轮动分析产物。它和 `market_temperature` 是同级应用，不是六维温度计的 derived 指标。
+
+```text
+DataCatalog 本地黄金表
+  ├─> metrics / MetricEngine
+  │     └─ 通用指标：估值、资金、技术、广度、波动、流动性等
+  └─> market_temperature.derived
+        └─ 温度计专用派生事实：基本面扩展、涨跌停情绪、宏观外部环境等
+
+metrics 输出 + derived 输出
+  └─> market_temperature.facts
+        └─ facts.parquet
+
+facts + config/analytics/market_temperature.yaml
+  └─> market_temperature.scoring
+        └─ scores.json
+
+scores + facts
+  └─> market_temperature.templates / artifacts
+        └─ report.md / human_report.md / report.json
+
+DataCatalog + analytics/industry
+  └─> industry_structure.panel / scoring
+        └─ industry_panel.parquet / scores.json / report.md
+```
+
+## 包职责
+
+### `src/stock/analytics/metrics`
+
+用于沉淀通用、可复用、与单一报告无关的指标计算能力。
+
+- `MetricEngine.compute()` 是统一调度入口；
+- `MetricRegistry` 管理指标定义；
+- `calculators/*.py` 实现具体算法；
+- 输出 `MetricResult.frame`，由调用方决定如何聚合、展示或打分。
+
+适合放入 `metrics` 的指标：
+
+- 可被市场扫描、策略、报告、回测或其他分析复用；
+- 输入数据和输出含义稳定；
+- 不依赖六维温度计的权重、归属、文案或报告结构。
+
+### `src/stock/analytics/market_temperature`
+
+用于生成 A 股六维市场温度计产物。
+
+- `pipeline.py` 编排一次运行；
+- `facts.py` 采集窗口、水位、`MetricEngine` 指标和派生指标；
+- `derived.py` 计算温度计专用派生事实；
+- `scoring.py` 根据事实、方向和权重生成六维温度；
+- `templates.py` 输出机器报告和人工报告；
+- `artifacts.py` 写入 `data/analytics/market_temperature/`。
+
+适合放入 `market_temperature/derived.py` 的指标：
+
+- 只服务六维温度计；
+- 本质是多个基础指标的子分或组合温度；
+- 需要跨多个本地数据集做事实拼接；
+- 需要按温度计口径处理缺失、滞后、反向映射或样本披露。
+
+### `src/stock/analytics/industry_structure`
+
+用于生成申万行业结构分析产物。
+
+- `panel.py` 构建每个行业一行的 `industry_panel.parquet`；
+- `scoring.py` 生成动量、估值、基本面、拥挤度四类子分和行业结构分；
+- `facts.py` 采集窗口、水位和面板摘要；
+- `pipeline.py` 编排一次运行；
+- `templates.py` 输出机器报告和人工报告；
+- `artifacts.py` 写入 `data/analytics/industry_structure/`。
+
+行业结构分只用于行业排序和轮动判断，不并入六维市场温度。
+
+## 配置与事实分离
+
+`config/analytics/market_temperature.yaml` 只表达分析口径，不实现计算：
+
+- 维度权重；
+- 指标归属；
+- 指标方向；
+- 指标内部权重；
+- 指标来源：`metric_engine` 或 `derived`；
+- 需要检查水位的数据集。
+
+`facts.parquet` 是事实层，保存已计算出的原始指标值、温度值、水位、样本量和状态。`scores.json`、`report.md`、`human_report.md` 都应从 facts 和配置派生。
+
+不要在输出模板里重新计算指标；模板只负责组织表达。
+
+## 新增指标放置规则
+
+优先按以下顺序判断：
+
+1. 若指标可跨场景复用，放入 `src/stock/analytics/metrics/calculators/`，并注册 `MetricSpec` 与 calculator。
+2. 若指标只服务六维温度计，放入 `src/stock/analytics/market_temperature/derived.py`。
+3. 若指标只服务行业结构排序，放入 `src/stock/analytics/industry_structure/`。
+4. 若只调整维度归属、权重、方向或启停，修改对应的 `config/analytics/*.yaml`。
+5. 若只调整报告表达，修改对应应用包的 `templates.py`。
+6. 若是分析流程、口径或执行注意事项，更新 skill 的 `SKILL.md` 或 `references/*.md`。
+
+## 依赖方向
+
+允许：
+
+- `market_temperature` 调用 `metrics`；
+- `market_temperature` 直接读取 `DataCatalog` 生成专用派生事实；
+- `industry_structure` 复用 `analytics/industry` 和 `DataCatalog` 生成行业面板；
+- `metrics` 读取 `DataCatalog` 计算通用指标。
+
+不允许：
+
+- `metrics` 依赖 `market_temperature`；
+- `metrics` 依赖 `industry_structure`；
+- `metrics` 感知六维权重、报告模板或温度计文案；
+- `market_temperature` 依赖行业结构分来合成六维综合温度；
+- `templates.py` 绕过 facts 直接读取本地数据重算指标；
+- 用模型记忆补齐本地缺失数据。
+
+## 扩展示例
+
+新增一个通用技术指标，例如 `return_10d`：
+
+1. 在 `metrics/calculators/performance.py` 或对应 calculator 中实现；
+2. 注册 `MetricSpec` 和 calculator；
+3. 增加 `metrics` 单元测试；
+4. 在 YAML 中把该指标配置到技术面或短线温度展示。
+
+新增一个温度计专用指标，例如“涨跌停事件温度”：
+
+1. 在 `market_temperature/derived.py` 从 `limit_list_d` 计算事实；
+2. 把子指标和合成指标写入 facts；
+3. 在 YAML 中配置指标归属、方向和权重；
+4. 增加 `market_temperature` 单元测试；
+5. 在报告模板中披露样本、日期和缺失状态。
+
+## 维护原则
+
+- 计算规则以源码为准，文档不一致时先修文档；
+- 原始事实、评分配置和报告表达保持分离；
+- 缺数据标为 `insufficient` 或 `unavailable`，不要静默填补；
+- 权重为 0 的指标可采集和展示，但不参与维度分；
+- 基本面、宏观月频或季频数据只能作为状态底座，不要写成最近 20 个交易日内发生的变化。
