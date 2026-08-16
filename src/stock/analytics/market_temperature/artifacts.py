@@ -28,6 +28,8 @@ class MarketTemperatureRunPaths:
     report_md: Path
     report_json: Path
     human_report_md: Path
+    quality_report_md: Path
+    quality_report_json: Path
 
 
 @dataclass(frozen=True, slots=True)
@@ -40,6 +42,8 @@ class MarketTemperatureArtifactPayload:
     report_markdown: str
     report_json: MappingLike
     human_report_markdown: str
+    quality_report_markdown: str
+    quality_report_json: MappingLike
 
 
 def build_run_paths(
@@ -62,6 +66,8 @@ def build_run_paths(
         report_md=run_dir / "report.md",
         report_json=run_dir / "report.json",
         human_report_md=run_dir / "human_report.md",
+        quality_report_md=run_dir / "quality_report.md",
+        quality_report_json=run_dir / "quality_report.json",
     )
 
 
@@ -79,6 +85,8 @@ def write_artifacts(
     paths.report_md.write_text(payload.report_markdown, encoding="utf-8")
     _write_json(paths.report_json, payload.report_json)
     paths.human_report_md.write_text(payload.human_report_markdown, encoding="utf-8")
+    paths.quality_report_md.write_text(payload.quality_report_markdown, encoding="utf-8")
+    _write_json(paths.quality_report_json, payload.quality_report_json)
 
     if update_latest:
         _copy_to_latest(paths)
@@ -93,6 +101,8 @@ def _copy_to_latest(paths: MarketTemperatureRunPaths) -> None:
         paths.report_md,
         paths.report_json,
         paths.human_report_md,
+        paths.quality_report_md,
+        paths.quality_report_json,
     ):
         shutil.copy2(source, paths.latest_dir / source.name)
 

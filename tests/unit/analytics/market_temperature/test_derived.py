@@ -17,6 +17,7 @@ from stock.analytics.market_temperature.derived import (
     _percentile_temperature,
     _report_revision_rows,
     _return_frame,
+    _us_macro_background_rows,
 )
 
 
@@ -254,7 +255,12 @@ def test_external_macro_rows_use_index_daily_bar_for_us_index_returns() -> None:
                 }
             ),
             "macro_indicators": pl.DataFrame(
-                schema={"trade_date": pl.Date, "symbol": pl.Utf8, "close": pl.Float64}
+                {
+                    "trade_date": dates,
+                    "symbol": ["CNH=X"] * 25,
+                    "close": [7.0 - offset * 0.01 for offset in range(25)],
+                },
+                schema={"trade_date": pl.Date, "symbol": pl.Utf8, "close": pl.Float64},
             ),
         }
     )
@@ -264,7 +270,100 @@ def test_external_macro_rows_use_index_daily_bar_for_us_index_returns() -> None:
 
     assert rows_by_metric["macro_sp500_20d_return_temperature"]["status"] == "ok"
     assert rows_by_metric["macro_nasdaq_20d_return_temperature"]["status"] == "ok"
+    assert rows_by_metric["macro_cnh_20d_change_temperature"]["status"] == "ok"
     assert rows_by_metric["macro_external_environment_temperature"]["sample_size"] == 2
+
+
+def test_us_macro_background_rows_build_fred_observation_metrics() -> None:
+    monthly_dates = _month_dates(date(2025, 1, 1), 14)
+    quarterly_dates = [date(2025, 1, 1), date(2025, 4, 1), date(2025, 7, 1)]
+    quarterly_dates.extend([date(2025, 10, 1), date(2026, 1, 1)])
+    frame = pl.DataFrame(
+        {
+            "trade_date": [
+                date(2026, 1, 1),
+                date(2026, 1, 2),
+                date(2026, 1, 3),
+                date(2026, 1, 1),
+                date(2026, 1, 2),
+                date(2026, 1, 3),
+                date(2026, 1, 1),
+                date(2026, 1, 2),
+                date(2026, 1, 3),
+                date(2026, 1, 1),
+                date(2026, 1, 2),
+                date(2026, 1, 3),
+                *monthly_dates,
+                *monthly_dates,
+                *quarterly_dates,
+            ],
+            "symbol": [
+                "T10Y2Y",
+                "T10Y2Y",
+                "T10Y2Y",
+                "FEDFUNDS",
+                "FEDFUNDS",
+                "FEDFUNDS",
+                "WALCL",
+                "WALCL",
+                "WALCL",
+                "UNRATE",
+                "UNRATE",
+                "UNRATE",
+                *(["CPIAUCSL"] * len(monthly_dates)),
+                *(["PAYEMS"] * len(monthly_dates)),
+                *(["GDP"] * len(quarterly_dates)),
+            ],
+            "value": [
+                0.1,
+                0.2,
+                0.3,
+                5.50,
+                5.25,
+                5.00,
+                7_000_000.0,
+                7_100_000.0,
+                7_200_000.0,
+                5.0,
+                4.8,
+                4.6,
+                *[100.0 + offset for offset in range(len(monthly_dates))],
+                *[1_000.0 + offset * 10.0 for offset in range(len(monthly_dates))],
+                100.0,
+                101.0,
+                102.0,
+                103.0,
+                105.0,
+            ],
+        }
+    )
+    catalog = FakeCatalog({"macro_indicators": frame})
+
+    rows = _us_macro_background_rows(catalog, date(2026, 2, 1))
+    rows_by_metric = {str(row["metric_id"]): row for row in rows}
+
+    expected = {
+        "macro_fred_t10y2y_temperature",
+        "macro_fred_fedfunds_temperature",
+        "macro_fred_walcl_temperature",
+        "macro_fred_cpi_yoy_temperature",
+        "macro_fred_unrate_temperature",
+        "macro_fred_payems_yoy_temperature",
+        "macro_fred_gdp_yoy_temperature",
+    }
+    assert set(rows_by_metric) == expected
+    assert all(rows_by_metric[metric_id]["status"] == "ok" for metric_id in expected)
+    assert rows_by_metric["macro_fred_cpi_yoy_temperature"]["sample_size"] == 2
+    assert rows_by_metric["macro_fred_gdp_yoy_temperature"]["sample_size"] == 1
+    assert "月频背景观察" in rows_by_metric["macro_fred_cpi_yoy_temperature"]["note"]
+    assert "latest_date=2026-01-01" in rows_by_metric["macro_fred_gdp_yoy_temperature"]["note"]
+
+
+def _month_dates(start: date, count: int) -> list[date]:
+    return [
+        date(start.year + (start.month - 1 + offset) // 12, (start.month - 1 + offset) % 12 + 1, 1)
+        for offset in range(count)
+    ]
 
 
 def _component(metric_id: str, value: float | None, *, status: str = "ok") -> dict[str, object]:

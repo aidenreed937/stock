@@ -82,7 +82,7 @@
       "lines": 479
     },
     "src/stock/analytics/industry_structure/facts.py": {
-      "lines": 401
+      "lines": 404
     },
     "src/stock/analytics/industry_structure/panel.py": {
       "lines": 986
@@ -91,16 +91,16 @@
       "lines": 646
     },
     "src/stock/analytics/industry_structure/templates.py": {
-      "lines": 541
+      "lines": 827
     },
     "src/stock/analytics/market_temperature/derived.py": {
-      "lines": 829
+      "lines": 935
     },
     "src/stock/analytics/market_temperature/facts.py": {
-      "lines": 423
+      "lines": 426
     },
     "src/stock/analytics/market_temperature/templates.py": {
-      "lines": 525
+      "lines": 746
     }
   }
 }

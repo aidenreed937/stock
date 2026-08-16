@@ -87,6 +87,8 @@ class DatasetConfig:
     date_column: str = ""
     max_lag_days: int = 0
     static: bool = False
+    cadence: str = "unspecified"
+    quality_tier: str = "optional"
     note: str = ""
 
     @classmethod
@@ -99,6 +101,8 @@ class DatasetConfig:
             date_column=str(data.get("date_column", "")),
             max_lag_days=int(data.get("max_lag_days", 0)),
             static=bool(data.get("static", False)),
+            cadence=str(data.get("cadence", "unspecified")),
+            quality_tier=str(data.get("quality_tier", "optional")),
             note=str(data.get("note", "")),
         )
 

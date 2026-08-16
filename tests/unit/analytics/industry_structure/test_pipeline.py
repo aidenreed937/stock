@@ -46,14 +46,18 @@ industry_structure:
     assert result.as_of_date == date(2026, 8, 14)
     assert result.paths.report_md.exists()
     assert result.paths.human_report_md.exists()
+    assert result.paths.quality_report_md.exists()
+    assert result.paths.quality_report_json.exists()
     assert result.paths.industry_panel.exists()
     assert (output_root / "latest" / "industry_panel.parquet").exists()
+    assert (output_root / "latest" / "quality_report.md").exists()
     assert result.industry_panel.height == 12
     assert "测试行业结构" in result.report_markdown
     assert "评分口径" in result.report_markdown
     assert "TCR(20日成交占比)" in result.report_markdown
     assert "行业1" in result.report_markdown
     assert "人工阅读版" in result.human_report_markdown
+    assert "口径与质量报告" in result.quality_report_markdown
     assert "标签不是互斥分组" in result.human_report_markdown
 
 

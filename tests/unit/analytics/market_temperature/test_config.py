@@ -33,10 +33,14 @@ market_temperature:
       dimension: technical
       required: true
       max_lag_days: 1
+      cadence: trading_daily
+      quality_tier: core
     - data_source: tushare
       dataset: opt_basic
       dimension: sentiment
       static: true
+      cadence: static
+      quality_tier: background
 """,
         encoding="utf-8",
     )
@@ -53,5 +57,8 @@ market_temperature:
     assert config.dimensions[0].metrics[1].weight == 0.25
     assert config.datasets[0].dataset == "stock_daily_bar"
     assert config.datasets[0].max_lag_days == 1
+    assert config.datasets[0].cadence == "trading_daily"
+    assert config.datasets[0].quality_tier == "core"
     assert config.datasets[1].dataset == "opt_basic"
     assert config.datasets[1].static is True
+    assert config.datasets[1].cadence == "static"

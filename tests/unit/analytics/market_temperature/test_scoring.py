@@ -76,6 +76,55 @@ def test_build_scores_converts_zscore_to_temperature() -> None:
     assert scores["dimensions"][0]["temperature"] == pytest.approx(50.0)
 
 
+def test_build_scores_ignores_zero_weight_observation_metrics() -> None:
+    facts = pl.DataFrame(
+        [
+            _metric_fact("macro_liquidity", "macro_external_environment_temperature", 60.0),
+            _metric_fact(
+                "macro_liquidity",
+                "macro_fred_fedfunds_temperature",
+                None,
+                status="insufficient",
+            ),
+        ],
+        schema=FACT_SCHEMA,
+    )
+    config = MarketTemperatureConfig(
+        schema_version=1,
+        title="test",
+        artifact_root="data/analytics/market_temperature",
+        main_window=20,
+        short_windows=(),
+        dimensions=(
+            DimensionConfig(
+                id="macro_liquidity",
+                name="宏观流动性",
+                weight=1.0,
+                metrics=(
+                    MetricInputConfig(
+                        "macro_external_environment_temperature",
+                        source="derived",
+                        weight=1.0,
+                    ),
+                    MetricInputConfig(
+                        "macro_fred_fedfunds_temperature",
+                        source="derived",
+                        weight=0.0,
+                    ),
+                ),
+            ),
+        ),
+        datasets=(),
+    )
+
+    scores = build_scores(config, as_of_date=date(2026, 8, 14), facts=facts)
+
+    assert scores["dimensions"][0]["temperature"] == pytest.approx(60.0)
+    assert scores["dimensions"][0]["metric_count"] == 1
+    assert scores["dimensions"][0]["ok_metric_count"] == 1
+    assert scores["dimensions"][0]["reason"] == "指标事实已温度化"
+
+
 def test_build_scores_adds_systemic_risk_summary() -> None:
     facts = pl.DataFrame(
         [
@@ -112,7 +161,9 @@ def test_build_scores_adds_systemic_risk_summary() -> None:
     assert any("技术面偏热" in item for item in scores["systemic_risk"]["warnings"])
 
 
-def _metric_fact(dimension: str, metric_id: str, value: float) -> dict[str, object]:
+def _metric_fact(
+    dimension: str, metric_id: str, value: float | None, *, status: str = "ok"
+) -> dict[str, object]:
     return {
         "fact_id": f"metric.{dimension}.{metric_id}",
         "category": "metric_value",
@@ -127,7 +178,7 @@ def _metric_fact(dimension: str, metric_id: str, value: float) -> dict[str, obje
         "unit": "temperature" if metric_id.endswith("_temperature") else "raw",
         "sample_size": 1,
         "source": "test",
-        "status": "ok",
+        "status": status,
         "note": "",
     }
 

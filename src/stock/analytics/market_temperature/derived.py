@@ -447,6 +447,7 @@ def _macro_liquidity_rows(
     cat_ts = DataCatalog(data_source="tushare", storage_dir=storage_dir)
     cat_lx = DataCatalog(data_source="lixinger", storage_dir=storage_dir)
     cat_yf = DataCatalog(data_source="yfinance", storage_dir=storage_dir)
+    cat_fred = DataCatalog(data_source="fred", storage_dir=storage_dir)
     rows: list[dict[str, Any]] = []
     rows.append(
         _percentile_metric_row(
@@ -470,6 +471,7 @@ def _macro_liquidity_rows(
     )
     rows.extend(_money_credit_rows(cat_ts, cat_lx, as_of_date))
     rows.extend(_external_macro_rows(cat_yf, as_of_date))
+    rows.extend(_us_macro_background_rows(cat_fred, as_of_date))
     return rows
 
 
@@ -581,9 +583,75 @@ def _external_macro_rows(cat: DataCatalog, as_of_date: date) -> list[dict[str, A
             inverse=True,
             note="美元指数水平历史反向分位，辅助观察",
         ),
+        _return_percentile_metric_row(
+            macro_frame,
+            "CNH=X",
+            "macro_cnh_20d_change_temperature",
+            as_of_date,
+            inverse=True,
+            note="离岸人民币USD/CNH 20日变化历史反向分位，人民币贬值压力外部观察",
+        ),
     ]
     rows.append(_external_environment_row(rows, as_of_date))
     return rows
+
+
+def _us_macro_background_rows(cat: DataCatalog, as_of_date: date) -> list[dict[str, Any]]:
+    frame = _load_dataset(cat, "macro_indicators")
+    return [
+        _percentile_metric_row(
+            _fred_symbol_frame(frame, "T10Y2Y"),
+            "macro_fred_t10y2y_temperature",
+            "_value",
+            as_of_date,
+            note="FRED T10Y2Y期限利差历史分位，美国期限结构压力日频背景观察",
+        ),
+        _percentile_metric_row(
+            _fred_symbol_frame(frame, "FEDFUNDS"),
+            "macro_fred_fedfunds_temperature",
+            "_value",
+            as_of_date,
+            inverse=True,
+            note="FRED FEDFUNDS政策利率历史反向分位，美国政策利率月频背景观察",
+        ),
+        _percentile_metric_row(
+            _fred_symbol_frame(frame, "WALCL"),
+            "macro_fred_walcl_temperature",
+            "_value",
+            as_of_date,
+            note="FRED WALCL美联储资产负债表规模历史分位，周频流动性背景观察",
+        ),
+        _percentile_metric_row(
+            _fred_yoy_frame(frame, "CPIAUCSL", periods=12),
+            "macro_fred_cpi_yoy_temperature",
+            "_yoy",
+            as_of_date,
+            inverse=True,
+            note="FRED CPIAUCSL同比小数历史反向分位，美国通胀压力月频背景观察",
+        ),
+        _percentile_metric_row(
+            _fred_symbol_frame(frame, "UNRATE"),
+            "macro_fred_unrate_temperature",
+            "_value",
+            as_of_date,
+            inverse=True,
+            note="FRED UNRATE失业率历史反向分位，美国就业压力月频背景观察",
+        ),
+        _percentile_metric_row(
+            _fred_yoy_frame(frame, "PAYEMS", periods=12),
+            "macro_fred_payems_yoy_temperature",
+            "_yoy",
+            as_of_date,
+            note="FRED PAYEMS非农就业人数同比小数历史分位，美国就业周期月频背景观察",
+        ),
+        _percentile_metric_row(
+            _fred_yoy_frame(frame, "GDP", periods=4),
+            "macro_fred_gdp_yoy_temperature",
+            "_yoy",
+            as_of_date,
+            note="FRED GDP同比小数历史分位，美国经济底座季频背景观察",
+        ),
+    ]
 
 
 def _return_percentile_metric_row(  # noqa: PLR0913
@@ -623,6 +691,44 @@ def _return_frame(frame: pl.DataFrame, symbol: str, window: int) -> pl.DataFrame
         .sort("trade_date")
         .with_columns((pl.col("_close") / pl.col("_close").shift(window) - 1.0).alias("_return"))
         .select("trade_date", "_return")
+    )
+
+
+def _fred_symbol_frame(frame: pl.DataFrame, symbol: str) -> pl.DataFrame:
+    if frame.is_empty() or not {"symbol", "trade_date"}.issubset(frame.columns):
+        return pl.DataFrame()
+    if "value" in frame.columns:
+        source_col = "value"
+    elif "close" in frame.columns:
+        source_col = "close"
+    else:
+        source_col = ""
+    if not source_col:
+        return pl.DataFrame()
+    return (
+        frame.filter(pl.col("symbol") == symbol)
+        .select(
+            "trade_date",
+            pl.col(source_col).cast(pl.Float64, strict=False).alias("_value"),
+        )
+        .drop_nulls()
+        .sort("trade_date")
+    )
+
+
+def _fred_yoy_frame(frame: pl.DataFrame, symbol: str, periods: int) -> pl.DataFrame:
+    data = _fred_symbol_frame(frame, symbol)
+    if data.is_empty():
+        return pl.DataFrame()
+    return (
+        data.with_columns(pl.col("_value").shift(periods).alias("_prev_value"))
+        .with_columns(
+            pl.when(pl.col("_prev_value") > 0)
+            .then(pl.col("_value") / pl.col("_prev_value") - 1.0)
+            .otherwise(None)
+            .alias("_yoy")
+        )
+        .select("trade_date", "_yoy")
     )
 
 

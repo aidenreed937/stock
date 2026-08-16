@@ -236,139 +236,249 @@ market_temperature:
           source: derived
           direction: positive
           weight: 0.00
+        - metric_id: macro_cnh_20d_change_temperature
+          source: derived
+          direction: positive
+          weight: 0.00
+        - metric_id: macro_fred_t10y2y_temperature
+          source: derived
+          direction: positive
+          weight: 0.00
+        - metric_id: macro_fred_fedfunds_temperature
+          source: derived
+          direction: positive
+          weight: 0.00
+        - metric_id: macro_fred_walcl_temperature
+          source: derived
+          direction: positive
+          weight: 0.00
+        - metric_id: macro_fred_cpi_yoy_temperature
+          source: derived
+          direction: positive
+          weight: 0.00
+        - metric_id: macro_fred_unrate_temperature
+          source: derived
+          direction: positive
+          weight: 0.00
+        - metric_id: macro_fred_payems_yoy_temperature
+          source: derived
+          direction: positive
+          weight: 0.00
+        - metric_id: macro_fred_gdp_yoy_temperature
+          source: derived
+          direction: positive
+          weight: 0.00
 
   datasets:
     - data_source: tushare
       dataset: stock_daily_bar
       dimension: technical
       required: true
+      max_lag_days: 0
+      cadence: trading_daily
+      quality_tier: core
       note: "A 股全市场日 K，20 日主窗口锚点"
     - data_source: tushare
       dataset: daily_basic
       dimension: valuation
       required: true
+      max_lag_days: 0
+      cadence: trading_daily
+      quality_tier: core
       note: "全市场估值、换手率与成交活跃度"
     - data_source: tushare
       dataset: margin
       dimension: fund_flow
       required: false
+      max_lag_days: 2
+      cadence: trading_daily
+      quality_tier: confirming
       note: "融资融券余额与融资买入"
     - data_source: tushare
       dataset: moneyflow
       dimension: fund_flow
       required: false
       max_lag_days: 2
+      cadence: trading_daily
+      quality_tier: confirming
       note: "个股资金流，通常晚于行情一个交易日"
     - data_source: tushare
       dataset: moneyflow_hsgt
       dimension: fund_flow
       required: false
+      max_lag_days: 3
+      cadence: trading_daily
+      quality_tier: confirming
       note: "北向资金相关字段，输出需披露字段语义限制"
     - data_source: tushare
       dataset: stk_limit
       dimension: sentiment
       required: false
+      max_lag_days: 1
+      cadence: trading_daily
+      quality_tier: background
       note: "每日涨跌停价格表，只作为价格上下限支撑，不等同涨跌停事件"
     - data_source: tushare
       dataset: limit_list_d
       dimension: sentiment
       required: false
+      max_lag_days: 1
+      cadence: trading_daily
+      quality_tier: confirming
       note: "涨跌停和炸板事件表，用于涨停/跌停/炸板情绪温度"
     - data_source: tushare
       dataset: opt_basic
       dimension: sentiment
       required: false
       static: true
+      cadence: static
+      quality_tier: background
       note: "期权静态合约表；当前只做水位披露，暂不直接进入温度"
     - data_source: tushare
       dataset: opt_daily
       dimension: sentiment
       required: false
+      max_lag_days: 5
+      cadence: trading_daily
+      quality_tier: background
       note: "期权日行情；当前只做水位披露，隐含波动率指标待定义"
     - data_source: tushare
       dataset: forecast
       dimension: fundamental
       required: false
       date_column: ann_date
+      cadence: event
+      quality_tier: confirming
       note: "业绩预告，作为最近 20 日基本面事件补充"
     - data_source: tushare
       dataset: report_rc
       dimension: fundamental
       required: false
       date_column: report_date
+      cadence: event
+      quality_tier: confirming
       note: "分析师盈利预测，作为预期上修/下修补充"
     - data_source: lixinger
       dataset: index_fundamental
       dimension: valuation
       required: true
+      max_lag_days: 2
+      cadence: trading_daily
+      quality_tier: core
       note: "核心指数估值与股息率"
     - data_source: lixinger
       dataset: national_debt
       dimension: macro_liquidity
       required: true
       max_lag_days: 7
+      cadence: trading_daily
+      quality_tier: core
       note: "中国国债收益率，股债性价比依赖"
     - data_source: lixinger
       dataset: sw_2021_fundamental
       dimension: fundamental
       required: false
+      max_lag_days: 7
+      cadence: trading_daily
+      quality_tier: confirming
       note: "申万一级行业估值，基本面底座"
     - data_source: lixinger
       dataset: sw_2021_fs_non_financial
       dimension: fundamental
       required: false
+      max_lag_days: 90
+      cadence: quarterly
+      quality_tier: slow
       note: "非金融行业季频财报"
     - data_source: lixinger
       dataset: sw_2021_fs_bank
       dimension: fundamental
       required: false
+      max_lag_days: 90
+      cadence: quarterly
+      quality_tier: slow
       note: "银行行业季频财报"
     - data_source: lixinger
       dataset: sw_2021_fs_security
       dimension: fundamental
       required: false
+      max_lag_days: 90
+      cadence: quarterly
+      quality_tier: slow
       note: "证券行业季频财报"
     - data_source: lixinger
       dataset: sw_2021_fs_insurance
       dimension: fundamental
       required: false
+      max_lag_days: 90
+      cadence: quarterly
+      quality_tier: slow
       note: "保险行业季频财报"
     - data_source: lixinger
       dataset: investor_accounts
       dimension: sentiment
       required: false
       date_column: trade_date
+      max_lag_days: 60
+      cadence: monthly
+      quality_tier: slow
       note: "月度新增投资者账户，用于情绪面慢变量"
     - data_source: tushare
       dataset: shibor
       dimension: macro_liquidity
       required: false
+      max_lag_days: 3
+      cadence: trading_daily
+      quality_tier: confirming
       note: "银行间短端资金价格"
     - data_source: tushare
       dataset: cn_m
       dimension: macro_liquidity
       required: false
       date_column: month
+      max_lag_days: 60
+      cadence: monthly
+      quality_tier: slow
       note: "M1/M2 月度货币数据"
     - data_source: tushare
       dataset: sf_month
       dimension: macro_liquidity
       required: false
       date_column: month
+      max_lag_days: 60
+      cadence: monthly
+      quality_tier: slow
       note: "社融月度数据"
     - data_source: tushare
       dataset: cn_cpi
       dimension: macro_liquidity
       required: false
       date_column: month
+      max_lag_days: 60
+      cadence: monthly
+      quality_tier: slow
       note: "中国 CPI 月度数据"
     - data_source: yfinance
       dataset: index_daily_bar
       dimension: macro_liquidity
       required: false
+      max_lag_days: 3
+      cadence: trading_daily
+      quality_tier: confirming
       note: "标普500、纳斯达克等外盘指数历史行情，用于外部环境收益分位"
     - data_source: yfinance
       dataset: macro_indicators
       dimension: macro_liquidity
       required: false
+      max_lag_days: 3
+      cadence: trading_daily
+      quality_tier: confirming
       note: "美股、VIX、美元、美债等外部环境代理；铜缺失时披露并重归一"
+    - data_source: fred
+      dataset: macro_indicators
+      dimension: macro_liquidity
+      required: false
+      max_lag_days: 14
+      cadence: mixed
+      quality_tier: background
+      note: "FRED 美国官方宏观背景，日频/周频/月频/季频混合；只作观察项"

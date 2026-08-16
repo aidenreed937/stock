@@ -6,6 +6,7 @@ from dataclasses import dataclass
 from datetime import date, datetime
 from typing import TYPE_CHECKING, Any
 
+from stock.analytics.data_quality import build_quality_report, render_quality_report_markdown
 from stock.analytics.industry_structure.artifacts import (
     IndustryStructureArtifactPayload,
     IndustryStructureRunPaths,
@@ -45,6 +46,8 @@ class IndustryStructureRunResult:
     report_markdown: str
     human_report_markdown: str
     report_json: dict[str, Any]
+    quality_report_markdown: str
+    quality_report_json: dict[str, Any]
 
 
 def run_industry_structure(
@@ -74,6 +77,19 @@ def run_industry_structure(
         industry_panel=industry_panel,
         storage_dir=storage_dir,
     )
+    quality_report_json = build_quality_report(
+        title=config.title,
+        manifest=manifest,
+        facts=facts,
+        datasets=config.datasets,
+        primary_data_source="tushare",
+        primary_dataset="sw_daily",
+        main_window=config.main_window,
+        short_windows=config.short_windows,
+        medium_windows=config.medium_windows,
+        period_note="行业结构主窗口按最近已落盘申万行业交易日取窗口；60/120 日只作中期确认。",
+    )
+    quality_report_markdown = render_quality_report_markdown(quality_report_json)
     report_json = build_report_json(
         config=config,
         manifest=manifest,
@@ -105,6 +121,8 @@ def run_industry_structure(
             report_markdown=report_markdown,
             report_json=report_json,
             human_report_markdown=human_report_markdown,
+            quality_report_markdown=quality_report_markdown,
+            quality_report_json=quality_report_json,
         ),
         update_latest=update_latest,
     )
@@ -118,6 +136,8 @@ def run_industry_structure(
         report_markdown=report_markdown,
         human_report_markdown=human_report_markdown,
         report_json=report_json,
+        quality_report_markdown=quality_report_markdown,
+        quality_report_json=quality_report_json,
     )
 
 
@@ -148,5 +168,7 @@ def _build_manifest(
             "report_md": paths.report_md.name,
             "report_json": paths.report_json.name,
             "human_report_md": paths.human_report_md.name,
+            "quality_report_md": paths.quality_report_md.name,
+            "quality_report_json": paths.quality_report_json.name,
         },
     }

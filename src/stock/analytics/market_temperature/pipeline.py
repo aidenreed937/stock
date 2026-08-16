@@ -6,6 +6,7 @@ from dataclasses import dataclass
 from datetime import date, datetime
 from typing import TYPE_CHECKING, Any
 
+from stock.analytics.data_quality import build_quality_report, render_quality_report_markdown
 from stock.analytics.market_temperature.artifacts import (
     MarketTemperatureArtifactPayload,
     MarketTemperatureRunPaths,
@@ -43,6 +44,8 @@ class MarketTemperatureRunResult:
     report_markdown: str
     human_report_markdown: str
     report_json: dict[str, Any]
+    quality_report_markdown: str
+    quality_report_json: dict[str, Any]
 
 
 def run_market_temperature(  # noqa: PLR0913
@@ -67,6 +70,18 @@ def run_market_temperature(  # noqa: PLR0913
         collect_metric_values=collect_metric_values,
     )
     scores = build_scores(config, as_of_date=as_of_date, facts=facts)
+    quality_report_json = build_quality_report(
+        title=config.title,
+        manifest=manifest,
+        facts=facts,
+        datasets=config.datasets,
+        primary_data_source="tushare",
+        primary_dataset="stock_daily_bar",
+        main_window=config.main_window,
+        short_windows=config.short_windows,
+        period_note="六维主温度按最近已落盘 A 股交易日取窗口；短线窗口只作节奏观察。",
+    )
+    quality_report_markdown = render_quality_report_markdown(quality_report_json)
     report_json = build_report_json(config=config, manifest=manifest, scores=scores, facts=facts)
     report_markdown = render_report_markdown(
         config=config,
@@ -89,6 +104,8 @@ def run_market_temperature(  # noqa: PLR0913
             report_markdown=report_markdown,
             report_json=report_json,
             human_report_markdown=human_report_markdown,
+            quality_report_markdown=quality_report_markdown,
+            quality_report_json=quality_report_json,
         ),
         update_latest=update_latest,
     )
@@ -101,6 +118,8 @@ def run_market_temperature(  # noqa: PLR0913
         report_markdown=report_markdown,
         human_report_markdown=human_report_markdown,
         report_json=report_json,
+        quality_report_markdown=quality_report_markdown,
+        quality_report_json=quality_report_json,
     )
 
 
@@ -128,5 +147,7 @@ def _build_manifest(
             "report_md": paths.report_md.name,
             "report_json": paths.report_json.name,
             "human_report_md": paths.human_report_md.name,
+            "quality_report_md": paths.quality_report_md.name,
+            "quality_report_json": paths.quality_report_json.name,
         },
     }

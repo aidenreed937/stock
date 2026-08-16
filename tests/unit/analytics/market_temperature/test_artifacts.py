@@ -42,6 +42,8 @@ def test_write_artifacts_updates_run_and_latest(tmp_path) -> None:
             report_markdown="# report\n",
             report_json={"title": "report"},
             human_report_markdown="# human report\n",
+            quality_report_markdown="# quality report\n",
+            quality_report_json={"title": "quality"},
         ),
     )
 
@@ -50,6 +52,9 @@ def test_write_artifacts_updates_run_and_latest(tmp_path) -> None:
     assert paths.scores.exists()
     assert paths.report_md.exists()
     assert paths.human_report_md.exists()
+    assert paths.quality_report_md.exists()
+    assert paths.quality_report_json.exists()
     assert (paths.latest_dir / "manifest.json").exists()
     assert (paths.latest_dir / "facts.parquet").exists()
     assert (paths.latest_dir / "human_report.md").exists()
+    assert (paths.latest_dir / "quality_report.md").exists()

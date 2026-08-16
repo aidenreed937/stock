@@ -47,11 +47,15 @@ market_temperature:
     assert result.as_of_date == date(2026, 8, 14)
     assert result.paths.report_md.exists()
     assert result.paths.human_report_md.exists()
+    assert result.paths.quality_report_md.exists()
+    assert result.paths.quality_report_json.exists()
     assert result.paths.facts.exists()
     assert (output_root / "latest" / "report.md").exists()
     assert (output_root / "latest" / "human_report.md").exists()
+    assert (output_root / "latest" / "quality_report.md").exists()
     assert "测试温度计" in result.report_markdown
     assert "人工阅读版" in result.human_report_markdown
+    assert "口径与质量报告" in result.quality_report_markdown
     assert "stock_daily_bar" in result.report_markdown
 
 

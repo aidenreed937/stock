@@ -7,6 +7,7 @@ from typing import TYPE_CHECKING, Any
 
 import polars as pl
 
+from stock.analytics.data_quality import is_dataset_lagging
 from stock.data.catalog import DataCatalog
 
 if TYPE_CHECKING:
@@ -159,7 +160,9 @@ def _dataset_rows(
                 latest_text = latest.isoformat()
                 if latest > as_of_date:
                     status = "future"
-                elif item.required and latest < as_of_date - timedelta(days=item.max_lag_days):
+                elif is_dataset_lagging(
+                    latest, as_of_date, required=item.required, max_lag_days=item.max_lag_days
+                ):
                     status = "lagging"
         except Exception as exc:
             status = "error" if item.required else "unavailable"

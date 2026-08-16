@@ -34,9 +34,13 @@ industry_structure:
       dataset: sw_daily
       required: true
       max_lag_days: 1
+      cadence: trading_daily
+      quality_tier: core
     - data_source: tushare
       dataset: index_classify
       static: true
+      cadence: static
+      quality_tier: core
 """,
         encoding="utf-8",
     )
@@ -53,4 +57,7 @@ industry_structure:
     assert config.fundamental_blend.stale_fast_weight == 0.6
     assert config.datasets[0].dataset == "sw_daily"
     assert config.datasets[0].required
+    assert config.datasets[0].cadence == "trading_daily"
+    assert config.datasets[0].quality_tier == "core"
     assert config.datasets[1].static
+    assert config.datasets[1].cadence == "static"

@@ -68,9 +68,10 @@ def _dimension_score(
     facts: pl.DataFrame,
 ) -> dict[str, Any]:
     dimension_id = item.id
-    configured_metric_count = len(tuple(metric for metric in item.metrics if metric.enabled))
-    metric_count = _count_facts(facts, dimension_id, "metric_value")
-    ok_metric_count = _count_facts(facts, dimension_id, "metric_value", status="ok")
+    scored_metric_ids = _scored_metric_ids(item)
+    configured_metric_count = len(scored_metric_ids)
+    metric_count = _count_metric_facts(facts, dimension_id, scored_metric_ids)
+    ok_metric_count = _count_metric_facts(facts, dimension_id, scored_metric_ids, status="ok")
     data_issue_count = _count_data_issues(config, facts, dimension_id)
     temperature = _dimension_temperature(item, facts)
     status = "ready" if temperature is not None and data_issue_count == 0 else "pending"
@@ -98,6 +99,10 @@ def _dimension_score(
         "data_issue_count": data_issue_count,
         "reason": reason,
     }
+
+
+def _scored_metric_ids(item: DimensionConfig) -> set[str]:
+    return {metric.metric_id for metric in item.metrics if metric.enabled and metric.weight > 0}
 
 
 def _dimension_temperature(item: DimensionConfig, facts: pl.DataFrame) -> float | None:
@@ -319,16 +324,37 @@ def _temperature_text(value: float) -> str:
     return f"{value:.2f}"
 
 
+def _count_metric_facts(
+    facts: pl.DataFrame,
+    dimension_id: str,
+    metric_ids: set[str],
+    *,
+    status: str | None = None,
+) -> int:
+    if not metric_ids:
+        return 0
+    return _count_facts(
+        facts,
+        dimension_id,
+        "metric_value",
+        status=status,
+        metric_ids=metric_ids,
+    )
+
+
 def _count_facts(
     facts: pl.DataFrame,
     dimension_id: str,
     category: str,
     *,
     status: str | None = None,
+    metric_ids: set[str] | None = None,
 ) -> int:
     if facts.is_empty():
         return 0
     frame = facts.filter((pl.col("dimension") == dimension_id) & (pl.col("category") == category))
+    if metric_ids is not None:
+        frame = frame.filter(pl.col("metric_id").is_in(metric_ids))
     if status is not None:
         frame = frame.filter(pl.col("status") == status)
     return frame.height
