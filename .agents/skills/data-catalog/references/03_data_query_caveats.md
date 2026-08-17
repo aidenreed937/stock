@@ -40,7 +40,7 @@
 * 系统已在 `StorageCompat.safe_normalize_frame` 与 `DataCatalog` 中内建自动预处理流水线：
   * **自动类型归一**：数值度量列（如 `rqyl`, `rzye`, `turnover_rate` 等）自动统一为 `Float64`；
   * **自动日期/时间对齐**：`trade_date` 统一转为 `pl.Date`，时间戳统一为 UTC 微秒精度；
-  * **离线全库治理**：可通过 `make migrate-data APPLY=1` 随时对全库存量 Parquet 执行批量去重与 Schema 规范化。
+  * **离线全库治理**：可通过 `make migrate-data APPLY=1` 随时对全库存量 Parquet 执行批量去重与 Schema 规范化（高危操作需人工授权）。
 
 ---
 
@@ -81,29 +81,3 @@
   * **全球/美债 10 年期基准**：`data/curated/yfinance/market=GLOBAL/macro_indicators/`（`^TNX`）
 * **股债利差计算公式**：
   $$\text{ERP} = \left(\frac{1}{\text{PE}_{\text{TTM}}} \times 100\%\right) - \left(\text{tcm\_y10} \times 100\right)$$
-
----
-
-## 4. Polars 高性能分析代码范式
-
-```python
-from datetime import date
-import polars as pl
-from stock_data.catalog import DataCatalog
-
-# 1. 统一通过 DataCatalog 加载 (自动容错与类型对齐)
-cat_ts = DataCatalog(data_source="tushare")
-df_margin = cat_ts.load_dataset("margin")
-df_detail = cat_ts.load_dataset("margin_detail", start_date=date(2026, 8, 1))
-
-# 2. 动态获取各数据集最新就绪交易日 (防时滞错位)
-latest_bar = cat_ts.get_latest_trade_date("stock_daily_bar")
-latest_mf = cat_ts.get_latest_trade_date("moneyflow")
-
-# 3. 多列聚合防重命名 (规避 Polars DuplicateError)
-summary = cat_ts.load_dataset("daily_basic").select([
-    pl.col("trade_date").min().alias("start_date"),
-    pl.col("trade_date").max().alias("end_date"),
-    pl.col("symbol").n_unique().alias("unique_symbols"),
-])
-```
