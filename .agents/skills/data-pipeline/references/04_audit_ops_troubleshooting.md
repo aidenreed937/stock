@@ -27,19 +27,26 @@ make audit TYPE=all
 
 ## 2. 离线治理与探针工具 (Data Ops)
 
+> [!CAUTION]
+> **高危操作安全红线（必须人工授权审查）**：
+> 凡涉及直接修改/删除磁盘数据的操作（带 `APPLY=1`），**严禁大模型擅自自动执行**！
+> 1. **默认只读预览 (Dry-Run)**：必须先执行不带 `APPLY=1` 的预览命令，向用户汇报拟处理的文件清单、影响记录数与预估效果；
+> 2. **人工授权确认**：必须向用户明确陈述变更意图，获得用户明确确认（Review & Approval）后，方可执行 `APPLY=1`。
+
 ```bash
-# 1. 全数据源连通性与时延探针检测
+# 1. 全数据源连通性与时延探针检测 (只读安全)
 make probe
 
-# 2. 数据质量规则与隔离区校验
+# 2. 数据质量规则与隔离区校验 (只读安全)
 make validate
 
-# 3. 存量 Parquet 离线去重、Schema 升级与血统修补 (APPLY=1 真实写入)
-make migrate-data
-make migrate-data APPLY=1
+# 3. 存量 Parquet 离线去重、Schema 升级与血统修补
+make migrate-data           # [只读安全] 默认 Dry-run 预览变更计划
+make migrate-data APPLY=1   # [高危写操作] 必须先做 Dry-run 并经用户明确授权
 
 # 4. 清理过期临时与备份 Parquet 文件
-make cleanup-data APPLY=1 OLDER_THAN_DAYS=7
+make cleanup-data                           # [只读安全] 默认 Dry-run 预览待删文件
+make cleanup-data APPLY=1 OLDER_THAN_DAYS=7 # [高危物理删除] 必须经用户明确授权
 ```
 
 ---

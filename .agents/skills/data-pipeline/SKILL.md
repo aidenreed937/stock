@@ -69,11 +69,16 @@ make audit TYPE=valuation
 make audit TYPE=factor
 
 # ==================== [离线治理与探针 Ops] ====================
-# 5 大数据源 API 连通性与时延探针检测
+# 5 大数据源 API 连通性与时延探针检测 (只读安全)
 make probe
 
-# 存量 Parquet 离线去重与 Schema 迁移
+# 存量 Parquet 离线去重与 Schema 迁移 (默认只读 Dry-run；APPLY=1 高危需人工授权)
+make migrate-data
 make migrate-data APPLY=1
+
+# 清理过期临时与备份 Parquet (默认只读 Dry-run；APPLY=1 高危物理删除需人工授权)
+make cleanup-data
+make cleanup-data APPLY=1 OLDER_THAN_DAYS=7
 ```
 
 ---
@@ -91,7 +96,9 @@ make migrate-data APPLY=1
    * **分析层代码严禁根据数据源反向乘除倍率**。
 4. **Schema 零猜测与探针先行 (Ground Truth First)**：
    严禁凭记忆猜测字段名、主键与单位。注册新接口前，必须查阅官方文档（或对应 Skill）并**运行单行 Python 命令实际请求 1 条真实数据**核验原始 Schema（详见 [01_注册指南 步骤 0](file:///Users/mac/workspace/personal/finance/stock/.agents/skills/data-pipeline/references/01_endpoint_registration.md#步骤-0官方文档查验与真实响应单步探测-ground-truth-first)）。
-5. **沙箱环境约束**：
+5. **高危写操作与物理删除必须人工授权审查 (Fail-Safe & Non-Destructive)**：
+   凡涉及直接修改、覆写或物理删除磁盘数据的命令（带 `APPLY=1`，如 `make migrate-data APPLY=1`、`make cleanup-data APPLY=1`、`repair-* APPLY=1`），**严禁大模型擅自自动执行**！必须先运行无参数 Dry-run 预览命令向用户汇报影响范围，并获得用户明确确认后方可执行。
+6. **沙箱环境约束**：
    在沙箱或受限执行环境下，必须将 `uv` 缓存约束在项目内部：
    ```bash
    export UV_CACHE_DIR=.uv_cache
