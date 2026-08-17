@@ -113,7 +113,7 @@ make migrate-data APPLY=1
 ## 量化投研准则（Ground Truth First）
 
 - **本地真实数据第一**：所有点位、估值与指标必须通过代码查询本地 Curated 黄金表输出，严禁凭模型记忆虚构数值。
-- **严禁无源叙事污染**：本地库无政策/新闻数据表，严禁把外部记忆中"政策刺激/救市会议"等叙事伪装成数据事实写入结论或表格（详见 `.agents/skills/data-catalog/references/data_query_caveats.md`）。
+- **严禁无源叙事污染**：本地库无政策/新闻数据表，严禁把外部记忆中"政策刺激/救市会议"等叙事伪装成数据事实写入结论或表格（详见 `.agents/skills/data-catalog/references/03_data_query_caveats.md`）。
 - **三层信息分级透明化**：区分已验证事实 / 机制推断 / 外部背景，并做防过拟合审查。
 
 数据管道与回填实操另见 `.agents/skills/data-pipeline/SKILL.md`。
