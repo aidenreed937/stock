@@ -6,7 +6,7 @@ import polars as pl
 import pytest
 
 from stock.analytics.metrics import MetricContext, MetricEngine, create_default_registry
-from stock.analytics.metrics.calculators.flow import _rolling_percentile
+from stock.analytics.metrics.rules import rolling_percentile
 
 
 class FakeCatalog:
@@ -213,14 +213,14 @@ def test_market_flow_rolling_metrics_use_declared_windows() -> None:
 
 
 def test_rolling_percentile_uses_rank_instead_of_min_max_position() -> None:
-    frame = pl.DataFrame({"value": [1.0, 100.0, 2.0]}).with_columns(_rolling_percentile("value", 3))
+    frame = pl.DataFrame({"value": [1.0, 100.0, 2.0]}).with_columns(rolling_percentile("value", 3))
 
     assert frame["value_percentile_3d"][-1] == pytest.approx(66.6666667)
 
 
 def test_rolling_percentile_ignores_historical_nulls_when_current_value_exists() -> None:
     frame = pl.DataFrame({"value": [1.0, 2.0, None, 3.0, 4.0, None]}).with_columns(
-        _rolling_percentile("value", 5)
+        rolling_percentile("value", 5)
     )
 
     assert frame["value_percentile_5d"][4] == pytest.approx(100.0)

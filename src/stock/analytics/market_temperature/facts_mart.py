@@ -7,38 +7,35 @@ from typing import TYPE_CHECKING, Any
 
 import polars as pl
 
-from stock.analytics.metrics.calculators.percentile import percentile_rank
+from stock.analytics.metrics.rules import growth, percentile_rank, rolling_zscore
 
 if TYPE_CHECKING:
     from collections.abc import Iterable
 
     from stock.analytics.market_temperature.config import MetricInputConfig
 
+# 温度计配置 metric_id -> market_daily 宽表列名（仅收录配置实际使用的指标）
 _MARKET_DAILY_COLUMN_MAP: dict[str, str] = {
     "advance_share": "advance_ratio",
-    "adv_dec_ratio": "adv_dec_ratio",
-    "advance_ratio": "advance_ratio",
     "above_ma20_share": "above_ma20_ratio",
-    "above_ma20_ratio": "above_ma20_ratio",
     "above_ma60_share": "above_ma60_ratio",
-    "above_ma60_ratio": "above_ma60_ratio",
-    "above_ma120_share": "above_ma120_ratio",
-    "above_ma120_ratio": "above_ma120_ratio",
-    "new_high_252d_ratio": "new_high_252d_ratio",
-    "new_low_252d_ratio": "new_low_252d_ratio",
+    "new_high_share_252d": "new_high_252d_ratio",
+    "new_low_share_252d": "new_low_252d_ratio",
     "margin_buy_share": "margin_buy_ratio",
-    "margin_buy_ratio": "margin_buy_ratio",
-    "margin_balance": "margin_balance",
     "margin_penetration": "margin_penetration",
     "market_turnover_rate": "market_turnover_rate",
     "main_money_net_inflow_share": "main_net_inflow_ratio",
-    "main_net_inflow_ratio": "main_net_inflow_ratio",
-    "market_amount": "total_turnover",
-    "total_turnover": "total_turnover",
 }
 
 
-def _calc_percentile_metric(filtered: pl.DataFrame, metric_id: str) -> float | None:
+def _latest_non_null_date(filtered: pl.DataFrame, column: str) -> date | None:
+    if column not in filtered.columns:
+        return None
+    latest = filtered.filter(pl.col(column).is_not_null()).select("trade_date").tail(1)
+    return latest["trade_date"][0] if not latest.is_empty() else None
+
+
+def _calc_percentile_metric(filtered: pl.DataFrame, metric_id: str) -> tuple[float, date] | None:
     col_map = {
         "market_amount_percentile_1250d": "total_turnover",
         "turnover_rate_percentile_1250d": "market_turnover_rate",
@@ -46,27 +43,33 @@ def _calc_percentile_metric(filtered: pl.DataFrame, metric_id: str) -> float | N
     }
     col = col_map.get(metric_id)
     if col and col in filtered.columns:
-        series = filtered[col].drop_nulls()
-        if not series.is_empty():
-            return percentile_rank(series.tail(1250), 1250)
+        metric_date = _latest_non_null_date(filtered, col)
+        value = percentile_rank(filtered[col].tail(1250), 1250)
+        if value is not None and metric_date is not None:
+            return value, metric_date
     return None
 
 
-def _calc_zscore_or_growth(filtered: pl.DataFrame, metric_id: str) -> float | None:
+def _latest_rule_value(filtered: pl.DataFrame, expr: pl.Expr) -> tuple[float, date] | None:
+    """应用规则表达式并取最近一个非空观测。"""
+    frame = filtered.with_columns(expr.alias("_value")).filter(pl.col("_value").is_not_null())
+    if frame.is_empty():
+        return None
+    latest = frame.tail(1)
+    return float(latest["_value"][0]), latest["trade_date"][0]
+
+
+def _calc_zscore_or_growth(filtered: pl.DataFrame, metric_id: str) -> tuple[float, date] | None:
     if metric_id == "margin_buy_share_zscore_60d" and "margin_buy_ratio" in filtered.columns:
-        series = filtered["margin_buy_ratio"].drop_nulls()
-        if len(series) >= 30:
-            w = series.tail(60)
-            m, s = w.mean(), w.std()
-            return float((w[-1] - m) / s) if s and m is not None else 0.0
-    elif metric_id == "margin_balance_growth_20d" and "margin_balance" in filtered.columns:
-        series = filtered["margin_balance"].drop_nulls()
-        if len(series) >= 21 and (prior := float(series[-21])) > 0:
-            return float((series[-1] - prior) / prior)
+        return _latest_rule_value(filtered, rolling_zscore("margin_buy_ratio", 60))
+    if metric_id == "margin_balance_growth_20d" and "margin_balance" in filtered.columns:
+        return _latest_rule_value(filtered, growth("margin_balance", 20))
     return None
 
 
-def _compute_rolling_fact_value(filtered: pl.DataFrame, metric_id: str) -> float | None:
+def _compute_rolling_fact_value(
+    filtered: pl.DataFrame, metric_id: str
+) -> tuple[float, date] | None:
     """从 market_daily 历史序列计算滚动分位/Z-Score/增长率。"""
     pct = _calc_percentile_metric(filtered, metric_id)
     if pct is not None:
@@ -74,70 +77,72 @@ def _compute_rolling_fact_value(filtered: pl.DataFrame, metric_id: str) -> float
     return _calc_zscore_or_growth(filtered, metric_id)
 
 
-def try_get_market_daily_fact(
-    market_daily: pl.DataFrame,
+def _mart_fact(  # noqa: PLR0913
+    *,
     dimension: str,
-    metric: MetricInputConfig,
+    metric_id: str,
     as_of_date: date,
-) -> dict[str, Any] | None:
-    """尝试直接从已物化的 market_daily 宽表中提取或计算指标事实。"""
-    if market_daily.is_empty():
-        return None
-
-    filtered = market_daily.filter(pl.col("trade_date") <= as_of_date)
-    if filtered.is_empty():
-        return None
-
-    latest_row = filtered.tail(1)
-    latest_date = latest_row["trade_date"][0]
-
-    # 1. 尝试计算滚动特征
-    rolling_val = _compute_rolling_fact_value(filtered, metric.metric_id)
-    if rolling_val is not None:
-        return {
-            "fact_id": f"metric.{dimension}.{metric.metric_id}",
-            "category": "metric_value",
-            "dimension": dimension,
-            "data_source": "mart",
-            "dataset": "market_daily",
-            "as_of_date": as_of_date,
-            "window": 0,
-            "metric_id": metric.metric_id,
-            "value_float": float(rolling_val),
-            "value_text": "",
-            "unit": "raw",
-            "sample_size": filtered.height,
-            "source": "FeatureStore.market_daily",
-            "status": "ok",
-            "note": f"source=mart.market_daily; metric_date={latest_date.isoformat()}",
-        }
-
-    # 2. 尝试直接列映射
-    col_name = _MARKET_DAILY_COLUMN_MAP.get(metric.metric_id)
-    if not col_name or col_name not in market_daily.columns:
-        return None
-
-    val = latest_row[col_name][0]
-    if val is None:
-        return None
-
+    value: float,
+    metric_date: date,
+    sample_size: int,
+) -> dict[str, Any]:
     return {
-        "fact_id": f"metric.{dimension}.{metric.metric_id}",
+        "fact_id": f"metric.{dimension}.{metric_id}",
         "category": "metric_value",
         "dimension": dimension,
         "data_source": "mart",
         "dataset": "market_daily",
         "as_of_date": as_of_date,
         "window": 0,
-        "metric_id": metric.metric_id,
-        "value_float": float(val),
+        "metric_id": metric_id,
+        "value_float": value,
         "value_text": "",
         "unit": "raw",
-        "sample_size": filtered.height,
+        "sample_size": sample_size,
         "source": "FeatureStore.market_daily",
         "status": "ok",
-        "note": f"source=mart.market_daily; metric_date={latest_date.isoformat()}",
+        "note": f"source=mart.market_daily; metric_date={metric_date.isoformat()}",
     }
+
+
+def try_get_market_daily_fact(
+    market_daily: pl.DataFrame,
+    dimension: str,
+    metric: MetricInputConfig,
+    as_of_date: date,
+    expected_trade_date: date | None = None,
+) -> dict[str, Any] | None:
+    """尝试直接从已物化的 market_daily 宽表中提取或计算指标事实。"""
+    if market_daily.is_empty():
+        return None
+
+    filtered = market_daily.filter(pl.col("trade_date") <= as_of_date).sort("trade_date")
+    if filtered.is_empty():
+        return None
+
+    rolling_result = _compute_rolling_fact_value(filtered, metric.metric_id)
+    if rolling_result is not None:
+        value, metric_date = rolling_result
+    else:
+        col_name = _MARKET_DAILY_COLUMN_MAP.get(metric.metric_id)
+        if not col_name or col_name not in filtered.columns:
+            return None
+        latest_row = filtered.filter(pl.col(col_name).is_not_null()).tail(1)
+        if latest_row.is_empty():
+            return None
+        value = float(latest_row[col_name][0])
+        metric_date = latest_row["trade_date"][0]
+
+    if expected_trade_date is not None and metric_date != expected_trade_date:
+        return None
+    return _mart_fact(
+        dimension=dimension,
+        metric_id=metric.metric_id,
+        as_of_date=as_of_date,
+        value=float(value),
+        metric_date=metric_date,
+        sample_size=filtered.height,
+    )
 
 
 def parse_date_value(value: object) -> date | None:

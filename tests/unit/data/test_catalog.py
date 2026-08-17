@@ -6,7 +6,7 @@ from pathlib import Path
 import polars as pl
 import pytest
 
-from stock.data.catalog import DataCatalog
+from stock.data.catalog import DataCatalog, load_dataset_compat
 from stock.exceptions import DataValidationError
 
 
@@ -343,3 +343,71 @@ def test_load_bars_with_columns_projection_and_filters(tmp_path: Path) -> None:
     assert df.columns == ["trade_date", "close", "amount"]
     assert len(df) == 1
     assert df["close"][0] == 10.5
+
+
+def test_load_dataset_compat_passes_supported_kwargs(tmp_path: Path) -> None:
+    """load_dataset_compat 透传 loader 支持的日期参数（无投影时保留全部列）。"""
+    _make_bar_file(tmp_path, "stock_daily_bar", "CN", 2026, 8)
+    catalog = DataCatalog(data_source="tushare", storage_dir=tmp_path)
+
+    frame = load_dataset_compat(
+        catalog,
+        "stock_daily_bar",
+        start_date=date(2026, 8, 1),
+        end_date=date(2026, 8, 1),
+    )
+    assert len(frame) == 2  # start/end 生效（过滤掉 8/2 数据，保留 8/1 的 AAA 与 BBB 两条）
+    assert set(frame["trade_date"].to_list()) == {date(2026, 8, 1)}
+    assert "close" in frame.columns
+    assert "trade_date" in frame.columns
+
+
+def test_load_dataset_compat_passes_supported_kwargs_and_projects(tmp_path: Path) -> None:
+    """load_dataset_compat 透传 loader 支持的参数并执行列投影。"""
+    _make_bar_file(tmp_path, "stock_daily_bar", "CN", 2026, 8)
+    catalog = DataCatalog(data_source="tushare", storage_dir=tmp_path)
+
+    frame = load_dataset_compat(
+        catalog,
+        "stock_daily_bar",
+        start_date=date(2026, 8, 1),
+        end_date=date(2026, 8, 1),
+        columns=["trade_date", "close", "amount"],
+    )
+    assert frame.columns == ["trade_date", "close", "amount"]
+    assert len(frame) == 2  # start/end/columns 均生效
+    assert set(frame["trade_date"].to_list()) == {date(2026, 8, 1)}
+
+
+def test_load_dataset_compat_narrow_signature_loader() -> None:
+    """loader 签名不含可选参数时，仅按位置加载并正确投影。"""
+
+    class _Narrow:
+        def load_dataset(self, dataset: str) -> pl.DataFrame:
+            return pl.DataFrame(
+                {
+                    "trade_date": [date(2026, 8, 1)],
+                    "value": [1.0],
+                    "extra": [2.0],
+                }
+            )
+
+    frame = load_dataset_compat(
+        _Narrow(),
+        "ds",
+        start_date=date(2026, 8, 1),
+        columns=["trade_date", "value"],
+    )
+    assert frame.columns == ["trade_date", "value"]
+    assert frame["value"][0] == 1.0
+
+
+def test_load_dataset_compat_non_dataframe_returns_empty() -> None:
+    """loader 返回非 DataFrame 时返回空帧而非崩溃。"""
+
+    class _Bad:
+        def load_dataset(self, dataset: str) -> list[object]:
+            return [1, 2, 3]
+
+    frame = load_dataset_compat(_Bad(), "ds")
+    assert frame.is_empty()

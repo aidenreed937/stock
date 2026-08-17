@@ -1,12 +1,15 @@
 """MarketDailyBuilder 单元测试。"""
 
-from datetime import date
+from datetime import date, timedelta
 from pathlib import Path
 
 import polars as pl
+import pytest
 
 from stock.analytics.features.builders.market_daily import MarketDailyBuilder
+from stock.analytics.features.builders.market_daily_ops import build_breadth_and_turnover
 from stock.analytics.features.store import FeatureStore
+from stock.analytics.metrics.calculators.breadth import _calculate_breadth_columns
 from stock.data.catalog import DataCatalog
 
 
@@ -106,3 +109,46 @@ def test_market_daily_builder_full(tmp_path: Path) -> None:
     persisted = store.get_market_daily()
     assert len(persisted) == 14
     assert persisted["total_turnover"][0] == 300000.0
+    assert store.get_market_daily_metadata()["definition_fingerprint"]
+    feature_values = store.values.get(feature_ids=["total_turnover"])
+    assert len(feature_values) == 14
+    assert feature_values["definition_version"].unique().to_list() == ["v1"]
+
+
+def test_market_daily_breadth_matches_metric_engine_semantics() -> None:
+    start = date(2025, 1, 1)
+    rows: list[dict[str, object]] = []
+    for index in range(260):
+        trade_date = start + timedelta(days=index)
+        rows.append(
+            {
+                "trade_date": trade_date,
+                "symbol": "A",
+                "close": 10.0 + index,
+                "amount": 100.0,
+            }
+        )
+    rows.append(
+        {
+            "trade_date": start + timedelta(days=259),
+            "symbol": "NEW",
+            "close": 20.0,
+            "amount": 100.0,
+        }
+    )
+    bars = pl.DataFrame(rows)
+
+    class _Catalog:
+        def load_bars(self, **_: object) -> pl.DataFrame:
+            return bars
+
+    mart = build_breadth_and_turnover(_Catalog(), start, start + timedelta(days=259))  # type: ignore[arg-type]
+    engine = _calculate_breadth_columns(bars)
+    latest_mart = mart.sort("trade_date").tail(1)
+    latest_engine = engine.sort("trade_date").tail(1)
+
+    assert latest_mart["advance_ratio"][0] == pytest.approx(latest_engine["advance_share"][0])
+    assert latest_mart["above_ma20_ratio"][0] == pytest.approx(latest_engine["above_ma20_share"][0])
+    assert latest_mart["new_high_252d_ratio"][0] == pytest.approx(
+        latest_engine["new_high_share_252d"][0]
+    )

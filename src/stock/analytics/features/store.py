@@ -4,16 +4,23 @@ from __future__ import annotations
 
 import tempfile
 from pathlib import Path
-from typing import TYPE_CHECKING
+from typing import TYPE_CHECKING, Any
 
 import polars as pl
 
+from stock.analytics.features.feature_values import FeatureValueStore
+from stock.analytics.features.store_ops import (
+    merge_incremental,
+    read_metadata,
+    validate_incremental_metadata,
+    write_metadata,
+)
 from stock.config.settings import settings
 from stock.data.storage.compat import StorageCompat
 from stock.utils.logger import logger
 
 if TYPE_CHECKING:
-    from collections.abc import Sequence
+    from collections.abc import Mapping, Sequence
     from datetime import date
 
 
@@ -27,6 +34,7 @@ class FeatureStore:
         else:
             self.mart_dir = settings.curated_data_dir / "mart"
         self.mart_dir.mkdir(parents=True, exist_ok=True)
+        self.values = FeatureValueStore(self.mart_dir)
 
     @property
     def market_daily_path(self) -> Path:
@@ -83,7 +91,17 @@ class FeatureStore:
 
         return df
 
-    def save_market_daily(self, df: pl.DataFrame, *, overwrite: bool = False) -> None:
+    def get_market_daily_metadata(self) -> dict[str, Any]:
+        """读取 market_daily 的定义版本、输入水位和构建指纹。"""
+        return read_metadata(self.mart_dir)
+
+    def save_market_daily(
+        self,
+        df: pl.DataFrame,
+        *,
+        overwrite: bool = False,
+        metadata: Mapping[str, Any] | None = None,
+    ) -> None:
         """原子持久化全市场日频宽表。"""
         if df.is_empty():
             return
@@ -94,13 +112,10 @@ class FeatureStore:
             save_df = StorageCompat.safe_cast_date_col(save_df, "trade_date")
 
         if target_path.exists() and not overwrite:
-            try:
-                existing = pl.read_parquet(target_path)
-                existing = StorageCompat.safe_cast_date_col(existing, "trade_date")
-                save_df = pl.concat([existing, save_df], how="diagonal_relaxed")
-                save_df = save_df.unique(subset=["trade_date"], keep="last")
-            except Exception as e:
-                logger.warning(f"合并已有 market_daily 失败，将直接覆写: {e}")
+            validate_incremental_metadata(self.mart_dir, metadata)
+            existing = pl.read_parquet(target_path)
+            existing = StorageCompat.safe_cast_date_col(existing, "trade_date")
+            save_df = merge_incremental(existing, save_df, keys=["trade_date"])
 
         if "trade_date" in save_df.columns:
             save_df = save_df.sort("trade_date")
@@ -118,6 +133,8 @@ class FeatureStore:
             save_df.write_parquet(tmp_path)
             tmp_path.replace(target_path)
             logger.info(f"FeatureStore 成功物化 market_daily ({len(save_df)} 行) -> {target_path}")
+            if metadata is not None:
+                write_metadata(self.mart_dir, metadata)
         finally:
             if tmp_path.exists():
                 tmp_path.unlink(missing_ok=True)

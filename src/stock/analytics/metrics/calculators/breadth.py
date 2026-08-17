@@ -6,6 +6,13 @@ import polars as pl
 
 from stock.analytics.metrics.context import MetricContext
 from stock.analytics.metrics.datasets.loaders import load_metric_dataset
+from stock.analytics.metrics.rules import (
+    above_ma,
+    at_rolling_high,
+    at_rolling_low,
+    daily_return,
+    share,
+)
 from stock.analytics.metrics.spec import EntityType, MetricCalculator, MetricDomain, MetricSpec
 
 _MA_WINDOWS = (20, 60, 120)
@@ -33,15 +40,6 @@ def _load_start_date(context: MetricContext, max_window: int) -> date | None:
     if context.start_date is None:
         return lookback_start
     return min(context.start_date, lookback_start)
-
-
-def _share_expr(count_col: str, total_col: str, output: str) -> pl.Expr:
-    return (
-        pl.when(pl.col(total_col) > 0)
-        .then(pl.col(count_col) / pl.col(total_col))
-        .otherwise(None)
-        .alias(output)
-    )
 
 
 def _breadth_frame(context: MetricContext) -> pl.DataFrame:
@@ -100,33 +98,24 @@ def _stock_signal_frame(raw: pl.DataFrame) -> pl.DataFrame:
         .sort(["symbol", "trade_date"])
     )
     return base.with_columns(
-        (pl.col("close") / pl.col("close").shift(1).over("symbol") - 1.0).alias("_return_1d"),
-        pl.col("close").rolling_mean(20).over("symbol").alias("_ma20"),
-        pl.col("close").rolling_mean(60).over("symbol").alias("_ma60"),
-        pl.col("close").rolling_mean(120).over("symbol").alias("_ma120"),
-        pl.col("close").rolling_max(_NEW_HIGH_LOW_WINDOW).over("symbol").alias("_high_252d"),
-        pl.col("close").rolling_min(_NEW_HIGH_LOW_WINDOW).over("symbol").alias("_low_252d"),
-    ).with_columns(
-        (pl.col("close") > pl.col("_ma20")).alias("_above_ma20"),
-        (pl.col("close") > pl.col("_ma60")).alias("_above_ma60"),
-        (pl.col("close") > pl.col("_ma120")).alias("_above_ma120"),
-        (pl.col("close") >= pl.col("_high_252d")).alias("_new_high_252d"),
-        (pl.col("close") <= pl.col("_low_252d")).alias("_new_low_252d"),
+        daily_return("close").alias("_return_1d"),
+        above_ma("close", 20).alias("_above_ma20"),
+        above_ma("close", 60).alias("_above_ma60"),
+        above_ma("close", 120).alias("_above_ma120"),
+        at_rolling_high("close", _NEW_HIGH_LOW_WINDOW).alias("_new_high_252d"),
+        at_rolling_low("close", _NEW_HIGH_LOW_WINDOW).alias("_new_low_252d"),
     )
 
 
 def _with_breadth_metrics(daily_counts: pl.DataFrame) -> pl.DataFrame:
     return daily_counts.with_columns(
-        pl.when(pl.col("_decline_count") > 0)
-        .then(pl.col("_advance_count") / pl.col("_decline_count"))
-        .otherwise(None)
-        .alias("advance_decline_ratio"),
-        _share_expr("_advance_count", "_return_count", "advance_share"),
-        _share_expr("_above_ma20_count", "_ma20_count", "above_ma20_share"),
-        _share_expr("_above_ma60_count", "_ma60_count", "above_ma60_share"),
-        _share_expr("_above_ma120_count", "_ma120_count", "above_ma120_share"),
-        _share_expr("_new_high_count", "_high_low_count", "new_high_share_252d"),
-        _share_expr("_new_low_count", "_high_low_count", "new_low_share_252d"),
+        share("_advance_count", "_decline_count", "advance_decline_ratio"),
+        share("_advance_count", "_return_count", "advance_share"),
+        share("_above_ma20_count", "_ma20_count", "above_ma20_share"),
+        share("_above_ma60_count", "_ma60_count", "above_ma60_share"),
+        share("_above_ma120_count", "_ma120_count", "above_ma120_share"),
+        share("_new_high_count", "_high_low_count", "new_high_share_252d"),
+        share("_new_low_count", "_high_low_count", "new_low_share_252d"),
     )
 
 

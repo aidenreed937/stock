@@ -8,7 +8,7 @@ from typing import TYPE_CHECKING, Any
 import polars as pl
 
 from stock.analytics.data_quality import is_dataset_lagging
-from stock.data.catalog import DataCatalog
+from stock.data.catalog import DataCatalog, load_dataset_compat
 
 if TYPE_CHECKING:
     from collections.abc import Iterable
@@ -202,19 +202,16 @@ def _load_dataset_date_frame(
     end_date: date,
     date_column: str,
 ) -> pl.DataFrame:
-    for kwargs in (
-        {"start_date": start_date, "end_date": end_date, "columns": [date_column]},
-        {"start_date": start_date, "end_date": end_date},
-        {"end_date": end_date},
-        {},
-    ):
-        try:
-            return catalog.load_dataset(dataset, **kwargs)
-        except TypeError:
-            continue
-        except Exception:
-            return pl.DataFrame()
-    return pl.DataFrame()
+    try:
+        return load_dataset_compat(
+            catalog,
+            dataset,
+            start_date=start_date,
+            end_date=end_date,
+            columns=[date_column],
+        )
+    except Exception:
+        return pl.DataFrame()
 
 
 def _latest_dataset_date(

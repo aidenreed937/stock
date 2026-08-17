@@ -4,9 +4,9 @@ from datetime import date, timedelta
 
 import polars as pl
 
-from stock.analytics.metrics.calculators.percentile import rolling_percentile
 from stock.analytics.metrics.context import MetricContext
 from stock.analytics.metrics.datasets.loaders import load_metric_dataset
+from stock.analytics.metrics.rules import rolling_percentile, rolling_zscore
 from stock.analytics.metrics.spec import EntityType, MetricCalculator, MetricDomain, MetricSpec
 
 _TRADING_DAYS_5Y = 1250
@@ -91,16 +91,6 @@ def _with_missing_float_columns(df: pl.DataFrame, columns: tuple[str, ...]) -> p
     return df.with_columns(missing) if missing else df
 
 
-def _rolling_percentile(column: str, output: str, window: int) -> pl.Expr:
-    return rolling_percentile(column, output, window)
-
-
-def _rolling_zscore(column: str, output: str, window: int) -> pl.Expr:
-    mean = pl.col(column).rolling_mean(window_size=window)
-    std = pl.col(column).rolling_std(window_size=window)
-    return pl.when(std > 0).then((pl.col(column) - mean) / std).otherwise(None).alias(output)
-
-
 def _liquidity_frame(context: MetricContext) -> pl.DataFrame:
     start_date = _load_start_date(context, _TRADING_DAYS_5Y)
     end_date = context.resolve_end_date()
@@ -134,17 +124,17 @@ def _calculate_liquidity_columns(frame: pl.DataFrame) -> pl.DataFrame:
     market_amount_ma = pl.col("market_amount").rolling_mean(window_size=_AMOUNT_MA_WINDOW)
     frame = _with_missing_float_columns(frame, ("market_turnover_rate", "market_amount"))
     return frame.with_columns(
-        _rolling_percentile(
+        rolling_percentile(
             "market_turnover_rate",
-            "turnover_rate_percentile_1250d",
             _TRADING_DAYS_5Y,
+            "turnover_rate_percentile_1250d",
         ),
-        _rolling_zscore("market_turnover_rate", "turnover_rate_zscore_60d", _ZSCORE_WINDOW),
+        rolling_zscore("market_turnover_rate", _ZSCORE_WINDOW, "turnover_rate_zscore_60d"),
         pl.when(market_amount_ma > 0)
         .then(pl.col("market_amount") / market_amount_ma)
         .otherwise(None)
         .alias("amount_ma_ratio_20d"),
-        _rolling_zscore("market_amount", "amount_zscore_60d", _ZSCORE_WINDOW),
+        rolling_zscore("market_amount", _ZSCORE_WINDOW, "amount_zscore_60d"),
     )
 
 

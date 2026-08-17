@@ -2,9 +2,9 @@
 
 import polars as pl
 
-from stock.analytics.metrics.calculators.percentile import rolling_percentile
 from stock.analytics.metrics.context import MetricContext
 from stock.analytics.metrics.datasets.loaders import load_metric_dataset
+from stock.analytics.metrics.rules import growth, rolling_percentile, rolling_zscore
 from stock.analytics.metrics.spec import (
     EntityType,
     MetricCalculator,
@@ -143,7 +143,7 @@ def _northbound_daily(hsgt: pl.DataFrame) -> pl.DataFrame:
         .group_by("trade_date")
         .agg(pl.col("northbound_net_inflow").sum())
         .sort("trade_date")
-        .with_columns(_rolling_zscore(pl.DataFrame(), "northbound_net_inflow", _FLOW_ZSCORE_WINDOW))
+        .with_columns(rolling_zscore("northbound_net_inflow", _FLOW_ZSCORE_WINDOW))
     )
 
 
@@ -196,12 +196,7 @@ def _base_frame(context: MetricContext) -> pl.DataFrame:
             .otherwise(None)
             .alias("margin_penetration"),
         )
-        .with_columns(
-            (
-                pl.col("margin_balance") / pl.col("margin_balance").shift(_MARGIN_GROWTH_WINDOW)
-                - 1.0
-            ).alias("margin_balance_growth_20d")
-        )
+        .with_columns(growth("margin_balance", _MARGIN_GROWTH_WINDOW))
         .sort("trade_date")
     )
 
@@ -242,19 +237,9 @@ def _market_flow_frame(context: MetricContext) -> pl.DataFrame:
             .otherwise(None)
             .alias("northbound_net_inflow_share"),
         )
-        .with_columns(_rolling_percentile("market_amount", _TRADING_DAYS_5Y))
+        .with_columns(rolling_percentile("market_amount", _TRADING_DAYS_5Y))
         .sort("trade_date")
     )
-
-
-def _rolling_zscore(df: pl.DataFrame, column: str, window: int) -> pl.Expr:
-    mean = pl.col(column).rolling_mean(window_size=window)
-    std = pl.col(column).rolling_std(window_size=window)
-    return ((pl.col(column) - mean) / (std + 1e-8)).alias(f"{column}_zscore_{window}d")
-
-
-def _rolling_percentile(column: str, window: int) -> pl.Expr:
-    return rolling_percentile(column, f"{column}_percentile_{window}d", window)
 
 
 def _select_metric(frame: pl.DataFrame, spec: MetricSpec) -> pl.DataFrame:
@@ -284,7 +269,7 @@ def calculate_margin_buy_share_zscore(context: MetricContext, spec: MetricSpec) 
     frame = _base_frame(context)
     if frame.is_empty():
         return _empty(spec.output_columns)
-    return _select_metric(frame.with_columns(_rolling_zscore(frame, "margin_buy_share", 60)), spec)
+    return _select_metric(frame.with_columns(rolling_zscore("margin_buy_share", 60)), spec)
 
 
 def calculate_margin_penetration_percentile(
@@ -293,7 +278,7 @@ def calculate_margin_penetration_percentile(
     frame = _base_frame(context)
     if frame.is_empty():
         return _empty(spec.output_columns)
-    return _select_metric(frame.with_columns(_rolling_percentile("margin_penetration", 1250)), spec)
+    return _select_metric(frame.with_columns(rolling_percentile("margin_penetration", 1250)), spec)
 
 
 def calculate_leverage_sentiment(context: MetricContext, spec: MetricSpec) -> pl.DataFrame:
@@ -302,9 +287,9 @@ def calculate_leverage_sentiment(context: MetricContext, spec: MetricSpec) -> pl
         return _empty(spec.output_columns)
     return (
         frame.with_columns(
-            _rolling_zscore(frame, "margin_buy_share", _FLOW_ZSCORE_WINDOW),
-            _rolling_zscore(frame, "margin_balance_growth_20d", _FLOW_ZSCORE_WINDOW),
-            _rolling_zscore(frame, "margin_penetration", _FLOW_ZSCORE_WINDOW),
+            rolling_zscore("margin_buy_share", _FLOW_ZSCORE_WINDOW),
+            rolling_zscore("margin_balance_growth_20d", _FLOW_ZSCORE_WINDOW),
+            rolling_zscore("margin_penetration", _FLOW_ZSCORE_WINDOW),
         )
         .with_columns(
             (
@@ -334,9 +319,7 @@ def calculate_main_money_net_inflow_share_zscore(
     if frame.is_empty():
         return _empty(spec.output_columns)
     return _select_metric(
-        frame.with_columns(
-            _rolling_zscore(frame, "main_money_net_inflow_share", _FLOW_ZSCORE_WINDOW)
-        ),
+        frame.with_columns(rolling_zscore("main_money_net_inflow_share", _FLOW_ZSCORE_WINDOW)),
         spec,
     )
 

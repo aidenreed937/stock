@@ -107,11 +107,7 @@ def collect_facts(
     )
     if should_collect_metrics:
         rows.extend(
-            _metric_rows(
-                config.dimensions,
-                as_of_date,
-                storage_dir=storage_dir,
-            )
+            _metric_rows(config.dimensions, as_of_date, trade_dates[-1], storage_dir=storage_dir)
         )
         rows.extend(
             collect_derived_metric_rows(
@@ -277,6 +273,7 @@ def _latest_dataset_date(
 def _metric_rows(
     dimensions: Iterable[DimensionConfig],
     as_of_date: date,
+    expected_trade_date: date,
     *,
     storage_dir: Path | str | None,
 ) -> list[dict[str, Any]]:
@@ -287,7 +284,7 @@ def _metric_rows(
     context = MetricContext(
         catalog=DataCatalog(data_source="tushare", storage_dir=storage_dir),
         target_date=as_of_date,
-        start_date=as_of_date - timedelta(days=365 * 2),
+        start_date=as_of_date - timedelta(days=365 * 7),
         end_date=as_of_date,
     )
     engine = MetricEngine()
@@ -295,7 +292,9 @@ def _metric_rows(
         for metric in dimension.metrics:
             if not metric.enabled or metric.source != "metric_engine":
                 continue
-            fact = try_get_market_daily_fact(market_daily, dimension.id, metric, as_of_date)
+            fact = try_get_market_daily_fact(
+                market_daily, dimension.id, metric, as_of_date, expected_trade_date
+            )
             if fact is not None:
                 rows.append(fact)
             else:

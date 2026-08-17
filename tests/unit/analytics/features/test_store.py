@@ -4,6 +4,7 @@ from datetime import date
 from pathlib import Path
 
 import polars as pl
+import pytest
 
 from stock.analytics.features.store import FeatureStore
 
@@ -50,7 +51,7 @@ def test_feature_store_merge_incremental(tmp_path: Path) -> None:
             "total_turnover": [1000.0],
         }
     )
-    store.save_market_daily(df1)
+    store.save_market_daily(df1, metadata={"definition_fingerprint": "v1"})
 
     df2 = pl.DataFrame(
         {
@@ -58,8 +59,130 @@ def test_feature_store_merge_incremental(tmp_path: Path) -> None:
             "total_turnover": [2000.0],
         }
     )
-    store.save_market_daily(df2, overwrite=False)
+    store.save_market_daily(df2, overwrite=False, metadata={"definition_fingerprint": "v1"})
 
     merged = store.get_market_daily()
     assert len(merged) == 2
     assert merged["trade_date"].to_list() == [date(2026, 8, 1), date(2026, 8, 2)]
+
+
+def test_feature_store_rejects_incremental_definition_mismatch(tmp_path: Path) -> None:
+    store = FeatureStore(mart_dir=tmp_path / "mart")
+    frame = pl.DataFrame({"trade_date": [date(2026, 8, 1)], "total_turnover": [1000.0]})
+    store.save_market_daily(
+        frame,
+        metadata={"definition_fingerprint": "v1"},
+    )
+
+    with pytest.raises(ValueError, match="定义指纹"):
+        store.save_market_daily(
+            frame,
+            metadata={"definition_fingerprint": "v2"},
+        )
+
+
+def test_feature_values_preserve_definition_versions(tmp_path: Path) -> None:
+    store = FeatureStore(mart_dir=tmp_path / "mart")
+
+    store.values.save(pl.DataFrame([_feature_row("v1", 0.4)]))
+    store.values.save(pl.DataFrame([_feature_row("v2", 0.5)]))
+
+    values = store.values.get(feature_ids=["advance_ratio"])
+    assert len(values) == 2
+    assert values["definition_version"].to_list() == ["v1", "v2"]
+
+
+def test_feature_store_merge_keeps_both_sides_non_null_on_same_day(
+    tmp_path: Path,
+) -> None:
+    store = FeatureStore(mart_dir=tmp_path / "mart")
+    metadata = {"definition_fingerprint": "v1"}
+
+    store.save_market_daily(
+        pl.DataFrame(
+            {
+                "trade_date": [date(2026, 8, 1), date(2026, 8, 2)],
+                "total_turnover": [1000.0, None],
+                "adv_dec_ratio": [1.5, 0.8],
+            }
+        ),
+        metadata=metadata,
+    )
+    store.save_market_daily(
+        pl.DataFrame(
+            {
+                "trade_date": [date(2026, 8, 1), date(2026, 8, 2)],
+                "total_turnover": [None, 2000.0],
+                "new_high_252d_ratio": [0.1, 0.2],
+            }
+        ),
+        overwrite=False,
+        metadata=metadata,
+    )
+
+    merged = store.get_market_daily()
+    row_1 = merged.filter(pl.col("trade_date") == date(2026, 8, 1))
+    row_2 = merged.filter(pl.col("trade_date") == date(2026, 8, 2))
+    assert row_1["total_turnover"][0] == 1000.0  # incoming 为 null 不覆盖存量值
+    assert row_2["total_turnover"][0] == 2000.0  # incoming 非空生效
+    assert row_1["adv_dec_ratio"][0] == 1.5  # 存量列保留
+    assert row_1["new_high_252d_ratio"][0] == 0.1  # 新列追加
+
+
+def test_feature_values_merge_keeps_existing_when_incoming_null(tmp_path: Path) -> None:
+    store = FeatureStore(mart_dir=tmp_path / "mart")
+
+    store.values.save(pl.DataFrame([_feature_row("v1", 0.4)]))
+    # 同键行的 null 增量不应覆盖已有有效值
+    store.values.save(pl.DataFrame([_feature_row("v1", None)]))
+
+    values = store.values.get(feature_ids=["advance_ratio"])
+    assert len(values) == 1
+    assert values["value_float"][0] == 0.4
+
+
+def test_feature_values_purge_outside_syncs_wide_table_date_domain(
+    tmp_path: Path,
+) -> None:
+    store = FeatureStore(mart_dir=tmp_path / "mart")
+
+    store.values.save(pl.DataFrame([_feature_row("v1", 0.4, date(2026, 8, 1))]))
+    # overwrite 重建窄窗口（仅 8/2）时，范围外存量行应被清除
+    store.values.save(
+        pl.DataFrame([_feature_row("v1", 0.5, date(2026, 8, 2))]),
+        purge_outside=(date(2026, 8, 2), date(2026, 8, 2)),
+    )
+
+    values = store.values.get(feature_ids=["advance_ratio"])
+    assert values["observation_date"].to_list() == [date(2026, 8, 2)]
+
+
+def test_feature_store_incremental_requires_metadata(tmp_path: Path) -> None:
+    store = FeatureStore(mart_dir=tmp_path / "mart")
+    frame = pl.DataFrame({"trade_date": [date(2026, 8, 1)], "total_turnover": [1000.0]})
+    store.save_market_daily(frame, metadata={"definition_fingerprint": "v1"})
+
+    with pytest.raises(ValueError, match="增量合并必须提供构建元数据"):
+        store.save_market_daily(frame)
+
+
+def _feature_row(
+    version: str, value: float | None, observation_date: date = date(2026, 8, 1)
+) -> dict[str, object]:
+    return {
+        "feature_id": "advance_ratio",
+        "kind": "indicator",
+        "entity_type": "market",
+        "entity_id": "CN",
+        "frequency": "1d",
+        "observation_date": observation_date,
+        "available_at": "2026-08-17T00:00:00+00:00",
+        "unit": "ratio",
+        "value_float": value,
+        "value_str": None,
+        "sample_size": None,
+        "status": "ok",
+        "definition_version": version,
+        "source_watermark": "{}",
+        "input_fingerprint": version,
+    }

@@ -4,6 +4,8 @@ from __future__ import annotations
 
 from typing import TYPE_CHECKING
 
+from stock.data.catalog import load_dataset_compat
+
 if TYPE_CHECKING:
     from collections.abc import Sequence
     from datetime import date
@@ -54,17 +56,11 @@ def load_metric_dataset(  # noqa: PLR0913
                 data_source=actual_data_source,
                 storage_dir=context.catalog.storage_dir,
             )
-        try:
-            context.cache[cache_key] = catalog.load_dataset(
-                dataset,
-                start_date=actual_start,
-                end_date=actual_end,
-                columns=columns,
-            )
-        except TypeError:
-            context.cache[cache_key] = catalog.load_dataset(
-                dataset,
-                start_date=actual_start,
-                end_date=actual_end,
-            )
+        context.cache[cache_key] = load_dataset_compat(
+            catalog,
+            dataset,
+            start_date=actual_start,
+            end_date=actual_end,
+            columns=columns,
+        )
     return context.cache[cache_key]

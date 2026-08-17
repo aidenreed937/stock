@@ -8,10 +8,10 @@ from typing import TYPE_CHECKING, Any, cast
 
 import polars as pl
 
+from stock.data.catalog import DataCatalog, load_dataset_compat
+
 if TYPE_CHECKING:
     from datetime import date
-
-    from stock.data.catalog import DataCatalog
 
 _OPTION_RISK_COMPONENT_IDS = (
     "option_put_call_volume_ratio_temperature",
@@ -25,16 +25,7 @@ def _load_dataset(
     columns: list[str] | None = None,
 ) -> pl.DataFrame:
     try:
-        return cat.load_dataset(dataset, columns=columns)
-    except TypeError:
-        try:
-            df = cat.load_dataset(dataset)
-            if columns and not df.is_empty():
-                available = [c for c in columns if c in df.columns]
-                return df.select(available)
-            return df
-        except Exception:
-            return pl.DataFrame()
+        return load_dataset_compat(cat, dataset, columns=columns)
     except Exception:
         return pl.DataFrame()
 
@@ -46,12 +37,13 @@ def option_rows(
     percentile_factory: Any,
 ) -> list[dict[str, Any]]:
     """提取期权成交与持仓衍生温度事实。"""
-    if not hasattr(cat, "datasets"):
+    if isinstance(cat, DataCatalog):
         with contextlib.suppress(Exception):
             from stock.analytics.features.store import FeatureStore
 
             mart_path = Path(cat.storage_dir) / "mart" if cat.storage_dir else None
             mart_df = FeatureStore(mart_dir=mart_path).get_market_daily(
+                end_date=as_of_date,
                 columns=[
                     "trade_date",
                     "option_put_call_volume_ratio",
@@ -59,9 +51,16 @@ def option_rows(
                     "option_amount",
                     "option_open_interest",
                     "option_near_month_amount_share",
-                ]
+                ],
             )
-        if not mart_df.is_empty() and "option_amount" in mart_df.columns:
+        source_date = _latest_dataset_date(cat, "opt_daily", as_of_date)
+        mart_date = _latest_non_null_date(mart_df, "option_amount")
+        if (
+            source_date is not None
+            and mart_date == source_date
+            and not mart_df.is_empty()
+            and "option_amount" in mart_df.columns
+        ):
             frame = (
                 mart_df.rename(
                     {
@@ -105,6 +104,24 @@ def option_rows(
             )
         ]
     return _build_option_metric_rows(frame, as_of_date, metric_row_factory, percentile_factory)
+
+
+def _latest_dataset_date(cat: DataCatalog, dataset: str, as_of_date: date) -> date | None:
+    latest = cat.latest_trade_dates(dataset, n=1)
+    if latest and latest[0] <= as_of_date:
+        return latest[0]
+    frame = _load_dataset(cat, dataset, columns=["trade_date"])
+    if frame.is_empty() or "trade_date" not in frame.columns:
+        return None
+    dates = frame.filter(pl.col("trade_date") <= as_of_date)["trade_date"].drop_nulls()
+    return cast("date | None", dates.max()) if not dates.is_empty() else None
+
+
+def _latest_non_null_date(frame: pl.DataFrame, column: str) -> date | None:
+    if frame.is_empty() or column not in frame.columns:
+        return None
+    latest = frame.filter(pl.col(column).is_not_null()).select("trade_date").tail(1)
+    return latest["trade_date"][0] if not latest.is_empty() else None
 
 
 def _build_option_metric_rows(

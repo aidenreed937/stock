@@ -6,6 +6,7 @@ import polars as pl
 
 from stock.analytics.metrics.context import MetricContext
 from stock.analytics.metrics.datasets.loaders import load_metric_dataset
+from stock.analytics.metrics.rules import rolling_percentile, rolling_zscore
 from stock.analytics.metrics.spec import (
     EntityType,
     MetricCalculator,
@@ -54,42 +55,12 @@ def _load_start_date(context: MetricContext) -> date | None:
     return min(context.start_date, lookback_start)
 
 
-def _percentile_rank(values: pl.Series) -> float:
-    current = values[-1]
-    return float((values <= current).sum()) / len(values) * 100.0
-
-
 def _rolling_percentile(column: str, output: str) -> pl.Expr:
-    return (
-        pl.col(column)
-        .rolling_map(
-            _percentile_rank,
-            window_size=_TRADING_DAYS_5Y,
-            min_samples=_TRADING_DAYS_5Y,
-        )
-        .over("symbol")
-        .alias(output)
-    )
+    return rolling_percentile(column, _TRADING_DAYS_5Y, output).over("symbol")
 
 
 def _rolling_zscore(column: str, output: str) -> pl.Expr:
-    mean = (
-        pl.col(column)
-        .rolling_mean(
-            window_size=_TRADING_DAYS_5Y,
-            min_samples=_TRADING_DAYS_5Y,
-        )
-        .over("symbol")
-    )
-    std = (
-        pl.col(column)
-        .rolling_std(
-            window_size=_TRADING_DAYS_5Y,
-            min_samples=_TRADING_DAYS_5Y,
-        )
-        .over("symbol")
-    )
-    return pl.when(std > 0).then((pl.col(column) - mean) / std).otherwise(None).alias(output)
+    return rolling_zscore(column, _TRADING_DAYS_5Y, output).over("symbol")
 
 
 def _valuation_frame(context: MetricContext) -> pl.DataFrame:

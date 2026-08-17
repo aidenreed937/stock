@@ -7,6 +7,14 @@ from typing import TYPE_CHECKING
 
 import polars as pl
 
+from stock.analytics.metrics.rules import (
+    above_ma,
+    at_rolling_high,
+    at_rolling_low,
+    daily_return,
+    share,
+)
+
 if TYPE_CHECKING:
     from datetime import date
 
@@ -50,33 +58,19 @@ def build_breadth_and_turnover(
     )
 
     signals = clean_bars.with_columns(
-        pl.col("close").pct_change().over("symbol").alias("_ret_1d"),
-        (
-            pl.col("close")
-            > pl.col("close").rolling_mean(window_size=20, min_samples=10).over("symbol")
-        ).alias("_above_ma20"),
-        (
-            pl.col("close")
-            > pl.col("close").rolling_mean(window_size=60, min_samples=30).over("symbol")
-        ).alias("_above_ma60"),
-        (
-            pl.col("close")
-            > pl.col("close").rolling_mean(window_size=120, min_samples=60).over("symbol")
-        ).alias("_above_ma120"),
-        (
-            pl.col("close")
-            >= pl.col("close").rolling_max(window_size=252, min_samples=120).over("symbol")
-        ).alias("_new_high_252d"),
-        (
-            pl.col("close")
-            <= pl.col("close").rolling_min(window_size=252, min_samples=120).over("symbol")
-        ).alias("_new_low_252d"),
+        daily_return("close").alias("_ret_1d"),
+        above_ma("close", 20).alias("_above_ma20"),
+        above_ma("close", 60).alias("_above_ma60"),
+        above_ma("close", 120).alias("_above_ma120"),
+        at_rolling_high("close", 252).alias("_new_high_252d"),
+        at_rolling_low("close", 252).alias("_new_low_252d"),
     )
 
     breadth_daily = (
         signals.group_by("trade_date")
         .agg(
             pl.col("symbol").n_unique().alias("total_stocks"),
+            pl.col("_ret_1d").count().alias("_return_count"),
             (pl.col("_ret_1d") > 0).sum().alias("_adv_count"),
             (pl.col("_ret_1d") < 0).sum().alias("_dec_count"),
             pl.col("_above_ma20").sum().alias("_above_ma20_count"),
@@ -90,34 +84,13 @@ def build_breadth_and_turnover(
             pl.col("_new_low_252d").sum().alias("_new_low_count"),
         )
         .with_columns(
-            pl.when(pl.col("_dec_count") > 0)
-            .then(pl.col("_adv_count") / pl.col("_dec_count"))
-            .otherwise(None)
-            .alias("adv_dec_ratio"),
-            pl.when(pl.col("total_stocks") > 0)
-            .then(pl.col("_adv_count") / pl.col("total_stocks"))
-            .otherwise(None)
-            .alias("advance_ratio"),
-            pl.when(pl.col("_ma20_valid") > 0)
-            .then(pl.col("_above_ma20_count") / pl.col("_ma20_valid"))
-            .otherwise(None)
-            .alias("above_ma20_ratio"),
-            pl.when(pl.col("_ma60_valid") > 0)
-            .then(pl.col("_above_ma60_count") / pl.col("_ma60_valid"))
-            .otherwise(None)
-            .alias("above_ma60_ratio"),
-            pl.when(pl.col("_ma120_valid") > 0)
-            .then(pl.col("_above_ma120_count") / pl.col("_ma120_valid"))
-            .otherwise(None)
-            .alias("above_ma120_ratio"),
-            pl.when(pl.col("_high_low_valid") > 0)
-            .then(pl.col("_new_high_count") / pl.col("_high_low_valid"))
-            .otherwise(None)
-            .alias("new_high_252d_ratio"),
-            pl.when(pl.col("_high_low_valid") > 0)
-            .then(pl.col("_new_low_count") / pl.col("_high_low_valid"))
-            .otherwise(None)
-            .alias("new_low_252d_ratio"),
+            share("_adv_count", "_dec_count", "adv_dec_ratio"),
+            share("_adv_count", "_return_count", "advance_ratio"),
+            share("_above_ma20_count", "_ma20_valid", "above_ma20_ratio"),
+            share("_above_ma60_count", "_ma60_valid", "above_ma60_ratio"),
+            share("_above_ma120_count", "_ma120_valid", "above_ma120_ratio"),
+            share("_new_high_count", "_high_low_valid", "new_high_252d_ratio"),
+            share("_new_low_count", "_high_low_valid", "new_low_252d_ratio"),
         )
         .select(
             "trade_date",

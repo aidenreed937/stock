@@ -12,6 +12,10 @@ from typing import TYPE_CHECKING
 
 import polars as pl
 
+from stock.analytics.features.builders.market_daily_lineage import (
+    build_feature_values,
+    build_market_daily_metadata,
+)
 from stock.analytics.features.builders.market_daily_ops import (
     build_breadth_and_turnover,
     build_limit_features,
@@ -115,6 +119,11 @@ class MarketDailyBuilder:
         result = result.sort("trade_date")
 
         if save:
-            self.store.save_market_daily(result, overwrite=overwrite)
+            metadata = build_market_daily_metadata(self.catalog, actual_end)
+            self.store.save_market_daily(result, overwrite=overwrite, metadata=metadata)
+            purge_outside = (actual_start, actual_end) if overwrite else None
+            self.store.values.save(
+                build_feature_values(result, metadata), purge_outside=purge_outside
+            )
 
         return result

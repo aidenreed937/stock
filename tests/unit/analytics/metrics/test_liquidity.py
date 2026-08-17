@@ -6,7 +6,7 @@ import polars as pl
 import pytest
 
 from stock.analytics.metrics import MetricContext, MetricEngine, create_default_registry
-from stock.analytics.metrics.calculators.liquidity import _rolling_percentile
+from stock.analytics.metrics.rules import rolling_percentile
 
 
 class FakeCatalog:
@@ -77,7 +77,7 @@ def test_engine_computes_liquidity_metrics() -> None:
 
 def test_rolling_percentile_ignores_historical_nulls_when_current_value_exists() -> None:
     frame = pl.DataFrame({"value": [1.0, 2.0, None, 3.0, 4.0, None]}).with_columns(
-        _rolling_percentile("value", "value_percentile_5d", 5)
+        rolling_percentile("value", 5, "value_percentile_5d")
     )
 
     assert frame["value_percentile_5d"][4] == pytest.approx(100.0)

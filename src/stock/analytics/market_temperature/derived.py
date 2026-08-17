@@ -12,7 +12,7 @@ from stock.analytics.market_temperature.derived_options import (
 from stock.analytics.market_temperature.derived_options import (
     option_rows,
 )
-from stock.data.catalog import DataCatalog
+from stock.data.catalog import DataCatalog, load_dataset_compat
 
 if TYPE_CHECKING:
     from datetime import date
@@ -1036,16 +1036,7 @@ def _load_dataset(
     columns: list[str] | None = None,
 ) -> pl.DataFrame:
     try:
-        return cat.load_dataset(dataset, columns=columns)
-    except TypeError:
-        try:
-            df = cat.load_dataset(dataset)
-            if columns and not df.is_empty():
-                available = [c for c in columns if c in df.columns]
-                return df.select(available)
-            return df
-        except Exception:
-            return pl.DataFrame()
+        return load_dataset_compat(cat, dataset, columns=columns)
     except Exception:
         return pl.DataFrame()
 
