@@ -184,6 +184,8 @@ market_temperature:
       name: "基本面"
       weight: 0.15
       role: "季频盈利底座与最近预期变化"
+      stale_after_days: 90
+      stale_weight_scale: 0.40
       metrics:
         - metric_id: fs_revenue_growth_temperature
           source: derived
@@ -412,6 +414,7 @@ market_temperature:
       date_column: ann_date
       cadence: event
       quality_tier: confirming
+      in_score: true
       note: "业绩预告，作为最近 20 日基本面事件补充"
     - data_source: tushare
       dataset: report_rc
@@ -420,6 +423,7 @@ market_temperature:
       date_column: report_date
       cadence: event
       quality_tier: confirming
+      in_score: true
       note: "分析师盈利预测，作为预期上修/下修补充"
     - data_source: lixinger
       dataset: index_fundamental
@@ -452,6 +456,7 @@ market_temperature:
       max_lag_days: 90
       cadence: quarterly
       quality_tier: slow
+      in_score: true
       note: "非金融行业季频财报"
     - data_source: lixinger
       dataset: sw_2021_fs_bank
@@ -460,6 +465,7 @@ market_temperature:
       max_lag_days: 90
       cadence: quarterly
       quality_tier: slow
+      in_score: true
       note: "银行行业季频财报"
     - data_source: lixinger
       dataset: sw_2021_fs_security
@@ -468,6 +474,7 @@ market_temperature:
       max_lag_days: 90
       cadence: quarterly
       quality_tier: slow
+      in_score: true
       note: "证券行业季频财报"
     - data_source: lixinger
       dataset: sw_2021_fs_insurance
@@ -476,6 +483,7 @@ market_temperature:
       max_lag_days: 90
       cadence: quarterly
       quality_tier: slow
+      in_score: true
       note: "保险行业季频财报"
     - data_source: lixinger
       dataset: investor_accounts
@@ -485,6 +493,7 @@ market_temperature:
       max_lag_days: 60
       cadence: monthly
       quality_tier: slow
+      in_score: true
       note: "月度新增投资者账户，用于情绪面慢变量"
     - data_source: tushare
       dataset: shibor
@@ -502,6 +511,7 @@ market_temperature:
       max_lag_days: 60
       cadence: monthly
       quality_tier: slow
+      in_score: true
       note: "M1/M2 月度货币数据"
     - data_source: lixinger
       dataset: sf_month
@@ -511,6 +521,7 @@ market_temperature:
       max_lag_days: 60
       cadence: monthly
       quality_tier: slow
+      in_score: true
       note: "社融月度数据"
     - data_source: tushare
       dataset: cn_cpi
@@ -520,6 +531,7 @@ market_temperature:
       max_lag_days: 60
       cadence: monthly
       quality_tier: slow
+      in_score: true
       note: "中国 CPI 月度数据"
     - data_source: yfinance
       dataset: index_daily_bar

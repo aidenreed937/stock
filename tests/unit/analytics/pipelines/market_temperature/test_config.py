@@ -2,6 +2,8 @@
 
 from pathlib import Path
 
+import pytest
+
 from stock.analytics.pipelines.market_temperature.config import load_market_temperature_config
 
 
@@ -79,3 +81,48 @@ market_temperature:
     assert config.bands.temperature_levels.low_opportunity == 25.0
     assert config.bands.pressure_levels.high == 75.0
     assert config.bands.delta_levels.significant == 15.0
+
+
+def test_load_config_parses_stale_and_in_score_fields(tmp_path: Path) -> None:
+    config_path = tmp_path / "market_temperature.yaml"
+    config_path.write_text(
+        """
+market_temperature:
+  schema_version: 1
+  title: "测试温度计"
+  artifact_root: "data/analytics/market_temperature"
+  main_window: 20
+  short_windows: [5, 10]
+  dimensions:
+    - id: fundamental
+      name: "基本面"
+      weight: 0.15
+      stale_after_days: 90
+      stale_weight_scale: 0.4
+      metrics:
+        - metric_id: fs_profit_growth_temperature
+          source: derived
+          weight: 0.25
+  datasets:
+    - data_source: lixinger
+      dataset: sw_2021_fs_non_financial
+      dimension: fundamental
+      max_lag_days: 90
+      cadence: quarterly
+      quality_tier: slow
+      in_score: true
+    - data_source: tushare
+      dataset: opt_daily
+      dimension: sentiment
+      cadence: trading_daily
+      quality_tier: background
+""",
+        encoding="utf-8",
+    )
+
+    config = load_market_temperature_config(config_path)
+
+    assert config.dimensions[0].stale_after_days == 90
+    assert config.dimensions[0].stale_weight_scale == pytest.approx(0.4)
+    assert config.datasets[0].in_score is True
+    assert config.datasets[1].in_score is False

@@ -114,6 +114,8 @@ def _financial_statement_rows(cat: DataCatalog, as_of_date: date) -> list[dict[s
         return []
     latest_date = cast("date", latest["trade_date"].max())
     latest = latest.filter(pl.col("trade_date") == latest_date)
+    stale_days = (as_of_date - latest_date).days
+    stale_prefix = f"stale_days={stale_days}; " if stale_days > 0 else ""
     revenue_share = _positive_share(latest, "revenue_ttm_yoy")
     profit_share = _positive_share(latest, "profit_ttm_yoy")
     roe_temperature = _historical_median_temperature(frame, "roe_ttm", as_of_date)
@@ -124,7 +126,7 @@ def _financial_statement_rows(cat: DataCatalog, as_of_date: date) -> list[dict[s
             as_of_date,
             revenue_share,
             sample_size=latest.height,
-            note=f"report_date={latest_date}; revenue_positive_share",
+            note=f"{stale_prefix}report_date={latest_date}; revenue_positive_share",
         ),
         _metric_row(
             "fundamental",
@@ -132,7 +134,7 @@ def _financial_statement_rows(cat: DataCatalog, as_of_date: date) -> list[dict[s
             as_of_date,
             profit_share,
             sample_size=latest.height,
-            note=f"report_date={latest_date}; profit_positive_share",
+            note=f"{stale_prefix}report_date={latest_date}; profit_positive_share",
         ),
         _metric_row(
             "fundamental",
@@ -140,7 +142,7 @@ def _financial_statement_rows(cat: DataCatalog, as_of_date: date) -> list[dict[s
             as_of_date,
             roe_temperature,
             sample_size=latest.select(pl.col("roe_ttm").drop_nulls()).height,
-            note=f"report_date={latest_date}; latest_roe_median_history_percentile",
+            note=f"{stale_prefix}report_date={latest_date}; latest_roe_median_history_percentile",
         ),
     ]
 

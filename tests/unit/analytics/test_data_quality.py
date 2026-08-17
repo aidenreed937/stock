@@ -119,3 +119,56 @@ def test_quality_report_flags_fact_as_of_mismatch() -> None:
 
     assert report["status"] == "failed"
     assert any(item["id"] == "fact_as_of_mismatch" for item in report["issues"])
+
+
+def test_quality_report_flags_in_score_dataset_staleness() -> None:
+    facts = pl.DataFrame(
+        {
+            "fact_id": ["window_20d", "watermark.lixinger.sw_2021_fs_non_financial"],
+            "category": ["analysis_window", "data_watermark"],
+            "dimension": ["meta", "fundamental"],
+            "data_source": ["tushare", "lixinger"],
+            "dataset": ["stock_daily_bar", "sw_2021_fs_non_financial"],
+            "as_of_date": [date(2026, 8, 14), date(2026, 8, 14)],
+            "window": [20, 0],
+            "metric_id": ["window_20d", "latest_trade_date"],
+            "value_float": [None, None],
+            "value_text": ["2026-07-20..2026-08-13", "2026-03-31"],
+            "unit": ["", ""],
+            "sample_size": [20, None],
+            "source": ["test", "test"],
+            "status": ["ok", "lagging"],
+            "note": ["", ""],
+        }
+    )
+    datasets = (
+        SimpleNamespace(
+            data_source="lixinger",
+            dataset="sw_2021_fs_non_financial",
+            dimension="fundamental",
+            required=False,
+            date_column="",
+            max_lag_days=90,
+            static=False,
+            cadence="quarterly",
+            quality_tier="slow",
+            note="季频财报",
+            in_score=True,
+        ),
+    )
+
+    report = build_quality_report(
+        title="测试报告",
+        manifest={"as_of_date": "2026-08-14"},
+        facts=facts,
+        datasets=datasets,
+        primary_data_source="tushare",
+        primary_dataset="stock_daily_bar",
+        main_window=20,
+    )
+
+    assert report["watermarks"][0]["in_score"] is True
+    stale_issues = [item for item in report["issues"] if item["id"] == "dataset_stale_in_score"]
+    assert len(stale_issues) == 1
+    assert "进入评分" in stale_issues[0]["message"]
+    assert report["status"] == "passed_with_warnings"

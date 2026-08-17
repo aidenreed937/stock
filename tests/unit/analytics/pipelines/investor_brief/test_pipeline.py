@@ -9,9 +9,37 @@ from typing import TYPE_CHECKING
 import polars as pl
 
 from stock.analytics.pipelines.investor_brief.pipeline import run_investor_brief
+from stock.reporting.templates.investor_brief import _data_quality_notes
 
 if TYPE_CHECKING:
     from pathlib import Path
+
+
+def test_data_quality_notes_include_stale_metrics() -> None:
+    manifest = {"as_of_date": "2026-08-14"}
+    freshness = {
+        "stale_metric_count": 1,
+        "stale_metrics": [
+            {
+                "metric_id": "fs_profit_growth_temperature",
+                "data_date": "2026-03-31",
+                "dimension": "fundamental",
+            }
+        ],
+    }
+
+    notes = _data_quality_notes(manifest, freshness)
+
+    stale_note = next(note for note in notes if "降权" in note)
+    assert "fs_profit_growth_temperature" in stale_note
+    assert "2026-03-31" in stale_note
+
+
+def test_data_quality_notes_without_stale_keep_static() -> None:
+    notes = _data_quality_notes({"as_of_date": "2026-08-14"}, {})
+
+    assert len(notes) == 4
+    assert not any("降权" in note for note in notes)
 
 
 def test_run_investor_brief_writes_plain_language_report(tmp_path: Path) -> None:
@@ -51,6 +79,9 @@ investor_brief:
     assert "## 3. 不宜追高或需降温观察" in result.brief_markdown
     assert "| 通信 |" in result.brief_markdown
     assert "不构成个性化投资建议" in result.brief_markdown
+    assert "fs_profit_growth_temperature" in result.brief_markdown
+    assert "已超过新鲜度阈值" in result.brief_markdown
+    assert result.brief_json["data_freshness"]["stale_metric_count"] == 1
 
     candidate_names = {row["industry_name"] for row in result.brief_json["candidate_industries"]}
     risk_names = {row["industry_name"] for row in result.brief_json["risk_industries"]}
@@ -83,6 +114,16 @@ def _write_market_artifacts(root: Path) -> None:
                 {"dimension_id": "fund_flow", "name": "资金面", "temperature": 47.64},
                 {"dimension_id": "technical", "name": "技术面", "temperature": 67.39},
             ],
+            "data_freshness": {
+                "stale_metric_count": 1,
+                "stale_metrics": [
+                    {
+                        "metric_id": "fs_profit_growth_temperature",
+                        "data_date": "2026-03-31",
+                        "dimension": "fundamental",
+                    }
+                ],
+            },
         },
     )
 

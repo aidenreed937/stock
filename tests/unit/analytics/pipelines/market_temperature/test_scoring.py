@@ -161,8 +161,187 @@ def test_build_scores_adds_systemic_risk_summary() -> None:
     assert any("技术面偏热" in item for item in scores["systemic_risk"]["warnings"])
 
 
+def test_build_scores_reduces_stale_metric_weight() -> None:
+    facts = pl.DataFrame(
+        [
+            _metric_fact(
+                "fundamental",
+                "fs_profit_growth_temperature",
+                40.0,
+                note="stale_days=136; report_date=2026-03-31; profit_positive_share",
+            ),
+            _metric_fact(
+                "fundamental",
+                "fs_revenue_growth_temperature",
+                60.0,
+                note="stale_days=136; report_date=2026-03-31; revenue_positive_share",
+            ),
+            _metric_fact(
+                "fundamental",
+                "forecast_positive_temperature",
+                80.0,
+                note="ann_window=2026-07-20..2026-08-14",
+            ),
+            _metric_fact(
+                "fundamental",
+                "report_revision_temperature",
+                70.0,
+                note="ann_window=2026-07-20..2026-08-14",
+            ),
+        ],
+        schema=FACT_SCHEMA,
+    )
+    config = MarketTemperatureConfig(
+        schema_version=1,
+        title="test",
+        artifact_root="data/analytics/market_temperature",
+        main_window=20,
+        short_windows=(),
+        dimensions=(
+            DimensionConfig(
+                id="fundamental",
+                name="基本面",
+                weight=1.0,
+                stale_after_days=90,
+                stale_weight_scale=0.4,
+                metrics=(
+                    MetricInputConfig(
+                        "fs_profit_growth_temperature", source="derived", weight=0.25
+                    ),
+                    MetricInputConfig(
+                        "fs_revenue_growth_temperature", source="derived", weight=0.20
+                    ),
+                    MetricInputConfig(
+                        "forecast_positive_temperature", source="derived", weight=0.25
+                    ),
+                    MetricInputConfig("report_revision_temperature", source="derived", weight=0.30),
+                ),
+            ),
+        ),
+        datasets=(),
+    )
+
+    scores = build_scores(config, as_of_date=date(2026, 8, 14), facts=facts)
+
+    # stale 权重 ×0.4 后让出的权重自动摊给 fast 指标
+    assert scores["dimensions"][0]["temperature"] == pytest.approx(68.22)
+
+
+def test_build_scores_keeps_fresh_metric_weight() -> None:
+    facts = pl.DataFrame(
+        [
+            _metric_fact(
+                "fundamental",
+                "fs_profit_growth_temperature",
+                40.0,
+                note="stale_days=60; report_date=2026-06-30",
+            ),
+            _metric_fact(
+                "fundamental",
+                "report_revision_temperature",
+                80.0,
+                note="ann_window=2026-07-20..2026-08-14",
+            ),
+        ],
+        schema=FACT_SCHEMA,
+    )
+    config = MarketTemperatureConfig(
+        schema_version=1,
+        title="test",
+        artifact_root="data/analytics/market_temperature",
+        main_window=20,
+        short_windows=(),
+        dimensions=(
+            DimensionConfig(
+                id="fundamental",
+                name="基本面",
+                weight=1.0,
+                stale_after_days=90,
+                stale_weight_scale=0.4,
+                metrics=(
+                    MetricInputConfig("fs_profit_growth_temperature", source="derived", weight=0.4),
+                    MetricInputConfig("report_revision_temperature", source="derived", weight=0.6),
+                ),
+            ),
+        ),
+        datasets=(),
+    )
+
+    scores = build_scores(config, as_of_date=date(2026, 8, 14), facts=facts)
+
+    # stale_days=60 未超过 90 阈值，按原权重合成
+    assert scores["dimensions"][0]["temperature"] == pytest.approx(64.0)
+
+
+def test_build_scores_reports_data_freshness() -> None:
+    facts = pl.DataFrame(
+        [
+            _metric_fact(
+                "fundamental",
+                "fs_profit_growth_temperature",
+                40.0,
+                note="stale_days=136; report_date=2026-03-31; profit_positive_share",
+            ),
+            _metric_fact(
+                "fundamental",
+                "report_revision_temperature",
+                70.0,
+                note="ann_window=2026-07-20..2026-08-14",
+            ),
+            _metric_fact("valuation", "valuation_temperature", 55.0),
+        ],
+        schema=FACT_SCHEMA,
+    )
+    config = MarketTemperatureConfig(
+        schema_version=1,
+        title="test",
+        artifact_root="data/analytics/market_temperature",
+        main_window=20,
+        short_windows=(),
+        dimensions=(
+            DimensionConfig(
+                id="fundamental",
+                name="基本面",
+                weight=1.0,
+                stale_after_days=90,
+                stale_weight_scale=0.4,
+                metrics=(
+                    MetricInputConfig("fs_profit_growth_temperature", source="derived", weight=0.5),
+                    MetricInputConfig("report_revision_temperature", source="derived", weight=0.5),
+                ),
+            ),
+            DimensionConfig(
+                id="valuation",
+                name="估值面",
+                weight=1.0,
+                metrics=(MetricInputConfig("valuation_temperature", weight=1.0),),
+            ),
+        ),
+        datasets=(),
+    )
+
+    scores = build_scores(config, as_of_date=date(2026, 8, 14), facts=facts)
+
+    fundamental = scores["dimensions"][0]["data_freshness"]
+    assert fundamental["latest_data_date"] == "2026-08-14"
+    assert fundamental["stale_metric_count"] == 1
+    assert fundamental["stale_metrics"] == [
+        {"metric_id": "fs_profit_growth_temperature", "data_date": "2026-03-31"}
+    ]
+    assert scores["dimensions"][1]["data_freshness"]["stale_metric_count"] == 0
+    top = scores["data_freshness"]
+    assert top["stale_metric_count"] == 1
+    assert top["stale_metrics"][0]["metric_id"] == "fs_profit_growth_temperature"
+    assert top["stale_metrics"][0]["dimension"] == "fundamental"
+
+
 def _metric_fact(
-    dimension: str, metric_id: str, value: float | None, *, status: str = "ok"
+    dimension: str,
+    metric_id: str,
+    value: float | None,
+    *,
+    status: str = "ok",
+    note: str = "",
 ) -> dict[str, object]:
     return {
         "fact_id": f"metric.{dimension}.{metric_id}",
@@ -179,7 +358,7 @@ def _metric_fact(
         "sample_size": 1,
         "source": "test",
         "status": status,
-        "note": "",
+        "note": note,
     }
 
 

@@ -2,10 +2,16 @@
 
 from __future__ import annotations
 
-from math import erf, sqrt
 from typing import TYPE_CHECKING, Any
 
 import polars as pl
+
+from stock.analytics.pipelines.market_temperature.freshness import (
+    composite_freshness,
+    dimension_freshness,
+    is_stale_metric,
+)
+from stock.analytics.pipelines.market_temperature.metric_temperature import fact_temperature
 
 if TYPE_CHECKING:
     from datetime import date
@@ -52,6 +58,7 @@ def build_scores(
             "reason": "按可用维度温度和默认权重重归一合成",
         },
         "systemic_risk": systemic_risk,
+        "data_freshness": composite_freshness(dimensions),
         "dimensions": dimensions,
         "short_term": [
             {
@@ -100,6 +107,7 @@ def _dimension_score(
         "metric_count": metric_count,
         "ok_metric_count": ok_metric_count,
         "data_issue_count": data_issue_count,
+        "data_freshness": dimension_freshness(facts, dimension_id, scored_metric_ids, item),
         "reason": reason,
     }
 
@@ -128,7 +136,9 @@ def _dimension_temperature(item: DimensionConfig, facts: pl.DataFrame) -> float 
         direction, weight = metric_rules.get(metric_id, ("positive", 1.0))
         if weight <= 0:
             continue
-        temperature = _fact_temperature(row, direction)
+        if is_stale_metric(row, item):
+            weight *= item.stale_weight_scale
+        temperature = fact_temperature(row, direction)
         if temperature is None:
             continue
         weighted_sum += temperature * weight
@@ -136,50 +146,6 @@ def _dimension_temperature(item: DimensionConfig, facts: pl.DataFrame) -> float 
     if weight_sum == 0:
         return None
     return round(weighted_sum / weight_sum, 2)
-
-
-def _fact_temperature(row: dict[str, Any], direction: str) -> float | None:
-    value = row.get("value_float")
-    if value is None:
-        return None
-    metric_id = str(row["metric_id"])
-    numeric = float(value)
-    is_percentile_temperature = metric_id == "valuation_temperature" or "percentile" in metric_id
-    if row.get("unit") == "temperature" or is_percentile_temperature:
-        temperature = numeric
-    elif "zscore" in metric_id:
-        temperature = _normal_cdf(numeric) * 100.0
-    elif metric_id == "rsi_14d":
-        temperature = numeric
-    elif metric_id in {
-        "advance_share",
-        "above_ma20_share",
-        "above_ma60_share",
-        "above_ma120_share",
-        "new_high_share_252d",
-        "new_low_share_252d",
-    }:
-        temperature = numeric * 100.0
-    elif metric_id in {"return_20d", "ma_bias_20d", "margin_balance_growth_20d"}:
-        temperature = 50.0 + numeric * 500.0
-    elif metric_id in {"main_money_net_inflow_share", "super_large_net_inflow_share"}:
-        temperature = 50.0 + numeric * 1000.0
-    else:
-        return None
-    return _apply_direction(temperature, direction)
-
-
-def _apply_direction(value: float, direction: str) -> float:
-    temperature = 100.0 - value if direction == "inverse" else value
-    return _clip_temperature(temperature)
-
-
-def _clip_temperature(value: float) -> float:
-    return round(min(100.0, max(0.0, value)), 2)
-
-
-def _normal_cdf(value: float) -> float:
-    return 0.5 * (1.0 + erf(value / sqrt(2.0)))
 
 
 def _composite_temperature(dimensions: list[dict[str, Any]]) -> float | None:

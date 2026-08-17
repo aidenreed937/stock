@@ -34,6 +34,7 @@ class DatasetQualitySpec:
     cadence: str
     quality_tier: str
     note: str
+    in_score: bool
 
     @classmethod
     def from_config(cls, item: Any) -> DatasetQualitySpec:
@@ -49,6 +50,7 @@ class DatasetQualitySpec:
             cadence=str(getattr(item, "cadence", "unspecified") or "unspecified"),
             quality_tier=str(getattr(item, "quality_tier", "optional") or "optional"),
             note=str(getattr(item, "note", "")),
+            in_score=bool(getattr(item, "in_score", False)),
         )
 
     @property
@@ -129,6 +131,12 @@ def build_quality_report(  # noqa: PLR0913
                 "level": "soft",
                 "rule": "可选数据集若配置最大滞后天数，超限时只作为质量警告。",
             },
+            {
+                "id": "in_score_dataset_staleness",
+                "level": "soft",
+                "rule": "进入评分的可选数据集若超过滞后阈值，标记陈旧影响，"
+                "对应维度分数可能偏向陈旧状态。",
+            },
         ],
         "windows": windows,
         "watermarks": watermarks,
@@ -186,6 +194,7 @@ def _dataset_watermarks(
                 "date_column": spec.date_column or "trade_date",
                 "max_lag_days": spec.max_lag_days,
                 "static": spec.static,
+                "in_score": spec.in_score,
                 "latest": latest_text,
                 "lag_days": lag_days,
                 "status": str(fact.get("status") or "missing_fact"),
@@ -249,7 +258,11 @@ def _quality_issues(  # noqa: PLR0913
         if status == "lagging":
             severity = "error" if required else "warning"
             issues.append(
-                _issue(severity, "dataset_lagging", f"{_dataset_name(row)} 超过配置滞后阈值。")
+                _issue(
+                    severity,
+                    _lag_issue_id(row, fallback="dataset_lagging"),
+                    f"{_dataset_name(row)} 超过配置滞后阈值。{_lag_issue_suffix(row)}",
+                )
             )
         lag_days = row.get("lag_days")
         max_lag_days = int(row.get("max_lag_days") or 0)
@@ -264,8 +277,9 @@ def _quality_issues(  # noqa: PLR0913
             issues.append(
                 _issue(
                     severity,
-                    "dataset_lag_exceeded",
-                    f"{_dataset_name(row)} 滞后 {lag_days} 天，阈值 {max_lag_days} 天。",
+                    _lag_issue_id(row, fallback="dataset_lag_exceeded"),
+                    f"{_dataset_name(row)} 滞后 {lag_days} 天，阈值 {max_lag_days} 天。"
+                    f"{_lag_issue_suffix(row)}",
                 )
             )
 
@@ -316,6 +330,18 @@ def _future_metric_issues(
                     )
                 )
     return issues
+
+
+def _lag_issue_id(row: dict[str, Any], *, fallback: str) -> str:
+    if bool(row.get("in_score")) and not bool(row.get("required")):
+        return "dataset_stale_in_score"
+    return fallback
+
+
+def _lag_issue_suffix(row: dict[str, Any]) -> str:
+    if bool(row.get("in_score")) and not bool(row.get("required")):
+        return "该数据集已进入评分，陈旧值会影响对应维度温度。"
+    return ""
 
 
 def _issue(severity: str, issue_id: str, message: str) -> dict[str, str]:

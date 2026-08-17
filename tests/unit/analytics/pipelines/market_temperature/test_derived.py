@@ -10,6 +10,7 @@ from stock.analytics.pipelines.market_temperature.derived import (
     _external_environment_row,
     _external_macro_rows,
     _external_pressure_rows,
+    _financial_statement_rows,
     _forecast_rows,
     _investor_account_frame,
     _investor_account_rows,
@@ -35,6 +36,35 @@ class FakeCatalog:
 
     def load_dataset(self, dataset: str) -> pl.DataFrame:
         return self.datasets.get(dataset, pl.DataFrame())
+
+
+def test_financial_statement_rows_mark_stale_days() -> None:
+    cat = FakeCatalog(
+        {
+            "sw_2021_fs_non_financial": pl.DataFrame(
+                {
+                    "trade_date": [date(2026, 3, 31)],
+                    "symbol": ["SW1"],
+                    "q": [
+                        {
+                            "ps": {
+                                "toi": {"ttm_y2y": 0.10},
+                                "np": {"ttm_y2y": 0.20},
+                            },
+                            "m": {"roe": {"ttm": 0.12}},
+                        }
+                    ],
+                }
+            )
+        }
+    )
+
+    rows = _financial_statement_rows(cat, date(2026, 8, 14))
+
+    assert len(rows) == 3
+    for row in rows:
+        assert "stale_days=136" in str(row["note"])
+        assert "report_date=2026-03-31" in str(row["note"])
 
 
 def test_forecast_rows_calculates_positive_forecast_share() -> None:

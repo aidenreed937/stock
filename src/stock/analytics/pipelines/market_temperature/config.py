@@ -45,11 +45,14 @@ class DimensionConfig:
     weight: float
     role: str = ""
     metrics: tuple[MetricInputConfig, ...] = ()
+    stale_after_days: int | None = None
+    stale_weight_scale: float = 0.4
 
     @classmethod
     def from_mapping(cls, data: Mapping[str, Any]) -> Self:
         """从 YAML 字典构造维度配置。"""
         raw_metrics = _as_sequence(data.get("metrics", ()), "dimensions.metrics")
+        stale_after = data.get("stale_after_days")
         return cls(
             id=str(data["id"]),
             name=str(data["name"]),
@@ -58,6 +61,8 @@ class DimensionConfig:
             metrics=tuple(
                 MetricInputConfig.from_mapping(_as_mapping(item, "metric")) for item in raw_metrics
             ),
+            stale_after_days=int(stale_after) if stale_after is not None else None,
+            stale_weight_scale=float(data.get("stale_weight_scale", 0.4)),
         )
 
 
@@ -75,6 +80,7 @@ class DatasetConfig:
     cadence: str = "unspecified"
     quality_tier: str = "optional"
     note: str = ""
+    in_score: bool = False
 
     @classmethod
     def from_mapping(cls, data: Mapping[str, Any]) -> Self:
@@ -90,6 +96,7 @@ class DatasetConfig:
             cadence=str(data.get("cadence", "unspecified")),
             quality_tier=str(data.get("quality_tier", "optional")),
             note=str(data.get("note", "")),
+            in_score=bool(data.get("in_score", False)),
         )
 
 
