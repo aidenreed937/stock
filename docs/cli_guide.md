@@ -91,13 +91,20 @@ make sync SOURCE=lixinger
 make sync SOURCE=lixinger ENDPOINT=industry_bundle
 
 # 多个 bundle 或原子 task 可混合传入；展开后仍逐个任务独立执行
-make sync SOURCE=lixinger ENDPOINT=market_bundle,macro_bundle
+make sync SOURCE=lixinger ENDPOINT=market_bundle,macro_monthly_bundle
 
 # 或直接调用 Python 模块
 uv run python -m stock_cli.sync --data-source lixinger --endpoint industry_bundle
 ```
 
-可用 LiXinger bundle：`market_bundle`、`industry_bundle`、`company_bundle`、`macro_bundle`、`index_bundle`。bundle 仅是调度输入，不合并数据集、水位或失败状态。
+可用 LiXinger bundle：`market_bundle`、`industry_bundle`、`company_bundle`、`macro_daily_bundle`、`macro_monthly_bundle`。`index_fundamental` 任务只有一个原子接口，继续直接传入；历史名称 `macro_bundle`、`index_bundle` 仍兼容，但不再推荐使用。bundle 仅是调度输入，不合并数据集、水位或失败状态。
+
+其他数据源的推荐 bundle：
+
+- TuShare：`daily_market_bundle`、`fund_daily_bundle`、`hsgt_flow_bundle`、`financial_statement_bundle`、`pit_bundle`、`macro_daily_bundle`、`macro_monthly_bundle`、`metadata_bundle`。
+- LiXinger：`market_bundle`、`industry_bundle`、`company_bundle`、`macro_daily_bundle`、`macro_monthly_bundle`；`index_fundamental` 继续作为原子任务。
+- yfinance：`fundamental_bundle`、`corporate_action_bundle`、`research_daily_bundle`、`research_event_bundle`。
+- FRED：`macro_monthly_bundle`。日频、季频和周频目前各只有一个序列，继续使用原子任务；聚合任务 `macro_indicators` 仅保留显式调用，避免重复请求。
 
 Alpha Vantage 增量同步只有 `fx_daily` 一个任务。由于 `make sync` CLI 默认使用 4 个 Worker，执行时显式设置单并发：
 

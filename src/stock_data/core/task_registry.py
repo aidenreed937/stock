@@ -3,7 +3,7 @@
 from dataclasses import dataclass
 from typing import Any
 
-from stock_data.core.task_bundles import TASK_BUNDLES, TaskBundle
+from stock_data.core.task_bundles import TASK_BUNDLE_ALIASES, TASK_BUNDLES, TaskBundle
 
 
 @dataclass(frozen=True)
@@ -475,6 +475,7 @@ _CUSTOM_TASKS: dict[tuple[str, str], TaskSpec] = {
 _ALIASES: dict[tuple[str, str], str] = {
     ("tushare", "daily"): "stock_daily_bar",
     ("tushare", "daily_bar"): "stock_daily_bar",
+    ("tushare", "index_daily"): "index_daily_bar",
     ("yfinance", "history"): "stock_daily_bar",
     ("alphavantage", "FX_DAILY"): "fx_daily",
     ("alphavantage", "macro_indicators"): "fx_daily",
@@ -497,6 +498,7 @@ _ALIASES: dict[tuple[str, str], str] = {
 }
 
 _DISABLED_TASKS = {"bak_daily", "stk_account"}
+_EXPLICIT_ONLY_TASKS = {("fred", "macro_indicators")}
 
 
 def list_available_bundles(provider: str) -> list[str]:
@@ -509,13 +511,23 @@ def list_available_bundles(provider: str) -> list[str]:
     ]
 
 
-def resolve_bundle(provider: str, bundle_name: str) -> TaskBundle:
-    """解析任务包，并返回其原子任务列表。"""
+def _resolve_bundle_or_alias(provider: str, bundle_name: str) -> TaskBundle | None:
     provider_name = provider.lower()
     requested = bundle_name.strip()
     bundle = TASK_BUNDLES.get((provider_name, requested))
+    if bundle is not None:
+        return bundle
+    alias_tasks = TASK_BUNDLE_ALIASES.get((provider_name, requested))
+    if alias_tasks is None:
+        return None
+    return TaskBundle(requested, provider_name, alias_tasks)
+
+
+def resolve_bundle(provider: str, bundle_name: str) -> TaskBundle:
+    """解析任务包，并返回其原子任务列表。"""
+    bundle = _resolve_bundle_or_alias(provider, bundle_name)
     if bundle is None:
-        raise ValueError(f"未知任务包 [{provider_name}/{bundle_name}]。")
+        raise ValueError(f"未知任务包 [{provider.lower()}/{bundle_name}]。")
     return bundle
 
 
@@ -531,12 +543,13 @@ def expand_task_targets(provider: str, endpoints: list[str] | None = None) -> li
         requested = endpoint.strip()
         if not requested:
             continue
-        bundle = TASK_BUNDLES.get((provider_name, requested))
+        bundle = _resolve_bundle_or_alias(provider_name, requested)
         targets = bundle.tasks if bundle is not None else (requested,)
         for target in targets:
-            if target not in seen:
-                expanded.append(target)
-                seen.add(target)
+            canonical_target = _ALIASES.get((provider_name, target), target)
+            if canonical_target not in seen:
+                expanded.append(canonical_target)
+                seen.add(canonical_target)
     return expanded
 
 
@@ -644,8 +657,10 @@ def resolve_task(provider: str, task_name: str, symbol: str = "") -> TaskSpec:
     provider_name = provider.lower()
     requested = task_name.strip()
     if requested in _DISABLED_TASKS:
-        raise ValueError(f"项目任务 [{provider_name}/{task_name}] 已停用；请使用 stock_daily_bar。")
-    if (provider_name, requested) in TASK_BUNDLES:
+        raise ValueError(
+            f"项目任务 [{provider_name}/{task_name}] 已停用；请使用 stock_daily_bar。"
+        )
+    if _resolve_bundle_or_alias(provider_name, requested) is not None:
         raise ValueError(
             f"[{provider_name}/{task_name}] 是任务包，不是原子任务；"
             "请先通过 expand_task_targets 展开。"
@@ -697,8 +712,10 @@ def resolve_public_task(provider: str, task_name: str, symbol: str = "") -> Task
     provider_name = provider.lower()
     requested = task_name.strip()
     if requested in _DISABLED_TASKS:
-        raise ValueError(f"项目任务 [{provider_name}/{task_name}] 已停用；请使用 stock_daily_bar。")
-    if (provider_name, requested) in TASK_BUNDLES:
+        raise ValueError(
+            f"项目任务 [{provider_name}/{task_name}] 已停用；请使用 stock_daily_bar。"
+        )
+    if _resolve_bundle_or_alias(provider_name, requested) is not None:
         raise ValueError(
             f"[{provider_name}/{task_name}] 是任务包，不是公开原子任务；请在调度入口中展开。"
         )
@@ -736,7 +753,13 @@ def list_available_tasks(provider: str) -> list[str]:
     alias_names = {alias for alias_provider, alias in _ALIASES if alias_provider == prov}
 
     for p, t in _CUSTOM_TASKS:
-        if p == prov and t not in _DISABLED_TASKS and t not in alias_names and t not in tasks:
+        if (
+            p == prov
+            and (p, t) not in _EXPLICIT_ONLY_TASKS
+            and t not in _DISABLED_TASKS
+            and t not in alias_names
+            and t not in tasks
+        ):
             tasks.append(t)
 
     registry = _provider_registry(prov)

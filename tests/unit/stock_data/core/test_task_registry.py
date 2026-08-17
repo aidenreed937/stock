@@ -120,8 +120,8 @@ def test_lixinger_task_bundles() -> None:
         "market_bundle",
         "industry_bundle",
         "company_bundle",
-        "macro_bundle",
-        "index_bundle",
+        "macro_daily_bundle",
+        "macro_monthly_bundle",
     ]
     industry = resolve_bundle("lixinger", "industry_bundle")
     assert industry.provider == "lixinger"
@@ -135,50 +135,56 @@ def test_lixinger_task_bundles() -> None:
         "sw_2021_fs_insurance",
     )
     assert "industry_bundle" not in list_available_tasks("lixinger")
+    assert "index_fundamental" not in {
+        task
+        for bundle_name in list_available_bundles("lixinger")
+        for task in resolve_bundle("lixinger", bundle_name).tasks
+    }
 
-    assert expand_task_targets("lixinger", ["macro_bundle"])[-2:] == ["cn_m", "sf_month"]
+    assert expand_task_targets("lixinger", ["macro_monthly_bundle"]) == [
+        "investor_accounts",
+        "cn_m",
+        "sf_month",
+    ]
 
 
 def test_tushare_task_bundles() -> None:
     assert list_available_bundles("tushare") == [
-        "market_bundle",
-        "industry_bundle",
-        "index_bundle",
-        "index_weight_bundle",
-        "fund_bundle",
-        "equity_flow_bundle",
-        "liquidity_bundle",
-        "fundamental_bundle",
+        "daily_market_bundle",
+        "fund_daily_bundle",
+        "hsgt_flow_bundle",
+        "financial_statement_bundle",
         "pit_bundle",
-        "report_rc_bundle",
         "macro_daily_bundle",
-        "macro_periodic_bundle",
+        "macro_monthly_bundle",
         "metadata_bundle",
-        "derivatives_bundle",
     ]
 
-    market = resolve_bundle("tushare", "market_bundle")
+    market = resolve_bundle("tushare", "daily_market_bundle")
     assert market.tasks == (
-        "stock_daily_bar",
         "daily_basic",
         "adj_factor",
-        "stk_limit",
         "limit_list_d",
-        "suspend_d",
+        "sw_daily",
+        "moneyflow",
+    )
+    assert resolve_bundle("tushare", "fund_daily_bundle").tasks == (
+        "fund_daily",
+        "fund_adj",
+        "etf_share_size",
+    )
+    assert resolve_bundle("tushare", "hsgt_flow_bundle").tasks == (
+        "moneyflow_hsgt",
+        "hsgt_top10",
+    )
+    assert resolve_bundle("tushare", "financial_statement_bundle").tasks == (
+        "income",
+        "fina_indicator",
+        "balancesheet",
     )
 
-    index = resolve_bundle("tushare", "index_bundle")
-    assert index.tasks == ("index_daily_bar", "index_dailybasic")
-    assert resolve_bundle("tushare", "index_weight_bundle").tasks == ("index_weight",)
-    assert [resolve_task("tushare", task).frequency for task in index.tasks] == [
-        "daily",
-        "daily",
-    ]
-    assert resolve_task("tushare", "index_weight").frequency == "monthly"
-
-    periodic = resolve_bundle("tushare", "macro_periodic_bundle")
-    assert periodic.tasks == (
-        "cn_gdp",
+    monthly = resolve_bundle("tushare", "macro_monthly_bundle")
+    assert monthly.tasks == (
         "cn_cpi",
         "cn_ppi",
         "cn_pmi",
@@ -186,15 +192,12 @@ def test_tushare_task_bundles() -> None:
         "sf_month",
         "shibor_lpr",
     )
-
     pit = resolve_bundle("tushare", "pit_bundle")
     assert pit.tasks == ("forecast", "express")
-    assert resolve_bundle("tushare", "report_rc_bundle").tasks == ("report_rc",)
     assert [resolve_task("tushare", task).frequency for task in pit.tasks] == [
         "quarterly",
         "quarterly",
     ]
-    assert resolve_task("tushare", "report_rc").frequency == "daily"
 
     for bundle_name in list_available_bundles("tushare"):
         bundle = resolve_bundle("tushare", bundle_name)
@@ -207,17 +210,23 @@ def test_tushare_task_bundles() -> None:
 
 def test_expand_tushare_task_bundles_keeps_order_and_deduplicates() -> None:
     assert expand_task_targets(
-        "tushare", ["market_bundle", "index_bundle", "index_weight_bundle", "market_bundle"]
+        "tushare", [
+            "daily_market_bundle",
+            "fund_daily_bundle",
+            "hsgt_flow_bundle",
+            "daily_market_bundle",
+        ]
     ) == [
-        "stock_daily_bar",
         "daily_basic",
         "adj_factor",
-        "stk_limit",
         "limit_list_d",
-        "suspend_d",
-        "index_daily_bar",
-        "index_dailybasic",
-        "index_weight",
+        "sw_daily",
+        "moneyflow",
+        "fund_daily",
+        "fund_adj",
+        "etf_share_size",
+        "moneyflow_hsgt",
+        "hsgt_top10",
     ]
 
 
@@ -231,6 +240,123 @@ def test_expand_task_targets_keeps_atomic_tasks_and_deduplicates() -> None:
         "sw_2021_fs_security",
         "sw_2021_fs_insurance",
     ]
+
+
+def test_yfinance_task_bundles_follow_endpoint_families() -> None:
+    assert list_available_bundles("yfinance") == [
+        "fundamental_bundle",
+        "corporate_action_bundle",
+        "research_daily_bundle",
+        "research_event_bundle",
+    ]
+    assert resolve_bundle("yfinance", "fundamental_bundle").tasks == (
+        "financials",
+        "balance_sheet",
+    )
+    assert expand_task_targets("yfinance", ["corporate_action_bundle"]) == [
+        "dividends",
+        "splits",
+    ]
+
+
+def test_fred_task_bundles_do_not_duplicate_aggregate_task() -> None:
+    assert list_available_bundles("fred") == ["macro_monthly_bundle"]
+    assert resolve_bundle("fred", "macro_monthly_bundle").tasks == (
+        "FEDFUNDS",
+        "CPIAUCSL",
+        "UNRATE",
+        "PAYEMS",
+    )
+    assert "macro_indicators" not in expand_task_targets(
+        "fred", ["macro_monthly_bundle", "macro_daily_bundle"]
+    )
+    assert "macro_indicators" not in list_available_tasks("fred")
+    assert resolve_task("fred", "macro_indicators").dataset == "macro_indicators"
+
+
+def test_task_bundles_cover_registered_tasks_except_explicit_aggregate_routes() -> None:
+    expected_unbundled = {
+        "tushare": {
+            "stock_daily_bar",
+            "report_rc",
+            "index_daily_bar",
+            "index_dailybasic",
+            "stk_limit",
+            "suspend_d",
+            "index_weight",
+            "fund_basic",
+            "fund_share",
+            "fut_index_daily",
+            "opt_basic",
+            "opt_daily",
+            "trade_cal",
+            "cashflow",
+            "hk_hold",
+            "margin",
+            "margin_detail",
+            "cn_gdp",
+        },
+        "lixinger": {"index_fundamental"},
+        "yfinance": {
+            "macro_indicators",
+            "index_valuation",
+            "stock_daily_bar",
+            "index_daily_bar",
+            "cashflow",
+            "institutional_holders",
+        },
+        "fred": {"GDP", "T10Y2Y", "WALCL"},
+    }
+    for provider, unbundled in expected_unbundled.items():
+        bundled = {
+            task
+            for bundle_name in list_available_bundles(provider)
+            for task in resolve_bundle(provider, bundle_name).tasks
+        }
+        assert set(list_available_tasks(provider)) - bundled == unbundled
+
+
+def test_task_bundle_members_share_scheduling_contract() -> None:
+    from stock_data.pipeline.scheduler import DataUpdateScheduler
+
+    for (provider, _), bundle in {
+        (provider, name): resolve_bundle(provider, name)
+        for provider in ("tushare", "lixinger", "yfinance", "fred")
+        for name in list_available_bundles(provider)
+    }.items():
+        signatures = set()
+        for task_name in bundle.tasks:
+            task = resolve_task(provider, task_name)
+            meta = DataUpdateScheduler.get_endpoint_update_meta(provider, task_name)
+            signatures.add(
+                (
+                    task.frequency,
+                    task.fetch_mode,
+                    task.partitioned,
+                    task.is_single_sync,
+                    task.required_pool,
+                    meta.update_time,
+                    meta.update_delay_days,
+                    meta.delay_in_trading_days,
+                )
+            )
+        assert len(signatures) == 1, f"{provider}/{bundle.bundle_name}: {signatures}"
+
+
+def test_tushare_index_daily_alias_is_not_a_second_public_task() -> None:
+    assert "index_daily" not in list_available_tasks("tushare")
+    assert resolve_task("tushare", "index_daily").task_name == "index_daily_bar"
+    assert expand_task_targets("tushare", ["index_daily", "index_daily_bar"]) == [
+        "index_daily_bar"
+    ]
+
+
+def test_legacy_bundle_names_still_expand() -> None:
+    assert expand_task_targets("tushare", ["index_bundle"]) == [
+        "index_daily_bar",
+        "index_dailybasic",
+    ]
+    assert expand_task_targets("lixinger", ["macro_bundle"])[-2:] == ["cn_m", "sf_month"]
 
 
 def test_resolve_task_rejects_bundle_name() -> None:

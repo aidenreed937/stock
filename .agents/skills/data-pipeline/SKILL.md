@@ -57,29 +57,44 @@ make sync
 make sync SOURCE=tushare
 make sync SOURCE=yfinance
 
-# ==================== [资产审计 Audit] ====================
-# 全库 Parquet 物理资产大盘点 (标的数、记录数、日期覆盖与缺口诊断)
+# 资产审计与离线运维
 make master-audit
-
-# RAW vs Curated 1-to-1 双向物理对账 (行数与金额零丢行验证)
 make audit TYPE=reconciliation
-
-# 估值 / 因子指标专项对账
 make audit TYPE=valuation
 make audit TYPE=factor
-
-# ==================== [离线治理与探针 Ops] ====================
-# 5 大数据源 API 连通性与时延探针检测 (只读安全)
 make probe
-
-# 存量 Parquet 离线去重与 Schema 迁移 (默认只读 Dry-run；APPLY=1 高危需人工授权)
 make migrate-data
 make migrate-data APPLY=1
-
-# 清理过期临时与备份 Parquet (默认只读 Dry-run；APPLY=1 高危物理删除需人工授权)
 make cleanup-data
 make cleanup-data APPLY=1 OLDER_THAN_DAYS=7
 ```
+
+---
+
+### TaskBundle 调度
+
+任务包只作为调度入口展开；展开后每个原子任务仍独立执行、维护水位并记录失败状态。正式任务包按数据源、频率、更新窗口、标的池和存储契约划分；单任务继续使用原子 endpoint。
+
+```bash
+# 同一数据源可以组合多个任务包，展开后自动去重
+make sync SOURCE=tushare ENDPOINT=daily_market_bundle,fund_daily_bundle
+make sync SOURCE=lixinger ENDPOINT=market_bundle,macro_monthly_bundle
+
+# 低频或单任务接口直接调用
+make sync SOURCE=lixinger ENDPOINT=index_fundamental
+make sync SOURCE=alphavantage ENDPOINT=fx_daily WORKERS=1
+```
+
+当前正式任务包：
+
+| 数据源 | 任务包 |
+| :--- | :--- |
+| TuShare | `daily_market_bundle`、`fund_daily_bundle`、`hsgt_flow_bundle`、`financial_statement_bundle`、`pit_bundle`、`macro_daily_bundle`、`macro_monthly_bundle`、`metadata_bundle` |
+| LiXinger | `market_bundle`、`industry_bundle`、`company_bundle`、`macro_daily_bundle`、`macro_monthly_bundle` |
+| yfinance | `fundamental_bundle`、`corporate_action_bundle`、`research_daily_bundle`、`research_event_bundle` |
+| FRED | `macro_monthly_bundle` |
+
+历史 bundle 名称仍可展开以兼容已有命令，但不作为新配置的推荐名称；bundle 不合并子任务的数据集、水位或失败状态。
 
 ---
 

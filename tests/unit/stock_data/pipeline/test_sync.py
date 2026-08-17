@@ -375,7 +375,7 @@ def test_sync_cli_forwards_comma_separated_task_bundles() -> None:
                 "-s",
                 "tushare",
                 "-e",
-                "market_bundle,index_bundle,fund_bundle",
+                "daily_market_bundle,fund_daily_bundle,hsgt_flow_bundle",
             ],
         ),
         patch.object(DailySyncEngine, "sync_daily", return_value=([], [], None)) as sync_daily,
@@ -383,9 +383,9 @@ def test_sync_cli_forwards_comma_separated_task_bundles() -> None:
         sync_cli_main()
 
     assert sync_daily.call_args.kwargs["endpoints"] == [
-        "market_bundle",
-        "index_bundle",
-        "fund_bundle",
+        "daily_market_bundle",
+        "fund_daily_bundle",
+        "hsgt_flow_bundle",
     ]
 
 
