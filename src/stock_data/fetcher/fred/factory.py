@@ -2,12 +2,14 @@
 
 from __future__ import annotations
 
-from stock_data.cleaner.generic_cleaner import GenericCleaner
+from typing import TYPE_CHECKING
+
+from stock_data.core.task_registry import resolve_task
 from stock_data.fetcher.fred.client import FredClient
 from stock_data.fetcher.fred.global_fetcher import FredDataFetcher
-from stock_data.normalizer.generic_normalizer import GenericNormalizer
-from stock_data.pipeline import MarketDataPipeline
-from stock_data.task_registry import resolve_task
+
+if TYPE_CHECKING:
+    from stock_data.pipeline.pipeline import MarketDataPipeline
 
 
 def create_fred_fetcher(proxy: str | None = None) -> FredDataFetcher:
@@ -22,6 +24,10 @@ def create_fred_pipeline(
     fetcher: FredDataFetcher | None = None,
 ) -> MarketDataPipeline:
     """按项目任务名创建 FRED Pipeline。"""
+    from stock_data.pipeline.cleaner.generic_cleaner import GenericCleaner
+    from stock_data.pipeline.normalizer.generic_normalizer import GenericNormalizer
+    from stock_data.pipeline.pipeline import MarketDataPipeline
+
     active_fetcher = fetcher if fetcher is not None else create_fred_fetcher(proxy=proxy)
     task = resolve_task("fred", endpoint)
     return MarketDataPipeline(

@@ -4,14 +4,14 @@ from __future__ import annotations
 
 from typing import TYPE_CHECKING
 
-from stock_data.cleaner.bar_cleaner import BarDataCleaner
+from stock_data.core.task_registry import resolve_task
 from stock_data.fetcher.yfinance.client import YFinanceClient
 from stock_data.fetcher.yfinance.global_fetcher import YFinanceDataFetcher
-from stock_data.pipeline import MarketDataPipeline
-from stock_data.task_registry import resolve_task
 
 if TYPE_CHECKING:
     from pathlib import Path
+
+    from stock_data.pipeline.pipeline import MarketDataPipeline
 
 
 def create_yfinance_fetcher(
@@ -37,6 +37,9 @@ def create_yfinance_pipeline(
         fetcher: 可选的共享 Fetcher 实例。
         proxy_pool_file: 本地代理池文件或目录。
     """
+    from stock_data.pipeline.cleaner.bar_cleaner import BarDataCleaner
+    from stock_data.pipeline.pipeline import MarketDataPipeline
+
     active_fetcher = (
         fetcher
         if fetcher is not None

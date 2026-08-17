@@ -14,7 +14,7 @@ from stock_data.fetcher.lixinger import (
     LixingerStockFetcher,
     create_lixinger_pipeline,
 )
-from stock_data.update_scheduler import DataUpdateScheduler
+from stock_data.pipeline.scheduler import DataUpdateScheduler
 
 
 def test_lixinger_clients_share_rate_limiter_per_api() -> None:
@@ -390,7 +390,7 @@ def test_lixinger_facade_and_factory() -> None:
 
 
 def test_lixinger_index_fundamental_factory_uses_placeholder_cleaner() -> None:
-    from stock_data.cleaner.generic_cleaner import LixingerIndexFundamentalCleaner
+    from stock_data.pipeline.cleaner.generic_cleaner import LixingerIndexFundamentalCleaner
 
     pipeline = create_lixinger_pipeline("index_fundamental")
 

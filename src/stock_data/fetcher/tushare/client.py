@@ -7,8 +7,8 @@ import tushare as ts
 from stock_core.config.loader import load_data_config
 from stock_core.exceptions import DataFetchError
 from stock_core.utils.logger import logger
+from stock_data.core.settings import data_settings
 from stock_data.fetcher.rate_limiter import RateLimiter
-from stock_data.settings import data_settings
 
 
 class TuShareClient:

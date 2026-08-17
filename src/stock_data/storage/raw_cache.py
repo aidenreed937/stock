@@ -6,7 +6,8 @@ from typing import Any
 import polars as pl
 
 from stock_core.utils.logger import logger
-from stock_data.quality.margin_coverage import is_margin_date_complete
+from stock_data.core.task_registry import get_endpoint_market, resolve_task
+from stock_data.governance.quality.margin_coverage import is_margin_date_complete
 from stock_data.storage.raw_schema import (
     RAW_ARTIFACT_SUFFIXES,
     RAW_RANGE_DATE_COLUMNS,
@@ -14,7 +15,6 @@ from stock_data.storage.raw_schema import (
     first_existing_column,
     normalize_raw_date_series,
 )
-from stock_data.task_registry import get_endpoint_market, resolve_task
 
 
 def _legacy_raw_has_symbol(storage: Any, path: Any, symbol: str | None) -> bool:
@@ -34,7 +34,7 @@ def _legacy_raw_has_symbol(storage: Any, path: Any, symbol: str | None) -> bool:
 def _candidate_dates(target_date: date) -> set[str]:
     dates = {target_date.strftime("%Y%m%d")}
     try:
-        from stock_data.update_scheduler import DataUpdateScheduler
+        from stock_data.pipeline.scheduler import DataUpdateScheduler
 
         latest_trading_date = DataUpdateScheduler.get_latest_trading_date(target_date)
         if latest_trading_date is not None:

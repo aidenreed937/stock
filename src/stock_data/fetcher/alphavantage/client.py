@@ -8,8 +8,8 @@ from typing import Any
 from curl_cffi import requests
 
 from stock_core.config.loader import load_data_config
+from stock_data.core.settings import data_settings
 from stock_data.fetcher.rate_limiter import RateLimiter
-from stock_data.settings import data_settings
 
 logger = logging.getLogger(__name__)
 

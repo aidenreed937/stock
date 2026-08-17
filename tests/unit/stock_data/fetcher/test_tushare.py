@@ -8,13 +8,13 @@ import polars as pl
 import pytest
 
 from stock_core.exceptions import DataFetchError
-from stock_data.cleaner.bar_cleaner import BarDataCleaner
 from stock_data.fetcher.tushare.client import RateLimiter, TuShareClient
 from stock_data.fetcher.tushare.facade import TuShareDataFetcher
 from stock_data.fetcher.tushare.factory import create_tushare_pipeline
 from stock_data.fetcher.tushare.query_builder import build_tushare_query
 from stock_data.fetcher.tushare.registry import TUSHARE_API_REGISTRY
 from stock_data.fetcher.tushare.slicer import batch_slice_and_merge
+from stock_data.pipeline.cleaner.bar_cleaner import BarDataCleaner
 
 
 def test_tushare_registry() -> None:

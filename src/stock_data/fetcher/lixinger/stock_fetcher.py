@@ -9,9 +9,9 @@ from stock_core.config.loader import load_data_config
 from stock_core.exceptions import DataFetchError
 from stock_core.models.market import DailyBar
 from stock_core.utils.logger import logger
+from stock_data.core.task_registry import resolve_task
 from stock_data.fetcher.lixinger.client import LixingerClient
 from stock_data.fetcher.lixinger.registry import LIXINGER_API_REGISTRY, EndpointMeta
-from stock_data.task_registry import resolve_task
 
 _INDUSTRY_TABLE_CACHE: Any = None
 
@@ -386,7 +386,7 @@ class LixingerStockFetcher:
     def fetch_trade_cal(self, start_date: date, end_date: date) -> list[date]:
         """获取指定日期范围内的有效交易日列表。"""
         try:
-            from stock_data.update_scheduler import DataUpdateScheduler
+            from stock_data.pipeline.scheduler import DataUpdateScheduler
 
             local_calendar = DataUpdateScheduler.get_trading_days(
                 start_date, end_date, data_source="tushare"

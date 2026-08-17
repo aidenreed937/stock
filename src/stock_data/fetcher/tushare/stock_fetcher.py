@@ -7,7 +7,7 @@ import polars as pl
 
 from stock_core.models.market import DailyBar
 from stock_core.utils.logger import logger
-from stock_data.constants import EXCHANGE_START_DATES
+from stock_data.core.constants import EXCHANGE_START_DATES
 from stock_data.fetcher.base import BaseDataFetcher
 from stock_data.fetcher.tushare.client import TuShareClient
 from stock_data.fetcher.tushare.query_builder import (
@@ -135,7 +135,7 @@ class TuShareStockFetcher(BaseDataFetcher):
         if df.is_empty():
             return []
 
-        from stock_data.normalizer.unit_normalizer import UnitNormalizer
+        from stock_data.pipeline.normalizer.unit_normalizer import UnitNormalizer
 
         norm_df = UnitNormalizer("tushare", "daily").normalize_units(df)
         bars: list[DailyBar] = []

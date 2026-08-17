@@ -7,7 +7,7 @@ from unittest.mock import MagicMock, patch
 import pytest
 
 from stock_cli.backfill import _execute_planned_tasks, _resolve_universe_symbols, main
-from stock_data.planner import BackfillTask
+from stock_data.pipeline.planner import BackfillTask
 
 
 def test_backfill_cli_help() -> None:
@@ -35,7 +35,7 @@ def test_backfill_cli_basic_run() -> None:
             ],
         ),
         patch("stock_cli.backfill.load_data_config") as mock_cfg,
-        patch("stock_data.backfill.HistoricalBackfiller") as mock_backfiller_cls,
+        patch("stock_data.pipeline.backfill.HistoricalBackfiller") as mock_backfiller_cls,
     ):
         mock_cfg.return_value = MagicMock(
             tushare=MagicMock(token="mock_token"),
@@ -104,7 +104,7 @@ def test_execute_planned_tasks_enables_batch_on_backfiller_pipeline() -> None:
         is_single_sync=False,
     )
 
-    with patch("stock_data.backfill.HistoricalBackfiller", Backfiller):
+    with patch("stock_data.pipeline.backfill.HistoricalBackfiller", Backfiller):
         summaries = _execute_planned_tasks([task], force_refresh=True, workers=2)
 
     assert store.committed == 1
@@ -186,7 +186,7 @@ def test_execute_planned_tasks_reuses_pipeline_without_reordering_tasks() -> Non
         ),
     ]
 
-    with patch("stock_data.backfill.HistoricalBackfiller", Backfiller):
+    with patch("stock_data.pipeline.backfill.HistoricalBackfiller", Backfiller):
         summaries = _execute_planned_tasks(tasks, force_refresh=False, workers=1)
 
     assert len(instances) == 3
@@ -222,7 +222,7 @@ def test_backfill_cli_universe_resolution() -> None:
             ],
         ),
         patch("stock_cli.backfill.load_data_config") as mock_cfg,
-        patch("stock_data.backfill.HistoricalBackfiller") as mock_backfiller_cls,
+        patch("stock_data.pipeline.backfill.HistoricalBackfiller") as mock_backfiller_cls,
     ):
         mock_cfg.return_value = MagicMock(
             tushare=MagicMock(token="mock_token"),
@@ -282,7 +282,7 @@ def test_backfill_cli_exits_nonzero_on_failed_days() -> None:
             ],
         ),
         patch("stock_cli.backfill.load_data_config") as mock_cfg,
-        patch("stock_data.backfill.HistoricalBackfiller") as mock_backfiller_cls,
+        patch("stock_data.pipeline.backfill.HistoricalBackfiller") as mock_backfiller_cls,
     ):
         mock_cfg.return_value = MagicMock()
         mock_instance = MagicMock()

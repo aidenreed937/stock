@@ -5,7 +5,7 @@ from typing import Any
 
 import polars as pl
 
-from stock_data.task_registry import resolve_task
+from stock_data.core.task_registry import resolve_task
 
 
 class StorageCompat:

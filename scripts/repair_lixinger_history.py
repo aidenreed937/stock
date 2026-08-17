@@ -4,7 +4,7 @@ from pathlib import Path
 
 import polars as pl
 
-from stock_data.quality.quarantine import QuarantineStore
+from stock_data.governance.quality.quarantine import QuarantineStore
 
 
 def repair_pre_listing_stock_bars(

@@ -4,11 +4,11 @@ from unittest.mock import MagicMock, patch
 import pandas as pd
 import polars as pl
 
-from stock_data.cleaner.macro_cleaner import MacroDataCleaner
 from stock_data.fetcher.yfinance.client import YFinanceClient
 from stock_data.fetcher.yfinance.factory import create_yfinance_pipeline
 from stock_data.fetcher.yfinance.global_fetcher import YFinanceDataFetcher
 from stock_data.fetcher.yfinance.registry import YFINANCE_API_REGISTRY
+from stock_data.pipeline.cleaner.macro_cleaner import MacroDataCleaner
 
 
 def test_yfinance_fetcher() -> None:

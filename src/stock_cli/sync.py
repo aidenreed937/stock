@@ -10,7 +10,7 @@ from typing import Any
 import polars as pl
 
 from stock_core.utils.logger import logger
-from stock_data.sync import DailySyncEngine, SyncExecutionResult, SyncTaskItem
+from stock_data.pipeline.sync import DailySyncEngine, SyncExecutionResult, SyncTaskItem
 
 
 def _build_parser() -> argparse.ArgumentParser:

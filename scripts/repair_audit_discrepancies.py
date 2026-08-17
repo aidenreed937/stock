@@ -6,14 +6,14 @@ from pathlib import Path
 import polars as pl
 
 from stock_core.utils.logger import logger
-from stock_data.cleaner.bar_cleaner import BarDataCleaner
-from stock_data.cleaner.generic_cleaner import GenericCleaner
-from stock_data.normalizer.bar_normalizer import (
+from stock_data.pipeline.cleaner.bar_cleaner import BarDataCleaner
+from stock_data.pipeline.cleaner.generic_cleaner import GenericCleaner
+from stock_data.pipeline.normalizer.bar_normalizer import (
     BarDataNormalizer,
     infer_market_exchange_currency,
 )
-from stock_data.normalizer.generic_normalizer import GenericNormalizer
-from stock_data.normalizer.unit_normalizer import UnitNormalizer
+from stock_data.pipeline.normalizer.generic_normalizer import GenericNormalizer
+from stock_data.pipeline.normalizer.unit_normalizer import UnitNormalizer
 from stock_data.storage.compat import StorageCompat
 
 

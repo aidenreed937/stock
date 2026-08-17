@@ -9,7 +9,7 @@ import polars as pl
 from stock_core.constants import BAR_DATASETS
 from stock_core.contracts import DatasetKey
 from stock_core.utils.logger import logger
-from stock_data.quality.margin_coverage import filter_complete_margin_dates
+from stock_data.governance.quality.margin_coverage import filter_complete_margin_dates
 from stock_data.storage.compat import StorageCompat
 from stock_data.storage.partition_store import ParquetPartitionStore
 from stock_data.storage.query_engine import DuckDBQueryEngine

@@ -220,7 +220,9 @@ def test_lixinger_stock_fetcher_trade_cal() -> None:
         }
     )
     fetcher = LixingerStockFetcher(client=mock_client)
-    with patch("stock_data.update_scheduler.DataUpdateScheduler.get_trading_days", return_value=()):
+    with patch(
+        "stock_data.pipeline.scheduler.DataUpdateScheduler.get_trading_days", return_value=()
+    ):
         dates = fetcher.fetch_trade_cal(date(2024, 1, 1), date(2024, 1, 3))
     assert dates == [date(2024, 1, 2), date(2024, 1, 3)]
 
@@ -230,7 +232,7 @@ def test_lixinger_stock_fetcher_prefers_local_tushare_calendar() -> None:
     fetcher = LixingerStockFetcher(client=mock_client)
 
     with patch(
-        "stock_data.update_scheduler.DataUpdateScheduler.get_trading_days",
+        "stock_data.pipeline.scheduler.DataUpdateScheduler.get_trading_days",
         return_value=(date(2024, 1, 2), date(2024, 1, 3)),
     ):
         dates = fetcher.fetch_trade_cal(date(2024, 1, 1), date(2024, 1, 3))

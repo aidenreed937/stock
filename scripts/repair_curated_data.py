@@ -10,16 +10,19 @@ import polars as pl
 
 from stock_core.contracts import DatasetKey
 from stock_core.utils.logger import logger
-from stock_data.cleaner.bar_cleaner import BarDataCleaner
-from stock_data.cleaner.base import BaseDataCleaner
-from stock_data.cleaner.generic_cleaner import GenericCleaner
-from stock_data.normalizer.bar_normalizer import BarDataNormalizer, infer_market_exchange_currency
-from stock_data.normalizer.base import BaseDataNormalizer
-from stock_data.normalizer.generic_normalizer import GenericNormalizer
-from stock_data.normalizer.unit_normalizer import UnitNormalizer
+from stock_data.core.task_registry import resolve_task
+from stock_data.pipeline.cleaner.bar_cleaner import BarDataCleaner
+from stock_data.pipeline.cleaner.base import BaseDataCleaner
+from stock_data.pipeline.cleaner.generic_cleaner import GenericCleaner
+from stock_data.pipeline.normalizer.bar_normalizer import (
+    BarDataNormalizer,
+    infer_market_exchange_currency,
+)
+from stock_data.pipeline.normalizer.base import BaseDataNormalizer
+from stock_data.pipeline.normalizer.generic_normalizer import GenericNormalizer
+from stock_data.pipeline.normalizer.unit_normalizer import UnitNormalizer
 from stock_data.storage.compat import StorageCompat
 from stock_data.storage.duckdb_store import DuckDBMarketStore
-from stock_data.task_registry import resolve_task
 
 
 @dataclass(slots=True)

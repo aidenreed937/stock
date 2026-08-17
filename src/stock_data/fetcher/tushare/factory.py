@@ -2,13 +2,14 @@
 
 from __future__ import annotations
 
-from stock_data.cleaner.bar_cleaner import BarDataCleaner
-from stock_data.cleaner.base import BaseDataCleaner
-from stock_data.cleaner.generic_cleaner import GenericCleaner
+from typing import TYPE_CHECKING
+
+from stock_data.core.task_registry import resolve_task
 from stock_data.fetcher.tushare.facade import TuShareDataFetcher
 from stock_data.fetcher.tushare.registry import TUSHARE_API_REGISTRY
-from stock_data.pipeline import MarketDataPipeline
-from stock_data.task_registry import resolve_task
+
+if TYPE_CHECKING:
+    from stock_data.pipeline.pipeline import MarketDataPipeline
 
 
 def create_tushare_fetcher(token: str | None = None, url: str | None = None) -> TuShareDataFetcher:
@@ -21,6 +22,11 @@ def create_tushare_pipeline(
     fetcher: TuShareDataFetcher | None = None,
 ) -> MarketDataPipeline:
     """按项目任务名创建 TuShare Pipeline。"""
+    from stock_data.pipeline.cleaner.bar_cleaner import BarDataCleaner
+    from stock_data.pipeline.cleaner.base import BaseDataCleaner
+    from stock_data.pipeline.cleaner.generic_cleaner import GenericCleaner
+    from stock_data.pipeline.pipeline import MarketDataPipeline
+
     active_fetcher = fetcher if fetcher is not None else create_tushare_fetcher()
     task = resolve_task("tushare", endpoint)
     meta = TUSHARE_API_REGISTRY.get(task.api_name)

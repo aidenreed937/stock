@@ -13,7 +13,7 @@ import yaml
 
 from stock_core.config.loader import load_data_config
 from stock_core.utils.logger import logger
-from stock_data.planner import BackfillPlanner, BackfillTask
+from stock_data.pipeline.planner import BackfillPlanner, BackfillTask
 
 
 def _build_argument_parser() -> argparse.ArgumentParser:
@@ -84,7 +84,7 @@ def _execute_planned_tasks(
     tasks: list[BackfillTask], *, force_refresh: bool, workers: int
 ) -> list[dict[str, Any]]:
     """以攒批事务模式驱动执行规划任务。"""
-    import stock_data.backfill as backfill_module
+    import stock_data.pipeline.backfill as backfill_module
 
     summaries: list[dict[str, Any]] = []
     batch_contexts: dict[tuple[str, str], dict[str, Any]] = {}
@@ -229,7 +229,7 @@ def _resolve_universe_symbols(universe_name: str | None) -> str | None:
 
 def main() -> None:
     """CLI 主入口函数。"""
-    import stock_data.backfill as backfill_module
+    import stock_data.pipeline.backfill as backfill_module
 
     parser = _build_argument_parser()
     args = parser.parse_args()

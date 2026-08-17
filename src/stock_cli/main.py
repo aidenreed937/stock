@@ -6,8 +6,8 @@ import polars as pl
 from stock_core.config.loader import load_data_config
 from stock_core.config.settings import settings
 from stock_core.utils.logger import logger, setup_logger
-from stock_data.factory import create_pipeline
-from stock_data.settings import data_settings
+from stock_data.core.factory import create_pipeline
+from stock_data.core.settings import data_settings
 from stock_strategy.config import load_strategy_config
 from stock_strategy.runner import StrategyRunner
 

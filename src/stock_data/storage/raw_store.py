@@ -12,9 +12,9 @@ import polars as pl
 from stock_core.contracts import DatasetKey
 from stock_core.exceptions import DataValidationError
 from stock_core.utils.logger import logger
-from stock_data.cleaner.date_utils import parse_mixed_date
-from stock_data.quality.margin_coverage import is_margin_complete
-from stock_data.settings import data_settings
+from stock_data.core.settings import data_settings
+from stock_data.governance.quality.margin_coverage import is_margin_complete
+from stock_data.pipeline.cleaner.date_utils import parse_mixed_date
 from stock_data.storage.compat import StorageCompat
 from stock_data.storage.raw_cache import has_raw_cache
 from stock_data.storage.raw_schema import (
@@ -349,7 +349,7 @@ class RawDataStorage:
 
     def _get_dataset_path(self, key: DatasetKey) -> Path:
         """计算 RAW 缓存路径。针对少量/静态/宏观单次数据集，直接存放于数据集根目录。"""
-        from stock_data.task_registry import is_task_partitioned
+        from stock_data.core.task_registry import is_task_partitioned
 
         dataset_name = self._dataset_name(key.provider, key.dataset)
         base_dataset_dir = self.base_dir / key.provider / key.market_slug / dataset_name

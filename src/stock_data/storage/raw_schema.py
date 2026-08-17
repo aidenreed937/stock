@@ -89,7 +89,7 @@ def resolve_raw_primary_keys(key: DatasetKey, df: pl.DataFrame) -> list[str]:
     from typing import Any
 
     from stock_core.utils.logger import logger
-    from stock_data.task_registry import resolve_task
+    from stock_data.core.task_registry import resolve_task
 
     meta: Any = None
     try:

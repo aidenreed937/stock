@@ -53,19 +53,19 @@ backfill:
 
 
 baseline:
-	uv run python -m stock_data.audit.baseline --root $(or $(ROOT),data) --output $(or $(OUTPUT),data/audit/baseline.json)
+	uv run python -m stock_data.governance.audit.baseline --root $(or $(ROOT),data) --output $(or $(OUTPUT),data/audit/baseline.json)
 
 migrate-data:
-	UV_CACHE_DIR=.uv_cache UV_PYTHON_INSTALL_DIR=.uv_python uv run python -m stock_data.ops.migration --root $(or $(ROOT),data) $(if $(APPLY),--apply) $(if $(REPAIR_LINEAGE),--repair-lineage)
+	UV_CACHE_DIR=.uv_cache UV_PYTHON_INSTALL_DIR=.uv_python uv run python -m stock_data.governance.ops.migration --root $(or $(ROOT),data) $(if $(APPLY),--apply) $(if $(REPAIR_LINEAGE),--repair-lineage)
 
 cleanup-data:
-	UV_CACHE_DIR=.uv_cache UV_PYTHON_INSTALL_DIR=.uv_python uv run python -m stock_data.ops.cleanup_artifacts --root $(or $(ROOT),data) --older-than-days $(or $(OLDER_THAN_DAYS),7) $(if $(filter 1 true yes,$(APPLY)),--apply)
+	UV_CACHE_DIR=.uv_cache UV_PYTHON_INSTALL_DIR=.uv_python uv run python -m stock_data.governance.ops.cleanup_artifacts --root $(or $(ROOT),data) --older-than-days $(or $(OLDER_THAN_DAYS),7) $(if $(filter 1 true yes,$(APPLY)),--apply)
 
 backfill-accept:
-	UV_CACHE_DIR=.uv_cache UV_PYTHON_INSTALL_DIR=.uv_python uv run python -m stock_data.audit.backfill_acceptance --root $(or $(ROOT),data/curated) --raw-root $(or $(RAW_ROOT),data/raw) --endpoint $(ENDPOINT) --data-source $(or $(SOURCE),$(DATA_SOURCE),tushare) $(if $(START),--start $(START)) $(if $(END),--end $(END))
+	UV_CACHE_DIR=.uv_cache UV_PYTHON_INSTALL_DIR=.uv_python uv run python -m stock_data.governance.audit.backfill_acceptance --root $(or $(ROOT),data/curated) --raw-root $(or $(RAW_ROOT),data/raw) --endpoint $(ENDPOINT) --data-source $(or $(SOURCE),$(DATA_SOURCE),tushare) $(if $(START),--start $(START)) $(if $(END),--end $(END))
 
 repair-stock-daily-bar:
-	UV_CACHE_DIR=.uv_cache UV_PYTHON_INSTALL_DIR=.uv_python uv run python -m stock_data.ops.rebuild_stock_daily_bar \
+	UV_CACHE_DIR=.uv_cache UV_PYTHON_INSTALL_DIR=.uv_python uv run python -m stock_data.governance.ops.rebuild_stock_daily_bar \
 		$(if $(RAW_ROOT),--raw-root $(RAW_ROOT)) \
 		$(if $(CURATED_ROOT),--curated-root $(CURATED_ROOT)) \
 		$(if $(STOCK_BASIC),--stock-basic $(STOCK_BASIC)) \
@@ -75,11 +75,11 @@ repair-stock-daily-bar:
 		$(if $(filter 1 true yes,$(APPLY)),--apply)
 
 probe:
-	uv run python -m stock_data.ops.probe
+	uv run python -m stock_data.governance.ops.probe
 
 validate:
-	UV_CACHE_DIR=.uv_cache UV_PYTHON_INSTALL_DIR=.uv_python uv run python -m stock_data.quality.gate
-	UV_CACHE_DIR=.uv_cache UV_PYTHON_INSTALL_DIR=.uv_python uv run python -m stock_data.validator --endpoint $(or $(ENDPOINT),stock_daily_bar) --strict
+	UV_CACHE_DIR=.uv_cache UV_PYTHON_INSTALL_DIR=.uv_python uv run python -m stock_data.governance.quality.gate
+	UV_CACHE_DIR=.uv_cache UV_PYTHON_INSTALL_DIR=.uv_python uv run python -m stock_data.governance.validator --endpoint $(or $(ENDPOINT),stock_daily_bar) --strict
 
 audit:
 	UV_CACHE_DIR=.uv_cache UV_PYTHON_INSTALL_DIR=.uv_python uv run python -m stock_cli.audit --type $(or $(TYPE),master) --data-source $(or $(SOURCE),$(DATA_SOURCE),tushare) $(if $(DATE),--date $(DATE)) $(if $(START),--start $(START)) $(if $(END),--end $(END)) $(if $(DOMAIN),--domain $(DOMAIN)) $(if $(FREQ),--frequency $(FREQ))
@@ -88,7 +88,7 @@ master-audit:
 	uv run python -m stock_cli.audit --type master
 
 filter-universe:
-	uv run python -m stock_data.domain.universe
+	uv run python -m stock_data.governance.domain.universe
 
 backfill-fundamental:
 	uv run python -m stock_cli.backfill --start $(START) --end $(END) --data-source lixinger --endpoint company_fundamental --universe $(or $(UNIVERSE),watchlist)

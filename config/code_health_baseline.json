@@ -6,14 +6,6 @@
     "max_file_lines": 400
   },
   "classes": {
-    "src/stock_data/cleaner/bar_cleaner.py::BarDataCleaner": {
-      "lines": 309,
-      "methods": 7
-    },
-    "src/stock_data/domain/universe.py::UniverseFilter": {
-      "lines": 275,
-      "methods": 9
-    },
     "src/stock_data/fetcher/lixinger/client.py::LixingerClient": {
       "lines": 231,
       "methods": 5
@@ -26,17 +18,33 @@
       "lines": 330,
       "methods": 15
     },
-    "src/stock_data/ops/probe.py::GlobalDataProbe": {
+    "src/stock_data/governance/domain/universe.py::UniverseFilter": {
+      "lines": 275,
+      "methods": 9
+    },
+    "src/stock_data/governance/ops/probe.py::GlobalDataProbe": {
       "lines": 358,
       "methods": 6
     },
-    "src/stock_data/pipeline_stages.py::FetcherStage": {
+    "src/stock_data/governance/quality/gate.py::QualityGate": {
+      "lines": 214,
+      "methods": 8
+    },
+    "src/stock_data/pipeline/cleaner/bar_cleaner.py::BarDataCleaner": {
+      "lines": 309,
+      "methods": 7
+    },
+    "src/stock_data/pipeline/scheduler.py::DataUpdateScheduler": {
+      "lines": 261,
+      "methods": 9
+    },
+    "src/stock_data/pipeline/stages.py::FetcherStage": {
       "lines": 236,
       "methods": 4
     },
-    "src/stock_data/quality/gate.py::QualityGate": {
-      "lines": 214,
-      "methods": 8
+    "src/stock_data/pipeline/sync.py::DailySyncEngine": {
+      "lines": 209,
+      "methods": 5
     },
     "src/stock_data/storage/compat.py::StorageCompat": {
       "lines": 228,
@@ -53,14 +61,6 @@
     "src/stock_data/storage/raw_store.py::RawDataStorage": {
       "lines": 298,
       "methods": 16
-    },
-    "src/stock_data/sync.py::DailySyncEngine": {
-      "lines": 209,
-      "methods": 5
-    },
-    "src/stock_data/update_scheduler.py::DataUpdateScheduler": {
-      "lines": 261,
-      "methods": 9
     }
   },
   "files": {
@@ -79,29 +79,32 @@
     "src/stock_analytics/pipelines/market_temperature/facts.py": {
       "lines": 462
     },
-    "src/stock_data/audit/backfill_acceptance.py": {
-      "lines": 497
+    "src/stock_cli/audit.py": {
+      "lines": 406
     },
-    "src/stock_data/audit/reconciliation.py": {
-      "lines": 1033
+    "src/stock_data/core/task_registry.py": {
+      "lines": 799
     },
     "src/stock_data/fetcher/lixinger/stock_fetcher.py": {
       "lines": 445
     },
-    "src/stock_data/ops/migration.py": {
+    "src/stock_data/governance/audit/backfill_acceptance.py": {
+      "lines": 497
+    },
+    "src/stock_data/governance/audit/reconciliation.py": {
+      "lines": 1033
+    },
+    "src/stock_data/governance/ops/migration.py": {
       "lines": 426
     },
-    "src/stock_data/ops/probe.py": {
+    "src/stock_data/governance/ops/probe.py": {
       "lines": 419
     },
-    "src/stock_data/ops/rebuild_stock_daily_bar.py": {
+    "src/stock_data/governance/ops/rebuild_stock_daily_bar.py": {
       "lines": 487
     },
-    "src/stock_data/sync.py": {
+    "src/stock_data/pipeline/sync.py": {
       "lines": 434
-    },
-    "src/stock_data/task_registry.py": {
-      "lines": 799
     },
     "src/stock_reporting/templates/industry_structure.py": {
       "lines": 560

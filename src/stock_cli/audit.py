@@ -97,7 +97,7 @@ def _run_range_audit(req: AuditRequest) -> dict[str, Any]:
     s_d, e_d = req.start_date, req.end_date
     logger.info(f"=== 开始执行历史区间对账审计 [{req.data_source}] ({s_d} ~ {e_d}) ===")
     if req.audit_type.lower() == "index" and s_d and e_d:
-        from stock_data.audit.reconciliation import run_index_audit_range
+        from stock_data.governance.audit.reconciliation import run_index_audit_range
 
         return {
             "index_range": run_index_audit_range(
@@ -109,7 +109,7 @@ def _run_range_audit(req: AuditRequest) -> dict[str, Any]:
             )
         }
     if s_d and e_d:
-        from stock_data.audit.reconciliation import run_audit_range
+        from stock_data.governance.audit.reconciliation import run_audit_range
 
         return {
             "reconciliation_range": run_audit_range(
@@ -133,7 +133,10 @@ def _run_specialized_audits(
     a_type = req.audit_type.lower()
     src = req.data_source
     if a_type in {"valuation", "all"}:
-        from stock_data.audit.valuation_audit import run_daily_basic_audit, run_sw_industry_audit
+        from stock_data.governance.audit.valuation_audit import (
+            run_daily_basic_audit,
+            run_sw_industry_audit,
+        )
 
         logger.info(f"=== 开始执行估值指标专项审计 [{src}] (日期: {t_date}{auto_tag}) ===")
         results["daily_basic"] = run_daily_basic_audit(t_date, data_source=src)
@@ -141,20 +144,23 @@ def _run_specialized_audits(
         results["sw_industry"] = run_sw_industry_audit(t_date, data_source=sw_src)
 
     if a_type in {"factor", "all"}:
-        from stock_data.audit.factor_audit import run_adj_factor_audit, run_sw_daily_audit
+        from stock_data.governance.audit.factor_audit import (
+            run_adj_factor_audit,
+            run_sw_daily_audit,
+        )
 
         logger.info(f"=== 开始执行技术指标因子审计 [{src}] (日期: {t_date}{auto_tag}) ===")
         results["adj_factor"] = run_adj_factor_audit(t_date, data_source=src)
         results["sw_daily"] = run_sw_daily_audit(t_date, data_source=src)
 
     if a_type in {"moneyflow", "all"}:
-        from stock_data.audit.moneyflow_audit import run_hk_hold_audit
+        from stock_data.governance.audit.moneyflow_audit import run_hk_hold_audit
 
         logger.info(f"=== 开始执行资金流向数据审计 [{src}] (日期: {t_date}{auto_tag}) ===")
         results["hk_hold"] = run_hk_hold_audit(t_date, data_source=src)
 
     if a_type in {"distribution", "all"}:
-        from stock_data.audit.distribution_audit import run_distribution_audit
+        from stock_data.governance.audit.distribution_audit import run_distribution_audit
 
         logger.info(f"=== 开始执行 Curated 数值分布与阶跃异动审计 [{src}] ===")
         results["distribution"] = run_distribution_audit(
@@ -167,8 +173,8 @@ def _run_specialized_audits(
 
 def _run_domain_audit(req: AuditRequest, t_date: date) -> dict[str, Any]:
     """根据指定的领域或周期过滤并执行通用审计引擎。"""
-    from stock_data.audit.engine import UniversalAuditEngine, print_audit_summary_report
-    from stock_data.audit.registry import AUDIT_DATASET_REGISTRY
+    from stock_data.governance.audit.engine import UniversalAuditEngine, print_audit_summary_report
+    from stock_data.governance.audit.registry import AUDIT_DATASET_REGISTRY
 
     engine = UniversalAuditEngine()
     t_domain = req.domain.lower() if req.domain else None
@@ -211,7 +217,10 @@ def run_audit(req: AuditRequest | None = None, **kwargs: Any) -> dict[str, Any]:
 
     results: dict[str, Any] = {}
     if audit_type_lower in {"master", "all"}:
-        from stock_data.audit.master_audit import print_master_audit_summary, run_master_audit
+        from stock_data.governance.audit.master_audit import (
+            print_master_audit_summary,
+            run_master_audit,
+        )
 
         logger.info(f"=== 开始执行 Master 全库主数据审计 [{request.data_source}] ===")
         master_df = run_master_audit()
@@ -219,7 +228,7 @@ def run_audit(req: AuditRequest | None = None, **kwargs: Any) -> dict[str, Any]:
         results["master"] = master_df
 
     if audit_type_lower in {"reconciliation", "recon", "all"}:
-        from stock_data.audit.reconciliation import run_audit as recon_run_audit
+        from stock_data.governance.audit.reconciliation import run_audit as recon_run_audit
 
         logger.info(
             f"=== 开始执行 RAW vs Curated 对账审计 [{request.data_source}] ({t_date}{auto_tag}) ==="
@@ -229,7 +238,7 @@ def run_audit(req: AuditRequest | None = None, **kwargs: Any) -> dict[str, Any]:
         )
 
     if audit_type_lower in {"acceptance", "all"}:
-        from stock_data.audit.backfill_acceptance import accept_backfill
+        from stock_data.governance.audit.backfill_acceptance import accept_backfill
 
         logger.info(f"=== 开始执行全量回填验收测试 [{request.data_source}] ===")
         accept_kwargs: dict[str, Any] = {

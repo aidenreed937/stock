@@ -2,11 +2,14 @@
 
 from __future__ import annotations
 
+from typing import TYPE_CHECKING
+
+from stock_data.core.task_registry import resolve_task
 from stock_data.fetcher.alphavantage.client import AlphaVantageClient
 from stock_data.fetcher.alphavantage.global_fetcher import AlphaVantageDataFetcher
-from stock_data.normalizer.generic_normalizer import GenericNormalizer
-from stock_data.pipeline import MarketDataPipeline
-from stock_data.task_registry import resolve_task
+
+if TYPE_CHECKING:
+    from stock_data.pipeline.pipeline import MarketDataPipeline
 
 
 def create_alphavantage_fetcher(
@@ -26,6 +29,9 @@ def create_alphavantage_pipeline(
     endpoint: str = "fx_daily",
     fetcher: AlphaVantageDataFetcher | None = None,
 ) -> MarketDataPipeline:
+    from stock_data.pipeline.normalizer.generic_normalizer import GenericNormalizer
+    from stock_data.pipeline.pipeline import MarketDataPipeline
+
     active_fetcher = fetcher or create_alphavantage_fetcher()
     task = resolve_task("alphavantage", endpoint)
     return MarketDataPipeline(

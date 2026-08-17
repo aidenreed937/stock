@@ -8,15 +8,15 @@ import polars as pl
 from stock_core.contracts import DAILY_BAR_CONTRACT, DatasetKey
 from stock_core.exceptions import DataValidationError
 from stock_core.utils.logger import logger
-from stock_data.quality.margin_coverage import (
+from stock_data.core.settings import data_settings
+from stock_data.core.task_registry import get_endpoint_market, is_task_partitioned
+from stock_data.governance.quality.margin_coverage import (
     is_margin_complete,
     is_margin_date_complete,
     margin_coverage_issues,
 )
-from stock_data.settings import data_settings
 from stock_data.storage.compat import StorageCompat
 from stock_data.storage.partition_writer import ParquetPartitionWriter, validate_frame_source
-from stock_data.task_registry import get_endpoint_market, is_task_partitioned
 
 
 def _reject_legacy_schema_version(df: pl.DataFrame, context: str) -> None:
