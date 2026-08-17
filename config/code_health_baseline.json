@@ -61,7 +61,7 @@
   },
   "files": {
     "src/stock/analytics/industry_structure/facts.py": {
-      "lines": 445
+      "lines": 442
     },
     "src/stock/analytics/industry_structure/panel.py": {
       "lines": 1167
@@ -69,20 +69,14 @@
     "src/stock/analytics/industry_structure/scoring.py": {
       "lines": 717
     },
-    "src/stock/analytics/industry_structure/templates.py": {
-      "lines": 985
-    },
     "src/stock/analytics/market_temperature/derived.py": {
-      "lines": 1096
+      "lines": 1087
     },
     "src/stock/analytics/market_temperature/facts.py": {
-      "lines": 450
-    },
-    "src/stock/analytics/market_temperature/templates.py": {
-      "lines": 1049
+      "lines": 449
     },
     "src/stock/analytics/metrics/calculators/flow.py": {
-      "lines": 492
+      "lines": 475
     },
     "src/stock/data/audit/backfill_acceptance.py": {
       "lines": 507
@@ -101,6 +95,12 @@
     },
     "src/stock/data/task_registry.py": {
       "lines": 511
+    },
+    "src/stock/reporting/templates/industry_structure.py": {
+      "lines": 985
+    },
+    "src/stock/reporting/templates/market_temperature.py": {
+      "lines": 1049
     }
   }
 }

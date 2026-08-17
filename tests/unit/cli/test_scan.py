@@ -6,7 +6,7 @@ from unittest.mock import MagicMock, patch
 
 from stock.analytics.models import DailyMarketScanSummary, MicroHealthSummary
 from stock.cli.scan import main, run_market_scan
-from stock.cli.scan_report import (
+from stock.reporting import (
     format_console_report,
     format_investor_report,
     format_pro_report,

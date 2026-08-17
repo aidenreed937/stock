@@ -21,7 +21,7 @@ from stock.analytics.industry_structure.config import (
 from stock.analytics.industry_structure.facts import collect_facts, resolve_trade_window
 from stock.analytics.industry_structure.panel import build_industry_panel
 from stock.analytics.industry_structure.scoring import score_industry_panel
-from stock.analytics.industry_structure.templates import (
+from stock.reporting.templates.industry_structure import (
     build_report_json,
     render_human_report_markdown,
     render_report_markdown,

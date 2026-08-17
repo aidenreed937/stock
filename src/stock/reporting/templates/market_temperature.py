@@ -6,7 +6,7 @@ from typing import TYPE_CHECKING, Any
 
 import polars as pl
 
-from stock.analytics.watermark_text import (
+from stock.reporting.core.watermark import (
     human_watermark_issue_lines,
     human_watermark_latest_text,
 )

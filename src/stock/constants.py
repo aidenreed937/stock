@@ -2,11 +2,6 @@
 
 from typing import Final
 
-# 默认技术指标周期
-DEFAULT_SMA_WINDOW: Final[int] = 5
-DEFAULT_EMA_WINDOW: Final[int] = 12
-DEFAULT_RSI_WINDOW: Final[int] = 14
-
 # 存储层与路径相关常量
 DEFAULT_PARQUET_SUBDIR: Final[str] = "parquet"
 

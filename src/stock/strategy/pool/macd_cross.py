@@ -2,7 +2,7 @@
 
 import polars as pl
 
-from stock.analytics.indicators import calculate_macd
+from stock.analytics.primitives.indicators import calculate_macd
 from stock.strategy import BaseStrategy, Signal, SignalDirection
 from stock.strategy.context import Context
 

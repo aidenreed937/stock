@@ -22,7 +22,7 @@ from stock.analytics.market_temperature.config import (
 )
 from stock.analytics.market_temperature.facts import collect_facts, resolve_trade_window
 from stock.analytics.market_temperature.scoring import build_scores
-from stock.analytics.market_temperature.templates import (
+from stock.reporting.templates.market_temperature import (
     build_report_json,
     render_human_report_markdown,
     render_report_markdown,

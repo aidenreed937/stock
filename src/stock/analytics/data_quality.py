@@ -10,7 +10,7 @@ from typing import TYPE_CHECKING, Any
 if TYPE_CHECKING:
     import polars as pl
 
-from stock.analytics.quality_report_renderer import (
+from stock.reporting.core.quality import (
     render_quality_report_markdown as _render_quality_report_markdown,
 )
 

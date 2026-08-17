@@ -15,12 +15,12 @@ from pathlib import Path
 from typing import TYPE_CHECKING
 
 from stock.analytics.engine import MarketScanEngine
-from stock.cli.scan_report import (
+from stock.data.catalog import DataCatalog
+from stock.reporting import (
     format_console_report,
     format_investor_report,
     format_pro_report,
 )
-from stock.data.catalog import DataCatalog
 from stock.utils.logger import logger
 
 if TYPE_CHECKING:

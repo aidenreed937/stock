@@ -11,7 +11,7 @@ from stock.analytics.industry_structure.config import (
     ScoreWeights,
 )
 from stock.analytics.industry_structure.facts import FACT_SCHEMA
-from stock.analytics.industry_structure.templates import (
+from stock.reporting.templates.industry_structure import (
     render_human_report_markdown,
     render_report_markdown,
 )

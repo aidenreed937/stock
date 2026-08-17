@@ -2,7 +2,18 @@ from datetime import date, timedelta
 
 import polars as pl
 
-from stock.analytics.indicators import calculate_ema, calculate_rsi, calculate_sma
+from stock.analytics.primitives.indicators import (
+    DEFAULT_EMA_WINDOW,
+    DEFAULT_MACD_FAST,
+    DEFAULT_MACD_SIGNAL,
+    DEFAULT_MACD_SLOW,
+    DEFAULT_RSI_WINDOW,
+    DEFAULT_SMA_WINDOW,
+    calculate_ema,
+    calculate_macd,
+    calculate_rsi,
+    calculate_sma,
+)
 
 
 def test_calculate_indicators() -> None:
@@ -23,17 +34,24 @@ def test_calculate_indicators() -> None:
     )
     assert len(df) > 20
 
-    df_sma = calculate_sma(df, window=5)
+    df_sma = calculate_sma(df, window=DEFAULT_SMA_WINDOW)
     assert "sma_5" in df_sma.columns
     # 前 4 行均值为 None/null
     assert df_sma["sma_5"][4] is not None
 
-    df_ema = calculate_ema(df, window=12)
+    df_ema = calculate_ema(df, window=DEFAULT_EMA_WINDOW)
     assert "ema_12" in df_ema.columns
 
-    df_rsi = calculate_rsi(df, window=14)
+    df_rsi = calculate_rsi(df, window=DEFAULT_RSI_WINDOW)
     assert "rsi_14" in df_rsi.columns
     # RSI 值应该在 0 到 100 之间
     valid_rsi = df_rsi["rsi_14"].drop_nulls()
     assert (valid_rsi >= 0).all()
     assert (valid_rsi <= 100).all()
+
+    df_macd = calculate_macd(
+        df, fast=DEFAULT_MACD_FAST, slow=DEFAULT_MACD_SLOW, signal=DEFAULT_MACD_SIGNAL
+    )
+    assert "macd" in df_macd.columns
+    assert "macd_signal" in df_macd.columns
+    assert "macd_hist" in df_macd.columns

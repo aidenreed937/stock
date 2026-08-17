@@ -2,7 +2,7 @@ from datetime import date
 
 import polars as pl
 
-from stock.analytics.valuation import (
+from stock.analytics.primitives.valuation import (
     calculate_index_valuation_summary,
     calculate_valuation_percentile,
 )

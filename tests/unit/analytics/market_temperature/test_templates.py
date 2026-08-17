@@ -7,7 +7,7 @@ import polars as pl
 
 from stock.analytics.market_temperature.config import MarketTemperatureConfig
 from stock.analytics.market_temperature.facts import FACT_SCHEMA
-from stock.analytics.market_temperature.templates import render_human_report_markdown
+from stock.reporting.templates.market_temperature import render_human_report_markdown
 
 
 def test_human_report_includes_interpretation_priority() -> None:

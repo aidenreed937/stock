@@ -1,5 +1,4 @@
 from stock.analytics.engine import MarketScanEngine
-from stock.analytics.indicators import calculate_ema, calculate_macd, calculate_rsi, calculate_sma
 from stock.analytics.industry import (
     IndustryMomentumSpreadAnalyzer,
     IndustryPBROEAnalyzer,
@@ -35,8 +34,12 @@ from stock.analytics.models import (
     TCRAnalysisResult,
     ValuationZone,
 )
-from stock.analytics.valuation import (
+from stock.analytics.primitives import (
+    calculate_ema,
     calculate_index_valuation_summary,
+    calculate_macd,
+    calculate_rsi,
+    calculate_sma,
     calculate_valuation_percentile,
 )
 

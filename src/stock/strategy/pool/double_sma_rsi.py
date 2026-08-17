@@ -6,7 +6,7 @@ from typing import TYPE_CHECKING
 
 import polars as pl  # noqa: TC002
 
-from stock.analytics.indicators import calculate_rsi, calculate_sma
+from stock.analytics.primitives.indicators import calculate_rsi, calculate_sma
 from stock.models.config import StrategyConfig  # noqa: TC001
 from stock.strategy.base import BaseStrategy
 from stock.strategy.context import Context  # noqa: TC001

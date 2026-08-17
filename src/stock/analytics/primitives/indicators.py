@@ -1,12 +1,25 @@
+"""基础量化技术指标原子算子 (EMA, MACD, RSI, SMA)。
+
+本模块为纯函数、无状态数学原语，零内部业务依赖，仅依赖 Polars。
+"""
+
+from __future__ import annotations
+
 import polars as pl
 
-from stock.constants import DEFAULT_EMA_WINDOW, DEFAULT_RSI_WINDOW, DEFAULT_SMA_WINDOW
+# 默认技术指标周期常量
+DEFAULT_SMA_WINDOW: int = 5
+DEFAULT_EMA_WINDOW: int = 12
+DEFAULT_RSI_WINDOW: int = 14
+DEFAULT_MACD_FAST: int = 12
+DEFAULT_MACD_SLOW: int = 26
+DEFAULT_MACD_SIGNAL: int = 9
 
 
 def calculate_sma(
     df: pl.DataFrame, window: int = DEFAULT_SMA_WINDOW, column: str = "close"
 ) -> pl.DataFrame:
-    """计算简单移动平均线 (Simple Moving Average)"""
+    """计算简单移动平均线 (Simple Moving Average)。"""
     sma_col_name = f"sma_{window}"
     return df.with_columns(pl.col(column).rolling_mean(window_size=window).alias(sma_col_name))
 
@@ -14,7 +27,7 @@ def calculate_sma(
 def calculate_ema(
     df: pl.DataFrame, window: int = DEFAULT_EMA_WINDOW, column: str = "close"
 ) -> pl.DataFrame:
-    """计算指数移动平均线 (Exponential Moving Average)"""
+    """计算指数移动平均线 (Exponential Moving Average)。"""
     ema_col_name = f"ema_{window}"
     return df.with_columns(pl.col(column).ewm_mean(span=window, adjust=False).alias(ema_col_name))
 
@@ -22,7 +35,7 @@ def calculate_ema(
 def calculate_rsi(
     df: pl.DataFrame, window: int = DEFAULT_RSI_WINDOW, column: str = "close"
 ) -> pl.DataFrame:
-    """计算相对强弱指标 (RSI)"""
+    """计算相对强弱指标 (RSI)。"""
     if "trade_date" in df.columns:
         df = df.sort("trade_date")
 
@@ -42,9 +55,9 @@ def calculate_rsi(
 
 def calculate_macd(
     df: pl.DataFrame,
-    fast: int = 12,
-    slow: int = 26,
-    signal: int = 9,
+    fast: int = DEFAULT_MACD_FAST,
+    slow: int = DEFAULT_MACD_SLOW,
+    signal: int = DEFAULT_MACD_SIGNAL,
     column: str = "close",
 ) -> pl.DataFrame:
     """计算 MACD 指标 (平滑异同移动平均线)。"""
@@ -61,3 +74,17 @@ def calculate_macd(
             macd_hist.alias("macd_hist"),
         ]
     )
+
+
+__all__ = [
+    "DEFAULT_EMA_WINDOW",
+    "DEFAULT_MACD_FAST",
+    "DEFAULT_MACD_SIGNAL",
+    "DEFAULT_MACD_SLOW",
+    "DEFAULT_RSI_WINDOW",
+    "DEFAULT_SMA_WINDOW",
+    "calculate_ema",
+    "calculate_macd",
+    "calculate_rsi",
+    "calculate_sma",
+]

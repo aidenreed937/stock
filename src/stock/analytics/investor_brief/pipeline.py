@@ -20,7 +20,7 @@ from stock.analytics.investor_brief.config import (
     InvestorBriefConfig,
     load_investor_brief_config,
 )
-from stock.analytics.investor_brief.templates import build_brief_json, render_brief_markdown
+from stock.reporting.templates.investor_brief import build_brief_json, render_brief_markdown
 
 if TYPE_CHECKING:
     from pathlib import Path

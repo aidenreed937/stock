@@ -6,7 +6,7 @@ from typing import TYPE_CHECKING, Any
 
 import polars as pl
 
-from stock.analytics.watermark_text import human_watermark_issue_lines
+from stock.reporting.core.watermark import human_watermark_issue_lines
 
 if TYPE_CHECKING:
     from stock.analytics.industry_structure.config import IndustryStructureConfig
