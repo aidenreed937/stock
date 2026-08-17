@@ -4,7 +4,7 @@ from __future__ import annotations
 
 import polars as pl
 
-from stock.analytics.pipelines.industry_structure.interpretation import (
+from stock_reporting.interpretation.industry_structure.interpretation import (
     evaluate_breadth_comment,
     evaluate_one_line_summary,
     evaluate_structure_radar,

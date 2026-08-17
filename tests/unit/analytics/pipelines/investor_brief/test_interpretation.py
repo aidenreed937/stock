@@ -4,7 +4,7 @@ from __future__ import annotations
 
 import polars as pl
 
-from stock.analytics.pipelines.investor_brief.interpretation import (
+from stock_reporting.interpretation.investor_brief.interpretation import (
     evaluate_candidate_industries,
     evaluate_lagging_industries,
     evaluate_participation_decision,

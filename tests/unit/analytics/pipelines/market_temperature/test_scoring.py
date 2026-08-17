@@ -5,13 +5,13 @@ from datetime import date
 import polars as pl
 import pytest
 
-from stock.analytics.pipelines.market_temperature.config import (
+from stock_analytics.pipelines.market_temperature.facts import FACT_SCHEMA
+from stock_analytics.pipelines.market_temperature.scoring import build_scores
+from stock_reporting.interpretation.market_temperature.config import (
     DimensionConfig,
     MarketTemperatureConfig,
     MetricInputConfig,
 )
-from stock.analytics.pipelines.market_temperature.facts import FACT_SCHEMA
-from stock.analytics.pipelines.market_temperature.scoring import build_scores
 
 
 def test_build_scores_uses_configured_metric_weights() -> None:

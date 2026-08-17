@@ -3,7 +3,7 @@ from unittest.mock import MagicMock, patch
 import pandas as pd
 import pytest
 
-from stock.data.domain.universe import UniverseFilter
+from stock_data.domain.universe import UniverseFilter
 
 
 @pytest.fixture
@@ -105,7 +105,7 @@ def test_get_universe_snapshot_df(mock_fetcher):
 
 def test_save_universe_snapshot(mock_fetcher, tmp_path: Path):
     filter_engine = UniverseFilter(fetcher=mock_fetcher, use_local=False)
-    with patch("stock.data.storage.duckdb_store.DuckDBMarketStore") as mock_store_cls:
+    with patch("stock_data.storage.duckdb_store.DuckDBMarketStore") as mock_store_cls:
         mock_store = MagicMock()
         mock_store.storage_dir = tmp_path
         mock_store_cls.return_value = mock_store

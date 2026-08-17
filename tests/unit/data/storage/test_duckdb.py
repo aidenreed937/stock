@@ -4,9 +4,9 @@ from unittest.mock import MagicMock
 import polars as pl
 import pytest
 
-from stock.core.contracts import DatasetKey, instrument_for_symbol
-from stock.data.storage.duckdb_store import DuckDBMarketStore
-from stock.exceptions import DataValidationError
+from stock_core.contracts import DatasetKey, instrument_for_symbol
+from stock_data.storage.duckdb_store import DuckDBMarketStore
+from stock_core.exceptions import DataValidationError
 
 
 def _make_daily_bar_df(
@@ -70,7 +70,7 @@ def test_daily_query_ignores_migration_backup_with_incompatible_schema(
 
 
 def test_default_store_isolated_by_data_source(tmp_path, monkeypatch) -> None:
-    from stock.config.settings import settings
+    from stock_core.config.settings import settings
 
     monkeypatch.setattr(settings, "curated_data_dir", tmp_path / "curated")
 
@@ -112,7 +112,7 @@ def test_yfinance_macro_curated_market_is_global(tmp_path) -> None:
 
 
 def test_pipeline_binds_explicit_store_to_source_directory(tmp_path) -> None:
-    from stock.data.pipeline import MarketDataPipeline
+    from stock_data.pipeline import MarketDataPipeline
 
     store = DuckDBMarketStore(storage_dir=tmp_path / "curated")
     MarketDataPipeline(

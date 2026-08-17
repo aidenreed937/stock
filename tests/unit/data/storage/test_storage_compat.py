@@ -4,7 +4,7 @@ from datetime import datetime, timezone
 from pathlib import Path
 import polars as pl
 
-from stock.data.storage.compat import StorageCompat
+from stock_data.storage.compat import StorageCompat
 
 
 def test_is_artifact_path() -> None:

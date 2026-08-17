@@ -4,11 +4,11 @@ from unittest.mock import MagicMock, patch
 import pandas as pd
 import polars as pl
 
-from stock.data.cleaner.macro_cleaner import MacroDataCleaner
-from stock.data.fetcher.yfinance.client import YFinanceClient
-from stock.data.fetcher.yfinance.factory import create_yfinance_pipeline
-from stock.data.fetcher.yfinance.global_fetcher import YFinanceDataFetcher
-from stock.data.fetcher.yfinance.registry import YFINANCE_API_REGISTRY
+from stock_data.cleaner.macro_cleaner import MacroDataCleaner
+from stock_data.fetcher.yfinance.client import YFinanceClient
+from stock_data.fetcher.yfinance.factory import create_yfinance_pipeline
+from stock_data.fetcher.yfinance.global_fetcher import YFinanceDataFetcher
+from stock_data.fetcher.yfinance.registry import YFINANCE_API_REGISTRY
 
 
 def test_yfinance_fetcher() -> None:
@@ -88,8 +88,8 @@ def test_yfinance_retry_keeps_proxy_aware_session() -> None:
     with (
         patch.object(client, "_get_session", side_effect=[first_session, retry_session]),
         patch.object(client.rate_limiter, "acquire") as acquire,
-        patch("stock.data.fetcher.yfinance.client.time.sleep") as sleep,
-        patch("stock.data.fetcher.yfinance.client.random.uniform", return_value=0.0),
+        patch("stock_data.fetcher.yfinance.client.time.sleep") as sleep,
+        patch("stock_data.fetcher.yfinance.client.random.uniform", return_value=0.0),
         patch("yfinance.Ticker", side_effect=[first_ticker, retry_ticker]) as ticker_cls,
     ):
         result = client.query_history("^GSPC", "2026-01-01", "2026-01-03")
@@ -131,8 +131,8 @@ def test_yfinance_proxy_pool_rotates_on_retry(tmp_path) -> None:
     with (
         patch.object(client, "_get_session", side_effect=fake_get_session),
         patch.object(client.rate_limiter, "acquire"),
-        patch("stock.data.fetcher.yfinance.client.time.sleep"),
-        patch("stock.data.fetcher.yfinance.client.random.uniform", return_value=0.0),
+        patch("stock_data.fetcher.yfinance.client.time.sleep"),
+        patch("stock_data.fetcher.yfinance.client.random.uniform", return_value=0.0),
         patch("yfinance.Ticker", side_effect=[first_ticker, retry_ticker]),
     ):
         result = client.query_history("^GSPC", "2026-01-01", "2026-01-03")
@@ -168,8 +168,8 @@ def test_yfinance_rate_limit_uses_exponential_backoff_and_more_proxies(tmp_path)
     with (
         patch.object(client, "_get_session", return_value=MagicMock()),
         patch.object(client.rate_limiter, "acquire"),
-        patch("stock.data.fetcher.yfinance.client.time.sleep") as sleep,
-        patch("stock.data.fetcher.yfinance.client.random.uniform", return_value=0.0),
+        patch("stock_data.fetcher.yfinance.client.time.sleep") as sleep,
+        patch("stock_data.fetcher.yfinance.client.random.uniform", return_value=0.0),
         patch("yfinance.Ticker", side_effect=tickers),
     ):
         result = client.query_history("^GSPC", "2026-01-01", "2026-01-03")
@@ -401,7 +401,7 @@ def test_yfinance_macro_registry_declares_global_hg_f_route() -> None:
 
     fetcher = YFinanceDataFetcher(client=YFinanceClient())
     with patch(
-        "stock.data.fetcher.yfinance.macro_fetcher.fetch_macro_daily_bars_df",
+        "stock_data.fetcher.yfinance.macro_fetcher.fetch_macro_daily_bars_df",
         return_value=pl.DataFrame(),
     ) as macro:
         fetcher.fetch_macro_indicators_df(date(2026, 8, 10), date(2026, 8, 11))

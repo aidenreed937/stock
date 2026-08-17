@@ -4,7 +4,7 @@ from datetime import date
 import polars as pl
 import pytest
 
-from stock.data.validator.rules import (
+from stock_data.validator.rules import (
     NullCheckRule,
     PrimaryKeyRule,
     OhlcLogicRule,
@@ -156,7 +156,7 @@ def test_completeness_rule() -> None:
 
 
 def test_distribution_audit_rule() -> None:
-    from stock.data.validator.rules import DistributionAuditRule
+    from stock_data.validator.rules import DistributionAuditRule
 
     rule = DistributionAuditRule(
         value_cols=["amount", "total_mv"], max_step_ratio=10.0, min_step_ratio=0.1

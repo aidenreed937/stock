@@ -1,6 +1,6 @@
 """测试 analytics.pipelines 顶级导出与管线入口。"""
 
-from stock.analytics.pipelines import (
+from stock_analytics.pipelines import (
     IndustryStructureRunResult,
     InvestorBriefRunResult,
     MarketTemperatureRunResult,

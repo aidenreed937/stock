@@ -3,7 +3,7 @@
 import os
 from pathlib import Path
 
-from stock.data.ops.cleanup_artifacts import collect_candidates, delete_candidates, main
+from stock_data.ops.cleanup_artifacts import collect_candidates, delete_candidates, main
 
 
 def _write_with_mtime(path: Path, mtime: float) -> None:

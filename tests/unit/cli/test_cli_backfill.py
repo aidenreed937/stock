@@ -2,7 +2,7 @@ from unittest.mock import MagicMock, patch
 
 import pytest
 
-from stock.cli.backfill import main
+from stock_cli.backfill import main
 
 
 def test_cli_backfill_help(monkeypatch) -> None:
@@ -29,7 +29,7 @@ def test_cli_backfill_single_endpoint(monkeypatch) -> None:
             "2024-01-02",
         ],
     )
-    with patch("stock.data.backfill.HistoricalBackfiller") as mock_backfiller_cls:
+    with patch("stock_data.backfill.HistoricalBackfiller") as mock_backfiller_cls:
         mock_instance = MagicMock()
         mock_instance.backfill_range.return_value = {
             "total_days": 2,

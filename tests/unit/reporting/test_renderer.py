@@ -5,7 +5,7 @@ from __future__ import annotations
 import tempfile
 from pathlib import Path
 
-from stock.reporting.engine.renderer import ReportRenderer
+from stock_reporting.engine.renderer import ReportRenderer
 
 
 def test_renderer_singleton() -> None:

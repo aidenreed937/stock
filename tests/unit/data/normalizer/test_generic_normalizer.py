@@ -1,7 +1,7 @@
 import polars as pl
 
-from stock.data.normalizer.bar_normalizer import BarDataNormalizer
-from stock.data.normalizer.generic_normalizer import GenericNormalizer
+from stock_data.normalizer.bar_normalizer import BarDataNormalizer
+from stock_data.normalizer.generic_normalizer import GenericNormalizer
 
 
 def test_generic_normalizer_iso_date():

@@ -5,7 +5,7 @@ from pathlib import Path
 
 import polars as pl
 
-from stock.data.storage.partition_writer import ParquetPartitionWriter
+from stock_data.storage.partition_writer import ParquetPartitionWriter
 
 
 class TrackingLock:

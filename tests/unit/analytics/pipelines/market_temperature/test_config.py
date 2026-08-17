@@ -4,7 +4,7 @@ from pathlib import Path
 
 import pytest
 
-from stock.analytics.pipelines.market_temperature.config import load_market_temperature_config
+from stock_reporting.interpretation.market_temperature.config import load_market_temperature_config
 
 
 def test_load_market_temperature_config(tmp_path: Path) -> None:

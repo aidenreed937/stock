@@ -1,4 +1,4 @@
-from stock.data.capability_registry import (
+from stock_data.capability_registry import (
     DATA_SOURCE_CAPABILITY_REGISTRY,
     get_capability,
 )

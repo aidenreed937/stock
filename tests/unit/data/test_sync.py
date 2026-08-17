@@ -6,9 +6,9 @@ from unittest.mock import MagicMock, patch
 import polars as pl
 import pytest
 
-from stock.cli.sync import main as sync_cli_main
-from stock.data.sync import DailySyncEngine, SyncTaskItem, _sync_symbols_for_task
-from stock.data.update_scheduler import DataUpdateScheduler
+from stock_cli.sync import main as sync_cli_main
+from stock_data.sync import DailySyncEngine, SyncTaskItem, _sync_symbols_for_task
+from stock_data.update_scheduler import DataUpdateScheduler
 
 
 def test_sniff_watermarks() -> None:
@@ -38,7 +38,7 @@ def test_build_sync_plan_skips_unready_and_uptodate() -> None:
             return_value={"stock_daily_bar": date(2026, 8, 12), "daily_basic": date(2026, 8, 12)},
         ),
         patch(
-            "stock.data.update_scheduler.DataUpdateScheduler.is_data_ready",
+            "stock_data.update_scheduler.DataUpdateScheduler.is_data_ready",
             side_effect=mock_is_ready,
         ),
     ):
@@ -67,7 +67,7 @@ def test_build_sync_plan_uptodate() -> None:
             "sniff_watermarks",
             return_value={"stock_daily_bar": date(2026, 8, 13)},
         ),
-        patch("stock.data.update_scheduler.DataUpdateScheduler.is_data_ready", return_value=True),
+        patch("stock_data.update_scheduler.DataUpdateScheduler.is_data_ready", return_value=True),
     ):
         plan = engine.build_sync_plan(target_date=date(2026, 8, 13), endpoints=["stock_daily_bar"])
         assert plan[0].status == "UP_TO_DATE"
@@ -84,7 +84,7 @@ def test_build_sync_plan_retries_previous_trading_day_for_default_margin_sync() 
             "get_latest_trading_date",
             return_value=friday,
         ) as latest_trading_date,
-        patch("stock.data.update_scheduler.DataUpdateScheduler.is_data_ready", return_value=True),
+        patch("stock_data.update_scheduler.DataUpdateScheduler.is_data_ready", return_value=True),
     ):
         plan = engine.build_sync_plan(
             target_date=date(2026, 8, 15),
@@ -135,7 +135,7 @@ def test_execute_plan_success_and_error() -> None:
             raise RuntimeError("API Rate Limit")
         return mock_pipeline
 
-    with patch("stock.data.sync.create_pipeline", side_effect=mock_create):
+    with patch("stock_data.sync.create_pipeline", side_effect=mock_create):
         results = engine.execute_plan(plan)
         assert len(results) == 2
         success = next(r for r in results if r.endpoint == "stock_daily_bar")
@@ -172,10 +172,10 @@ def test_build_sync_plan_expands_per_symbol_with_symbol_watermark() -> None:
         return pl.DataFrame()
 
     with (
-        patch("stock.data.sync.load_data_config", return_value=DataCfg()),
+        patch("stock_data.sync.load_data_config", return_value=DataCfg()),
         patch.object(engine.catalog, "load_dataset", side_effect=mock_load_dataset),
         patch.object(engine, "sniff_watermarks", return_value={"index_daily_bar": None}),
-        patch("stock.data.update_scheduler.DataUpdateScheduler.is_data_ready", return_value=True),
+        patch("stock_data.update_scheduler.DataUpdateScheduler.is_data_ready", return_value=True),
     ):
         plan = engine.build_sync_plan(target_date=date(2026, 8, 13), endpoints=["index_daily_bar"])
 
@@ -203,8 +203,8 @@ def test_build_sync_plan_expands_task_bundle_into_atomic_tasks() -> None:
             "sniff_watermarks",
             return_value=dict.fromkeys(bundle_tasks),
         ) as sniff_watermarks,
-        patch("stock.data.sync._sync_symbols_for_task", return_value=[""]),
-        patch("stock.data.update_scheduler.DataUpdateScheduler.is_data_ready", return_value=True),
+        patch("stock_data.sync._sync_symbols_for_task", return_value=[""]),
+        patch("stock_data.update_scheduler.DataUpdateScheduler.is_data_ready", return_value=True),
     ):
         plan = engine.build_sync_plan(target_date=date(2026, 8, 13), endpoints=["industry_bundle"])
 
@@ -224,7 +224,7 @@ def test_sync_symbols_keeps_lixinger_batch_tasks_single() -> None:
     class DataCfg:
         watchlists = Watchlists()
 
-    with patch("stock.data.sync.load_data_config", return_value=DataCfg()):
+    with patch("stock_data.sync.load_data_config", return_value=DataCfg()):
         assert _sync_symbols_for_task("lixinger", "index_fundamental") == [""]
         assert _sync_symbols_for_task("lixinger", "sw_2021_fundamental") == [""]
         assert _sync_symbols_for_task("lixinger", "national_debt") == [""]
@@ -250,7 +250,7 @@ def test_sync_symbols_filters_lixinger_unsupported_index() -> None:
                 "lixinger": {"index_daily_bar": ["000001", "399001"]}
             }
 
-    with patch("stock.data.sync.load_data_config", return_value=DataCfg()):
+    with patch("stock_data.sync.load_data_config", return_value=DataCfg()):
         assert _sync_symbols_for_task("lixinger", "index_daily_bar") == [
             "000001",
             "399001",
@@ -276,10 +276,10 @@ def test_build_sync_plan_filters_unsupported_tushare_index_dailybasic() -> None:
 
     engine = DailySyncEngine(data_source="tushare")
     with (
-        patch("stock.data.sync.load_data_config", return_value=DataCfg()),
+        patch("stock_data.sync.load_data_config", return_value=DataCfg()),
         patch.object(engine, "sniff_watermarks", return_value={"index_dailybasic": None}),
-        patch("stock.data.sync._symbol_watermark", return_value=None),
-        patch("stock.data.sync.DataUpdateScheduler.is_data_ready", return_value=True),
+        patch("stock_data.sync._symbol_watermark", return_value=None),
+        patch("stock_data.sync.DataUpdateScheduler.is_data_ready", return_value=True),
     ):
         plan = engine.build_sync_plan(
             target_date=date(2026, 8, 14), endpoints=["index_dailybasic"]
@@ -307,7 +307,7 @@ def test_execute_plan_passes_task_symbol_to_pipeline() -> None:
     mock_pipeline = MagicMock()
     mock_pipeline.sync_daily_bars.return_value = pl.DataFrame({"symbol": ["000001.SH"]})
 
-    with patch("stock.data.sync.create_pipeline", return_value=mock_pipeline):
+    with patch("stock_data.sync.create_pipeline", return_value=mock_pipeline):
         results = engine.execute_plan(plan)
 
     assert results[0].status == "SUCCESS"
@@ -322,7 +322,7 @@ def test_sync_daily_workflow_with_audit() -> None:
     with (
         patch.object(engine, "build_sync_plan", return_value=[]),
         patch.object(engine, "execute_plan", return_value=[]),
-        patch("stock.data.audit.reconciliation.run_audit", return_value={"integrity_rate": 100.0}),
+        patch("stock_data.audit.reconciliation.run_audit", return_value={"integrity_rate": 100.0}),
     ):
         plan, results, audit_res = engine.sync_daily(
             target_date=date(2026, 8, 13), run_audit_gate=True
@@ -361,7 +361,7 @@ def test_sync_cli_main(capsys) -> None:
     with (
         patch("sys.argv", ["sync.py", "-s", "tushare", "-d", "2026-08-13"]),
         patch.object(DailySyncEngine, "sync_daily", return_value=(mock_plan, mock_res, mock_audit)),
-        patch("stock.cli.sync.logger.info") as mock_log,
+        patch("stock_cli.sync.logger.info") as mock_log,
     ):
         sync_cli_main()
         assert mock_log.called

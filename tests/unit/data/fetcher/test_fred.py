@@ -1,9 +1,9 @@
 from datetime import date
 from unittest.mock import MagicMock, patch
 
-from stock.data.fetcher.fred.client import FredClient
-from stock.data.fetcher.fred.factory import create_fred_fetcher
-from stock.data.fetcher.fred.global_fetcher import FredDataFetcher
+from stock_data.fetcher.fred.client import FredClient
+from stock_data.fetcher.fred.factory import create_fred_fetcher
+from stock_data.fetcher.fred.global_fetcher import FredDataFetcher
 
 
 def test_fred_client() -> None:

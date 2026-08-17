@@ -1,9 +1,9 @@
-from stock.data.factory import (
+from stock_data.factory import (
     clear_fetcher_cache,
     create_pipeline,
     get_shared_fetcher,
 )
-from stock.data.pipeline import MarketDataPipeline
+from stock_data.pipeline import MarketDataPipeline
 
 
 def test_create_pipeline_tushare():
@@ -67,7 +67,7 @@ def test_shared_fetcher_singleton_and_clear():
 
 
 def test_create_pipeline_custom_fetcher_injection():
-    from stock.data.fetcher.tushare.facade import TuShareDataFetcher
+    from stock_data.fetcher.tushare.facade import TuShareDataFetcher
 
     clear_fetcher_cache()
     custom_fetcher = TuShareDataFetcher(token="test_token")

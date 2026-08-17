@@ -2,8 +2,8 @@ from datetime import date
 
 import polars as pl
 
-from stock.data.cleaner.macro_cleaner import MacroDataCleaner
-from stock.data.quality.quarantine import QuarantineStore
+from stock_data.cleaner.macro_cleaner import MacroDataCleaner
+from stock_data.quality.quarantine import QuarantineStore
 
 
 def test_macro_cleaner_allows_signed_values_and_quarantines_bad_ohlc(tmp_path) -> None:

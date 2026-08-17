@@ -5,13 +5,13 @@ from pathlib import Path
 
 import polars as pl
 
-from stock.analytics.pipelines.industry_structure.config import (
+from stock_analytics.pipelines.industry_structure.facts import FACT_SCHEMA
+from stock_reporting.interpretation.industry_structure.config import (
     FundamentalBlendConfig,
     IndustryStructureConfig,
     ScoreWeights,
 )
-from stock.analytics.pipelines.industry_structure.facts import FACT_SCHEMA
-from stock.reporting.templates.industry_structure import (
+from stock_reporting.templates.industry_structure import (
     render_human_report_markdown,
     render_report_markdown,
 )

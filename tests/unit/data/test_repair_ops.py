@@ -5,9 +5,9 @@ from pathlib import Path
 
 import polars as pl
 
-from stock.data.audit.reconciliation import _filter_target_date
-from stock.data.ops.repair_daily_basic import clean_partition_daily_basic
-from stock.data.ops.repair_sw_daily import clean_partition_sw_daily
+from stock_data.audit.reconciliation import _filter_target_date
+from stock_data.ops.repair_daily_basic import clean_partition_daily_basic
+from stock_data.ops.repair_sw_daily import clean_partition_sw_daily
 
 
 def test_clean_partition_daily_basic(tmp_path: Path) -> None:

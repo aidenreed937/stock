@@ -1,7 +1,7 @@
 """Feature 契约与注册表单元测试。"""
 
-from stock.analytics.features.registry import FeatureRegistry
-from stock.analytics.features.spec import (
+from stock_analytics.features.registry import FeatureRegistry
+from stock_analytics.features.spec import (
     EntityType,
     FeatureKind,
     FeatureUnit,

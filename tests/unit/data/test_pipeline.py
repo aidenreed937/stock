@@ -5,13 +5,13 @@ from typing import Any
 
 import polars as pl
 
-from stock.data.cleaner.bar_cleaner import BarDataCleaner
-from stock.data.fetcher.base import BaseDataFetcher
-from stock.data.normalizer.bar_normalizer import BarDataNormalizer
-from stock.data.quality.quarantine import QuarantineStore
-from stock.data.pipeline import MarketDataPipeline
-from stock.data.storage.duckdb_store import DuckDBMarketStore
-from stock.data.storage.raw_store import RawDataStorage
+from stock_data.cleaner.bar_cleaner import BarDataCleaner
+from stock_data.fetcher.base import BaseDataFetcher
+from stock_data.normalizer.bar_normalizer import BarDataNormalizer
+from stock_data.quality.quarantine import QuarantineStore
+from stock_data.pipeline import MarketDataPipeline
+from stock_data.storage.duckdb_store import DuckDBMarketStore
+from stock_data.storage.raw_store import RawDataStorage
 
 
 class StubBarFetcher(BaseDataFetcher):
@@ -146,7 +146,7 @@ def test_market_data_pipeline_quarantines_rejected_rows(tmp_path, monkeypatch) -
             )
 
     monkeypatch.setattr(
-        "stock.data.pipeline.QuarantineStore",
+        "stock_data.pipeline_stages.QuarantineStore",
         lambda: QuarantineStore(tmp_path / "quarantine"),
     )
     store = DuckDBMarketStore(storage_dir=tmp_path / "curated")

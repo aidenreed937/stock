@@ -5,8 +5,8 @@ from datetime import date, timedelta
 import polars as pl
 import pytest
 
-from stock.analytics.pipelines.market_temperature.config import MetricInputConfig
-from stock.analytics.pipelines.market_temperature.facts_mart import try_get_market_daily_fact
+from stock_analytics.pipelines.market_temperature.facts_mart import try_get_market_daily_fact
+from stock_reporting.interpretation.market_temperature.config import MetricInputConfig
 
 
 def test_stale_market_daily_falls_back_to_metric_engine() -> None:

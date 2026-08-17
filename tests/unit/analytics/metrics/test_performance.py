@@ -5,7 +5,7 @@ from typing import cast
 import polars as pl
 import pytest
 
-from stock.analytics.metrics import MetricContext, MetricEngine, create_default_registry
+from stock_analytics.metrics import MetricContext, MetricEngine, create_default_registry
 
 
 class FakeCatalog:

@@ -4,7 +4,7 @@ from datetime import date
 from unittest.mock import MagicMock, patch
 
 import polars as pl
-from stock.data.validator import OfflineDataValidator
+from stock_data.validator import OfflineDataValidator
 
 
 def test_audit_daily_bars_passed():
@@ -56,7 +56,7 @@ def test_audit_daily_bars_with_nulls_and_calc_diff():
 
 def test_validator_main(monkeypatch):
     import sys
-    from stock.data.validator import main
+    from stock_data.validator import main
     mock_store = MagicMock()
     mock_df = pl.DataFrame({
         "symbol": ["000001.SZ"],
@@ -71,19 +71,19 @@ def test_validator_main(monkeypatch):
     mock_store.query_history.return_value = mock_df
 
     monkeypatch.setattr(sys, "argv", ["validator"])
-    monkeypatch.setattr("stock.data.validator.DuckDBMarketStore", lambda: mock_store)
+    monkeypatch.setattr("stock_data.validator.DuckDBMarketStore", lambda: mock_store)
     main()
 
 
 def test_validator_main_empty(monkeypatch, capsys):
     import sys
-    from stock.data.validator import main
+    from stock_data.validator import main
 
     mock_store = MagicMock()
     mock_store.query_history.return_value = pl.DataFrame()
 
     monkeypatch.setattr(sys, "argv", ["validator", "--endpoint", "daily"])
-    monkeypatch.setattr("stock.data.validator.DuckDBMarketStore", lambda: mock_store)
+    monkeypatch.setattr("stock_data.validator.DuckDBMarketStore", lambda: mock_store)
     main()
 
     captured = capsys.readouterr().out
@@ -93,6 +93,6 @@ def test_validator_main_empty(monkeypatch, capsys):
 def test_validator_entrypoint(monkeypatch):
     import runpy
 
-    with patch("stock.data.validator.main") as mock_main:
-        runpy.run_module("stock.data.validator", run_name="__main__")
+    with patch("stock_data.validator.main") as mock_main:
+        runpy.run_module("stock_data.validator", run_name="__main__")
         mock_main.assert_called_once()

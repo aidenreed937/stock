@@ -1,7 +1,7 @@
 import polars as pl
 
-from stock.strategy.pool.macd_cross import MACDCrossStrategy
-from stock.strategy.signal import SignalDirection
+from stock_strategy.pool.macd_cross import MACDCrossStrategy
+from stock_strategy.signal import SignalDirection
 
 
 def test_macd_golden_cross():

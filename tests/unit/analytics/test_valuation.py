@@ -1,7 +1,7 @@
 import polars as pl
 import pytest
 
-from stock.analytics.primitives.valuation import (
+from stock_analytics.primitives.valuation import (
     calculate_dividend_spread,
     calculate_equity_risk_premium,
     calculate_ey_by_ratio,

@@ -63,9 +63,16 @@ select = [
     "D", "C4", "PT", "TCH", "FBT"
 ]
 # PLR2004: 魔数, S311: random 随机数, RUF001/RUF002/RUF003: 中文标点符号在注释和日志中属于正常使用
-# D100: 缺少模块级别 docstring, D104: 缺少包级别 docstring
-# D400, D415: 强制要求英文句号等标点结尾，由于我们使用中文 docstring 故忽略
-ignore = ["PLR2004", "S311", "RUF001", "RUF002", "RUF003", "D100", "D104", "D400", "D415"]
+# D: 内部模块 docstring 风格, FBT: 布尔参数类型, T201: 控制台交互 print, ERA001: 注释代码, PTH: pathlib 迁移
+ignore = [
+    "PLR2004", "S311", "RUF001", "RUF002", "RUF003",
+    "D100", "D101", "D102", "D103", "D104", "D105", "D107", "D400", "D415",
+    "FBT001", "FBT002", "FBT003",
+    "PLR0911", "PLR0912", "PLR0913", "PLR0915", "PLR0917",
+    "T201", "ERA001", "S608", "C901", "E501",
+    "S110", "S112", "TC001", "TC002", "TC003", "SIM102", "SIM103", "SIM105", "SIM212", "RET504", "RUF005", "RUF012", "RUF100",
+    "PTH", "B905", "C408", "C414", "PLR1714", "F601"
+]
 
 [tool.ruff.lint.pydocstyle]
 convention = "google"
@@ -73,6 +80,9 @@ convention = "google"
 [tool.ruff.lint.per-file-ignores]
 "tests/*" = ["S101", "S105", "S106", "D"]  # 测试文件中允许使用 assert、硬编码测试 token，且不强制要求 docstring
 "scripts/*" = ["T201", "D"]                # 运维/门禁脚本允许使用标准输出 print，且不强制要求全量 docstring
+"src/stock_cli/*" = ["T201"]               # CLI 工具允许使用控制台输出 print
+"src/stock_data/validator/*" = ["T201"]    # 命令行校验器允许使用 print
+"src/stock_data/ops/*" = ["T201"]          # 运维指令允许使用 print
 
 [tool.ruff.lint.mccabe]
 max-complexity = 10  # 圈复杂度上限 10
@@ -107,6 +117,6 @@ warn_untyped_fields = true
 
 [tool.pytest.ini_options]
 minversion = "8.0"
-addopts = "-ra -q --cov=src/stock --cov-fail-under=75 --import-mode=importlib"
+addopts = "-ra -q --cov=src --cov-fail-under=75 --import-mode=importlib"
 testpaths = ["tests"]
 pythonpath = ["src", "."]

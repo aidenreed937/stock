@@ -1,7 +1,7 @@
 import polars as pl
 import pytest
 
-from stock.analytics.primitives.macro import (
+from stock_analytics.primitives.macro import (
     calculate_macro_spread,
     calculate_securitization_ratio,
     calculate_yield_curve_slope,

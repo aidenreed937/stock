@@ -3,8 +3,8 @@ from pathlib import Path
 
 import polars as pl
 
-from stock.data.cleaner.bar_cleaner import BarDataCleaner
-from stock.data.quality.quarantine import QuarantineStore
+from stock_data.cleaner.bar_cleaner import BarDataCleaner
+from stock_data.quality.quarantine import QuarantineStore
 
 
 def test_bar_cleaner_handles_suspended_trading_day() -> None:

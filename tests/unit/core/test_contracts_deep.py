@@ -5,14 +5,14 @@ from datetime import UTC, date, datetime
 import polars as pl
 import pytest
 
-from stock.core.contracts import (
+from stock_core.contracts import (
     STOCK_DAILY_BAR_CONTRACT,
     DatasetContract,
     DatasetKey,
     InstrumentId,
     get_contract_for_dataset,
 )
-from stock.exceptions import DataValidationError
+from stock_core.exceptions import DataValidationError
 
 
 def test_dataset_key_properties() -> None:

@@ -5,7 +5,7 @@ from pathlib import Path
 import polars as pl
 import pytest
 
-from stock.data.audit.distribution_audit import CuratedDistributionAuditor, run_distribution_audit
+from stock_data.audit.distribution_audit import CuratedDistributionAuditor, run_distribution_audit
 
 
 def test_curated_distribution_auditor_clean_data(tmp_path: Path) -> None:

@@ -3,7 +3,7 @@ from unittest.mock import patch
 
 import polars as pl
 
-from stock.data.audit.master_audit import main, run_master_audit
+from stock_data.audit.master_audit import main, run_master_audit
 
 
 def test_run_master_audit_empty(tmp_path: Path) -> None:
@@ -64,7 +64,7 @@ def test_run_master_audit_detects_year_gaps(tmp_path: Path) -> None:
 
 
 def test_main(capsys) -> None:
-    with patch("stock.data.audit.master_audit.run_master_audit") as mock_audit:
+    with patch("stock_data.audit.master_audit.run_master_audit") as mock_audit:
         mock_audit.return_value = pl.DataFrame(
             {
                 "source": ["tushare"],

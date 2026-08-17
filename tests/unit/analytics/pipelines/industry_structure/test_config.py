@@ -2,7 +2,7 @@
 
 from pathlib import Path
 
-from stock.analytics.pipelines.industry_structure.config import load_industry_structure_config
+from stock_reporting.interpretation.industry_structure.config import load_industry_structure_config
 
 
 def test_load_industry_structure_config(tmp_path: Path) -> None:

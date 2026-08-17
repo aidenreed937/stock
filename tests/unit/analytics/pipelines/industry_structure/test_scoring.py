@@ -4,12 +4,12 @@ from datetime import date
 
 import polars as pl
 
-from stock.analytics.pipelines.industry_structure.config import (
+from stock_analytics.pipelines.industry_structure.scoring import score_industry_panel
+from stock_reporting.interpretation.industry_structure.config import (
     FundamentalBlendConfig,
     IndustryStructureConfig,
     ScoreWeights,
 )
-from stock.analytics.pipelines.industry_structure.scoring import score_industry_panel
 
 
 def test_score_industry_panel_adds_ranks_and_tags() -> None:

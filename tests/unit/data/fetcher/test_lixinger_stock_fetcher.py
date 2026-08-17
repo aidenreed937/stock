@@ -5,8 +5,8 @@ from unittest.mock import MagicMock, patch
 import pandas as pd
 import pytest
 
-from stock.data.fetcher.lixinger.stock_fetcher import LixingerStockFetcher
-from stock.exceptions import DataFetchError
+from stock_data.fetcher.lixinger.stock_fetcher import LixingerStockFetcher
+from stock_core.exceptions import DataFetchError
 
 
 def test_lixinger_stock_fetcher_single_symbol() -> None:
@@ -123,7 +123,7 @@ def test_lixinger_stock_fetcher_batch_l2_query_uses_level_two_industries() -> No
     mock_client.query.side_effect = query
     fetcher = LixingerStockFetcher(client=mock_client)
 
-    with patch("stock.data.fetcher.lixinger.stock_fetcher._INDUSTRY_TABLE_CACHE", None):
+    with patch("stock_data.fetcher.lixinger.stock_fetcher._INDUSTRY_TABLE_CACHE", None):
         df = fetcher.fetch_daily_bars_df(
             symbol="",
             start_date=date(2024, 1, 2),
@@ -156,7 +156,7 @@ def test_lixinger_industry_batch_propagates_data_fetch_error() -> None:
     fetcher = LixingerStockFetcher(client=mock_client)
 
     with (
-        patch("stock.data.fetcher.lixinger.stock_fetcher._INDUSTRY_TABLE_CACHE", None),
+        patch("stock_data.fetcher.lixinger.stock_fetcher._INDUSTRY_TABLE_CACHE", None),
         pytest.raises(DataFetchError, match="403"),
     ):
         fetcher.fetch_daily_bars_df(
@@ -221,7 +221,7 @@ def test_lixinger_stock_fetcher_trade_cal() -> None:
     )
     fetcher = LixingerStockFetcher(client=mock_client)
     with patch(
-        "stock.data.update_scheduler.DataUpdateScheduler.get_trading_days", return_value=()
+        "stock_data.update_scheduler.DataUpdateScheduler.get_trading_days", return_value=()
     ):
         dates = fetcher.fetch_trade_cal(date(2024, 1, 1), date(2024, 1, 3))
     assert dates == [date(2024, 1, 2), date(2024, 1, 3)]
@@ -232,7 +232,7 @@ def test_lixinger_stock_fetcher_prefers_local_tushare_calendar() -> None:
     fetcher = LixingerStockFetcher(client=mock_client)
 
     with patch(
-        "stock.data.update_scheduler.DataUpdateScheduler.get_trading_days",
+        "stock_data.update_scheduler.DataUpdateScheduler.get_trading_days",
         return_value=(date(2024, 1, 2), date(2024, 1, 3)),
     ):
         dates = fetcher.fetch_trade_cal(date(2024, 1, 1), date(2024, 1, 3))

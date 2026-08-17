@@ -6,8 +6,8 @@ from pathlib import Path
 import polars as pl
 import pytest
 
-from stock.data.catalog import DataCatalog, load_dataset_compat
-from stock.exceptions import DataValidationError
+from stock_data.catalog import DataCatalog, load_dataset_compat
+from stock_core.exceptions import DataValidationError
 
 
 def _make_bar_file(tmp_path: Path, dataset: str, market: str, year: int, month: int) -> Path:

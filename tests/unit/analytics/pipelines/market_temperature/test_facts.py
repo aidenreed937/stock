@@ -4,11 +4,11 @@ from datetime import date
 
 import polars as pl
 
-from stock.analytics.pipelines.market_temperature.config import DatasetConfig
-from stock.analytics.pipelines.market_temperature.facts import (
+from stock_analytics.pipelines.market_temperature.facts import (
     _latest_dataset_date,
     _parse_date_value,
 )
+from stock_reporting.interpretation.market_temperature.config import DatasetConfig
 
 
 class _FakeCatalog:

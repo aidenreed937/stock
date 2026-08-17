@@ -4,7 +4,7 @@ from datetime import date
 
 import polars as pl
 
-from stock.analytics.pipelines.market_temperature.artifacts import (
+from stock_analytics.pipelines.market_temperature.artifacts import (
     MarketTemperatureArtifactPayload,
     build_run_paths,
     write_artifacts,

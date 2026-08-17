@@ -4,12 +4,12 @@
 
 ## 核心特性
 
-- **完整 ETL 数据管道**: 规范分层的 `Fetcher (采集) ➔ Cleaner (清洗) ➔ Normalizer (标准化) ➔ Storage (存储)` 架构。
+- **模块化分包架构**: 按照职责清晰拆分为 6 个顶级包（`stock_core`, `stock_data`, `stock_reporting`, `stock_analytics`, `stock_strategy`, `stock_cli`），单向无环依赖（DAG）。
+- **完整 ETL 数据管道**: 规范分层的 `Fetcher (采集) ➔ Cleaner (清洗) ➔ Normalizer (标准化) ➔ Storage (存储)` 2-Tier 架构。
 - **YAML 策略配置驱动**: 基于 `Pydantic` 校验 YAML 强类型配置文件，实现零硬编码解耦。
-- **数据分析与研究信号**: 使用 `Polars` 计算 SMA、EMA、RSI、MACD，并输出配置驱动的结构化信号报告。
-- **极速持久化**: 基于 `DuckDB + Parquet` 实现带数据集身份、版本和原子写入的本地行情列式存储。
-- **结构化校验**: 基于 `Pydantic` 校验行情数据（OHLCV 逻辑与约束）。
-- **统一工具链与编码规范**: 基于 `uv` 依赖管理，集成 `Ruff`, `Mypy` (strict), `Pytest`, `.editorconfig` 及 Git Pre-commit 拦截。
+- **数据分析与研究信号**: 使用 `Polars` 计算技术指标、六维市场温度计与申万行业结构分析，并输出结构化研报。
+- **极速持久化**: 基于 `DuckDB + Parquet` 实现带数据集身份、版本和原子写入的本地行情列式存储（RAW 与 Curated 分层）。
+- **统一工具链与编码规范**: 基于 `uv` 依赖管理，集成 `Ruff`, `Mypy` (strict), `Pytest` (覆盖率 > 75%)，保障系统长期可维护性。
 
 ## 快捷命令指南
 
@@ -28,7 +28,7 @@ make run
 ### 3. 代码检查与自动化测试
 
 ```bash
-# 格式化、代码规范检查与单测验证 (建议在提交前执行)
+# 格式化、代码规范检查与单测验证 (提交前执行)
 make check
 ```
 
@@ -38,22 +38,34 @@ make check
 - 详细的数据架构设计与分层规范说明，请阅读 [系统架构文档 (docs/architecture.md)](docs/architecture.md) 与 [数据存储指南 (docs/data_architecture.md)](docs/data_architecture.md)。
 - 命令行 CLI 与历史数据回填指南，请阅读 [CLI 命令行指南 (docs/cli_guide.md)](docs/cli_guide.md)。
 
-## 模块说明
+## 模块说明 (6 大顶级包)
 
-- `docs/architecture.md`: 系统架构设计、模块分层与 5 大数据流动原则说明文档
-- `docs/data_architecture.md`: RAW + Curated 两层数据存储、时间分区归档规范与并发限频指南
-- `docs/cli_guide.md`: CLI 命令行使用指南与历史数据回填参数说明
-- `config/`: YAML 策略与业务配置文件目录
-- `src/stock/config`: 环境配置管理 (`settings.py`) 与 YAML 配置加载器 (`loader.py`)
-- `src/stock/constants.py`: 全局常量定义（默认指标周期、存储目录常量等）
-- `src/stock/data/fetcher`: 行情数据抓取抽象层及数据源实现
-  - `src/stock/data/fetcher/tushare`: TuShare 接口管理注册表、Token 客户端与请求切片器
-- `src/stock/data/cleaner`: 脏数据过滤、价格逻辑校验与去重模块
-- `src/stock/data/normalizer`: 异构列名别名对齐与数据类型标准化模块
-- `src/stock/data/storage`: DuckDB + Parquet 本地极速存储层
-- `src/stock/data/pipeline.py`: ETL 流水线管道编排核心
-- `src/stock/data/contracts.py`: 标的身份、数据集身份与日线 Schema 契约
-- `src/stock/models`: Pydantic 行情与策略配置结构模型
-- `src/stock/analytics`: 技术指标（移动平均线、RSI、MACD）计算逻辑
-- `src/stock/strategy/runner.py`: 配置驱动的研究策略运行与信号报告
-- `src/stock/utils`: Loguru 结构化日志工具
+- `src/stock_core/`: 最底层基础设施与核心契约（零内部业务依赖）
+  - `contracts.py`: 标的身份、数据集身份 (`DatasetKey`) 与标准 Schema 契约
+  - `models/`: Pydantic 强类型领域模型与 YAML 配置模型
+  - `config/`: 环境配置管理 (`settings.py`) 与 YAML 配置加载器 (`loader.py`)
+  - `constants.py` & `exceptions.py` & `utils/`: 全局常量、领域异常与 Loguru 结构化日志工具
+- `src/stock_data/`: 2-Tier 湖仓数据管道与数据资产管理
+  - `fetcher/`: 4 大数据源适配器 (`tushare`, `lixinger`, `yfinance`, `fred`)
+  - `cleaner/`: 脏数据过滤、价格逻辑校验与去重
+  - `normalizer/`: 异构列名别名对齐与统一日期 (`pl.Date`) / 单位标准化
+  - `storage/`: DuckDB + RAW / Curated Parquet 分区存储与 SQL 查询引擎
+  - `audit/` & `quality/` & `ops/`: 资产主审计、质量隔离门禁与数据迁移运维
+- `src/stock_reporting/`: 研报渲染引擎与解读配置（自包含，零依赖 analytics）
+  - `engine/`: Jinja2/Polars 研报渲染器与过滤器
+  - `templates/`: 市场全景、行业结构、投资简报等模版
+  - `interpretation/`: 研报指标阈值配置与状态解读规则库
+- `src/stock_analytics/`: 量化投研核心计算
+  - `primitives/`: SMA、EMA、RSI、MACD 等技术指标底层计算
+  - `metrics/`: 六维市场温度计计算与量化分位数模型
+  - `industry/`: 申万行业分类与结构分析
+  - `pipelines/`: 宏观、中观与微观统一分析流水线
+- `src/stock_strategy/`: 策略投研与信号
+  - `base.py` & `context.py`: 策略基类与上下文抽象
+  - `runner.py`: 配置驱动的研究策略运行与信号报告生成
+  - `pool/`: 经典策略池实现（如双均线 RSI 策略）
+- `src/stock_cli/`: 顶层交互与用户命令行入口
+  - `main.py`: 主程序流程演示入口
+  - `backfill.py` & `sync.py` & `audit.py`: 历史回填、增量同步与数据审计 CLI
+  - `market_temperature.py` & `features.py`: 市场全景扫描与特征生成 CLI
+- `src/stock/`: 向后兼容根入口门面 (`__init__.py`)

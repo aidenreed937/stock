@@ -2,7 +2,7 @@ from datetime import date
 from pathlib import Path
 import polars as pl
 
-from stock.data.storage.query_engine import DuckDBQueryEngine
+from stock_data.storage.query_engine import DuckDBQueryEngine
 
 
 def test_duckdb_query_engine_basic_sql() -> None:

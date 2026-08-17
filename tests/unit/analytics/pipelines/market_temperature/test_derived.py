@@ -6,7 +6,7 @@ from pathlib import Path
 import polars as pl
 import pytest
 
-from stock.analytics.pipelines.market_temperature.derived import (
+from stock_analytics.pipelines.market_temperature.derived import (
     _external_environment_row,
     _external_macro_rows,
     _external_pressure_rows,
@@ -22,7 +22,7 @@ from stock.analytics.pipelines.market_temperature.derived import (
     _return_frame,
     _us_macro_background_rows,
 )
-from stock.analytics.pipelines.market_temperature.derived_options import (
+from stock_analytics.pipelines.market_temperature.derived_options import (
     build_option_daily_frame,
 )
 

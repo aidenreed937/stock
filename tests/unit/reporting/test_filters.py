@@ -4,7 +4,7 @@ from __future__ import annotations
 
 import polars as pl
 
-from stock.reporting.engine.filters import (
+from stock_reporting.engine.filters import (
     format_currency_wan,
     format_currency_yi,
     format_decimal,

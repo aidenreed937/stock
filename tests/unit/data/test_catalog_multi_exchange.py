@@ -5,7 +5,7 @@ from pathlib import Path
 
 import polars as pl
 
-from stock.data.catalog import DataCatalog
+from stock_data.catalog import DataCatalog
 
 
 def test_load_dataset_multi_exchange_margin_preservation(tmp_path: Path) -> None:

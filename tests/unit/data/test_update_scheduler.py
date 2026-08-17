@@ -3,8 +3,8 @@ from unittest.mock import MagicMock, patch
 
 import polars as pl
 
-from stock.config.settings import settings
-from stock.data.update_scheduler import DataUpdateScheduler
+from stock_core.config.settings import settings
+from stock_data.update_scheduler import DataUpdateScheduler
 
 
 def test_tushare_daily_update_timing() -> None:
@@ -81,9 +81,9 @@ def test_stale_local_trade_calendar_falls_back_to_source() -> None:
     DataUpdateScheduler._get_trading_days.cache_clear()
     try:
         with (
-            patch("stock.data.catalog.DataCatalog", return_value=local_catalog),
+            patch("stock_data.catalog.DataCatalog", return_value=local_catalog),
             patch(
-                "stock.data.fetcher.tushare.facade.TuShareDataFetcher",
+                "stock_data.fetcher.tushare.facade.TuShareDataFetcher",
                 return_value=source_fetcher,
             ),
         ):
@@ -155,7 +155,7 @@ def test_margin_endpoint_uses_trading_day_delay() -> None:
 
 
 def test_check_readiness_and_cli(capsys) -> None:
-    from stock.data.update_scheduler import main
+    from stock_data.update_scheduler import main
 
     # 测试 check_readiness 返回 DataFrame
     df = DataUpdateScheduler.check_readiness(target_date=date(2026, 8, 12), data_source="tushare")

@@ -6,9 +6,9 @@ from pathlib import Path
 import polars as pl
 import pytest
 
-from stock.core.contracts import DatasetKey, instrument_for_symbol
-from stock.data.storage.raw_store import RawDataStorage
-from stock.exceptions import DataValidationError
+from stock_core.contracts import DatasetKey, instrument_for_symbol
+from stock_data.storage.raw_store import RawDataStorage
+from stock_core.exceptions import DataValidationError
 
 
 class TrackingLock:
@@ -478,7 +478,7 @@ def test_raw_storage_batch_buffer_append_uses_file_lock(tmp_path: Path) -> None:
 
 def test_raw_storage_sw_daily_legacy_index_id_multi_industry_preserved(tmp_path: Path) -> None:
     """验证使用 legacy index_id 列名时，多行业依次写入同一分区不会被单行业覆盖。"""
-    from stock.core.contracts import DatasetKey
+    from stock_core.contracts import DatasetKey
 
     store = RawDataStorage(base_dir=tmp_path)
     target_date = date(2026, 8, 3)
@@ -548,7 +548,7 @@ def test_raw_storage_constituents_preserves_stock_across_industries(tmp_path: Pa
 
 def test_raw_storage_heterogeneous_schema_coalesced_dedup(tmp_path: Path) -> None:
     """验证异构 Schema 对角线合并时不会发生空值键折叠，且支持幂等更新。"""
-    from stock.core.contracts import DatasetKey
+    from stock_core.contracts import DatasetKey
 
     store = RawDataStorage(base_dir=tmp_path)
     d = date(2026, 8, 7)

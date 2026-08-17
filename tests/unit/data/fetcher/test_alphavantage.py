@@ -4,8 +4,8 @@ from unittest.mock import MagicMock
 import polars as pl
 import pytest
 
-from stock.data.fetcher.alphavantage.client import AlphaVantageClient, AlphaVantageError
-from stock.data.fetcher.alphavantage.global_fetcher import AlphaVantageDataFetcher
+from stock_data.fetcher.alphavantage.client import AlphaVantageClient, AlphaVantageError
+from stock_data.fetcher.alphavantage.global_fetcher import AlphaVantageDataFetcher
 
 
 def _series() -> dict[str, dict[str, str]]:

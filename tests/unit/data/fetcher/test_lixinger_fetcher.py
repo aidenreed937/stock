@@ -7,16 +7,16 @@ from unittest.mock import MagicMock, patch
 import pandas as pd
 import pytest
 
-from stock.config.settings import settings
-from stock.data.fetcher.lixinger import (
+from stock_core.config.settings import settings
+from stock_data.fetcher.lixinger import (
     LIXINGER_API_REGISTRY,
     LixingerClient,
     LixingerDataFetcher,
     LixingerStockFetcher,
     create_lixinger_pipeline,
 )
-from stock.data.update_scheduler import DataUpdateScheduler
-from stock.exceptions import DataFetchError
+from stock_data.update_scheduler import DataUpdateScheduler
+from stock_core.exceptions import DataFetchError
 
 
 def test_lixinger_clients_share_rate_limiter_per_api() -> None:
@@ -242,7 +242,7 @@ def test_lixinger_index_fundamental_uses_batch_stock_codes() -> None:
     fetcher = LixingerStockFetcher(client=mock_client)
 
     with patch(
-        "stock.data.fetcher.lixinger.stock_fetcher.load_data_config",
+        "stock_data.fetcher.lixinger.stock_fetcher.load_data_config",
         return_value=config,
     ):
         df = fetcher.fetch_daily_bars_df(
@@ -393,7 +393,7 @@ def test_lixinger_facade_and_factory() -> None:
 
 
 def test_lixinger_index_fundamental_factory_uses_placeholder_cleaner() -> None:
-    from stock.data.cleaner.generic_cleaner import LixingerIndexFundamentalCleaner
+    from stock_data.cleaner.generic_cleaner import LixingerIndexFundamentalCleaner
 
     pipeline = create_lixinger_pipeline("index_fundamental")
 

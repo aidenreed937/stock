@@ -2,7 +2,7 @@
 
 import polars as pl
 
-from stock.data.normalizer.unit_normalizer import UnitNormalizer
+from stock_data.normalizer.unit_normalizer import UnitNormalizer
 
 
 def test_unit_normalizer_tushare_daily() -> None:

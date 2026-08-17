@@ -6,11 +6,11 @@ from pathlib import Path
 
 import polars as pl
 
-from stock.data.cleaner.bar_cleaner import BarDataCleaner
-from stock.data.ops.rebuild_stock_daily_bar import rebuild_stock_daily_bar
-from stock.data.pipeline import MarketDataPipeline
-from stock.data.storage.duckdb_store import DuckDBMarketStore
-from stock.data.storage.raw_store import RawDataStorage
+from stock_data.cleaner.bar_cleaner import BarDataCleaner
+from stock_data.ops.rebuild_stock_daily_bar import rebuild_stock_daily_bar
+from stock_data.pipeline import MarketDataPipeline
+from stock_data.storage.duckdb_store import DuckDBMarketStore
+from stock_data.storage.raw_store import RawDataStorage
 
 
 def _write_inputs(root: Path, stock_basic: Path) -> tuple[Path, Path]:

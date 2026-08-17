@@ -2,7 +2,7 @@ from datetime import date
 
 import pytest
 
-from stock.models.market import DailyBar
+from stock_core.models.market import DailyBar
 
 
 @pytest.fixture

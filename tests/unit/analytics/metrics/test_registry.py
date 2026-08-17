@@ -1,4 +1,4 @@
-from stock.analytics.metrics import EntityType, MetricDomain, MetricRegistry, MetricSpec
+from stock_analytics.metrics import EntityType, MetricDomain, MetricRegistry, MetricSpec
 
 
 def test_registry_filters_specs_by_domain_and_entity_type() -> None:

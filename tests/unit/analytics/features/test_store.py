@@ -6,7 +6,7 @@ from pathlib import Path
 import polars as pl
 import pytest
 
-from stock.analytics.features.store import FeatureStore
+from stock_analytics.features.store import FeatureStore
 
 
 def test_feature_store_read_write_and_projection(tmp_path: Path) -> None:

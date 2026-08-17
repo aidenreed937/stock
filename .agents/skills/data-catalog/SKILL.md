@@ -46,7 +46,7 @@ description: 本地落盘数据资产统一目录 (DataCatalog) 与极速查询�
 
 ### ① 一键输出全库/单源资产看板 (`summary`)
 ```python
-from stock.data.catalog import DataCatalog
+from stock_data.catalog import DataCatalog
 
 catalog = DataCatalog()
 
@@ -63,7 +63,7 @@ print(df_ts)
 内置任务别名自动解析（如传入 `"daily"` 自动映射到 `"stock_daily_bar"`）：
 
 ```python
-from stock.data.catalog import DataCatalog
+from stock_data.catalog import DataCatalog
 
 catalog = DataCatalog()
 
@@ -85,7 +85,7 @@ latest_us = catalog.get_latest_trade_date("stock_daily_bar", data_source="yfinan
 
 ```python
 from datetime import date
-from stock.data.catalog import DataCatalog
+from stock_data.catalog import DataCatalog
 
 catalog = DataCatalog(data_source="tushare")
 
@@ -103,7 +103,7 @@ df_bars = catalog.load_bars(
 
 ```python
 from datetime import date
-from stock.data.catalog import DataCatalog
+from stock_data.catalog import DataCatalog
 
 # 加载 A 股个股每日基本面估值表
 catalog_ts = DataCatalog(data_source="tushare")

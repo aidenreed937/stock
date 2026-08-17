@@ -15,10 +15,10 @@
 make backfill START=2026-08-01 END=2026-08-12
 ```
 
-### 1.2 完整参数调用 (`python -m stock.data.backfill`)
+### 1.2 完整参数调用 (`python -m stock_cli.backfill`)
 
 ```bash
-uv run python -m stock.data.backfill \
+uv run python -m stock_cli.backfill \
     --start 2026-08-01 \
     --end 2026-08-12 \
     --data-source tushare \
@@ -40,22 +40,22 @@ uv run python -m stock.data.backfill \
 
 #### 场景 1：追溯回填过去 1 年的日线行情（支持断点续传）
 ```bash
-uv run python -m stock.data.backfill --start 2025-08-01 --end 2026-08-12
+uv run python -m stock_cli.backfill --start 2025-08-01 --end 2026-08-12
 ```
 
 #### 场景 2：重新抓取并覆盖某月数据 (强制刷新缓存)
 ```bash
-uv run python -m stock.data.backfill --start 2026-07-01 --end 2026-07-31 --force-refresh
+uv run python -m stock_cli.backfill --start 2026-07-01 --end 2026-07-31 --force-refresh
 ```
 
 #### 场景 3：回填每日指标数据 (`daily_basic`)
 ```bash
-uv run python -m stock.data.backfill --start 2026-08-01 --end 2026-08-12 --endpoint daily_basic
+uv run python -m stock_cli.backfill --start 2026-08-01 --end 2026-08-12 --endpoint daily_basic
 ```
 
 #### 场景 4：单一 CLI 进程按顺序串行回填多个核心接口 (防超限、防超并发)
 ```bash
-uv run python -m stock.data.backfill \
+uv run python -m stock_cli.backfill \
     --data-source tushare \
     --endpoint adj_factor,hk_hold,daily_basic \
     --start 2024-01-01 \
@@ -92,6 +92,9 @@ make sync SOURCE=lixinger ENDPOINT=industry_bundle
 
 # 多个 bundle 或原子 task 可混合传入；展开后仍逐个任务独立执行
 make sync SOURCE=lixinger ENDPOINT=market_bundle,macro_bundle
+
+# 或直接调用 Python 模块
+uv run python -m stock_cli.sync --data-source lixinger --endpoint industry_bundle
 ```
 
 可用 LiXinger bundle：`market_bundle`、`industry_bundle`、`company_bundle`、`macro_bundle`、`index_bundle`。bundle 仅是调度输入，不合并数据集、水位或失败状态。
@@ -102,21 +105,38 @@ Alpha Vantage 增量同步只有 `fx_daily` 一个任务。由于 `make sync` CL
 make sync SOURCE=alphavantage ENDPOINT=fx_daily WORKERS=1
 ```
 
-## 3. 全库物理存储主审计 CLI (Master Audit CLI)
+---
+
+## 3. 全市场全景温度计与体检 CLI (Market Scan CLI)
+
+一键生成宏观、中观、微观六维市场温度计与申万行业结构报告：
+
+```bash
+# 通过 Makefile 快捷执行 (支持 DATE, FORMAT, OUTPUT)
+make scan DATE=2026-08-14 FORMAT=markdown
+
+# 或直接运行 Python 模块
+uv run python -m stock_cli.market_temperature --date 2026-08-14 --format markdown
+```
+
+---
+
+## 4. 全库物理存储主审计 CLI (Master Audit CLI)
 
 基于 Polars 物理扫描全库全部 Parquet 文件，输出全表覆盖标的数、最小/最大交易日与完备度诊断：
 
 ```bash
 # 通过 Makefile 快捷执行
 make master-audit
+make audit TYPE=master DOMAIN=valuation FREQ=daily
 
 # 或直接运行 Python 模块
-uv run python -m stock.data.audit.master_audit
+uv run python -m stock_cli.audit --type master
 ```
 
 ---
 
-## 3. 全局数据源探测工具 (Global Data Probe CLI)
+## 5. 全局数据源探测工具 (Global Data Probe CLI)
 
 用于快速检测各大数据源（TuShare, yfinance, FRED, 理杏仁）的连通性、响应时延与 Schema 契约状态。
 
@@ -125,12 +145,12 @@ uv run python -m stock.data.audit.master_audit
 make probe
 
 # 或直接运行 Python 模块
-uv run python -m stock.data.probe
+uv run python -m stock_data.ops.probe
 ```
 
 ---
 
-## 3. 离线数据质量审计工具 (Offline Data Validator CLI)
+## 6. 离线数据质量审计工具 (Offline Data Validator CLI)
 
 用于对本地 DuckDB 归档数据执行完整性与准确性规则校验（如：空值检查、主键重复、物理逻辑错误、断点检测等）。
 
@@ -142,12 +162,12 @@ make validate
 make validate ENDPOINT=daily_basic
 
 # 完整参数调用
-uv run python -m stock.data.validator --endpoint daily
+uv run python -m stock_data.validator --endpoint daily
 ```
 
 ---
 
-## 4. 主示范程序 CLI
+## 7. 主示范程序 CLI
 
 运行 YAML 策略驱动的主流程测试：
 
@@ -156,21 +176,21 @@ uv run python -m stock.data.validator --endpoint daily
 make run
 
 # 或直接运行 Python 模块
-uv run python -m stock.main
+uv run python -m stock_cli.main
 ```
 
 ---
 
-## 5. 代码质量与环境检查 CLI
+## 8. 代码质量与环境检查 CLI
 
 在提交代码或发布前，运行全量代码规范与单测检查：
 
 ```bash
-# 全量检查 (代码格式化 + Lint 检查 + Mypy 严格类型检查 + Pytest 测试)
+# 全量检查 (代码格式化 + Lint 检查 + Mypy 严格类型检查 + Pytest 测试 + 类规模约束)
 make check
 
 # 单独运行模块检查
 make format   # Ruff 格式化
-make lint     # Ruff 静态规则 + Mypy 检查
+make lint     # Ruff 静态规则 + Mypy 检查 + 类规模门禁
 make test     # Pytest 全量测试与覆盖率统计
 ```

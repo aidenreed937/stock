@@ -4,12 +4,12 @@ from typing import TYPE_CHECKING, cast
 
 import polars as pl
 
-from stock.analytics.metrics import MetricContext
-from stock.analytics.metrics.datasets import build_calendar_lookback_window
-from stock.analytics.metrics.datasets.loaders import load_metric_dataset
+from stock_analytics.metrics import MetricContext
+from stock_analytics.metrics.datasets import build_calendar_lookback_window
+from stock_analytics.metrics.datasets.loaders import load_metric_dataset
 
 if TYPE_CHECKING:
-    from stock.data.catalog import DataCatalog
+    from stock_data.catalog import DataCatalog
 
 
 class FakeCatalog:

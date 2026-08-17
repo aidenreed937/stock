@@ -1,5 +1,5 @@
 import pandas as pd
-from stock.data.domain.rules import (
+from stock_data.domain.rules import (
     BasicExclusionRule,
     CompositeRuleChain,
     LiquidityRule,

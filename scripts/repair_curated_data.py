@@ -8,18 +8,18 @@ from typing import Any
 
 import polars as pl
 
-from stock.core.contracts import DatasetKey
-from stock.data.cleaner.bar_cleaner import BarDataCleaner
-from stock.data.cleaner.base import BaseDataCleaner
-from stock.data.cleaner.generic_cleaner import GenericCleaner
-from stock.data.normalizer.bar_normalizer import BarDataNormalizer, infer_market_exchange_currency
-from stock.data.normalizer.base import BaseDataNormalizer
-from stock.data.normalizer.generic_normalizer import GenericNormalizer
-from stock.data.normalizer.unit_normalizer import UnitNormalizer
-from stock.data.storage.compat import StorageCompat
-from stock.data.storage.duckdb_store import DuckDBMarketStore
-from stock.data.task_registry import resolve_task
-from stock.utils.logger import logger
+from stock_core.contracts import DatasetKey
+from stock_core.utils.logger import logger
+from stock_data.cleaner.bar_cleaner import BarDataCleaner
+from stock_data.cleaner.base import BaseDataCleaner
+from stock_data.cleaner.generic_cleaner import GenericCleaner
+from stock_data.normalizer.bar_normalizer import BarDataNormalizer, infer_market_exchange_currency
+from stock_data.normalizer.base import BaseDataNormalizer
+from stock_data.normalizer.generic_normalizer import GenericNormalizer
+from stock_data.normalizer.unit_normalizer import UnitNormalizer
+from stock_data.storage.compat import StorageCompat
+from stock_data.storage.duckdb_store import DuckDBMarketStore
+from stock_data.task_registry import resolve_task
 
 
 @dataclass(slots=True)
@@ -65,11 +65,11 @@ def _resolve_endpoint_meta(prov: str, ds: str) -> tuple[str, str, list[str] | No
         profile = getattr(task, "quality_profile", "generic")
         m: Any = None
         if prov == "tushare":
-            from stock.data.fetcher.tushare.registry import TUSHARE_API_REGISTRY
+            from stock_data.fetcher.tushare.registry import TUSHARE_API_REGISTRY
 
             m = TUSHARE_API_REGISTRY.get(api_name)
         elif prov == "lixinger":
-            from stock.data.fetcher.lixinger.registry import LIXINGER_API_REGISTRY
+            from stock_data.fetcher.lixinger.registry import LIXINGER_API_REGISTRY
 
             m = LIXINGER_API_REGISTRY.get(api_name)
         if m and getattr(m, "primary_keys", None):

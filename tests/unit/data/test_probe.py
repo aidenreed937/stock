@@ -4,7 +4,7 @@ from datetime import date
 from unittest.mock import MagicMock
 
 import polars as pl
-from stock.data.ops.probe import GlobalDataProbe
+from stock_data.ops.probe import GlobalDataProbe
 
 
 def test_global_probe_tushare():
@@ -90,7 +90,7 @@ def test_probe_empty_and_error_branches():
 def test_probe_main_cli(capsys):
     """测试 probe main CLI 函数能正常打印不同状态输出。"""
     from unittest.mock import patch
-    from stock.data.ops.probe import main as probe_main
+    from stock_data.ops.probe import main as probe_main
 
     mock_probe = MagicMock()
     mock_probe.probe_all.return_value = [
@@ -99,7 +99,7 @@ def test_probe_main_cli(capsys):
         {"source": "fred", "endpoint": "cpi", "freq": "monthly", "status": "FAILED", "latency_ms": 5.0, "error": "Unauthorized Token"},
     ]
 
-    with patch("stock.data.ops.probe.GlobalDataProbe", return_value=mock_probe):
+    with patch("stock_data.ops.probe.GlobalDataProbe", return_value=mock_probe):
         probe_main()
 
     captured = capsys.readouterr().out

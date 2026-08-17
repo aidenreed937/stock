@@ -28,7 +28,7 @@ description: 涵盖项目全部真实数据源（TuShare、理杏仁 LiXinger、
 1. **统一自选池单一信任源**：
    - 位于 [`config/universe/watchlist.yaml`](file:///Users/mac/workspace/personal/finance/stock/config/universe/watchlist.yaml)，集中维护 A 股核心标的、10 大 A 股指数（内置官方成立基准日 `base_date`）、全球大盘指数、美股资产与 FRED 宏观序列。
 2. **零配置任务自发现 (`TaskRegistry`)**：
-   - 由 [`src/stock/data/task_registry.py`](file:///Users/mac/workspace/personal/finance/stock/src/stock/data/task_registry.py) 集中管理任务技术属性（采集模式 `fetch_mode`、是否深层分区 `partitioned`、质检配置 `quality_profile`）。未显式指定 `ENDPOINT` 时，CLI 会自动自发现可用任务执行批量回填。
+   - 由 [`src/stock_data/task_registry.py`](file:///Users/mac/workspace/personal/finance/stock/src/stock_data/task_registry.py) 集中管理任务技术属性（采集模式 `fetch_mode`、是否深层分区 `partitioned`、质检配置 `quality_profile`）。未显式指定 `ENDPOINT` 时，CLI 会自动自发现可用任务执行批量回填。
    - CLI 的 `ENDPOINT` 应使用项目任务名（如 `index_daily_bar`），不要直接使用上游 API 名（如 TuShare `index_daily`）；API 名只存在于 `TaskSpec.api_name` 路由层。
 3. **显式单位标准化 (`UnitNormalizer`)**：
    - 彻底消灭数据源单位歧义（TuShare 成交量“手” $\rightarrow$ “股” $\times 100$；成交额“千元” $\rightarrow$ “元” $\times 1000$；市值“万元” $\rightarrow$ “元” $\times 10000$）。

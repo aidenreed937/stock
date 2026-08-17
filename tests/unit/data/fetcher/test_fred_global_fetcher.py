@@ -3,7 +3,7 @@ from unittest.mock import MagicMock
 
 import pandas as pd
 
-from stock.data.fetcher.fred.global_fetcher import FredDataFetcher
+from stock_data.fetcher.fred.global_fetcher import FredDataFetcher
 
 
 def test_fred_data_fetcher_single_series() -> None:

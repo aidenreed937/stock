@@ -5,17 +5,17 @@ from unittest.mock import MagicMock, patch
 
 import polars as pl
 
-from stock.data.audit.benchmarks.calendar import MacroCalendarBenchmarkProvider
-from stock.data.audit.benchmarks.equity import EquityDailyBenchmarkProvider
-from stock.data.audit.benchmarks.index import IndexDailyBenchmarkProvider
-from stock.data.audit.benchmarks.industry import IndustryDailyBenchmarkProvider
-from stock.data.audit.domains import AuditDomain, AuditFrequency
-from stock.data.audit.engine import (
+from stock_data.audit.benchmarks.calendar import MacroCalendarBenchmarkProvider
+from stock_data.audit.benchmarks.equity import EquityDailyBenchmarkProvider
+from stock_data.audit.benchmarks.index import IndexDailyBenchmarkProvider
+from stock_data.audit.benchmarks.industry import IndustryDailyBenchmarkProvider
+from stock_data.audit.domains import AuditDomain, AuditFrequency
+from stock_data.audit.engine import (
     UniversalAuditEngine,
     extract_identity_keys,
     print_audit_summary_report,
 )
-from stock.data.audit.registry import (
+from stock_data.audit.registry import (
     DatasetAuditSpec,
     get_audit_spec,
     resolve_benchmark_provider,
@@ -50,7 +50,7 @@ def test_equity_benchmark_provider() -> None:
         else pl.DataFrame({"symbol": ["600000.SH"], "trade_date": [date(2026, 8, 14)]})
     )
 
-    with patch("stock.data.audit.benchmarks.equity.get_trading_calendar", return_value=[date(2026, 8, 14)]):
+    with patch("stock_data.audit.benchmarks.equity.get_trading_calendar", return_value=[date(2026, 8, 14)]):
         provider = EquityDailyBenchmarkProvider(catalog=mock_catalog)
         expected_df = provider.get_expected_keys(date(2026, 8, 14), date(2026, 8, 14))
         assert len(expected_df) == 2
@@ -66,7 +66,7 @@ def test_equity_benchmark_provider() -> None:
 def test_industry_benchmark_provider() -> None:
     mock_catalog = MagicMock()
     mock_catalog.load_dataset.return_value = pl.DataFrame()
-    with patch("stock.data.audit.benchmarks.industry.get_trading_calendar", return_value=[date(2026, 8, 14)]):
+    with patch("stock_data.audit.benchmarks.industry.get_trading_calendar", return_value=[date(2026, 8, 14)]):
         # TuShare 申万行业
         provider = IndustryDailyBenchmarkProvider(catalog=mock_catalog, data_source="tushare")
         expected_df = provider.get_expected_keys(date(2026, 8, 14), date(2026, 8, 14))
@@ -82,7 +82,7 @@ def test_industry_benchmark_provider() -> None:
 
 def test_index_benchmark_provider() -> None:
     mock_catalog = MagicMock()
-    with patch("stock.data.audit.benchmarks.index.get_trading_calendar", return_value=[date(2026, 8, 14)]):
+    with patch("stock_data.audit.benchmarks.index.get_trading_calendar", return_value=[date(2026, 8, 14)]):
         provider = IndexDailyBenchmarkProvider(catalog=mock_catalog)
         expected_df = provider.get_expected_keys(date(2026, 8, 14), date(2026, 8, 14))
         symbols = expected_df["symbol"].to_list()
@@ -118,7 +118,7 @@ def test_universal_audit_engine_single_day() -> None:
         )
     )
 
-    with patch("stock.data.audit.benchmarks.equity.get_trading_calendar", return_value=[date(2026, 8, 14)]):
+    with patch("stock_data.audit.benchmarks.equity.get_trading_calendar", return_value=[date(2026, 8, 14)]):
         engine = UniversalAuditEngine(catalog=mock_catalog)
         report = engine.audit_single_day("stock_daily_bar", date(2026, 8, 14), data_source="tushare")
 

@@ -3,7 +3,7 @@ from datetime import date
 import pytest
 from pydantic import ValidationError
 
-from stock.models.market import DailyBar
+from stock_core.models.market import DailyBar
 
 
 def test_daily_bar_validation(sample_daily_bar: DailyBar) -> None:

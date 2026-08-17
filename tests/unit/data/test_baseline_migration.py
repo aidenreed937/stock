@@ -5,13 +5,13 @@ from unittest.mock import patch
 
 import polars as pl
 
-from stock.data.audit.baseline import build_baseline
-from stock.data.ops.migration import migrate_parquet
-from stock.data.audit.backfill_acceptance import accept_backfill
-from stock.data.cleaner.bar_cleaner import BarDataCleaner
-from stock.data.quality.quarantine import QuarantineStore
-from stock.data.pipeline import MarketDataPipeline
-from stock.exceptions import DataValidationError
+from stock_data.audit.baseline import build_baseline
+from stock_data.ops.migration import migrate_parquet
+from stock_data.audit.backfill_acceptance import accept_backfill
+from stock_data.cleaner.bar_cleaner import BarDataCleaner
+from stock_data.quality.quarantine import QuarantineStore
+from stock_data.pipeline import MarketDataPipeline
+from stock_core.exceptions import DataValidationError
 
 
 def test_baseline_empty_directory(tmp_path: Path) -> None:
@@ -262,7 +262,7 @@ def test_backfill_acceptance_normalizes_compact_boundary_dates(tmp_path: Path) -
     ).write_parquet(curated / "data.parquet")
 
     with patch(
-        "stock.data.update_scheduler.DataUpdateScheduler.get_trading_days",
+        "stock_data.update_scheduler.DataUpdateScheduler.get_trading_days",
         return_value=(date(2026, 8, 12), date(2026, 8, 13)),
     ):
         report = accept_backfill(
@@ -289,7 +289,7 @@ def test_backfill_acceptance_fails_on_internal_daily_gap(tmp_path: Path) -> None
     ).write_parquet(curated / "data.parquet")
 
     with patch(
-        "stock.data.update_scheduler.DataUpdateScheduler.get_trading_days",
+        "stock_data.update_scheduler.DataUpdateScheduler.get_trading_days",
         return_value=(date(2026, 8, 12), date(2026, 8, 13), date(2026, 8, 14)),
     ):
         report = accept_backfill(
@@ -318,7 +318,7 @@ def test_backfill_acceptance_ignores_statutory_holidays_from_trade_calendar(
     ).write_parquet(curated / "data.parquet")
 
     with patch(
-        "stock.data.update_scheduler.DataUpdateScheduler.get_trading_days",
+        "stock_data.update_scheduler.DataUpdateScheduler.get_trading_days",
         return_value=(date(2023, 1, 20), date(2023, 1, 30)),
     ):
         report = accept_backfill(
@@ -348,7 +348,7 @@ def test_backfill_acceptance_fails_closed_when_trade_calendar_unavailable(
     ).write_parquet(curated / "data.parquet")
 
     with patch(
-        "stock.data.update_scheduler.DataUpdateScheduler.get_trading_days",
+        "stock_data.update_scheduler.DataUpdateScheduler.get_trading_days",
         return_value=(),
     ):
         report = accept_backfill(

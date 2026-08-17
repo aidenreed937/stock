@@ -4,14 +4,14 @@ from unittest.mock import MagicMock, patch
 
 import pytest
 
-from stock.data.backfill import (
+from stock_data.backfill import (
     HistoricalBackfiller,
     _execute_parallel_tasks,
     _filter_supported_symbols,
     _resolve_calendar_dates,
     _watchlist_symbols,
 )
-from stock.exceptions import DataFetchError
+from stock_core.exceptions import DataFetchError
 
 
 def test_watchlist_symbols_resolution() -> None:
@@ -57,7 +57,7 @@ def test_resolve_calendar_dates_prefers_fetcher_calendar() -> None:
     fetcher.fetch_trade_cal.return_value = [date(2024, 1, 4)]
 
     with patch(
-        "stock.data.backfill.DataUpdateScheduler.get_trading_days",
+        "stock_data.backfill.DataUpdateScheduler.get_trading_days",
         return_value=(date(2024, 1, 5), date(2024, 1, 8)),
     ):
         dates = _resolve_calendar_dates(
@@ -73,7 +73,7 @@ def test_resolve_calendar_dates_uses_local_calendar_after_fetcher_error() -> Non
     fetcher.fetch_trade_cal.side_effect = Exception("network error")
 
     with patch(
-        "stock.data.backfill.DataUpdateScheduler.get_trading_days",
+        "stock_data.backfill.DataUpdateScheduler.get_trading_days",
         return_value=(date(2024, 1, 5), date(2024, 1, 8)),
     ):
         dates = _resolve_calendar_dates(
@@ -88,7 +88,7 @@ def test_resolve_calendar_dates_uses_source_after_local_calendar_unavailable() -
     fetcher.fetch_trade_cal.return_value = [date(2024, 1, 5), date(2024, 1, 8)]
 
     with patch(
-        "stock.data.backfill.DataUpdateScheduler.get_trading_days", return_value=()
+        "stock_data.backfill.DataUpdateScheduler.get_trading_days", return_value=()
     ):
         dates = _resolve_calendar_dates(
             fetcher, "tushare", date(2024, 1, 5), date(2024, 1, 8)
@@ -102,7 +102,7 @@ def test_resolve_calendar_dates_fails_without_trusted_calendar() -> None:
     fetcher.fetch_trade_cal.side_effect = Exception("network error")
 
     with (
-        patch("stock.data.backfill.DataUpdateScheduler.get_trading_days", return_value=()),
+        patch("stock_data.backfill.DataUpdateScheduler.get_trading_days", return_value=()),
         pytest.raises(DataFetchError, match="可信交易日历"),
     ):
         _resolve_calendar_dates(fetcher, "tushare", date(2024, 1, 5), date(2024, 1, 8))

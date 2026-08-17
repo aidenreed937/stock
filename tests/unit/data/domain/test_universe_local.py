@@ -3,10 +3,10 @@ from pathlib import Path
 import polars as pl
 import pytest
 
-from stock.config.settings import settings
-from stock.data.domain.universe import UniverseFilter
-from stock.data.storage.duckdb_store import DuckDBMarketStore
-from stock.exceptions import DataFetchError
+from stock_core.config.settings import settings
+from stock_data.domain.universe import UniverseFilter
+from stock_data.storage.duckdb_store import DuckDBMarketStore
+from stock_core.exceptions import DataFetchError
 
 
 def test_universe_filter_local_mode_success(tmp_path: Path, monkeypatch) -> None:

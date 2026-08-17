@@ -7,11 +7,11 @@ from unittest.mock import MagicMock
 import polars as pl
 import pytest
 
-from stock.core.contracts import DatasetKey
-from stock.data.pipeline_stages import CuratedStorageStage, FetcherStage
-from stock.data.quality.quarantine import QuarantineStore
-from stock.data.storage.raw_store import RawDataStorage
-from stock.exceptions import DataValidationError
+from stock_core.contracts import DatasetKey
+from stock_data.pipeline_stages import CuratedStorageStage, FetcherStage
+from stock_data.quality.quarantine import QuarantineStore
+from stock_data.storage.raw_store import RawDataStorage
+from stock_core.exceptions import DataValidationError
 
 
 def _complete_margin_frame() -> pl.DataFrame:

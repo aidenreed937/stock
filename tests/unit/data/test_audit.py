@@ -4,8 +4,8 @@ from unittest.mock import MagicMock, patch
 
 import polars as pl
 
-from stock.data.audit import run_audit, run_audit_range
-from stock.data.audit.reconciliation import main as audit_main
+from stock_data.audit import run_audit, run_audit_range
+from stock_data.audit.reconciliation import main as audit_main
 
 
 def test_run_audit_missing_stock_basic():
@@ -44,7 +44,7 @@ def test_run_audit_success():
 
     with (
         patch("polars.read_parquet", side_effect=mock_read_parquet),
-        patch("stock.data.audit.reconciliation.TuShareClient", return_value=mock_client),
+        patch("stock_data.audit.reconciliation.TuShareClient", return_value=mock_client),
     ):
         res = run_audit(date(2026, 8, 1))
         assert res["expected"] == 2
@@ -67,10 +67,10 @@ def test_run_audit_range():
 
     with (
         patch(
-            "stock.data.audit.reconciliation.get_trading_calendar",
+            "stock_data.audit.reconciliation.get_trading_calendar",
             return_value=[date(2026, 8, 3), date(2026, 8, 4)],
         ),
-        patch("stock.data.audit.reconciliation.run_audit", return_value=mock_audit_res),
+        patch("stock_data.audit.reconciliation.run_audit", return_value=mock_audit_res),
     ):
         res = run_audit_range(date(2026, 8, 1), date(2026, 8, 5), max_workers=2)
         assert res["total_days"] == 2
@@ -82,7 +82,7 @@ def test_run_audit_range():
 def test_audit_main_cli():
     with (
         patch("sys.argv", ["audit", "--date", "2026-08-01"]),
-        patch("stock.data.audit.reconciliation.run_audit") as mock_run,
+        patch("stock_data.audit.reconciliation.run_audit") as mock_run,
     ):
         audit_main()
         mock_run.assert_called_once_with(date(2026, 8, 1), data_source="tushare")
@@ -94,7 +94,7 @@ def test_audit_main_range_cli():
             "sys.argv",
             ["audit", "--start", "2026-08-01", "--end", "2026-08-05", "--max-workers", "2"],
         ),
-        patch("stock.data.audit.reconciliation.run_audit_range") as mock_run_range,
+        patch("stock_data.audit.reconciliation.run_audit_range") as mock_run_range,
     ):
         audit_main()
         mock_run_range.assert_called_once_with(
@@ -107,7 +107,7 @@ def test_audit_main_range_cli():
 
 
 def test_run_index_audit():
-    from stock.data.audit.reconciliation import run_index_audit
+    from stock_data.audit.reconciliation import run_index_audit
 
     index_df = pl.DataFrame(
         {
@@ -135,7 +135,7 @@ def test_run_index_audit():
 
 
 def test_run_index_audit_range():
-    from stock.data.audit.reconciliation import run_index_audit_range
+    from stock_data.audit.reconciliation import run_index_audit_range
 
     mock_res = {
         "date": date(2026, 8, 1),
@@ -148,10 +148,10 @@ def test_run_index_audit_range():
 
     with (
         patch(
-            "stock.data.audit.reconciliation.get_trading_calendar",
+            "stock_data.audit.reconciliation.get_trading_calendar",
             return_value=[date(2026, 8, 1), date(2026, 8, 2)],
         ),
-        patch("stock.data.audit.reconciliation.run_index_audit", return_value=mock_res),
+        patch("stock_data.audit.reconciliation.run_index_audit", return_value=mock_res),
     ):
         res = run_index_audit_range(date(2026, 8, 1), date(2026, 8, 2), data_source="tushare")
         assert res["total_days"] == 2
@@ -162,14 +162,14 @@ def test_run_index_audit_range():
 def test_audit_main_index_cli():
     with (
         patch("sys.argv", ["audit", "--mode", "index", "--date", "2026-08-01"]),
-        patch("stock.data.audit.reconciliation.run_index_audit") as mock_run_index,
+        patch("stock_data.audit.reconciliation.run_index_audit") as mock_run_index,
     ):
         audit_main()
         mock_run_index.assert_called_once_with(date(2026, 8, 1), data_source="tushare")
 
 
 def test_run_daily_basic_audit():
-    from stock.data.audit.reconciliation import run_daily_basic_audit
+    from stock_data.audit.reconciliation import run_daily_basic_audit
 
     bar_df = pl.DataFrame(
         {"symbol": ["600000.SH", "000001.SZ"], "trade_date": ["2026-08-01", "2026-08-01"]}
@@ -198,7 +198,7 @@ def test_run_daily_basic_audit():
 
 
 def test_run_adj_factor_audit():
-    from stock.data.audit.reconciliation import run_adj_factor_audit
+    from stock_data.audit.reconciliation import run_adj_factor_audit
 
     basic_df = pl.DataFrame(
         {"symbol": ["600000.SH", "000001.SZ"], "list_date": ["19991110", "19910403"]}
@@ -233,12 +233,12 @@ def test_run_adj_factor_audit():
 
 
 def test_raw_curated_reconciliation_detects_key_mismatch(tmp_path, monkeypatch):
-    from stock.data.audit.reconciliation import _run_raw_curated_reconciliation
+    from stock_data.audit.reconciliation import _run_raw_curated_reconciliation
 
     raw_root = tmp_path / "raw"
     curated_root = tmp_path / "curated"
-    monkeypatch.setattr("stock.data.audit.reconciliation.settings.raw_data_dir", raw_root)
-    monkeypatch.setattr("stock.data.audit.reconciliation.settings.curated_data_dir", curated_root)
+    monkeypatch.setattr("stock_data.audit.reconciliation.settings.raw_data_dir", raw_root)
+    monkeypatch.setattr("stock_data.audit.reconciliation.settings.curated_data_dir", curated_root)
 
     raw_path = raw_root / "tushare" / "market=CN" / "stock_daily_bar" / "year=2026" / "month=08"
     curated_path = (
@@ -263,8 +263,8 @@ def test_raw_curated_reconciliation_detects_key_mismatch(tmp_path, monkeypatch):
 
 
 def test_raw_bar_reconciliation_reuses_units_and_listing_dates(monkeypatch):
-    from stock.data.audit.reconciliation import _clean_raw_bar_frame
-    from stock.data.cleaner.bar_cleaner import BarDataCleaner
+    from stock_data.audit.reconciliation import _clean_raw_bar_frame
+    from stock_data.cleaner.bar_cleaner import BarDataCleaner
 
     monkeypatch.setattr(
         BarDataCleaner,
@@ -302,7 +302,7 @@ def test_raw_bar_reconciliation_reuses_units_and_listing_dates(monkeypatch):
 
 
 def test_raw_lixinger_index_fundamental_filters_empty_holiday_rows() -> None:
-    from stock.data.audit.reconciliation import _clean_raw_frame
+    from stock_data.audit.reconciliation import _clean_raw_frame
 
     raw = pl.DataFrame(
         {
@@ -327,7 +327,7 @@ def test_raw_lixinger_index_fundamental_filters_empty_holiday_rows() -> None:
 
 
 def test_raw_curated_reconciliation_exempts_lixinger_curated_only_dataset() -> None:
-    from stock.data.audit.reconciliation import _run_raw_curated_reconciliation
+    from stock_data.audit.reconciliation import _run_raw_curated_reconciliation
 
     result = _run_raw_curated_reconciliation(date(2026, 8, 14), "lixinger", "sw_2021_fundamental")
 
@@ -339,12 +339,12 @@ def test_raw_curated_reconciliation_exempts_lixinger_curated_only_dataset() -> N
 def test_raw_curated_reconciliation_uses_lixinger_composite_primary_key(
     tmp_path, monkeypatch
 ) -> None:
-    from stock.data.audit.reconciliation import _run_raw_curated_reconciliation
+    from stock_data.audit.reconciliation import _run_raw_curated_reconciliation
 
     raw_root = tmp_path / "raw"
     curated_root = tmp_path / "curated"
-    monkeypatch.setattr("stock.data.audit.reconciliation.settings.raw_data_dir", raw_root)
-    monkeypatch.setattr("stock.data.audit.reconciliation.settings.curated_data_dir", curated_root)
+    monkeypatch.setattr("stock_data.audit.reconciliation.settings.raw_data_dir", raw_root)
+    monkeypatch.setattr("stock_data.audit.reconciliation.settings.curated_data_dir", curated_root)
 
     raw_dir = raw_root / "lixinger" / "market=CN" / "sw_2021_constituents"
     curated_dir = curated_root / "lixinger" / "market=CN" / "sw_2021_constituents"
@@ -373,7 +373,7 @@ def test_raw_curated_reconciliation_uses_lixinger_composite_primary_key(
 
 
 def test_run_hk_hold_audit():
-    from stock.data.audit.reconciliation import run_hk_hold_audit
+    from stock_data.audit.reconciliation import run_hk_hold_audit
 
     hk_df = pl.DataFrame({"symbol": ["600000.SH"], "trade_date": ["2026-08-01"], "vol": [100000.0]})
 
@@ -391,7 +391,7 @@ def test_run_hk_hold_audit():
 
 
 def test_run_sw_industry_audit():
-    from stock.data.audit import run_sw_industry_audit
+    from stock_data.audit import run_sw_industry_audit
 
     const_df = pl.DataFrame({"symbol": ["110000", "210000"]})
     fund_df = pl.DataFrame({"symbol": ["110000"], "trade_date": ["2026-08-01"]})
@@ -418,7 +418,7 @@ def test_run_sw_industry_audit():
 
 
 def test_run_sw_daily_audit():
-    from stock.data.audit import run_sw_daily_audit
+    from stock_data.audit import run_sw_daily_audit
 
     sw_df = pl.DataFrame(
         {"symbol": ["801010.SI", "801030.SI"], "trade_date": ["2026-08-01", "2026-08-01"]}
@@ -433,7 +433,7 @@ def test_run_sw_daily_audit():
 
 def test_filter_target_date_formats():
     from datetime import datetime
-    from stock.data.audit.reconciliation import _filter_target_date
+    from stock_data.audit.reconciliation import _filter_target_date
 
     target = date(2026, 8, 1)
 
@@ -455,7 +455,7 @@ def test_filter_target_date_formats():
 
 
 def test_extract_identity_keys_formats():
-    from stock.data.audit.reconciliation import _extract_identity_keys_frame
+    from stock_data.audit.reconciliation import _extract_identity_keys_frame
 
     # 测试 ts_code 优先及 Date/Datetime/String 日期格式转换
     df = pl.DataFrame(

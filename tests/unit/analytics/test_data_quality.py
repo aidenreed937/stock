@@ -5,8 +5,8 @@ from types import SimpleNamespace
 
 import polars as pl
 
-from stock.analytics.data_quality import build_quality_report
-from stock.reporting.core.quality import render_quality_report_markdown
+from stock_analytics.data_quality import build_quality_report
+from stock_reporting.core.quality import render_quality_report_markdown
 
 
 def test_quality_report_flags_hard_and_soft_issues() -> None:

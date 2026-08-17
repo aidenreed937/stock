@@ -1,7 +1,7 @@
 import polars as pl
 import pytest
 
-from stock.data.fetcher.tushare.slicer import batch_slice_and_merge
+from stock_data.fetcher.tushare.slicer import batch_slice_and_merge
 
 
 def test_batch_slice_and_merge_single_worker() -> None:

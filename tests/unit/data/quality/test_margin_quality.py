@@ -4,7 +4,7 @@ from datetime import date, timedelta
 
 import polars as pl
 
-from stock.data.quality.margin_quality import (
+from stock_data.quality.margin_quality import (
     margin_quality_issues,
     margin_quality_report,
     margin_temporal_warnings,

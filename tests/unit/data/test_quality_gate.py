@@ -6,8 +6,8 @@ from pathlib import Path
 import polars as pl
 import pytest
 
-from stock.data.quality.gate import QualityGate, run_quality_gate
-from stock.exceptions import DataValidationError
+from stock_data.quality.gate import QualityGate, run_quality_gate
+from stock_core.exceptions import DataValidationError
 
 
 def test_quality_gate_on_valid_data(tmp_path: Path) -> None:

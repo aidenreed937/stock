@@ -2,7 +2,7 @@ from datetime import date
 
 import polars as pl
 
-from stock.utils.date import parse_mixed_date
+from stock_core.utils.date import parse_mixed_date
 
 
 def test_parse_mixed_date_formats() -> None:

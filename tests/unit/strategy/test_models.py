@@ -1,8 +1,8 @@
 import pytest
 
-from stock.strategy.base import BaseStrategy
-from stock.strategy.context import Context, Position
-from stock.strategy.signal import Signal, SignalDirection
+from stock_strategy.base import BaseStrategy
+from stock_strategy.context import Context, Position
+from stock_strategy.signal import Signal, SignalDirection
 
 
 def test_signal_valid_weight():

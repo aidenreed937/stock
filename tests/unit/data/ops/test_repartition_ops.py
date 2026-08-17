@@ -3,7 +3,7 @@ from pathlib import Path
 import polars as pl
 import pytest
 
-from stock.data.ops.repartition import repartition_all_curated
+from stock_data.ops.repartition import repartition_all_curated
 
 
 def test_repartition_all_curated_nonexistent_dir() -> None:

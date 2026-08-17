@@ -4,7 +4,7 @@ from __future__ import annotations
 
 import polars as pl
 
-from stock.analytics.pipelines.market_temperature.interpretation import (
+from stock_reporting.interpretation.market_temperature.interpretation import (
     evaluate_external_pressure_section,
     evaluate_key_divergences,
     evaluate_one_line_summary,

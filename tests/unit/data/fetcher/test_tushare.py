@@ -7,19 +7,19 @@ import pandas as pd
 import polars as pl
 import pytest
 
-from stock.data.cleaner.bar_cleaner import BarDataCleaner
-from stock.data.fetcher.tushare.client import RateLimiter, TuShareClient
-from stock.data.fetcher.tushare.facade import TuShareDataFetcher
-from stock.data.fetcher.tushare.factory import create_tushare_pipeline
-from stock.data.fetcher.tushare.query_builder import build_tushare_query
-from stock.data.fetcher.tushare.registry import TUSHARE_API_REGISTRY
-from stock.data.fetcher.tushare.slicer import batch_slice_and_merge
-from stock.exceptions import DataFetchError
+from stock_data.cleaner.bar_cleaner import BarDataCleaner
+from stock_data.fetcher.tushare.client import RateLimiter, TuShareClient
+from stock_data.fetcher.tushare.facade import TuShareDataFetcher
+from stock_data.fetcher.tushare.factory import create_tushare_pipeline
+from stock_data.fetcher.tushare.query_builder import build_tushare_query
+from stock_data.fetcher.tushare.registry import TUSHARE_API_REGISTRY
+from stock_data.fetcher.tushare.slicer import batch_slice_and_merge
+from stock_core.exceptions import DataFetchError
 
 
 def test_tushare_registry() -> None:
     assert "daily" in TUSHARE_API_REGISTRY
-    from stock.data.fetcher.tushare.registry import TUSHARE_TASK_REGISTRY
+    from stock_data.fetcher.tushare.registry import TUSHARE_TASK_REGISTRY
 
     assert TUSHARE_TASK_REGISTRY["stock_daily_bar"].api_name == "daily"
     assert "stock_basic" in TUSHARE_API_REGISTRY

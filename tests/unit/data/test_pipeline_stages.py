@@ -5,18 +5,18 @@ from unittest.mock import MagicMock
 import polars as pl
 import pytest
 
-from stock.core.contracts import DatasetKey, InstrumentId
-from stock.data.cleaner.generic_cleaner import GenericCleaner
-from stock.data.normalizer.generic_normalizer import GenericNormalizer
-from stock.data.pipeline_stages import (
+from stock_core.contracts import DatasetKey, InstrumentId
+from stock_data.cleaner.generic_cleaner import GenericCleaner
+from stock_data.normalizer.generic_normalizer import GenericNormalizer
+from stock_data.pipeline_stages import (
     CleanerStage,
     CuratedStorageStage,
     FetcherStage,
     NormalizerStage,
 )
-from stock.data.quality.quarantine import QuarantineStore
-from stock.data.storage.raw_store import RawDataStorage
-from stock.exceptions import DataValidationError
+from stock_data.quality.quarantine import QuarantineStore
+from stock_data.storage.raw_store import RawDataStorage
+from stock_core.exceptions import DataValidationError
 
 
 def test_fetcher_stage_clip_quarterly_dates(tmp_path: Path) -> None:

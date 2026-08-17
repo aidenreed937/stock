@@ -71,37 +71,44 @@ make migrate-data APPLY=1
 
 ## 数据源与配置
 
-四种数据源在 `src/stock/data/fetcher/` 下：`tushare`（A 股行情/财务/资金流）、`lixinger`（理杏仁估值/财务，key 带 `source_unit`）、`yfinance` 与 `fred`（宏观指数）。通过 `--data-source` / `settings.data_source_mode` 选择，Lixinger 的路径与单位语义与 TuShare 不同。
+四种数据源在 `src/stock_data/fetcher/` 下：`tushare`（A 股行情/财务/资金流）、`lixinger`（理杏仁估值/财务，key 带 `source_unit`）、`yfinance` 与 `fred`（宏观指数）。通过 `--data-source` / `settings.data_source_mode` 选择，Lixinger 的路径与单位语义与 TuShare 不同。
 
 - 环境配置/敏感 Token 走 `pydantic-settings` + `.env`（TuShare/Lixinger Token 不进 Git）。
 - 业务与策略参数由 `config/*.yaml` 经 Pydantic 强类型校验加载，**零硬编码**。新增指标/策略应遵循 YAML 驱动。
-- 全局常量（默认指标周期、交易所开市首日、接口起始日校准）集中在 `src/stock/constants.py`。
+- 全局常量（默认指标周期、交易所开市首日、接口起始日校准）集中在 `src/stock_core/constants.py`。
 - **统一观察池单一信任源**：`config/universe/watchlist.yaml` 是全系统唯一核心自选池（A 股个股、宽基/核心指数基准日、旗舰 ETF 上市基准日、全球外盘与宏观资产）。CLI 传 `SYMBOL=watchlist` 时自动路由并对齐各标的 `base_date`，不要绕开该配置硬编码标的清单。
 
 ## 核心架构（只读前必读）
 
-数据单向流动：`Fetcher ➔ Cleaner ➔ Normalizer ➔ Storage ➔ Analytics ➔ Strategy`，禁止跨层反向依赖；OHLCV 只读不可变；全程 Polars/Arrow 零拷贝；Cleaner/Normalizer 为纯无状态函数便于测试。
+系统拆分为 **6 个顶级业务包**，严格遵循单向依赖图谱 (DAG)：
+`stock_core ◄── {stock_data, stock_reporting} ◄── stock_analytics ◄── stock_strategy ◄── stock_cli`
+
+数据单向流动：`Fetcher ➔ Cleaner ➔ Normalizer ➔ Storage ➔ Analytics ➔ Strategy ➔ Reporting`，禁止跨层反向依赖；OHLCV 只读不可变；全程 Polars/Arrow 零拷贝；Cleaner/Normalizer 为纯无状态函数便于测试。
 
 ### 双层存储（关键约定）
 
 - **RAW 层** `data/raw/{data_source}/{endpoint}/year=YYYY/month=MM/`：原汁原味 API 响应，Hive 式时间分区，防重复请求 + 支持离线重洗。
-- **Curated 层** `data/curated/{data_source}/market={market}/{dataset}/`：统一规范 Schema，注入 `data_source` / `updated_at` 血统，供分析引擎直接读。`CatalogDataset`（`src/stock/data/catalog.py`）是统一读取 Curated 数据的入口，非 RAW。
+- **Curated 层** `data/curated/{data_source}/market={market}/{dataset}/`：统一规范 Schema，注入 `data_source` / `updated_at` 血统，供分析引擎直接读。`CatalogDataset`（`src/stock_data/catalog.py`）是统一读取 Curated 数据的入口，非 RAW。
 - 两地物理文件 1-to-1 镜像。涉及列名/单位归一化改动的风险点常在此：Schema 校验是 fail-closed（来源/schema 不一致即拒绝写入，不做隐式列合并）。
 
-### 分析层（扫描引擎）
+### 分析与研报层（物化解耦）
 
-- `src/stock/analytics/indicators.py`：SMA/EMA/RSI/MACD 技术指标。
-- `src/stock/analytics/engine.py` 的 `MarketScanEngine`：三层体检扫描的领域引擎，负责量化计算、分位数评估与研判合成。
-- 子目录：`factors/`（动量/流动性/波动/资金流/估值因子）、`industry/`（申万行业分类与 PB-ROE 均衡）、`macro/`、`micro/`。
-- 报告**物化解耦**：数据计算与 `cli/scan_report.py` 报告渲染分离，产物按日落 `reports/scan/{YYYY-MM-DD}/`，改报告格式无需重跑计算（`--recompute` 强制重算）。
+- **分析计算层 (`src/stock_analytics/`)**：
+  - `primitives/indicators.py`：SMA/EMA/RSI/MACD 技术指标。
+  - `metrics/`：六维市场温度计与量化分位数模型。
+  - `pipelines/`：宏观、中观与微观统一分析流水线。
+- **研报渲染层 (`src/stock_reporting/`)**：
+  - `templates/`：全景体检、行业结构、投资简报等报告模板。
+  - `interpretation/`：指标阈值、区间评级配置与解读规则库（自包含，零依赖 analytics）。
+  - 报告物化解耦：计算与渲染分离，产物按日落 `reports/scan/{YYYY-MM-DD}/`。
 
 ### 审计体系
 
-`src/stock/data/audit/`：物理存储主审计、统一审计 CLI、回填验收（fail-closed）、以及 `benchmarks/`（申万2021一级行业代码、交易日历等官方基准数据）。领域驱动与时态统一的事实基准对账是本仓库的重要质量防线，改动审计逻辑时注意基准数据权威性与 RAW/Curated 口径区分。
+`src/stock_data/audit/`：物理存储主审计、统一审计 CLI、回填验收（fail-closed）、以及 `benchmarks/`（申万2021一级行业代码、交易日历等官方基准数据）。领域驱动与时态统一的事实基准对账是本仓库的重要质量防线，改动审计逻辑时注意基准数据权威性与 RAW/Curated 口径区分。
 
 ### 领域 Universe 与运维
 
-`src/stock/data/domain/`：基于流动性规则的股票品域筛选（`rules/`）；`ops/`：探针、迁移、repair/repartition 运维脚本；`quality/`：门禁与隔离（quarantine）。
+`src/stock_data/domain/`：基于流动性规则的股票品域筛选（`rules/`）；`ops/`：探针、迁移、repair/repartition 运维脚本；`quality/`：门禁与隔离（quarantine）。
 
 ## 量化投研准则（Ground Truth First）
 

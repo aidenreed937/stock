@@ -5,12 +5,12 @@ from pathlib import Path
 
 import polars as pl
 
-from stock.analytics.pipelines.industry_structure.config import (
+from stock_analytics.pipelines.industry_structure.panel import build_industry_panel
+from stock_reporting.interpretation.industry_structure.config import (
     FundamentalBlendConfig,
     IndustryStructureConfig,
     ScoreWeights,
 )
-from stock.analytics.pipelines.industry_structure.panel import build_industry_panel
 
 
 def test_build_industry_panel_adds_fast_fundamental_fields(tmp_path: Path) -> None:

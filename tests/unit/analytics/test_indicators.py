@@ -2,7 +2,7 @@ from datetime import date, timedelta
 
 import polars as pl
 
-from stock.analytics.primitives.indicators import (
+from stock_analytics.primitives.indicators import (
     DEFAULT_EMA_WINDOW,
     DEFAULT_MACD_FAST,
     DEFAULT_MACD_SIGNAL,

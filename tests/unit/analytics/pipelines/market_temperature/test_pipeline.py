@@ -6,7 +6,7 @@ from pathlib import Path
 
 import polars as pl
 
-from stock.analytics.pipelines.market_temperature.pipeline import run_market_temperature
+from stock_analytics.pipelines.market_temperature.pipeline import run_market_temperature
 
 
 def test_run_market_temperature_writes_minimal_artifacts(tmp_path: Path) -> None:

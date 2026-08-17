@@ -41,7 +41,7 @@ def _read_source_files(root: Path) -> list[Path]:
     )
 
 
-def _move_registered_symbols(root: Path) -> dict[str, int]:  # noqa: C901, PLR0912, PLR0915
+def _move_registered_symbols(root: Path) -> dict[str, int]:
     target_path = root / SOURCE / f"market={TARGET_MARKET}" / DATASET / "data.parquet"
     source_files = _read_source_files(root)
     moved_frames: list[pl.DataFrame] = []

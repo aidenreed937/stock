@@ -2,7 +2,7 @@ from unittest.mock import MagicMock, patch
 
 import polars as pl
 
-from stock.main import main
+from stock_cli.main import main
 
 
 def test_main_execution_flow():
@@ -21,10 +21,10 @@ def test_main_execution_flow():
     )
 
     with (
-        patch("stock.main.settings") as mock_settings,
-        patch("stock.main.load_strategy_config") as mock_load_config,
-        patch("stock.main.create_pipeline") as mock_create_pipeline,
-        patch("stock.main.StrategyRunner") as mock_runner_cls,
+        patch("stock_cli.main.settings") as mock_settings,
+        patch("stock_cli.main.load_strategy_config") as mock_load_config,
+        patch("stock_cli.main.create_pipeline") as mock_create_pipeline,
+        patch("stock_cli.main.StrategyRunner") as mock_runner_cls,
     ):
         mock_settings.app_name = "StockApp"
         mock_settings.environment = "test"

@@ -2,7 +2,14 @@
 
 ## 项目结构
 
-- `src/stock/`：核心 Python 包，按职责划分为 `data`（Fetcher、Cleaner、Normalizer、Storage 2-Tier ETL 链路）、`analytics`（技术指标与市场分析）、`strategy`（策略与信号）、`models`、`config` 和 `utils`。
+- `src/`：按职责清晰拆分为 6 个顶级包：
+  - `stock_core/`：基础数据契约、领域模型、YAML 加载器、全局常量与异常工具库；
+  - `stock_data/`：2-Tier ETL 管道（Fetcher、Cleaner、Normalizer、Parquet/DuckDB Storage）、审计与质量运维；
+  - `stock_reporting/`：研报渲染引擎、报告模板与阈值解读配置；
+  - `stock_analytics/`：技术指标、六维市场温度计与行业结构分析；
+  - `stock_strategy/`：策略基类、上下文、信号生成与回测运行器；
+  - `stock_cli/`：顶层用户交互与命令行入口；
+  - `stock/`：向后兼容门面包。
 - `tests/unit/`：按源码模块组织的单元测试；`tests/integration/`：集成测试目录。
 - `config/`：策略、风险和标的池 YAML 配置（其中 `config/universe/watchlist.yaml` 为全系统唯一核心观察池）；`data/`：本地 RAW/Curated 2-Tier 离线 Parquet 数据与缓存，不提交敏感信息或临时产物。
 - `docs/`：架构、CLI、数据存储和开发规范；`.agents/skills/data-pipeline/SKILL.md`：核心数据管道与回填实操指南；`.github/workflows/ci.yml`：CI 门禁。
@@ -30,7 +37,7 @@ make lint          # Ruff 检查、mypy 类型检查与类规模约束 (lint_cla
 make format        # Ruff 自动修复并格式化
 make test          # pytest 单元测试 + 覆盖率 (最低 75%)
 make check         # format、lint、test 全流程门禁
-make run           # 运行主程序 (uv run python -m stock.main)
+make run           # 运行主程序 (uv run python -m stock_cli.main)
 make scan          # 一键全市场量化全景扫描与体检 (支持 DATE=YYYY-MM-DD FORMAT=markdown OUTPUT=...)
 ```
 

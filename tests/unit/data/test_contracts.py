@@ -3,9 +3,9 @@ from datetime import date, datetime, timezone
 import polars as pl
 import pytest
 
-from stock.core.contracts import DAILY_BAR_CONTRACT, DatasetKey, instrument_for_symbol
-from stock.data.task_registry import resolve_public_task, resolve_task
-from stock.exceptions import DataValidationError
+from stock_core.contracts import DAILY_BAR_CONTRACT, DatasetKey, instrument_for_symbol
+from stock_data.task_registry import resolve_public_task, resolve_task
+from stock_core.exceptions import DataValidationError
 
 
 def test_dataset_key_separates_symbol_and_range() -> None:

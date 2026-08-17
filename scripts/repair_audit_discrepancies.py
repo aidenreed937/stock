@@ -5,16 +5,16 @@ from pathlib import Path
 
 import polars as pl
 
-from stock.data.cleaner.bar_cleaner import BarDataCleaner
-from stock.data.cleaner.generic_cleaner import GenericCleaner
-from stock.data.normalizer.bar_normalizer import (
+from stock_core.utils.logger import logger
+from stock_data.cleaner.bar_cleaner import BarDataCleaner
+from stock_data.cleaner.generic_cleaner import GenericCleaner
+from stock_data.normalizer.bar_normalizer import (
     BarDataNormalizer,
     infer_market_exchange_currency,
 )
-from stock.data.normalizer.generic_normalizer import GenericNormalizer
-from stock.data.normalizer.unit_normalizer import UnitNormalizer
-from stock.data.storage.compat import StorageCompat
-from stock.utils.logger import logger
+from stock_data.normalizer.generic_normalizer import GenericNormalizer
+from stock_data.normalizer.unit_normalizer import UnitNormalizer
+from stock_data.storage.compat import StorageCompat
 
 
 def _is_artifact(path: Path) -> bool:

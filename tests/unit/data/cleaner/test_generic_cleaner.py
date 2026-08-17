@@ -2,7 +2,7 @@
 
 import polars as pl
 
-from stock.data.cleaner.generic_cleaner import GenericCleaner, LixingerIndexFundamentalCleaner
+from stock_data.cleaner.generic_cleaner import GenericCleaner, LixingerIndexFundamentalCleaner
 
 
 def test_generic_cleaner_empty() -> None:

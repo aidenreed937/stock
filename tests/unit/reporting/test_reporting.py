@@ -1,4 +1,4 @@
-"""展现与视图层 (stock.reporting) 单元测试。"""
+"""展现与视图层 (stock_reporting) 单元测试。"""
 
 from datetime import date
 from pathlib import Path
@@ -6,14 +6,8 @@ from types import SimpleNamespace
 
 import polars as pl
 
-from stock.analytics.data_quality import build_quality_report
-from stock.analytics.pipelines.industry_structure.config import (
-    FundamentalBlendConfig,
-    IndustryStructureConfig,
-    ScoreWeights,
-)
-from stock.analytics.pipelines.market_temperature.config import MarketTemperatureConfig
-from stock.reporting import (
+from stock_analytics.data_quality import build_quality_report
+from stock_reporting import (
     human_watermark_issue_lines,
     human_watermark_latest_text,
     render_industry_structure_human_report_markdown,
@@ -23,6 +17,12 @@ from stock.reporting import (
     render_market_temperature_markdown,
     render_quality_report_markdown,
 )
+from stock_reporting.interpretation.industry_structure.config import (
+    FundamentalBlendConfig,
+    IndustryStructureConfig,
+    ScoreWeights,
+)
+from stock_reporting.interpretation.market_temperature.config import MarketTemperatureConfig
 
 
 def test_watermark_rendering() -> None:

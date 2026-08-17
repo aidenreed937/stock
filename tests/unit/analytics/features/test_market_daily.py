@@ -6,11 +6,11 @@ from pathlib import Path
 import polars as pl
 import pytest
 
-from stock.analytics.features.builders.market_daily import MarketDailyBuilder
-from stock.analytics.features.builders.market_daily_ops import build_breadth_and_turnover
-from stock.analytics.features.store import FeatureStore
-from stock.analytics.metrics.calculators.breadth import _calculate_breadth_columns
-from stock.data.catalog import DataCatalog
+from stock_analytics.features.builders.market_daily import MarketDailyBuilder
+from stock_analytics.features.builders.market_daily_ops import build_breadth_and_turnover
+from stock_analytics.features.store import FeatureStore
+from stock_analytics.metrics.calculators.breadth import _calculate_breadth_columns
+from stock_data.catalog import DataCatalog
 
 
 def _prepare_mock_catalog_data(storage_dir: Path) -> None:

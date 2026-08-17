@@ -4,8 +4,8 @@ from datetime import date
 
 import polars as pl
 
-from stock.analytics.pipelines.industry_structure.config import DatasetConfig
-from stock.analytics.pipelines.industry_structure.facts import _latest_dataset_date
+from stock_analytics.pipelines.industry_structure.facts import _latest_dataset_date
+from stock_reporting.interpretation.industry_structure.config import DatasetConfig
 
 
 class _FakeCatalog:

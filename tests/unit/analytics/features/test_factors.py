@@ -4,8 +4,8 @@ from datetime import date
 
 import polars as pl
 
-from stock.analytics.features.factors import FactorEngine
-from stock.analytics.primitives import (
+from stock_analytics.features.factors import FactorEngine
+from stock_analytics.primitives import (
     calculate_amihud_illiquidity,
     calculate_atr,
     calculate_bollinger_bandwidth,

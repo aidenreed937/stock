@@ -2,9 +2,9 @@ from datetime import date, timedelta
 
 import polars as pl
 
-from stock.config.loader import load_strategy_config
-from stock.strategy.pool.double_sma_rsi import DoubleSmaRsiStrategy
-from stock.strategy.runner import StrategyRunner
+from stock_core.config.loader import load_strategy_config
+from stock_strategy.pool.double_sma_rsi import DoubleSmaRsiStrategy
+from stock_strategy.runner import StrategyRunner
 
 
 def _bars(symbol: str = "TEST.SH") -> pl.DataFrame:

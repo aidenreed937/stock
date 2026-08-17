@@ -6,11 +6,11 @@ from unittest.mock import MagicMock, patch
 import polars as pl
 import pytest
 
-from stock.data.audit.engine import UniversalAuditEngine
-from stock.data.audit.factor_audit import run_sw_daily_audit
-from stock.data.audit.reconciliation import _run_raw_curated_reconciliation
-from stock.data.audit.registry import get_audit_spec
-from stock.data.audit.valuation_audit import run_sw_industry_audit
+from stock_data.audit.engine import UniversalAuditEngine
+from stock_data.audit.factor_audit import run_sw_daily_audit
+from stock_data.audit.reconciliation import _run_raw_curated_reconciliation
+from stock_data.audit.registry import get_audit_spec
+from stock_data.audit.valuation_audit import run_sw_industry_audit
 
 
 def test_engine_false_positive_prevention() -> None:
@@ -38,7 +38,7 @@ def test_engine_false_positive_prevention() -> None:
     )
 
     with patch(
-        "stock.data.audit.engine.resolve_benchmark_provider", return_value=mock_provider
+        "stock_data.audit.engine.resolve_benchmark_provider", return_value=mock_provider
     ):
         engine = UniversalAuditEngine(catalog=mock_catalog)
         report = engine.audit_single_day("sw_2021_fundamental", date(2026, 8, 14), data_source="lixinger")
@@ -55,8 +55,8 @@ def test_reconciliation_raw_duplicate_tolerance(tmp_path, monkeypatch) -> None:
     """测试 RAW 存在合法批次重复行但 Curated 已去重时，对账判定为 PASSED。"""
     raw_root = tmp_path / "raw"
     curated_root = tmp_path / "curated"
-    monkeypatch.setattr("stock.data.audit.reconciliation.settings.raw_data_dir", raw_root)
-    monkeypatch.setattr("stock.data.audit.reconciliation.settings.curated_data_dir", curated_root)
+    monkeypatch.setattr("stock_data.audit.reconciliation.settings.raw_data_dir", raw_root)
+    monkeypatch.setattr("stock_data.audit.reconciliation.settings.curated_data_dir", curated_root)
 
     raw_path = raw_root / "tushare" / "market=CN" / "stock_daily_bar" / "year=2026" / "month=08"
     curated_path = (
@@ -108,8 +108,8 @@ def test_check_raw_curated_partition_flow(tmp_path) -> None:
     df_curated.write_parquet(curated_dir / "data.parquet")
 
     engine = UniversalAuditEngine()
-    with patch("stock.config.settings.settings.raw_data_dir", tmp_path / "raw"), patch(
-        "stock.config.settings.settings.curated_data_dir", tmp_path / "curated"
+    with patch("stock_core.config.settings.settings.raw_data_dir", tmp_path / "raw"), patch(
+        "stock_core.config.settings.settings.curated_data_dir", tmp_path / "curated"
     ):
         r_cnt, c_cnt, status = engine._check_raw_curated(
             "stock_daily_bar", "tushare", date(2026, 8, 3)
@@ -122,7 +122,7 @@ def test_check_raw_curated_partition_flow(tmp_path) -> None:
 def test_factor_audit_sw_daily_exact(tmp_path, monkeypatch) -> None:
     """测试 factor_audit 中的 sw_daily 审计使用精准交集。"""
     curated_root = tmp_path / "curated"
-    monkeypatch.setattr("stock.data.audit.factor_audit.settings.curated_data_dir", curated_root)
+    monkeypatch.setattr("stock_data.audit.factor_audit.settings.curated_data_dir", curated_root)
 
     sw_path = curated_root / "tushare" / "market=CN" / "sw_daily" / "year=2026" / "month=08"
     sw_path.mkdir(parents=True)
@@ -135,7 +135,7 @@ def test_factor_audit_sw_daily_exact(tmp_path, monkeypatch) -> None:
     df.write_parquet(sw_path / "data.parquet")
 
     with patch(
-        "stock.data.audit.benchmarks.industry.IndustryDailyBenchmarkProvider._get_industry_codes",
+        "stock_data.audit.benchmarks.industry.IndustryDailyBenchmarkProvider._get_industry_codes",
         return_value=official_31,
     ):
         res = run_sw_daily_audit(date(2026, 8, 14), data_source="tushare", quiet=True)
@@ -164,7 +164,7 @@ def test_engine_dataset_alias_resolution() -> None:
         {"symbol": pl.Series([], dtype=pl.Utf8), "trade_date": pl.Series([], dtype=pl.Utf8)}
     )
 
-    with patch("stock.data.audit.engine.resolve_benchmark_provider", return_value=mock_provider):
+    with patch("stock_data.audit.engine.resolve_benchmark_provider", return_value=mock_provider):
         engine = UniversalAuditEngine(catalog=mock_catalog)
         report = engine.audit_single_day("sw_industry", date(2026, 8, 14), data_source="lixinger")
 
@@ -179,7 +179,7 @@ def test_engine_dataset_alias_resolution() -> None:
 
 def test_industry_benchmark_lixinger_empty_shells_filtered() -> None:
     """测试理杏仁行业基准动态提取时，自动剔除 6 个空壳无数据代码，保留可交付基准。"""
-    from stock.data.audit.benchmarks.industry import IndustryDailyBenchmarkProvider, LIXINGER_SW_L1_CODES
+    from stock_data.audit.benchmarks.industry import IndustryDailyBenchmarkProvider, LIXINGER_SW_L1_CODES
 
     mock_catalog = MagicMock()
     mock_catalog.data_source = "lixinger"
@@ -207,8 +207,8 @@ def test_engine_raw_curated_missing_status(tmp_path) -> None:
     pl.DataFrame({"symbol": ["801010.SI"], "trade_date": [date(2026, 8, 14)]}).write_parquet(curated_dir / "data.parquet")
 
     engine = UniversalAuditEngine()
-    with patch("stock.config.settings.settings.raw_data_dir", tmp_path / "raw"), patch(
-        "stock.config.settings.settings.curated_data_dir", tmp_path / "curated"
+    with patch("stock_core.config.settings.settings.raw_data_dir", tmp_path / "raw"), patch(
+        "stock_core.config.settings.settings.curated_data_dir", tmp_path / "curated"
     ):
         r_cnt, c_cnt, status = engine._check_raw_curated(
             "sw_daily", "tushare", date(2026, 8, 14)

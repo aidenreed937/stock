@@ -2,8 +2,8 @@ from unittest.mock import MagicMock
 import pandas as pd
 import pytest
 
-from stock.data.fetcher.tushare.client import TuShareClient
-from stock.exceptions import DataFetchError
+from stock_data.fetcher.tushare.client import TuShareClient
+from stock_core.exceptions import DataFetchError
 
 
 def test_tushare_client_missing_token_raises() -> None:

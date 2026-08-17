@@ -2,7 +2,7 @@
 
 import pytest
 
-from stock.data.task_registry import (
+from stock_data.task_registry import (
     expand_task_targets,
     is_per_symbol_task,
     is_task_partitioned,
@@ -104,7 +104,7 @@ def test_alphavantage_fx_task_uses_registered_route_and_global_market() -> None:
     assert task.partitioned is False
     assert "FX_DAILY" not in list_available_tasks("alphavantage")
 
-    from stock.data.task_registry import get_endpoint_market
+    from stock_data.task_registry import get_endpoint_market
 
     assert get_endpoint_market("alphavantage", "fx_daily") == "GLOBAL"
 

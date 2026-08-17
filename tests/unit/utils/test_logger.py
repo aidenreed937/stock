@@ -1,6 +1,6 @@
 """setup_logger 单元测试。"""
 
-from stock.utils.logger import logger, setup_logger
+from stock_core.utils.logger import logger, setup_logger
 
 
 def test_setup_logger_custom_dir(tmp_path):

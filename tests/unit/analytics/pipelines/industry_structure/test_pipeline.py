@@ -5,7 +5,7 @@ from pathlib import Path
 
 import polars as pl
 
-from stock.analytics.pipelines.industry_structure.pipeline import run_industry_structure
+from stock_analytics.pipelines.industry_structure.pipeline import run_industry_structure
 
 
 def test_run_industry_structure_writes_minimal_artifacts(tmp_path: Path) -> None:

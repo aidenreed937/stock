@@ -3,7 +3,7 @@
 import polars as pl
 import pytest
 
-from stock.analytics.primitives.rules import (
+from stock_analytics.primitives.rules import (
     above_ma,
     at_rolling_high,
     at_rolling_low,

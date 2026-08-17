@@ -8,8 +8,8 @@ from typing import TYPE_CHECKING
 
 import polars as pl
 
-from stock.analytics.pipelines.investor_brief.pipeline import run_investor_brief
-from stock.reporting.templates.investor_brief import _data_quality_notes
+from stock_analytics.pipelines.investor_brief.pipeline import run_investor_brief
+from stock_reporting.templates.investor_brief import _data_quality_notes
 
 if TYPE_CHECKING:
     from pathlib import Path

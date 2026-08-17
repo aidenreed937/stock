@@ -1,6 +1,6 @@
 import polars as pl
 
-from stock.data.quality.quarantine import QuarantineStore
+from stock_data.quality.quarantine import QuarantineStore
 
 
 def test_quarantine_store_writes_history_repair_file(tmp_path) -> None:

@@ -5,7 +5,7 @@ from unittest.mock import MagicMock
 import pandas as pd
 import polars as pl
 
-from stock.data.fetcher.tushare.stock_fetcher import TuShareStockFetcher
+from stock_data.fetcher.tushare.stock_fetcher import TuShareStockFetcher
 
 
 def test_tushare_stock_fetcher_single_symbol() -> None:
@@ -126,7 +126,7 @@ def test_tushare_stock_fetcher_trade_cal_local_catalog(monkeypatch: Any) -> None
     mock_cat = MagicMock()
     mock_cat.load_dataset.return_value = mock_df
 
-    monkeypatch.setattr("stock.data.catalog.DataCatalog", lambda **kwargs: mock_cat)
+    monkeypatch.setattr("stock_data.catalog.DataCatalog", lambda **kwargs: mock_cat)
 
     mock_client = MagicMock()
     fetcher = TuShareStockFetcher(client=mock_client)

@@ -1,7 +1,7 @@
 import polars as pl
 import pytest
 
-from stock.analytics.metrics import (
+from stock_analytics.metrics import (
     EntityType,
     MetricContext,
     MetricDomain,
