@@ -12,12 +12,14 @@ make market-temperature DATE=YYYY-MM-DD
 
 | 层 | 文件 | 职责 |
 |---|---|---|
+| 特征集市 | `src/stock/analytics/features/` | 预聚合全市场日频宽表 `data/curated/mart/market_daily.parquet` |
 | 配置 | `config/analytics/market_temperature.yaml` | 六维权重、指标清单、数据集水位、日期列和滞后容忍 |
-| 配置加载 | `src/stock/analytics/market_temperature/config.py` | 读取 YAML 并转为强类型配置 |
-| 事实采集 | `src/stock/analytics/market_temperature/facts.py` | 解析 20/5/10 日窗口、采集数据水位和 `MetricEngine` 指标事实 |
-| 评分结构 | `src/stock/analytics/market_temperature/scoring.py` | 按事实、方向和权重生成维度温度与综合温度 |
-| 输出模板 | `src/stock/analytics/market_temperature/templates.py` | 生成 `report.md`、`human_report.md` 与 `report.json` |
-| 产物写入 | `src/stock/analytics/market_temperature/artifacts.py` | 写 `runs/` 和刷新 `latest/` |
+| 配置加载 | `src/stock/analytics/pipelines/market_temperature/config.py` | 读取 YAML 并转为强类型配置 |
+| 事实采集 | `src/stock/analytics/pipelines/market_temperature/facts.py` | 解析 20/5/10 日窗口、采集数据水位和 `MetricEngine` / `FeatureStore` 事实 |
+| 评分结构 | `src/stock/analytics/pipelines/market_temperature/scores.py` | 按事实、方向和权重生成维度温度、综合温度与系统风险评级 |
+| 质量报告 | `src/stock/analytics/pipelines/market_temperature/quality.py` | 依据 manifest、facts 和配置生成质量对账报告 |
+| 输出模板 | `src/stock/reporting/templates/market_temperature.py` | 调用 Jinja2 模板渲染 `report.md` 与 `human_report.md` |
+| 产物写入 | `src/stock/analytics/pipelines/market_temperature/artifacts.py` | 写 `runs/` 和刷新 `latest/` |
 | CLI | `src/stock/cli/market_temperature.py` | 命令行入口 |
 
 产物目录：

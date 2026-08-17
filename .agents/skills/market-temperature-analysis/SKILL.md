@@ -15,9 +15,13 @@ description: 用本地 Curated 黄金表和现有 analytics/metrics 体系生成
 
 ## 已落地产物链路
 
-优先使用仓库内市场温度计产物管线，而不是每次手工拼装 facts：
+优先使用仓库内标准产物管线，而不是每次手工拼装 facts：
 
 ```bash
+# 0. 特征集市宽表构建与加速 (物化全市场 5000+ 股票日频聚合指标至 data/curated/mart/market_daily.parquet)
+make features-build [TARGET=market_daily] [OVERWRITE=1] [START=YYYY-MM-DD] [END=YYYY-MM-DD]
+
+# 1. 市场温度计产物管线
 make market-temperature DATE=YYYY-MM-DD
 make market-temperature DATE=YYYY-MM-DD COMPARE_DATE=YYYY-MM-DD
 # 或
@@ -28,16 +32,16 @@ UV_CACHE_DIR=.uv_cache UV_PYTHON_INSTALL_DIR=.uv_python uv run python -m stock.c
 默认配置在 `config/analytics/market_temperature.yaml`。产物写入 `data/analytics/market_temperature/`：
 
 - `runs/as_of=YYYY-MM-DD/run_YYYYMMDDTHHMMSS/manifest.json`：运行元数据、窗口交易日和文件清单；
-- `facts.parquet`：窗口、水位和 `MetricEngine` 指标事实；
+- `facts.parquet`：窗口、水位和 `MetricEngine` / `FeatureStore` 指标事实（优先从 `mart.market_daily` 毫秒级提取）；
 - `scores.json`：六维温度、综合温度、状态和合成说明；
-- `report.md` / `report.json`：面向阅读和机器消费的报告；
+- `report.md` / `report.json`：面向阅读和机器消费的报告（Markdown 由 `stock.reporting` 经 Jinja2 模板渲染）；
 - `human_report.md`：面向人工阅读的结论版报告；
 - `quality_report.md` / `quality_report.json`：口径、窗口、水位、滞后和质量约束报告；
 - `latest/`：最近一次成功运行的同名文件副本。
 
 需要解释两个基准日的驱动差异时，使用 `COMPARE_DATE` / `--compare-date`。它读取对比日期最近一次已落盘的 `manifest.json` 和 `scores.json`，只在人读版报告中加入“跨期驱动变化”表；不会重算或改写前期产物。
 
-当前代码已实现“配置 / 事实 / 评分结构 / 输出模板 / 质量报告 / 产物写入”分离。`scores.json` 已接入六维温度合成和系统性风险摘要：MetricEngine 指标和 DataCatalog 派生指标先在 `facts.parquet` 落为事实，再按 `config/analytics/market_temperature.yaml` 中的方向与权重温度化。权重为 0 的指标只作事实展示，不参与维度分。系统性风险只基于六维温度之间的共振和背离，不使用新闻、政策或模型记忆。`quality_report.md/json` 只基于 manifest、facts 和 YAML 数据配置生成，不重算指标。
+当前代码已实现“配置（`config/analytics/`） / 事实（`facts.parquet`） / 评分结构（`scores.json`） / 模板渲染（`src/stock/reporting/`） / 质量报告 / 产物写入”解耦。`scores.json` 已接入六维温度合成和系统性风险摘要：MetricEngine 指标和 DataCatalog/Mart 派生指标先在 `facts.parquet` 落为事实，再按 `config/analytics/market_temperature.yaml` 中的方向与权重温度化。权重为 0 的指标只作事实展示，不参与维度分。系统性风险只基于六维温度之间的共振和背离，不使用新闻、政策或模型记忆。`quality_report.md/json` 只基于 manifest、facts 和 YAML 数据配置生成，不重算指标。所有 Markdown 报告均通过 `stock.reporting.engine.ReportRenderer` 统一经 Jinja2 模板（`.md.j2`）渲染输出。
 
 申万行业结构分析使用独立产物管线：
 

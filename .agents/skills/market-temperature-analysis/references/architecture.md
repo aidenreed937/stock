@@ -6,37 +6,45 @@
 
 ## 总体关系
 
+`features / mart` 是特征宽表集市层，负责将全市场日频行情与明细指标预聚合为 `market_daily.parquet`，提供亚秒级查询加速。
+
 `metrics` 是通用指标计算层，负责把本地黄金表计算成可复用指标。
 
-`market_temperature` 是六维市场温度计应用层，负责把通用指标和温度计专用派生事实组织成一次分析产物。
+`market_temperature` 是六维市场温度计应用管线，负责把通用指标、特征集市事实和温度计专用派生事实组织成一次分析产物。
 
-`industry_structure` 是申万行业结构应用层，负责把行业动量、估值、基本面和拥挤度组织成行业排序与轮动分析产物。它和 `market_temperature` 是同级应用，不是六维温度计的 derived 指标。
+`industry_structure` 是申万行业结构应用管线，负责把行业动量、估值、基本面和拥挤度组织成行业排序与轮动分析产物。它和 `market_temperature` 是同级应用，不是六维温度计的 derived 指标。
+
+`reporting` 是统一展现层与模板渲染引擎，负责通过 Jinja2 模板将计算事实与评分结构格式化为整洁规范的 Markdown / 终端报告，不参与任何指标计算。
 
 ```text
 DataCatalog 本地黄金表
-  ├─> metrics / MetricEngine
-  │     └─ 通用指标：估值、资金、技术、广度、波动、流动性等
-  └─> market_temperature.derived
-        └─ 温度计专用派生事实：基本面扩展、涨跌停情绪、宏观外部环境等
+  ├─> features.builders.market_daily -> data/curated/mart/market_daily.parquet (日频预聚合宽表)
+  ├─> metrics / MetricEngine -> 通用指标：估值、资金、技术、广度、流动性等
+  └─> market_temperature.derived / facts_mart -> 温度计专用派生事实
 
-metrics 输出 + derived 输出
+metrics 输出 + mart 宽表 + derived 输出
   └─> market_temperature.facts
         └─ facts.parquet
 
 facts + config/analytics/market_temperature.yaml
-  └─> market_temperature.scoring
+  └─> market_temperature.scores
         └─ scores.json
 
-scores + facts
-  └─> market_temperature.templates / artifacts
+scores + facts + config
+  └─> stock.reporting.engine (Jinja2 模板渲染)
         └─ report.md / human_report.md / report.json
 
 DataCatalog + analytics/industry
-  └─> industry_structure.panel / scoring
-        └─ industry_panel.parquet / scores.json / report.md
+  └─> industry_structure.panel / scores
+        └─ industry_panel.parquet / scores.json -> stock.reporting -> report.md
 ```
 
 ## 包职责
+
+### `src/stock/analytics/features`
+用于构建和管理 Analytics Mart 日频聚合特征宽表。
+- `MarketDailyBuilder` 负责从底层 stock_daily_bar, margin, daily_basic, moneyflow 等全量宽表做向量化预聚合；
+- `FeatureStore` 负责 `data/curated/mart/` 宽表、元数据指纹与长表特征持久化与读取。
 
 ### `src/stock/analytics/metrics`
 
@@ -53,36 +61,37 @@ DataCatalog + analytics/industry
 - 输入数据和输出含义稳定；
 - 不依赖六维温度计的权重、归属、文案或报告结构。
 
-### `src/stock/analytics/market_temperature`
+### `src/stock/analytics/pipelines/market_temperature`
 
 用于生成 A 股六维市场温度计产物。
 
 - `pipeline.py` 编排一次运行；
-- `facts.py` 采集窗口、水位、`MetricEngine` 指标和派生指标；
+- `facts.py` / `facts_mart.py` 采集窗口、水位、`MetricEngine` 指标、`FeatureStore` 集市宽表和派生指标；
 - `derived.py` 计算温度计专用派生事实；
-- `scoring.py` 根据事实、方向和权重生成六维温度；
-- `templates.py` 输出机器报告和人工报告；
+- `scores.py` 根据事实、方向和权重生成六维温度与系统性风险评级；
+- `quality.py` 生成口径与质量报告；
 - `artifacts.py` 写入 `data/analytics/market_temperature/`。
 
-适合放入 `market_temperature/derived.py` 的指标：
-
-- 只服务六维温度计；
-- 本质是多个基础指标的子分或组合温度；
-- 需要跨多个本地数据集做事实拼接；
-- 需要按温度计口径处理缺失、滞后、反向映射或样本披露。
-
-### `src/stock/analytics/industry_structure`
+### `src/stock/analytics/pipelines/industry_structure`
 
 用于生成申万行业结构分析产物。
 
 - `panel.py` 构建每个行业一行的 `industry_panel.parquet`；
-- `scoring.py` 生成动量、估值、基本面、拥挤度四类子分和行业结构分；
+- `scores.py` 生成动量、估值、基本面、拥挤度四类子分和行业结构分；
 - `facts.py` 采集窗口、水位和面板摘要；
 - `pipeline.py` 编排一次运行；
-- `templates.py` 输出机器报告和人工报告；
 - `artifacts.py` 写入 `data/analytics/industry_structure/`。
 
 行业结构分只用于行业排序和轮动判断，不并入六维市场温度。
+
+### `src/stock/reporting`
+
+用于报告模板渲染与格式化展现层。
+
+- `engine/renderer.py`：`ReportRenderer` 单例环境，配置 Jinja2 模板加载器与 Markdown 空白符修剪策略；
+- `engine/filters.py`：注册 `pct`、`decimal`、`yi`、`wan`、`md_table` 等金融数据格式化过滤器；
+- `templates/`：沉淀 `.md.j2` 模板与通用宏（`macros/watermark.j2`, `macros/alerts.j2`）；
+- `templates/*.py`：展现层适配器，接收上游领域对象并调用模板引擎输出 Markdown 文本。
 
 ## 配置与事实分离
 
@@ -92,7 +101,7 @@ DataCatalog + analytics/industry
 - 指标归属；
 - 指标方向；
 - 指标内部权重；
-- 指标来源：`metric_engine` 或 `derived`；
+- 指标来源：`metric_engine`、`mart` 或 `derived`；
 - 需要检查水位的数据集。
 
 `facts.parquet` 是事实层，保存已计算出的原始指标值、温度值、水位、样本量和状态。`scores.json`、`report.md`、`human_report.md` 都应从 facts 和配置派生。
@@ -113,28 +122,29 @@ DataCatalog + analytics/industry
 优先按以下顺序判断：
 
 1. 若指标可跨场景复用，放入 `src/stock/analytics/metrics/calculators/`，并注册 `MetricSpec` 与 calculator。
-2. 若指标只服务六维温度计，放入 `src/stock/analytics/market_temperature/derived.py`。
-3. 若指标只服务行业结构排序，放入 `src/stock/analytics/industry_structure/`。
+2. 若指标只服务六维温度计，放入 `src/stock/analytics/pipelines/market_temperature/derived.py`。
+3. 若指标只服务行业结构排序，放入 `src/stock/analytics/pipelines/industry_structure/`。
 4. 若只调整维度归属、权重、方向或启停，修改对应的 `config/analytics/*.yaml`。
-5. 若只调整报告表达，修改对应应用包的 `templates.py`。
+5. 若只调整报告表达与排版，修改 `src/stock/reporting/templates/` 下对应的 `.md.j2` 模板或适配器。
 6. 若是分析流程、口径或执行注意事项，更新 skill 的 `SKILL.md` 或 `references/*.md`。
 
 ## 依赖方向
 
 允许：
 
-- `market_temperature` 调用 `metrics`；
+- `market_temperature` 调用 `metrics` 和 `FeatureStore`；
 - `market_temperature` 直接读取 `DataCatalog` 生成专用派生事实；
 - `industry_structure` 复用 `analytics/industry` 和 `DataCatalog` 生成行业面板；
-- `metrics` 读取 `DataCatalog` 计算通用指标。
+- `metrics` 读取 `DataCatalog` 计算通用指标；
+- `reporting` 读取分析产物字典并用 Jinja2 渲染 Markdown。
 
 不允许：
 
-- `metrics` 依赖 `market_temperature`；
-- `metrics` 依赖 `industry_structure`；
+- `metrics` 依赖 `market_temperature` 或 `industry_structure`；
 - `metrics` 感知六维权重、报告模板或温度计文案；
 - `market_temperature` 依赖行业结构分来合成六维综合温度；
-- `templates.py` 绕过 facts 直接读取本地数据重算指标；
+- `reporting` / 模板引擎反向调用底层数据计算指标；
+- `reporting` 绕过 facts 直接读取本地数据重算指标；
 - 用模型记忆补齐本地缺失数据。
 
 ## 扩展示例
