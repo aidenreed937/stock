@@ -28,7 +28,7 @@ flowchart LR
 | **② 历史全量回填** | 12 年 K 线/估值/宏观批量拉取与 2-Tier ETL | `make backfill START=... END=... SOURCE=...` | [5 大数据源回填手册](file:///Users/mac/workspace/personal/finance/stock/.agents/skills/data-pipeline/references/02_backfill_recipes.md) |
 | **③ 每日增量采集** | 盘后水位自动嗅探、波次保护与增量对账 | `make sync SOURCE=tushare` (或 `SOURCE=all`) | [增量同步与调度模板](file:///Users/mac/workspace/personal/finance/stock/.agents/skills/data-pipeline/references/03_sync_and_scheduling.md) |
 | **④ 清洗与标准化** | RAW 原始保真，Curated 统一金额/股本为标准单位 | `src/stock_data/pipeline/normalizer/unit_normalizer.py` | [单位与 Schema 规范](file:///Users/mac/workspace/personal/finance/stock/.agents/skills/data-pipeline/references/04_audit_ops_troubleshooting.md#②-单位口径与数值倍率原则) |
-| **⑤ 质量与门禁** | 运行时隔离区检查与数据源探针健康检测 | `make probe` / `make validate` | [离线治理与探针工具](file:///Users/mac/workspace/personal/finance/stock/.agents/skills/data-pipeline/references/04_audit_ops_troubleshooting.md#2-离线治理与探针工具-data-ops) |
+| **⑤ 质量与门禁** | 运行时隔离区检查与数据源探针健康检测 | `make probe` / `make validate` | [质量门禁与隔离区机制](file:///Users/mac/workspace/personal/finance/stock/.agents/skills/data-pipeline/references/05_quality_and_quarantine.md) |
 | **⑥ 审计与对账** | RAW vs Curated 零丢行物理对账与全库资产盘点 | `make master-audit` / `make audit TYPE=reconciliation` | [审计与对账 CLI 指南](file:///Users/mac/workspace/personal/finance/stock/.agents/skills/data-pipeline/references/04_audit_ops_troubleshooting.md#1-统一数据审计与对账-cli-audit-cli) |
 
 ---
@@ -106,3 +106,4 @@ make migrate-data APPLY=1
 * 📘 [02_五大数据源历史全量回填手册](file:///Users/mac/workspace/personal/finance/stock/.agents/skills/data-pipeline/references/02_backfill_recipes.md)：TuShare / 理杏仁 / Yahoo Finance / FRED / Alpha Vantage 详细回填实操与限频约束。
 * 📘 [03_每日增量采集与定时调度指南](file:///Users/mac/workspace/personal/finance/stock/.agents/skills/data-pipeline/references/03_sync_and_scheduling.md)：水位感知增量更新、TaskBundle 组合调度与生产 Crontab 3 波次模板。
 * 📘 [04_数据审计、离线治理与故障排查](file:///Users/mac/workspace/personal/finance/stock/.agents/skills/data-pipeline/references/04_audit_ops_troubleshooting.md)：多维对账、Schema 演进报错解法、落盘验证脚本与探针诊断。
+* 📘 [05_数据质量门禁与异常隔离区机制](file:///Users/mac/workspace/personal/finance/stock/.agents/skills/data-pipeline/references/05_quality_and_quarantine.md)：QualityGate 物理断言清单、两融跨交易所覆盖规则与 QuarantineStore 排查实操。
