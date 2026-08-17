@@ -42,14 +42,12 @@ def calculate_yield_curve_slope(
     Returns:
         pl.DataFrame: 附加了 yield_curve_slope_10y_2y 列的 DataFrame。
     """
-    required = {long_yield_col, short_yield_col}
-    if df.is_empty() or not required.issubset(df.columns):
-        return df
-
-    slope_expr = (pl.col(long_yield_col) - pl.col(short_yield_col)).alias(
-        "yield_curve_slope_10y_2y"
+    return calculate_macro_spread(
+        df,
+        higher_rate_col=long_yield_col,
+        lower_rate_col=short_yield_col,
+        spread_col_name="yield_curve_slope_10y_2y",
     )
-    return df.with_columns(slope_expr)
 
 
 def calculate_macro_spread(

@@ -55,3 +55,17 @@ def test_calculate_indicators() -> None:
     assert "macd" in df_macd.columns
     assert "macd_signal" in df_macd.columns
     assert "macd_hist" in df_macd.columns
+
+
+def test_indicator_safety_guards() -> None:
+    empty_df = pl.DataFrame()
+    assert calculate_sma(empty_df).is_empty()
+    assert calculate_ema(empty_df).is_empty()
+    assert calculate_rsi(empty_df).is_empty()
+    assert calculate_macd(empty_df).is_empty()
+
+    missing_col_df = pl.DataFrame({"volume": [100.0, 200.0]})
+    assert "sma_5" not in calculate_sma(missing_col_df, column="close").columns
+    assert "ema_12" not in calculate_ema(missing_col_df, column="close").columns
+    assert "rsi_14" not in calculate_rsi(missing_col_df, column="close").columns
+    assert "macd" not in calculate_macd(missing_col_df, column="close").columns

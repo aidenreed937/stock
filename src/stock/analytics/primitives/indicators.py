@@ -20,6 +20,8 @@ def calculate_sma(
     df: pl.DataFrame, window: int = DEFAULT_SMA_WINDOW, column: str = "close"
 ) -> pl.DataFrame:
     """计算简单移动平均线 (Simple Moving Average)。"""
+    if df.is_empty() or column not in df.columns:
+        return df
     sma_col_name = f"sma_{window}"
     return df.with_columns(pl.col(column).rolling_mean(window_size=window).alias(sma_col_name))
 
@@ -28,6 +30,8 @@ def calculate_ema(
     df: pl.DataFrame, window: int = DEFAULT_EMA_WINDOW, column: str = "close"
 ) -> pl.DataFrame:
     """计算指数移动平均线 (Exponential Moving Average)。"""
+    if df.is_empty() or column not in df.columns:
+        return df
     ema_col_name = f"ema_{window}"
     return df.with_columns(pl.col(column).ewm_mean(span=window, adjust=False).alias(ema_col_name))
 
@@ -36,8 +40,8 @@ def calculate_rsi(
     df: pl.DataFrame, window: int = DEFAULT_RSI_WINDOW, column: str = "close"
 ) -> pl.DataFrame:
     """计算相对强弱指标 (RSI)。"""
-    if "trade_date" in df.columns:
-        df = df.sort("trade_date")
+    if df.is_empty() or column not in df.columns:
+        return df
 
     diff = pl.col(column).diff()
     gain = pl.when(diff > 0).then(diff).otherwise(0.0)
@@ -46,7 +50,7 @@ def calculate_rsi(
     avg_gain = gain.ewm_mean(span=window, adjust=False)
     avg_loss = loss.ewm_mean(span=window, adjust=False)
 
-    rs = avg_gain / (avg_loss + 1e-10)
+    rs = avg_gain / (avg_loss + 1e-8)
     # 当连续平盘 (avg_gain == 0 且 avg_loss == 0) 时，RSI 应为中性值 50.0
     rsi = pl.when((avg_gain == 0) & (avg_loss == 0)).then(50.0).otherwise(100 - (100 / (1 + rs)))
 
@@ -61,6 +65,9 @@ def calculate_macd(
     column: str = "close",
 ) -> pl.DataFrame:
     """计算 MACD 指标 (平滑异同移动平均线)。"""
+    if df.is_empty() or column not in df.columns:
+        return df
+
     fast_ema = pl.col(column).ewm_mean(span=fast, adjust=False)
     slow_ema = pl.col(column).ewm_mean(span=slow, adjust=False)
     macd = fast_ema - slow_ema
