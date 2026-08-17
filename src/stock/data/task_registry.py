@@ -3,6 +3,8 @@
 from dataclasses import dataclass
 from typing import Any
 
+from stock.data.task_bundles import TASK_BUNDLES, TaskBundle
+
 
 @dataclass(frozen=True)
 class TaskSpec:
@@ -18,15 +20,6 @@ class TaskSpec:
     fetch_mode: str = "per_day"  # "per_day" | "per_symbol"
     is_single_sync: bool = False
     required_pool: str | None = None
-
-
-@dataclass(frozen=True)
-class TaskBundle:
-    """一组可由调度入口展开的原子项目任务。"""
-
-    bundle_name: str
-    provider: str
-    tasks: tuple[str, ...]
 
 
 # 向后兼容保留的集合别名（内部已统一由 TaskSpec 属性驱动）
@@ -72,12 +65,14 @@ def _make_spec(
     partitioned: bool = True,
     is_single_sync: bool = False,
     required_pool: str | None = None,
+    frequency: str = "daily",
 ) -> TaskSpec:
     return TaskSpec(
         task_name=task,
         provider=prov,
         api_name=api,
         dataset=dataset,
+        frequency=frequency,
         quality_profile=qp,
         fetch_mode=fetch_mode,
         partitioned=partitioned,
@@ -89,8 +84,24 @@ def _make_spec(
 _CUSTOM_TASKS: dict[tuple[str, str], TaskSpec] = {
     ("tushare", "stock_daily_bar"): _make_spec("stock_daily_bar", "tushare", "daily", "stock_daily_bar", "bar", fetch_mode="per_day", partitioned=True),
     ("tushare", "report_rc"): _make_spec("report_rc", "tushare", "report_rc", "report_rc", fetch_mode="per_day", partitioned=True),
-    ("tushare", "forecast"): _make_spec("forecast", "tushare", "forecast", "forecast", fetch_mode="per_day", partitioned=True),
-    ("tushare", "express"): _make_spec("express", "tushare", "express", "express", fetch_mode="per_day", partitioned=True),
+    ("tushare", "forecast"): _make_spec(
+        "forecast",
+        "tushare",
+        "forecast",
+        "forecast",
+        fetch_mode="per_day",
+        partitioned=True,
+        frequency="quarterly",
+    ),
+    ("tushare", "express"): _make_spec(
+        "express",
+        "tushare",
+        "express",
+        "express",
+        fetch_mode="per_day",
+        partitioned=True,
+        frequency="quarterly",
+    ),
     ("tushare", "index_daily_bar"): _make_spec("index_daily_bar", "tushare", "index_daily", "index_daily_bar", "bar", fetch_mode="per_symbol", partitioned=False, is_single_sync=True),
     ("yfinance", "macro_indicators"): _make_spec("macro_indicators", "yfinance", "macro_indicators", "macro_indicators", "macro", fetch_mode="per_symbol", partitioned=False, is_single_sync=True),
     ("alphavantage", "fx_daily"): _make_spec("fx_daily", "alphavantage", "FX_DAILY", "macro_indicators", "macro", fetch_mode="per_symbol", partitioned=False, is_single_sync=True),
@@ -142,57 +153,6 @@ _CUSTOM_TASKS: dict[tuple[str, str], TaskSpec] = {
         is_single_sync=True,
     ),
 }
-_TASK_BUNDLES: dict[tuple[str, str], TaskBundle] = {
-    ("lixinger", "market_bundle"): TaskBundle(
-        bundle_name="market_bundle",
-        provider="lixinger",
-        tasks=("stock_daily_bar", "index_daily_bar"),
-    ),
-    ("lixinger", "industry_bundle"): TaskBundle(
-        bundle_name="industry_bundle",
-        provider="lixinger",
-        tasks=(
-            "sw_2021_constituents",
-            "sw_2021_fundamental",
-            "sw_2021_l2_fundamental",
-            "sw_2021_fs_non_financial",
-            "sw_2021_fs_bank",
-            "sw_2021_fs_security",
-            "sw_2021_fs_insurance",
-        ),
-    ),
-    ("lixinger", "company_bundle"): TaskBundle(
-        bundle_name="company_bundle",
-        provider="lixinger",
-        tasks=(
-            "company_fundamental",
-            "fs_non_financial",
-            "fs_bank",
-            "fs_security",
-            "fs_insurance",
-            "pledge_info",
-        ),
-    ),
-    ("lixinger", "macro_bundle"): TaskBundle(
-        bundle_name="macro_bundle",
-        provider="lixinger",
-        tasks=(
-            "national_debt",
-            "interest_rates",
-            "non_ferrous_metals",
-            "crude_oil",
-            "investor_accounts",
-            "cn_m",
-            "sf_month",
-        ),
-    ),
-    ("lixinger", "index_bundle"): TaskBundle(
-        bundle_name="index_bundle",
-        provider="lixinger",
-        tasks=("index_fundamental",),
-    ),
-}
-
 _ALIASES: dict[tuple[str, str], str] = {
     ("tushare", "daily"): "stock_daily_bar",
     ("tushare", "daily_bar"): "stock_daily_bar",
@@ -225,7 +185,7 @@ def list_available_bundles(provider: str) -> list[str]:
     prov = provider.lower()
     return [
         bundle.bundle_name
-        for (bundle_provider, _), bundle in _TASK_BUNDLES.items()
+        for (bundle_provider, _), bundle in TASK_BUNDLES.items()
         if bundle_provider == prov
     ]
 
@@ -234,7 +194,7 @@ def resolve_bundle(provider: str, bundle_name: str) -> TaskBundle:
     """解析任务包，并返回其原子任务列表。"""
     provider_name = provider.lower()
     requested = bundle_name.strip()
-    bundle = _TASK_BUNDLES.get((provider_name, requested))
+    bundle = TASK_BUNDLES.get((provider_name, requested))
     if bundle is None:
         raise ValueError(f"未知任务包 [{provider_name}/{bundle_name}]。")
     return bundle
@@ -252,7 +212,7 @@ def expand_task_targets(provider: str, endpoints: list[str] | None = None) -> li
         requested = endpoint.strip()
         if not requested:
             continue
-        bundle = _TASK_BUNDLES.get((provider_name, requested))
+        bundle = TASK_BUNDLES.get((provider_name, requested))
         targets = bundle.tasks if bundle is not None else (requested,)
         for target in targets:
             if target not in seen:
@@ -352,7 +312,7 @@ def resolve_task(provider: str, task_name: str, symbol: str = "") -> TaskSpec:
         raise ValueError(
             f"项目任务 [{provider_name}/{task_name}] 已停用；请使用 stock_daily_bar。"
         )
-    if (provider_name, requested) in _TASK_BUNDLES:
+    if (provider_name, requested) in TASK_BUNDLES:
         raise ValueError(
             f"[{provider_name}/{task_name}] 是任务包，不是原子任务；"
             "请先通过 expand_task_targets 展开。"
@@ -407,7 +367,7 @@ def resolve_public_task(provider: str, task_name: str, symbol: str = "") -> Task
         raise ValueError(
             f"项目任务 [{provider_name}/{task_name}] 已停用；请使用 stock_daily_bar。"
         )
-    if (provider_name, requested) in _TASK_BUNDLES:
+    if (provider_name, requested) in TASK_BUNDLES:
         raise ValueError(
             f"[{provider_name}/{task_name}] 是任务包，不是公开原子任务；"
             "请在调度入口中展开。"

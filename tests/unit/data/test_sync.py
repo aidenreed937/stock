@@ -335,6 +335,29 @@ def test_sync_cli_main(capsys) -> None:
         assert mock_log.called
 
 
+def test_sync_cli_forwards_comma_separated_task_bundles() -> None:
+    with (
+        patch(
+            "sys.argv",
+            [
+                "sync.py",
+                "-s",
+                "tushare",
+                "-e",
+                "market_bundle,index_bundle,fund_bundle",
+            ],
+        ),
+        patch.object(DailySyncEngine, "sync_daily", return_value=([], [], None)) as sync_daily,
+    ):
+        sync_cli_main()
+
+    assert sync_daily.call_args.kwargs["endpoints"] == [
+        "market_bundle",
+        "index_bundle",
+        "fund_bundle",
+    ]
+
+
 def test_sync_cli_treats_no_data_as_failure() -> None:
     mock_plan = [
         SyncTaskItem(

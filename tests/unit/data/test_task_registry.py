@@ -123,8 +123,6 @@ def test_lixinger_task_bundles() -> None:
         "macro_bundle",
         "index_bundle",
     ]
-    assert list_available_bundles("tushare") == []
-
     industry = resolve_bundle("lixinger", "industry_bundle")
     assert industry.provider == "lixinger"
     assert industry.tasks == (
@@ -139,6 +137,88 @@ def test_lixinger_task_bundles() -> None:
     assert "industry_bundle" not in list_available_tasks("lixinger")
 
     assert expand_task_targets("lixinger", ["macro_bundle"])[-2:] == ["cn_m", "sf_month"]
+
+
+def test_tushare_task_bundles() -> None:
+    assert list_available_bundles("tushare") == [
+        "market_bundle",
+        "industry_bundle",
+        "index_bundle",
+        "index_weight_bundle",
+        "fund_bundle",
+        "equity_flow_bundle",
+        "liquidity_bundle",
+        "fundamental_bundle",
+        "pit_bundle",
+        "report_rc_bundle",
+        "macro_daily_bundle",
+        "macro_periodic_bundle",
+        "metadata_bundle",
+        "derivatives_bundle",
+    ]
+
+    market = resolve_bundle("tushare", "market_bundle")
+    assert market.tasks == (
+        "stock_daily_bar",
+        "daily_basic",
+        "adj_factor",
+        "stk_limit",
+        "limit_list_d",
+        "suspend_d",
+    )
+
+    index = resolve_bundle("tushare", "index_bundle")
+    assert index.tasks == ("index_daily_bar", "index_dailybasic")
+    assert resolve_bundle("tushare", "index_weight_bundle").tasks == ("index_weight",)
+    assert [resolve_task("tushare", task).frequency for task in index.tasks] == [
+        "daily",
+        "daily",
+    ]
+    assert resolve_task("tushare", "index_weight").frequency == "monthly"
+
+    periodic = resolve_bundle("tushare", "macro_periodic_bundle")
+    assert periodic.tasks == (
+        "cn_gdp",
+        "cn_cpi",
+        "cn_ppi",
+        "cn_pmi",
+        "cn_m",
+        "sf_month",
+        "shibor_lpr",
+    )
+
+    pit = resolve_bundle("tushare", "pit_bundle")
+    assert pit.tasks == ("forecast", "express")
+    assert resolve_bundle("tushare", "report_rc_bundle").tasks == ("report_rc",)
+    assert [resolve_task("tushare", task).frequency for task in pit.tasks] == [
+        "quarterly",
+        "quarterly",
+    ]
+    assert resolve_task("tushare", "report_rc").frequency == "daily"
+
+    for bundle_name in list_available_bundles("tushare"):
+        bundle = resolve_bundle("tushare", bundle_name)
+        assert bundle_name not in list_available_tasks("tushare")
+        for task_name in bundle.tasks:
+            task = resolve_task("tushare", task_name)
+            assert task.task_name == task_name
+            assert task.provider == "tushare"
+
+
+def test_expand_tushare_task_bundles_keeps_order_and_deduplicates() -> None:
+    assert expand_task_targets(
+        "tushare", ["market_bundle", "index_bundle", "index_weight_bundle", "market_bundle"]
+    ) == [
+        "stock_daily_bar",
+        "daily_basic",
+        "adj_factor",
+        "stk_limit",
+        "limit_list_d",
+        "suspend_d",
+        "index_daily_bar",
+        "index_dailybasic",
+        "index_weight",
+    ]
 
 
 def test_expand_task_targets_keeps_atomic_tasks_and_deduplicates() -> None:
