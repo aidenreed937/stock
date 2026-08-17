@@ -92,13 +92,6 @@ def test_market_scan_engine_get_or_compute_cache(tmp_path: Path) -> None:
 
 def test_market_scan_engine_compute_mocked() -> None:
     engine = MarketScanEngine()
-    engine.regime_analyzer = MagicMock()
-    engine.regime_analyzer.evaluate_regime.return_value = MacroRegimeResult(
-        trade_date=date(2026, 8, 12),
-        regime=MacroRegime.OPPORTUNITY_ZONE,
-        regime_desc="机会区",
-        suggested_equity_exposure=0.75,
-    )
     engine.tcr_calc = MagicMock()
     engine.tcr_calc.calculate_daily_tcr.return_value = TCRAnalysisResult(
         trade_date=date(2026, 8, 12),
@@ -126,13 +119,6 @@ def test_market_scan_engine_compute_mocked() -> None:
 
 def test_market_scan_engine_uses_actual_result_date_for_holiday_request() -> None:
     engine = MarketScanEngine()
-    engine.regime_analyzer = MagicMock()
-    engine.regime_analyzer.evaluate_regime.return_value = MacroRegimeResult(
-        trade_date=date(2026, 8, 14),
-        regime=MacroRegime.OPPORTUNITY_ZONE,
-        regime_desc="机会区",
-        suggested_equity_exposure=0.75,
-    )
     engine.tcr_calc = MagicMock()
     engine.tcr_calc.calculate_daily_tcr.return_value = TCRAnalysisResult(
         trade_date=date(2026, 8, 14),

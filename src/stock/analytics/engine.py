@@ -1,8 +1,8 @@
 """全市场量化体检聚合引擎 (Market Scan Engine)。
 
 职责:
-    1. 协调宏观周期、中观行业与微观情绪 7 大分析器执行全量量化计算；
-    2. 执行业务层研判定性 (一句话结论、宏观四信号定性、微观健康度状态与操作备忘)；
+    1. 协调中观行业与微观情绪各分析器执行全量量化计算；
+    2. 执行业务层研判定性 (一句话结论、微观健康度状态与操作备忘)；
     3. 输出强类型聚合根 DailyMarketScanSummary；
     4. 提供按日目录 (reports/scan/{YYYY-MM-DD}/data.json) 的数据物化持久化与极速反序列化加载。
 """
@@ -24,7 +24,6 @@ from stock.analytics.industry.classifier import IndustryClassifier
 from stock.analytics.industry.momentum_spread import IndustryMomentumSpreadAnalyzer
 from stock.analytics.industry.pb_roe import IndustryPBROEAnalyzer
 from stock.analytics.industry.tcr import TCRCalculator
-from stock.analytics.macro.regime import MacroRegimeAnalyzer
 from stock.analytics.micro.breadth import MultiPeriodMarketBreadthAnalyzer
 from stock.analytics.micro.margin import MarginPenetrationCalculator
 from stock.analytics.micro.sentiment import MarketSentimentAnalyzer
@@ -40,7 +39,6 @@ class MarketScanEngine:
         """初始化聚合引擎与各领域分析器。"""
         self.catalog = catalog or DataCatalog(data_source="tushare")
         self.classifier = IndustryClassifier()
-        self.regime_analyzer = MacroRegimeAnalyzer()
         self.tcr_calc = TCRCalculator(catalog=self.catalog)
         self.pbroe_analyzer = IndustryPBROEAnalyzer()
         self.momentum_analyzer = IndustryMomentumSpreadAnalyzer(catalog=self.catalog)
@@ -54,17 +52,11 @@ class MarketScanEngine:
         index_symbol: str = "000300",
     ) -> DailyMarketScanSummary:
         """执行各子系统全量计算并合成研判结论 (支持共享内存预加载与多核并行)。"""
-        # 1. 预加载共享的 daily_basic (单次读取，供巴菲特、两融、情绪 3 大模块复用)
+        # 1. 预加载共享的 daily_basic (单次读取，供两融、情绪等模块复用)
         df_daily_basic = self.catalog.load_dataset("daily_basic", end_date=target_date)
 
-        # 2. 多核并发执行 7 大独立分析器
+        # 2. 多核并发执行独立分析器
         with ThreadPoolExecutor(max_workers=6) as executor:
-            f_regime = executor.submit(
-                self.regime_analyzer.evaluate_regime,
-                target_date=target_date,
-                index_symbol=index_symbol,
-                daily_basic_df=df_daily_basic,
-            )
             f_tcr = executor.submit(self.tcr_calc.calculate_daily_tcr, target_date=target_date)
             f_pbroe = executor.submit(
                 self.pbroe_analyzer.analyze_cross_section, target_date=target_date
@@ -86,7 +78,6 @@ class MarketScanEngine:
                 daily_basic_df=df_daily_basic,
             )
 
-            regime_res = f_regime.result()
             tcr_res = f_tcr.result()
             pbroe_res = f_pbroe.result()
             momentum_res = f_mom.result()
@@ -97,7 +88,6 @@ class MarketScanEngine:
         result_dates = [
             getattr(result, "trade_date", None)
             for result in (
-                regime_res,
                 tcr_res,
                 pbroe_res,
                 momentum_res,
@@ -122,10 +112,10 @@ class MarketScanEngine:
         )
         top1_tcr = tcr_res.top1_tcr if tcr_res else 0.0
 
-        one_sentence = evaluate_one_sentence_summary(regime_res, undervalued, crowded)
-        signals = build_signals(regime_res, breadth_res)
+        one_sentence = evaluate_one_sentence_summary(None, undervalued, crowded)
+        signals = build_signals(None, breadth_res)
         micro_health = evaluate_micro_health(margin_res, sentiment_res, breadth_res)
-        action_items = build_action_items(regime_res, undervalued, crowded)
+        action_items = build_action_items(None, undervalued, crowded)
 
         return DailyMarketScanSummary(
             trade_date=eval_date,
@@ -137,7 +127,7 @@ class MarketScanEngine:
             top1_tcr=top1_tcr,
             micro_health=micro_health,
             action_items=action_items,
-            macro=regime_res,
+            macro=None,
             tcr=tcr_res,
             pbroe=pbroe_res,
             momentum=momentum_res,

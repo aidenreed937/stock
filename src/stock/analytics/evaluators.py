@@ -19,8 +19,14 @@ def evaluate_one_sentence_summary(
     crowded: list[str],
 ) -> str:
     """构建一句话核心决策结论。"""
+    uv_str = "/".join(undervalued[:3]) if undervalued else "低估高股息"
+    crowd_str = "/".join(crowded[:2]) if crowded else "高位题材"
+
     if macro is None:
-        return "数据暂缺，建议保持防守仓位并等待数据完整。"
+        return (
+            f"微观情绪与行业结构分化明显。"
+            f"**建议保持均衡标准配置，优选低估资产（{uv_str}），回避过热板块（{crowd_str}）。**"
+        )
 
     eyby = macro.ey_by
     all_m = macro.all_market
@@ -31,9 +37,6 @@ def evaluate_one_sentence_summary(
     pb_pctl = all_m.pb_percentile_10y if all_m else 50.0
     buf_pctl = buffett.percentile_10y if buffett else 0.0
     exp_pct = macro.suggested_equity_exposure * 100
-
-    uv_str = "/".join(undervalued[:3]) if undervalued else "低估高股息"
-    crowd_str = "/".join(crowded[:2]) if crowded else "高位题材"
 
     if eyby_pctl >= 70.0 and (buf_pctl >= 80.0 or pb_pctl > 60.0):
         return (
@@ -151,7 +154,7 @@ def build_signals(
     macro: MacroRegimeResult | None,
     breadth: MarketBreadthResult | None,
 ) -> list[MacroSignalItem]:
-    """生成宏观四维信号列表。"""
+    """生成宏观与微观信号列表。"""
     signals: list[MacroSignalItem] = []
     for item in [
         _build_eyby_signal(macro),
