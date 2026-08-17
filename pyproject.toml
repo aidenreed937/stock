@@ -106,6 +106,6 @@ warn_untyped_fields = true
 
 [tool.pytest.ini_options]
 minversion = "8.0"
-addopts = "-ra -q --cov=src/stock --cov-fail-under=75"
+addopts = "-ra -q --cov=src/stock --cov-fail-under=75 --import-mode=importlib"
 testpaths = ["tests"]
 pythonpath = ["src", "."]

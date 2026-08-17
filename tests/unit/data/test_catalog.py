@@ -305,3 +305,41 @@ def test_latest_trade_dates_parses_month_only_macro_dataset(tmp_path: Path) -> N
     catalog = DataCatalog(data_source="lixinger", storage_dir=tmp_path)
 
     assert catalog.latest_trade_dates("cn_m") == [date(2026, 7, 1)]
+
+
+def test_load_dataset_with_columns_projection(tmp_path: Path) -> None:
+    """load_dataset 支持列投影，只返回请求的列。"""
+    partition = tmp_path / "tushare/market=CN/daily_basic/year=2026/month=08"
+    partition.mkdir(parents=True, exist_ok=True)
+    pl.DataFrame(
+        {
+            "symbol": ["AAA", "BBB"],
+            "trade_date": [date(2026, 8, 1), date(2026, 8, 1)],
+            "pe": [10.5, 20.3],
+            "pb": [1.2, 2.1],
+            "turnover_rate": [3.5, 4.2],
+            "schema_version": ["v2", "v2"],
+            "data_source": ["tushare", "tushare"],
+        }
+    ).write_parquet(partition / "data.parquet")
+
+    catalog = DataCatalog(data_source="tushare", storage_dir=tmp_path)
+    df = catalog.load_dataset("daily_basic", columns=["trade_date", "pe", "turnover_rate"])
+    assert df.columns == ["trade_date", "pe", "turnover_rate"]
+    assert len(df) == 2
+    assert sorted(df["pe"].to_list()) == [10.5, 20.3]
+
+
+def test_load_bars_with_columns_projection_and_filters(tmp_path: Path) -> None:
+    """load_bars 支持列投影同时保持 symbol/date 过滤有效性。"""
+    _make_bar_file(tmp_path, "stock_daily_bar", "CN", 2026, 8)
+    catalog = DataCatalog(data_source="tushare", storage_dir=tmp_path)
+    df = catalog.load_bars(
+        symbol="AAA",
+        start_date=date(2026, 8, 1),
+        end_date=date(2026, 8, 1),
+        columns=["trade_date", "close", "amount"],
+    )
+    assert df.columns == ["trade_date", "close", "amount"]
+    assert len(df) == 1
+    assert df["close"][0] == 10.5

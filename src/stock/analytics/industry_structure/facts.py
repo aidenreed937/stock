@@ -195,13 +195,47 @@ def _static_dataset_sample_size(catalog: DataCatalog, dataset: str) -> int:
         return 0
 
 
+def _load_dataset_date_frame(
+    catalog: DataCatalog,
+    dataset: str,
+    start_date: date,
+    end_date: date,
+    date_column: str,
+) -> pl.DataFrame:
+    for kwargs in (
+        {"start_date": start_date, "end_date": end_date, "columns": [date_column]},
+        {"start_date": start_date, "end_date": end_date},
+        {"end_date": end_date},
+        {},
+    ):
+        try:
+            return catalog.load_dataset(dataset, **kwargs)
+        except TypeError:
+            continue
+        except Exception:
+            return pl.DataFrame()
+    return pl.DataFrame()
+
+
 def _latest_dataset_date(
     catalog: DataCatalog,
     item: DatasetConfig,
     as_of_date: date,
 ) -> date | None:
     date_column = item.date_column or "trade_date"
-    frame = catalog.load_dataset(item.dataset, end_date=as_of_date)
+    if date_column == "trade_date" and hasattr(catalog, "latest_trade_dates"):
+        latest_dates = catalog.latest_trade_dates(item.dataset, n=1)
+        if latest_dates and latest_dates[0] <= as_of_date:
+            return latest_dates[0]
+
+    lookback_days = max(item.max_lag_days * 2, 90 if item.cadence in ("event", "quarterly") else 14)
+    frame = _load_dataset_date_frame(
+        catalog,
+        item.dataset,
+        as_of_date - timedelta(days=lookback_days),
+        as_of_date,
+        date_column,
+    )
     if frame.is_empty() or date_column not in frame.columns:
         return None
     dates = [

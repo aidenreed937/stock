@@ -303,9 +303,7 @@ class ConsistencyValidator:
     ) -> None:
         health = industry_scores.get("structure_health", {}).get("level")
         brief_health = (
-            brief_json.get("industry_snapshot", {})
-            .get("structure_health", {})
-            .get("level")
+            brief_json.get("industry_snapshot", {}).get("structure_health", {}).get("level")
         )
         if health != brief_health:
             message = f"简报结构健康度={brief_health!r}，行业健康度={health!r}"

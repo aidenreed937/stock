@@ -6,6 +6,12 @@ from typing import TYPE_CHECKING, Any, cast
 
 import polars as pl
 
+from stock.analytics.market_temperature.derived_options import (
+    _option_daily_frame as _option_daily_frame,
+)
+from stock.analytics.market_temperature.derived_options import (
+    option_rows,
+)
 from stock.data.catalog import DataCatalog
 
 if TYPE_CHECKING:
@@ -183,8 +189,12 @@ def _forecast_rows(
     trade_dates: tuple[date, ...],
 ) -> list[dict[str, Any]]:
     start_date = trade_dates[0]
-    frame = _load_dataset(cat, "forecast")
-    if frame.is_empty() or "ann_date" not in frame.columns:
+    frame = _load_dataset(
+        cat,
+        "forecast",
+        columns=["symbol", "end_date", "ann_date", "p_change_min", "p_change_max", "type"],
+    )
+    if frame.is_empty():
         return [
             _metric_row(
                 "fundamental",
@@ -245,7 +255,11 @@ def _report_revision_rows(
     trade_dates: tuple[date, ...],
 ) -> list[dict[str, Any]]:
     start_date = trade_dates[0]
-    frame = _load_dataset(cat, "report_rc")
+    frame = _load_dataset(
+        cat,
+        "report_rc",
+        columns=["symbol", "org_name", "quarter", "report_date", "np"],
+    )
     required = {"symbol", "org_name", "quarter", "report_date", "np"}
     if frame.is_empty() or not required.issubset(frame.columns):
         return [
@@ -474,176 +488,7 @@ def _limit_event_temperature_row(
 
 
 def _option_rows(cat: DataCatalog, as_of_date: date) -> list[dict[str, Any]]:
-    frame = _option_daily_frame(_load_dataset(cat, "opt_daily"), _load_dataset(cat, "opt_basic"))
-    if frame.is_empty():
-        return [
-            _metric_row(
-                "sentiment",
-                "option_risk_temperature",
-                as_of_date,
-                None,
-                status="insufficient",
-                note="opt_daily/opt_basic 无法形成期权成交风险代理；未计算隐含波动率",
-            )
-        ]
-    rows = [
-        _percentile_metric_row(
-            frame,
-            "option_put_call_volume_ratio_temperature",
-            "_put_call_volume_ratio",
-            as_of_date,
-            dimension="sentiment",
-            note="认沽/认购成交量比历史分位，高位代表保护性需求或风险偏好下降",
-        ),
-        _percentile_metric_row(
-            frame,
-            "option_put_call_oi_ratio_temperature",
-            "_put_call_oi_ratio",
-            as_of_date,
-            dimension="sentiment",
-            note="认沽/认购持仓量比历史分位，高位代表保护性持仓需求较强",
-        ),
-        _percentile_metric_row(
-            frame,
-            "option_amount_temperature",
-            "_amount",
-            as_of_date,
-            dimension="sentiment",
-            note="期权成交额历史分位，只衡量期权市场活跃度",
-        ),
-        _percentile_metric_row(
-            frame,
-            "option_open_interest_temperature",
-            "_oi",
-            as_of_date,
-            dimension="sentiment",
-            note="期权持仓量历史分位，只衡量期权市场存量活跃度",
-        ),
-        _percentile_metric_row(
-            frame,
-            "option_near_month_amount_share_temperature",
-            "_near_month_amount_share",
-            as_of_date,
-            dimension="sentiment",
-            note="近月合约成交额占比历史分位，高位代表短期限交易更集中",
-        ),
-    ]
-    rows.append(_option_risk_temperature_row(rows, frame, as_of_date))
-    return rows
-
-
-def _option_daily_frame(daily: pl.DataFrame, basic: pl.DataFrame) -> pl.DataFrame:
-    required_daily = {"symbol", "trade_date", "vol", "amount", "oi"}
-    required_basic = {"symbol", "call_put", "s_month"}
-    if daily.is_empty() or basic.is_empty():
-        return pl.DataFrame()
-    if not required_daily.issubset(daily.columns) or not required_basic.issubset(basic.columns):
-        return pl.DataFrame()
-    basic_frame = basic.select(
-        pl.col("symbol").cast(pl.String).alias("symbol"),
-        pl.col("call_put").cast(pl.String).alias("_call_put"),
-        pl.col("s_month").cast(pl.String).alias("_s_month"),
-    ).drop_nulls(subset=["symbol", "_call_put", "_s_month"])
-    option_frame = (
-        daily.select(
-            pl.col("symbol").cast(pl.String).alias("symbol"),
-            "trade_date",
-            pl.col("vol").cast(pl.Float64, strict=False).alias("_vol"),
-            pl.col("amount").cast(pl.Float64, strict=False).alias("_amount"),
-            pl.col("oi").cast(pl.Float64, strict=False).alias("_oi"),
-        )
-        .drop_nulls(subset=["symbol", "trade_date"])
-        .join(basic_frame, on="symbol", how="inner")
-        .with_columns(pl.col("trade_date").dt.strftime("%Y%m").alias("_trade_month"))
-    )
-    if option_frame.is_empty():
-        return pl.DataFrame()
-    near_month = (
-        option_frame.filter(pl.col("_s_month") >= pl.col("_trade_month"))
-        .group_by("trade_date")
-        .agg(pl.col("_s_month").min().alias("_near_month"))
-    )
-    option_frame = option_frame.join(near_month, on="trade_date", how="left")
-    return (
-        option_frame.group_by("trade_date")
-        .agg(
-            pl.when(pl.col("_call_put") == "P")
-            .then(pl.col("_vol"))
-            .otherwise(0.0)
-            .sum()
-            .alias("_put_vol"),
-            pl.when(pl.col("_call_put") == "C")
-            .then(pl.col("_vol"))
-            .otherwise(0.0)
-            .sum()
-            .alias("_call_vol"),
-            pl.when(pl.col("_call_put") == "P")
-            .then(pl.col("_oi"))
-            .otherwise(0.0)
-            .sum()
-            .alias("_put_oi"),
-            pl.when(pl.col("_call_put") == "C")
-            .then(pl.col("_oi"))
-            .otherwise(0.0)
-            .sum()
-            .alias("_call_oi"),
-            pl.col("_amount").sum().alias("_amount"),
-            pl.col("_oi").sum().alias("_oi"),
-            pl.when(pl.col("_s_month") == pl.col("_near_month"))
-            .then(pl.col("_amount"))
-            .otherwise(0.0)
-            .sum()
-            .alias("_near_month_amount"),
-        )
-        .with_columns(
-            pl.when(pl.col("_call_vol") > 0)
-            .then(pl.col("_put_vol") / pl.col("_call_vol"))
-            .otherwise(None)
-            .alias("_put_call_volume_ratio"),
-            pl.when(pl.col("_call_oi") > 0)
-            .then(pl.col("_put_oi") / pl.col("_call_oi"))
-            .otherwise(None)
-            .alias("_put_call_oi_ratio"),
-            pl.when(pl.col("_amount") > 0)
-            .then(pl.col("_near_month_amount") / pl.col("_amount") * 100.0)
-            .otherwise(None)
-            .alias("_near_month_amount_share"),
-        )
-        .sort("trade_date")
-    )
-
-
-def _option_risk_temperature_row(
-    rows: list[dict[str, Any]],
-    frame: pl.DataFrame,
-    as_of_date: date,
-) -> dict[str, Any]:
-    component_rows = [row for row in rows if row["metric_id"] in _OPTION_RISK_COMPONENT_IDS]
-    values = [
-        float(row["value_float"])
-        for row in component_rows
-        if row["status"] == "ok" and row["value_float"] is not None
-    ]
-    missing = [str(row["metric_id"]) for row in component_rows if row["status"] != "ok"]
-    note = "期权风险温度=认沽/认购成交量比与持仓量比可用子项等权平均；不是隐含波动率"
-    latest = frame.filter(pl.col("trade_date") <= as_of_date).sort("trade_date").tail(1)
-    if not latest.is_empty():
-        item = latest.to_dicts()[0]
-        note = (
-            f"{note}; latest_date={item['trade_date']}; "
-            f"volume_pcr={_numeric_note_text(item.get('_put_call_volume_ratio'))}; "
-            f"oi_pcr={_numeric_note_text(item.get('_put_call_oi_ratio'))}"
-        )
-    if missing:
-        note = f"{note}; missing={','.join(missing)}"
-    return _metric_row(
-        "sentiment",
-        "option_risk_temperature",
-        as_of_date,
-        sum(values) / len(values) if values else None,
-        sample_size=len(values),
-        note=note,
-    )
+    return option_rows(cat, as_of_date, _metric_row, _percentile_metric_row)
 
 
 def _macro_liquidity_rows(
@@ -1185,9 +1030,22 @@ def _parse_compact_date_expr(column: str) -> pl.Expr:
     return pl.col(column).cast(pl.String).str.strptime(pl.Date, "%Y%m%d", strict=False)
 
 
-def _load_dataset(cat: DataCatalog, dataset: str) -> pl.DataFrame:
+def _load_dataset(
+    cat: DataCatalog,
+    dataset: str,
+    columns: list[str] | None = None,
+) -> pl.DataFrame:
     try:
-        return cat.load_dataset(dataset)
+        return cat.load_dataset(dataset, columns=columns)
+    except TypeError:
+        try:
+            df = cat.load_dataset(dataset)
+            if columns and not df.is_empty():
+                available = [c for c in columns if c in df.columns]
+                return df.select(available)
+            return df
+        except Exception:
+            return pl.DataFrame()
     except Exception:
         return pl.DataFrame()
 

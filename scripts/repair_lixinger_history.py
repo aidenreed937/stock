@@ -40,10 +40,7 @@ def repair_pre_listing_stock_bars(
     )
     orphan_dates = orphan.get_column("trade_date").to_list()
     repaired = curated.filter(
-        ~(
-            (pl.col("symbol") == "000001")
-            & pl.col("trade_date").cast(pl.Utf8).is_in(orphan_dates)
-        )
+        ~((pl.col("symbol") == "000001") & pl.col("trade_date").cast(pl.Utf8).is_in(orphan_dates))
     )
     repaired.write_parquet(curated_path)
     return {

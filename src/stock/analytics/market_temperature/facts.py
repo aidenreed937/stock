@@ -3,19 +3,25 @@
 from __future__ import annotations
 
 from datetime import date, timedelta
+from pathlib import Path
 from typing import TYPE_CHECKING, Any
 
 import polars as pl
 
 from stock.analytics.data_quality import is_dataset_lagging
+from stock.analytics.features.store import FeatureStore
 from stock.analytics.market_temperature.derived import collect_derived_metric_rows
+from stock.analytics.market_temperature.facts_mart import (
+    date_values,
+    parse_date_value,
+    try_get_market_daily_fact,
+)
 from stock.analytics.metrics.context import MetricContext
 from stock.analytics.metrics.engine import MetricEngine
 from stock.data.catalog import DataCatalog
 
 if TYPE_CHECKING:
     from collections.abc import Iterable
-    from pathlib import Path
 
     from stock.analytics.market_temperature.config import (
         DatasetConfig,
@@ -23,6 +29,9 @@ if TYPE_CHECKING:
         MarketTemperatureConfig,
         MetricInputConfig,
     )
+
+_date_values = date_values
+_parse_date_value = parse_date_value
 
 FACT_SCHEMA: dict[str, Any] = {
     "fact_id": pl.Utf8,
@@ -67,7 +76,7 @@ def resolve_trade_window(
             end_date=target_date,
         )
         if "trade_date" in frame.columns:
-            dates = _date_values(frame["trade_date"].unique().to_list())
+            dates = date_values(frame["trade_date"].unique().to_list())
         else:
             dates = []
 
@@ -231,16 +240,35 @@ def _latest_dataset_date(
         return latest_dates[0]
 
     lookback_days = max(item.max_lag_days * 2, 14)
-    frame = catalog.load_dataset(
-        item.dataset,
-        start_date=as_of_date - timedelta(days=lookback_days),
-        end_date=as_of_date,
-    )
+    start_date = as_of_date - timedelta(days=lookback_days)
+    try:
+        frame = catalog.load_dataset(
+            item.dataset,
+            start_date=start_date,
+            end_date=as_of_date,
+            columns=[date_column],
+        )
+    except TypeError:
+        try:
+            frame = catalog.load_dataset(
+                item.dataset,
+                start_date=start_date,
+                end_date=as_of_date,
+            )
+        except TypeError:
+            try:
+                frame = catalog.load_dataset(item.dataset)
+            except Exception:
+                return None
+        except Exception:
+            return None
+    except Exception:
+        return None
     if frame.is_empty() or date_column not in frame.columns:
         return None
     dates = [
         value
-        for value in _date_values(frame[date_column].drop_nulls().to_list())
+        for value in date_values(frame[date_column].drop_nulls().to_list())
         if value <= as_of_date
     ]
     return max(dates) if dates else None
@@ -253,10 +281,13 @@ def _metric_rows(
     storage_dir: Path | str | None,
 ) -> list[dict[str, Any]]:
     rows: list[dict[str, Any]] = []
+    store = FeatureStore(mart_dir=Path(storage_dir) / "mart" if storage_dir else None)
+    market_daily = store.get_market_daily(end_date=as_of_date)
+
     context = MetricContext(
         catalog=DataCatalog(data_source="tushare", storage_dir=storage_dir),
         target_date=as_of_date,
-        start_date=as_of_date - timedelta(days=365 * 7),
+        start_date=as_of_date - timedelta(days=365 * 2),
         end_date=as_of_date,
     )
     engine = MetricEngine()
@@ -264,7 +295,11 @@ def _metric_rows(
         for metric in dimension.metrics:
             if not metric.enabled or metric.source != "metric_engine":
                 continue
-            rows.append(_compute_metric_fact(engine, context, dimension.id, metric, as_of_date))
+            fact = try_get_market_daily_fact(market_daily, dimension.id, metric, as_of_date)
+            if fact is not None:
+                rows.append(fact)
+            else:
+                rows.append(_compute_metric_fact(engine, context, dimension.id, metric, as_of_date))
     return rows
 
 
@@ -343,7 +378,7 @@ def _latest_metric_date(frame: pl.DataFrame, as_of_date: date) -> date | None:
             pl.any_horizontal([pl.col(column).is_not_null() for column in metric_columns])
         )
     latest_dates = frame.filter(pl.col("trade_date") <= as_of_date)["trade_date"]
-    dates = _date_values(latest_dates.drop_nulls().unique().to_list())
+    dates = date_values(latest_dates.drop_nulls().unique().to_list())
     return max(dates) if dates else None
 
 
@@ -413,30 +448,3 @@ def _fact_row(
         "status": base["status"],
         "note": base["note"],
     }
-
-
-def _date_values(values: Iterable[object]) -> list[date]:
-    dates: list[date] = []
-    for value in values:
-        parsed = _parse_date_value(value)
-        if parsed is not None:
-            dates.append(parsed)
-    return dates
-
-
-def _parse_date_value(value: object) -> date | None:
-    if isinstance(value, date):
-        return value
-    if value is None:
-        return None
-    text = str(value).strip()
-    if not text:
-        return None
-    compact = text.replace("-", "")[:8]
-    if len(compact) == 8 and compact.isdigit():
-        return date(int(compact[:4]), int(compact[4:6]), int(compact[6:8]))
-    if len(text) >= 6 and text[:6].isdigit():
-        year = int(text[:4])
-        month = int(text[4:6])
-        return date(year, month, 1)
-    return date.fromisoformat(text[:10])

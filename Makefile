@@ -105,6 +105,9 @@ monitor:
 scan:
 	UV_CACHE_DIR=.uv_cache UV_PYTHON_INSTALL_DIR=.uv_python uv run python -m stock.cli.scan $(if $(DATE),--date $(DATE)) $(if $(SYMBOL),--symbol $(SYMBOL)) $(if $(FORMAT),--format $(FORMAT)) $(if $(OUTPUT),--output $(OUTPUT)) $(if $(RECOMPUTE),--recompute) $(if $(SAVE),--save)
 
+features-build:
+	UV_CACHE_DIR=.uv_cache UV_PYTHON_INSTALL_DIR=.uv_python uv run python -m stock.cli.features build $(if $(TARGET),--target $(TARGET)) $(if $(START),--start $(START)) $(if $(END),--end $(END)) $(if $(OVERWRITE),--overwrite) $(if $(STORAGE_DIR),--storage-dir $(STORAGE_DIR))
+
 market-temperature:
 	UV_CACHE_DIR=.uv_cache UV_PYTHON_INSTALL_DIR=.uv_python uv run python -m stock.cli.market_temperature $(if $(DATE),--date $(DATE)) $(if $(COMPARE_DATE),--compare-date $(COMPARE_DATE)) $(if $(CONFIG),--config $(CONFIG)) $(if $(OUTPUT_ROOT),--output-root $(OUTPUT_ROOT)) $(if $(NO_LATEST),--no-latest) $(if $(SKIP_METRICS),--skip-metrics)
 

@@ -19,11 +19,11 @@
       "methods": 5
     },
     "src/stock/data/fetcher/lixinger/stock_fetcher.py::LixingerStockFetcher": {
-      "lines": 202,
+      "lines": 206,
       "methods": 4
     },
     "src/stock/data/fetcher/yfinance/global_fetcher.py::YFinanceDataFetcher": {
-      "lines": 336,
+      "lines": 330,
       "methods": 15
     },
     "src/stock/data/ops/probe.py::GlobalDataProbe": {
@@ -31,7 +31,7 @@
       "methods": 6
     },
     "src/stock/data/pipeline_stages.py::FetcherStage": {
-      "lines": 244,
+      "lines": 237,
       "methods": 4
     },
     "src/stock/data/quality/gate.py::QualityGate": {
@@ -55,52 +55,52 @@
       "methods": 5
     },
     "src/stock/data/update_scheduler.py::DataUpdateScheduler": {
-      "lines": 274,
+      "lines": 265,
       "methods": 9
     }
   },
   "files": {
+    "src/stock/analytics/industry_structure/facts.py": {
+      "lines": 445
+    },
+    "src/stock/analytics/industry_structure/panel.py": {
+      "lines": 1167
+    },
+    "src/stock/analytics/industry_structure/scoring.py": {
+      "lines": 717
+    },
+    "src/stock/analytics/industry_structure/templates.py": {
+      "lines": 985
+    },
+    "src/stock/analytics/market_temperature/derived.py": {
+      "lines": 1096
+    },
+    "src/stock/analytics/market_temperature/facts.py": {
+      "lines": 450
+    },
+    "src/stock/analytics/market_temperature/templates.py": {
+      "lines": 1049
+    },
     "src/stock/analytics/metrics/calculators/flow.py": {
-      "lines": 498
+      "lines": 492
     },
     "src/stock/data/audit/backfill_acceptance.py": {
-      "lines": 522
+      "lines": 507
     },
     "src/stock/data/audit/reconciliation.py": {
       "lines": 1033
     },
+    "src/stock/data/fetcher/lixinger/stock_fetcher.py": {
+      "lines": 447
+    },
     "src/stock/data/ops/rebuild_stock_daily_bar.py": {
       "lines": 487
-    },
-    "src/stock/data/pipeline_stages.py": {
-      "lines": 401
     },
     "src/stock/data/sync.py": {
       "lines": 430
     },
     "src/stock/data/task_registry.py": {
-      "lines": 479
-    },
-    "src/stock/analytics/industry_structure/facts.py": {
-      "lines": 404
-    },
-    "src/stock/analytics/industry_structure/panel.py": {
-      "lines": 986
-    },
-    "src/stock/analytics/industry_structure/scoring.py": {
-      "lines": 646
-    },
-    "src/stock/analytics/industry_structure/templates.py": {
-      "lines": 827
-    },
-    "src/stock/analytics/market_temperature/derived.py": {
-      "lines": 935
-    },
-    "src/stock/analytics/market_temperature/facts.py": {
-      "lines": 426
-    },
-    "src/stock/analytics/market_temperature/templates.py": {
-      "lines": 746
+      "lines": 511
     }
   }
 }

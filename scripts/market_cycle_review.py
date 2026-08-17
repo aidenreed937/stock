@@ -145,9 +145,7 @@ def _load_market_row(dirs: ArtifactDirs, as_of_date: str) -> dict[str, Any]:
     brief = _read_json(dirs.brief / "brief_report.json")
     facts = pl.read_parquet(dirs.market / "facts.parquet")
     fact_values = {
-        row["metric_id"]: row.get("value_float")
-        for row in facts.to_dicts()
-        if row.get("metric_id")
+        row["metric_id"]: row.get("value_float") for row in facts.to_dicts() if row.get("metric_id")
     }
     dimensions = {
         row["dimension_id"]: row.get("temperature")
@@ -552,10 +550,7 @@ def _write_artifacts(
 ) -> dict[str, Path]:
     run_id = f"run_{datetime.now().strftime('%Y%m%dT%H%M%S')}"
     run_dir = (
-        output_root
-        / "runs"
-        / f"start={payload['start_date']}_end={payload['end_date']}"
-        / run_id
+        output_root / "runs" / f"start={payload['start_date']}_end={payload['end_date']}" / run_id
     )
     run_dir.mkdir(parents=True, exist_ok=True)
     json_path = run_dir / "review.json"

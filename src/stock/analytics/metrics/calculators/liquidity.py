@@ -113,12 +113,14 @@ def _liquidity_frame(context: MetricContext) -> pl.DataFrame:
         "daily_basic",
         start_date=start_date,
         end_date=end_date,
+        columns=["trade_date", "turnover_rate_f", "turnover_rate"],
     )
     bars = load_metric_dataset(
         context,
         "stock_daily_bar",
         start_date=start_date,
         end_date=end_date,
+        columns=["trade_date", "amount"],
     )
     frame = _join_daily_frames((_daily_turnover(daily_basic), _market_amount(bars)))
     if not frame.is_empty():

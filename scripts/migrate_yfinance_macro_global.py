@@ -114,9 +114,7 @@ def _validate(root: Path) -> dict[str, int]:
     macro = frame.filter(pl.col("symbol").is_in(sorted(MACRO_SYMBOLS)))
     duplicate_keys = macro.group_by(["symbol", "trade_date"]).len().filter(pl.col("len") > 1)
     wrong_market = (
-        macro.filter(pl.col("market") != TARGET_MARKET).height
-        if "market" in macro.columns
-        else 0
+        macro.filter(pl.col("market") != TARGET_MARKET).height if "market" in macro.columns else 0
     )
     if not duplicate_keys.is_empty() or wrong_market:
         raise RuntimeError(

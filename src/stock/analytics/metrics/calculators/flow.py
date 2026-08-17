@@ -33,18 +33,22 @@ def _first_column(df: pl.DataFrame, candidates: tuple[str, ...], label: str) -> 
 
 
 def _load_daily_inputs(context: MetricContext) -> tuple[pl.DataFrame, pl.DataFrame, pl.DataFrame]:
-    margin = load_metric_dataset(context, "margin")
-    bars = load_metric_dataset(context, "stock_daily_bar")
-    daily_basic = load_metric_dataset(context, "daily_basic")
+    cols_margin = ["trade_date", "rzrqye", "rzye", "rqye", "rzmre", "exchange_id"]
+    margin = load_metric_dataset(context, "margin", columns=cols_margin)
+    bars = load_metric_dataset(context, "stock_daily_bar", columns=["trade_date", "amount"])
+    cols_basic = ["trade_date", "total_mv", "circ_mv"]
+    daily_basic = load_metric_dataset(context, "daily_basic", columns=cols_basic)
     return margin, bars, daily_basic
 
 
 def _load_market_flow_inputs(
     context: MetricContext,
 ) -> tuple[pl.DataFrame, pl.DataFrame, pl.DataFrame]:
-    moneyflow = load_metric_dataset(context, "moneyflow")
-    hsgt = load_metric_dataset(context, "moneyflow_hsgt")
-    bars = load_metric_dataset(context, "stock_daily_bar")
+    cols_mf = ["trade_date", "net_mf_amount", "buy_elg_amount", "sell_elg_amount"]
+    moneyflow = load_metric_dataset(context, "moneyflow", columns=cols_mf)
+    cols_hsgt = ["trade_date", "north_money", "south_money", "hgt", "sgt"]
+    hsgt = load_metric_dataset(context, "moneyflow_hsgt", columns=cols_hsgt)
+    bars = load_metric_dataset(context, "stock_daily_bar", columns=["trade_date", "amount"])
     return moneyflow, hsgt, bars
 
 
