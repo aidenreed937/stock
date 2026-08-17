@@ -1,9 +1,13 @@
-"""资金与筹码类无量纲指标。"""
-
 import polars as pl
 
 from stock.analytics.metrics.context import MetricContext
 from stock.analytics.metrics.datasets.loaders import load_metric_dataset
+from stock.analytics.metrics.datasets.windows import (
+    empty_metric_frame as _empty,
+)
+from stock.analytics.metrics.datasets.windows import (
+    first_column as _first_column,
+)
 from stock.analytics.metrics.rules import growth, rolling_percentile, rolling_zscore
 from stock.analytics.metrics.spec import (
     EntityType,
@@ -15,21 +19,6 @@ from stock.analytics.metrics.spec import (
 _TRADING_DAYS_5Y = 1250
 _FLOW_ZSCORE_WINDOW = 60
 _MARGIN_GROWTH_WINDOW = 20
-
-
-def _empty(columns: tuple[str, ...]) -> pl.DataFrame:
-    return pl.DataFrame(
-        schema={column: pl.Date if column == "trade_date" else pl.Float64 for column in columns}
-    )
-
-
-def _first_column(df: pl.DataFrame, candidates: tuple[str, ...], label: str) -> str | None:
-    for column in candidates:
-        if column in df.columns:
-            return column
-    if df.is_empty():
-        return None
-    raise ValueError(f"{label}缺少字段: {', '.join(candidates)}")
 
 
 def _load_daily_inputs(context: MetricContext) -> tuple[pl.DataFrame, pl.DataFrame, pl.DataFrame]:

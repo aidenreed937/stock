@@ -1,11 +1,15 @@
-"""指数估值无量纲指标。"""
-
 from datetime import date, timedelta
 
 import polars as pl
 
 from stock.analytics.metrics.context import MetricContext
 from stock.analytics.metrics.datasets.loaders import load_metric_dataset
+from stock.analytics.metrics.datasets.windows import (
+    empty_metric_frame as _empty,
+)
+from stock.analytics.metrics.datasets.windows import (
+    first_column as _first_column,
+)
 from stock.analytics.metrics.rules import rolling_percentile, rolling_zscore
 from stock.analytics.metrics.spec import (
     EntityType,
@@ -23,26 +27,6 @@ _CROSS_SOURCE_METRICS = {
     "dividend_bond_spread",
     "valuation_temperature",
 }
-
-
-def _empty(columns: tuple[str, ...]) -> pl.DataFrame:
-    return pl.DataFrame(
-        schema={
-            column: pl.Date
-            if column == "trade_date"
-            else pl.String
-            if column == "symbol"
-            else pl.Float64
-            for column in columns
-        }
-    )
-
-
-def _first_column(df: pl.DataFrame, candidates: tuple[str, ...], dataset: str) -> str:
-    column = next((candidate for candidate in candidates if candidate in df.columns), None)
-    if column is None:
-        raise ValueError(f"{dataset} 缺少字段: {', '.join(candidates)}")
-    return column
 
 
 def _load_start_date(context: MetricContext) -> date | None:

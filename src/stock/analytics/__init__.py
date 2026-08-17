@@ -1,7 +1,6 @@
 from stock.analytics.domains.industry import (
     IndustryMomentumSpreadAnalyzer,
     IndustryPBROEAnalyzer,
-    MomentumSpreadResult,
     TCRCalculator,
 )
 from stock.analytics.domains.micro import (
@@ -24,6 +23,7 @@ from stock.analytics.models import (
     MarketBreadthResult,
     MarketSentimentResult,
     MicroHealthSummary,
+    MomentumSpreadResult,
     SingleIndustryTCR,
     TCRAnalysisResult,
     ValuationZone,

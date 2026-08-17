@@ -1,46 +1,21 @@
-"""趋势动量类指标。"""
-
-from datetime import date, timedelta
-
 import polars as pl
 
 from stock.analytics.metrics.context import MetricContext
 from stock.analytics.metrics.datasets.loaders import load_metric_dataset
+from stock.analytics.metrics.datasets.windows import (
+    empty_metric_frame as _empty,
+)
+from stock.analytics.metrics.datasets.windows import (
+    load_start_date as _load_start_date,
+)
+from stock.analytics.metrics.datasets.windows import (
+    require_columns as _require_columns,
+)
 from stock.analytics.metrics.spec import EntityType, MetricCalculator, MetricDomain, MetricSpec
 
 _RSI_WINDOW = 14
 _MA_BIAS_WINDOW = 20
 _HIGH_DISTANCE_WINDOW = 252
-_CALENDAR_BUFFER_MULTIPLIER = 3
-
-
-def _empty(columns: tuple[str, ...]) -> pl.DataFrame:
-    return pl.DataFrame(
-        schema={
-            column: pl.Date
-            if column == "trade_date"
-            else pl.String
-            if column == "symbol"
-            else pl.Float64
-            for column in columns
-        }
-    )
-
-
-def _require_columns(df: pl.DataFrame, columns: tuple[str, ...], dataset: str) -> None:
-    missing = [column for column in columns if column not in df.columns]
-    if missing:
-        raise ValueError(f"{dataset} 缺少字段: {', '.join(missing)}")
-
-
-def _load_start_date(context: MetricContext, max_window: int) -> date | None:
-    end_date = context.resolve_end_date()
-    if end_date is None:
-        return context.start_date
-    lookback_start = end_date - timedelta(days=max_window * _CALENDAR_BUFFER_MULTIPLIER)
-    if context.start_date is None:
-        return lookback_start
-    return min(context.start_date, lookback_start)
 
 
 def _trend_frame(context: MetricContext) -> pl.DataFrame:

@@ -7,7 +7,7 @@ from typing import TYPE_CHECKING
 
 import polars as pl
 
-from stock.analytics.metrics.rules import (
+from stock.analytics.primitives.rules import (
     above_ma,
     at_rolling_high,
     at_rolling_low,

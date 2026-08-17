@@ -14,7 +14,7 @@ from stock.analytics.domains.industry.classifier import IndustryClassifier
 from stock.analytics.models import MomentumSpreadResult
 from stock.data.catalog import DataCatalog
 
-__all__ = ["IndustryMomentumSpreadAnalyzer", "MomentumSpreadResult"]
+__all__ = ["IndustryMomentumSpreadAnalyzer"]
 
 
 class IndustryMomentumSpreadAnalyzer:

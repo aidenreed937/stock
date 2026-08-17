@@ -4,18 +4,16 @@
 计算表达式，不关心指标元数据与数据集加载。
 """
 
-from stock.analytics.metrics.rules.breadth import (
+from stock.analytics.primitives.rules import (
     above_ma,
     at_rolling_high,
     at_rolling_low,
     daily_return,
-    share,
-)
-from stock.analytics.metrics.rules.rolling import (
     growth,
     percentile_rank,
     rolling_percentile,
     rolling_zscore,
+    share,
 )
 
 __all__ = [

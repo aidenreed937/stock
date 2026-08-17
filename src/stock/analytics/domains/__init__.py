@@ -4,7 +4,6 @@ from stock.analytics.domains.industry import (
     IndustryClassifier,
     IndustryMomentumSpreadAnalyzer,
     IndustryPBROEAnalyzer,
-    MomentumSpreadResult,
     TCRCalculator,
 )
 from stock.analytics.domains.micro import (
@@ -21,7 +20,6 @@ __all__ = [
     "MarginPenetrationCalculator",
     "MarketBreadthAnalyzer",
     "MarketSentimentAnalyzer",
-    "MomentumSpreadResult",
     "MultiPeriodMarketBreadthAnalyzer",
     "TCRCalculator",
 ]
