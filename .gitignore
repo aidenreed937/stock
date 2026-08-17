@@ -40,6 +40,9 @@ data/*
 !data/**/.gitkeep
 data/proxy
 data/audit/
+data/analytics/
+data/curated/mart/
+*.metadata.json
 *.parquet
 *.feather
 *.db
