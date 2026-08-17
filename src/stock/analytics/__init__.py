@@ -1,30 +1,19 @@
-from stock.analytics.domains.industry import (
-    IndustryMomentumSpreadAnalyzer,
-    IndustryPBROEAnalyzer,
-    TCRCalculator,
-)
-from stock.analytics.domains.micro import (
-    MarginPenetrationCalculator,
-    MarketSentimentAnalyzer,
-    MultiPeriodMarketBreadthAnalyzer,
-)
-from stock.analytics.engine import MarketScanEngine
+"""量化分析层 (Analytics Layer)。
+
+结构说明:
+    1. primitives: 纯无状态数学与技术指标算子 (SMA, EMA, MACD, RSI, EY/BY 等)；
+    2. metrics: 领域计算引擎与时序指标萃取器 (MetricEngine)；
+    3. features: 统一特征工程存储与跨维度特征表 (FeatureStore)；
+    4. pipelines: L3 业务决策管线 (market_temperature, industry_structure, investor_brief)。
+"""
+
 from stock.analytics.models import (
     AllMarketValuationResult,
     BuffettRatioResult,
-    DailyMarketScanSummary,
     EYBYRatioResult,
     IndustryPBROEResult,
     MacroRegime,
     MacroRegimeResult,
-    MacroSignalItem,
-    MarginPenetrationResult,
-    MarketBreadthResult,
-    MarketSentimentResult,
-    MicroHealthSummary,
-    MomentumSpreadResult,
-    SingleIndustryTCR,
-    TCRAnalysisResult,
     ValuationZone,
 )
 from stock.analytics.primitives import (
@@ -39,26 +28,10 @@ from stock.analytics.primitives import (
 __all__ = [
     "AllMarketValuationResult",
     "BuffettRatioResult",
-    "DailyMarketScanSummary",
     "EYBYRatioResult",
-    "IndustryMomentumSpreadAnalyzer",
-    "IndustryPBROEAnalyzer",
     "IndustryPBROEResult",
     "MacroRegime",
     "MacroRegimeResult",
-    "MacroSignalItem",
-    "MarginPenetrationCalculator",
-    "MarginPenetrationResult",
-    "MarketBreadthResult",
-    "MarketScanEngine",
-    "MarketSentimentAnalyzer",
-    "MarketSentimentResult",
-    "MicroHealthSummary",
-    "MomentumSpreadResult",
-    "MultiPeriodMarketBreadthAnalyzer",
-    "SingleIndustryTCR",
-    "TCRAnalysisResult",
-    "TCRCalculator",
     "ValuationZone",
     "calculate_ema",
     "calculate_equity_risk_premium",

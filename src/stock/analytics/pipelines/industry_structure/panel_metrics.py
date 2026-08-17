@@ -8,7 +8,6 @@ from typing import TYPE_CHECKING, Any
 
 import polars as pl
 
-from stock.analytics.domains.industry.pb_roe import IndustryPBROEAnalyzer
 from stock.analytics.pipelines.industry_structure.panel_sources import (
     load_dataset,
     load_financial_statement_history,
@@ -16,6 +15,7 @@ from stock.analytics.pipelines.industry_structure.panel_sources import (
     optional_numeric_expr,
     optional_text_expr,
 )
+from stock.analytics.pipelines.industry_structure.pb_roe import IndustryPBROEAnalyzer
 
 if TYPE_CHECKING:
     from stock.data.catalog import DataCatalog

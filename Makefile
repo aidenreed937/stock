@@ -103,7 +103,9 @@ monitor:
 	UV_CACHE_DIR=.uv_cache UV_PYTHON_INSTALL_DIR=.uv_python uv run python scripts/monitor_resources.py $(if $(WATCH),--watch) $(if $(INTERVAL),--interval $(INTERVAL))
 
 scan:
-	UV_CACHE_DIR=.uv_cache UV_PYTHON_INSTALL_DIR=.uv_python uv run python -m stock.cli.scan $(if $(DATE),--date $(DATE)) $(if $(SYMBOL),--symbol $(SYMBOL)) $(if $(FORMAT),--format $(FORMAT)) $(if $(OUTPUT),--output $(OUTPUT)) $(if $(RECOMPUTE),--recompute) $(if $(SAVE),--save)
+	UV_CACHE_DIR=.uv_cache UV_PYTHON_INSTALL_DIR=.uv_python uv run python -m stock.cli.market_temperature $(if $(DATE),--date $(DATE))
+	UV_CACHE_DIR=.uv_cache UV_PYTHON_INSTALL_DIR=.uv_python uv run python -m stock.cli.industry_structure $(if $(DATE),--date $(DATE))
+	UV_CACHE_DIR=.uv_cache UV_PYTHON_INSTALL_DIR=.uv_python uv run python -m stock.cli.investor_brief $(if $(DATE),--date $(DATE))
 
 features-build:
 	UV_CACHE_DIR=.uv_cache UV_PYTHON_INSTALL_DIR=.uv_python uv run python -m stock.cli.features build $(if $(TARGET),--target $(TARGET)) $(if $(START),--start $(START)) $(if $(END),--end $(END)) $(if $(OVERWRITE),--overwrite) $(if $(STORAGE_DIR),--storage-dir $(STORAGE_DIR))

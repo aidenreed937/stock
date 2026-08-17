@@ -6,14 +6,16 @@
     残差显著为负 (实际 PB 显著低于该 ROE 对应的拟合 PB) 说明该行业被显著低估，具备更高配置性价比。
 """
 
+from __future__ import annotations
+
 from datetime import date
 from typing import Any
 
 import numpy as np
 import polars as pl
 
-from stock.analytics.domains.industry.classifier import IndustryClassifier
 from stock.analytics.models import IndustryPBROEResult
+from stock.analytics.pipelines.industry_structure.classifier import IndustryClassifier
 from stock.data.catalog import DataCatalog
 
 

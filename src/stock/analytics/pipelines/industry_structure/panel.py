@@ -7,7 +7,7 @@ from typing import TYPE_CHECKING, Any, cast
 
 import polars as pl
 
-from stock.analytics.domains.industry.classifier import IndustryClassifier
+from stock.analytics.pipelines.industry_structure.classifier import IndustryClassifier
 from stock.analytics.pipelines.industry_structure.panel_aggregations import (
     FastFundamentalContext,
     IndustryMoneyflowContext,

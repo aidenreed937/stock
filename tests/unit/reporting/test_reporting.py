@@ -7,7 +7,6 @@ from types import SimpleNamespace
 import polars as pl
 
 from stock.analytics.data_quality import build_quality_report
-from stock.analytics.models import DailyMarketScanSummary, MicroHealthSummary
 from stock.analytics.pipelines.industry_structure.config import (
     FundamentalBlendConfig,
     IndustryStructureConfig,
@@ -15,10 +14,6 @@ from stock.analytics.pipelines.industry_structure.config import (
 )
 from stock.analytics.pipelines.market_temperature.config import MarketTemperatureConfig
 from stock.reporting import (
-    format_card_summary,
-    format_console_report,
-    format_investor_report,
-    format_pro_report,
     human_watermark_issue_lines,
     human_watermark_latest_text,
     render_industry_structure_human_report_markdown,
@@ -101,40 +96,6 @@ def test_quality_report_rendering() -> None:
     md = render_quality_report_markdown(report)
     assert "# 测试体检口径与质量报告" in md
     assert "数据水位" in md
-
-
-def test_scan_report_formatting() -> None:
-    summary = DailyMarketScanSummary(
-        trade_date=date(2026, 8, 14),
-        one_sentence_summary="保持 80% 仓位，优选低估资产。",
-        signals=[],
-        undervalued_industries=["银行", "非银金融"],
-        crowded_industries=["电子"],
-        top1_industry="电子",
-        top1_tcr=25.0,
-        micro_health=MicroHealthSummary(
-            margin_ratio=2.1,
-            margin_status="杠杆出清",
-            pb_break_ratio=8.5,
-            pb_break_status="大面积折价",
-            turnover_ratio=3.2,
-            turnover_status="情绪中性",
-            above_ma60_ratio=50.0,
-            ma60_status="修复中",
-        ),
-        action_items=["- ✅ 保持 70~90% 仓位", "- ❌ 不追高"],
-    )
-
-    investor_md = format_investor_report(summary)
-    assert "A 股每日体检" in investor_md
-    assert "银行" in investor_md
-
-    pro_md = format_pro_report(summary)
-    assert "A 股量化全景体检专业报告" in pro_md
-
-    card_text = format_console_report(summary)
-    assert "A 股量化体检全景摘要" in card_text
-    assert format_card_summary(summary) == card_text
 
 
 def test_investor_brief_rendering() -> None:
