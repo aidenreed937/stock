@@ -89,7 +89,9 @@ make migrate-data APPLY=1
    * Curated 层统一为标准单位（金额/市值统一为**元**，成交量统一为**股/份**）；
    * 倍率转换只能在 [`src/stock_data/pipeline/normalizer/unit_normalizer.py`](file:///Users/mac/workspace/personal/finance/stock/src/stock_data/pipeline/normalizer/unit_normalizer.py) 执行；
    * **分析层代码严禁根据数据源反向乘除倍率**。
-4. **沙箱环境约束**：
+4. **Schema 零猜测与探针先行 (Ground Truth First)**：
+   严禁凭记忆猜测字段名、主键与单位。注册新接口前，必须查阅官方文档（或对应 Skill）并**运行单行 Python 命令实际请求 1 条真实数据**核验原始 Schema（详见 [01_注册指南 步骤 0](file:///Users/mac/workspace/personal/finance/stock/.agents/skills/data-pipeline/references/01_endpoint_registration.md#步骤-0官方文档查验与真实响应单步探测-ground-truth-first)）。
+5. **沙箱环境约束**：
    在沙箱或受限执行环境下，必须将 `uv` 缓存约束在项目内部：
    ```bash
    export UV_CACHE_DIR=.uv_cache
