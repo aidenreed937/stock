@@ -64,3 +64,26 @@
   $$\text{TR}_t = \max\left(\text{high}_t - \text{low}_t, |\text{high}_t - \text{close}_{t-1}|, |\text{low}_t - \text{close}_{t-1}|\right)$$
   $$\text{ATR}_{t}(N) = \frac{(N-1)\text{ATR}_{t-1} + \text{TR}_t}{N}$$
 * **无量纲化（相对 ATR %）**：$\text{NATR} = \frac{\text{ATR}_t}{\text{close}_t} \times 100\%$。
+
+---
+
+## 4. 市场宽度与景气动量类 (Market Breadth & Momentum)
+
+### ① 市场均线站上比例 (Market Breadth MA Ratio)
+* **权威依据**：Ned Davis 市场宽度模型。
+* **数学公式**：
+  $$\text{Breadth}_{\text{MA}(K)} = \frac{\sum_{i=1}^{N} \mathbb{I}\left(\text{close}_{i, t} > \text{MA}_{i, t}(K)\right)}{N} \times 100\%$$
+  * $K \in \{20, 60, 250\}$ 对应短期、中期、长期均线；
+  * $N$：全市场有效交易股票总数。
+* **含义**：
+  * $> 80\%$：全市场普涨过热，需防范脉冲式回踩；
+  * $< 20\%$：全市场普跌冰点，处于超跌企稳区间。
+
+### ② 分析师一致预期盈利上修比例 (Earnings Revision Ratio)
+* **权威依据**：摩根士丹利 (Morgan Stanley) / 华泰金工卖方预期模型。
+* **数学公式**：
+  $$\text{Revision Ratio} = \frac{N_{\text{up}} - N_{\text{down}}}{N_{\text{total}}} \times 100\%$$
+  * $N_{\text{up}}$：过去 30/90 天卖方机构调高净利润预测的次数；
+  * $N_{\text{down}}$：过去 30/90 天卖方机构调低净利润预测的次数；
+  * $N_{\text{total}}$：该行业/个股同期的总预测覆盖次数。
+* **含义**：衡量行业景气度的前瞻边际变化，是 PB-ROE 四象限分类的核心 Y 轴因子。
