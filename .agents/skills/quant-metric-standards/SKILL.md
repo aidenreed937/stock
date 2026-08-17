@@ -1,0 +1,61 @@
+---
+name: quant-metric-standards
+description: 量化金融指标计算规范、金融工程常识与统计标准技能。涵盖 5Y/10Y 历史分位数选型、指标无量纲化（去体量通胀）、权威指标数学公式（ERP/拥挤度/巴菲特比值/资金流）及宏观范式漂移（Regime Shift）防过拟合自检。
+---
+
+# 量化指标计算规范与金融工程标准 (Quant Metric Standards)
+
+本技能为量化投研系统提供**权威指标数学公式、时间窗口选型规范、无量纲化原则与金融统计常识**的标准指导。
+
+遵循**渐进式披露**原则，本入口聚合高频计算原则与窗口选型速查；深入数学推导与专题字典请查阅文末参考手册。
+
+---
+
+## 1. 量化计算三大黄金原则 (Golden Rules)
+
+1. **权威依据第一，严禁凭空臆造**：
+   所有量化指标公式必须有交易所/指数公司官方编制方案、学术文献或券商金工研报依据（详见 [03_常用指标字典](file:///Users/mac/workspace/personal/finance/stock/.agents/skills/quant-metric-standards/references/03_common_financial_indicators.md)）。
+2. **时间窗口与金融周期对齐 (5Y vs 10Y)**：
+   * **5 年滚动窗口 ($\sim 1,215$ 日)**：适用于**个股/行业估值与行业动量**（覆盖一轮完整的产能/库存周期）；
+   * **10 年滚动窗口 ($\sim 2,430$ 日)**：适用于**大盘宽基估值、股债利差 (ERP) 与大类资产配置**（覆盖完整的信贷/牛熊大周期）；
+   * **全样本历史窗口**：适用于**大盘拥挤度、巴菲特比值 (市值/GDP) 等宏观极值定位**。
+3. **指标解读必须无量纲化 (去体量通胀)**：
+   严禁直接跨周期比较绝对成交额或绝对市值。必须转换为**占总成交比、占流通市值比、换手率或历史百分位排名 (Percentile Rank)**。
+
+---
+
+## 2. 核心时间窗口与指标选型对照表
+
+| 分析维度 | 推荐时间窗口 | 推荐计算工具 / 标准化方法 | 典型指标范例 |
+| :--- | :--- | :--- | :--- |
+| **行业/个股中期估值** | **5 年滚动 (5Y)** | 滚动分位数 $\text{Percentile}_{5\text{Y}}$ | 申万行业 PE-TTM 分位、个股 PB 水位 |
+| **大盘大类资产配置** | **10 年滚动 (10Y)** | 滚动分位数 / 滚动 Z-Score | 沪深 300 股债利差 (ERP)、中证 500 估值 |
+| **宏观历史极值定位** | **全样本 (Full History)** | 全历史分位数 $\text{Percentile}_{\text{All}}$ | 巴菲特比值 (市值/GDP)、大盘拥挤度 (前5%成交占比) |
+| **短线情绪与动量** | **20 日 / 60 日** | 移动平均、NATR、流量杠杆率 | 主力资金净流入占比、融资买入占总成交比 |
+
+---
+
+## 3. 必须无量纲化的指标速查表
+
+```mermaid
+flowchart LR
+    A["有量纲绝对量<br>(总成交/两融金额/总市值)"] -- "除以流通市值 / 总成交 / GDP" --> B["无量纲相对比率<br>(换手率/杠杆率/巴菲特比值)"]
+    B -- "历史样本排序" --> C["标准化分位数<br>(Percentile 0%~100%)"]
+```
+
+| 原始有量纲绝对值 | ❌ 为什么不能直接跨期比较 | ✅ 标准无量纲转化公式 | 转化后业务含义 |
+| :--- | :--- | :--- | :--- |
+| **单日全市场总成交 (元)** | 市场股票数量与市值规模膨胀 | $\frac{\text{总成交额}}{\text{自由流通总市值}} \times 100\%$ | **全市场自由流通换手率 (%)** |
+| **单日融资买入额 (元)** | 忽略了大盘当日总流动性池 | $\frac{\text{融资买入额}}{\text{全市场总成交额}} \times 100\%$ | **流量杠杆活跃度 (%)** |
+| **全市场两融总余额 (元)** | 股票市值增长稀释了杠杆压力 | $\frac{\text{两融总余额}}{\text{全市场流通总市值}} \times 100\%$ | **存量杠杆渗透率 (%)** |
+| **前 5% 个股成交额 (元)** | 交易体量随大盘水涨船高 | $\frac{\text{前 5% 个股成交额}}{\text{全市场总成交额}} \times 100\%$ | **大盘拥挤度 (%)** |
+| **A 股全市场总市值 (元)** | 忽略了宏观经济实体总产出 | $\frac{\text{全市场总市值}}{\text{中国名义 GDP (TTM)}} \times 100\%$ | **巴菲特比值 (%)** |
+
+---
+
+## 4. 专题进阶手册 (Deep-Dive References)
+
+* 📘 [01_历史分位数与时间窗口计算规范](file:///Users/mac/workspace/personal/finance/stock/.agents/skills/quant-metric-standards/references/01_percentile_and_windows.md)：5Y/10Y 选型逻辑、百分位排名标准算法与滚动 Z-Score 公式。
+* 📘 [02_量化指标无量纲化与去体量通胀原则](file:///Users/mac/workspace/personal/finance/stock/.agents/skills/quant-metric-standards/references/02_dimensionless_normalization.md)：消除扩容失真、跨资产可比性与 Min-Max / Percentile 映射方法。
+* 📘 [03_常用量化金融核心指标权威定义字典](file:///Users/mac/workspace/personal/finance/stock/.agents/skills/quant-metric-standards/references/03_common_financial_indicators.md)：股债利差 (ERP)、大盘拥挤度、巴菲特比值、微观资金流与真实波幅 NATR 标准数学公式。
+* 📘 [04_宏观范式漂移与防过拟合自检清单](file:///Users/mac/workspace/personal/finance/stock/.agents/skills/quant-metric-standards/references/04_regime_shift_and_caveats.md)：利率中枢下行、注册制扩容、小样本陷阱 ($N \le 5$) 与前瞻偏差防范。
