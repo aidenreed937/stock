@@ -555,7 +555,7 @@ TCR 定义为最近 20 个行业交易日的行业成交额占全部申万一级
 ```python
 from stock.analytics.engine import MarketScanEngine
 from stock.analytics.metrics import MetricContext, MetricEngine
-from stock.data.catalog import DataCatalog
+from stock_data.catalog import DataCatalog
 
 cat_ts = DataCatalog(data_source="tushare")
 latest = cat_ts.get_latest_trade_date("stock_daily_bar")

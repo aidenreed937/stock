@@ -127,7 +127,7 @@ df_sw_val = catalog_lx.load_dataset("sw_2021_l2_fundamental")
 ```python
 from datetime import date
 import polars as pl
-from stock.data.catalog import DataCatalog
+from stock_data.catalog import DataCatalog
 
 cat_lx = DataCatalog(data_source="lixinger")
 cat_ts = DataCatalog(data_source="tushare")
@@ -168,7 +168,7 @@ latest_val_date = df_l2_val["trade_date"].max()
 
 ### 范例 2：指数基本面估值与历史水位追踪
 ```python
-from stock.data.catalog import DataCatalog
+from stock_data.catalog import DataCatalog
 import polars as pl
 
 cat = DataCatalog(data_source="lixinger")
@@ -185,7 +185,7 @@ print(f"沪深300 最新 PE-TTM: {pe:.2f}, 历史分位数: {pe_pct:.1f}%")
 
 ### 范例 3：全库数据健康度与最新落盘交易日快速对齐
 ```python
-from stock.data.catalog import DataCatalog
+from stock_data.catalog import DataCatalog
 import polars as pl
 
 cat = DataCatalog()
@@ -202,7 +202,7 @@ print(lagging)
 ### 范例 4：申万 31 行业分析师盈利预测上修比例 (Revision Ratio)
 ```python
 from datetime import date
-from stock.data.catalog import DataCatalog
+from stock_data.catalog import DataCatalog
 import polars as pl
 
 cat_ts = DataCatalog(data_source="tushare")

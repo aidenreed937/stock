@@ -30,7 +30,7 @@
 * **典型案例**：`moneyflow`（个股资金流）与 `moneyflow_hsgt`（北向资金流），或 `margin` 与 `margin_detail`。
 * **规范**：禁止使用 `moneyflow*` 或 `margin*` 这类模糊通配符，必须精确到具体数据集目录，或统一通过 `DataCatalog` 加载：
   ```python
-  from stock.data.catalog import DataCatalog
+  from stock_data.catalog import DataCatalog
   cat = DataCatalog(data_source="tushare")
   df_mf = cat.load_dataset("moneyflow")
   df_margin = cat.load_dataset("margin")
@@ -89,7 +89,7 @@
 ```python
 from datetime import date
 import polars as pl
-from stock.data.catalog import DataCatalog
+from stock_data.catalog import DataCatalog
 
 # 1. 统一通过 DataCatalog 加载 (自动容错与类型对齐)
 cat_ts = DataCatalog(data_source="tushare")
