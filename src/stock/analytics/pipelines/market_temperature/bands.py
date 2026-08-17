@@ -4,6 +4,8 @@ from __future__ import annotations
 
 from typing import Any
 
+from stock.analytics.pipelines.market_temperature.config import BandsConfig
+
 _DIMENSION_LABELS: dict[str, str] = {
     "valuation": "估值",
     "fund_flow": "资金",
@@ -137,37 +139,43 @@ _DIMENSION_TIMELINESS: dict[str, tuple[str, str, str, str]] = {
 }
 
 
-def get_temperature_band(value: object) -> str:
+def get_temperature_band(value: object, config: BandsConfig | None = None) -> str:
     """根据温度数值获取状态分档。"""
     temperature = _as_float(value)
     if temperature is None:
         return "不可判定"
-    if temperature < 20:
+    cfg = (config or BandsConfig()).temperature_levels
+    if temperature < cfg.low_opportunity:
         return "低温机会区"
-    if temperature < 40:
+    if temperature < cfg.cool_observation:
         return "偏冷修复观察区"
-    if temperature < 60:
+    if temperature < cfg.neutral_rotation:
         return "中性轮动区"
-    if temperature < 80:
+    if temperature < cfg.warm_recovery:
         return "偏热修复区"
     return "高温拥挤区"
 
 
-def get_pressure_band(value: object) -> str:
+def get_pressure_band(value: object, config: BandsConfig | None = None) -> str:
     """根据外部宏观压力数值获取状态分档。"""
     pressure = _as_float(value)
     if pressure is None:
         return "不可判定"
-    if pressure >= 80:
+    cfg = (config or BandsConfig()).pressure_levels
+    if pressure >= cfg.high:
         return "高压力"
-    if pressure >= 60:
+    if pressure >= cfg.high_moderate:
         return "中等偏高"
-    if pressure >= 40:
+    if pressure >= cfg.moderate:
         return "中性"
     return "压力不明显"
 
 
-def get_pressure_comment(metric_id: str, value: object) -> str:
+def get_pressure_comment(
+    metric_id: str,
+    value: object,
+    config: BandsConfig | None = None,
+) -> str:
     """获取外部宏观压力项的针对性说明。"""
     pressure = _as_float(value)
     if pressure is None:
@@ -182,46 +190,58 @@ def get_pressure_comment(metric_id: str, value: object) -> str:
         base = "观察铜、原油和美股是否共同指向全球需求走弱。"
     else:
         base = "仅作外部背景观察。"
-    if pressure >= 80:
+    cfg = (config or BandsConfig()).pressure_levels
+    if pressure >= cfg.high:
         return f"压力高，{base}"
-    if pressure >= 60:
+    if pressure >= cfg.high_moderate:
         return f"压力偏高，{base}"
-    if pressure >= 40:
+    if pressure >= cfg.moderate:
         return f"压力中性，{base}"
     return f"压力不明显，{base}"
 
 
-def get_dimension_comment(dimension_id: str, temperature: object) -> str:
+def get_dimension_comment(
+    dimension_id: str,
+    temperature: object,
+    config: BandsConfig | None = None,
+) -> str:
     """单维度温度研判解读。"""
     focus, base = _DIMENSION_FOCUS.get(dimension_id, ("维度状态", "按当前温度分档解读。"))
-    band = get_temperature_band(temperature)
+    band = get_temperature_band(temperature, config)
     value = _as_float(temperature)
     if value is None:
         return f"{focus}暂不可判定；{base}"
-    if value >= 80:
+    cfg = (config or BandsConfig()).temperature_levels
+    if value >= cfg.warm_recovery:
         prefix = f"{focus}高温"
-    elif value >= 60:
+    elif value >= cfg.neutral_rotation:
         prefix = f"{focus}偏热"
-    elif value >= 40:
+    elif value >= cfg.cool_observation:
         prefix = f"{focus}中性"
-    elif value >= 20:
+    elif value >= cfg.low_opportunity:
         prefix = f"{focus}偏冷"
     else:
         prefix = f"{focus}低温"
     return f"{prefix}（{band}）；{base}"
 
 
-def get_cross_period_comment(name: str, delta: float | None, fallback: str) -> str:
+def get_cross_period_comment(
+    name: str,
+    delta: float | None,
+    fallback: str,
+    config: BandsConfig | None = None,
+) -> str:
     """跨期变动评语。"""
     if delta is None:
         return fallback
     absolute = abs(delta)
-    if name == "综合温度" and absolute < 3:
+    cfg = (config or BandsConfig()).delta_levels
+    if name == "综合温度" and absolute < cfg.stable:
         return "总分接近，重点看内部驱动是否换挡。"
-    if absolute < 5:
+    if absolute < cfg.moderate:
         return "变化不大。"
     direction = "升温" if delta > 0 else "降温"
-    strength = "明显" if absolute >= 20 else ""
+    strength = "明显" if absolute >= cfg.significant else ""
     return f"{strength}{direction}，{fallback}"
 
 

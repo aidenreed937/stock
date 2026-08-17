@@ -225,3 +225,39 @@ class DailyMarketScanSummary(BaseModel):
     margin: MarginPenetrationResult | None = Field(default=None, description="两融杠杆结果")
     breadth: MarketBreadthResult | None = Field(default=None, description="市场宽度结果")
     sentiment: MarketSentimentResult | None = Field(default=None, description="微观情绪结果")
+
+
+class ScanEvaluatorConfig(BaseModel):
+    """全市场量化扫描研判阈值与参数配置。"""
+
+    # 宏观分位带阈值
+    eyby_high_pctl: float = Field(default=70.0, description="股债比高性价比分位阈值")
+    eyby_low_pctl: float = Field(default=30.0, description="股债比低性价比防御阈值")
+    pb_extreme_high_pctl: float = Field(default=75.0, description="全 A PB 极高分位阈值")
+    pb_high_pctl: float = Field(default=60.0, description="全 A PB 偏高分位阈值")
+    pb_mid_high_pctl: float = Field(default=55.0, description="全 A PB 中枢偏上阈值")
+    pb_reasonable_pctl: float = Field(default=30.0, description="全 A PB 中枢合理下限阈值")
+    buffett_extreme_pctl: float = Field(default=90.0, description="巴菲特指标极高警示阈值")
+    buffett_high_pctl: float = Field(default=85.0, description="巴菲特指标偏高分位阈值")
+    buffett_mid_high_pctl: float = Field(default=70.0, description="巴菲特指标中偏高阈值")
+    buffett_reasonable_pctl: float = Field(default=30.0, description="巴菲特指标中枢合理下限阈值")
+
+    # 短线宽度信号阈值
+    above_ma20_hot: float = Field(default=80.0, description="站上 MA20 短线过热阈值")
+    above_ma20_healthy: float = Field(default=40.0, description="站上 MA20 短线健康阈值")
+
+    # 微观健康度区间阈值
+    margin_healthy_min: float = Field(default=2.2, description="两融渗透率健康区间下限")
+    margin_healthy_max: float = Field(default=2.8, description="两融渗透率健康区间上限")
+    pb_break_warning: float = Field(default=7.0, description="破净率大面积折价警戒线")
+    pb_break_moderate: float = Field(default=4.0, description="破净率部分折价线")
+    turnover_hot: float = Field(default=6.0, description="换手率交易火热阈值")
+    turnover_moderate: float = Field(default=3.0, description="换手率情绪适中阈值")
+    above_ma60_bull: float = Field(default=60.0, description="站上 MA60 多头走强阈值")
+    above_ma60_repair: float = Field(default=30.0, description="站上 MA60 修复中阈值")
+
+    # 行动清单配置
+    default_equity_exposure: float = Field(default=0.70, description="缺失宏观信号时的默认仓位暴露")
+    exposure_min_bound: int = Field(default=20, description="仓位下限")
+    exposure_max_bound: int = Field(default=95, description="仓位上限")
+    exposure_buffer_pct: int = Field(default=10, description="仓位浮动缓冲区间")

@@ -4,6 +4,8 @@ from __future__ import annotations
 
 from typing import TYPE_CHECKING, Any
 
+from stock.analytics.pipelines.industry_structure.config import IndustryThresholdsConfig
+
 if TYPE_CHECKING:
     import polars as pl
 
@@ -42,17 +44,23 @@ def get_fundamental_status_interpretation(value: object) -> str:
     return "正式财报和快速确认数据匹配正常。"
 
 
-def evaluate_breadth_comment(pos20: int, pos60: int, total: int) -> str:
+def evaluate_breadth_comment(
+    pos20: int,
+    pos60: int,
+    total: int,
+    config: IndustryThresholdsConfig | None = None,
+) -> str:
     """行业上涨家数扩散状态评语。"""
     if total <= 0:
         return "扩散样本不足。"
+    cfg = config or IndustryThresholdsConfig()
     share20 = pos20 / total
     share60 = pos60 / total
-    if share20 >= 0.6 and share60 < 0.35:
+    if share20 >= cfg.breadth_share20_strong and share60 < cfg.breadth_share60_weak:
         return "短线扩散较强，但60日中期确认不足。"
-    if share20 < 0.35 and share60 < 0.35:
+    if share20 < cfg.breadth_share60_weak and share60 < cfg.breadth_share60_weak:
         return "20日和60日扩散都不足，行业机会更偏局部强势而非全面修复。"
-    if share20 >= 0.6 and share60 >= 0.5:
+    if share20 >= cfg.breadth_share20_strong and share60 >= cfg.breadth_share60_healthy:
         return "20日和60日扩散同步改善，结构健康度更高。"
     return "扩散信号分化，需要结合主线拥挤度和60日趋势确认。"
 
@@ -65,10 +73,16 @@ def get_structure_health_level(scores: dict[str, Any]) -> str:
     return str(health.get("level") or "不可判定")
 
 
-def has_weak_fundamental(row: dict[str, Any]) -> bool:
+def has_weak_fundamental(
+    row: dict[str, Any],
+    config: IndustryThresholdsConfig | None = None,
+) -> bool:
     """判断基本面是否偏弱或滞后。"""
+    cfg = config or IndustryThresholdsConfig()
     score = _as_float(row.get("fundamental_score"))
-    return (score is not None and score < 40) or row.get("fundamental_status") in {
+    return (score is not None and score < cfg.weak_fundamental_score) or row.get(
+        "fundamental_status"
+    ) in {
         "official_stale",
         "insufficient",
     }

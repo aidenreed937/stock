@@ -27,7 +27,7 @@ from stock.analytics.evaluators import (
     evaluate_micro_health,
     evaluate_one_sentence_summary,
 )
-from stock.analytics.models import DailyMarketScanSummary
+from stock.analytics.models import DailyMarketScanSummary, ScanEvaluatorConfig
 from stock.data.catalog import DataCatalog
 from stock.utils.logger import logger
 
@@ -35,16 +35,27 @@ from stock.utils.logger import logger
 class MarketScanEngine:
     """全市场每日量化体检聚合引擎。"""
 
-    def __init__(self, catalog: DataCatalog | None = None) -> None:
+    def __init__(
+        self,
+        catalog: DataCatalog | None = None,
+        config: ScanEvaluatorConfig | None = None,
+    ) -> None:
         """初始化聚合引擎与各领域分析器。"""
         self.catalog = catalog or DataCatalog(data_source="tushare")
+        self.config = config or ScanEvaluatorConfig()
         self.classifier = IndustryClassifier()
         self.tcr_calc = TCRCalculator(catalog=self.catalog)
         self.pbroe_analyzer = IndustryPBROEAnalyzer()
         self.momentum_analyzer = IndustryMomentumSpreadAnalyzer(catalog=self.catalog)
         self.margin_calc = MarginPenetrationCalculator(catalog=self.catalog)
         self.breadth_analyzer = MultiPeriodMarketBreadthAnalyzer(catalog=self.catalog)
-        self.sentiment_analyzer = MarketSentimentAnalyzer(catalog=self.catalog)
+        self.sentiment_analyzer = MarketSentimentAnalyzer(
+            catalog=self.catalog,
+            pb_break_warning=self.config.pb_break_warning,
+            pb_break_moderate=self.config.pb_break_moderate,
+            turnover_hot=self.config.turnover_hot,
+            turnover_moderate=self.config.turnover_moderate,
+        )
 
     def compute(
         self,
@@ -112,10 +123,10 @@ class MarketScanEngine:
         )
         top1_tcr = tcr_res.top1_tcr if tcr_res else 0.0
 
-        one_sentence = evaluate_one_sentence_summary(None, undervalued, crowded)
-        signals = build_signals(None, breadth_res)
-        micro_health = evaluate_micro_health(margin_res, sentiment_res, breadth_res)
-        action_items = build_action_items(None, undervalued, crowded)
+        one_sentence = evaluate_one_sentence_summary(None, undervalued, crowded, self.config)
+        signals = build_signals(None, breadth_res, self.config)
+        micro_health = evaluate_micro_health(margin_res, sentiment_res, breadth_res, self.config)
+        action_items = build_action_items(None, undervalued, crowded, self.config)
 
         return DailyMarketScanSummary(
             trade_date=eval_date,

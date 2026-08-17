@@ -41,6 +41,15 @@ industry_structure:
       static: true
       cadence: static
       quality_tier: core
+  thresholds:
+    crowded_threshold: 25.0
+    weak_fundamental_score: 35.0
+    breadth_share20_strong: 0.65
+    breadth_share60_weak: 0.30
+    breadth_share60_healthy: 0.55
+    score_top_structure: 80.0
+    score_crowded_risk: 65.0
+    score_lagging: 55.0
 """,
         encoding="utf-8",
     )
@@ -61,3 +70,7 @@ industry_structure:
     assert config.datasets[0].quality_tier == "core"
     assert config.datasets[1].static
     assert config.datasets[1].cadence == "static"
+    assert config.thresholds.crowded_threshold == 25.0
+    assert config.thresholds.weak_fundamental_score == 35.0
+    assert config.thresholds.breadth_share20_strong == 0.65
+    assert config.thresholds.score_top_structure == 80.0

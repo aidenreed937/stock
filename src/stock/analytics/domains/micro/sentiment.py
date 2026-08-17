@@ -10,6 +10,7 @@
 """
 
 from datetime import date
+from typing import Any
 
 import polars as pl
 
@@ -20,9 +21,21 @@ from stock.data.catalog import DataCatalog
 class MarketSentimentAnalyzer:
     """全市场破净率与换手率极值分析器。"""
 
-    def __init__(self, catalog: DataCatalog | None = None) -> None:
+    def __init__(
+        self,
+        catalog: DataCatalog | None = None,
+        turnover_shrink_threshold: float = 2.3,
+        turnover_huge_threshold: float = 5.5,
+        pb_break_bottom_threshold: float = 10.0,
+        pb_rich_threshold: float = 1.5,
+        **_kwargs: Any,
+    ) -> None:
         """初始化分析器。"""
         self.catalog = catalog or DataCatalog(data_source="tushare")
+        self.turnover_shrink_threshold = turnover_shrink_threshold
+        self.turnover_huge_threshold = turnover_huge_threshold
+        self.pb_break_bottom_threshold = pb_break_bottom_threshold
+        self.pb_rich_threshold = pb_rich_threshold
 
     def calculate_series(
         self,
@@ -108,25 +121,30 @@ class MarketSentimentAnalyzer:
         pb_ratio = float(latest_row["pb_break_ratio"])
         turnover = float(latest_row["turnover_ratio"])
 
-        is_shrink = turnover < 2.3
-        is_huge = turnover > 5.5
-        is_broken = pb_ratio > 10.0
+        is_shrink = turnover < self.turnover_shrink_threshold
+        is_huge = turnover > self.turnover_huge_threshold
+        is_broken = pb_ratio > self.pb_break_bottom_threshold
 
         diagnostics: list[str] = []
         if is_broken:
             diagnostics.append(
-                f"【破净大底】全市场破净率达 {pb_ratio:.2f}% (>10%)，资产出现大面积清算折价"
+                f"【破净大底】全市场破净率达 {pb_ratio:.2f}% "
+                f"(>{self.pb_break_bottom_threshold:.1f}%)，资产出现大面积清算折价"
             )
-        elif pb_ratio < 1.5:
-            diagnostics.append(f"全市场破净率仅 {pb_ratio:.2f}% (<1.5%)，全线资产估值饱满")
+        elif pb_ratio < self.pb_rich_threshold:
+            diagnostics.append(
+                f"全市场破净率仅 {pb_ratio:.2f}% (<{self.pb_rich_threshold:.1f}%)，全线资产估值饱满"
+            )
 
         if is_shrink:
             diagnostics.append(
-                f"【地量地价】全市场平均换手率低至 {turnover:.2f}% (<2.3%)，抛压彻底衰竭"
+                f"【地量地价】全市场平均换手率低至 {turnover:.2f}% "
+                f"(<{self.turnover_shrink_threshold:.1f}%)，抛压彻底衰竭"
             )
         elif is_huge:
             diagnostics.append(
-                f"【天量天价】全市场平均换手率高达 {turnover:.2f}% (>5.5%)，短线情绪极度亢奋"
+                f"【天量天价】全市场平均换手率高达 {turnover:.2f}% "
+                f"(>{self.turnover_huge_threshold:.1f}%)，短线情绪极度亢奋"
             )
         else:
             diagnostics.append(f"市场换手率处于常态中枢 ({turnover:.2f}%)")

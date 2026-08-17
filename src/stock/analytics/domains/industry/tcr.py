@@ -17,18 +17,30 @@ from stock.data.catalog import DataCatalog
 class TCRCalculator:
     """行业成交额拥挤度 (TCR) 分析器。"""
 
-    def __init__(self, catalog: DataCatalog | None = None) -> None:
+    def __init__(
+        self,
+        catalog: DataCatalog | None = None,
+        default_crowded_threshold: float = 20.0,
+        penalty_base: float = 15.0,
+        penalty_scale: float = 10.0,
+    ) -> None:
         """初始化分析器。"""
         self.catalog = catalog or DataCatalog(data_source="tushare")
         self.classifier = IndustryClassifier(self.catalog)
+        self.default_crowded_threshold = default_crowded_threshold
+        self.penalty_base = penalty_base
+        self.penalty_scale = penalty_scale
 
     def calculate_daily_tcr(
         self,
         target_date: date | None = None,
         sw_daily_df: pl.DataFrame | None = None,
-        crowded_threshold: float = 20.0,
+        crowded_threshold: float | None = None,
     ) -> TCRAnalysisResult | None:
         """计算指定日期的申万 31 一级行业成交额拥挤度。"""
+        threshold = (
+            crowded_threshold if crowded_threshold is not None else self.default_crowded_threshold
+        )
         raw_sw = self.catalog.load_dataset("sw_daily") if sw_daily_df is None else sw_daily_df
         if raw_sw.is_empty():
             return None
@@ -78,8 +90,12 @@ class TCRCalculator:
             name = name_map.get(code, self.classifier.resolve_name(code))
             amt_yi = float(row["amount"]) / 1e8
             tcr = float(row["tcr"])
-            is_crowded = tcr >= crowded_threshold
-            penalty = min(1.0, max(0.0, (tcr - 15.0) / 10.0))
+            is_crowded = tcr >= threshold
+            penalty = (
+                min(1.0, max(0.0, (tcr - self.penalty_base) / self.penalty_scale))
+                if self.penalty_scale > 0
+                else (1.0 if tcr >= self.penalty_base else 0.0)
+            )
 
             if is_crowded:
                 crowded_names.append(name)

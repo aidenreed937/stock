@@ -8,6 +8,21 @@ market_temperature:
   metric_values:
     enabled: true
 
+  bands:
+    temperature_levels:
+      low_opportunity: 20.0
+      cool_observation: 40.0
+      neutral_rotation: 60.0
+      warm_recovery: 80.0
+    pressure_levels:
+      moderate: 40.0
+      high_moderate: 60.0
+      high: 80.0
+    delta_levels:
+      stable: 3.0
+      moderate: 5.0
+      significant: 20.0
+
   dimensions:
     - id: valuation
       name: "估值面"

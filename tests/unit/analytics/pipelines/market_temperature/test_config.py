@@ -41,6 +41,20 @@ market_temperature:
       static: true
       cadence: static
       quality_tier: background
+  bands:
+    temperature_levels:
+      low_opportunity: 25.0
+      cool_observation: 45.0
+      neutral_rotation: 65.0
+      warm_recovery: 85.0
+    pressure_levels:
+      moderate: 35.0
+      high_moderate: 55.0
+      high: 75.0
+    delta_levels:
+      stable: 2.0
+      moderate: 4.0
+      significant: 15.0
 """,
         encoding="utf-8",
     )
@@ -62,3 +76,6 @@ market_temperature:
     assert config.datasets[1].dataset == "opt_basic"
     assert config.datasets[1].static is True
     assert config.datasets[1].cadence == "static"
+    assert config.bands.temperature_levels.low_opportunity == 25.0
+    assert config.bands.pressure_levels.high == 75.0
+    assert config.bands.delta_levels.significant == 15.0

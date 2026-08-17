@@ -108,6 +108,97 @@ class MetricValuesConfig:
 
 
 @dataclass(frozen=True, slots=True)
+class TemperatureLevelsConfig:
+    """温度分档阈值。"""
+
+    low_opportunity: float = 20.0
+    cool_observation: float = 40.0
+    neutral_rotation: float = 60.0
+    warm_recovery: float = 80.0
+
+    @classmethod
+    def from_mapping(cls, data: Mapping[str, Any] | None) -> Self:
+        """从 YAML 字典构造温度分档阈值配置。"""
+        if data is None:
+            return cls()
+        return cls(
+            low_opportunity=float(data.get("low_opportunity", 20.0)),
+            cool_observation=float(data.get("cool_observation", 40.0)),
+            neutral_rotation=float(data.get("neutral_rotation", 60.0)),
+            warm_recovery=float(data.get("warm_recovery", 80.0)),
+        )
+
+
+@dataclass(frozen=True, slots=True)
+class PressureLevelsConfig:
+    """宏观压力分档阈值。"""
+
+    moderate: float = 40.0
+    high_moderate: float = 60.0
+    high: float = 80.0
+
+    @classmethod
+    def from_mapping(cls, data: Mapping[str, Any] | None) -> Self:
+        """从 YAML 字典构造宏观压力分档阈值配置。"""
+        if data is None:
+            return cls()
+        return cls(
+            moderate=float(data.get("moderate", 40.0)),
+            high_moderate=float(data.get("high_moderate", 60.0)),
+            high=float(data.get("high", 80.0)),
+        )
+
+
+@dataclass(frozen=True, slots=True)
+class DeltaLevelsConfig:
+    """跨期变化评语阈值。"""
+
+    stable: float = 3.0
+    moderate: float = 5.0
+    significant: float = 20.0
+
+    @classmethod
+    def from_mapping(cls, data: Mapping[str, Any] | None) -> Self:
+        """从 YAML 字典构造跨期变化评语阈值配置。"""
+        if data is None:
+            return cls()
+        return cls(
+            stable=float(data.get("stable", 3.0)),
+            moderate=float(data.get("moderate", 5.0)),
+            significant=float(data.get("significant", 20.0)),
+        )
+
+
+@dataclass(frozen=True, slots=True)
+class BandsConfig:
+    """市场温度计分档阈值总配置。"""
+
+    temperature_levels: TemperatureLevelsConfig = field(default_factory=TemperatureLevelsConfig)
+    pressure_levels: PressureLevelsConfig = field(default_factory=PressureLevelsConfig)
+    delta_levels: DeltaLevelsConfig = field(default_factory=DeltaLevelsConfig)
+
+    @classmethod
+    def from_mapping(cls, data: Mapping[str, Any] | None) -> Self:
+        """从 YAML 字典构造分档阈值总配置。"""
+        if data is None:
+            return cls()
+        temp = data.get("temperature_levels")
+        pres = data.get("pressure_levels")
+        delta = data.get("delta_levels")
+        return cls(
+            temperature_levels=TemperatureLevelsConfig.from_mapping(
+                _as_mapping(temp, "temperature_levels") if temp is not None else None
+            ),
+            pressure_levels=PressureLevelsConfig.from_mapping(
+                _as_mapping(pres, "pressure_levels") if pres is not None else None
+            ),
+            delta_levels=DeltaLevelsConfig.from_mapping(
+                _as_mapping(delta, "delta_levels") if delta is not None else None
+            ),
+        )
+
+
+@dataclass(frozen=True, slots=True)
 class MarketTemperatureConfig:
     """市场温度计顶层配置。"""
 
@@ -119,6 +210,7 @@ class MarketTemperatureConfig:
     dimensions: tuple[DimensionConfig, ...]
     datasets: tuple[DatasetConfig, ...]
     metric_values: MetricValuesConfig = field(default_factory=MetricValuesConfig)
+    bands: BandsConfig = field(default_factory=BandsConfig)
 
     @classmethod
     def from_mapping(cls, data: Mapping[str, Any]) -> Self:
@@ -127,6 +219,7 @@ class MarketTemperatureConfig:
         raw_datasets = _as_sequence(data.get("datasets", ()), "datasets")
         raw_short_windows = _as_sequence(data.get("short_windows", ()), "short_windows")
         metric_values = data.get("metric_values")
+        bands = data.get("bands")
         return cls(
             schema_version=int(data.get("schema_version", 1)),
             title=str(data.get("title", "A 股六维市场温度计")),
@@ -142,6 +235,9 @@ class MarketTemperatureConfig:
             ),
             metric_values=MetricValuesConfig.from_mapping(
                 _as_mapping(metric_values, "metric_values") if metric_values is not None else None
+            ),
+            bands=BandsConfig.from_mapping(
+                _as_mapping(bands, "bands") if bands is not None else None
             ),
         )
 

@@ -3,7 +3,7 @@
 from __future__ import annotations
 
 from collections.abc import Mapping, Sequence
-from dataclasses import dataclass, replace
+from dataclasses import dataclass, field, replace
 from pathlib import Path
 from typing import Any, Self, cast
 
@@ -108,6 +108,49 @@ class DatasetConfig:
 
 
 @dataclass(frozen=True, slots=True)
+class IndustryThresholdsConfig:
+    """行业结构判定阈值配置。"""
+
+    crowded_threshold: float = 20.0
+    weak_fundamental_score: float = 40.0
+    breadth_share20_strong: float = 0.60
+    breadth_share60_weak: float = 0.35
+    breadth_share60_healthy: float = 0.50
+    score_top_structure: float = 75.0
+    score_crowded_risk: float = 70.0
+    score_lagging: float = 60.0
+
+    @classmethod
+    def from_mapping(cls, data: Mapping[str, Any] | None) -> Self:
+        """从 YAML 字典构造判定阈值配置。"""
+        if data is None:
+            return cls()
+        return cls(
+            crowded_threshold=float(data.get("crowded_threshold", 20.0)),
+            weak_fundamental_score=float(data.get("weak_fundamental_score", 40.0)),
+            breadth_share20_strong=float(data.get("breadth_share20_strong", 0.60)),
+            breadth_share60_weak=float(data.get("breadth_share60_weak", 0.35)),
+            breadth_share60_healthy=float(data.get("breadth_share60_healthy", 0.50)),
+            score_top_structure=float(data.get("score_top_structure", 75.0)),
+            score_crowded_risk=float(data.get("score_crowded_risk", 70.0)),
+            score_lagging=float(data.get("score_lagging", 60.0)),
+        )
+
+    def as_dict(self) -> dict[str, float]:
+        """转换为普通字典。"""
+        return {
+            "crowded_threshold": self.crowded_threshold,
+            "weak_fundamental_score": self.weak_fundamental_score,
+            "breadth_share20_strong": self.breadth_share20_strong,
+            "breadth_share60_weak": self.breadth_share60_weak,
+            "breadth_share60_healthy": self.breadth_share60_healthy,
+            "score_top_structure": self.score_top_structure,
+            "score_crowded_risk": self.score_crowded_risk,
+            "score_lagging": self.score_lagging,
+        }
+
+
+@dataclass(frozen=True, slots=True)
 class IndustryStructureConfig:
     """行业结构分析顶层配置。"""
 
@@ -122,6 +165,7 @@ class IndustryStructureConfig:
     score_weights: ScoreWeights
     fundamental_blend: FundamentalBlendConfig
     datasets: tuple[DatasetConfig, ...]
+    thresholds: IndustryThresholdsConfig = field(default_factory=IndustryThresholdsConfig)
 
     @classmethod
     def from_mapping(cls, data: Mapping[str, Any]) -> Self:
@@ -131,6 +175,7 @@ class IndustryStructureConfig:
         raw_datasets = _as_sequence(data.get("datasets", ()), "datasets")
         score_weights = data.get("score_weights")
         fundamental_blend = data.get("fundamental_blend")
+        thresholds = data.get("thresholds")
         return cls(
             schema_version=int(data.get("schema_version", 1)),
             title=str(data.get("title", "申万行业结构分析")),
@@ -150,6 +195,9 @@ class IndustryStructureConfig:
             ),
             datasets=tuple(
                 DatasetConfig.from_mapping(_as_mapping(item, "dataset")) for item in raw_datasets
+            ),
+            thresholds=IndustryThresholdsConfig.from_mapping(
+                _as_mapping(thresholds, "thresholds") if thresholds is not None else None
             ),
         )
 

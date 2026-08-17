@@ -21,6 +21,16 @@ industry_structure:
     stale_official_weight: 0.40
     stale_fast_weight: 0.60
 
+  thresholds:
+    crowded_threshold: 20.0
+    weak_fundamental_score: 40.0
+    breadth_share20_strong: 0.60
+    breadth_share60_weak: 0.35
+    breadth_share60_healthy: 0.50
+    score_top_structure: 75.0
+    score_crowded_risk: 70.0
+    score_lagging: 60.0
+
   datasets:
     - data_source: tushare
       dataset: sw_daily

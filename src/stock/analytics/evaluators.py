@@ -10,6 +10,7 @@ from stock.analytics.models import (
     MarketBreadthResult,
     MarketSentimentResult,
     MicroHealthSummary,
+    ScanEvaluatorConfig,
 )
 
 
@@ -17,8 +18,10 @@ def evaluate_one_sentence_summary(
     macro: MacroRegimeResult | None,
     undervalued: list[str],
     crowded: list[str],
+    config: ScanEvaluatorConfig | None = None,
 ) -> str:
     """构建一句话核心决策结论。"""
+    cfg = config or ScanEvaluatorConfig()
     uv_str = "/".join(undervalued[:3]) if undervalued else "低估高股息"
     crowd_str = "/".join(crowded[:2]) if crowded else "高位题材"
 
@@ -38,7 +41,9 @@ def evaluate_one_sentence_summary(
     buf_pctl = buffett.percentile_10y if buffett else 0.0
     exp_pct = macro.suggested_equity_exposure * 100
 
-    if eyby_pctl >= 70.0 and (buf_pctl >= 80.0 or pb_pctl > 60.0):
+    if eyby_pctl >= cfg.eyby_high_pctl and (
+        buf_pctl >= cfg.buffett_high_pctl or pb_pctl > cfg.pb_high_pctl
+    ):
         return (
             f"股票性价比处于历史高位（沪深300 股债比 {eyby_val:.2f}x，"
             f"10 年 {eyby_pctl:.0f}% 分位），"
@@ -46,13 +51,13 @@ def evaluate_one_sentence_summary(
             f"便宜主要靠超低国债利率与大盘蓝筹，全 A 并非全面低估。"
             f"**保持 {exp_pct:.0f}% 仓位，只买便宜好货（{uv_str}），回避过热板块（{crowd_str}）。**"
         )
-    if eyby_pctl >= 70.0:
+    if eyby_pctl >= cfg.eyby_high_pctl:
         return (
             f"股票资产处于高性价比战略建仓期（股债比 {eyby_val:.2f}x，"
             f"10 年 {eyby_pctl:.0f}% 分位）。"
             f"**保持 {exp_pct:.0f}% 积极仓位，重点配置质优价廉资产（{uv_str}）。**"
         )
-    if eyby_pctl < 30.0 or buf_pctl >= 90.0:
+    if eyby_pctl < cfg.eyby_low_pctl or buf_pctl >= cfg.buffett_extreme_pctl:
         return (
             f"市场估值与杠杆处于偏热风险区。"
             f"**建议将仓位严格控制在 {exp_pct:.0f}% 防御水平，坚决避险。**"
@@ -63,14 +68,18 @@ def evaluate_one_sentence_summary(
     )
 
 
-def _build_eyby_signal(macro: MacroRegimeResult | None) -> MacroSignalItem | None:
+def _build_eyby_signal(
+    macro: MacroRegimeResult | None,
+    config: ScanEvaluatorConfig | None = None,
+) -> MacroSignalItem | None:
+    cfg = config or ScanEvaluatorConfig()
     eyby = macro.ey_by if macro else None
     if not eyby:
         return None
     pctl = eyby.percentile_10y
-    if pctl >= 70.0:
+    if pctl >= cfg.eyby_high_pctl:
         st, desc = "🟢 高", f"历史性机会，仅 {100 - pctl:.0f}% 时间更便宜"
-    elif pctl >= 30.0:
+    elif pctl >= cfg.eyby_low_pctl:
         st, desc = "🟡 中", "估值中枢合理，性价比适中"
     else:
         st, desc = "🔴 低", "股票吸引力偏弱，注意防御"
@@ -84,16 +93,20 @@ def _build_eyby_signal(macro: MacroRegimeResult | None) -> MacroSignalItem | Non
     )
 
 
-def _build_all_m_signal(macro: MacroRegimeResult | None) -> MacroSignalItem | None:
+def _build_all_m_signal(
+    macro: MacroRegimeResult | None,
+    config: ScanEvaluatorConfig | None = None,
+) -> MacroSignalItem | None:
+    cfg = config or ScanEvaluatorConfig()
     all_m = macro.all_market if macro else None
     if not all_m:
         return None
     pctl = all_m.pb_percentile_10y
-    if pctl >= 75.0:
+    if pctl >= cfg.pb_extreme_high_pctl:
         st, desc = "🔴 偏高", "全 A 整体估值具备一定溢价"
-    elif pctl >= 55.0:
+    elif pctl >= cfg.pb_mid_high_pctl:
         st, desc = "🟡 中枢偏上", "估值中枢偏上，全 A 非全面低估"
-    elif pctl >= 30.0:
+    elif pctl >= cfg.pb_reasonable_pctl:
         st, desc = "🟢 中枢合理", "资产估值处于历史中枢带"
     else:
         st, desc = "🟢 偏低", "全 A 资产深度折价，安全边际高"
@@ -107,16 +120,20 @@ def _build_all_m_signal(macro: MacroRegimeResult | None) -> MacroSignalItem | No
     )
 
 
-def _build_buffett_signal(macro: MacroRegimeResult | None) -> MacroSignalItem | None:
+def _build_buffett_signal(
+    macro: MacroRegimeResult | None,
+    config: ScanEvaluatorConfig | None = None,
+) -> MacroSignalItem | None:
+    cfg = config or ScanEvaluatorConfig()
     buf = macro.buffett if macro else None
     if not buf:
         return None
     pctl = buf.percentile_10y
-    if pctl >= 85.0:
+    if pctl >= cfg.buffett_high_pctl:
         st, desc = "🟡 偏高", "规模高位，受超低利率与扩容推升"
-    elif pctl >= 70.0:
+    elif pctl >= cfg.buffett_mid_high_pctl:
         st, desc = "🟡 中偏高", "总市值相对 GDP 具备一定扩张"
-    elif pctl >= 30.0:
+    elif pctl >= cfg.buffett_reasonable_pctl:
         st, desc = "🟢 合理", "总市值与经济总量基本匹配"
     else:
         st, desc = "🟢 极低", "全市场总市值大幅折价"
@@ -130,13 +147,17 @@ def _build_buffett_signal(macro: MacroRegimeResult | None) -> MacroSignalItem | 
     )
 
 
-def _build_breadth_signal(breadth: MarketBreadthResult | None) -> MacroSignalItem | None:
+def _build_breadth_signal(
+    breadth: MarketBreadthResult | None,
+    config: ScanEvaluatorConfig | None = None,
+) -> MacroSignalItem | None:
     if not breadth:
         return None
+    cfg = config or ScanEvaluatorConfig()
     r20 = breadth.above_ma20_ratio
-    if r20 > 80.0:
+    if r20 > cfg.above_ma20_hot:
         st, desc = "🔴 过热", "短线亢奋，勿追高"
-    elif r20 >= 40.0:
+    elif r20 >= cfg.above_ma20_healthy:
         st, desc = "🟢 健康", "短线处于常态健康带"
     else:
         st, desc = "⚪ 冰点", "短线悲观冰点，酝酿反弹"
@@ -153,14 +174,16 @@ def _build_breadth_signal(breadth: MarketBreadthResult | None) -> MacroSignalIte
 def build_signals(
     macro: MacroRegimeResult | None,
     breadth: MarketBreadthResult | None,
+    config: ScanEvaluatorConfig | None = None,
 ) -> list[MacroSignalItem]:
     """生成宏观与微观信号列表。"""
+    cfg = config or ScanEvaluatorConfig()
     signals: list[MacroSignalItem] = []
     for item in [
-        _build_eyby_signal(macro),
-        _build_all_m_signal(macro),
-        _build_buffett_signal(macro),
-        _build_breadth_signal(breadth),
+        _build_eyby_signal(macro, cfg),
+        _build_all_m_signal(macro, cfg),
+        _build_buffett_signal(macro, cfg),
+        _build_breadth_signal(breadth, cfg),
     ]:
         if item is not None:
             signals.append(item)
@@ -171,19 +194,37 @@ def evaluate_micro_health(
     margin_res: Any,
     sentiment_res: MarketSentimentResult | None,
     breadth_res: MarketBreadthResult | None,
+    config: ScanEvaluatorConfig | None = None,
 ) -> MicroHealthSummary:
     """评估微观健康度状态。"""
+    cfg = config or ScanEvaluatorConfig()
     m_ratio = margin_res.margin_penetration if margin_res else 0.0
-    m_desc = "温和健康" if 2.2 <= m_ratio <= 2.8 else ("杠杆出清" if m_ratio < 2.2 else "杠杆偏热")
+    m_desc = (
+        "温和健康"
+        if cfg.margin_healthy_min <= m_ratio <= cfg.margin_healthy_max
+        else ("杠杆出清" if m_ratio < cfg.margin_healthy_min else "杠杆偏热")
+    )
 
     pb_break = sentiment_res.pb_break_ratio if sentiment_res else 0.0
-    pb_desc = "大面积折价" if pb_break > 7.0 else ("部分折价" if pb_break >= 4.0 else "常态区间")
+    pb_desc = (
+        "大面积折价"
+        if pb_break > cfg.pb_break_warning
+        else ("部分折价" if pb_break >= cfg.pb_break_moderate else "常态区间")
+    )
 
     turnover = sentiment_res.turnover_ratio if sentiment_res else 0.0
-    to_desc = "交易火热" if turnover > 6.0 else ("情绪适中" if turnover >= 3.0 else "交投低迷")
+    to_desc = (
+        "交易火热"
+        if turnover > cfg.turnover_hot
+        else ("情绪适中" if turnover >= cfg.turnover_moderate else "交投低迷")
+    )
 
     r60 = breadth_res.above_ma60_ratio if breadth_res else 0.0
-    r60_desc = "多头走强" if r60 > 60.0 else ("修复中" if r60 >= 30.0 else "弱势寻底")
+    r60_desc = (
+        "多头走强"
+        if r60 > cfg.above_ma60_bull
+        else ("修复中" if r60 >= cfg.above_ma60_repair else "弱势寻底")
+    )
 
     return MicroHealthSummary(
         margin_ratio=round(m_ratio, 2),
@@ -201,11 +242,13 @@ def build_action_items(
     macro: MacroRegimeResult | None,
     undervalued: list[str],
     crowded: list[str],
+    config: ScanEvaluatorConfig | None = None,
 ) -> list[str]:
     """生成精简操作备忘清单。"""
-    exp_pct = (macro.suggested_equity_exposure if macro else 0.7) * 100
-    exp_min = max(20, int(exp_pct - 10))
-    exp_max = min(95, int(exp_pct + 10))
+    cfg = config or ScanEvaluatorConfig()
+    exp_pct = (macro.suggested_equity_exposure if macro else cfg.default_equity_exposure) * 100
+    exp_min = max(cfg.exposure_min_bound, int(exp_pct - cfg.exposure_buffer_pct))
+    exp_max = min(cfg.exposure_max_bound, int(exp_pct + cfg.exposure_buffer_pct))
 
     uv_text = "、".join(undervalued[:3]) if undervalued else "低估核心资产"
     avoid_line = (
