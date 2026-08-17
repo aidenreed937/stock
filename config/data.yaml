@@ -17,6 +17,13 @@ data:
     default_max_workers: 4
 
   source_endpoint_supports:
+    tushare:
+      index_dailybasic:
+        - "000001.SH"
+        - "399001.SZ"
+        - "000300.SH"
+        - "000905.SH"
+        - "399006.SZ"
     alphavantage:
       fx_daily:
         - "CNH=X"

@@ -257,6 +257,38 @@ def test_sync_symbols_filters_lixinger_unsupported_index() -> None:
         ]
 
 
+def test_build_sync_plan_filters_unsupported_tushare_index_dailybasic() -> None:
+    supported = ["000001.SH", "399001.SZ", "000300.SH", "000905.SH", "399006.SZ"]
+    unsupported = ["000852.SH", "000985.CSI", "000922.CSI", "399102.SZ", "000688.SH"]
+
+    class Watchlist:
+        def __init__(self) -> None:
+            self.indices = supported + unsupported
+
+    class Watchlists:
+        def __init__(self) -> None:
+            self.tushare = Watchlist()
+
+    class DataCfg:
+        def __init__(self) -> None:
+            self.watchlists = Watchlists()
+            self.source_endpoint_supports = {"tushare": {"index_dailybasic": supported}}
+
+    engine = DailySyncEngine(data_source="tushare")
+    with (
+        patch("stock.data.sync.load_data_config", return_value=DataCfg()),
+        patch.object(engine, "sniff_watermarks", return_value={"index_dailybasic": None}),
+        patch("stock.data.sync._symbol_watermark", return_value=None),
+        patch("stock.data.sync.DataUpdateScheduler.is_data_ready", return_value=True),
+    ):
+        plan = engine.build_sync_plan(
+            target_date=date(2026, 8, 14), endpoints=["index_dailybasic"]
+        )
+
+    assert [item.symbol for item in plan] == supported
+    assert not any(item.symbol in unsupported for item in plan)
+
+
 def test_execute_plan_passes_task_symbol_to_pipeline() -> None:
     engine = DailySyncEngine(data_source="tushare", max_workers=1)
     plan = [
