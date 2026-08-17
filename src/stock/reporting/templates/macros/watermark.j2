@@ -1,0 +1,10 @@
+{% macro timing_audit(trade_date, stale_items) -%}
+## 数据时效说明
+{% if stale_items %}
+{% for item in stale_items %}
+- {{ item }}
+{% endfor %}
+{% else %}
+- 🟢 全部宏观估值、行业中观与微观情绪数据均已对齐至当日最新 ({{ trade_date }})。
+{% endif %}
+{%- endmacro %}

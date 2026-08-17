@@ -1,0 +1,30 @@
+# {{ title }}
+
+- 基准日期: {{ manifest.as_of_date }}
+- 主窗口: 最近 {{ manifest.main_window }} 个已落盘交易日
+- 短线补充窗口: {{ short_windows_str }} 日
+- 产物运行 ID: {{ manifest.run_id }}
+
+## 综合温度
+
+- 状态: {{ composite.status }}
+- 温度: {{ composite.temperature }}
+- 说明: {{ composite.reason }}
+
+## 系统性风险
+
+{% for line in systemic_risk_lines %}
+{{ line }}
+{% endfor %}
+
+## 六维状态
+
+| 维度 | 权重 | 温度 | 状态 | 指标事实 | 说明 |
+|---|---:|---:|---|---:|---|
+{% for item in dimensions %}
+| {{ item.name }} | {{ item.weight | pct(0, signed=False) }} | {{ item.temperature }} | {{ item.status }} | {{ item.ok_metric_count }}/{{ item.metric_count }} | {{ item.reason }} |
+{% endfor %}
+{% if facts_sections %}
+
+{{ facts_sections }}
+{% endif %}

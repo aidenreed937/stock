@@ -4,6 +4,8 @@ from __future__ import annotations
 
 from typing import TYPE_CHECKING, Any
 
+from stock.reporting.engine.renderer import ReportRenderer
+
 if TYPE_CHECKING:
     import polars as pl
 
@@ -57,55 +59,34 @@ def render_brief_markdown(brief: dict[str, Any]) -> str:
     participation = brief["participation"]
     market = brief["market_snapshot"]
     industry = brief["industry_snapshot"]
-    lines = [
-        f"# {brief['title']}",
-        "",
-        f"- 基准日期: {manifest['as_of_date']}",
-        f"- 市场温度输入: {manifest['inputs']['market_temperature']['run_id']}",
-        f"- 行业结构输入: {manifest['inputs']['industry_structure']['run_id']}",
-        "- 定位: 用于先判断系统风险，再筛选短期方向；不构成个性化投资建议。",
-        "",
-        "## 1. 能不能参与",
-        "",
-        f"- 参与结论: {participation['stance']}",
-        f"- 参与方式: {participation['action']}",
-        f"- 系统风险: {participation['risk_level']}",
-        f"- 综合温度: {_value_text(market['composite_temperature'])} / 100",
-        f"- 结构健康度: {_structure_health_level(industry)}",
-        "",
-        "### 为什么",
-        "",
-        *_bullet_lines(participation["reasons"]),
-        "",
-        "## 2. 短期配置观察",
-        "",
-        "- 选择原则: 结构分靠前、20日收益为正、未进入高拥挤，并尽量避开景气承压标签。",
-        *_industry_table(
-            brief["candidate_industries"],
-            empty_text="暂无满足低拥挤和结构质量要求的短期方向。",
-        ),
-        "",
-        "## 3. 不宜追高或需降温观察",
-        "",
-        "- 这些行业可能仍有交易热度，但成交或拥挤温度偏高，普通投资者不宜把它们当作低风险方向。",
-        *_industry_table(
-            brief["risk_industries"],
-            empty_text="暂无明显拥挤行业。",
-        ),
-        "",
-        "## 4. 落后方向",
-        "",
-        "- 这些行业结构分靠后，用于排查弱势暴露；不等同于长期看空。",
-        *_industry_table(
-            brief["lagging_industries"],
-            empty_text="暂无可列示的落后方向。",
-        ),
-        "",
-        "## 5. 怎么读",
-        "",
-        *_bullet_lines(brief["reading_notes"]),
-    ]
-    return "\n".join(lines) + "\n"
+
+    def _format_table_rows(rows: list[dict[str, Any]]) -> list[dict[str, Any]]:
+        return [
+            {
+                "industry_name": r.get("industry_name") or "",
+                "structure_score_str": _value_text(r.get("structure_score")),
+                "return_20d_str": _value_text(r.get("return_20d")),
+                "return_60d_str": _value_text(r.get("return_60d")),
+                "crowding_temperature_str": _value_text(r.get("crowding_temperature")),
+                "reason": r.get("reason") or "",
+            }
+            for r in rows
+        ]
+
+    context = {
+        "title": brief.get("title", ""),
+        "manifest": manifest,
+        "participation": participation,
+        "market": market,
+        "market_composite_temp": _value_text(market.get("composite_temperature")),
+        "structure_health_level": _structure_health_level(industry),
+        "candidate_industries": _format_table_rows(brief.get("candidate_industries", [])),
+        "risk_industries": _format_table_rows(brief.get("risk_industries", [])),
+        "lagging_industries": _format_table_rows(brief.get("lagging_industries", [])),
+        "reading_notes": brief.get("reading_notes", []),
+    }
+
+    return ReportRenderer.get_instance().render("temperature/investor_brief.md.j2", context)
 
 
 def _participation_decision(

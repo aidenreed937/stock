@@ -7,6 +7,7 @@ from typing import TYPE_CHECKING, Any
 import polars as pl
 
 from stock.reporting.core.watermark import human_watermark_issue_lines
+from stock.reporting.engine.renderer import ReportRenderer
 
 if TYPE_CHECKING:
     from stock.analytics.pipelines.industry_structure.config import IndustryStructureConfig
@@ -40,46 +41,22 @@ def render_report_markdown(
     industry_panel: pl.DataFrame,
 ) -> str:
     """渲染 Markdown 报告。"""
-    lines = [
-        f"# {config.title}",
-        "",
-        f"- 基准日期: {manifest['as_of_date']}",
-        f"- 主窗口: 最近 {manifest['main_window']} 个已落盘申万行业交易日",
-        f"- 中期窗口: {', '.join(str(value) for value in manifest['medium_windows'])} 日",
-        f"- 产物运行 ID: {manifest['run_id']}",
-        "",
-        "## 行业结构摘要",
-        "",
-        f"- 行业数: {scores['industry_count']}",
-        f"- 可评分行业数: {scores['scored_industry_count']}",
-        f"- 权重: {_weights_text(scores['score_weights'])}",
-        "",
-        "## 趋势诊断",
-        "",
-        *_trend_diagnostic_section(scores),
-        "",
-        "## 结构健康度",
-        "",
-        *_structure_health_section(scores),
-        "",
-        "## 基本面状态",
-        "",
-        *_fundamental_status_section(scores),
-        "",
-        "## 评分口径",
-        "",
-        *_methodology_sections(scores),
-        "",
-        "## 结构分 Top 10",
-        "",
-        *_panel_table(industry_panel, limit=10),
-        "",
-        "## 信号分组",
-        "",
-        *_score_group_sections(scores),
-    ]
-    lines.extend(_facts_sections(facts))
-    return "\n".join(lines) + "\n"
+    facts_sec = "\n".join(_facts_sections(facts)).strip()
+    context = {
+        "title": config.title,
+        "manifest": manifest,
+        "medium_windows_str": ", ".join(str(value) for value in manifest.get("medium_windows", [])),
+        "scores": scores,
+        "weights_text": _weights_text(scores.get("score_weights", {})),
+        "trend_diagnostic_lines": _trend_diagnostic_section(scores),
+        "structure_health_lines": _structure_health_section(scores),
+        "fundamental_status_lines": _fundamental_status_section(scores),
+        "methodology_lines": _methodology_sections(scores),
+        "panel_table_lines": _panel_table(industry_panel, limit=10),
+        "score_group_lines": _score_group_sections(scores),
+        "facts_sections": facts_sec,
+    }
+    return ReportRenderer.get_instance().render("industry/structure.md.j2", context)
 
 
 def render_human_report_markdown(
@@ -91,69 +68,44 @@ def render_human_report_markdown(
     industry_panel: pl.DataFrame,
 ) -> str:
     """渲染面向人工阅读的 Markdown 报告。"""
-    lines = [
-        f"# {config.title}人工阅读版",
-        "",
-        f"- 基准日期: {manifest['as_of_date']}",
-        "- 观察窗口: 5/10 日短线、20 日主窗口、60/120 日中期趋势",
-        f"- 行业覆盖: {scores['scored_industry_count']} / {scores['industry_count']}",
-        f"- 结构健康度: {_structure_health_level(scores)}",
-        "",
-        "## 一句话结论",
-        "",
-        _one_line_summary(scores),
-        *_human_trend_lines(scores),
-        "",
-        "## 怎么读",
-        "",
-        *_human_reading_guide(scores),
-        "",
-        "## 关键判断",
-        "",
-        *_key_takeaway_section(industry_panel, scores),
-        "",
-        "## 结构健康度",
-        "",
-        *_structure_health_section(scores),
-        "",
-        "## 优先观察",
-        "",
-        *_human_priority_sections(scores),
-        "",
-        "## 结构雷达",
-        "",
-        *_structure_radar_section(industry_panel, scores),
-        "",
-        "## 主线类型",
-        "",
-        *_theme_type_section(industry_panel),
-        "",
-        "## 短线节奏",
-        "",
-        *_short_term_rhythm_section(industry_panel),
-        "",
-        "## 落后方向",
-        "",
-        *_lagging_direction_section(scores),
-        "",
-        "## 行业总览",
-        "",
-        *_panel_table(industry_panel, limit=12),
-        "",
-        "## 解读口径",
-        "",
-        "- 行业结构分用于排序，不等同于市场综合温度，也不直接给仓位。",
-        "- TCR 是最近20个行业交易日的行业成交额占比均值，拥挤温度越高代表成交越集中。",
-        (
-            "- 行业资金流由个股 moneyflow 按申万成分聚合，并用个股成交额作分母；"
-            "资金确认不进入结构总分。"
-        ),
-        "- 标签不是互斥分组，同一行业可以同时是强势主线和拥挤风险。",
-        "- 动量和拥挤度是日频，估值是日频但受价格驱动，行业财报是季频慢变量底座。",
-        "- 缺失估值、财报或基准指数时，对可用子项重归一，不用外部记忆补值。",
-    ]
-    lines.extend(_data_limit_sections(facts))
-    return "\n".join(lines) + "\n"
+    context = {
+        "title": config.title,
+        "manifest": manifest,
+        "scores": scores,
+        "structure_health_level": _structure_health_level(scores),
+        "one_line_summary": _one_line_summary(scores),
+        "human_trend_lines": _human_trend_lines(scores),
+        "reading_guide_lines": _human_reading_guide(scores),
+        "key_takeaway_lines": _key_takeaway_section(industry_panel, scores),
+        "structure_health_lines": _structure_health_section(scores),
+        "priority_lines": _human_priority_sections(scores),
+        "structure_radar_lines": _structure_radar_section(industry_panel, scores),
+        "theme_type_lines": _theme_type_section(industry_panel),
+        "short_term_rhythm_lines": _short_term_rhythm_section(industry_panel),
+        "lagging_direction_lines": _lagging_direction_section(scores),
+        "panel_table_lines": _panel_table(industry_panel, limit=12),
+        "interpretation_lines": [
+            "- 行业结构分用于排序，不等同于市场综合温度，也不直接给仓位。",
+            "- TCR 是最近20个行业交易日的行业成交额占比均值，拥挤温度越高代表成交越集中。",
+            (
+                "- 行业资金流由个股 moneyflow 按申万成分聚合，并用个股成交额作分母；"
+                "资金确认不进入结构总分。"
+            ),
+            (
+                "- 景气承压/估值极端标签来自行业聚合指标与基本面分位数；"
+                "若基本面指标缺失，对应分数回退为中性。"
+            ),
+            (
+                "- 轮动扩散/分化/衰退来自行业收益与均线宽度的横截面离散度；"
+                "不是对单一指数走势的预测。"
+            ),
+            "- 标签不是互斥分组，同一行业可以同时是强势主线和拥挤风险。",
+            "- 动量和拥挤度是日频，估值是日频但受价格驱动，行业财报是季频慢变量底座。",
+            "- 缺失估值、财报或基准指数时，对可用子项重归一，不用外部记忆补值。",
+        ],
+        "limit_sections": "\n".join(_data_limit_sections(facts)).strip(),
+    }
+    return ReportRenderer.get_instance().render("industry/structure_human.md.j2", context)
 
 
 def summarize_facts(facts: pl.DataFrame) -> dict[str, Any]:

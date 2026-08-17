@@ -1,0 +1,52 @@
+# {{ title }}
+
+- 基准日期: {{ manifest.as_of_date }}
+- 主窗口: 最近 {{ manifest.main_window }} 个已落盘申万行业交易日
+- 中期窗口: {{ medium_windows_str }} 日
+- 产物运行 ID: {{ manifest.run_id }}
+
+## 行业结构摘要
+
+- 行业数: {{ scores.industry_count }}
+- 可评分行业数: {{ scores.scored_industry_count }}
+- 权重: {{ weights_text }}
+
+## 趋势诊断
+
+{% for line in trend_diagnostic_lines %}
+{{ line }}
+{% endfor %}
+
+## 结构健康度
+
+{% for line in structure_health_lines %}
+{{ line }}
+{% endfor %}
+
+## 基本面状态
+
+{% for line in fundamental_status_lines %}
+{{ line }}
+{% endfor %}
+
+## 评分口径
+
+{% for line in methodology_lines %}
+{{ line }}
+{% endfor %}
+
+## 结构分 Top 10
+
+{% for line in panel_table_lines %}
+{{ line }}
+{% endfor %}
+
+## 信号分组
+
+{% for line in score_group_lines %}
+{{ line }}
+{% endfor %}
+{% if facts_sections %}
+
+{{ facts_sections }}
+{% endif %}

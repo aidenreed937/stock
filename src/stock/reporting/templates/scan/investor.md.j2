@@ -1,0 +1,29 @@
+{% import "macros/watermark.j2" as wm -%}
+# 📈 A 股每日体检 · {{ trade_date }}
+
+## 一句话结论
+{{ summary.one_sentence_summary }}
+
+## 四个关键信号
+| 类型 | 信号 | 关键数字 | 10年分位 | 说明 / 定性 |
+|---|---|---|---|---|
+{% for s in signals %}
+| {{ s.category }} | {{ s.name }} | {{ s.value_display }} | {{ s.percentile_str }} | {{ s.status }} {{ s.description }} |
+{% endfor %}
+
+## 行业怎么选
+- 🟢 低估洼地：**{{ undervalued_str }}**（质优价廉）
+{{ crowd_line }}
+
+## 微观健康度
+- 两融杠杆：**{{ summary.micro_health.margin_ratio | decimal(2) }}%**{{ margin_tag }}（{{ summary.micro_health.margin_status }}）
+- 破净比例：**{{ summary.micro_health.pb_break_ratio | decimal(2) }}%**（{{ summary.micro_health.pb_break_status }}）
+- 市场换手：**{{ summary.micro_health.turnover_ratio | decimal(2) }}%**（{{ summary.micro_health.turnover_status }}）
+- 中期趋势：**{{ summary.micro_health.above_ma60_ratio | decimal(1) }}%** 站上 60 日线（{{ summary.micro_health.ma60_status }}）
+
+{{ wm.timing_audit(trade_date, stale_items) }}
+
+## 操作备忘
+{% for item in summary.action_items %}
+{{ item }}
+{% endfor %}

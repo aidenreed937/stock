@@ -1,0 +1,75 @@
+# {{ title }}人工阅读版
+
+- 基准日期: {{ manifest.as_of_date }}
+- 观察窗口: {{ window_text }}
+- 综合温度: {{ composite_temp_text }} / 100
+- 系统性风险: {{ systemic_risk_level }}
+- 状态: {{ status_label }}
+
+## 一句话结论
+
+{{ one_line_summary }}
+
+## 读法总览
+
+{% for line in reading_brief_lines %}
+{{ line }}
+{% endfor %}
+{% if cross_period_lines %}
+
+{% for line in cross_period_lines %}
+{{ line }}
+{% endfor %}
+{% endif %}
+
+## 数据质量提示
+
+{% for line in quality_brief_lines %}
+{{ line }}
+{% endfor %}
+
+## 关键背离
+
+{% for line in divergence_lines %}
+{{ line }}
+{% endfor %}
+
+## 系统性风险
+
+{% for line in systemic_risk_lines %}
+{{ line }}
+{% endfor %}
+
+## 外部压力提示
+
+{% for line in external_pressure_lines %}
+{{ line }}
+{% endfor %}
+
+## 后续跟踪
+
+{% for line in follow_up_lines %}
+{{ line }}
+{% endfor %}
+
+## 解读顺序
+
+{% for line in interpretation_priority_lines %}
+{{ line }}
+{% endfor %}
+
+## 六维解读
+
+| 维度 | 温度 | 分档 | 解读 |
+|---|---:|---|---|
+{% for dim in dimension_interpretations %}
+| {{ dim.name }} | {{ dim.temperature }} | {{ dim.band }} | {{ dim.comment }} |
+{% endfor %}
+{% if fact_sections %}
+
+{{ fact_sections }}
+{% endif %}
+{% if limit_sections %}
+
+{{ limit_sections }}
+{% endif %}

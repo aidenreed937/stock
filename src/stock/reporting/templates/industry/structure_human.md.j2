@@ -1,0 +1,79 @@
+# {{ title }}人工阅读版
+
+- 基准日期: {{ manifest.as_of_date }}
+- 观察窗口: 5/10 日短线、20 日主窗口、60/120 日中期趋势
+- 行业覆盖: {{ scores.scored_industry_count }} / {{ scores.industry_count }}
+- 结构健康度: {{ structure_health_level }}
+
+## 一句话结论
+
+{{ one_line_summary }}
+{% if human_trend_lines %}
+{% for line in human_trend_lines %}
+{{ line }}
+{% endfor %}
+{% endif %}
+
+## 怎么读
+
+{% for line in reading_guide_lines %}
+{{ line }}
+{% endfor %}
+
+## 关键判断
+
+{% for line in key_takeaway_lines %}
+{{ line }}
+{% endfor %}
+
+## 结构健康度
+
+{% for line in structure_health_lines %}
+{{ line }}
+{% endfor %}
+
+## 优先观察
+
+{% for line in priority_lines %}
+{{ line }}
+{% endfor %}
+
+## 结构雷达
+
+{% for line in structure_radar_lines %}
+{{ line }}
+{% endfor %}
+
+## 主线类型
+
+{% for line in theme_type_lines %}
+{{ line }}
+{% endfor %}
+
+## 短线节奏
+
+{% for line in short_term_rhythm_lines %}
+{{ line }}
+{% endfor %}
+
+## 落后方向
+
+{% for line in lagging_direction_lines %}
+{{ line }}
+{% endfor %}
+
+## 行业总览
+
+{% for line in panel_table_lines %}
+{{ line }}
+{% endfor %}
+
+## 解读口径
+
+{% for line in interpretation_lines %}
+{{ line }}
+{% endfor %}
+{% if limit_sections %}
+
+{{ limit_sections }}
+{% endif %}

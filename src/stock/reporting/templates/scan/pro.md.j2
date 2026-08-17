@@ -1,0 +1,27 @@
+# 📊 A 股量化全景体检专业报告 (基准日: {{ trade_date }})
+
+---
+
+## 1. 宏观周期与大类资产定价 (Macro Regime, As-Of: {{ macro_dt }}{{ macro_stale_warn }})
+- **Regime**: `{{ macro_regime }}` ({{ macro_regime_desc }})
+- **Exposure Limit**: `{{ macro_exposure | decimal(1) }}%`
+- **EY/BY Ratio (000300)**: `{{ eyby_s }}`
+- **All-Market PB (000985)**: `{{ all_m_s }}`
+- **Buffett Ratio (MV/GDP)**: `{{ buf_s }}`
+- **Key Drivers**:
+{% for d in macro_key_drivers %}
+  - {{ d }}
+{% endfor %}
+
+## 2. 中观行业轮动与风控 (TCR As-Of: {{ tcr_dt }}{{ tcr_warn }}, PB-ROE As-Of: {{ pbroe_dt }}{{ pbroe_warn }})
+- **Total Amount**: `{{ total_amount | decimal(1) }} 亿元`
+- **Top 1 Industry**: `{{ top1_industry }}` ({{ top1_tcr | decimal(1) }}%)
+- **Crowded Industries**: `{{ crowded_industries }}`
+- **PB-ROE Fit**: `R²={{ pbroe_r2 | decimal(3) }} (α: {{ pbroe_alpha | decimal(3) }}, β: {{ pbroe_beta | decimal(4) }})`
+- **Undervalued Industries**: `{{ undervalued_industries }}`
+- **Momentum Spread**: `{{ momentum_spread | decimal(1) }}%`
+
+## 3. 微观博弈与流动性情绪 (Margin As-Of: {{ margin_dt }}{{ margin_tag }})
+- **Margin Penetration**: `{{ margin_penetration | decimal(2) }}%` (Balance: {{ margin_balance | decimal(1) }} 亿)
+- **Breadth**: MA20 `{{ breadth_ma20 | decimal(1) }}%` | MA60 `{{ breadth_ma60 | decimal(1) }}%` | MA120 `{{ breadth_ma120 | decimal(1) }}%`
+- **Sentiment**: PB Break `{{ pb_break | decimal(2) }}%` | Turnover `{{ turnover | decimal(2) }}%`

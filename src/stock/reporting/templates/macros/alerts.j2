@@ -1,0 +1,4 @@
+{% macro alert(type, content) -%}
+> [!{{ type | upper }}]
+> {{ content }}
+{%- endmacro %}

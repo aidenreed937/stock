@@ -10,6 +10,7 @@ from stock.reporting.core.watermark import (
     human_watermark_issue_lines,
     human_watermark_latest_text,
 )
+from stock.reporting.engine.renderer import ReportRenderer
 
 if TYPE_CHECKING:
     from stock.analytics.pipelines.market_temperature.config import MarketTemperatureConfig
@@ -209,43 +210,17 @@ def render_report_markdown(
     facts: pl.DataFrame,
 ) -> str:
     """渲染 Markdown 报告。"""
-    lines = [
-        f"# {config.title}",
-        "",
-        f"- 基准日期: {manifest['as_of_date']}",
-        f"- 主窗口: 最近 {manifest['main_window']} 个已落盘交易日",
-        f"- 短线补充窗口: {', '.join(str(value) for value in manifest['short_windows'])} 日",
-        f"- 产物运行 ID: {manifest['run_id']}",
-        "",
-        "## 综合温度",
-        "",
-        f"- 状态: {scores['composite']['status']}",
-        f"- 温度: {scores['composite']['temperature']}",
-        f"- 说明: {scores['composite']['reason']}",
-        "",
-        "## 系统性风险",
-        "",
-        *_systemic_risk_section(scores),
-        "",
-        "## 六维状态",
-        "",
-        "| 维度 | 权重 | 温度 | 状态 | 指标事实 | 说明 |",
-        "|---|---:|---:|---|---:|---|",
-    ]
-    for item in scores["dimensions"]:
-        lines.append(
-            "| {name} | {weight:.0%} | {temperature} | {status} | {ok}/{total} | {reason} |".format(
-                name=item["name"],
-                weight=item["weight"],
-                temperature=item["temperature"],
-                status=item["status"],
-                ok=item["ok_metric_count"],
-                total=item["metric_count"],
-                reason=item["reason"],
-            )
-        )
-    lines.extend(_facts_sections(facts))
-    return "\n".join(lines) + "\n"
+    facts_sec = "\n".join(_facts_sections(facts)).strip()
+    context = {
+        "title": config.title,
+        "manifest": manifest,
+        "short_windows_str": ", ".join(str(value) for value in manifest.get("short_windows", [])),
+        "composite": scores.get("composite", {}),
+        "systemic_risk_lines": _systemic_risk_section(scores),
+        "dimensions": scores.get("dimensions", []),
+        "facts_sections": facts_sec,
+    }
+    return ReportRenderer.get_instance().render("temperature/market_temperature.md.j2", context)
 
 
 def render_human_report_markdown(
@@ -261,71 +236,52 @@ def render_human_report_markdown(
     temperature = composite["temperature"]
     window_text = _window_text(manifest)
     dimensions = list(scores["dimensions"])
-    lines = [
-        f"# {config.title}人工阅读版",
-        "",
-        f"- 基准日期: {manifest['as_of_date']}",
-        f"- 观察窗口: {window_text}",
-        f"- 综合温度: {_temperature_text(temperature)} / 100",
-        f"- 系统性风险: {_systemic_risk_level(scores)}",
-        f"- 状态: {_report_status_label(composite.get('status'))}",
-        "",
-        "## 一句话结论",
-        "",
-        _one_line_summary(dimensions, temperature),
-        "",
-        "## 读法总览",
-        "",
-        *_human_reading_brief(dimensions, scores, facts),
-        "",
-        *_cross_period_change_section(
-            comparison=comparison,
-            current_manifest=manifest,
-            current_scores=scores,
-        ),
-        "## 数据质量提示",
-        "",
-        *_human_quality_brief(facts),
-        "",
-        "## 关键背离",
-        "",
-        *_key_divergence_section(dimensions, facts),
-        "",
-        "## 系统性风险",
-        "",
-        *_systemic_risk_section(scores),
-        "",
-        "## 外部压力提示",
-        "",
-        *_external_pressure_section(facts),
-        "",
-        "## 后续跟踪",
-        "",
-        *_follow_up_section(dimensions, facts, scores),
-        "",
-        "## 解读顺序",
-        "",
-        *_interpretation_priority_rows(dimensions),
-        "",
-        "## 六维解读",
-        "",
-        "| 维度 | 温度 | 分档 | 解读 |",
-        "|---|---:|---|---|",
-    ]
+
+    dim_interpretations = []
     for item in dimensions:
         dimension_id = str(item["dimension_id"])
         item_temperature = item["temperature"]
-        lines.append(
-            "| {name} | {temperature} | {band} | {comment} |".format(
-                name=item["name"],
-                temperature=_temperature_text(item_temperature),
-                band=_temperature_band(item_temperature),
-                comment=_dimension_comment(dimension_id, item_temperature),
-            )
+        dim_interpretations.append(
+            {
+                "name": item["name"],
+                "temperature": _temperature_text(item_temperature),
+                "band": _temperature_band(item_temperature),
+                "comment": _dimension_comment(dimension_id, item_temperature),
+            }
         )
-    lines.extend(_human_fact_sections(facts))
-    lines.extend(_human_limit_sections(facts))
-    return "\n".join(lines) + "\n"
+
+    cross_period_lines = _cross_period_change_section(
+        comparison=comparison,
+        current_manifest=manifest,
+        current_scores=scores,
+    )
+    # 移除末尾多余空行以便模板精准排版
+    if cross_period_lines and cross_period_lines[-1] == "":
+        cross_period_lines = cross_period_lines[:-1]
+
+    context = {
+        "title": config.title,
+        "manifest": manifest,
+        "window_text": window_text,
+        "composite_temp_text": _temperature_text(temperature),
+        "systemic_risk_level": _systemic_risk_level(scores),
+        "status_label": _report_status_label(composite.get("status")),
+        "one_line_summary": _one_line_summary(dimensions, temperature),
+        "reading_brief_lines": _human_reading_brief(dimensions, scores, facts),
+        "cross_period_lines": cross_period_lines,
+        "quality_brief_lines": _human_quality_brief(facts),
+        "divergence_lines": _key_divergence_section(dimensions, facts),
+        "systemic_risk_lines": _systemic_risk_section(scores),
+        "external_pressure_lines": _external_pressure_section(facts),
+        "follow_up_lines": _follow_up_section(dimensions, facts, scores),
+        "interpretation_priority_lines": _interpretation_priority_rows(dimensions),
+        "dimension_interpretations": dim_interpretations,
+        "fact_sections": "\n".join(_human_fact_sections(facts)).strip(),
+        "limit_sections": "\n".join(_human_limit_sections(facts)).strip(),
+    }
+    return ReportRenderer.get_instance().render(
+        "temperature/market_temperature_human.md.j2", context
+    )
 
 
 def summarize_facts(facts: pl.DataFrame) -> dict[str, Any]:

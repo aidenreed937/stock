@@ -1,0 +1,66 @@
+# {{ title }}
+
+- 基准日期: {{ manifest.as_of_date }}
+- 市场温度输入: {{ manifest.inputs.market_temperature.run_id }}
+- 行业结构输入: {{ manifest.inputs.industry_structure.run_id }}
+- 定位: 用于先判断系统风险，再筛选短期方向；不构成个性化投资建议。
+
+## 1. 能不能参与
+
+- 参与结论: {{ participation.stance }}
+- 参与方式: {{ participation.action }}
+- 系统风险: {{ participation.risk_level }}
+- 综合温度: {{ market_composite_temp }} / 100
+- 结构健康度: {{ structure_health_level }}
+
+### 为什么
+
+{% for r in participation.reasons %}
+- {{ r }}
+{% else %}
+- 暂无。
+{% endfor %}
+
+## 2. 短期配置观察
+
+- 选择原则: 结构分靠前、20日收益为正、未进入高拥挤，并尽量避开景气承压标签。
+
+| 行业 | 结构分 | 20日收益 | 60日收益 | 拥挤温度 | 理由 |
+|---|---:|---:|---:|---:|---|
+{% for row in candidate_industries %}
+| {{ row.industry_name }} | {{ row.structure_score_str }} | {{ row.return_20d_str }} | {{ row.return_60d_str }} | {{ row.crowding_temperature_str }} | {{ row.reason }} |
+{% else %}
+| - | - | - | - | - | 暂无满足低拥挤和结构质量要求的短期方向。 |
+{% endfor %}
+
+## 3. 不宜追高或需降温观察
+
+- 这些行业可能仍有交易热度，但成交或拥挤温度偏高，普通投资者不宜把它们当作低风险方向。
+
+| 行业 | 结构分 | 20日收益 | 60日收益 | 拥挤温度 | 理由 |
+|---|---:|---:|---:|---:|---|
+{% for row in risk_industries %}
+| {{ row.industry_name }} | {{ row.structure_score_str }} | {{ row.return_20d_str }} | {{ row.return_60d_str }} | {{ row.crowding_temperature_str }} | {{ row.reason }} |
+{% else %}
+| - | - | - | - | - | 暂无明显拥挤行业。 |
+{% endfor %}
+
+## 4. 落后方向
+
+- 这些行业结构分靠后，用于排查弱势暴露；不等同于长期看空。
+
+| 行业 | 结构分 | 20日收益 | 60日收益 | 拥挤温度 | 理由 |
+|---|---:|---:|---:|---:|---|
+{% for row in lagging_industries %}
+| {{ row.industry_name }} | {{ row.structure_score_str }} | {{ row.return_20d_str }} | {{ row.return_60d_str }} | {{ row.crowding_temperature_str }} | {{ row.reason }} |
+{% else %}
+| - | - | - | - | - | 暂无可列示的落后方向。 |
+{% endfor %}
+
+## 5. 怎么读
+
+{% for n in reading_notes %}
+- {{ n }}
+{% else %}
+- 暂无。
+{% endfor %}
