@@ -78,6 +78,9 @@ df_summary = DataCatalog().summary()
    调用 `load_bars` 或 `load_dataset` 时，**必须优先指定 `start_date`、`end_date`、`symbols` 与 `columns`**，利用 Hive 年月物理分区裁剪与 Polars 列投影，避免无过滤加载全历史全市场数千万行数据造成内存溢出或 CPU 假死。
 7. **临时脚本与衍生数据隔离 (Scratch Cleanliness)**：
    为回答用户问题编写的一次性分析脚本、测试排查代码或生成的临时中间结果（`.py`, `.csv`, `.parquet`），**严禁直接写在项目源码区（`src/`）或数据核心区（`data/`）**；必须统一输出至临时目录（如 scratch 目录），用完及时清理，保持 Git 工作区干净。
+8. **大表跨表聚合优先与引擎选型 (Rollup First & Tool Selection)**：
+   * **聚合表优先**：分析大盘估值、行业轮动或宏观时钟时，**优先消费现成的上层聚合表**（如行业估值 `sw_2021_fundamental`、指数估值 `index_fundamental`、北向资金 `moneyflow_hsgt`、两融大盘 `margin`），避免无谓拿千万级底层个股明细表（`stock_daily_bar` / `moneyflow`）进行沉重扫表；
+   * **合适工具下推**：海量数据跨表关联或复杂 Group By 聚合时，选用合适工具（内存轻量分析用 **Polars Lazy/DataFrame**；复杂跨多分区大表关联可用 **DuckDB 向量化 SQL**），最大化节省计算资源与响应时间。
 
 ---
 
