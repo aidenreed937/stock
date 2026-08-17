@@ -5,26 +5,40 @@ description: 量化金融指标计算规范、金融工程常识与统计标准�
 
 # 量化指标计算规范与金融工程标准 (Quant Metric Standards)
 
-本技能为量化投研系统提供**权威指标数学公式、时间窗口选型规范、无量纲化原则与金融统计常识**的标准指导。
+本技能为量化投研系统提供**宏观/中观/微观三层解耦、权威指标数学公式、时间窗口选型规范、无量纲化原则与金融统计常识**的标准指导。
 
 遵循**渐进式披露**原则，本入口聚合高频计算原则与窗口选型速查；深入数学推导与专题字典请查阅文末参考手册。
 
 ---
 
-## 1. 量化计算三大黄金原则 (Golden Rules)
+## 1. 量化计算四大黄金原则 (Golden Rules)
 
-1. **权威依据第一，严禁凭空臆造**：
+1. **层级解耦第一，严禁混淆宏观、中观与微观 (3-Tier Hierarchy)**：
+   * **宏观层 (Macro)** 决定大盘水温与总风险预算（Beta 择时）；
+   * **中观层 (Meso)** 决定 31 行业 PB-ROE 四象限超配/低配（Alpha 配置）；
+   * **微观层 (Micro)** 决定具体个股财务质地、Level-2 资金流与买卖点执行（Execution）。
+2. **权威依据第一，严禁凭空臆造 (Authoritative Definitions)**：
    所有量化指标公式必须有交易所/指数公司官方编制方案、学术文献或券商金工研报依据（详见 [03_常用指标字典](file:///Users/mac/workspace/personal/finance/stock/.agents/skills/quant-metric-standards/references/03_common_financial_indicators.md)）。
-2. **时间窗口与金融周期对齐 (5Y vs 10Y)**：
+3. **时间窗口与金融周期对齐 (5Y vs 10Y)**：
    * **5 年滚动窗口 ($\sim 1,215$ 日)**：适用于**个股/行业估值与行业动量**（覆盖一轮完整的产能/库存周期）；
    * **10 年滚动窗口 ($\sim 2,430$ 日)**：适用于**大盘宽基估值、股债利差 (ERP) 与大类资产配置**（覆盖完整的信贷/牛熊大周期）；
    * **全样本历史窗口**：适用于**大盘拥挤度、巴菲特比值 (市值/GDP) 等宏观极值定位**。
-3. **指标解读必须无量纲化 (去体量通胀)**：
+4. **指标解读必须无量纲化 (去体量通胀)**：
    严禁直接跨周期比较绝对成交额或绝对市值。必须转换为**占总成交比、占流通市值比、换手率或历史百分位排名 (Percentile Rank)**。
 
 ---
 
-## 2. 核心时间窗口与指标选型对照表
+## 2. 宏观 - 中观 - 微观 三层投研金字塔速查
+
+| 投研层级 | 核心研究对象 | 核心量化指标 | 最终决定的投资动作 | 数据时钟 |
+| :--- | :--- | :--- | :--- | :--- |
+| **宏观层 (Macro)** | 全市场总量、流动性、国债利率、通胀、GDP | 10Y 国债利率、中美利差、M1-M2、ERP 股债溢价、巴菲特比值 | **战略大类资产配置 (Beta)**<br>$\rightarrow$ 决定总权益仓位中枢 | 月度/季度（低频） |
+| **中观层 (Meso)** | 申万 31 行业、162 二级行业、风格资产 (大/小盘、价值/成长/红利) | 行业 PB-ROE 四象限、行业 PE 5Y 分位、分析师预期上修比 | **战术行业轮动 (Alpha)**<br>$\rightarrow$ 决定 31 行业超配/低配 | 日度/周度（中频） |
+| **微观层 (Micro)** | 具体个股/ETF、单笔订单切片、个股财报、两融明细 | Level-2 超大单净额、单季扣非净利 YoY、NATR 真实波幅 | **标的筛选与交易执行 (Execution)**<br>$\rightarrow$ 决定具体买卖点与止损 | 实时/T+0（高频） |
+
+---
+
+## 3. 核心时间窗口与指标选型对照表
 
 | 分析维度 | 推荐时间窗口 | 推荐计算工具 / 标准化方法 | 典型指标范例 |
 | :--- | :--- | :--- | :--- |
@@ -35,7 +49,7 @@ description: 量化金融指标计算规范、金融工程常识与统计标准�
 
 ---
 
-## 3. 必须无量纲化的指标速查表
+## 4. 必须无量纲化的指标速查表
 
 ```mermaid
 flowchart LR
@@ -53,10 +67,10 @@ flowchart LR
 
 ---
 
-## 4. 专题进阶手册 (Deep-Dive References)
+## 5. 专题进阶手册 (Deep-Dive References)
 
 * 📘 [01_历史分位数与时间窗口计算规范](file:///Users/mac/workspace/personal/finance/stock/.agents/skills/quant-metric-standards/references/01_percentile_and_windows.md)：5Y/10Y 选型逻辑、百分位排名标准算法与滚动 Z-Score 公式。
 * 📘 [02_量化指标无量纲化与去体量通胀原则](file:///Users/mac/workspace/personal/finance/stock/.agents/skills/quant-metric-standards/references/02_dimensionless_normalization.md)：消除扩容失真、跨资产可比性与 Min-Max / Percentile 映射方法。
-* 📘 [03_常用量化金融核心指标权威定义字典](file:///Users/mac/workspace/personal/finance/stock/.agents/skills/quant-metric-standards/references/03_common_financial_indicators.md)：股债利差 (ERP)、大盘拥挤度、巴菲特比值、微观资金流与真实波幅 NATR 标准数学公式。
+* 📘 [03_常用量化金融核心指标权威定义字典](file:///Users/mac/workspace/personal/finance/stock/.agents/skills/quant-metric-standards/references/03_common_financial_indicators.md)：按宏观/中观/微观分类的股债利差 (ERP)、大盘拥挤度、巴菲特比值、微观资金流与真实波幅 NATR 标准数学公式。
 * 📘 [04_宏观范式漂移与防过拟合自检清单](file:///Users/mac/workspace/personal/finance/stock/.agents/skills/quant-metric-standards/references/04_regime_shift_and_caveats.md)：利率中枢下行、注册制扩容、小样本陷阱 ($N \le 5$) 与前瞻偏差防范。
-* 📘 [05_多维共振诊断与投研分析框架](file:///Users/mac/workspace/personal/finance/stock/.agents/skills/quant-metric-standards/references/05_multi_dimensional_analysis_framework.md)：六维正交状态观测与一票否决机制 (Veto Rule)、申万 31 行业 PB-ROE 四象限分类矩阵、量价/估值背离诊断与非对称风险收益比评估。
+* 📘 [05_多维共振诊断与投研分析框架](file:///Users/mac/workspace/personal/finance/stock/.agents/skills/quant-metric-standards/references/05_multi_dimensional_analysis_framework.md)：宏观-中观-微观三层协同、六维正交状态观测与一票否决机制 (Veto Rule)、申万 31 行业 PB-ROE 四象限分类矩阵、量价/估值背离诊断与非对称风险收益比评估。
