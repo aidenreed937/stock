@@ -50,7 +50,7 @@ data/curated/mart/
 *.sqlite
 *.sqlite3
 *.log
-
+scratch
 # Sensitive Environment Variables (环境变量与密钥绝不提交)
 .env
 .env.local
