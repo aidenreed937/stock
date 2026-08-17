@@ -237,8 +237,10 @@ def test_raw_curated_reconciliation_detects_key_mismatch(tmp_path, monkeypatch):
 
     raw_root = tmp_path / "raw"
     curated_root = tmp_path / "curated"
-    monkeypatch.setattr("stock_data.audit.reconciliation.settings.raw_data_dir", raw_root)
-    monkeypatch.setattr("stock_data.audit.reconciliation.settings.curated_data_dir", curated_root)
+    monkeypatch.setattr("stock_data.audit.reconciliation.data_settings.raw_data_dir", raw_root)
+    monkeypatch.setattr(
+        "stock_data.audit.reconciliation.data_settings.curated_data_dir", curated_root
+    )
 
     raw_path = raw_root / "tushare" / "market=CN" / "stock_daily_bar" / "year=2026" / "month=08"
     curated_path = (
@@ -343,8 +345,10 @@ def test_raw_curated_reconciliation_uses_lixinger_composite_primary_key(
 
     raw_root = tmp_path / "raw"
     curated_root = tmp_path / "curated"
-    monkeypatch.setattr("stock_data.audit.reconciliation.settings.raw_data_dir", raw_root)
-    monkeypatch.setattr("stock_data.audit.reconciliation.settings.curated_data_dir", curated_root)
+    monkeypatch.setattr("stock_data.audit.reconciliation.data_settings.raw_data_dir", raw_root)
+    monkeypatch.setattr(
+        "stock_data.audit.reconciliation.data_settings.curated_data_dir", curated_root
+    )
 
     raw_dir = raw_root / "lixinger" / "market=CN" / "sw_2021_constituents"
     curated_dir = curated_root / "lixinger" / "market=CN" / "sw_2021_constituents"

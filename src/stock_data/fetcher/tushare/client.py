@@ -5,16 +5,16 @@ import pandas as pd
 import tushare as ts
 
 from stock_core.config.loader import load_data_config
-from stock_core.config.settings import settings
 from stock_core.exceptions import DataFetchError
 from stock_core.utils.logger import logger
 from stock_data.fetcher.rate_limiter import RateLimiter
+from stock_data.settings import data_settings
 
 
 class TuShareClient:
     """TuShare 官方 Pro API 底层客户端封装。
 
-    提供 Token 鉴权管理、线程安全滑动窗口限频、多 Worker 并发支持与 DataFetchError 抛出。
+    支持滑动窗口限频（线程安全）、网络重试与超时退避机制。
     """
 
     def __init__(
@@ -29,16 +29,16 @@ class TuShareClient:
         """初始化 TuShare 客户端。
 
         Args:
-            token: TuShare API Token。若为 None，则从 settings.tushare_token 中读取。
-            url: TuShare API 服务器地址。若为 None，则从 settings.tushare_url 中读取。
-            rate_limit_per_min: 每分钟最大请求次数限制。若为 None，则从 settings.tushare_rate_limit_per_min 读取。
-            max_workers: 并发采集 Worker 线程数。若为 None，则从 settings.tushare_max_workers 读取。
+            token: TuShare API Token。若为 None，则从 data_settings.tushare_token 中读取。
+            url: TuShare API 服务器地址。若为 None，则从 data_settings.tushare_url 中读取。
+            rate_limit_per_min: 每分钟最大请求次数限制。若为 None，则从 data_cfg 读取。
+            max_workers: 并发采集 Worker 线程数。若为 None，则从 data_cfg 读取。
             max_limit_threshold: 警告单次返回达到服务器截断上限的阈值条数 (默认 6000)。
             paginate_threshold: 触发自动分页的条数阈值 (默认 2000)。
         """
         data_cfg = load_data_config()
-        self.token = token if token is not None else settings.tushare_token
-        self.url = url if url is not None else settings.tushare_url
+        self.token = token if token is not None else data_settings.tushare_token
+        self.url = url if url is not None else data_settings.tushare_url
         self.rate_limit_per_min = (
             rate_limit_per_min
             if rate_limit_per_min is not None

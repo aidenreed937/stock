@@ -11,9 +11,9 @@ import pandas as pd
 import yfinance as yf
 
 from stock_core.config.loader import load_data_config
-from stock_core.config.settings import settings
 from stock_core.utils.logger import logger
 from stock_data.fetcher.rate_limiter import RateLimiter
+from stock_data.settings import data_settings
 
 YFINANCE_USER_AGENT = (
     "Mozilla/5.0 (Macintosh; Intel Mac OS X 10_15_7) "
@@ -123,7 +123,7 @@ class YFinanceClient:
 
         Args:
             proxy: HTTP/HTTPS 代理服务器地址。若为 None，优先读取代理池文件，
-                代理池不可用时使用 settings.yfinance_proxy。
+                代理池不可用时使用 data_settings.yfinance_proxy。
             rate_limit_per_min: 每分钟最大请求次数限制。若为 None，使用
                 config/data.yaml 中的 yfinance_per_min。
             proxy_pool_file: 本地代理池文件或目录。目录默认读取其中的 yfinance.txt。
@@ -138,11 +138,11 @@ class YFinanceClient:
             pool_path = (
                 Path(proxy_pool_file)
                 if proxy_pool_file is not None
-                else settings.yfinance_proxy_pool_file
+                else data_settings.yfinance_proxy_pool_file
             )
             proxy_pool = _load_proxy_pool(pool_path)
-            if not proxy_pool and settings.yfinance_proxy:
-                configured_proxy = settings.yfinance_proxy
+            if not proxy_pool and data_settings.yfinance_proxy:
+                configured_proxy = data_settings.yfinance_proxy
                 proxy_pool = (configured_proxy,)
         self.proxy = configured_proxy or None
         self.proxy_pool = proxy_pool or ("",)

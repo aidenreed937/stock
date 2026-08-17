@@ -22,13 +22,14 @@ def test_main_execution_flow():
 
     with (
         patch("stock_cli.main.settings") as mock_settings,
+        patch("stock_cli.main.data_settings") as mock_data_settings,
         patch("stock_cli.main.load_strategy_config") as mock_load_config,
         patch("stock_cli.main.create_pipeline") as mock_create_pipeline,
         patch("stock_cli.main.StrategyRunner") as mock_runner_cls,
     ):
         mock_settings.app_name = "StockApp"
         mock_settings.environment = "test"
-        mock_settings.data_source_mode = "tushare"
+        mock_data_settings.data_source_mode = "tushare"
 
         mock_config = MagicMock()
         mock_config.name = "TestStrategy"

@@ -5,9 +5,9 @@ from typing import Any
 
 import polars as pl
 
-from stock_core.config.settings import settings
 from stock_core.utils.logger import logger
 from stock_data.audit.benchmarks.industry import IndustryDailyBenchmarkProvider
+from stock_data.settings import data_settings
 from stock_data.storage.compat import StorageCompat
 
 
@@ -20,7 +20,7 @@ def run_adj_factor_audit(
     )
 
     # 1. 读取 stock_basic 理论上市股票池
-    basic_dir = settings.curated_data_dir / data_source
+    basic_dir = data_settings.curated_data_dir / data_source
     try:
         basic_files = [
             p
@@ -87,7 +87,7 @@ def run_sw_daily_audit(
         f"开始 sw_daily 申万行业日行情对账审计，目标日期: {target_date} [数据源: {data_source}]"
     )
 
-    source_dir = settings.curated_data_dir / data_source
+    source_dir = data_settings.curated_data_dir / data_source
     year_str = f"year={target_date.year:04d}"
     month_str = f"month={target_date.month:02d}"
     sw_files = [

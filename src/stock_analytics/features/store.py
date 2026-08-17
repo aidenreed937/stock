@@ -15,8 +15,8 @@ from stock_analytics.features.store_ops import (
     validate_incremental_metadata,
     write_metadata,
 )
-from stock_core.config.settings import settings
 from stock_core.utils.logger import logger
+from stock_data.settings import data_settings
 from stock_data.storage.compat import StorageCompat
 
 if TYPE_CHECKING:
@@ -25,14 +25,14 @@ if TYPE_CHECKING:
 
 
 class FeatureStore:
-    """提供全市场/行业领域宽表与特征的高性能读写。"""
+    """特征集市存储抽象，统一管理 market_daily 宽表与指标特征的物化和增量读写。"""
 
     def __init__(self, mart_dir: Path | str | None = None) -> None:
         """初始化 FeatureStore。"""
         if mart_dir is not None:
             self.mart_dir = Path(mart_dir)
         else:
-            self.mart_dir = settings.curated_data_dir / "mart"
+            self.mart_dir = data_settings.curated_data_dir / "mart"
         self.mart_dir.mkdir(parents=True, exist_ok=True)
         self.values = FeatureValueStore(self.mart_dir)
 

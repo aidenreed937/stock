@@ -5,9 +5,9 @@ from typing import Any
 
 import polars as pl
 
-from stock_core.config.settings import settings
 from stock_core.utils.logger import logger
 from stock_data.audit.benchmarks.industry import IndustryDailyBenchmarkProvider
+from stock_data.settings import data_settings
 from stock_data.storage.compat import StorageCompat
 
 
@@ -17,7 +17,7 @@ def run_daily_basic_audit(
     """对比审计 daily_basic (每日估值指标) 与 stock_daily_bar (K线行情) 的 1-to-1 对齐匹配率。"""
     logger.info(f"开始 daily_basic 估值对账审计，目标日期: {target_date} [数据源: {data_source}]")
 
-    source_dir = settings.curated_data_dir / data_source
+    source_dir = data_settings.curated_data_dir / data_source
     year_str = f"year={target_date.year:04d}"
     month_str = f"month={target_date.month:02d}"
 
@@ -91,7 +91,7 @@ def run_sw_industry_audit(
     """审计申万 2021 版行业成分股图谱 (sw_2021_constituents) 与行业全历史估值序列 (sw_2021_fundamental)。"""
     logger.info(f"开始申万行业图谱与估值对账审计，目标日期: {target_date} [数据源: {data_source}]")
 
-    source_dir = settings.curated_data_dir / data_source
+    source_dir = data_settings.curated_data_dir / data_source
 
     # 1. 检查 sw_2021_constituents 行业图谱落盘
     const_files = [

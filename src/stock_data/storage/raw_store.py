@@ -9,12 +9,12 @@ from typing import Any
 
 import polars as pl
 
-from stock_core.config.settings import settings
 from stock_core.contracts import DatasetKey
 from stock_core.exceptions import DataValidationError
 from stock_core.utils.logger import logger
 from stock_data.cleaner.date_utils import parse_mixed_date
 from stock_data.quality.margin_coverage import is_margin_complete
+from stock_data.settings import data_settings
 from stock_data.storage.compat import StorageCompat
 from stock_data.storage.raw_cache import has_raw_cache
 from stock_data.storage.raw_schema import (
@@ -101,9 +101,9 @@ class RawDataStorage:
         """初始化 RAW 存储引擎。
 
         Args:
-            base_dir: RAW 数据根目录，若为 None 则默认从 settings.raw_data_dir 读取。
+            base_dir: RAW 数据根目录，若为 None 则默认从 data_settings.raw_data_dir 读取。
         """
-        self.base_dir = base_dir if base_dir is not None else settings.raw_data_dir
+        self.base_dir = base_dir if base_dir is not None else data_settings.raw_data_dir
         self._batch_mode = False
         self._write_buffer: dict[Path, list[tuple[DatasetKey, pl.DataFrame]]] = {}
         self._replace_paths: set[Path] = set()

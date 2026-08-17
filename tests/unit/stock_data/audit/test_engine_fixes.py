@@ -52,8 +52,10 @@ def test_reconciliation_raw_duplicate_tolerance(tmp_path, monkeypatch) -> None:
     """测试 RAW 存在合法批次重复行但 Curated 已去重时，对账判定为 PASSED。"""
     raw_root = tmp_path / "raw"
     curated_root = tmp_path / "curated"
-    monkeypatch.setattr("stock_data.audit.reconciliation.settings.raw_data_dir", raw_root)
-    monkeypatch.setattr("stock_data.audit.reconciliation.settings.curated_data_dir", curated_root)
+    monkeypatch.setattr("stock_data.audit.reconciliation.data_settings.raw_data_dir", raw_root)
+    monkeypatch.setattr(
+        "stock_data.audit.reconciliation.data_settings.curated_data_dir", curated_root
+    )
 
     raw_path = raw_root / "tushare" / "market=CN" / "stock_daily_bar" / "year=2026" / "month=08"
     curated_path = (
@@ -116,8 +118,8 @@ def test_check_raw_curated_partition_flow(tmp_path) -> None:
 
     engine = UniversalAuditEngine()
     with (
-        patch("stock_core.config.settings.settings.raw_data_dir", tmp_path / "raw"),
-        patch("stock_core.config.settings.settings.curated_data_dir", tmp_path / "curated"),
+        patch("stock_data.settings.data_settings.raw_data_dir", tmp_path / "raw"),
+        patch("stock_data.settings.data_settings.curated_data_dir", tmp_path / "curated"),
     ):
         r_cnt, c_cnt, status = engine._check_raw_curated(
             "stock_daily_bar", "tushare", date(2026, 8, 3)
@@ -130,7 +132,9 @@ def test_check_raw_curated_partition_flow(tmp_path) -> None:
 def test_factor_audit_sw_daily_exact(tmp_path, monkeypatch) -> None:
     """测试 factor_audit 中的 sw_daily 审计使用精准交集。"""
     curated_root = tmp_path / "curated"
-    monkeypatch.setattr("stock_data.audit.factor_audit.settings.curated_data_dir", curated_root)
+    monkeypatch.setattr(
+        "stock_data.audit.factor_audit.data_settings.curated_data_dir", curated_root
+    )
 
     sw_path = curated_root / "tushare" / "market=CN" / "sw_daily" / "year=2026" / "month=08"
     sw_path.mkdir(parents=True)
@@ -225,8 +229,8 @@ def test_engine_raw_curated_missing_status(tmp_path) -> None:
 
     engine = UniversalAuditEngine()
     with (
-        patch("stock_core.config.settings.settings.raw_data_dir", tmp_path / "raw"),
-        patch("stock_core.config.settings.settings.curated_data_dir", tmp_path / "curated"),
+        patch("stock_data.settings.data_settings.raw_data_dir", tmp_path / "raw"),
+        patch("stock_data.settings.data_settings.curated_data_dir", tmp_path / "curated"),
     ):
         r_cnt, c_cnt, status = engine._check_raw_curated("sw_daily", "tushare", date(2026, 8, 14))
         assert status == "RAW_MISSING"

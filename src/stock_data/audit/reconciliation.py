@@ -8,13 +8,13 @@ from typing import Any
 
 import polars as pl
 
-from stock_core.config.settings import settings
 from stock_core.utils.logger import logger
 from stock_data.audit.factor_audit import run_adj_factor_audit, run_sw_daily_audit
 from stock_data.audit.moneyflow_audit import run_hk_hold_audit
 from stock_data.audit.registry import get_audit_spec
 from stock_data.audit.valuation_audit import run_daily_basic_audit, run_sw_industry_audit
 from stock_data.fetcher.tushare.client import TuShareClient
+from stock_data.settings import data_settings
 from stock_data.storage.compat import StorageCompat
 from stock_data.task_registry import resolve_task
 
@@ -291,13 +291,13 @@ def _run_raw_curated_reconciliation(
         }
 
     raw_files = _collect_dataset_files(
-        settings.raw_data_dir,
+        data_settings.raw_data_dir,
         data_source,
         endpoint,
         target_date,
     )
     curated_files = _collect_dataset_files(
-        settings.curated_data_dir,
+        data_settings.curated_data_dir,
         data_source,
         endpoint,
         target_date,
@@ -437,7 +437,7 @@ def run_audit(
         try:
             basic_files = [
                 p
-                for p in (settings.curated_data_dir / data_source).rglob("*.parquet")
+                for p in (data_settings.curated_data_dir / data_source).rglob("*.parquet")
                 if "stock_basic" in p.parts and not _is_artifact_path(p)
             ]
             basic_df = pl.read_parquet(basic_files) if basic_files else pl.DataFrame()
@@ -450,7 +450,7 @@ def run_audit(
     try:
         daily_files = [
             p
-            for p in (settings.curated_data_dir / data_source).rglob("*.parquet")
+            for p in (data_settings.curated_data_dir / data_source).rglob("*.parquet")
             if "stock_daily_bar" in p.parts
             and year_str in p.parts
             and month_str in p.parts
@@ -524,7 +524,7 @@ def run_audit(
             year_str, month_str = f"year={target_date.year:04d}", f"month={target_date.month:02d}"
             sus_files = [
                 p
-                for p in (settings.curated_data_dir / data_source).rglob("*.parquet")
+                for p in (data_settings.curated_data_dir / data_source).rglob("*.parquet")
                 if "suspend_d" in p.parts
                 and year_str in p.parts
                 and month_str in p.parts
@@ -686,7 +686,7 @@ def run_audit_range(
     # 预先加载一次 stock_basic，避免在每个子线程中重复磁盘 I/O
     cached_basic_df: pl.DataFrame | None = None
     try:
-        source_dir = settings.curated_data_dir / data_source
+        source_dir = data_settings.curated_data_dir / data_source
         basic_files = [
             p
             for p in source_dir.rglob("*.parquet")
@@ -813,7 +813,7 @@ def run_index_audit(
 
     target_year = f"year={target_date.year:04d}"
     target_month = f"month={target_date.month:02d}"
-    root_path = settings.curated_data_dir / data_source
+    root_path = data_settings.curated_data_dir / data_source
     matched_files = (
         [
             p

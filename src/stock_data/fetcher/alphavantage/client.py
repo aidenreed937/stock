@@ -8,8 +8,8 @@ from typing import Any
 from curl_cffi import requests
 
 from stock_core.config.loader import load_data_config
-from stock_core.config.settings import settings
 from stock_data.fetcher.rate_limiter import RateLimiter
+from stock_data.settings import data_settings
 
 logger = logging.getLogger(__name__)
 
@@ -19,7 +19,7 @@ class AlphaVantageError(RuntimeError):
 
 
 class AlphaVantageClient:
-    """Small client for Alpha Vantage query endpoints."""
+    """Alpha Vantage 官方 HTTP API 客户端。"""
 
     DEFAULT_BASE_URL = "https://www.alphavantage.co/query"
 
@@ -32,9 +32,9 @@ class AlphaVantageClient:
         session: Any | None = None,
     ) -> None:
         data_cfg = load_data_config()
-        self.api_key = settings.alpha_vantage_api_key if api_key is None else api_key
-        self.base_url = base_url or settings.alpha_vantage_url or self.DEFAULT_BASE_URL
-        self.proxy = settings.alpha_vantage_proxy if proxy is None else proxy
+        self.api_key = data_settings.alpha_vantage_api_key if api_key is None else api_key
+        self.base_url = base_url or data_settings.alpha_vantage_url or self.DEFAULT_BASE_URL
+        self.proxy = data_settings.alpha_vantage_proxy if proxy is None else proxy
         self.session: Any = session or requests.Session(impersonate="chrome")
         self.session.headers.update({"User-Agent": "stock-finance/alpha-vantage-client"})
         if self.proxy:

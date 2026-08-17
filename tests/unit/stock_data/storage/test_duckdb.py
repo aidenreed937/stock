@@ -70,9 +70,9 @@ def test_daily_query_ignores_migration_backup_with_incompatible_schema(
 
 
 def test_default_store_isolated_by_data_source(tmp_path, monkeypatch) -> None:
-    from stock_core.config.settings import settings
+    from stock_data.settings import data_settings
 
-    monkeypatch.setattr(settings, "curated_data_dir", tmp_path / "curated")
+    monkeypatch.setattr(data_settings, "curated_data_dir", tmp_path / "curated")
 
     tushare_store = DuckDBMarketStore(data_source="tushare")
     yfinance_store = DuckDBMarketStore(data_source="yfinance")

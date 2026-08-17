@@ -11,7 +11,6 @@ from typing import Any
 
 import polars as pl
 
-from stock_core.config.settings import settings
 from stock_core.utils.logger import logger
 from stock_data.catalog_ops import (
     build_catalog_summary as _build_catalog_summary,
@@ -34,6 +33,7 @@ from stock_data.catalog_ops import (
 from stock_data.catalog_ops import (
     validate_bars as _validate_bars,
 )
+from stock_data.settings import data_settings
 from stock_data.storage.compat import StorageCompat
 
 _ARTIFACT_SUFFIXES = (".bak.parquet", ".tmp.parquet", ".migration.tmp.parquet")
@@ -100,9 +100,9 @@ class DataCatalog:
         data_source: str | None = None,
         storage_dir: Path | str | None = None,
     ) -> None:
-        self.data_source = data_source or settings.data_source_mode
+        self.data_source = data_source or data_settings.data_source_mode
         self.storage_dir = (
-            Path(storage_dir) if storage_dir is not None else settings.curated_data_dir
+            Path(storage_dir) if storage_dir is not None else data_settings.curated_data_dir
         )
         if not self.storage_dir.exists():
             raise FileNotFoundError(f"Curated 数据目录不存在: {self.storage_dir}")

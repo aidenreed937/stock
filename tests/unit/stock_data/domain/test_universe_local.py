@@ -3,9 +3,9 @@ from pathlib import Path
 import polars as pl
 import pytest
 
-from stock_core.config.settings import settings
 from stock_core.exceptions import DataFetchError
 from stock_data.domain.universe import UniverseFilter
+from stock_data.settings import data_settings
 
 
 def test_universe_filter_local_mode_success(tmp_path: Path, monkeypatch) -> None:
@@ -86,7 +86,7 @@ def test_universe_filter_local_mode_success(tmp_path: Path, monkeypatch) -> None
     df_db.write_parquet(p_db)
 
     # 4. 模拟 settings.curated_data_dir 指向 tmp_path
-    monkeypatch.setattr(settings, "curated_data_dir", tmp_path)
+    monkeypatch.setattr(data_settings, "curated_data_dir", tmp_path)
 
     filter_engine = UniverseFilter(use_local=True)
     liquid_symbols = filter_engine.get_liquid_universe(
@@ -100,7 +100,7 @@ def test_universe_filter_local_mode_success(tmp_path: Path, monkeypatch) -> None
 
 
 def test_universe_filter_local_mode_missing_archive_raises(tmp_path: Path, monkeypatch) -> None:
-    monkeypatch.setattr(settings, "curated_data_dir", tmp_path)
+    monkeypatch.setattr(data_settings, "curated_data_dir", tmp_path)
     filter_engine = UniverseFilter(use_local=True)
     with pytest.raises(DataFetchError, match="缺失 stock_basic"):
         filter_engine.get_liquid_universe()

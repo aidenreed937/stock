@@ -9,11 +9,11 @@ import pandas as pd
 import requests
 
 from stock_core.config.loader import load_data_config
-from stock_core.config.settings import settings
 from stock_core.exceptions import DataFetchError
 from stock_core.utils.logger import logger
 from stock_data.fetcher.lixinger.registry import LIXINGER_API_REGISTRY
 from stock_data.fetcher.rate_limiter import RateLimiter
+from stock_data.settings import data_settings
 
 MAX_STOCK_CODES = 100
 
@@ -43,15 +43,15 @@ class LixingerClient:
         """初始化理杏仁客户端。
 
         Args:
-            token: 理杏仁 API Token。若为 None，从 settings.lixinger_token 读取。
-            url: 理杏仁 API 域名。若为 None，从 settings.lixinger_url 读取。
-            rate_limit_per_min: 每分钟最大请求次数。若为 None，从 settings 读取。
+            token: 理杏仁 API Token。若为 None，从 data_settings.lixinger_token 读取。
+            url: 理杏仁 API 域名。若为 None，从 data_settings.lixinger_url 读取。
+            rate_limit_per_min: 每分钟最大请求次数。若为 None，从 data_cfg 读取。
             max_retries: 429 或 5xx 错误的最大退避重试次数。
             timeout: HTTP 请求超时时间（秒）。
         """
         data_cfg = load_data_config()
-        self.token = token if token is not None else settings.effective_lixinger_token
-        self.url = (url if url is not None else settings.effective_lixinger_url).rstrip("/")
+        self.token = token if token is not None else data_settings.effective_lixinger_token
+        self.url = (url if url is not None else data_settings.effective_lixinger_url).rstrip("/")
         self.default_rate_limit = (
             rate_limit_per_min
             if rate_limit_per_min is not None

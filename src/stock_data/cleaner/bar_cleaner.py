@@ -6,13 +6,13 @@ from pathlib import Path
 
 import polars as pl
 
-from stock_core.config.settings import settings
 from stock_core.utils.logger import logger
 from stock_data.cleaner.base import BaseDataCleaner
+from stock_data.settings import data_settings
 
 
 class BarDataCleaner(BaseDataCleaner):
-    """日 K 线数据清洗器，负责过滤逻辑错误记录、去重与空值剔除。"""
+    """日 K 线数据清洗器，负责过滤逻辑错误记录、与空值剔除。"""
 
     def __init__(self, listing_dates: Mapping[str, date] | None = None) -> None:
         self.listing_dates = dict(listing_dates or {})
@@ -86,7 +86,7 @@ class BarDataCleaner(BaseDataCleaner):
         data_source: str = "tushare", curated_root: str | Path | None = None
     ) -> dict[str, date]:
         """从本地 stock_basic 快照加载上市日期，供在线与离线清洗共用。"""
-        root = Path(curated_root) if curated_root is not None else settings.curated_data_dir
+        root = Path(curated_root) if curated_root is not None else data_settings.curated_data_dir
         path = root / data_source / "market=CN" / "stock_basic" / "data.parquet"
         if not path.exists():
             return {}

@@ -7,6 +7,7 @@ from stock_core.config.loader import load_data_config
 from stock_core.config.settings import settings
 from stock_core.utils.logger import logger, setup_logger
 from stock_data.factory import create_pipeline
+from stock_data.settings import data_settings
 from stock_strategy.config import load_strategy_config
 from stock_strategy.runner import StrategyRunner
 
@@ -26,7 +27,7 @@ def _parse_config_date(value: str, today: date) -> date | None:
 def main() -> None:
     """应用程序主入口点，执行 YAML 配置驱动的全流程示范。"""
     # 1. 初始化设置与日志
-    settings.setup_directories()
+    data_settings.setup_directories()
     setup_logger()
 
     logger.info(f"启动 {settings.app_name} [环境: {settings.environment}]")

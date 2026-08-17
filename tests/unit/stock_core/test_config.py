@@ -3,6 +3,7 @@ from pathlib import Path
 
 from stock_core.config.loader import load_data_config, load_watchlist_config
 from stock_core.config.settings import Settings
+from stock_data.settings import DataSettings
 from stock_strategy.config import load_strategy_config
 
 
@@ -11,7 +12,9 @@ def test_settings_default_values() -> None:
     assert settings.app_name == "StockFinanceApp"
     assert settings.environment == "development"
     assert settings.log_level == "INFO"
-    assert settings.data_source_mode == "tushare"
+
+    data_settings = DataSettings()
+    assert data_settings.data_source_mode == "tushare"
 
 
 def test_load_strategy_config() -> None:

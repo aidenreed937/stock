@@ -7,8 +7,8 @@ from zoneinfo import ZoneInfo
 
 import polars as pl
 
-from stock_core.config.settings import settings
 from stock_data.cleaner.date_utils import parse_mixed_date
+from stock_data.settings import data_settings
 from stock_data.task_registry import _provider_registry, resolve_task
 
 logger = logging.getLogger(__name__)
@@ -60,10 +60,10 @@ class DataUpdateScheduler:
                 delay_in_trading_days = getattr(meta, "delay_in_trading_days", False)
 
         # 支持全局 Settings 配置项覆盖 update_time (HH:MM 格式)
-        if task.task_name in settings.endpoint_update_time_overrides:
-            update_time_str = settings.endpoint_update_time_overrides[task.task_name]
-        elif task.api_name in settings.endpoint_update_time_overrides:
-            update_time_str = settings.endpoint_update_time_overrides[task.api_name]
+        if task.task_name in data_settings.endpoint_update_time_overrides:
+            update_time_str = data_settings.endpoint_update_time_overrides[task.task_name]
+        elif task.api_name in data_settings.endpoint_update_time_overrides:
+            update_time_str = data_settings.endpoint_update_time_overrides[task.api_name]
 
         return EndpointUpdateMeta(
             task_name=task.task_name,

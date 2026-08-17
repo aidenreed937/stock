@@ -15,9 +15,9 @@ from typing import Any
 
 import polars as pl
 
-from stock_core.config.settings import settings
 from stock_core.utils.logger import logger
 from stock_data.catalog import DataCatalog
+from stock_data.settings import data_settings
 from stock_data.storage.compat import StorageCompat
 
 DEFAULT_DATASET_NUMERIC_COLS: dict[str, list[str]] = {
@@ -226,7 +226,7 @@ class CuratedDistributionAuditor:
         min_step_ratio: float = 0.1,
     ) -> None:
         self.catalog = catalog
-        self.base_dir = Path(base_dir) if base_dir else settings.curated_data_dir
+        self.base_dir = Path(base_dir) if base_dir else data_settings.curated_data_dir
         self.max_step_ratio = max_step_ratio
         self.min_step_ratio = min_step_ratio
 

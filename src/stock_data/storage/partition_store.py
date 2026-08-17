@@ -5,7 +5,6 @@ from pathlib import Path
 
 import polars as pl
 
-from stock_core.config.settings import settings
 from stock_core.contracts import DAILY_BAR_CONTRACT, DatasetKey
 from stock_core.exceptions import DataValidationError
 from stock_core.utils.logger import logger
@@ -14,6 +13,7 @@ from stock_data.quality.margin_coverage import (
     is_margin_date_complete,
     margin_coverage_issues,
 )
+from stock_data.settings import data_settings
 from stock_data.storage.compat import StorageCompat
 from stock_data.storage.partition_writer import ParquetPartitionWriter, validate_frame_source
 from stock_data.task_registry import get_endpoint_market, is_task_partitioned
@@ -128,10 +128,10 @@ class ParquetPartitionStore:
     ) -> None:
         self.data_source = data_source
         self._storage_root = (
-            Path(storage_dir) if storage_dir is not None else settings.curated_data_dir
+            Path(storage_dir) if storage_dir is not None else data_settings.curated_data_dir
         )
         if self.data_source is None and storage_dir is None:
-            self.data_source = settings.data_source_mode
+            self.data_source = data_settings.data_source_mode
         self.storage_dir = self._get_source_dir()
         self.storage_dir.mkdir(parents=True, exist_ok=True)
         self.writer = ParquetPartitionWriter(data_source=self.data_source)

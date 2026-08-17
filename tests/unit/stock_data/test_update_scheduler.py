@@ -3,7 +3,7 @@ from unittest.mock import MagicMock, patch
 
 import polars as pl
 
-from stock_core.config.settings import settings
+from stock_data.settings import data_settings
 from stock_data.update_scheduler import DataUpdateScheduler
 
 
@@ -124,7 +124,7 @@ def test_settings_override_timing() -> None:
     assert DataUpdateScheduler.is_data_ready("daily", target_date, dt_1715, data_source="tushare")
 
     # 外部配置覆盖为 17:30 更新
-    with patch.object(settings, "endpoint_update_time_overrides", {"daily": "17:30"}):
+    with patch.object(data_settings, "endpoint_update_time_overrides", {"daily": "17:30"}):
         # 17:15 早于 17:30 -> 未就绪
         assert not DataUpdateScheduler.is_data_ready(
             "daily", target_date, dt_1715, data_source="tushare"
