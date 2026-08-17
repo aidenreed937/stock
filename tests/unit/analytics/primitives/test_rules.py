@@ -1,9 +1,9 @@
-"""metrics 规则库单测。"""
+"""primitives 纯规则算子单测。"""
 
 import polars as pl
 import pytest
 
-from stock.analytics.metrics.rules import (
+from stock.analytics.primitives.rules import (
     above_ma,
     at_rolling_high,
     at_rolling_low,

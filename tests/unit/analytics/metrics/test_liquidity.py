@@ -6,7 +6,7 @@ import polars as pl
 import pytest
 
 from stock.analytics.metrics import MetricContext, MetricEngine, create_default_registry
-from stock.analytics.metrics.rules import rolling_percentile
+from stock.analytics.primitives.rules import rolling_percentile
 
 
 class FakeCatalog:

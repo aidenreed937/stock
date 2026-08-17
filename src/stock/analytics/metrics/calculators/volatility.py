@@ -4,14 +4,14 @@ import polars as pl
 
 from stock.analytics.metrics.context import MetricContext
 from stock.analytics.metrics.datasets.loaders import load_metric_dataset
+from stock.analytics.metrics.datasets.schema import (
+    require_columns as _require_columns,
+)
 from stock.analytics.metrics.datasets.windows import (
     empty_metric_frame as _empty,
 )
 from stock.analytics.metrics.datasets.windows import (
     load_start_date as _load_start_date,
-)
-from stock.analytics.metrics.datasets.windows import (
-    require_columns as _require_columns,
 )
 from stock.analytics.metrics.spec import EntityType, MetricCalculator, MetricDomain, MetricSpec
 

@@ -15,12 +15,14 @@ from stock.analytics.pipelines.market_temperature.derived import (
     _investor_account_rows,
     _limit_event_daily_frame,
     _limit_event_rows,
-    _option_daily_frame,
     _option_rows,
     _percentile_temperature,
     _report_revision_rows,
     _return_frame,
     _us_macro_background_rows,
+)
+from stock.analytics.pipelines.market_temperature.derived_options import (
+    build_option_daily_frame,
 )
 
 
@@ -165,7 +167,7 @@ def test_option_rows_builds_pcr_observation_temperatures() -> None:
             "oi": [1000.0, 800.0, 1000.0, 900.0, 1000.0, 1200.0],
         }
     )
-    frame = _option_daily_frame(daily, basic)
+    frame = build_option_daily_frame(daily, basic)
 
     latest = frame.tail(1).to_dicts()[0]
     assert latest["_put_call_volume_ratio"] == pytest.approx(2.0)

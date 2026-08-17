@@ -7,7 +7,7 @@ from typing import TYPE_CHECKING, Any
 
 import polars as pl
 
-from stock.analytics.metrics.rules import growth, percentile_rank, rolling_zscore
+from stock.analytics.primitives.rules import growth, percentile_rank, rolling_zscore
 
 if TYPE_CHECKING:
     from collections.abc import Iterable

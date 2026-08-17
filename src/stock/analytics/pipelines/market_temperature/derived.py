@@ -7,9 +7,7 @@ from typing import TYPE_CHECKING, Any, cast
 import polars as pl
 
 from stock.analytics.pipelines.market_temperature.derived_options import (
-    _option_daily_frame as _option_daily_frame,
-)
-from stock.analytics.pipelines.market_temperature.derived_options import (
+    OPTION_RISK_COMPONENT_IDS,
     option_rows,
 )
 from stock.data.catalog import DataCatalog, load_dataset_compat
@@ -31,10 +29,7 @@ _LIMIT_COMPONENT_IDS = (
     "limit_up_down_strength_temperature",
     "limit_seal_success_temperature",
 )
-_OPTION_RISK_COMPONENT_IDS = (
-    "option_put_call_volume_ratio_temperature",
-    "option_put_call_oi_ratio_temperature",
-)
+_OPTION_RISK_COMPONENT_IDS = OPTION_RISK_COMPONENT_IDS
 _EXTERNAL_RETURN_WINDOW = 20
 _EXTERNAL_COMPONENT_IDS = (
     "macro_sp500_20d_return_temperature",

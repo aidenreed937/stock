@@ -2,10 +2,9 @@
 
 from stock.analytics.metrics.context import MetricContext
 from stock.analytics.metrics.engine import MetricEngine
-from stock.analytics.metrics.models import MetricDiagnostic, MetricResult
+from stock.analytics.metrics.models import MetricResult
 from stock.analytics.metrics.registry import MetricRegistry, create_default_registry
 from stock.analytics.metrics.spec import (
-    DiagnosticLevel,
     EntityType,
     MetricDomain,
     MetricFrequency,
@@ -13,10 +12,8 @@ from stock.analytics.metrics.spec import (
 )
 
 __all__ = [
-    "DiagnosticLevel",
     "EntityType",
     "MetricContext",
-    "MetricDiagnostic",
     "MetricDomain",
     "MetricEngine",
     "MetricFrequency",

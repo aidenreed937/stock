@@ -12,15 +12,11 @@
 from __future__ import annotations
 
 from datetime import date, timedelta
-from typing import TYPE_CHECKING, Any
 
 import polars as pl
 
 from stock.analytics.models import MarketBreadthResult
 from stock.data.catalog import DataCatalog
-
-if TYPE_CHECKING:
-    from stock.data.storage.duckdb_store import DuckDBMarketStore
 
 
 def _detect_breadth_divergences(
@@ -82,70 +78,6 @@ def _append_status_diagnostics(diags: list[str], r20: float, r60: float, r120: f
     else:
         diags.append(
             f"市场宽度处于常态区间 (MA20: {r20:.1f}%, MA60: {r60:.1f}%, MA120: {r120:.1f}%)"
-        )
-
-
-class MarketBreadthAnalyzer:
-    """全市场广度分析器，用于计算大势指标（如站上指定均线周期的股票比例）。"""
-
-    def __init__(self, store: DuckDBMarketStore | DataCatalog | Any = None) -> None:
-        """初始化分析器。
-
-        Args:
-            store: 行情数据存储引擎 (如 DuckDBMarketStore) 或 DataCatalog。
-        """
-        self.store = store
-
-    def calculate_breadth(
-        self,
-        start_date: date | None = None,
-        end_date: date | None = None,
-        window: int = 20,
-    ) -> pl.DataFrame:
-        """计算指定时间段内的市场广度 (站上 N 日均线的股票比例)。
-
-        Args:
-            start_date: 开始日期
-            end_date: 结束日期
-            window: 均线周期 (默认 20 日)
-
-        Returns:
-            pl.DataFrame: 包含 trade_date, total_stocks, stocks_above_ma, breadth_ratio 的结果表
-        """
-        if self.store is not None and hasattr(self.store, "query_history"):
-            df = self.store.query_history(
-                endpoint="stock_daily_bar", start_date=start_date, end_date=end_date
-            )
-        elif self.store is not None and hasattr(self.store, "load_bars"):
-            df = self.store.load_bars(start_date=start_date, end_date=end_date)
-        else:
-            catalog = DataCatalog(data_source="tushare")
-            df = catalog.load_bars(start_date=start_date, end_date=end_date)
-
-        if df.is_empty():
-            return pl.DataFrame(
-                schema={
-                    "trade_date": pl.Date,
-                    "total_stocks": pl.Int64,
-                    "stocks_above_ma": pl.Int64,
-                    "breadth_ratio": pl.Float64,
-                }
-            )
-
-        df_analyzed = df.with_columns(
-            pl.col("close").rolling_mean(window_size=window).over("symbol").alias(f"ma_{window}")
-        ).with_columns((pl.col("close") > pl.col(f"ma_{window}")).alias("is_above"))
-
-        return (
-            df_analyzed.group_by("trade_date")
-            .agg(
-                [
-                    pl.count("symbol").alias("total_stocks"),
-                    pl.col("is_above").sum().cast(pl.Int64).alias("stocks_above_ma"),
-                    (pl.col("is_above").sum() / pl.count("symbol")).alias("breadth_ratio"),
-                ]
-            )
-            .sort("trade_date", descending=False)
         )
 
 
@@ -278,4 +210,4 @@ class MultiPeriodMarketBreadthAnalyzer:
         )
 
 
-__all__ = ["MarketBreadthAnalyzer", "MultiPeriodMarketBreadthAnalyzer"]
+__all__ = ["MultiPeriodMarketBreadthAnalyzer"]

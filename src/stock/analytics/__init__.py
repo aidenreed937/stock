@@ -5,7 +5,6 @@ from stock.analytics.domains.industry import (
 )
 from stock.analytics.domains.micro import (
     MarginPenetrationCalculator,
-    MarketBreadthAnalyzer,
     MarketSentimentAnalyzer,
     MultiPeriodMarketBreadthAnalyzer,
 )
@@ -50,7 +49,6 @@ __all__ = [
     "MacroSignalItem",
     "MarginPenetrationCalculator",
     "MarginPenetrationResult",
-    "MarketBreadthAnalyzer",
     "MarketBreadthResult",
     "MarketScanEngine",
     "MarketSentimentAnalyzer",

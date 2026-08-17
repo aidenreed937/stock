@@ -45,14 +45,6 @@ class MetricFrequency(StrEnum):
     MONTHLY = "monthly"
 
 
-class DiagnosticLevel(StrEnum):
-    """指标诊断等级。"""
-
-    INFO = "info"
-    WARNING = "warning"
-    ERROR = "error"
-
-
 MetricCalculator = Callable[["MetricContext", "MetricSpec"], pl.DataFrame]
 
 

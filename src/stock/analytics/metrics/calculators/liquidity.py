@@ -11,8 +11,8 @@ from stock.analytics.metrics.datasets.windows import (
 from stock.analytics.metrics.datasets.windows import (
     load_start_date as _load_start_date,
 )
-from stock.analytics.metrics.rules import rolling_percentile, rolling_zscore
 from stock.analytics.metrics.spec import EntityType, MetricCalculator, MetricDomain, MetricSpec
+from stock.analytics.primitives.rules import rolling_percentile, rolling_zscore
 
 _TRADING_DAYS_5Y = 1250
 _AMOUNT_MA_WINDOW = 20

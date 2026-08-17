@@ -32,11 +32,6 @@ def build_calendar_lookback_window(end_date: date, lookback_days: int) -> Metric
     )
 
 
-def build_lookback_window(end_date: date, lookback_days: int) -> MetricWindow:
-    """兼容旧入口，按自然日回看天数构造窗口。"""
-    return build_calendar_lookback_window(end_date, lookback_days)
-
-
 def empty_metric_frame(columns: tuple[str, ...]) -> pl.DataFrame:
     """构造指标空 Schema DataFrame。"""
     return pl.DataFrame(
@@ -49,13 +44,6 @@ def empty_metric_frame(columns: tuple[str, ...]) -> pl.DataFrame:
             for column in columns
         }
     )
-
-
-def require_columns(df: pl.DataFrame, columns: tuple[str, ...], dataset: str) -> None:
-    """校验 DataFrame 必须包含的字段。"""
-    missing = [column for column in columns if column not in df.columns]
-    if missing:
-        raise ValueError(f"{dataset} 缺少字段: {', '.join(missing)}")
 
 
 def first_column(df: pl.DataFrame, candidates: tuple[str, ...], dataset: str = "dataset") -> str:
@@ -84,9 +72,7 @@ def load_start_date(
 __all__ = [
     "MetricWindow",
     "build_calendar_lookback_window",
-    "build_lookback_window",
     "empty_metric_frame",
     "first_column",
     "load_start_date",
-    "require_columns",
 ]

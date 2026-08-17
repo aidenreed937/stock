@@ -1,11 +1,11 @@
-from datetime import date
+from datetime import date, timedelta
 from pathlib import Path
 from typing import TYPE_CHECKING, cast
 
 import polars as pl
 
 from stock.analytics.metrics import MetricContext
-from stock.analytics.metrics.datasets import build_calendar_lookback_window, build_lookback_window
+from stock.analytics.metrics.datasets import build_calendar_lookback_window
 from stock.analytics.metrics.datasets.loaders import load_metric_dataset
 
 if TYPE_CHECKING:
@@ -41,7 +41,9 @@ def test_load_metric_dataset_uses_actual_data_source_cache_key() -> None:
     assert list(context.cache) == ["tushare:stock_daily_bar:None:None"]
 
 
-def test_build_lookback_window_keeps_calendar_day_semantics() -> None:
+def test_build_calendar_lookback_window_semantics() -> None:
     end_date = date(2026, 8, 14)
-
-    assert build_lookback_window(end_date, 7) == build_calendar_lookback_window(end_date, 7)
+    window = build_calendar_lookback_window(end_date, 7)
+    assert window.start_date == end_date - timedelta(days=7)
+    assert window.end_date == end_date
+    assert window.lookback_days == 7

@@ -13,10 +13,11 @@ from stock.data.catalog import DataCatalog, load_dataset_compat
 if TYPE_CHECKING:
     from datetime import date
 
-_OPTION_RISK_COMPONENT_IDS = (
+OPTION_RISK_COMPONENT_IDS = (
     "option_put_call_volume_ratio_temperature",
     "option_put_call_oi_ratio_temperature",
 )
+_OPTION_RISK_COMPONENT_IDS = OPTION_RISK_COMPONENT_IDS
 
 
 def _load_dataset(
@@ -176,7 +177,8 @@ def _build_option_metric_rows(
     return rows
 
 
-def _option_daily_frame(daily: pl.DataFrame, basic: pl.DataFrame) -> pl.DataFrame:
+def build_option_daily_frame(daily: pl.DataFrame, basic: pl.DataFrame) -> pl.DataFrame:
+    """根据期权日频行情与基础信息构建日度期权聚合宽表。"""
     required_daily = {"symbol", "trade_date", "vol", "amount", "oi"}
     required_basic = {"symbol", "call_put", "s_month"}
     if daily.is_empty() or basic.is_empty():
@@ -304,3 +306,13 @@ def _option_risk_temperature_row(
             note=note,
         ),
     )
+
+
+_option_daily_frame = build_option_daily_frame
+
+__all__ = [
+    "OPTION_RISK_COMPONENT_IDS",
+    "_option_daily_frame",
+    "build_option_daily_frame",
+    "option_rows",
+]

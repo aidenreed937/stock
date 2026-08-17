@@ -8,13 +8,13 @@ from stock.analytics.metrics.datasets.windows import (
 from stock.analytics.metrics.datasets.windows import (
     first_column as _first_column,
 )
-from stock.analytics.metrics.rules import growth, rolling_percentile, rolling_zscore
 from stock.analytics.metrics.spec import (
     EntityType,
     MetricCalculator,
     MetricDomain,
     MetricSpec,
 )
+from stock.analytics.primitives.rules import growth, rolling_percentile, rolling_zscore
 
 _TRADING_DAYS_5Y = 1250
 _FLOW_ZSCORE_WINDOW = 60
