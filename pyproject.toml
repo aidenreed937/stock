@@ -78,7 +78,7 @@ ignore = [
 convention = "google"
 
 [tool.ruff.lint.per-file-ignores]
-"tests/*" = ["S101", "S105", "S106", "D"]  # 测试文件中允许使用 assert、硬编码测试 token，且不强制要求 docstring
+"tests/**" = ["S101", "S105", "S106", "D", "PT018", "SIM117", "E402", "PLR", "C901", "FBT"]  # 测试文件中允许使用 assert、硬编码测试 token，且不强制要求 docstring
 "scripts/*" = ["T201", "D"]                # 运维/门禁脚本允许使用标准输出 print，且不强制要求全量 docstring
 "src/stock_cli/*" = ["T201"]               # CLI 工具允许使用控制台输出 print
 "src/stock_data/validator/*" = ["T201"]    # 命令行校验器允许使用 print

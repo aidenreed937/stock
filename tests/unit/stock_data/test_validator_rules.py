@@ -1,0 +1,200 @@
+"""数据质量校验规则单元测试。"""
+
+from datetime import date
+
+import polars as pl
+
+from stock_data.validator.rules import (
+    CompletenessRule,
+    NullCheckRule,
+    OhlcLogicRule,
+    PrimaryKeyRule,
+    VolatilityRule,
+)
+
+
+def test_null_check_rule() -> None:
+    rule = NullCheckRule(columns=["close", "open"])
+    df_pass = pl.DataFrame({"close": [10.0, 11.0], "open": [9.0, 10.0]})
+    res_pass = rule.audit(df_pass)
+    assert res_pass["passed"] is True
+    assert res_pass["total_nulls"] == 0
+
+    df_fail = pl.DataFrame({"close": [10.0, None], "open": [9.0, 10.0]})
+    res_fail = rule.audit(df_fail)
+    assert res_fail["passed"] is False
+    assert res_fail["total_nulls"] == 1
+    assert res_fail["null_details"]["close"] == 1
+
+
+def test_primary_key_rule() -> None:
+    rule = PrimaryKeyRule(keys=["symbol", "trade_date"])
+    df_pass = pl.DataFrame(
+        {"symbol": ["000001.SZ", "000002.SZ"], "trade_date": [date(2026, 8, 11), date(2026, 8, 11)]}
+    )
+    res_pass = rule.audit(df_pass)
+    assert res_pass["passed"] is True
+    assert res_pass["duplicate_records"] == 0
+
+    df_fail = pl.DataFrame(
+        {"symbol": ["000001.SZ", "000001.SZ"], "trade_date": [date(2026, 8, 11), date(2026, 8, 11)]}
+    )
+    res_fail = rule.audit(df_fail)
+    assert res_fail["passed"] is False
+    assert res_fail["duplicate_records"] == 1
+
+
+def test_ohlc_logic_rule() -> None:
+    rule = OhlcLogicRule()
+    # 正常数据
+    df_pass = pl.DataFrame({"open": [10.0], "high": [10.5], "low": [9.5], "close": [10.2]})
+    res_pass = rule.audit(df_pass)
+    assert res_pass["passed"] is True
+    assert res_pass["physical_errors"] == 0
+
+    # 异常数据：high < low
+    df_fail = pl.DataFrame({"open": [10.0], "high": [9.0], "low": [9.5], "close": [10.2]})
+    res_fail = rule.audit(df_fail)
+    assert res_fail["passed"] is False
+    assert res_fail["physical_errors"] == 1
+
+
+def test_volatility_rule() -> None:
+    rule = VolatilityRule()
+    # 正常数据
+    df_pass = pl.DataFrame(
+        {"close": [10.5], "pre_close": [10.0], "pct_chg": [5.0], "turnover_rate": [5.0]}
+    )
+    res_pass = rule.audit(df_pass)
+    assert res_pass["passed"] is True
+    assert res_pass["calc_diff_errors"] == 0
+    assert res_pass["spike_faults"] == 0
+    assert res_pass["turnover_faults"] == 0
+
+    # 极端涨跌幅 (飞线)
+    df_spike = pl.DataFrame(
+        {"close": [110.0], "pre_close": [10.0], "pct_chg": [1000.1], "turnover_rate": [5.0]}
+    )
+    res_spike = rule.audit(df_spike)
+    assert res_spike["passed"] is False
+    assert res_spike["spike_faults"] == 1
+
+    # 极端换手率 (溢出)
+    df_turnover = pl.DataFrame(
+        {"close": [10.5], "pre_close": [10.0], "pct_chg": [5.0], "turnover_rate": [300.1]}
+    )
+    res_turnover = rule.audit(df_turnover)
+    assert res_turnover["passed"] is False
+    assert res_turnover["turnover_faults"] == 1
+
+
+def test_volatility_rule_exempts_listing_day_spike_but_flags_later_spike() -> None:
+    rule = VolatilityRule({"000001.SZ": date(2026, 8, 1)})
+    df = pl.DataFrame(
+        {
+            "symbol": ["000001.SZ", "000001.SZ"],
+            "trade_date": [date(2026, 8, 1), date(2026, 8, 2)],
+            "close": [110.0, 220.0],
+            "pre_close": [10.0, 10.0],
+            "pct_chg": [1000.1, 2100.0],
+            "turnover_rate": [5.0, 5.0],
+        }
+    )
+
+    result = rule.audit(df)
+
+    assert result["listing_day_spike_exemptions"] == 1
+    assert result["spike_faults"] == 1
+    assert result["passed"] is False
+
+
+def test_volatility_rule_exempts_listing_day_pct_formula_deviation() -> None:
+    rule = VolatilityRule({"301487.SZ": date(2023, 8, 9)})
+    df = pl.DataFrame(
+        {
+            "symbol": ["301487.SZ"],
+            "trade_date": [date(2023, 8, 9)],
+            "close": [98.02],
+            "pre_close": [5.32],
+            "pct_chg": [1742.0],
+        }
+    )
+
+    result = rule.audit(df)
+
+    assert result["listing_day_calc_exemptions"] == 1
+    assert result["calc_diff_errors"] == 0
+    assert result["passed"] is True
+
+
+def test_completeness_rule() -> None:
+    rule = CompletenessRule(min_count=5, max_count=10)
+    # 正常分布
+    df_pass = pl.DataFrame(
+        {"trade_date": [date(2026, 8, 11)] * 6, "symbol": [f"S_{i}" for i in range(6)]}
+    )
+    res_pass = rule.audit(df_pass)
+    assert res_pass["passed"] is True
+    assert res_pass["truncated_dates_count"] == 0
+    assert res_pass["anomaly_dates_count"] == 0
+
+    # 截断（数据过多）
+    df_trunc = pl.DataFrame(
+        {"trade_date": [date(2026, 8, 11)] * 11, "symbol": [f"S_{i}" for i in range(11)]}
+    )
+    res_trunc = rule.audit(df_trunc)
+    assert res_trunc["passed"] is False
+    assert res_trunc["truncated_dates_count"] == 1
+
+    # 异常少数据
+    df_low = pl.DataFrame(
+        {"trade_date": [date(2026, 8, 11)] * 3, "symbol": [f"S_{i}" for i in range(3)]}
+    )
+    res_low = rule.audit(df_low)
+    assert res_low["passed"] is False
+    assert res_low["anomaly_dates_count"] == 1
+
+
+def test_distribution_audit_rule() -> None:
+    from stock_data.validator.rules import DistributionAuditRule
+
+    rule = DistributionAuditRule(
+        value_cols=["amount", "total_mv"], max_step_ratio=10.0, min_step_ratio=0.1
+    )
+
+    # 1. 正常分布数据
+    df_pass = pl.DataFrame(
+        {
+            "trade_date": [date(2026, 8, 11), date(2026, 8, 12)],
+            "amount": [1e9, 1.2e9],
+            "total_mv": [1e11, 1.05e11],
+        }
+    )
+    res_pass = rule.audit(df_pass)
+    assert res_pass["passed"] is True
+    assert res_pass["step_jump_faults"] == 0
+    assert res_pass["negative_faults"] == 0
+
+    # 2. 存在非物理负值
+    df_neg = pl.DataFrame(
+        {
+            "trade_date": [date(2026, 8, 11)],
+            "amount": [-1000.0],
+            "total_mv": [1e11],
+        }
+    )
+    res_neg = rule.audit(df_neg)
+    assert res_neg["passed"] is False
+    assert res_neg["negative_faults"] == 1
+
+    # 3. 存在相邻交易日 10,000 倍阶跃跳跃 (万元 vs 元)
+    df_jump = pl.DataFrame(
+        {
+            "trade_date": [date(2026, 8, 11), date(2026, 8, 12)],
+            "amount": [1e9, 1e5],  # 10,000x drop
+            "total_mv": [1e11, 1e11],
+        }
+    )
+    res_jump = rule.audit(df_jump)
+    assert res_jump["passed"] is False
+    assert res_jump["step_jump_faults"] == 1

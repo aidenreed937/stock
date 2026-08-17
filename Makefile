@@ -38,7 +38,7 @@ format:
 	uv run ruff format .
 
 test:
-	uv run pytest
+	$(if $(TEST_PATH),uv run pytest $(TEST_PATH) --no-cov,uv run pytest)
 
 check: format lint test
 
