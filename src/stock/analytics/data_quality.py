@@ -10,12 +10,6 @@ from typing import TYPE_CHECKING, Any
 if TYPE_CHECKING:
     import polars as pl
 
-from stock.reporting.core.quality import (
-    render_quality_report_markdown as _render_quality_report_markdown,
-)
-
-render_quality_report_markdown = _render_quality_report_markdown
-
 DATE_PATTERN = re.compile(r"\b\d{4}-\d{2}-\d{2}\b")
 
 

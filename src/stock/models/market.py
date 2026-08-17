@@ -1,6 +1,18 @@
 from datetime import date
+from enum import StrEnum
 
 from pydantic import BaseModel, Field, ValidationInfo, field_validator
+
+
+class EntityType(StrEnum):
+    """标的或实体适用粒度。"""
+
+    MARKET = "market"  # 全市场级别（A股大盘）
+    INDEX = "index"  # 指数级别（如 000300.SH）
+    INDUSTRY = "industry"  # 行业级别（如 申万一级行业）
+    STOCK = "stock"  # 个股级别
+    ETF = "etf"  # 场内基金/ETF 级别
+    MACRO = "macro"  # 宏观级别（如 美联储利率、国债收益率、M1/M2）
 
 
 class DailyBar(BaseModel):

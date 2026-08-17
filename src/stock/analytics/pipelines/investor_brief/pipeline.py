@@ -20,7 +20,6 @@ from stock.analytics.pipelines.investor_brief.config import (
     InvestorBriefConfig,
     load_investor_brief_config,
 )
-from stock.reporting.templates.investor_brief import build_brief_json, render_brief_markdown
 
 if TYPE_CHECKING:
     from pathlib import Path
@@ -51,6 +50,9 @@ def run_investor_brief(
     as_of_date = _resolve_as_of_date(market["manifest"], industry["manifest"])
     paths = build_run_paths(as_of_date, config.artifact_root)
     manifest = _build_manifest(config, as_of_date, paths, market=market, industry=industry)
+
+    from stock.reporting.templates.investor_brief import build_brief_json, render_brief_markdown
+
     brief_json = build_brief_json(
         config=config,
         manifest=manifest,

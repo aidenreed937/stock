@@ -9,6 +9,8 @@ from typing import TYPE_CHECKING
 
 import polars as pl
 
+from stock.models.market import EntityType
+
 if TYPE_CHECKING:
     from stock.analytics.metrics.context import MetricContext
 
@@ -24,17 +26,6 @@ class MetricDomain(StrEnum):
     VALUATION = "valuation"
     FLOW = "flow"
     MACRO = "macro"
-
-
-class EntityType(StrEnum):
-    """指标适用标的粒度。"""
-
-    STOCK = "stock"
-    INDEX = "index"
-    INDUSTRY = "industry"
-    ETF = "etf"
-    MACRO = "macro"
-    MARKET = "market"
 
 
 class MetricFrequency(StrEnum):
@@ -61,3 +52,12 @@ class MetricSpec:
     required_datasets: tuple[str, ...] = ()
     output_columns: tuple[str, ...] = ()
     description: str = ""
+
+
+__all__ = [
+    "EntityType",
+    "MetricCalculator",
+    "MetricDomain",
+    "MetricFrequency",
+    "MetricSpec",
+]

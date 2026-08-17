@@ -6,6 +6,30 @@ from typing import TYPE_CHECKING, Any
 
 import polars as pl
 
+from stock.analytics.pipelines.industry_structure.interpretation import (
+    evaluate_key_takeaways as _key_takeaway_section,
+)
+from stock.analytics.pipelines.industry_structure.interpretation import (
+    evaluate_one_line_summary as _one_line_summary,
+)
+from stock.analytics.pipelines.industry_structure.interpretation import (
+    evaluate_short_term_rhythm as _short_term_rhythm_section,
+)
+from stock.analytics.pipelines.industry_structure.interpretation import (
+    evaluate_structure_radar as _structure_radar_section,
+)
+from stock.analytics.pipelines.industry_structure.interpretation import (
+    evaluate_theme_types as _theme_type_section,
+)
+from stock.analytics.pipelines.industry_structure.interpretation import (
+    get_fundamental_status_interpretation as _fundamental_status_interpretation,
+)
+from stock.analytics.pipelines.industry_structure.interpretation import (
+    get_fundamental_status_label as _fundamental_status_label,
+)
+from stock.analytics.pipelines.industry_structure.interpretation import (
+    get_structure_health_level as _structure_health_level,
+)
 from stock.reporting.core.watermark import human_watermark_issue_lines
 from stock.reporting.engine.renderer import ReportRenderer
 
@@ -336,309 +360,6 @@ def _human_reading_guide(scores: dict[str, Any]) -> list[str]:
     return lines
 
 
-def _key_takeaway_section(industry_panel: pl.DataFrame, scores: dict[str, Any]) -> list[str]:
-    rows = _panel_rows(industry_panel)
-    health = scores.get("structure_health", {})
-    lines: list[str] = []
-    if isinstance(health, dict) and health:
-        total = int(health.get("scored_industry_count", 0) or 0)
-        pos20 = int(health.get("positive_return_20d_count", 0) or 0)
-        pos60 = int(health.get("positive_return_60d_count", 0) or 0)
-        lines.append(
-            f"- 扩散状态: 20日上涨行业 {pos20}/{total}，60日上涨行业 {pos60}/{total}；"
-            f"{_breadth_comment(pos20, pos60, total)}"
-        )
-        top_negative = health.get("top_negative_60d_count")
-        top_limit = health.get("top_limit")
-        if top_negative is not None and top_limit:
-            lines.append(
-                f"- 中期确认: 结构分前{top_limit}行业中60日仍为负 {top_negative} 个；"
-                "领先名单需要再看60日收益是否转正。"
-            )
-
-    top_structure = scores.get("top_structure", [])
-    top_momentum = scores.get("top_momentum", [])
-    if isinstance(top_structure, list) and isinstance(top_momentum, list):
-        structure_names = {
-            _industry_name(row) for row in top_structure[:5] if isinstance(row, dict)
-        }
-        momentum_names = {_industry_name(row) for row in top_momentum[:5] if isinstance(row, dict)}
-        overlap = sorted(name for name in structure_names & momentum_names if name)
-        if overlap:
-            lines.append(f"- 结构和动量共振: {'、'.join(overlap)}。")
-        elif structure_names and momentum_names:
-            lines.append(
-                "- 结构和动量分离: 结构分领先与动量主线不重合，"
-                "说明交易主线和综合质量最优方向不是同一批行业。"
-            )
-
-    if rows:
-        tcr_top = _top_rows(rows, "tcr", limit=3)
-        if tcr_top:
-            lines.append(
-                "- 成交集中: "
-                f"{_industry_list(tcr_top, (('TCR', 'tcr', '%'),), limit=3)}；"
-                "TCR高表示成交占比高，需要观察是否抱团松动。"
-            )
-        lines.extend(_fund_flow_takeaway_lines(rows))
-        weak = _top_rows(
-            [
-                row
-                for row in rows
-                if (_as_float(row.get("return_20d")) or 0.0) < 0
-                and (_as_float(row.get("return_60d")) or 0.0) < 0
-            ],
-            "return_20d",
-            limit=3,
-            descending=False,
-        )
-        if weak:
-            weak_text = _industry_list(
-                weak,
-                (("20日", "return_20d", "%"), ("60日", "return_60d", "%")),
-                limit=3,
-            )
-            lines.append(f"- 弱势拖累: {weak_text}。")
-    return lines or ["- 行业关键判断暂不可用。"]
-
-
-def _fund_flow_takeaway_lines(rows: list[dict[str, Any]]) -> list[str]:
-    fund_flow_metrics = (
-        ("资金分", "fund_flow_score", ""),
-        ("20日净流入", "money_net_inflow_share_20d", "%"),
-    )
-    fund_flow_top = _top_rows(
-        [row for row in rows if _is_fund_flow_confirmed(row)],
-        "fund_flow_score",
-        limit=3,
-    )
-    fund_flow_pressure = _top_rows(
-        [row for row in rows if _has_fund_flow_pressure(row)],
-        "fund_flow_score",
-        limit=3,
-        descending=False,
-    )
-    lines = []
-    if fund_flow_top:
-        lines.append(f"- 资金确认: {_industry_list(fund_flow_top, fund_flow_metrics)}。")
-    if fund_flow_pressure:
-        lines.append(f"- 资金流出压力: {_industry_list(fund_flow_pressure, fund_flow_metrics)}。")
-    return lines
-
-
-def _breadth_comment(pos20: int, pos60: int, total: int) -> str:
-    if total <= 0:
-        return "扩散样本不足。"
-    share20 = pos20 / total
-    share60 = pos60 / total
-    if share20 >= 0.6 and share60 < 0.35:
-        return "短线扩散较强，但60日中期确认不足。"
-    if share20 < 0.35 and share60 < 0.35:
-        return "20日和60日扩散都不足，行业机会更偏局部强势而非全面修复。"
-    if share20 >= 0.6 and share60 >= 0.5:
-        return "20日和60日扩散同步改善，结构健康度更高。"
-    return "扩散信号分化，需要结合主线拥挤度和60日趋势确认。"
-
-
-def _structure_radar_section(industry_panel: pl.DataFrame, scores: dict[str, Any]) -> list[str]:
-    rows = _panel_rows(industry_panel)
-    if not rows:
-        return ["- 行业面板为空，结构雷达不可用。"]
-
-    positive_60d = _top_rows(
-        [row for row in rows if (_as_float(row.get("return_60d")) or 0.0) > 0],
-        "return_60d",
-        limit=6,
-    )
-    tcr_top = _top_rows(rows, "tcr", limit=5)
-    fund_flow_top = _top_rows(
-        [row for row in rows if _is_fund_flow_confirmed(row)],
-        "fund_flow_score",
-        limit=5,
-    )
-    top_structure = _top_rows(rows, "structure_score", limit=10)
-    unconfirmed = [row for row in top_structure if (_as_float(row.get("return_60d")) or 0.0) < 0]
-    weak_fundamental = [row for row in top_structure if _has_weak_fundamental(row)]
-    crowded = scores.get("crowded_risk")
-    crowded_rows = crowded if isinstance(crowded, list) else []
-    tmt_rows = _top_rows(
-        [row for row in rows if _industry_name(row) in {"电子", "通信", "计算机", "传媒"}],
-        "tcr",
-        limit=4,
-    )
-    return_metrics = (("20日", "return_20d", "%"), ("60日", "return_60d", "%"))
-    tcr_metrics = (("TCR", "tcr", "%"),)
-    fund_flow_metrics = (
-        ("资金分", "fund_flow_score", ""),
-        ("20日净流入", "money_net_inflow_share_20d", "%"),
-    )
-    crowded_metrics = (("20日", "return_20d", "%"), ("TCR", "tcr", "%"))
-    fundamental_metrics = (("基本面分", "fundamental_score", ""),)
-
-    lines = [
-        f"- 60日正收益行业: {_industry_list(positive_60d, (('60日', 'return_60d', '%'),))}",
-        f"- 成交集中 Top: {_industry_list(tcr_top, tcr_metrics)}",
-        f"- 资金确认 Top: {_industry_list(fund_flow_top, fund_flow_metrics)}",
-        f"- 拥挤风险: {_industry_list(crowded_rows, crowded_metrics)}",
-        (f"- 结构领先但60日未确认: {_industry_list(unconfirmed, return_metrics)}"),
-        (f"- 结构领先但基本面确认不足: {_industry_list(weak_fundamental, fundamental_metrics)}"),
-    ]
-    if tmt_rows:
-        tmt_tcr = sum(_as_float(row.get("tcr")) or 0.0 for row in tmt_rows)
-        lines.append(
-            "- 电子/TMT成交集中: "
-            f"{_industry_list(tmt_rows, tcr_metrics)}；TMT合计TCR {tmt_tcr:.2f}%。"
-        )
-    return lines
-
-
-def _theme_type_section(industry_panel: pl.DataFrame) -> list[str]:
-    rows = _panel_rows(industry_panel)
-    if not rows:
-        return ["- 行业面板为空，主线类型不可用。"]
-
-    low_valuation_improving = _top_rows(
-        [
-            row
-            for row in rows
-            if (_as_float(row.get("return_60d")) or 0.0) > 0
-            and (_as_float(row.get("valuation_score")) or 0.0) >= 60
-            and (_as_float(row.get("fundamental_score")) or 0.0) >= 50
-            and (_as_float(row.get("crowding_temperature")) or 0.0) < 70
-        ],
-        "structure_score",
-        limit=3,
-    )
-    high_beta_strong = _top_rows(
-        [
-            row
-            for row in rows
-            if (_as_float(row.get("momentum_score")) or 0.0) >= 70
-            and (_as_float(row.get("crowding_temperature")) or 0.0) >= 80
-        ],
-        "momentum_score",
-        limit=3,
-    )
-    crowded_valuation = _top_rows(
-        [
-            row
-            for row in rows
-            if (_as_float(row.get("tcr")) or 0.0) >= 5
-            and max(
-                _as_float(row.get("pe_percentile_5y")) or 0.0,
-                _as_float(row.get("pb_percentile_5y")) or 0.0,
-            )
-            >= 80
-        ],
-        "tcr",
-        limit=4,
-    )
-    defensive_crowding = _top_rows(
-        [
-            row
-            for row in rows
-            if (_as_float(row.get("pb_percentile_5y")) or 100.0) <= 30
-            and _is_high_dividend(row)
-            and (_as_float(row.get("crowding_temperature")) or 0.0) >= 80
-        ],
-        "crowding_temperature",
-        limit=3,
-    )
-    pure_momentum = _top_rows(
-        [
-            row
-            for row in rows
-            if (_as_float(row.get("momentum_score")) or 0.0) >= 70 and _has_weak_fundamental(row)
-        ],
-        "momentum_score",
-        limit=3,
-    )
-    weak_prosperity = _top_rows(
-        [
-            row
-            for row in rows
-            if (_as_float(row.get("fundamental_score")) or 100.0) < 30
-            or "景气承压" in str(row.get("tags") or "")
-        ],
-        "crowding_temperature",
-        limit=4,
-    )
-    high_beta_metrics = (
-        ("动量分", "momentum_score", ""),
-        ("拥挤温度", "crowding_temperature", ""),
-    )
-    crowded_valuation_metrics = (
-        ("TCR", "tcr", "%"),
-        ("PE分位", "pe_percentile_5y", ""),
-        ("PB分位", "pb_percentile_5y", ""),
-    )
-    defensive_metrics = (
-        ("股息率", "dividend_yield", "%"),
-        ("拥挤温度", "crowding_temperature", ""),
-    )
-    pure_momentum_metrics = (
-        ("动量分", "momentum_score", ""),
-        ("基本面分", "fundamental_score", ""),
-    )
-    weak_prosperity_metrics = (
-        ("基本面分", "fundamental_score", ""),
-        ("拥挤温度", "crowding_temperature", ""),
-    )
-
-    return [
-        (
-            "- 低估改善、不拥挤、中期正收益: "
-            f"{_industry_list(low_valuation_improving, (('结构分', 'structure_score', ''),))}"
-        ),
-        (f"- 高博弈强趋势: {_industry_list(high_beta_strong, high_beta_metrics)}"),
-        (
-            "- 成交主战场/高估值集中: "
-            f"{_industry_list(crowded_valuation, crowded_valuation_metrics)}"
-        ),
-        (f"- 防御抱团: {_industry_list(defensive_crowding, defensive_metrics)}"),
-        (f"- 纯动量/基本面确认不足: {_industry_list(pure_momentum, pure_momentum_metrics)}"),
-        (f"- 景气承压: {_industry_list(weak_prosperity, weak_prosperity_metrics)}"),
-    ]
-
-
-def _short_term_rhythm_section(industry_panel: pl.DataFrame) -> list[str]:
-    rows = _panel_rows(industry_panel)
-    if not rows:
-        return ["- 行业面板为空，短线节奏不可用。"]
-    accelerating = _top_rows(
-        [row for row in rows if (_as_float(row.get("return_5d")) or 0.0) >= 3],
-        "return_5d",
-        limit=5,
-    )
-    pullback = _top_rows(
-        [
-            row
-            for row in rows
-            if (_as_float(row.get("return_20d")) or 0.0) >= 5
-            and (_as_float(row.get("return_5d")) or 0.0) < 0
-        ],
-        "return_20d",
-        limit=5,
-    )
-    weak = _top_rows(
-        [
-            row
-            for row in rows
-            if (_as_float(row.get("return_5d")) or 0.0) < 0
-            and (_as_float(row.get("return_20d")) or 0.0) < 0
-        ],
-        "return_5d",
-        limit=5,
-        descending=False,
-    )
-    rhythm_metrics = (("5日", "return_5d", "%"), ("20日", "return_20d", "%"))
-    return [
-        f"- 5日仍在上行: {_industry_list(accelerating, rhythm_metrics)}",
-        f"- 20日强但5日回落: {_industry_list(pullback, rhythm_metrics)}",
-        f"- 5日和20日都偏弱: {_industry_list(weak, rhythm_metrics)}",
-    ]
-
-
 def _lagging_direction_section(scores: dict[str, Any]) -> list[str]:
     rows = scores.get("lagging_or_weak", [])
     lines = [
@@ -670,30 +391,6 @@ def _human_trend_lines(scores: dict[str, Any]) -> list[str]:
     if not isinstance(diagnostic, dict) or not diagnostic.get("message"):
         return []
     return ["", f"> {diagnostic['message']}"]
-
-
-def _one_line_summary(scores: dict[str, Any]) -> str:
-    top = scores.get("top_structure", [])
-    crowded = scores.get("crowded_risk", [])
-    lagging = scores.get("lagging_or_weak", [])
-    if not top:
-        return "行业结构暂不可判定，需要先补齐 sw_daily 等核心事实。"
-    top_names = _names(top[:3])
-    crowded_names = _names(crowded[:3])
-    lagging_names = _names(lagging[:3])
-    return (
-        f"当前结构分靠前行业为 {top_names}；"
-        f"拥挤度需要重点观察 {crowded_names}；"
-        f"落后方向为 {lagging_names}。"
-        "行业结论用于方向筛选，需与六维市场温度交叉验证。"
-    )
-
-
-def _structure_health_level(scores: dict[str, Any]) -> str:
-    health = scores.get("structure_health", {})
-    if not isinstance(health, dict) or not health:
-        return "不可判定"
-    return str(health.get("level") or "不可判定")
 
 
 def _facts_sections(facts: pl.DataFrame) -> list[str]:
@@ -781,38 +478,6 @@ def _industry_name(row: dict[str, Any]) -> str:
     return str(row.get("industry_name") or row.get("industry_code") or "")
 
 
-def _has_weak_fundamental(row: dict[str, Any]) -> bool:
-    score = _as_float(row.get("fundamental_score"))
-    return (score is not None and score < 40) or row.get("fundamental_status") in {
-        "official_stale",
-        "insufficient",
-    }
-
-
-def _is_fund_flow_confirmed(row: dict[str, Any]) -> bool:
-    fund_flow = _as_float(row.get("fund_flow_score"))
-    money_inflow = _as_float(row.get("money_net_inflow_share_20d"))
-    return (
-        fund_flow is not None and money_inflow is not None and fund_flow >= 70 and money_inflow > 0
-    )
-
-
-def _has_fund_flow_pressure(row: dict[str, Any]) -> bool:
-    fund_flow = _as_float(row.get("fund_flow_score"))
-    money_inflow = _as_float(row.get("money_net_inflow_share_20d"))
-    return (
-        fund_flow is not None and money_inflow is not None and fund_flow <= 30 and money_inflow < 0
-    )
-
-
-def _is_high_dividend(row: dict[str, Any]) -> bool:
-    dividend_yield = _as_float(row.get("dividend_yield"))
-    if dividend_yield is None:
-        return False
-    threshold = 0.03 if abs(dividend_yield) <= 1 else 3
-    return dividend_yield >= threshold
-
-
 def _industry_list(
     rows: list[dict[str, Any]],
     metrics: tuple[tuple[str, str, str], ...],
@@ -878,38 +543,6 @@ def _fundamental_status_counts_text(value: object) -> str:
         label = _fundamental_status_label(str(key))
         parts.append(f"{label} {count} 个行业")
     return " / ".join(parts)
-
-
-def _fundamental_status_label(status: str) -> str:
-    labels = {
-        "fresh_blended": "财报未滞后，且已有预告/快报/研报辅助",
-        "stale_blended": "财报已滞后，但已有预告/快报/研报辅助",
-        "official_only": "仅使用未滞后的正式财报",
-        "official_stale": "仅有已滞后的正式财报，缺少快速确认",
-        "provisional_fast_only": "仅有预告/快报/研报快速确认",
-        "insufficient": "基本面数据不足",
-    }
-    return labels.get(status, status)
-
-
-def _fundamental_status_interpretation(value: object) -> str:
-    if not isinstance(value, dict) or not value:
-        return ""
-    stale_blended = int(value.get("stale_blended", 0) or 0)
-    official_stale = int(value.get("official_stale", 0) or 0)
-    provisional_fast_only = int(value.get("provisional_fast_only", 0) or 0)
-    insufficient = int(value.get("insufficient", 0) or 0)
-    if stale_blended or official_stale:
-        return (
-            "正式行业财报更新偏慢，当前基本面分主要是中期底座；"
-            "有快速确认的行业会提高预告、快报和研报上修权重，"
-            "没有快速确认的行业只能保守使用旧财报。"
-        )
-    if provisional_fast_only:
-        return "部分行业缺少正式财报，只能临时参考预告、快报和研报变化。"
-    if insufficient:
-        return "部分行业基本面样本不足，相关分数只按可用子项重归一。"
-    return "正式财报和快速确认数据匹配正常。"
 
 
 def _percent_text(value: object) -> str:

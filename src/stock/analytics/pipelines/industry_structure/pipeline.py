@@ -6,7 +6,7 @@ from dataclasses import dataclass
 from datetime import date, datetime
 from typing import TYPE_CHECKING, Any
 
-from stock.analytics.data_quality import build_quality_report, render_quality_report_markdown
+from stock.analytics.data_quality import build_quality_report
 from stock.analytics.pipelines.industry_structure.artifacts import (
     IndustryStructureArtifactPayload,
     IndustryStructureRunPaths,
@@ -21,11 +21,6 @@ from stock.analytics.pipelines.industry_structure.config import (
 from stock.analytics.pipelines.industry_structure.facts import collect_facts, resolve_trade_window
 from stock.analytics.pipelines.industry_structure.panel import build_industry_panel
 from stock.analytics.pipelines.industry_structure.scoring import score_industry_panel
-from stock.reporting.templates.industry_structure import (
-    build_report_json,
-    render_human_report_markdown,
-    render_report_markdown,
-)
 
 if TYPE_CHECKING:
     from pathlib import Path
@@ -89,6 +84,13 @@ def run_industry_structure(
         medium_windows=config.medium_windows,
         period_note="行业结构主窗口按最近已落盘申万行业交易日取窗口；60/120 日只作中期确认。",
     )
+    from stock.reporting.core.quality import render_quality_report_markdown
+    from stock.reporting.templates.industry_structure import (
+        build_report_json,
+        render_human_report_markdown,
+        render_report_markdown,
+    )
+
     quality_report_markdown = render_quality_report_markdown(quality_report_json)
     report_json = build_report_json(
         config=config,

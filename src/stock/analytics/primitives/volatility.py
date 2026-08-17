@@ -13,10 +13,14 @@ def calculate_realized_volatility(
     windows: tuple[int, ...] = (20, 60),
     price_col: str = "close",
     annual_days: int = 252,
+    *,
+    as_percentage: bool = False,
 ) -> pl.DataFrame:
     """计算年化已实现历史波动率 (Realized Volatility)。
 
     公式: Std(ln(P_t / P_{t-1}), window) * sqrt(annual_days)
+    默认输出小数制 (如 0.25 代表 25% 年化波动率)，与 metrics.calculators 体系严格对齐。
+    若 as_percentage=True 则输出百分数制 (如 25.0)。
     """
     if df.is_empty() or price_col not in df.columns:
         return df
@@ -32,17 +36,19 @@ def calculate_realized_volatility(
     temp_df = df.with_columns(log_ret)
     exprs = []
     annual_factor = annual_days**0.5
+    multiplier = 100.0 if as_percentage else 1.0
 
     for w in windows:
         col_name = f"realized_vol_{w}d"
         if has_symbol:
             expr = (
-                pl.col("_log_ret").rolling_std(window_size=w).over("symbol") * annual_factor * 100.0
+                pl.col("_log_ret").rolling_std(window_size=w).over("symbol")
+                * (annual_factor * multiplier)
             ).alias(col_name)
         else:
-            expr = (pl.col("_log_ret").rolling_std(window_size=w) * annual_factor * 100.0).alias(
-                col_name
-            )
+            expr = (
+                pl.col("_log_ret").rolling_std(window_size=w) * (annual_factor * multiplier)
+            ).alias(col_name)
         exprs.append(expr)
 
     return temp_df.with_columns(exprs).drop("_log_ret")

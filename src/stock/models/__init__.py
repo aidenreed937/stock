@@ -1,3 +1,3 @@
-from stock.models.market import DailyBar, QuoteSummary
+from stock.models.market import DailyBar, EntityType, QuoteSummary
 
-__all__ = ["DailyBar", "QuoteSummary"]
+__all__ = ["DailyBar", "EntityType", "QuoteSummary"]

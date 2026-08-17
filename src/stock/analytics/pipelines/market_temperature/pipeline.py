@@ -8,7 +8,7 @@ from datetime import date, datetime
 from pathlib import Path
 from typing import TYPE_CHECKING, Any
 
-from stock.analytics.data_quality import build_quality_report, render_quality_report_markdown
+from stock.analytics.data_quality import build_quality_report
 from stock.analytics.pipelines.market_temperature.artifacts import (
     MarketTemperatureArtifactPayload,
     MarketTemperatureRunPaths,
@@ -22,11 +22,6 @@ from stock.analytics.pipelines.market_temperature.config import (
 )
 from stock.analytics.pipelines.market_temperature.facts import collect_facts, resolve_trade_window
 from stock.analytics.pipelines.market_temperature.scoring import build_scores
-from stock.reporting.templates.market_temperature import (
-    build_report_json,
-    render_human_report_markdown,
-    render_report_markdown,
-)
 
 if TYPE_CHECKING:
     import polars as pl
@@ -83,6 +78,13 @@ def run_market_temperature(  # noqa: PLR0913
         short_windows=config.short_windows,
         period_note="六维主温度按最近已落盘 A 股交易日取窗口；短线窗口只作节奏观察。",
     )
+    from stock.reporting.core.quality import render_quality_report_markdown
+    from stock.reporting.templates.market_temperature import (
+        build_report_json,
+        render_human_report_markdown,
+        render_report_markdown,
+    )
+
     quality_report_markdown = render_quality_report_markdown(quality_report_json)
     report_json = build_report_json(config=config, manifest=manifest, scores=scores, facts=facts)
     report_markdown = render_report_markdown(

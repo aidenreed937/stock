@@ -10,6 +10,8 @@ from dataclasses import dataclass
 from enum import StrEnum
 from typing import TYPE_CHECKING
 
+from stock.models.market import EntityType
+
 if TYPE_CHECKING:
     from datetime import date, datetime
 
@@ -23,16 +25,6 @@ class FeatureKind(StrEnum):
     SCORE = "score"  # 标准化评分（固定 0-100 或 [-1, 1]，如 市场温度、行业景气度）
     SIGNAL = "signal"  # 离散信号或状态（布尔或枚举，如 多空金叉、超买超卖预警）
     LABEL = "label"  # 监督学习或回测标签（如 未来5日超额收益、持仓区间收益标签）
-
-
-class EntityType(StrEnum):
-    """特征适用标的粒度。"""
-
-    MARKET = "market"  # 全市场级别（A股大盘）
-    INDEX = "index"  # 指数级别（如 000300.SH）
-    INDUSTRY = "industry"  # 行业级别（如 申万一级行业）
-    STOCK = "stock"  # 个股级别
-    MACRO = "macro"  # 宏观级别（如 美联储利率、国债收益率、M1/M2）
 
 
 class FeatureUnit(StrEnum):
@@ -91,3 +83,12 @@ class FeatureValue:
     definition_version: str = "v1"
     source_watermark: str = ""
     input_fingerprint: str = ""
+
+
+__all__ = [
+    "EntityType",
+    "FeatureKind",
+    "FeatureSpec",
+    "FeatureUnit",
+    "FeatureValue",
+]

@@ -74,6 +74,9 @@ def test_volatility_factors() -> None:
     assert "realized_vol_20d" in res_vol.columns
     assert res_vol["realized_vol_20d"][-1] > 0
 
+    res_vol_pct = calculate_realized_volatility(df, windows=(10, 20), as_percentage=True)
+    assert abs(res_vol_pct["realized_vol_20d"][-1] - res_vol["realized_vol_20d"][-1] * 100.0) < 1e-6
+
     res_atr = calculate_atr(df, window=10)
     assert "atr_10d" in res_atr.columns
     assert "atr_ratio_10d" in res_atr.columns
