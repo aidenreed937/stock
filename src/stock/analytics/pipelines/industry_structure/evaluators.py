@@ -27,15 +27,13 @@ def evaluate_one_line_summary(scores: dict[str, Any]) -> str:
     crowded = scores.get("crowded_risk", [])
     lagging = scores.get("lagging_or_weak", [])
     if not top:
-        return "行业结构暂不可判定，需要先补齐 sw_daily 等核心事实。"
+        return "行业结构暂不可判定，需要先补齐核心行情事实。"
     top_names = _names(top[:3])
     crowded_names = _names(crowded[:3])
     lagging_names = _names(lagging[:3])
     return (
-        f"当前结构分靠前行业为 {top_names}；"
-        f"拥挤度需要重点观察 {crowded_names}；"
-        f"落后方向为 {lagging_names}。"
-        "行业结论用于方向筛选，需与六维市场温度交叉验证。"
+        f"结构领先: {top_names}；拥挤观察: {crowded_names}；"
+        f"落后方向: {lagging_names}。须与市场温度交叉验证。"
     )
 
 

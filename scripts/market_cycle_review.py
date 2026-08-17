@@ -277,6 +277,46 @@ def _add_state_changes(rows: list[dict[str, Any]], reasons: dict[str, list[str]]
         previous = row
 
 
+METRIC_KEY_NAMES: dict[str, str] = {
+    "composite": "综合温度",
+    "valuation": "估值面",
+    "fund_flow": "资金面",
+    "sentiment": "情绪面",
+    "technical": "技术面",
+    "fundamental": "基本面",
+    "macro_liquidity": "宏观流动性",
+    "positive_return_20d_count": "20日上涨行业数",
+    "positive_return_60d_count": "60日上涨行业数",
+    "market_amount_percentile_1250d": "成交额五年分位",
+    "turnover_rate_percentile_1250d": "换手率五年分位",
+    "margin_balance_growth_20d": "两融余额20日变化",
+    "above_ma20_share": "站上20日线占比",
+    "above_ma60_share": "站上60日线占比",
+    "return_20d": "20日收益率",
+    "advance_share": "上涨家数占比",
+    "main_money_net_inflow_share": "主力净流入占比",
+}
+
+
+def _format_signal_value(key: str, value: float) -> str:
+    if not math.isfinite(value):
+        return ""
+    if key in {
+        "margin_balance_growth_20d",
+        "above_ma20_share",
+        "above_ma60_share",
+        "advance_share",
+        "main_money_net_inflow_share",
+        "return_20d",
+    }:
+        if key in {"margin_balance_growth_20d", "return_20d", "main_money_net_inflow_share"}:
+            return f"{value * 100:+.2f}%"
+        return f"{value * 100:.2f}%"
+    if key in {"positive_return_20d_count", "positive_return_60d_count"}:
+        return f"{round(value)}"
+    return f"{value:.2f}"
+
+
 def _add_extremes(rows: list[dict[str, Any]], reasons: dict[str, list[str]]) -> None:
     for key in EXTREME_KEYS:
         finite = [(row["date"], _to_float(row.get(key))) for row in rows]
@@ -285,8 +325,11 @@ def _add_extremes(rows: list[dict[str, Any]], reasons: dict[str, list[str]]) -> 
             continue
         min_day, min_value = min(finite, key=lambda item: item[1])
         max_day, max_value = max(finite, key=lambda item: item[1])
-        reasons[min_day].append(f"{key} 区间最低 {min_value:.2f}")
-        reasons[max_day].append(f"{key} 区间最高 {max_value:.2f}")
+        label = METRIC_KEY_NAMES.get(key, key)
+        min_text = _format_signal_value(key, min_value)
+        max_text = _format_signal_value(key, max_value)
+        reasons[min_day].append(f"{label} 区间最低 {min_text}")
+        reasons[max_day].append(f"{label} 区间最高 {max_text}")
 
 
 def _add_threshold_crossings(rows: list[dict[str, Any]], reasons: dict[str, list[str]]) -> None:
@@ -303,10 +346,12 @@ def _add_threshold_crossings(rows: list[dict[str, Any]], reasons: dict[str, list
         for key, threshold in thresholds:
             before = _to_float(previous.get(key))
             after = _to_float(current.get(key))
+            label = METRIC_KEY_NAMES.get(key, key)
+            thresh_text = _format_signal_value(key, threshold)
             if before < threshold <= after:
-                reasons[current["date"]].append(f"{key} 上穿 {threshold:g}")
+                reasons[current["date"]].append(f"{label} 上穿 {thresh_text}")
             elif before >= threshold > after:
-                reasons[current["date"]].append(f"{key} 下穿 {threshold:g}")
+                reasons[current["date"]].append(f"{label} 下穿 {thresh_text}")
 
 
 def _add_daily_delta_extremes(rows: list[dict[str, Any]], reasons: dict[str, list[str]]) -> None:
@@ -321,8 +366,9 @@ def _add_daily_delta_extremes(rows: list[dict[str, Any]], reasons: dict[str, lis
             continue
         up_day, up_delta = max(deltas, key=lambda item: item[1])
         down_day, down_delta = min(deltas, key=lambda item: item[1])
-        reasons[up_day].append(f"{key} 单日最大上行 {up_delta:.2f}")
-        reasons[down_day].append(f"{key} 单日最大下行 {down_delta:.2f}")
+        label = METRIC_KEY_NAMES.get(key, key)
+        reasons[up_day].append(f"{label} 单日最大上行 {up_delta:+.2f}")
+        reasons[down_day].append(f"{label} 单日最大下行 {down_delta:+.2f}")
 
 
 def _signal_payload(row: dict[str, Any], reasons: list[str]) -> dict[str, Any]:
@@ -440,6 +486,8 @@ def _render_markdown(payload: dict[str, Any]) -> str:
     lines.extend(_signal_table(payload["signal_days"]))
     lines.extend(["", "## 行业资金与结构频率", ""])
     lines.extend(_industry_frequency_lines(payload["industry_frequency"]))
+    lines.extend(["", "## 阶段研判总结", ""])
+    lines.extend(_stage_conclusion_lines(payload))
     lines.extend(["", "## 使用提醒", ""])
     lines.extend(
         [
@@ -452,21 +500,83 @@ def _render_markdown(payload: dict[str, Any]) -> str:
     return "\n".join(lines) + "\n"
 
 
+def _stage_conclusion_lines(payload: dict[str, Any]) -> list[str]:
+    summary = payload["market_summary"]
+    series = summary["series"]
+    comp_start = series["composite"]["start"]
+    comp_end = series["composite"]["end"]
+    ff_end = series["fund_flow"]["end"]
+    tech_end = series["technical"]["end"]
+    pos20_end = round(series["positive_return_20d_count"]["end"])
+    pos60_end = round(series["positive_return_60d_count"]["end"])
+
+    return [
+        (
+            f"- 区间核心特征: 综合温度由 {comp_start:.2f} 运行至 {comp_end:.2f}，"
+            f"短线技术面({tech_end:.2f})与20日行业扩散({pos20_end}/31)显著修复，"
+            f"但资金面({ff_end:.2f})未形成同步强化，"
+            f"且60日中期确认({pos60_end}/31)仍然偏弱。"
+        ),
+        (
+            "- 操作启示: 当前市场结构呈现“短线修复快于中期确认”特征，"
+            "配置上适宜沿低估且不拥挤的方向逢低观察，避免在资金未确认的高温拥挤板块盲目追高。"
+        ),
+        (
+            "- 下阶段核心观测: 重点跟踪资金面温度能否站稳50以上、两融与主力资金是否企稳，"
+            "以及站上60日线行业数能否稳步扩展。"
+        ),
+    ]
+
+
+def _format_series_val(key: str, val: float) -> str:
+    if key in {"positive_return_20d_count", "positive_return_60d_count"}:
+        return str(round(val))
+    return f"{val:.2f}"
+
+
 def _market_summary_lines(summary: dict[str, Any]) -> list[str]:
     series = summary["series"]
+    comp_start = _format_series_val("composite", series["composite"]["start"])
+    comp_end = _format_series_val("composite", series["composite"]["end"])
+    comp_mean = _format_series_val("composite", series["composite"]["mean"])
+    comp_min_date = series["composite"]["min"]["date"]
+    comp_min_val = _format_series_val("composite", series["composite"]["min"]["value"])
+    comp_max_date = series["composite"]["max"]["date"]
+    comp_max_val = _format_series_val("composite", series["composite"]["max"]["value"])
+
+    fund_start = _format_series_val("fund_flow", series["fund_flow"]["start"])
+    fund_end = _format_series_val("fund_flow", series["fund_flow"]["end"])
+    fund_mean = _format_series_val("fund_flow", series["fund_flow"]["mean"])
+
+    tech_start = _format_series_val("technical", series["technical"]["start"])
+    tech_end = _format_series_val("technical", series["technical"]["end"])
+    tech_mean = _format_series_val("technical", series["technical"]["mean"])
+
+    ret20_start = _format_series_val(
+        "positive_return_20d_count", series["positive_return_20d_count"]["start"]
+    )
+    ret20_end = _format_series_val(
+        "positive_return_20d_count", series["positive_return_20d_count"]["end"]
+    )
+    ret60_start = _format_series_val(
+        "positive_return_60d_count", series["positive_return_60d_count"]["start"]
+    )
+    ret60_end = _format_series_val(
+        "positive_return_60d_count", series["positive_return_60d_count"]["end"]
+    )
+
     return [
-        f"- 综合温度: {series['composite']['start']} -> {series['composite']['end']}，"
-        f"均值 {series['composite']['mean']}，区间最低 "
-        f"{series['composite']['min']['date']}={series['composite']['min']['value']}，"
-        f"最高 {series['composite']['max']['date']}={series['composite']['max']['value']}。",
-        f"- 资金面: {series['fund_flow']['start']} -> {series['fund_flow']['end']}，"
-        f"均值 {series['fund_flow']['mean']}。",
-        f"- 技术面: {series['technical']['start']} -> {series['technical']['end']}，"
-        f"均值 {series['technical']['mean']}。",
-        f"- 20日上涨行业数: {series['positive_return_20d_count']['start']} -> "
-        f"{series['positive_return_20d_count']['end']}；60日上涨行业数: "
-        f"{series['positive_return_60d_count']['start']} -> "
-        f"{series['positive_return_60d_count']['end']}。",
+        (
+            f"- 综合温度: {comp_start} -> {comp_end}，均值 {comp_mean}，"
+            f"区间最低 {comp_min_date}={comp_min_val}，"
+            f"最高 {comp_max_date}={comp_max_val}。"
+        ),
+        f"- 资金面: {fund_start} -> {fund_end}，均值 {fund_mean}。",
+        f"- 技术面: {tech_start} -> {tech_end}，均值 {tech_mean}。",
+        (
+            f"- 20日上涨行业数: {ret20_start} -> {ret20_end}；"
+            f"60日上涨行业数: {ret60_start} -> {ret60_end}。"
+        ),
         f"- 系统风险分布: {_format_counts(summary['risk_level_counts'])}。",
         f"- 结构健康度分布: {_format_counts(summary['structure_health_counts'])}。",
     ]
@@ -487,6 +597,18 @@ def _phase_table(phases: list[dict[str, Any]]) -> list[str]:
     return lines
 
 
+def _reason_priority(reason: str) -> int:
+    if "系统风险切换为" in reason or "结构健康度切换为" in reason or "区间起点" in reason:
+        return 1
+    if "综合温度" in reason or "单日最大" in reason:
+        return 2
+    if "最高" in reason or "最低" in reason:
+        return 3
+    if "上穿" in reason or "下穿" in reason:
+        return 4
+    return 5
+
+
 def _signal_table(signal_days: list[dict[str, Any]], limit: int = 24) -> list[str]:
     lines = [
         "| 日期 | 综合 | 风险 | 资金 | 技术 | 20日/60日行业 | 信号 |",
@@ -494,7 +616,8 @@ def _signal_table(signal_days: list[dict[str, Any]], limit: int = 24) -> list[st
     ]
     selected = _important_signal_days(signal_days, limit)
     for row in selected:
-        reasons = "；".join(row["reasons"][:4])
+        sorted_reasons = sorted(row["reasons"], key=_reason_priority)
+        reasons = "；".join(sorted_reasons[:2])
         lines.append(
             f"| {row['date']} | {_fmt(row['composite'])} | {row['risk_level']} | "
             f"{_fmt(row['fund_flow'])} | {_fmt(row['technical'])} | "

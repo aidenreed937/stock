@@ -418,6 +418,83 @@ def _human_quality_brief(facts: pl.DataFrame) -> list[str]:
     return lines
 
 
+def _format_fact_metric_value(metric_id: str, value_float: float | None) -> str:
+    if value_float is None:
+        return "-"
+    if metric_id in {
+        "margin_balance_growth_20d",
+        "main_money_net_inflow_share",
+        "advance_share",
+        "above_ma20_share",
+        "above_ma60_share",
+        "return_20d",
+    }:
+        if metric_id in {"margin_balance_growth_20d", "main_money_net_inflow_share", "return_20d"}:
+            return f"{value_float * 100:+.2f}%"
+        return f"{value_float * 100:.2f}%"
+
+    if metric_id in {
+        "fs_profit_growth_temperature",
+        "forecast_positive_temperature",
+        "report_revision_temperature",
+    }:
+        return f"{value_float:.2f}%"
+
+    sem = _metric_band_semantic(metric_id, value_float)
+    return f"{value_float:.2f} ({sem})" if sem else f"{value_float:.2f}"
+
+
+def _metric_band_semantic(metric_id: str, value: float) -> str:
+    if "pressure" in metric_id:
+        bands = ((80.0, "高压力"), (60.0, "中高压力"), (40.0, "中性"), (20.0, "低压力"))
+        default_label = "压力极低"
+    elif "percentile" in metric_id or "temperature" in metric_id or metric_id == "rsi_14d":
+        bands = ((85.0, "极高"), (70.0, "偏高"), (40.0, "中性"), (20.0, "偏低"))
+        default_label = "极低"
+    else:
+        return ""
+    for threshold, label in bands:
+        if value >= threshold:
+            return label
+    return default_label
+
+
+def _clean_fact_note(note: str) -> str:
+    if not note:
+        return ""
+    parts = [p.strip() for p in note.replace("；", ";").split(";") if p.strip()]
+    cleaned_parts = [_clean_part(p) for p in parts if not _is_engineering_param(p)]
+    return "；".join(p for p in cleaned_parts if p)
+
+
+def _is_engineering_param(p: str) -> bool:
+    return any(p.startswith(prefix) for prefix in ("metric_date=", "source=", "aggregation="))
+
+
+def _clean_part(p: str) -> str:
+    if p.startswith("latest_value="):
+        return _format_latest_val_str(p[len("latest_value=") :].strip())
+    if p.startswith("latest_date="):
+        return f"最新日期 {p[len('latest_date=') :]}"
+    if p.startswith("ann_window="):
+        return f"公告窗口 {p[len('ann_window=') :]}"
+    if p.startswith("report_date="):
+        return f"报告期 {p[len('report_date=') :]}"
+    return p
+
+
+def _format_latest_val_str(val_str: str) -> str:
+    try:
+        val = float(val_str)
+        if val >= 1_000_000:
+            return f"最新值 {val / 10000:.2f}万"
+        if 0 < abs(val) < 0.1:
+            return f"最新值 {val * 100:+.2f}%"
+        return f"最新值 {val:.2f}"
+    except ValueError:
+        return f"最新值 {val_str}"
+
+
 def _human_fact_sections(facts: pl.DataFrame) -> list[str]:
     lines = [
         "",
@@ -430,16 +507,18 @@ def _human_fact_sections(facts: pl.DataFrame) -> list[str]:
     if not rows:
         return [*lines, "| - | - | - | - | 无可用指标事实 |"]
     for row in rows:
+        metric_id = str(row["metric_id"])
         value_float = _as_float(row["value_float"])
-        value = "" if value_float is None else f"{value_float:.6g}"
+        value = _format_fact_metric_value(metric_id, value_float)
         sample_size = "" if row["sample_size"] is None else str(row["sample_size"])
+        note = _clean_fact_note(str(row.get("note") or ""))
         lines.append(
             "| {dimension} | {metric} | {value} | {sample} | {note} |".format(
                 dimension=_DIMENSION_LABELS.get(str(row["dimension"]), str(row["dimension"])),
-                metric=_METRIC_LABELS.get(str(row["metric_id"]), str(row["metric_id"])),
+                metric=_METRIC_LABELS.get(metric_id, metric_id),
                 value=value,
                 sample=sample_size,
-                note=row["note"],
+                note=note,
             )
         )
     return lines

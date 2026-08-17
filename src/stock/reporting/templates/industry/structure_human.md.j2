@@ -14,12 +14,6 @@
 {% endfor %}
 {% endif %}
 
-## 怎么读
-
-{% for line in reading_guide_lines %}
-{{ line }}
-{% endfor %}
-
 ## 关键判断
 
 {% for line in key_takeaway_lines %}
@@ -38,9 +32,9 @@
 {{ line }}
 {% endfor %}
 
-## 结构雷达
+## 行业总览
 
-{% for line in structure_radar_lines %}
+{% for line in panel_table_lines %}
 {{ line }}
 {% endfor %}
 
@@ -56,15 +50,21 @@
 {{ line }}
 {% endfor %}
 
+## 结构雷达
+
+{% for line in structure_radar_lines %}
+{{ line }}
+{% endfor %}
+
 ## 落后方向
 
 {% for line in lagging_direction_lines %}
 {{ line }}
 {% endfor %}
 
-## 行业总览
+## 怎么读
 
-{% for line in panel_table_lines %}
+{% for line in reading_guide_lines %}
 {{ line }}
 {% endfor %}
 

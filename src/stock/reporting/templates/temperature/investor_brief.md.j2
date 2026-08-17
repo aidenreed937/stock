@@ -57,7 +57,13 @@
 | - | - | - | - | - | 暂无可列示的落后方向。 |
 {% endfor %}
 
-## 5. 怎么读
+## 5. 数据时效与提示
+
+{% for n in data_quality_notes %}
+- {{ n }}
+{% endfor %}
+
+## 6. 怎么读
 
 {% for n in reading_notes %}
 - {{ n }}

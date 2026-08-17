@@ -183,20 +183,20 @@ def _candidate_reason(row: dict[str, Any]) -> str:
     if return_60d is not None and return_60d > 0:
         return "20日和60日收益同向为正，中期确认相对更好。"
     if _gte(valuation, 70) and _gte(fundamental, 55):
-        return "估值和基本面分数配合较好，可作为低估改善线索。"
+        return "估值与基本面较好，但60日收益为负 (中期未确认)。"
     if _gte(momentum, 75):
-        return "短期动量靠前，但60日趋势仍需确认。"
-    return "结构分靠前且未进入高拥挤，可作为短期观察方向。"
+        return "短期动量靠前，但60日收益为负 (中期未确认)。"
+    return "结构分靠前且未进入高拥挤，但60日收益为负 (中期未确认)。"
 
 
 def _risk_reason(row: dict[str, Any]) -> str:
     crowding = _as_float(row.get("crowding_temperature"))
     tcr = _as_float(row.get("tcr"))
-    return f"拥挤温度 {_value_text(crowding)}，20日成交占比 {_value_text(tcr)}%，不宜追高。"
+    return f"拥挤温度 {_value_text(crowding)} (TCR {_value_text(tcr)}%)，交易过热不宜追高。"
 
 
 def _lagging_reason(row: dict[str, Any]) -> str:
-    return "结构分靠后，短期配置性价比需要等待重新转强。"
+    return "结构分靠后，短期性价比偏低，等待重新转强。"
 
 
 def _composite_temperature(scores: dict[str, Any]) -> float | None:

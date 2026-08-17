@@ -10,22 +10,12 @@
 
 {{ one_line_summary }}
 
-## 读法总览
+## 六维解读
 
-{% for line in reading_brief_lines %}
-{{ line }}
-{% endfor %}
-{% if cross_period_lines %}
-
-{% for line in cross_period_lines %}
-{{ line }}
-{% endfor %}
-{% endif %}
-
-## 数据质量提示
-
-{% for line in quality_brief_lines %}
-{{ line }}
+| 维度 | 温度 | 分档 | 解读 |
+|---|---:|---|---|
+{% for dim in dimension_interpretations %}
+| {{ dim.name }} | {{ dim.temperature }} | {{ dim.band }} | {{ dim.comment }} |
 {% endfor %}
 
 ## 关键背离
@@ -39,6 +29,12 @@
 {% for line in systemic_risk_lines %}
 {{ line }}
 {% endfor %}
+{% if cross_period_lines %}
+
+{% for line in cross_period_lines %}
+{{ line }}
+{% endfor %}
+{% endif %}
 
 ## 外部压力提示
 
@@ -51,6 +47,16 @@
 {% for line in follow_up_lines %}
 {{ line }}
 {% endfor %}
+{% if fact_sections %}
+
+{{ fact_sections }}
+{% endif %}
+
+## 读法总览
+
+{% for line in reading_brief_lines %}
+{{ line }}
+{% endfor %}
 
 ## 解读顺序
 
@@ -58,17 +64,11 @@
 {{ line }}
 {% endfor %}
 
-## 六维解读
+## 数据质量提示
 
-| 维度 | 温度 | 分档 | 解读 |
-|---|---:|---|---|
-{% for dim in dimension_interpretations %}
-| {{ dim.name }} | {{ dim.temperature }} | {{ dim.band }} | {{ dim.comment }} |
+{% for line in quality_brief_lines %}
+{{ line }}
 {% endfor %}
-{% if fact_sections %}
-
-{{ fact_sections }}
-{% endif %}
 {% if limit_sections %}
 
 {{ limit_sections }}

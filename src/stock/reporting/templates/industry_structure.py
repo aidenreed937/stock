@@ -109,23 +109,14 @@ def render_human_report_markdown(
         "lagging_direction_lines": _lagging_direction_section(scores),
         "panel_table_lines": _panel_table(industry_panel, limit=12),
         "interpretation_lines": [
-            "- 行业结构分用于排序，不等同于市场综合温度，也不直接给仓位。",
-            "- TCR 是最近20个行业交易日的行业成交额占比均值，拥挤温度越高代表成交越集中。",
+            "- 行业结构分用于方向筛选与强弱排序，不替代六维市场温度计，不直接给仓位建议。",
             (
-                "- 行业资金流由个股 moneyflow 按申万成分聚合，并用个股成交额作分母；"
-                "资金确认不进入结构总分。"
+                "- TCR(20日成交占比)与拥挤温度提示成交集中度与交易拥挤风险，"
+                "不宜将高TCR行业直接视为低风险配置方向。"
             ),
-            (
-                "- 景气承压/估值极端标签来自行业聚合指标与基本面分位数；"
-                "若基本面指标缺失，对应分数回退为中性。"
-            ),
-            (
-                "- 轮动扩散/分化/衰退来自行业收益与均线宽度的横截面离散度；"
-                "不是对单一指数走势的预测。"
-            ),
+            "- 行业资金流由个股 moneyflow 按申万成分聚合，资金确认不进入结构总分。",
             "- 标签不是互斥分组，同一行业可以同时是强势主线和拥挤风险。",
-            "- 动量和拥挤度是日频，估值是日频但受价格驱动，行业财报是季频慢变量底座。",
-            "- 缺失估值、财报或基准指数时，对可用子项重归一，不用外部记忆补值。",
+            "- 动量与拥挤度为日频，估值受价格驱动，财报为季频底座；指标缺失时以可用子项重归一。",
         ],
         "limit_sections": "\n".join(_data_limit_sections(facts)).strip(),
     }
@@ -174,6 +165,12 @@ def _panel_table(panel: pl.DataFrame, limit: int) -> list[str]:
                 money_flow=_value_text(row.get("money_net_inflow_share_20d")),
                 tags=row.get("tags") or "",
             )
+        )
+    if panel.height > limit:
+        lines.append("")
+        lines.append(
+            f"> 注：总览表默认展示前 {limit} 个行业，完整 31 行业数据见 "
+            "industry_panel.parquet / scores.json。"
         )
     return lines
 
@@ -346,18 +343,11 @@ def _human_priority_sections(scores: dict[str, Any]) -> list[str]:
 
 
 def _human_reading_guide(scores: dict[str, Any]) -> list[str]:
-    lines = [
-        "- 定位: 这份报告只做行业方向筛选，不替代六维市场温度计，也不直接给仓位。",
-        "- 结构分: 看动量、估值、基本面和拥挤度的综合质量；结构分高不等于20日涨幅最高。",
-        "- 动量主线: 看资金和价格正在交易的主战场；若同时进入拥挤风险，追高风险更高。",
-        "- 低估线索: 看估值约束较小的候选方向；仍要等待动量或基本面确认。",
-        "- 资金确认: 看个股资金流是否支持行业行情；这是观察项，不参与结构总分。",
-        "- 落后方向: 看相对弱势或组合质量靠后的方向，用于风险排查，不等同于永久回避。",
+    return [
+        "- 1. 先看结构健康度：判断20日短线修复与60日中期确认是否同向；结构分高不等于20日涨幅最高。",
+        "- 2. 筛方向避拥挤：优先观察结构分领先与低估改善方向，回避高拥挤与景气承压标签。",
+        "- 3. 跟踪短线节奏：结合5日/20日收益差跟踪轮动主线与资金流入流出变化。",
     ]
-    health = scores.get("structure_health", {})
-    if isinstance(health, dict) and health.get("level"):
-        lines.append(f"- 结构健康: {health.get('level')}；先看20日上涨行业扩散，再看60日是否确认。")
-    return lines
 
 
 def _lagging_direction_section(scores: dict[str, Any]) -> list[str]:

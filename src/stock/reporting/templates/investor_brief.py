@@ -98,10 +98,21 @@ def render_brief_markdown(brief: dict[str, Any]) -> str:
         "candidate_industries": _format_table_rows(brief.get("candidate_industries", [])),
         "risk_industries": _format_table_rows(brief.get("risk_industries", [])),
         "lagging_industries": _format_table_rows(brief.get("lagging_industries", [])),
+        "data_quality_notes": _data_quality_notes(manifest),
         "reading_notes": brief.get("reading_notes", []),
     }
 
     return ReportRenderer.get_instance().render("temperature/investor_brief.md.j2", context)
+
+
+def _data_quality_notes(manifest: dict[str, Any]) -> list[str]:
+    as_of = str(manifest.get("as_of_date") or "基准日")
+    return [
+        f"行情与两融基准日: {as_of}。",
+        "主力资金流数据常晚于行情日（通常滞后 1 个交易日，以实际入库日期为准）。",
+        "行业财报为季频慢变量底座，近20日边际预期以业绩预告、快报和研报上修为准。",
+        "本简报只使用本地落盘事实，不引入外部未验证新闻或主观推断。",
+    ]
 
 
 def _industry_table(rows: list[dict[str, Any]], *, empty_text: str) -> list[str]:

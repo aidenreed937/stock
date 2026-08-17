@@ -12,6 +12,7 @@ _STATUS_LABELS = {
     "error": "异常",
     "future": "日期晚于基准日",
     "insufficient": "样本不足",
+    "unavailable": "暂未获取",
 }
 
 _DATASET_LABELS = {
@@ -78,7 +79,8 @@ def human_watermark_issue_lines(rows: list[dict[str, Any]], *, max_groups: int =
         label = _group_label(item)
         status = _status_text(item)
         latest = _latest_phrase(item)
-        note = _group_note(item)
+        raw_note = _group_note(item)
+        note = _clean_group_note(label, raw_note)
         suffix = f"；{_rstrip_sentence_end(note)}" if note else ""
         lines.append(f"- {label}: {status}，{latest}{suffix}。")
 
@@ -86,6 +88,18 @@ def human_watermark_issue_lines(rows: list[dict[str, Any]], *, max_groups: int =
     if extra_count:
         lines.append(f"- 另有 {extra_count} 类数据水位提醒，详见质量报告。")
     return lines
+
+
+def _clean_group_note(label: str, note: str) -> str:
+    cleaned = note.strip()
+    for prefix in (f"{label}，", f"{label}: ", f"{label}：", f"{label} "):
+        if cleaned.startswith(prefix):
+            cleaned = cleaned[len(prefix) :].strip()
+    parts = [p.strip() for p in cleaned.replace("；", ";").split(";") if p.strip()]
+    filtered = [
+        p for p in parts if p not in {"未找到最新日期", "无最新日期", "暂无最新日期", label}
+    ]
+    return "；".join(filtered)
 
 
 def human_watermark_latest_text(rows: list[dict[str, Any]], *, max_groups: int = 6) -> str:
