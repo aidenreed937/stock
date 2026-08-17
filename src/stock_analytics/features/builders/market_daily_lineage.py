@@ -17,10 +17,10 @@ if TYPE_CHECKING:
     from datetime import date
 
     from stock_analytics.features.spec import FeatureSpec
-    from stock_data.catalog import DataCatalog
+    from stock_core.contracts import MarketDataCatalog
 
 
-def build_market_daily_metadata(catalog: DataCatalog, end_date: date) -> dict[str, object]:
+def build_market_daily_metadata(catalog: MarketDataCatalog, end_date: date) -> dict[str, object]:
     """生成宽表定义版本、源水位和文件级输入指纹。"""
     specs = _market_specs()
     manifest = [asdict(spec) for spec in specs]
@@ -77,16 +77,24 @@ def _market_specs() -> list[FeatureSpec]:
 
 
 def _source_watermarks(
-    catalog: DataCatalog, specs: list[FeatureSpec], end_date: date
+    catalog: MarketDataCatalog, specs: list[FeatureSpec], end_date: date
 ) -> dict[str, str]:
     datasets = {dataset for spec in specs for dataset in spec.required_datasets}
-    available = {entry.dataset for entry in catalog.available_datasets()}
+    available = (
+        {entry.dataset for entry in catalog.available_datasets()}
+        if hasattr(catalog, "available_datasets")
+        else set()
+    )
     watermarks: dict[str, str] = {}
     for dataset in sorted(datasets):
         if dataset == "opt_basic":
             watermarks[dataset] = "static" if dataset in available else "missing"
             continue
-        dates = catalog.latest_trade_dates(dataset, n=1)
+        dates = (
+            catalog.latest_trade_dates(dataset, n=1)
+            if hasattr(catalog, "latest_trade_dates")
+            else ()
+        )
         if dates and dates[0] <= end_date:
             watermarks[dataset] = dates[0].isoformat()
             continue
@@ -98,20 +106,26 @@ def _source_watermarks(
 
 
 def _source_file_snapshot(
-    catalog: DataCatalog, datasets: set[str]
+    catalog: MarketDataCatalog, datasets: set[str]
 ) -> dict[str, list[dict[str, object]]]:
     snapshots: dict[str, list[dict[str, object]]] = {}
-    entries = {entry.dataset: entry for entry in catalog.available_datasets()}
+    entries = (
+        {entry.dataset: entry for entry in catalog.available_datasets()}
+        if hasattr(catalog, "available_datasets")
+        else {}
+    )
     for dataset in sorted(datasets):
         files = entries.get(dataset)
         snapshots[dataset] = []
         if files is None:
             continue
+        storage_dir = getattr(catalog, "storage_dir", None)
         for path in files.files:
             stat = path.stat()
+            rel_path = str(path.relative_to(storage_dir)) if storage_dir else path.name
             snapshots[dataset].append(
                 {
-                    "path": str(path.relative_to(catalog.storage_dir)),
+                    "path": rel_path,
                     "size": stat.st_size,
                     "mtime_ns": stat.st_mtime_ns,
                 }

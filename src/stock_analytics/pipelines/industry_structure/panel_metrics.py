@@ -18,7 +18,7 @@ from stock_analytics.pipelines.industry_structure.panel_sources import (
 from stock_analytics.pipelines.industry_structure.pb_roe import IndustryPBROEAnalyzer
 
 if TYPE_CHECKING:
-    from stock_data.catalog import DataCatalog
+    from stock_core.contracts import MarketDataCatalog
 
 
 def with_return_columns(daily: pl.DataFrame, windows: tuple[int, ...]) -> pl.DataFrame:
@@ -53,7 +53,7 @@ def with_market_columns(daily: pl.DataFrame, main_window: int) -> pl.DataFrame:
 
 
 def valuation_panel(
-    cat: DataCatalog,
+    cat: MarketDataCatalog,
     as_of_date: date,
     industry_to_l1: dict[str, str],
 ) -> pl.DataFrame:
@@ -125,7 +125,7 @@ def valuation_panel(
 
 
 def fundamental_panel(
-    cat: DataCatalog,
+    cat: MarketDataCatalog,
     as_of_date: date,
     industry_to_l1: dict[str, str],
 ) -> pl.DataFrame:
@@ -234,7 +234,7 @@ def as_float(value: object) -> float | None:
 def _pb_roe_by_symbol(
     raw: pl.DataFrame,
     as_of_date: date,
-    catalog: DataCatalog,
+    catalog: MarketDataCatalog,
 ) -> dict[str, dict[str, Any]]:
     try:
         result = IndustryPBROEAnalyzer(catalog=catalog).analyze_cross_section(
@@ -251,7 +251,7 @@ def _pb_roe_by_symbol(
 def _pb_roe_by_l1_symbol(
     raw: pl.DataFrame,
     as_of_date: date,
-    catalog: DataCatalog,
+    catalog: MarketDataCatalog,
     industry_to_l1: dict[str, str],
 ) -> dict[str, dict[str, Any]]:
     mapped: dict[str, dict[str, Any]] = {}

@@ -19,7 +19,7 @@ from stock_analytics.pipelines.industry_structure.panel_sources import (
 )
 
 if TYPE_CHECKING:
-    from stock_data.catalog import DataCatalog
+    from stock_core.contracts import MarketDataCatalog
     from stock_reporting.interpretation.industry_structure.config import IndustryStructureConfig
 
 
@@ -44,8 +44,8 @@ class IndustryMoneyflowContext:
 
 
 def fast_fundamental_panel(
-    cat_ts: DataCatalog,
-    cat_lx: DataCatalog,
+    cat_ts: MarketDataCatalog,
+    cat_lx: MarketDataCatalog,
     context: FastFundamentalContext,
 ) -> pl.DataFrame:
     """聚合预告、快报与研报上修的快速确认基本面指标。"""
@@ -72,8 +72,8 @@ def fast_fundamental_panel(
 
 
 def industry_moneyflow_panel(
-    cat_ts: DataCatalog,
-    cat_lx: DataCatalog,
+    cat_ts: MarketDataCatalog,
+    cat_lx: MarketDataCatalog,
     context: IndustryMoneyflowContext,
 ) -> pl.DataFrame:
     """聚合行业个股资金流净流入与占比指标。"""
@@ -182,7 +182,7 @@ def industry_moneyflow_panel(
 
 
 def _forecast_panel(
-    catalog: DataCatalog,
+    catalog: MarketDataCatalog,
     stock_map: pl.DataFrame,
     window_start: date,
     as_of_date: date,
@@ -226,7 +226,7 @@ def _forecast_panel(
 
 
 def _express_panel(
-    catalog: DataCatalog,
+    catalog: MarketDataCatalog,
     stock_map: pl.DataFrame,
     window_start: date,
     as_of_date: date,
@@ -268,7 +268,7 @@ def _express_panel(
 
 
 def _report_revision_panel(
-    catalog: DataCatalog,
+    catalog: MarketDataCatalog,
     stock_map: pl.DataFrame,
     window_start: date,
     as_of_date: date,

@@ -18,7 +18,7 @@ from stock_analytics.pipelines.market_temperature.facts_mart import (
     parse_date_value,
     try_get_market_daily_fact,
 )
-from stock_data.catalog import DataCatalog
+from stock_core.contracts import MarketDataCatalog
 
 if TYPE_CHECKING:
     from collections.abc import Iterable
@@ -62,15 +62,22 @@ def resolve_trade_window(
     target_date: date | None = None,
     *,
     storage_dir: Path | str | None = None,
+    catalog: MarketDataCatalog | None = None,
 ) -> tuple[date, tuple[date, ...]]:
     """解析最近 N 个已落盘交易日窗口。"""
     max_window = max((config.main_window, *config.short_windows), default=config.main_window)
-    catalog = DataCatalog(data_source="tushare", storage_dir=storage_dir)
-    if target_date is None:
-        dates = catalog.latest_trade_dates(dataset="stock_daily_bar", n=max_window)
+    active_catalog: MarketDataCatalog
+    if catalog is not None:
+        active_catalog = catalog
     else:
-        start_date = target_date - timedelta(days=max_window * 4)
-        frame = catalog.load_dataset(
+        from stock_data.catalog import DataCatalog
+
+        active_catalog = DataCatalog(data_source="tushare", storage_dir=storage_dir)
+    if target_date is None and hasattr(active_catalog, "latest_trade_dates"):
+        dates = active_catalog.latest_trade_dates(dataset="stock_daily_bar", n=max_window)
+    else:
+        start_date = (target_date or date.today()) - timedelta(days=max_window * 4)
+        frame = active_catalog.load_dataset(
             "stock_daily_bar",
             start_date=start_date,
             end_date=target_date,
@@ -160,12 +167,15 @@ def _dataset_rows(
     storage_dir: Path | str | None,
 ) -> list[dict[str, Any]]:
     rows: list[dict[str, Any]] = []
-    catalogs: dict[str, DataCatalog] = {}
+    catalogs: dict[str, MarketDataCatalog] = {}
     for item in datasets:
-        catalog = catalogs.setdefault(
-            item.data_source,
-            DataCatalog(data_source=item.data_source, storage_dir=storage_dir),
-        )
+        if item.data_source not in catalogs:
+            from stock_data.catalog import DataCatalog
+
+            catalogs[item.data_source] = DataCatalog(
+                data_source=item.data_source, storage_dir=storage_dir
+            )
+        catalog = catalogs[item.data_source]
         status = "ok"
         latest_text = ""
         note = item.note
@@ -218,7 +228,7 @@ def _dataset_rows(
     return rows
 
 
-def _static_dataset_sample_size(catalog: DataCatalog, dataset: str) -> int:
+def _static_dataset_sample_size(catalog: MarketDataCatalog, dataset: str) -> int:
     try:
         return catalog.load_dataset(dataset).height
     except Exception:
@@ -226,14 +236,15 @@ def _static_dataset_sample_size(catalog: DataCatalog, dataset: str) -> int:
 
 
 def _latest_dataset_date(
-    catalog: DataCatalog,
+    catalog: MarketDataCatalog,
     item: DatasetConfig,
     as_of_date: date,
 ) -> date | None:
     date_column = item.date_column or "trade_date"
-    latest_dates = catalog.latest_trade_dates(item.dataset, n=1)
-    if latest_dates and latest_dates[0] <= as_of_date:
-        return latest_dates[0]
+    if hasattr(catalog, "latest_trade_dates"):
+        latest_dates = catalog.latest_trade_dates(item.dataset, n=1)
+        if latest_dates and latest_dates[0] <= as_of_date:
+            return latest_dates[0]
 
     lookback_days = max(item.max_lag_days * 2, 14)
     start_date = as_of_date - timedelta(days=lookback_days)
@@ -280,6 +291,8 @@ def _metric_rows(
     rows: list[dict[str, Any]] = []
     store = FeatureStore(mart_dir=Path(storage_dir) / "mart" if storage_dir else None)
     market_daily = store.get_market_daily(end_date=as_of_date)
+
+    from stock_data.catalog import DataCatalog
 
     context = MetricContext(
         catalog=DataCatalog(data_source="tushare", storage_dir=storage_dir),

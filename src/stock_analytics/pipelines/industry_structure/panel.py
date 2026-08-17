@@ -29,7 +29,7 @@ from stock_analytics.pipelines.industry_structure.panel_sources import (
     load_industry_l1_maps,
     optional_text_expr,
 )
-from stock_data.catalog import DataCatalog
+from stock_core.contracts import MarketDataCatalog
 
 if TYPE_CHECKING:
     from pathlib import Path
@@ -102,6 +102,8 @@ def build_industry_panel(
     storage_dir: Path | str | None = None,
 ) -> pl.DataFrame:
     """构建每个申万一级行业一行的结构分析基础面板。"""
+    from stock_data.catalog import DataCatalog
+
     cat_ts = DataCatalog(data_source="tushare", storage_dir=storage_dir)
     cat_lx = DataCatalog(data_source="lixinger", storage_dir=storage_dir)
     start_date = _panel_start_date(config, as_of_date, trade_dates)
@@ -165,7 +167,7 @@ def _panel_start_date(
 def _industry_daily_frame(
     frame: pl.DataFrame,
     config: IndustryStructureConfig,
-    catalog: DataCatalog,
+    catalog: MarketDataCatalog,
 ) -> pl.DataFrame:
     required = {"symbol", "trade_date", "close"}
     if frame.is_empty() or not required.issubset(frame.columns):
@@ -208,7 +210,7 @@ def _market_panel(
     daily: pl.DataFrame,
     config: IndustryStructureConfig,
     as_of_date: date,
-    catalog: DataCatalog,
+    catalog: MarketDataCatalog,
 ) -> pl.DataFrame:
     if daily.is_empty():
         return pl.DataFrame()

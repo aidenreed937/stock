@@ -8,7 +8,8 @@ from typing import TYPE_CHECKING, Any, cast
 
 import polars as pl
 
-from stock_data.catalog import DataCatalog, load_dataset_compat
+from stock_analytics.catalog_compat import load_dataset_compat
+from stock_core.contracts import MarketDataCatalog
 
 if TYPE_CHECKING:
     from datetime import date
@@ -21,7 +22,7 @@ _OPTION_RISK_COMPONENT_IDS = OPTION_RISK_COMPONENT_IDS
 
 
 def _load_dataset(
-    cat: DataCatalog,
+    cat: MarketDataCatalog,
     dataset: str,
     columns: list[str] | None = None,
 ) -> pl.DataFrame:
@@ -32,17 +33,18 @@ def _load_dataset(
 
 
 def option_rows(
-    cat: DataCatalog,
+    cat: MarketDataCatalog,
     as_of_date: date,
     metric_row_factory: Any,
     percentile_factory: Any,
 ) -> list[dict[str, Any]]:
     """提取期权成交与持仓衍生温度事实。"""
-    if isinstance(cat, DataCatalog):
+    storage_dir = getattr(cat, "storage_dir", None)
+    if storage_dir is not None:
         with contextlib.suppress(Exception):
             from stock_analytics.features.store import FeatureStore
 
-            mart_path = Path(cat.storage_dir) / "mart" if cat.storage_dir else None
+            mart_path = Path(storage_dir) / "mart"
             mart_df = FeatureStore(mart_dir=mart_path).get_market_daily(
                 end_date=as_of_date,
                 columns=[
@@ -107,10 +109,11 @@ def option_rows(
     return _build_option_metric_rows(frame, as_of_date, metric_row_factory, percentile_factory)
 
 
-def _latest_dataset_date(cat: DataCatalog, dataset: str, as_of_date: date) -> date | None:
-    latest = cat.latest_trade_dates(dataset, n=1)
-    if latest and latest[0] <= as_of_date:
-        return latest[0]
+def _latest_dataset_date(cat: MarketDataCatalog, dataset: str, as_of_date: date) -> date | None:
+    if hasattr(cat, "latest_trade_dates"):
+        latest = cat.latest_trade_dates(dataset, n=1)
+        if latest and latest[0] <= as_of_date:
+            return latest[0]
     frame = _load_dataset(cat, dataset, columns=["trade_date"])
     if frame.is_empty() or "trade_date" not in frame.columns:
         return None

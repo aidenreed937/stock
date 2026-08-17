@@ -16,7 +16,7 @@ import polars as pl
 
 from stock_analytics.models import IndustryPBROEResult
 from stock_analytics.pipelines.industry_structure.classifier import IndustryClassifier
-from stock_data.catalog import DataCatalog
+from stock_core.contracts import MarketDataCatalog
 
 
 def _extract_pb_roe_cols(sub: pl.DataFrame) -> pl.DataFrame:
@@ -62,10 +62,15 @@ def _fit_linear_regression(
 class IndustryPBROEAnalyzer:
     """行业 PB-ROE 横截面残差分析器。"""
 
-    def __init__(self, catalog: DataCatalog | None = None) -> None:
+    def __init__(self, catalog: MarketDataCatalog | None = None) -> None:
         """初始化分析器。"""
-        self.catalog = catalog or DataCatalog(data_source="lixinger")
-        self.classifier = IndustryClassifier()
+        if catalog is not None:
+            self.catalog: MarketDataCatalog = catalog
+        else:
+            from stock_data.catalog import DataCatalog
+
+            self.catalog = DataCatalog(data_source="lixinger")
+        self.classifier = IndustryClassifier(catalog=self.catalog)
 
     def analyze_cross_section(
         self,

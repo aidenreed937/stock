@@ -7,8 +7,9 @@ from typing import TYPE_CHECKING, Any
 
 import polars as pl
 
+from stock_analytics.catalog_compat import load_dataset_compat
 from stock_analytics.data_quality import is_dataset_lagging
-from stock_data.catalog import DataCatalog, load_dataset_compat
+from stock_core.contracts import MarketDataCatalog
 
 if TYPE_CHECKING:
     from collections.abc import Iterable
@@ -47,15 +48,22 @@ def resolve_trade_window(
     target_date: date | None = None,
     *,
     storage_dir: Path | str | None = None,
+    catalog: MarketDataCatalog | None = None,
 ) -> tuple[date, tuple[date, ...]]:
     """解析最近 N 个已落盘申万行业交易日窗口。"""
     max_window = max(config.windows, default=config.main_window)
-    catalog = DataCatalog(data_source="tushare", storage_dir=storage_dir)
-    if target_date is None:
-        dates = catalog.latest_trade_dates(dataset="sw_daily", n=max_window)
+    active_catalog: MarketDataCatalog
+    if catalog is not None:
+        active_catalog = catalog
     else:
-        start_date = target_date - timedelta(days=max_window * 4)
-        frame = catalog.load_dataset(
+        from stock_data.catalog import DataCatalog
+
+        active_catalog = DataCatalog(data_source="tushare", storage_dir=storage_dir)
+    if target_date is None and hasattr(active_catalog, "latest_trade_dates"):
+        dates = active_catalog.latest_trade_dates(dataset="sw_daily", n=max_window)
+    else:
+        start_date = (target_date or date.today()) - timedelta(days=max_window * 4)
+        frame = active_catalog.load_dataset(
             "sw_daily",
             start_date=start_date,
             end_date=target_date,
@@ -131,12 +139,15 @@ def _dataset_rows(
     storage_dir: Path | str | None,
 ) -> list[dict[str, Any]]:
     rows: list[dict[str, Any]] = []
-    catalogs: dict[str, DataCatalog] = {}
+    catalogs: dict[str, MarketDataCatalog] = {}
     for item in datasets:
-        catalog = catalogs.setdefault(
-            item.data_source,
-            DataCatalog(data_source=item.data_source, storage_dir=storage_dir),
-        )
+        if item.data_source not in catalogs:
+            from stock_data.catalog import DataCatalog
+
+            catalogs[item.data_source] = DataCatalog(
+                data_source=item.data_source, storage_dir=storage_dir
+            )
+        catalog = catalogs[item.data_source]
         status = "ok"
         latest_text = ""
         note = item.note
@@ -188,7 +199,7 @@ def _dataset_rows(
     return rows
 
 
-def _static_dataset_sample_size(catalog: DataCatalog, dataset: str) -> int:
+def _static_dataset_sample_size(catalog: MarketDataCatalog, dataset: str) -> int:
     try:
         return catalog.load_dataset(dataset).height
     except Exception:
@@ -196,7 +207,7 @@ def _static_dataset_sample_size(catalog: DataCatalog, dataset: str) -> int:
 
 
 def _load_dataset_date_frame(
-    catalog: DataCatalog,
+    catalog: MarketDataCatalog,
     dataset: str,
     start_date: date,
     end_date: date,
@@ -215,7 +226,7 @@ def _load_dataset_date_frame(
 
 
 def _latest_dataset_date(
-    catalog: DataCatalog,
+    catalog: MarketDataCatalog,
     item: DatasetConfig,
     as_of_date: date,
 ) -> date | None:

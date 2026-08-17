@@ -68,16 +68,16 @@
       "lines": 464
     },
     "src/stock_analytics/pipelines/industry_structure/facts.py": {
-      "lines": 442
+      "lines": 453
     },
     "src/stock_analytics/pipelines/industry_structure/scoring.py": {
       "lines": 717
     },
     "src/stock_analytics/pipelines/market_temperature/derived.py": {
-      "lines": 1084
+      "lines": 1091
     },
     "src/stock_analytics/pipelines/market_temperature/facts.py": {
-      "lines": 449
+      "lines": 462
     },
     "src/stock_data/audit/backfill_acceptance.py": {
       "lines": 497

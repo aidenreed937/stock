@@ -2,9 +2,11 @@
 
 import json
 import re
+from collections.abc import Sequence
 from dataclasses import asdict, dataclass
 from datetime import date
 from hashlib import sha256
+from typing import Protocol, runtime_checkable
 
 import polars as pl
 
@@ -308,3 +310,52 @@ def instrument_for_symbol(symbol: str, provider: str) -> InstrumentId | None:
 
     # 8. 默认无后缀及美股标的 (US)
     return InstrumentId(symbol, "US", "US_EXCHANGE", "USD", provider)
+
+
+@runtime_checkable
+class MarketDataCatalog(Protocol):
+    """只读数据目录抽象协议 (Data Catalog Protocol)。
+
+    任何满足该接口的数据源（无论底层是本地 Parquet、DuckDB 内存表、ClickHouse 还是测试 Mock）
+    均可无缝驱动下游的指标计算与量化分析引擎。
+    """
+
+    def load_dataset(
+        self,
+        dataset: str,
+        *,
+        start_date: date | None = None,
+        end_date: date | None = None,
+        market: str | None = None,
+        symbols: list[str] | None = None,
+        columns: Sequence[str] | None = None,
+        dedup: bool = True,
+    ) -> pl.DataFrame:
+        """加载指定数据集与时间范围的结构化数据帧。"""
+        ...
+
+    def load_bars(
+        self,
+        symbol: str | None = None,
+        *,
+        start_date: date | None = None,
+        end_date: date | None = None,
+        symbols: list[str] | None = None,
+        columns: Sequence[str] | None = None,
+        dataset: str = "stock_daily_bar",
+        market: str | None = None,
+        adjustment: str | None = None,
+        dedup: bool = True,
+        validate: bool = True,
+    ) -> pl.DataFrame:
+        """加载 K 线日频行情。"""
+        ...
+
+    def latest_trade_dates(
+        self,
+        dataset: str = "stock_daily_bar",
+        market: str | None = None,
+        n: int = 1,
+    ) -> Sequence[date]:
+        """获取指定数据集最新落盘的 N 个交易日。"""
+        ...

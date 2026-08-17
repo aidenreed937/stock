@@ -25,8 +25,8 @@ from stock_analytics.features.builders.market_daily_ops import (
     build_turnover_rate_features,
 )
 from stock_analytics.features.store import FeatureStore
+from stock_core.contracts import MarketDataCatalog
 from stock_core.utils.logger import logger
-from stock_data.catalog import DataCatalog
 
 if TYPE_CHECKING:
     from datetime import date
@@ -37,12 +37,17 @@ class MarketDailyBuilder:
 
     def __init__(
         self,
-        catalog: DataCatalog | None = None,
+        catalog: MarketDataCatalog | None = None,
         store: FeatureStore | None = None,
         storage_dir: Path | str | None = None,
     ) -> None:
         """初始化 MarketDailyBuilder。"""
-        self.catalog = catalog or DataCatalog(data_source="tushare", storage_dir=storage_dir)
+        if catalog is not None:
+            self.catalog: MarketDataCatalog = catalog
+        else:
+            from stock_data.catalog import DataCatalog
+
+            self.catalog = DataCatalog(data_source="tushare", storage_dir=storage_dir)
         mart_path = Path(storage_dir) / "mart" if storage_dir else None
         self.store = store or FeatureStore(mart_dir=mart_path)
 

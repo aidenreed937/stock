@@ -18,11 +18,11 @@ from stock_analytics.primitives.rules import (
 if TYPE_CHECKING:
     from datetime import date
 
-    from stock_data.catalog import DataCatalog
+    from stock_core.contracts import MarketDataCatalog
 
 
 def build_breadth_and_turnover(
-    catalog: DataCatalog,
+    catalog: MarketDataCatalog,
     start_date: date | None,
     end_date: date | None,
 ) -> pl.DataFrame:
@@ -114,7 +114,7 @@ def build_breadth_and_turnover(
 
 
 def build_margin_features(
-    catalog: DataCatalog,
+    catalog: MarketDataCatalog,
     start_date: date,
     end_date: date,
 ) -> pl.DataFrame:
@@ -144,7 +144,7 @@ def build_margin_features(
 
 
 def build_turnover_rate_features(
-    catalog: DataCatalog,
+    catalog: MarketDataCatalog,
     start_date: date,
     end_date: date,
 ) -> pl.DataFrame:
@@ -182,7 +182,7 @@ def build_turnover_rate_features(
 
 
 def build_moneyflow_features(
-    catalog: DataCatalog,
+    catalog: MarketDataCatalog,
     start_date: date,
     end_date: date,
 ) -> pl.DataFrame:
@@ -209,7 +209,7 @@ def build_moneyflow_features(
 
 
 def build_limit_features(
-    catalog: DataCatalog,
+    catalog: MarketDataCatalog,
     start_date: date,
     end_date: date,
 ) -> pl.DataFrame:
@@ -244,7 +244,7 @@ def build_limit_features(
 
 
 def build_option_features(
-    catalog: DataCatalog,
+    catalog: MarketDataCatalog,
     start_date: date,
     end_date: date,
 ) -> pl.DataFrame:

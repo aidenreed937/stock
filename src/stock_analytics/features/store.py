@@ -12,12 +12,11 @@ from stock_analytics.features.feature_values import FeatureValueStore
 from stock_analytics.features.store_ops import (
     merge_incremental,
     read_metadata,
+    safe_cast_date_col,
     validate_incremental_metadata,
     write_metadata,
 )
 from stock_core.utils.logger import logger
-from stock_data.settings import data_settings
-from stock_data.storage.compat import StorageCompat
 
 if TYPE_CHECKING:
     from collections.abc import Mapping, Sequence
@@ -27,12 +26,11 @@ if TYPE_CHECKING:
 class FeatureStore:
     """特征集市存储抽象，统一管理 market_daily 宽表与指标特征的物化和增量读写。"""
 
+    DEFAULT_MART_DIR = Path("./data/curated/mart")
+
     def __init__(self, mart_dir: Path | str | None = None) -> None:
         """初始化 FeatureStore。"""
-        if mart_dir is not None:
-            self.mart_dir = Path(mart_dir)
-        else:
-            self.mart_dir = data_settings.curated_data_dir / "mart"
+        self.mart_dir = Path(mart_dir) if mart_dir is not None else self.DEFAULT_MART_DIR
         self.mart_dir.mkdir(parents=True, exist_ok=True)
         self.values = FeatureValueStore(self.mart_dir)
 
@@ -78,7 +76,7 @@ class FeatureStore:
             return df
 
         if "trade_date" in df.columns:
-            df = StorageCompat.safe_cast_date_col(df, "trade_date")
+            df = safe_cast_date_col(df, "trade_date")
             if start_date is not None:
                 df = df.filter(pl.col("trade_date") >= start_date)
             if end_date is not None:
@@ -109,12 +107,12 @@ class FeatureStore:
         target_path = self.market_daily_path
         save_df = df
         if "trade_date" in save_df.columns:
-            save_df = StorageCompat.safe_cast_date_col(save_df, "trade_date")
+            save_df = safe_cast_date_col(save_df, "trade_date")
 
         if target_path.exists() and not overwrite:
             validate_incremental_metadata(self.mart_dir, metadata)
             existing = pl.read_parquet(target_path)
-            existing = StorageCompat.safe_cast_date_col(existing, "trade_date")
+            existing = safe_cast_date_col(existing, "trade_date")
             save_df = merge_incremental(existing, save_df, keys=["trade_date"])
 
         if "trade_date" in save_df.columns:
@@ -148,7 +146,7 @@ class FeatureStore:
             df = pl.read_parquet(path, columns=["trade_date"])
             if df.is_empty():
                 return None
-            df = StorageCompat.safe_cast_date_col(df, "trade_date")
+            df = safe_cast_date_col(df, "trade_date")
             dates = df["trade_date"].drop_nulls().to_list()
             return max(dates) if dates else None
         except Exception:

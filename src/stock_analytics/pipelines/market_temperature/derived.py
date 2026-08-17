@@ -6,11 +6,12 @@ from typing import TYPE_CHECKING, Any, cast
 
 import polars as pl
 
+from stock_analytics.catalog_compat import load_dataset_compat
 from stock_analytics.pipelines.market_temperature.derived_options import (
     OPTION_RISK_COMPONENT_IDS,
     option_rows,
 )
-from stock_data.catalog import DataCatalog, load_dataset_compat
+from stock_core.contracts import MarketDataCatalog
 
 if TYPE_CHECKING:
     from datetime import date
@@ -88,6 +89,8 @@ def _fundamental_rows(
     trade_dates: tuple[date, ...],
     storage_dir: Path | str | None,
 ) -> list[dict[str, Any]]:
+    from stock_data.catalog import DataCatalog
+
     cat_lx = DataCatalog(data_source="lixinger", storage_dir=storage_dir)
     cat_ts = DataCatalog(data_source="tushare", storage_dir=storage_dir)
     rows = _financial_statement_rows(cat_lx, as_of_date)
@@ -96,7 +99,7 @@ def _fundamental_rows(
     return rows
 
 
-def _financial_statement_rows(cat: DataCatalog, as_of_date: date) -> list[dict[str, Any]]:
+def _financial_statement_rows(cat: MarketDataCatalog, as_of_date: date) -> list[dict[str, Any]]:
     frame = _load_financial_statement_frame(cat)
     if frame.is_empty():
         return [
@@ -147,7 +150,7 @@ def _financial_statement_rows(cat: DataCatalog, as_of_date: date) -> list[dict[s
     ]
 
 
-def _load_financial_statement_frame(cat: DataCatalog) -> pl.DataFrame:
+def _load_financial_statement_frame(cat: MarketDataCatalog) -> pl.DataFrame:
     frames: list[pl.DataFrame] = []
     for dataset in _FS_DATASETS:
         frame = _load_dataset(cat, dataset)
@@ -181,7 +184,7 @@ def _load_financial_statement_frame(cat: DataCatalog) -> pl.DataFrame:
 
 
 def _forecast_rows(
-    cat: DataCatalog,
+    cat: MarketDataCatalog,
     as_of_date: date,
     trade_dates: tuple[date, ...],
 ) -> list[dict[str, Any]]:
@@ -247,7 +250,7 @@ def _forecast_rows(
 
 
 def _report_revision_rows(
-    cat: DataCatalog,
+    cat: MarketDataCatalog,
     as_of_date: date,
     trade_dates: tuple[date, ...],
 ) -> list[dict[str, Any]]:
@@ -318,6 +321,8 @@ def _report_revision_rows(
 
 
 def _sentiment_rows(as_of_date: date, storage_dir: Path | str | None) -> list[dict[str, Any]]:
+    from stock_data.catalog import DataCatalog
+
     cat_ts = DataCatalog(data_source="tushare", storage_dir=storage_dir)
     cat_lx = DataCatalog(data_source="lixinger", storage_dir=storage_dir)
     rows = _limit_event_rows(cat_ts, as_of_date)
@@ -326,7 +331,7 @@ def _sentiment_rows(as_of_date: date, storage_dir: Path | str | None) -> list[di
     return rows
 
 
-def _investor_account_rows(cat: DataCatalog, as_of_date: date) -> list[dict[str, Any]]:
+def _investor_account_rows(cat: MarketDataCatalog, as_of_date: date) -> list[dict[str, Any]]:
     frame = _investor_account_frame(_load_dataset(cat, "investor_accounts"))
     if frame.is_empty():
         return [
@@ -373,7 +378,7 @@ def _investor_account_frame(frame: pl.DataFrame) -> pl.DataFrame:
     )
 
 
-def _limit_event_rows(cat: DataCatalog, as_of_date: date) -> list[dict[str, Any]]:
+def _limit_event_rows(cat: MarketDataCatalog, as_of_date: date) -> list[dict[str, Any]]:
     frame = _limit_event_daily_frame(_load_dataset(cat, "limit_list_d"))
     if frame.is_empty():
         return [
@@ -484,7 +489,7 @@ def _limit_event_temperature_row(
     )
 
 
-def _option_rows(cat: DataCatalog, as_of_date: date) -> list[dict[str, Any]]:
+def _option_rows(cat: MarketDataCatalog, as_of_date: date) -> list[dict[str, Any]]:
     return option_rows(cat, as_of_date, _metric_row, _percentile_metric_row)
 
 
@@ -492,6 +497,8 @@ def _macro_liquidity_rows(
     as_of_date: date,
     storage_dir: Path | str | None,
 ) -> list[dict[str, Any]]:
+    from stock_data.catalog import DataCatalog
+
     cat_ts = DataCatalog(data_source="tushare", storage_dir=storage_dir)
     cat_lx = DataCatalog(data_source="lixinger", storage_dir=storage_dir)
     cat_yf = DataCatalog(data_source="yfinance", storage_dir=storage_dir)
@@ -526,8 +533,8 @@ def _macro_liquidity_rows(
 
 
 def _money_credit_rows(
-    cat_ts: DataCatalog,
-    cat_lx: DataCatalog,
+    cat_ts: MarketDataCatalog,
+    cat_lx: MarketDataCatalog,
     as_of_date: date,
 ) -> list[dict[str, Any]]:
     cn_m = _with_month_date(_load_dataset(cat_lx, "cn_m"))
@@ -575,8 +582,8 @@ def _money_credit_rows(
 
 
 def _external_macro_rows(
-    cat: DataCatalog,
-    fx_cat: DataCatalog,
+    cat: MarketDataCatalog,
+    fx_cat: MarketDataCatalog,
     as_of_date: date,
 ) -> list[dict[str, Any]]:
     macro_frame = _load_dataset(cat, "macro_indicators")
@@ -665,7 +672,7 @@ def _external_macro_rows(
     return rows
 
 
-def _us_macro_background_rows(cat: DataCatalog, as_of_date: date) -> list[dict[str, Any]]:
+def _us_macro_background_rows(cat: MarketDataCatalog, as_of_date: date) -> list[dict[str, Any]]:
     frame = _load_dataset(cat, "macro_indicators")
     return [
         _percentile_metric_row(
@@ -1028,7 +1035,7 @@ def _parse_compact_date_expr(column: str) -> pl.Expr:
 
 
 def _load_dataset(
-    cat: DataCatalog,
+    cat: MarketDataCatalog,
     dataset: str,
     columns: list[str] | None = None,
 ) -> pl.DataFrame:

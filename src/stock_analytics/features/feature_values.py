@@ -8,9 +8,8 @@ from typing import TYPE_CHECKING
 
 import polars as pl
 
-from stock_analytics.features.store_ops import merge_incremental
+from stock_analytics.features.store_ops import merge_incremental, safe_cast_date_col
 from stock_core.utils.logger import logger
-from stock_data.storage.compat import StorageCompat
 
 if TYPE_CHECKING:
     from collections.abc import Sequence
@@ -74,7 +73,7 @@ class FeatureValueStore:
             logger.error(f"FeatureValueStore 读取失败: {exc}")
             return pl.DataFrame(schema=FEATURE_VALUE_SCHEMA)
 
-        df = StorageCompat.safe_cast_date_col(df, "observation_date")
+        df = safe_cast_date_col(df, "observation_date")
         if start_date is not None:
             df = df.filter(pl.col("observation_date") >= start_date)
         if end_date is not None:
@@ -102,10 +101,10 @@ class FeatureValueStore:
         save_df = df.select(list(FEATURE_VALUE_SCHEMA)).cast(
             pl.Schema(FEATURE_VALUE_SCHEMA), strict=False
         )
-        save_df = StorageCompat.safe_cast_date_col(save_df, "observation_date")
+        save_df = safe_cast_date_col(save_df, "observation_date")
         if self.path.exists():
             existing = pl.read_parquet(self.path)
-            existing = StorageCompat.safe_cast_date_col(existing, "observation_date")
+            existing = safe_cast_date_col(existing, "observation_date")
             if purge_outside is not None:
                 start, end = purge_outside
                 existing = existing.filter(

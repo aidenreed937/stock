@@ -4,7 +4,7 @@ from __future__ import annotations
 
 from typing import TYPE_CHECKING
 
-from stock_data.catalog import load_dataset_compat
+from stock_analytics.catalog_compat import load_dataset_compat
 
 if TYPE_CHECKING:
     from collections.abc import Sequence
@@ -27,7 +27,7 @@ def load_metric_dataset(
     """通过 DataCatalog 加载指标依赖数据集，并在上下文内缓存。"""
     actual_start = start_date or context.start_date
     actual_end = end_date or context.resolve_end_date()
-    actual_data_source = data_source or context.catalog.data_source
+    actual_data_source = data_source or getattr(context.catalog, "data_source", "tushare")
 
     base_key = context.cache_key(actual_data_source, dataset, actual_start, actual_end)
     if base_key in context.cache:
@@ -51,11 +51,12 @@ def load_metric_dataset(
 
     if cache_key not in context.cache:
         catalog = context.catalog
-        if actual_data_source != context.catalog.data_source:
-            catalog = type(context.catalog)(
-                data_source=actual_data_source,
-                storage_dir=context.catalog.storage_dir,
-            )
+        current_source = getattr(context.catalog, "data_source", "tushare")
+        if actual_data_source != current_source:
+            storage_dir = getattr(context.catalog, "storage_dir", None)
+            from stock_data.catalog import DataCatalog
+
+            catalog = DataCatalog(data_source=actual_data_source, storage_dir=storage_dir)
         context.cache[cache_key] = load_dataset_compat(
             catalog,
             dataset,

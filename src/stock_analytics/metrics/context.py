@@ -5,7 +5,7 @@ from __future__ import annotations
 from dataclasses import dataclass, field
 from typing import TYPE_CHECKING
 
-from stock_data.catalog import DataCatalog
+from stock_core.contracts import MarketDataCatalog
 
 if TYPE_CHECKING:
     from collections.abc import MutableMapping
@@ -14,11 +14,17 @@ if TYPE_CHECKING:
     import polars as pl
 
 
+def _create_default_catalog() -> MarketDataCatalog:
+    from stock_data.catalog import DataCatalog
+
+    return DataCatalog()
+
+
 @dataclass(slots=True)
 class MetricContext:
     """指标计算共享上下文。"""
 
-    catalog: DataCatalog = field(default_factory=DataCatalog)
+    catalog: MarketDataCatalog = field(default_factory=_create_default_catalog)
     target_date: date | None = None
     start_date: date | None = None
     end_date: date | None = None

@@ -8,7 +8,7 @@ from typing import TYPE_CHECKING
 import polars as pl
 
 if TYPE_CHECKING:
-    from stock_data.catalog import DataCatalog
+    from stock_core.contracts import MarketDataCatalog
     from stock_reporting.interpretation.industry_structure.config import IndustryStructureConfig
 
 _FS_DATASETS = (
@@ -20,7 +20,7 @@ _FS_DATASETS = (
 
 
 def load_dataset(
-    catalog: DataCatalog,
+    catalog: MarketDataCatalog,
     dataset: str,
     *,
     start_date: date | None = None,
@@ -40,7 +40,7 @@ def load_dataset(
 
 
 def load_industry_l1_maps(
-    catalog: DataCatalog,
+    catalog: MarketDataCatalog,
     config: IndustryStructureConfig,
 ) -> tuple[dict[str, str], dict[str, str]]:
     """加载指数/行业代码到申万一级代码的映射字典。"""
@@ -71,8 +71,8 @@ def load_industry_l1_maps(
 
 
 def load_stock_industry_map(
-    cat_ts: DataCatalog,
-    cat_lx: DataCatalog,
+    cat_ts: MarketDataCatalog,
+    cat_lx: MarketDataCatalog,
     config: IndustryStructureConfig,
     as_of_date: date,
 ) -> pl.DataFrame:
@@ -96,7 +96,7 @@ def load_stock_industry_map(
     )
 
 
-def load_financial_statement_history(cat: DataCatalog, as_of_date: date) -> pl.DataFrame:
+def load_financial_statement_history(cat: MarketDataCatalog, as_of_date: date) -> pl.DataFrame:
     """加载非金融与三大金融行业的历史财务数据。"""
     frames: list[pl.DataFrame] = []
     for dataset in _FS_DATASETS:
@@ -113,7 +113,7 @@ def load_financial_statement_history(cat: DataCatalog, as_of_date: date) -> pl.D
 
 
 def load_moneyflow_base_frame(
-    catalog: DataCatalog,
+    catalog: MarketDataCatalog,
     start_date: date,
     as_of_date: date,
 ) -> pl.DataFrame:
@@ -133,7 +133,7 @@ def load_moneyflow_base_frame(
 
 
 def load_stock_amount_frame(
-    catalog: DataCatalog,
+    catalog: MarketDataCatalog,
     start_date: date,
     as_of_date: date,
 ) -> pl.DataFrame:
@@ -149,7 +149,7 @@ def load_stock_amount_frame(
 
 
 def load_benchmark_return_20d(
-    catalog: DataCatalog,
+    catalog: MarketDataCatalog,
     benchmark: str,
     as_of_date: date,
 ) -> float | None:
@@ -251,7 +251,7 @@ def _l1_by_industry_code(frame: pl.DataFrame) -> dict[str, str]:
 
 
 def _stock_industry_map_from_index_member(
-    catalog: DataCatalog,
+    catalog: MarketDataCatalog,
     as_of_date: date,
     index_to_l1: dict[str, str],
 ) -> pl.DataFrame:
@@ -281,7 +281,7 @@ def _stock_industry_map_from_index_member(
 
 
 def _stock_industry_map_from_lixinger_constituents(
-    catalog: DataCatalog,
+    catalog: MarketDataCatalog,
     industry_to_l1: dict[str, str],
 ) -> pl.DataFrame:
     raw = load_dataset(catalog, "sw_2021_constituents")

@@ -20,6 +20,25 @@ def metadata_path(mart_dir: Path) -> Path:
     return mart_dir / "market_daily.metadata.json"
 
 
+def safe_cast_date_col(df: pl.DataFrame, col_name: str = "trade_date") -> pl.DataFrame:
+    """安全地将指定日期列规范化为 pl.Date 类型，兼容 Date/Datetime/YYYY-MM-DD/YYYYMMDD 格式。"""
+    if col_name not in df.columns or df.is_empty():
+        return df
+    dtype = df[col_name].dtype
+    if dtype == pl.Date:
+        return df
+    if dtype == pl.Datetime:
+        return df.with_columns(pl.col(col_name).dt.date().alias(col_name))
+    return df.with_columns(
+        pl.coalesce(
+            [
+                pl.col(col_name).cast(pl.Utf8, strict=False).str.to_date("%Y-%m-%d", strict=False),
+                pl.col(col_name).cast(pl.Utf8, strict=False).str.to_date("%Y%m%d", strict=False),
+            ]
+        ).alias(col_name)
+    )
+
+
 def read_metadata(mart_dir: Path) -> dict[str, Any]:
     """读取 market_daily 构建元数据。"""
     path = metadata_path(mart_dir)

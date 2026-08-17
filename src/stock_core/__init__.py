@@ -5,6 +5,7 @@ from stock_core.contracts import (
     DatasetContract,
     DatasetKey,
     InstrumentId,
+    MarketDataCatalog,
     get_contract_for_dataset,
 )
 from stock_core.exceptions import (
@@ -22,6 +23,7 @@ __all__ = [
     "DatasetContract",
     "DatasetKey",
     "InstrumentId",
+    "MarketDataCatalog",
     "StockError",
     "StorageError",
     "get_contract_for_dataset",

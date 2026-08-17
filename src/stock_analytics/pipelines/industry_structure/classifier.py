@@ -9,15 +9,20 @@ from __future__ import annotations
 
 import polars as pl
 
-from stock_data.catalog import DataCatalog
+from stock_core.contracts import MarketDataCatalog
 
 
 class IndustryClassifier:
     """申万行业分类动态解析服务。"""
 
-    def __init__(self, catalog: DataCatalog | None = None) -> None:
+    def __init__(self, catalog: MarketDataCatalog | None = None) -> None:
         """初始化分类解析器。"""
-        self.catalog = catalog or DataCatalog(data_source="tushare")
+        if catalog is not None:
+            self.catalog: MarketDataCatalog = catalog
+        else:
+            from stock_data.catalog import DataCatalog
+
+            self.catalog = DataCatalog(data_source="tushare")
         self._cached_classify_df: pl.DataFrame | None = None
 
     def _load_classify_df(self) -> pl.DataFrame:
