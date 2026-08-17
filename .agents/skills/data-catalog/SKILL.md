@@ -74,6 +74,10 @@ df_summary = DataCatalog().summary()
    不同数据集入库时间不同（日 K 线 17:00、估值 18:00、外盘次日 06:00）。多表 Join 前，必须通过 `cat.get_latest_trade_date()` 取交集基准日。
 5. **禁止通配符读取**：
    禁止手写 `moneyflow*` 或 `margin*` 通配符遍历目录，必须使用 `DataCatalog.load_dataset()` 精确加载。
+6. **性能与内存裁剪（按需加载）**：
+   调用 `load_bars` 或 `load_dataset` 时，**必须优先指定 `start_date`、`end_date`、`symbols` 与 `columns`**，利用 Hive 年月物理分区裁剪与 Polars 列投影，避免无过滤加载全历史全市场数千万行数据造成内存溢出或 CPU 假死。
+7. **临时脚本与衍生数据隔离 (Scratch Cleanliness)**：
+   为回答用户问题编写的一次性分析脚本、测试排查代码或生成的临时中间结果（`.py`, `.csv`, `.parquet`），**严禁直接写在项目源码区（`src/`）或数据核心区（`data/`）**；必须统一输出至临时目录（如 scratch 目录），用完及时清理，保持 Git 工作区干净。
 
 ---
 

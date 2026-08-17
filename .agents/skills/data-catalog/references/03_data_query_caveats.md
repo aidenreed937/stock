@@ -86,3 +86,27 @@
   * **全球/美债 10 年期基准**：`data/curated/yfinance/market=GLOBAL/macro_indicators/`（`^TNX`）
 * **股债利差计算公式**：
   $$\text{ERP} = \left(\frac{1}{\text{PE}_{\text{TTM}}} \times 100\%\right) - \left(\text{tcm\_y10} \times 100\right)$$
+
+---
+
+## 4. 查询性能效率平衡与临时产物隔离规范
+
+### ① 性能与内存效率平衡（四维投影裁剪）
+* **全量加载反模式**：全市场 12 年个股日 K 线（`stock_daily_bar`）与每日估值（`daily_basic`）均达数千万行，**严禁无参数全量读取**；
+* **必须采用四维裁剪**：
+  ```python
+  # 推荐：时间切片 + 标的过滤 + 列投影
+  df = cat.load_dataset(
+      "daily_basic",
+      symbols=["600519.SH", "000001.SZ"],
+      start_date=date(2026, 1, 1),
+      end_date=date(2026, 8, 14),
+      columns=["symbol", "trade_date", "pe_ttm", "pb"]
+  )
+  ```
+* **按需使用 Polars 惰性表达式**：多表大批量聚合优先使用表达式下推，避免在 Python 原生循环中频繁转化 dict 或 list。
+
+### ② 临时脚本与分析产物落盘隔离 (Scratch Isolation)
+* **严禁污染工作区**：为临时测试、排查问题或为用户一次性提取数据所编写的 Python 脚本（如 `test_xxx.py`、`debug.py`）或输出的中间结果（`.csv`、`.parquet`），**绝对禁止直接保存在 `src/`、`data/` 或仓库根目录**；
+* **规范存放路径**：统一存放在临时目录（如 `<appDataDir>/brain/<conversation-id>/scratch/` 或 `/tmp/`）；
+* **用完即净**：分析完毕后及时清理临时产物，确保 `git status` 始终保持干净（Clean）。
