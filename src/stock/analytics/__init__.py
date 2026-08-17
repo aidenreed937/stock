@@ -11,9 +11,9 @@ from stock.analytics.macro import (
     EYBYCalculator,
     MacroRegimeAnalyzer,
 )
-from stock.analytics.market import MarketBreadthAnalyzer
 from stock.analytics.micro import (
     MarginPenetrationCalculator,
+    MarketBreadthAnalyzer,
     MarketSentimentAnalyzer,
     MultiPeriodMarketBreadthAnalyzer,
 )

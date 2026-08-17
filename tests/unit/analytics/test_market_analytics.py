@@ -3,7 +3,7 @@ from unittest.mock import MagicMock
 
 import polars as pl
 
-from stock.analytics.market import MarketBreadthAnalyzer
+from stock.analytics.micro import MarketBreadthAnalyzer
 
 
 def test_calculate_breadth_empty():
