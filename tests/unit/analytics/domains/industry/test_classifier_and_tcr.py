@@ -5,8 +5,8 @@ from datetime import date
 import polars as pl
 import pytest
 
-from stock.analytics.industry.classifier import IndustryClassifier
-from stock.analytics.industry.tcr import TCRCalculator
+from stock.analytics.domains.industry.classifier import IndustryClassifier
+from stock.analytics.domains.industry.tcr import TCRCalculator
 
 
 def test_industry_classifier_dynamic_resolution() -> None:

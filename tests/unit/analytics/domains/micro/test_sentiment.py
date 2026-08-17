@@ -2,7 +2,7 @@ from datetime import date
 
 import polars as pl
 
-from stock.analytics.micro.sentiment import MarketSentimentAnalyzer
+from stock.analytics.domains.micro.sentiment import MarketSentimentAnalyzer
 
 
 def test_market_sentiment_analyzer() -> None:

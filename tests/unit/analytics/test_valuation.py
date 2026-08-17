@@ -1,72 +1,74 @@
-from datetime import date
-
 import polars as pl
+import pytest
 
 from stock.analytics.primitives.valuation import (
-    calculate_index_valuation_summary,
-    calculate_valuation_percentile,
+    calculate_dividend_spread,
+    calculate_equity_risk_premium,
+    calculate_ey_by_ratio,
+    calculate_rolling_percentile,
 )
 
 
-def test_calculate_valuation_percentile_empty():
-    df = pl.DataFrame()
-    assert calculate_valuation_percentile(df) == {}
-
-
-def test_calculate_valuation_percentile_missing_columns():
-    df = pl.DataFrame({"trade_date": ["2026-08-01"]})
-    assert calculate_valuation_percentile(df, metric_col="pe") == {}
-
-
-def test_calculate_valuation_percentile_normal():
-    # 生成 10 个测试点位 (10..100)
-    dates = [f"2026-08-{i:02d}" for i in range(1, 11)]
-    closes = [float(i * 10) for i in range(1, 11)]  # 最新为 100 (100% 分位 -> EXTREME_HIGH)
-    df = pl.DataFrame({"trade_date": dates, "close": closes})
-
-    res = calculate_valuation_percentile(df, metric_col="close", window_years=10)
-    assert res["current_value"] == 100.0
-    assert res["min_value"] == 10.0
-    assert res["max_value"] == 100.0
-    assert res["percentile_rank"] == 100.0
-    assert res["zone"] == "EXTREME_HIGH"
-    assert res["multiplier"] == 0.0
-
-
-def test_calculate_valuation_percentile_extreme_low():
-    # 最新处于最低点 (10% 分位 -> EXTREME_LOW)
-    dates = [f"2026-08-{i:02d}" for i in range(1, 11)]
-    closes = [100.0, 90.0, 80.0, 70.0, 60.0, 50.0, 40.0, 30.0, 20.0, 10.0]
-    df = pl.DataFrame({"trade_date": dates, "close": closes})
-
-    res = calculate_valuation_percentile(df, metric_col="close", window_years=10)
-    assert res["percentile_rank"] == 10.0
-    assert res["zone"] == "LOW"
-    assert res["multiplier"] == 1.5
-
-
-def test_calculate_valuation_percentile_inverse():
-    # 反向指标股息率 dv_ratio (越高越低估)
-    dates = [f"2026-08-{i:02d}" for i in range(1, 11)]
-    dv_ratios = [1.0, 2.0, 3.0, 4.0, 5.0, 6.0, 7.0, 8.0, 9.0, 10.0]  # 最新为 10% 股息率 (极度低估)
-    df = pl.DataFrame({"trade_date": dates, "dv_ratio": dv_ratios})
-
-    res = calculate_valuation_percentile(df, metric_col="dv_ratio", window_years=10)
-    assert res["is_inverse"] is True
-    assert res["percentile_rank"] == 10.0
-    assert res["zone"] == "LOW"
-    assert res["multiplier"] == 1.5
-
-
-def test_calculate_index_valuation_summary():
+def test_calculate_equity_risk_premium() -> None:
     df = pl.DataFrame(
         {
-            "trade_date": [date(2026, 8, i) for i in range(1, 11)],
-            "pe_ttm": [15.0] * 10,
-            "close": [3000.0] * 10,
+            "pe_ttm": [10.0, 20.0, 50.0],
+            "cn_10y_bond_yield": [2.5, 2.5, 2.5],
         }
     )
-    res = calculate_index_valuation_summary(df, symbol="000300.SH")
-    assert res["symbol"] == "000300.SH"
-    assert "pe_ttm" in res["evaluations"]
-    assert "close" in res["evaluations"]
+    res = calculate_equity_risk_premium(df)
+    assert "equity_risk_premium" in res.columns
+    # 100/10 - 2.5 = 7.5; 100/20 - 2.5 = 2.5; 100/50 - 2.5 = -0.5
+    assert res["equity_risk_premium"].to_list() == pytest.approx([7.5, 2.5, -0.5], rel=1e-4)
+
+    # 空数据与缺少字段
+    empty_df = pl.DataFrame()
+    assert calculate_equity_risk_premium(empty_df).is_empty()
+    missing_df = pl.DataFrame({"pe_ttm": [10.0]})
+    assert "equity_risk_premium" not in calculate_equity_risk_premium(missing_df).columns
+
+
+def test_calculate_ey_by_ratio() -> None:
+    df = pl.DataFrame(
+        {
+            "pe_ttm": [10.0, 20.0],
+            "cn_10y_bond_yield": [2.5, 2.5],
+        }
+    )
+    res = calculate_ey_by_ratio(df)
+    assert "ey_by_ratio" in res.columns
+    # (100/10) / 2.5 = 4.0; (100/20) / 2.5 = 2.0
+    assert res["ey_by_ratio"].to_list() == pytest.approx([4.0, 2.0], rel=1e-4)
+
+    empty_df = pl.DataFrame()
+    assert calculate_ey_by_ratio(empty_df).is_empty()
+
+
+def test_calculate_dividend_spread() -> None:
+    df = pl.DataFrame(
+        {
+            "dv_ratio": [4.5, 2.0],
+            "cn_10y_bond_yield": [2.5, 2.5],
+        }
+    )
+    res = calculate_dividend_spread(df)
+    assert "dividend_bond_spread" in res.columns
+    # 4.5 - 2.5 = 2.0; 2.0 - 2.5 = -0.5
+    assert res["dividend_bond_spread"].to_list() == pytest.approx([2.0, -0.5])
+
+
+def test_calculate_rolling_percentile() -> None:
+    # 构造递增序列检验分位数
+    values = [float(i) for i in range(1, 11)]
+    df = pl.DataFrame({"pe_ttm": values, "pb": values})
+    res = calculate_rolling_percentile(df, metric_cols=("pe_ttm", "pb"), window_days=10)
+    assert "pe_ttm_percentile_10d" in res.columns
+    assert "pb_percentile_10d" in res.columns
+    # 最后一项应该为 100% 分位
+    assert res["pe_ttm_percentile_10d"][-1] == pytest.approx(100.0)
+
+    # 空数据和无对应列
+    empty_df = pl.DataFrame()
+    assert calculate_rolling_percentile(empty_df).is_empty()
+    other_df = pl.DataFrame({"volume": [100]})
+    assert calculate_rolling_percentile(other_df, metric_cols=("pe_ttm",)).columns == ["volume"]

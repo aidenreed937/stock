@@ -2,7 +2,7 @@ from datetime import date
 
 import polars as pl
 
-from stock.analytics.industry.tcr import TCRCalculator
+from stock.analytics.domains.industry.tcr import TCRCalculator
 
 
 def test_tcr_calculator_normal_and_crowded() -> None:

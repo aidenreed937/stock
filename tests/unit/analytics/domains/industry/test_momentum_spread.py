@@ -2,7 +2,7 @@ from datetime import date, timedelta
 
 import polars as pl
 
-from stock.analytics.industry.momentum_spread import IndustryMomentumSpreadAnalyzer
+from stock.analytics.domains.industry.momentum_spread import IndustryMomentumSpreadAnalyzer
 
 
 def test_momentum_spread_analyzer() -> None:

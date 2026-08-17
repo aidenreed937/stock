@@ -2,7 +2,7 @@ from datetime import date
 
 import polars as pl
 
-from stock.analytics.industry.pb_roe import IndustryPBROEAnalyzer
+from stock.analytics.domains.industry.pb_roe import IndustryPBROEAnalyzer
 
 
 def test_industry_pb_roe_analyzer() -> None:

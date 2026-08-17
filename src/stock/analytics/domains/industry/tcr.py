@@ -9,7 +9,7 @@ from datetime import date
 
 import polars as pl
 
-from stock.analytics.industry.classifier import IndustryClassifier
+from stock.analytics.domains.industry.classifier import IndustryClassifier
 from stock.analytics.models import SingleIndustryTCR, TCRAnalysisResult
 from stock.data.catalog import DataCatalog
 

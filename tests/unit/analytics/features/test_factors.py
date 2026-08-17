@@ -4,7 +4,7 @@ from datetime import date
 
 import polars as pl
 
-from stock.analytics.factors.engine import FactorEngine
+from stock.analytics.features.factors import FactorEngine
 from stock.analytics.primitives import (
     calculate_amihud_illiquidity,
     calculate_atr,

@@ -2,7 +2,7 @@ from datetime import date, timedelta
 
 import polars as pl
 
-from stock.analytics.micro.breadth import MultiPeriodMarketBreadthAnalyzer
+from stock.analytics.domains.micro.breadth import MultiPeriodMarketBreadthAnalyzer
 
 
 def test_market_breadth_series_and_diagnose() -> None:

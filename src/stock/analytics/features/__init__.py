@@ -1,6 +1,7 @@
 """通用 Feature 特征层与 Analytics Mart。"""
 
 from stock.analytics.features.builders.market_daily import MarketDailyBuilder
+from stock.analytics.features.factors import FactorEngine
 from stock.analytics.features.feature_values import FeatureValueStore
 from stock.analytics.features.registry import FeatureRegistry
 from stock.analytics.features.spec import (
@@ -14,6 +15,7 @@ from stock.analytics.features.store import FeatureStore
 
 __all__ = [
     "EntityType",
+    "FactorEngine",
     "FeatureKind",
     "FeatureRegistry",
     "FeatureSpec",

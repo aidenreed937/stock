@@ -9,8 +9,8 @@ from typing import TYPE_CHECKING, Any, cast
 
 import polars as pl
 
-from stock.analytics.industry.classifier import IndustryClassifier
-from stock.analytics.industry.pb_roe import IndustryPBROEAnalyzer
+from stock.analytics.domains.industry.classifier import IndustryClassifier
+from stock.analytics.domains.industry.pb_roe import IndustryPBROEAnalyzer
 from stock.data.catalog import DataCatalog
 
 if TYPE_CHECKING:

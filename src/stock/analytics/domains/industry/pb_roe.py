@@ -12,7 +12,7 @@ from typing import Any
 import numpy as np
 import polars as pl
 
-from stock.analytics.industry.classifier import IndustryClassifier
+from stock.analytics.domains.industry.classifier import IndustryClassifier
 from stock.analytics.models import IndustryPBROEResult
 from stock.data.catalog import DataCatalog
 

@@ -5,7 +5,7 @@ from datetime import date
 import polars as pl
 import pytest
 
-from stock.analytics.micro.margin import MarginPenetrationCalculator
+from stock.analytics.domains.micro.margin import MarginPenetrationCalculator
 
 
 def test_margin_calculator_aggregates_all_exchanges() -> None:

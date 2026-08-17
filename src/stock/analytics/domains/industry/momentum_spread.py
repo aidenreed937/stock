@@ -10,7 +10,7 @@ from typing import cast
 
 import polars as pl
 
-from stock.analytics.industry.classifier import IndustryClassifier
+from stock.analytics.domains.industry.classifier import IndustryClassifier
 from stock.analytics.models import MomentumSpreadResult
 from stock.data.catalog import DataCatalog
 

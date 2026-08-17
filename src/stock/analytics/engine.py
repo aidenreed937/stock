@@ -14,19 +14,19 @@ from concurrent.futures import ThreadPoolExecutor
 from datetime import date
 from pathlib import Path
 
+from stock.analytics.domains.industry.classifier import IndustryClassifier
+from stock.analytics.domains.industry.momentum_spread import IndustryMomentumSpreadAnalyzer
+from stock.analytics.domains.industry.pb_roe import IndustryPBROEAnalyzer
+from stock.analytics.domains.industry.tcr import TCRCalculator
+from stock.analytics.domains.micro.breadth import MultiPeriodMarketBreadthAnalyzer
+from stock.analytics.domains.micro.margin import MarginPenetrationCalculator
+from stock.analytics.domains.micro.sentiment import MarketSentimentAnalyzer
 from stock.analytics.evaluators import (
     build_action_items,
     build_signals,
     evaluate_micro_health,
     evaluate_one_sentence_summary,
 )
-from stock.analytics.industry.classifier import IndustryClassifier
-from stock.analytics.industry.momentum_spread import IndustryMomentumSpreadAnalyzer
-from stock.analytics.industry.pb_roe import IndustryPBROEAnalyzer
-from stock.analytics.industry.tcr import TCRCalculator
-from stock.analytics.micro.breadth import MultiPeriodMarketBreadthAnalyzer
-from stock.analytics.micro.margin import MarginPenetrationCalculator
-from stock.analytics.micro.sentiment import MarketSentimentAnalyzer
 from stock.analytics.models import DailyMarketScanSummary
 from stock.data.catalog import DataCatalog
 from stock.utils.logger import logger
