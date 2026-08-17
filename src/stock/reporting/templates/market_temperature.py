@@ -12,7 +12,7 @@ from stock.reporting.core.watermark import (
 )
 
 if TYPE_CHECKING:
-    from stock.analytics.market_temperature.config import MarketTemperatureConfig
+    from stock.analytics.pipelines.market_temperature.config import MarketTemperatureConfig
 
 _METRIC_LABELS = {
     "valuation_temperature": "估值温度",

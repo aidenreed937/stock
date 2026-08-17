@@ -7,7 +7,7 @@ from typing import TYPE_CHECKING, Any
 if TYPE_CHECKING:
     import polars as pl
 
-    from stock.analytics.investor_brief.config import InvestorBriefConfig
+    from stock.analytics.pipelines.investor_brief.config import InvestorBriefConfig
 
 
 def build_brief_json(

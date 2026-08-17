@@ -7,13 +7,13 @@ from types import SimpleNamespace
 import polars as pl
 
 from stock.analytics.data_quality import build_quality_report
-from stock.analytics.industry_structure.config import (
+from stock.analytics.models import DailyMarketScanSummary, MicroHealthSummary
+from stock.analytics.pipelines.industry_structure.config import (
     FundamentalBlendConfig,
     IndustryStructureConfig,
     ScoreWeights,
 )
-from stock.analytics.market_temperature.config import MarketTemperatureConfig
-from stock.analytics.models import DailyMarketScanSummary, MicroHealthSummary
+from stock.analytics.pipelines.market_temperature.config import MarketTemperatureConfig
 from stock.reporting import (
     format_card_summary,
     format_console_report,

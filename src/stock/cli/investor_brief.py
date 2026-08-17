@@ -7,8 +7,8 @@ import sys
 from datetime import date
 from pathlib import Path
 
-from stock.analytics.investor_brief import run_investor_brief
-from stock.analytics.investor_brief.config import DEFAULT_CONFIG_PATH
+from stock.analytics.pipelines.investor_brief import run_investor_brief
+from stock.analytics.pipelines.investor_brief.config import DEFAULT_CONFIG_PATH
 from stock.utils.logger import logger
 
 

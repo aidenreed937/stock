@@ -7,8 +7,8 @@ import sys
 from datetime import date
 from pathlib import Path
 
-from stock.analytics.industry_structure import run_industry_structure
-from stock.analytics.industry_structure.config import DEFAULT_CONFIG_PATH
+from stock.analytics.pipelines.industry_structure import run_industry_structure
+from stock.analytics.pipelines.industry_structure.config import DEFAULT_CONFIG_PATH
 from stock.utils.logger import logger
 
 

@@ -9,7 +9,7 @@ import polars as pl
 from stock.reporting.core.watermark import human_watermark_issue_lines
 
 if TYPE_CHECKING:
-    from stock.analytics.industry_structure.config import IndustryStructureConfig
+    from stock.analytics.pipelines.industry_structure.config import IndustryStructureConfig
 
 
 def build_report_json(

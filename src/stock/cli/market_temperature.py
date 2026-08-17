@@ -7,8 +7,8 @@ import sys
 from datetime import date
 from pathlib import Path
 
-from stock.analytics.market_temperature import run_market_temperature
-from stock.analytics.market_temperature.config import DEFAULT_CONFIG_PATH
+from stock.analytics.pipelines.market_temperature import run_market_temperature
+from stock.analytics.pipelines.market_temperature.config import DEFAULT_CONFIG_PATH
 from stock.utils.logger import logger
 
 
