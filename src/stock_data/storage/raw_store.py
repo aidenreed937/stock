@@ -12,8 +12,8 @@ import polars as pl
 from stock_core.config.settings import settings
 from stock_core.contracts import DatasetKey
 from stock_core.exceptions import DataValidationError
-from stock_core.utils.date import parse_mixed_date
 from stock_core.utils.logger import logger
+from stock_data.cleaner.date_utils import parse_mixed_date
 from stock_data.quality.margin_coverage import is_margin_complete
 from stock_data.storage.compat import StorageCompat
 from stock_data.storage.raw_cache import has_raw_cache

@@ -13,7 +13,7 @@ import yfinance as yf
 from stock_core.config.loader import load_data_config
 from stock_core.config.settings import settings
 from stock_core.utils.logger import logger
-from stock_core.utils.rate_limiter import RateLimiter
+from stock_data.fetcher.rate_limiter import RateLimiter
 
 YFINANCE_USER_AGENT = (
     "Mozilla/5.0 (Macintosh; Intel Mac OS X 10_15_7) "

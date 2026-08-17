@@ -8,7 +8,7 @@ from zoneinfo import ZoneInfo
 import polars as pl
 
 from stock_core.config.settings import settings
-from stock_core.utils.date import parse_mixed_date
+from stock_data.cleaner.date_utils import parse_mixed_date
 from stock_data.task_registry import _provider_registry, resolve_task
 
 logger = logging.getLogger(__name__)

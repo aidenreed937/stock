@@ -1,3 +1,5 @@
+"""核心行情数据模型与实体适用粒度定义。"""
+
 from datetime import date
 from enum import StrEnum
 
@@ -38,27 +40,3 @@ class DailyBar(BaseModel):
         if low_price and v < low_price:
             raise ValueError("最高价不能低于最低价")
         return v
-
-
-class QuoteSummary(BaseModel):
-    """标的简要行情与描述"""
-
-    symbol: str
-    name: str
-    last_price: float
-    change_pct: float
-    total_market_cap: float | None = None
-
-
-class IndexValuation(BaseModel):
-    """指数/ETF 估值数据模型"""
-
-    symbol: str = Field(description="ETF 标的代码，如 SPY, QQQ")
-    target_index: str = Field(description="对应指数代码，如 ^GSPC, ^IXIC")
-    trade_date: date = Field(description="估值日期")
-    trailing_pe: float | None = Field(default=None, description="滚动市盈率 (PE-TTM)")
-    forward_pe: float | None = Field(default=None, description="预测市盈率 (Forward PE)")
-    price_to_book: float | None = Field(default=None, description="市净率 (PB)")
-    price_to_sales: float | None = Field(default=None, description="市销率 (PS)")
-    dividend_yield: float | None = Field(default=None, description="股息率 (%)")
-    market_cap: float | None = Field(default=None, description="基金规模/总市值")

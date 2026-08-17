@@ -9,7 +9,7 @@ from curl_cffi import requests
 
 from stock_core.config.loader import load_data_config
 from stock_core.config.settings import settings
-from stock_core.utils.rate_limiter import RateLimiter
+from stock_data.fetcher.rate_limiter import RateLimiter
 
 logger = logging.getLogger(__name__)
 

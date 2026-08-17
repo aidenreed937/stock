@@ -4,10 +4,11 @@ from typing import Any
 
 import polars as pl
 
-from stock_core.models.market import DailyBar, IndexValuation
+from stock_core.models.market import DailyBar
 from stock_data.fetcher.base import BaseDataFetcher
 from stock_data.fetcher.yfinance.client import YFinanceClient
 from stock_data.fetcher.yfinance.macro_fetcher import fetch_macro_indicators_df
+from stock_data.fetcher.yfinance.models import IndexValuation
 from stock_data.fetcher.yfinance.registry import YFINANCE_API_REGISTRY
 
 logger = logging.getLogger(__name__)

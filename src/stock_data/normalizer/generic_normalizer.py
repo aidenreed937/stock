@@ -2,8 +2,8 @@
 
 import polars as pl
 
-from stock_core.utils.date import parse_mixed_date
 from stock_core.utils.logger import logger
+from stock_data.cleaner.date_utils import parse_mixed_date
 from stock_data.normalizer.base import BaseDataNormalizer
 
 

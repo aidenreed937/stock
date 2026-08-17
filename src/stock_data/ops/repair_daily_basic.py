@@ -11,8 +11,8 @@ from typing import Any
 
 import polars as pl
 
-from stock_core.utils.date import parse_mixed_date
 from stock_core.utils.logger import logger
+from stock_data.cleaner.date_utils import parse_mixed_date
 from stock_data.normalizer.bar_normalizer import infer_market_exchange_currency
 
 _RAW_DIR = Path("data/raw/tushare/market=CN/daily_basic")

@@ -37,7 +37,7 @@ class RateLimiter:
                 # 配额用尽，计算离最旧请求滑出窗口所需的等待时间
                 sleep_time = self.time_window - (now - self._requests[0])
 
-            # 【核心优化】：在锁作用域外部执行休眠，防止阻塞其他线程
+            # 在锁作用域外部执行休眠，防止阻塞其他线程
             if sleep_time > 0:
                 logger.warning(
                     f"RateLimiter 配额用尽 ({self.max_requests}/{self.time_window}s)，"

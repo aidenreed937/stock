@@ -12,8 +12,8 @@ from stock_core.config.loader import load_data_config
 from stock_core.config.settings import settings
 from stock_core.exceptions import DataFetchError
 from stock_core.utils.logger import logger
-from stock_core.utils.rate_limiter import RateLimiter
 from stock_data.fetcher.lixinger.registry import LIXINGER_API_REGISTRY
+from stock_data.fetcher.rate_limiter import RateLimiter
 
 MAX_STOCK_CODES = 100
 

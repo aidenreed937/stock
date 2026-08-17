@@ -2,7 +2,7 @@ from datetime import date, timedelta
 
 import polars as pl
 
-from stock_core.config.loader import load_strategy_config
+from stock_strategy.config import load_strategy_config
 from stock_strategy.pool.double_sma_rsi import DoubleSmaRsiStrategy
 from stock_strategy.runner import StrategyRunner
 

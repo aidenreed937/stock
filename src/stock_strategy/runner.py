@@ -6,7 +6,7 @@ from typing import Any
 
 import polars as pl
 
-from stock_core.models.config import StrategyConfig
+from stock_strategy.config import StrategyConfig
 from stock_strategy.pool.double_sma_rsi import DoubleSmaRsiStrategy
 from stock_strategy.signal import Signal
 

@@ -10,8 +10,8 @@ import polars as pl
 
 from stock_core.constants import BAR_DATASETS, SYSTEM_METADATA_COLUMNS
 from stock_core.exceptions import DataValidationError
-from stock_core.utils.date import parse_mixed_date
 from stock_core.utils.logger import logger
+from stock_data.cleaner.date_utils import parse_mixed_date
 from stock_data.storage.compat import StorageCompat
 from stock_data.task_registry import is_task_partitioned
 

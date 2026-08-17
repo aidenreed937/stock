@@ -4,8 +4,8 @@ from datetime import date, datetime
 
 import polars as pl
 
-from stock_core.constants import EXCHANGE_START_DATES
-from stock_core.utils.date import parse_mixed_date
+from stock_data.cleaner.date_utils import parse_mixed_date
+from stock_data.constants import EXCHANGE_START_DATES
 
 
 def expected_margin_exchanges(trade_date: date) -> frozenset[str]:

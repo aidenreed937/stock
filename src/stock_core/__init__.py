@@ -13,7 +13,6 @@ from stock_core.exceptions import (
     DataValidationError,
     StockError,
     StorageError,
-    StrategyError,
 )
 
 __all__ = [
@@ -25,6 +24,5 @@ __all__ = [
     "InstrumentId",
     "StockError",
     "StorageError",
-    "StrategyError",
     "get_contract_for_dataset",
 ]

@@ -107,7 +107,7 @@ class VolatilityRule(BaseValidationRule):
         if "trade_date" not in df.columns:
             return df
 
-        from stock_core.utils.date import parse_mixed_date
+        from stock_data.cleaner.date_utils import parse_mixed_date
 
         work = df.with_columns(parse_mixed_date("trade_date").alias("_bar_date"))
         if "list_date" in work.columns:

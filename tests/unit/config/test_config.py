@@ -1,8 +1,9 @@
 from datetime import date
 from pathlib import Path
 
-from stock_core.config.loader import load_data_config, load_strategy_config, load_watchlist_config
+from stock_core.config.loader import load_data_config, load_watchlist_config
 from stock_core.config.settings import Settings
+from stock_strategy.config import load_strategy_config
 
 
 def test_settings_default_values() -> None:

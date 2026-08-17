@@ -9,7 +9,7 @@ from statistics import median
 
 import polars as pl
 
-from stock_core.utils.date import parse_mixed_date
+from stock_data.cleaner.date_utils import parse_mixed_date
 
 MARGIN_NUMERIC_COLUMNS: tuple[str, ...] = (
     "rzye",

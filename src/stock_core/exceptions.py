@@ -26,9 +26,3 @@ class StorageError(DataError):
     """DuckDB / Parquet 存储与读写失败异常"""
 
     pass
-
-
-class StrategyError(StockError):
-    """策略执行与风控计算相关异常"""
-
-    pass

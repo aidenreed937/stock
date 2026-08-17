@@ -7,9 +7,9 @@ from dataclasses import dataclass
 from datetime import date
 from typing import Any
 
-from stock_core.constants import ENDPOINT_START_DATE_OVERRIDES
 from stock_core.exceptions import DataFetchError
 from stock_core.utils.logger import logger
+from stock_data.constants import ENDPOINT_START_DATE_OVERRIDES
 from stock_data.task_registry import (
     list_available_tasks,
     resolve_task,

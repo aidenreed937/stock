@@ -55,7 +55,7 @@ class BarDataCleaner(BaseDataCleaner):
         if not listing_rows:
             return df, df.head(0)
 
-        from stock_core.utils.date import parse_mixed_date
+        from stock_data.cleaner.date_utils import parse_mixed_date
 
         listing_df = pl.DataFrame(listing_rows)
         indexed = (
@@ -214,7 +214,7 @@ class BarDataCleaner(BaseDataCleaner):
 
         # 6. 按交易日与标的代码去重 (先对齐日期格式避免 20260812 与 2026-08-12 重复)
         if sym_col and sym_col in cleaned_df.columns and "trade_date" in cleaned_df.columns:
-            from stock_core.utils.date import parse_mixed_date
+            from stock_data.cleaner.date_utils import parse_mixed_date
 
             try:
                 cleaned_df = (
