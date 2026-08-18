@@ -18,7 +18,7 @@ description: 量化金融指标计算规范、金融工程常识与统计标准�
    * **中观层 (Meso)** 决定 31 行业 PB-ROE 四象限超配/低配（Alpha 配置）；
    * **微观层 (Micro)** 决定具体个股财务质地、Level-2 资金流与买卖点执行（Execution）。
 2. **权威依据第一，严禁凭空臆造 (Authoritative Definitions)**：
-   所有量化指标公式必须有交易所/指数公司官方编制方案、学术文献或券商金工研报依据（详见 [03_常用指标字典](file:///Users/mac/workspace/personal/finance/stock/.agents/skills/quant-metric-standards/references/03_common_financial_indicators.md)）。
+   所有量化指标公式必须有交易所/指数公司官方编制方案、学术文献或券商金工研报依据（详见 [03_常用指标字典](references/03_common_financial_indicators.md)）。
 3. **时间窗口与金融周期对齐 (5Y vs 10Y)**：
    * **5 年滚动窗口 ($\sim 1,215$ 日)**：适用于**个股/行业估值与行业动量**（覆盖一轮完整的产能/库存周期）；
    * **10 年滚动窗口 ($\sim 2,430$ 日)**：适用于**大盘宽基估值、股债利差 (ERP) 与大类资产配置**（覆盖完整的信贷/牛熊大周期）；
@@ -69,8 +69,8 @@ flowchart LR
 
 ## 5. 专题进阶手册 (Deep-Dive References)
 
-* 📘 [01_历史分位数与时间窗口计算规范](file:///Users/mac/workspace/personal/finance/stock/.agents/skills/quant-metric-standards/references/01_percentile_and_windows.md)：5Y/10Y 选型逻辑、百分位排名标准算法与滚动 Z-Score 公式。
-* 📘 [02_量化指标无量纲化与去体量通胀原则](file:///Users/mac/workspace/personal/finance/stock/.agents/skills/quant-metric-standards/references/02_dimensionless_normalization.md)：消除扩容失真、跨资产可比性与 Min-Max / Percentile 映射方法。
-* 📘 [03_常用量化金融核心指标权威定义字典](file:///Users/mac/workspace/personal/finance/stock/.agents/skills/quant-metric-standards/references/03_common_financial_indicators.md)：按宏观/中观/微观分类的股债利差 (ERP)、大盘拥挤度、巴菲特比值、微观资金流与真实波幅 NATR 标准数学公式。
-* 📘 [04_宏观范式漂移与防过拟合自检清单](file:///Users/mac/workspace/personal/finance/stock/.agents/skills/quant-metric-standards/references/04_regime_shift_and_caveats.md)：利率中枢下行、注册制扩容、小样本陷阱 ($N \le 5$) 与前瞻偏差防范。
-* 📘 [05_多维共振诊断与投研分析框架](file:///Users/mac/workspace/personal/finance/stock/.agents/skills/quant-metric-standards/references/05_multi_dimensional_analysis_framework.md)：宏观-中观-微观三层协同、六维正交状态观测与一票否决机制 (Veto Rule)、申万 31 行业 PB-ROE 四象限分类矩阵、量价/估值背离诊断与非对称风险收益比评估。
+* 📘 [01_历史分位数与时间窗口计算规范](references/01_percentile_and_windows.md)：5Y/10Y 选型逻辑、百分位排名标准算法与滚动 Z-Score 公式。
+* 📘 [02_量化指标无量纲化与去体量通胀原则](references/02_dimensionless_normalization.md)：消除扩容失真、跨资产可比性与 Min-Max / Percentile 映射方法。
+* 📘 [03_常用量化金融核心指标权威定义字典](references/03_common_financial_indicators.md)：按宏观/中观/微观分类的股债利差 (ERP)、大盘拥挤度、巴菲特比值、微观资金流与真实波幅 NATR 标准数学公式。
+* 📘 [04_宏观范式漂移与防过拟合自检清单](references/04_regime_shift_and_caveats.md)：利率中枢下行、注册制扩容、小样本陷阱 ($N \le 5$) 与前瞻偏差防范。
+* 📘 [05_多维共振诊断与投研分析框架](references/05_multi_dimensional_analysis_framework.md)：宏观-中观-微观三层协同、六维正交状态观测与一票否决机制 (Veto Rule)、申万 31 行业 PB-ROE 四象限分类矩阵、量价/估值背离诊断与非对称风险收益比评估。

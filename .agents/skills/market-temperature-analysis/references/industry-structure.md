@@ -18,7 +18,7 @@
 ```bash
 make industry-structure DATE=YYYY-MM-DD
 # 或
-UV_CACHE_DIR=.uv_cache UV_PYTHON_INSTALL_DIR=.uv_python uv run python -m stock.cli.industry_structure --date YYYY-MM-DD
+UV_CACHE_DIR=.uv_cache UV_PYTHON_INSTALL_DIR=.uv_python uv run python -m stock_cli.industry_structure --date YYYY-MM-DD
 ```
 
 默认配置为 `config/analytics/industry_structure.yaml`，产物目录为 `data/analytics/industry_structure/`：

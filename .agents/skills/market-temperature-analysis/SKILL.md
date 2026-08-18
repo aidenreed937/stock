@@ -78,7 +78,7 @@ make market-cycle-review START=YYYY-MM-DD END=YYYY-MM-DD
 
 1. 若用户要重复执行或产出文件，先运行 `make market-temperature DATE=...` 生成标准产物；需要只验证水位时可加 `SKIP_METRICS=1`。
 2. 读取 `data-catalog` 技能，确认 `DataCatalog` 用法和数据口径。
-3. 先用 `codegraph_explore` 查看 `src/stock/analytics/metrics` 的当前实现，确认 `MetricEngine`、`BUILTIN_METRIC_SPECS`、`BUILTIN_CALCULATORS` 和各 `calculators/*.py` 里的实际计算口径。
+3. 先用 `codegraph_explore` 查看 `src/stock_analytics/metrics` 的当前实现，确认 `MetricEngine`、`BUILTIN_METRIC_SPECS`、`BUILTIN_CALCULATORS` 和各 `calculators/*.py` 里的实际计算口径。
 4. 查询关键数据集最新水位：
    - `tushare`: `stock_daily_bar`, `daily_basic`, `margin`, `moneyflow`, `moneyflow_hsgt`, `index_daily`, `sw_daily`, `stk_limit`, `limit_list_d`, `opt_basic`, `opt_daily`, `forecast`, `report_rc`, `index_member`, `shibor`, `cn_cpi`
    - `lixinger`: `index_fundamental`, `national_debt`, `investor_accounts`, `cn_m`, `sf_month`, `sw_2021_fundamental`, `sw_2021_constituents`, 四类 `sw_2021_fs_*`
@@ -86,15 +86,16 @@ make market-cycle-review START=YYYY-MM-DD END=YYYY-MM-DD
    - `alphavantage`: `macro_indicators`，用于 `CNH=X` / USD-CNH 外汇日线
    - `fred`: `macro_indicators`，仅在需要美国宏观背景时使用
 5. 若核心行情或估值缺失，先说明数据缺口，不要硬算综合温度。
-6. 用 `MetricEngine` 优先计算已有指标，并按 `references/scoring.md` 的去重归属合成六维分数：
-   - 估值：`valuation_temperature`, `pe_percentile_5y`, `pb_percentile_5y`, `equity_risk_premium`, `equity_bond_yield_ratio`
-   - 资金：`margin_buy_share`, `margin_penetration`, `margin_balance_growth_20d`, `main_money_net_inflow_share`, `market_amount_percentile_1250d`
-   - 情绪/流动性：`market_turnover_rate`, `turnover_rate_percentile_1250d`, `advance_share`, `limit_event_temperature`, `investor_account_temperature`
-   - 技术/宽度：`return_20d`, `rsi_14d`, `ma_bias_20d`, `above_ma20_share`, `above_ma60_share`, `new_high_share_252d`, `new_low_share_252d`
-   - 风险：`realized_volatility_20d`, `downside_volatility_20d`, `max_drawdown_60d`
-7. 用 `DataCatalog` 直接补足基本面扩展指标：`forecast` 业绩预告改善/超预期、`report_rc` 分析师盈利预测上修比例；这些指标不在当前 `metrics` 计算器里。
+6. 用 `MetricEngine` 和温度计派生事实按 YAML 中 `weight > 0` 的指标合成六维分数；当前入分清单为：
+   - 估值：`valuation_temperature`, `pe_percentile_5y`, `pb_percentile_5y`；YAML 虽配置 `equity_risk_premium` 10%，但当前 `metric_temperature.py` 没有 raw ERP 转换分支，不能假定它已入分。
+   - 资金：`margin_buy_share_zscore_60d`, `margin_penetration_percentile_1250d`, `margin_balance_growth_20d`, `main_money_net_inflow_share`, `market_amount_percentile_1250d`。
+   - 情绪：`turnover_rate_percentile_1250d`, `advance_share`, `limit_event_temperature`, `investor_account_temperature`。
+   - 技术：`return_20d`, `rsi_14d`, `ma_bias_20d`, `above_ma20_share`, `above_ma60_share`, `new_high_share_252d`, `new_low_share_252d`。
+   - 基本面：`fs_revenue_growth_temperature`, `fs_profit_growth_temperature`, `fs_roe_temperature`, `forecast_positive_temperature`, `report_revision_temperature`；六维基本面没有 `express` 子项。
+   - 宏观流动性：`macro_bond_yield_10y_temperature`, `macro_shibor_on_temperature`, `macro_real_rate_temperature`, `macro_m2_yoy_temperature`, `macro_m1_m2_gap_temperature`, `macro_social_finance_stock_temperature`, `macro_external_environment_temperature`。
+7. 用 `DataCatalog` 派生事实补足 YAML 已配置的基本面指标：`forecast_positive_temperature` 和 `report_revision_temperature`；`express` 只属于独立的申万行业结构模块，不得写入六维基本面分。
 8. 需要择时或短线节奏判断时，按 `references/scoring.md` 计算 5 日/10 日短线温度，作为附加输出，不并入主综合温度权重。
-9. 用 `MarketScanEngine.compute(target_date=latest, index_symbol="000300")` 获取宏观象限、低估行业、拥挤行业、市场健康度，作为交叉校验。
+9. 需要行业交叉校验时，读取同一基准日的 `data/analytics/industry_structure/` 标准产物；行业结构分独立计算，不并入六维综合温度。
 10. 对指标做 0-100 温度归一。分数越高表示越热、越拥挤、越偏进攻；反向指标用 `100 - 分位温度` 或负向 Z-score 转换，利率类低位对应更高流动性温度。
 11. 输出前检查 `quality_report.md/json`：硬错误不得忽略；软警告必须在数据限制或口径说明里解释。
 12. 输出时先给综合温度、系统性风险和一句话判断，再列“解读顺序”说明各维度时效性，然后列六维表格；若计算了短线温度，放在主表之后作为节奏参考；最后写结构健康度、结构机会、风险和数据水位限制。
@@ -148,4 +149,4 @@ FRED 美国宏观背景归入宏观流动性维度的观察项，默认 `weight:
 
 行业资金流可由 `tushare.moneyflow` 通过 `tushare.index_member` / `lixinger.sw_2021_constituents` 的申万2021成分映射聚合到一级行业，并用 `stock_daily_bar.amount` 作分母计算行业主力净流入成交占比。行业资金流当前只作为“资金确认/资金流出压力”观察项输出，不进入行业结构总分。
 
-若 `references/scoring.md` 的指标说明与 `src/stock/analytics/metrics` 源码不一致，以源码实现为准，并在完成分析后更新本 skill。
+评分唯一来源是 `config/analytics/market_temperature.yaml`、`src/stock_analytics/pipelines/market_temperature/metric_temperature.py` 和 `src/stock_analytics/pipelines/market_temperature/scoring.py`：YAML 决定维度/指标权重与方向，温度转换源码决定 0-100 映射，评分源码决定缺失指标和缺失维度的重归一。若本文件或 `references/scoring.md` 与上述配置/源码不一致，以配置和源码为准，并在完成分析后更新本 skill。
