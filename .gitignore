@@ -1,65 +1,62 @@
-# Byte-compiled / optimized files
+# Python bytecode and caches
 __pycache__/
 *.py[cod]
 *$py.class
-
-# Environments & Virtual Envs
-.venv/
-env/
-venv/
-ENV/
-.python-version
-
-# Distribution / packaging
-build/
-dist/
-*.egg/
-*.egg-info/
-
-# Unit test & coverage reports
+.mypy_cache/
 .pytest_cache/
+.ruff_cache/
+
+# Test and coverage reports
 .coverage
 .coverage.*
 htmlcov/
-.mypy_cache/
-.ruff_cache/
 
-# CodeGraph 本地索引
-.codegraph/
-
-# uv 本地缓存
+# Virtual environments and local tool state
+.python-version
 .uv-cache/
 .uv_cache/
 .uv_python/
+.venv/
+ENV/
+env/
+venv/
 
-# Financial Data & Local Cache & Databases (排除本地数据文件，保留目录结构)
-data/*
-!data/raw/
-!data/curated/
-!data/cache/
+# Build and packaging artifacts
+*.egg-info/
+*.egg/
+build/
+dist/
+
+# CodeGraph and Claude local state
+.claude/settings.local.json
+.claude/worktrees/
+.codegraph/
+
+# Local data, caches, databases, and logs
+data/**/*
+!data/**/
 !data/**/.gitkeep
-data/proxy
-data/audit/
-data/analytics/
-data/curated/mart/
-*.metadata.json
-*.parquet
-*.feather
 *.db
 *.duckdb
+*.feather
+*.log
+*.metadata.json
+*.parquet
 *.sqlite
 *.sqlite3
-*.log
-scratch
-# Sensitive Environment Variables (环境变量与密钥绝不提交)
+
+# Scratch files
+scratch/
+
+# Environment variables and local secrets
 .env
-.env.local
-.env.*.local
+.env.*
 !.env.example
 
-# IDEs & System files
-.vscode/
-.idea/
-*.swp
-*.swo
+# IDE and operating system files
 .DS_Store
+.idea/
+.vscode/
+*.swo
+*.swp
+*.tmp
