@@ -76,6 +76,39 @@ def test_build_scores_converts_zscore_to_temperature() -> None:
     assert scores["dimensions"][0]["temperature"] == pytest.approx(50.0)
 
 
+def test_build_scores_converts_erp_percentile_with_inverse_direction() -> None:
+    facts = pl.DataFrame(
+        [_metric_fact("valuation", "equity_risk_premium_percentile_5y", 20.0)],
+        schema=FACT_SCHEMA,
+    )
+    config = MarketTemperatureConfig(
+        schema_version=1,
+        title="test",
+        artifact_root="data/analytics/market_temperature",
+        main_window=20,
+        short_windows=(),
+        dimensions=(
+            DimensionConfig(
+                id="valuation",
+                name="估值面",
+                weight=1.0,
+                metrics=(
+                    MetricInputConfig(
+                        "equity_risk_premium_percentile_5y",
+                        direction="inverse",
+                        weight=1.0,
+                    ),
+                ),
+            ),
+        ),
+        datasets=(),
+    )
+
+    scores = build_scores(config, as_of_date=date(2026, 8, 14), facts=facts)
+
+    assert scores["dimensions"][0]["temperature"] == pytest.approx(80.0)
+
+
 def test_build_scores_ignores_zero_weight_observation_metrics() -> None:
     facts = pl.DataFrame(
         [

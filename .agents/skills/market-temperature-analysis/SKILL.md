@@ -87,7 +87,7 @@ make market-cycle-review START=YYYY-MM-DD END=YYYY-MM-DD
    - `fred`: `macro_indicators`，仅在需要美国宏观背景时使用
 5. 若核心行情或估值缺失，先说明数据缺口，不要硬算综合温度。
 6. 用 `MetricEngine` 和温度计派生事实按 YAML 中 `weight > 0` 的指标合成六维分数；当前入分清单为：
-   - 估值：`valuation_temperature`, `pe_percentile_5y`, `pb_percentile_5y`；YAML 虽配置 `equity_risk_premium` 10%，但当前 `metric_temperature.py` 没有 raw ERP 转换分支，不能假定它已入分。
+   - 估值：`valuation_temperature`, `pe_percentile_5y`, `pb_percentile_5y`, `equity_risk_premium_percentile_5y`；raw `equity_risk_premium` 仍作为事实展示，不直接参与温度评分。
    - 资金：`margin_buy_share_zscore_60d`, `margin_penetration_percentile_1250d`, `margin_balance_growth_20d`, `main_money_net_inflow_share`, `market_amount_percentile_1250d`（实际为自由流通换手率分位）。
    - 情绪：`turnover_rate_percentile_1250d`, `advance_share`, `limit_event_temperature`, `investor_account_temperature`。
    - 技术：`return_20d`, `rsi_14d`, `ma_bias_20d`, `above_ma20_share`, `above_ma60_share`, `new_high_share_252d`, `new_low_share_252d`。

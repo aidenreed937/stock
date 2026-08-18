@@ -58,6 +58,7 @@ def test_default_registry_contains_valuation_metrics() -> None:
         "pb_percentile_5y",
         "dividend_yield_percentile_5y",
         "equity_risk_premium",
+        "equity_risk_premium_percentile_5y",
         "equity_bond_yield_ratio",
         "dividend_bond_spread",
         "valuation_temperature",
@@ -88,6 +89,7 @@ def test_cross_source_metrics_use_latest_prior_bond_yield(
     results = MetricEngine().compute(
         [
             "equity_risk_premium",
+            "equity_risk_premium_percentile_5y",
             "equity_bond_yield_ratio",
             "dividend_bond_spread",
             "valuation_temperature",
@@ -96,6 +98,9 @@ def test_cross_source_metrics_use_latest_prior_bond_yield(
     )
 
     assert results[0].frame["equity_risk_premium"].to_list() == pytest.approx([0.03, 0.005])
-    assert results[1].frame["equity_bond_yield_ratio"].to_list() == pytest.approx([2.5, 1.25])
-    assert results[2].frame["dividend_bond_spread"].to_list() == pytest.approx([0.0, 0.01])
-    assert results[3].frame["valuation_temperature"].to_list() == pytest.approx([37.5, 62.5])
+    assert results[1].frame["equity_risk_premium_percentile_5y"].to_list() == pytest.approx(
+        [50.0, 0.0]
+    )
+    assert results[2].frame["equity_bond_yield_ratio"].to_list() == pytest.approx([2.5, 1.25])
+    assert results[3].frame["dividend_bond_spread"].to_list() == pytest.approx([0.0, 0.01])
+    assert results[4].frame["valuation_temperature"].to_list() == pytest.approx([37.5, 62.5])

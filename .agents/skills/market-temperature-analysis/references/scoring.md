@@ -54,7 +54,7 @@ make market-temperature DATE=YYYY-MM-DD
 
 | 维度 | 权重 | 当前有效入分指标 |
 |---|---:|---|
-| 估值面 | 20% | `valuation_temperature`、`pe_percentile_5y`、`pb_percentile_5y`；`equity_risk_premium` 见下方限制 |
+| 估值面 | 20% | `valuation_temperature`、`pe_percentile_5y`、`pb_percentile_5y`、`equity_risk_premium_percentile_5y` |
 | 资金面 | 20% | `margin_buy_share_zscore_60d`、`margin_penetration_percentile_1250d`、`margin_balance_growth_20d`、`main_money_net_inflow_share`、`market_amount_percentile_1250d` |
 | 情绪面 | 15% | `turnover_rate_percentile_1250d`、`advance_share`、`limit_event_temperature`、`investor_account_temperature` |
 | 技术面 | 15% | `return_20d`、`rsi_14d`、`ma_bias_20d`、`above_ma20_share`、`above_ma60_share`、`new_high_share_252d`、`new_low_share_252d` |
@@ -70,11 +70,11 @@ YAML 子权重：
 | `valuation_temperature` | 50% | 正向 | 已是 0-100 温度，直接使用 |
 | `pe_percentile_5y` | 20% | 正向 | 五年分位直接作为温度 |
 | `pb_percentile_5y` | 20% | 正向 | 五年分位直接作为温度 |
-| `equity_risk_premium` | 10% | 反向 | YAML 已配置，但当前 raw ERP 没有 `fact_temperature()` 转换分支，实际返回 `None` 时不入分 |
+| `equity_risk_premium_percentile_5y` | 10% | 反向 | ERP 五年历史分位；ERP 越高通常越便宜，因此用 `100 - 分位` 转成估值温度 |
 
 `valuation_temperature` 的 MetricEngine 结果是每个指数一行；YAML 的 `aggregation: mean` 会对最新日期的所有可用指数结果求均值。当前实现不会自动筛选 `000985`。需要使用中证全指时，必须在报告中核对结果行的 `symbol`；不能把“均值结果”直接称为 `000985`。
 
-`equity_risk_premium` 在 `valuation.py` 中是盈利收益率减 10 年国债收益率的 raw 值；当前温度转换器只识别 `valuation_temperature`、含 `percentile` 的指标、Z-score、少数比例和收益率公式，因此方向设为 inverse 不能单独把 raw ERP 变成温度。该限制必须在质量或数据限制中披露。
+`equity_risk_premium` 在 `valuation.py` 中仍保留为盈利收益率减 10 年国债收益率的 raw 值，供事实展示和研究使用；正式评分使用同一计算链生成的 `equity_risk_premium_percentile_5y`，再按 YAML 的 `inverse` 方向转换为温度。ERP 分位使用 1250 个交易日的五年滚动窗口，样本不足时该指标不入分。
 
 ### 4.2 资金面
 
@@ -211,7 +211,7 @@ UV_CACHE_DIR=.uv_cache UV_PYTHON_INSTALL_DIR=.uv_python uv run python -m stock_c
 
 - 主窗口起止日期和基准日；
 - 进入评分的有效指标与被排除指标；
-- `equity_risk_premium` 当前 raw 转换限制；
+- ERP raw 值与 `equity_risk_premium_percentile_5y` 的评分分工；
 - 估值 `valuation_temperature` 的实际结果行聚合口径；
 - 资金流、季频财报、月频宏观和慢情绪指标的最新日期；
 - 缺失指标是否触发了维度内重归一、缺失维度是否触发了综合分重归一。
@@ -222,7 +222,7 @@ UV_CACHE_DIR=.uv_cache UV_PYTHON_INSTALL_DIR=.uv_python uv run python -m stock_c
 - [ ] 是否使用 `src/stock_analytics/pipelines/market_temperature/metric_temperature.py` 的实际转换分支？
 - [ ] 是否只让 `weight > 0` 且事实状态为 `ok` 的指标入分？
 - [ ] 是否对缺失指标和缺失维度分别重归一？
-- [ ] 是否披露 raw ERP 当前不能直接温度化？
+- [ ] 是否区分 raw ERP 展示值与 ERP 五年分位评分值？
 - [ ] 是否核对 `valuation_temperature` 的实际指数结果行，而不是默认称为 `000985`？
 - [ ] 是否将 `express` 和行业结构 70%/30% 规则限制在行业结构模块？
 - [ ] 是否明确当前 5/10 日短线槽位仍为 `pending`？

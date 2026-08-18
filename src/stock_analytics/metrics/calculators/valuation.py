@@ -23,6 +23,7 @@ _CALENDAR_DAYS_5Y_WITH_BUFFER = 365 * 7
 _BOND_YIELD_TOLERANCE = timedelta(days=7)
 _CROSS_SOURCE_METRICS = {
     "equity_risk_premium",
+    "equity_risk_premium_percentile_5y",
     "equity_bond_yield_ratio",
     "dividend_bond_spread",
     "valuation_temperature",
@@ -227,6 +228,12 @@ METRIC_SPECS: tuple[MetricSpec, ...] = (
         "equity_risk_premium",
         "股权风险溢价",
         datasets=("index_fundamental", "national_debt"),
+    ),
+    _spec(
+        "equity_risk_premium_percentile_5y",
+        "股权风险溢价五年历史分位数",
+        datasets=("index_fundamental", "national_debt"),
+        windows=(_TRADING_DAYS_5Y,),
     ),
     _spec(
         "equity_bond_yield_ratio",

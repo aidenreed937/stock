@@ -83,6 +83,15 @@ market_temperature:
     assert config.bands.delta_levels.significant == 15.0
 
 
+def test_default_config_scores_erp_percentile() -> None:
+    config = load_market_temperature_config()
+
+    valuation_metrics = {metric.metric_id: metric for metric in config.dimensions[0].metrics}
+
+    assert valuation_metrics["equity_risk_premium_percentile_5y"].weight == pytest.approx(0.10)
+    assert "equity_risk_premium" not in valuation_metrics
+
+
 def test_load_config_parses_stale_and_in_score_fields(tmp_path: Path) -> None:
     config_path = tmp_path / "market_temperature.yaml"
     config_path.write_text(

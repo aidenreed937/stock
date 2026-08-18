@@ -41,7 +41,7 @@ market_temperature:
           aggregation: mean
           direction: positive
           weight: 0.20
-        - metric_id: equity_risk_premium
+        - metric_id: equity_risk_premium_percentile_5y
           aggregation: mean
           direction: inverse
           weight: 0.10
