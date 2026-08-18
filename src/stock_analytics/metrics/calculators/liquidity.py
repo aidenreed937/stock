@@ -6,9 +6,6 @@ from stock_analytics.metrics.datasets.windows import (
     empty_metric_frame as _empty,
 )
 from stock_analytics.metrics.datasets.windows import (
-    first_column as _first_column,
-)
-from stock_analytics.metrics.datasets.windows import (
     load_start_date as _load_start_date,
 )
 from stock_analytics.metrics.spec import EntityType, MetricCalculator, MetricDomain, MetricSpec
@@ -19,22 +16,19 @@ _AMOUNT_MA_WINDOW = 20
 _ZSCORE_WINDOW = 60
 
 
-def _daily_turnover(daily_basic: pl.DataFrame) -> pl.DataFrame:
+def _daily_circ_mv(daily_basic: pl.DataFrame) -> pl.DataFrame:
     if daily_basic.is_empty():
-        return pl.DataFrame(schema={"trade_date": pl.Date, "market_turnover_rate": pl.Float64})
-    turnover_col = _first_column(
-        daily_basic,
-        ("turnover_rate_f", "turnover_rate", "turnover"),
-        "daily_basic",
-    )
+        return pl.DataFrame(schema={"trade_date": pl.Date, "market_circ_mv": pl.Float64})
+    if "circ_mv" not in daily_basic.columns:
+        return pl.DataFrame(schema={"trade_date": pl.Date, "market_circ_mv": pl.Float64})
     return (
         daily_basic.select(
             "trade_date",
-            pl.col(turnover_col).cast(pl.Float64, strict=False).alias("_turnover_rate"),
+            pl.col("circ_mv").cast(pl.Float64, strict=False).alias("_circ_mv"),
         )
         .drop_nulls()
         .group_by("trade_date")
-        .agg(pl.col("_turnover_rate").mean().alias("market_turnover_rate"))
+        .agg(pl.col("_circ_mv").sum().alias("market_circ_mv"))
         .sort("trade_date")
     )
 
@@ -82,7 +76,7 @@ def _liquidity_frame(context: MetricContext) -> pl.DataFrame:
         "daily_basic",
         start_date=start_date,
         end_date=end_date,
-        columns=["trade_date", "turnover_rate_f", "turnover_rate"],
+        columns=["trade_date", "circ_mv"],
     )
     bars = load_metric_dataset(
         context,
@@ -91,7 +85,7 @@ def _liquidity_frame(context: MetricContext) -> pl.DataFrame:
         end_date=end_date,
         columns=["trade_date", "amount"],
     )
-    frame = _join_daily_frames((_daily_turnover(daily_basic), _market_amount(bars)))
+    frame = _join_daily_frames((_daily_circ_mv(daily_basic), _market_amount(bars)))
     if not frame.is_empty():
         frame = _calculate_liquidity_columns(frame)
 
@@ -101,7 +95,13 @@ def _liquidity_frame(context: MetricContext) -> pl.DataFrame:
 
 def _calculate_liquidity_columns(frame: pl.DataFrame) -> pl.DataFrame:
     market_amount_ma = pl.col("market_amount").rolling_mean(window_size=_AMOUNT_MA_WINDOW)
-    frame = _with_missing_float_columns(frame, ("market_turnover_rate", "market_amount"))
+    frame = _with_missing_float_columns(frame, ("market_amount", "market_circ_mv"))
+    frame = frame.with_columns(
+        pl.when(pl.col("market_circ_mv") > 0)
+        .then(pl.col("market_amount") / pl.col("market_circ_mv") * 100.0)
+        .otherwise(None)
+        .alias("market_turnover_rate"),
+    )
     return frame.with_columns(
         rolling_percentile(
             "market_turnover_rate",
@@ -156,11 +156,13 @@ METRIC_SPECS: tuple[MetricSpec, ...] = (
         "turnover_rate_percentile_1250d",
         "全市场换手率五年分位数",
         windows=(_TRADING_DAYS_5Y,),
+        datasets=("daily_basic", "stock_daily_bar"),
     ),
     _spec(
         "turnover_rate_zscore_60d",
         "全市场换手率60日Z分数",
         windows=(_ZSCORE_WINDOW,),
+        datasets=("daily_basic", "stock_daily_bar"),
     ),
     _spec(
         "amount_ma_ratio_20d",

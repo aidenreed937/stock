@@ -94,22 +94,49 @@ def test_forecast_rows_calculates_positive_forecast_share() -> None:
     assert rows[0]["value_float"] == pytest.approx(66.6666667)
 
 
-def test_report_revision_rows_calculates_up_revision_share() -> None:
+def test_report_revision_rows_uses_net_revision_ratio_and_all_comparable_samples() -> None:
     catalog = FakeCatalog(
         {
             "report_rc": pl.DataFrame(
                 {
-                    "symbol": ["AAA", "AAA", "BBB", "BBB", "CCC"],
-                    "org_name": ["org1", "org1", "org2", "org2", "org3"],
-                    "quarter": ["2026Q2", "2026Q2", "2026Q2", "2026Q2", "2026Q2"],
+                    "symbol": [
+                        "AAA",
+                        "AAA",
+                        "BBB",
+                        "BBB",
+                        "CCC",
+                        "CCC",
+                        "DDD",
+                        "DDD",
+                        "EEE",
+                        "EEE",
+                    ],
+                    "org_name": [
+                        "org1",
+                        "org1",
+                        "org2",
+                        "org2",
+                        "org3",
+                        "org3",
+                        "org4",
+                        "org4",
+                        "org5",
+                        "org5",
+                    ],
+                    "quarter": ["2026Q2"] * 10,
                     "report_date": [
                         "20260701",
                         "20260721",
                         "20260702",
                         "20260722",
+                        "20260703",
                         "20260723",
+                        "20260704",
+                        "20260724",
+                        "20260705",
+                        "20260725",
                     ],
-                    "np": [100.0, 120.0, 200.0, 150.0, 80.0],
+                    "np": [100.0, 120.0, 200.0, 150.0, 80.0, 80.0, 50.0, 50.0, 60.0, 90.0],
                 }
             )
         }
@@ -122,8 +149,35 @@ def test_report_revision_rows_calculates_up_revision_share() -> None:
     )
 
     assert rows[0]["status"] == "ok"
-    assert rows[0]["sample_size"] == 2
-    assert rows[0]["value_float"] == pytest.approx(50.0)
+    assert rows[0]["sample_size"] == 5
+    assert rows[0]["value_float"] == pytest.approx(60.0)
+    assert "unchanged=2" in str(rows[0]["note"])
+
+
+def test_report_revision_rows_marks_small_comparable_sample_insufficient() -> None:
+    catalog = FakeCatalog(
+        {
+            "report_rc": pl.DataFrame(
+                {
+                    "symbol": ["AAA", "AAA"],
+                    "org_name": ["org1", "org1"],
+                    "quarter": ["2026Q2", "2026Q2"],
+                    "report_date": ["20260701", "20260721"],
+                    "np": [100.0, 120.0],
+                }
+            )
+        }
+    )
+
+    row = _report_revision_rows(
+        catalog,
+        date(2026, 8, 14),
+        (date(2026, 7, 20), date(2026, 8, 14)),
+    )[0]
+
+    assert row["status"] == "insufficient"
+    assert row["sample_size"] == 1
+    assert row["value_float"] is None
 
 
 def test_limit_event_daily_frame_counts_up_down_and_broken_limit() -> None:
@@ -466,7 +520,11 @@ def test_us_macro_background_rows_build_fred_observation_metrics() -> None:
         "macro_fred_gdp_yoy_temperature",
     }
     assert set(rows_by_metric) == expected
-    assert all(rows_by_metric[metric_id]["status"] == "ok" for metric_id in expected)
+    assert all(
+        rows_by_metric[metric_id]["status"] == "ok"
+        for metric_id in expected - {"macro_fred_gdp_yoy_temperature"}
+    )
+    assert rows_by_metric["macro_fred_gdp_yoy_temperature"]["status"] == "insufficient"
     assert rows_by_metric["macro_fred_cpi_yoy_temperature"]["sample_size"] == 2
     assert rows_by_metric["macro_fred_gdp_yoy_temperature"]["sample_size"] == 1
     assert "月频背景观察" in rows_by_metric["macro_fred_cpi_yoy_temperature"]["note"]

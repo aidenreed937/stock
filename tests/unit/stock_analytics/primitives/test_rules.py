@@ -48,7 +48,21 @@ def test_rolling_zscore_accepts_custom_output() -> None:
 def test_rolling_percentile_uses_rank_instead_of_min_max_position() -> None:
     frame = pl.DataFrame({"value": [1.0, 100.0, 2.0]}).with_columns(rolling_percentile("value", 3))
 
-    assert frame["value_percentile_3d"][-1] == pytest.approx(66.6666667)
+    assert frame["value_percentile_3d"][-1] == pytest.approx(50.0)
+
+
+def test_percentile_rank_uses_min_rank_for_ties_and_standard_boundaries() -> None:
+    values = pl.Series([1.0, 2.0, 2.0, 4.0])
+
+    assert percentile_rank(values, 4, current=1.0) == pytest.approx(0.0)
+    assert percentile_rank(values, 4, current=2.0) == pytest.approx(33.3333333)
+    assert percentile_rank(values, 4, current=4.0) == pytest.approx(100.0)
+
+
+def test_percentile_rank_returns_none_for_single_sample_and_invalid_window() -> None:
+    assert percentile_rank(pl.Series([1.0]), 1) is None
+    with pytest.raises(ValueError, match="window must be positive"):
+        percentile_rank(pl.Series([1.0]), 0)
 
 
 def test_rolling_percentile_ignores_historical_nulls_when_current_value_exists() -> None:

@@ -3,6 +3,7 @@
 from datetime import date
 
 import polars as pl
+import pytest
 
 from stock_analytics.features.factors import FactorEngine
 from stock_analytics.primitives import (
@@ -87,6 +88,23 @@ def test_volatility_factors() -> None:
     assert res_bb["bollinger_bandwidth_10d"][-1] > 0
 
 
+def test_normalized_factors_return_none_for_invalid_denominators() -> None:
+    frame = pl.DataFrame(
+        {
+            "close": [10.0, 0.0],
+            "high": [11.0, 1.0],
+            "low": [9.0, 0.0],
+            "amount": [0.0, -1.0],
+        }
+    )
+
+    amihud = calculate_amihud_illiquidity(frame, window=1)
+    atr = calculate_atr(frame, window=2)
+
+    assert amihud["amihud_illiq_1d"].to_list() == [None, None]
+    assert atr["atr_ratio_2d"].to_list()[-1] is None
+
+
 def test_liquidity_factors() -> None:
     df = _create_sample_ohlcv(50)
     res_illiq = calculate_amihud_illiquidity(df, window=10)
@@ -120,6 +138,28 @@ def test_moneyflow_and_margin_factors() -> None:
     assert "margin_trading_share" in res_margin.columns
     assert "margin_growth_5d" in res_margin.columns
     assert abs(res_margin["margin_trading_share"][0] - 0.08) < 1e-4
+
+    invalid_amount = pl.DataFrame(
+        {
+            "amount": [0.0, -1.0, 100.0],
+            "net_mf_amount": [10.0, 10.0, 10.0],
+            "rzmre": [10.0, 10.0, 10.0],
+            "rzrqye": [100.0, 100.0, 100.0],
+        }
+    )
+    invalid_result = calculate_main_moneyflow_factors(invalid_amount, windows=(1,))
+    invalid_margin = calculate_margin_factors(invalid_amount, windows=(1,))
+    assert invalid_result["main_inflow_ratio"].to_list() == [None, None, 0.1]
+    assert invalid_margin["margin_trading_share"].to_list() == [None, None, 0.1]
+
+    scaled = df.with_columns(
+        (pl.col("amount") * 1000.0).alias("amount"),
+        (pl.col("net_mf_amount") * 1000.0).alias("net_mf_amount"),
+    )
+    scaled_mf = calculate_main_moneyflow_factors(scaled, windows=(5,))
+    assert scaled_mf["main_inflow_ratio"].to_list() == pytest.approx(
+        res_mf["main_inflow_ratio"].to_list()
+    )
 
 
 def test_valuation_and_macro_factors() -> None:

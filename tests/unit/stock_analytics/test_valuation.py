@@ -27,6 +27,18 @@ def test_calculate_equity_risk_premium() -> None:
     missing_df = pl.DataFrame({"pe_ttm": [10.0]})
     assert "equity_risk_premium" not in calculate_equity_risk_premium(missing_df).columns
 
+    invalid_denominators = pl.DataFrame(
+        {
+            "pe_ttm": [0.0, -10.0, 10.0],
+            "cn_10y_bond_yield": [2.5, 2.5, 0.0],
+        }
+    )
+    assert calculate_equity_risk_premium(invalid_denominators)["equity_risk_premium"].to_list() == [
+        None,
+        None,
+        None,
+    ]
+
 
 def test_calculate_ey_by_ratio() -> None:
     df = pl.DataFrame(
@@ -42,6 +54,14 @@ def test_calculate_ey_by_ratio() -> None:
 
     empty_df = pl.DataFrame()
     assert calculate_ey_by_ratio(empty_df).is_empty()
+
+    invalid_denominators = pl.DataFrame(
+        {
+            "pe_ttm": [0.0, 10.0],
+            "cn_10y_bond_yield": [2.5, 0.0],
+        }
+    )
+    assert calculate_ey_by_ratio(invalid_denominators)["ey_by_ratio"].to_list() == [None, None]
 
 
 def test_calculate_dividend_spread() -> None:

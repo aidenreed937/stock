@@ -148,37 +148,55 @@ def build_turnover_rate_features(
     start_date: date,
     end_date: date,
 ) -> pl.DataFrame:
-    """从 daily_basic 计算全市场自由流通换手率与流通市值。"""
+    """按总成交额 / 总流通市值计算全市场自由流通换手率。"""
     basic = catalog.load_dataset(
         "daily_basic",
         start_date=start_date,
         end_date=end_date,
-        columns=["trade_date", "turnover_rate_f", "turnover_rate", "circ_mv"],
+        columns=["trade_date", "circ_mv"],
     )
     if basic.is_empty() or "trade_date" not in basic.columns:
         return pl.DataFrame()
 
-    turnover_col = "turnover_rate_f" if "turnover_rate_f" in basic.columns else "turnover_rate"
-    has_turnover = turnover_col in basic.columns
-    has_circ_mv = "circ_mv" in basic.columns
-
-    select_cols = ["trade_date"]
-    agg_exprs = []
-    if has_turnover:
-        select_cols.append(turnover_col)
-        agg_exprs.append(
-            pl.col(turnover_col).cast(pl.Float64, strict=False).mean().alias("market_turnover_rate")
-        )
-    if has_circ_mv:
-        select_cols.append("circ_mv")
-        agg_exprs.append(
-            pl.col("circ_mv").cast(pl.Float64, strict=False).sum().alias("market_circ_mv")
-        )
-
-    if not agg_exprs:
+    if "circ_mv" not in basic.columns:
         return pl.DataFrame()
-
-    return basic.select(select_cols).group_by("trade_date").agg(agg_exprs).sort("trade_date")
+    circ_mv = (
+        basic.select(
+            "trade_date",
+            pl.col("circ_mv").cast(pl.Float64, strict=False).alias("market_circ_mv"),
+        )
+        .drop_nulls()
+        .group_by("trade_date")
+        .agg(pl.col("market_circ_mv").sum())
+    )
+    bars = catalog.load_dataset(
+        "stock_daily_bar",
+        start_date=start_date,
+        end_date=end_date,
+        columns=["trade_date", "amount"],
+    )
+    if bars.is_empty() or "amount" not in bars.columns:
+        return circ_mv.with_columns(pl.lit(None, dtype=pl.Float64).alias("market_turnover_rate"))
+    amount = (
+        bars.select(
+            "trade_date",
+            pl.col("amount").cast(pl.Float64, strict=False).alias("total_turnover"),
+        )
+        .drop_nulls()
+        .group_by("trade_date")
+        .agg(pl.col("total_turnover").sum())
+    )
+    return (
+        circ_mv.join(amount, on="trade_date", how="left")
+        .with_columns(
+            pl.when(pl.col("market_circ_mv") > 0)
+            .then(pl.col("total_turnover") / pl.col("market_circ_mv") * 100.0)
+            .otherwise(None)
+            .alias("market_turnover_rate")
+        )
+        .select("trade_date", "market_turnover_rate", "market_circ_mv")
+        .sort("trade_date")
+    )
 
 
 def build_moneyflow_features(

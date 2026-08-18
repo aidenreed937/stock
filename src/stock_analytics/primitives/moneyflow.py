@@ -16,14 +16,19 @@ def calculate_main_moneyflow_factors(
 ) -> pl.DataFrame:
     """计算主力资金净流入占比及多周期滚动平均因子。
 
-    公式: Main_Inflow_Ratio = Net_MF_Amount / (Amount + 1e-6)
+    公式: Main_Inflow_Ratio = Net_MF_Amount / Amount（Amount <= 0 时缺失）
     """
     required = {amount_col, net_mf_col}
     if df.is_empty() or not required.issubset(df.columns):
         return df
 
     has_symbol = "symbol" in df.columns
-    daily_ratio = (pl.col(net_mf_col) / (pl.col(amount_col) + 1.0)).alias("main_inflow_ratio")
+    daily_ratio = (
+        pl.when(pl.col(amount_col) > 0)
+        .then(pl.col(net_mf_col) / pl.col(amount_col))
+        .otherwise(None)
+        .alias("main_inflow_ratio")
+    )
     temp_df = df.with_columns(daily_ratio)
 
     exprs = []
@@ -56,8 +61,11 @@ def calculate_margin_factors(
         return df
 
     has_symbol = "symbol" in df.columns
-    margin_ratio = (pl.col(margin_buy_col) / (pl.col(amount_col) + 1.0)).alias(
-        "margin_trading_share"
+    margin_ratio = (
+        pl.when(pl.col(amount_col) > 0)
+        .then(pl.col(margin_buy_col) / pl.col(amount_col))
+        .otherwise(None)
+        .alias("margin_trading_share")
     )
     temp_df = df.with_columns(margin_ratio)
 

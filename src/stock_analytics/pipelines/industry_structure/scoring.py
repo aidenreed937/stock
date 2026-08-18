@@ -9,6 +9,7 @@ from typing import TYPE_CHECKING, Any
 import polars as pl
 
 from stock_analytics.pipelines.industry_structure.panel import BASE_PANEL_SCHEMA
+from stock_analytics.primitives.rules import percentile_rank
 
 if TYPE_CHECKING:
     from collections.abc import Iterable
@@ -427,16 +428,15 @@ def _apply_cross_percentile(
         if (value := _as_float(row.get(source))) is not None
     ]
     if len(values) < 2:
-        for row in rows:
-            row[target] = None
         return
-    numeric_values = [value for _, value in values]
+    value_series = pl.Series([value for _, value in values])
     for index, value in values:
-        percentile = sum(item <= value for item in numeric_values) / len(numeric_values) * 100.0
-        rows[index][target] = round(100.0 - percentile if inverse else percentile, 2)
-    for index, row in enumerate(rows):
-        if all(index != item[0] for item in values):
-            row[target] = None
+        percentile = percentile_rank(value_series, len(values), current=value)
+        rows[index][target] = (
+            round(100.0 - percentile if inverse else percentile, 2)
+            if percentile is not None
+            else None
+        )
 
 
 def _apply_fund_flow_percentiles(rows: list[dict[str, Any]]) -> None:

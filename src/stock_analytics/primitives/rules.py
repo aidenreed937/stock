@@ -61,15 +61,25 @@ def share(count_col: str, total_col: str, output: str) -> pl.Expr:
 # ==========================================
 
 
-def percentile_rank(values: pl.Series, window: int) -> float | None:
-    """在允许历史缺失值的前提下计算当前值的历史分位。"""
-    if values.is_empty() or values[-1] is None:
+def percentile_rank(
+    values: pl.Series,
+    window: int,
+    *,
+    current: float | int | None = None,
+) -> float | None:
+    """按升序最小名次计算当前值的历史分位。"""
+    if window < 1:
+        raise ValueError("window must be positive")
+    if values.is_empty():
         return None
     valid_values = values.drop_nulls()
     if len(valid_values) < ceil(window * _MIN_VALID_RATIO):
         return None
-    current = values[-1]
-    return float((valid_values <= current).sum()) / len(valid_values) * 100.0
+    current_value = values[-1] if current is None else current
+    if current_value is None or len(valid_values) <= 1:
+        return None
+    rank_min = sum(value < current_value for value in valid_values)
+    return float(rank_min) / (len(valid_values) - 1) * 100.0
 
 
 def rolling_percentile(column: str, window: int, output: str | None = None) -> pl.Expr:

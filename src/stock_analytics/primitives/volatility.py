@@ -89,7 +89,12 @@ def calculate_atr(
     atr_expr = pl.col("_tr").ewm_mean(span=window, adjust=False).alias(atr_name)
     temp_df = temp_df.with_columns(atr_expr)
 
-    natr_expr = (pl.col(atr_name) / pl.col(close_col) * 100.0).alias(natr_name)
+    natr_expr = (
+        pl.when(pl.col(close_col) > 0)
+        .then(pl.col(atr_name) / pl.col(close_col) * 100.0)
+        .otherwise(None)
+        .alias(natr_name)
+    )
     return temp_df.with_columns(natr_expr).drop("_tr")
 
 

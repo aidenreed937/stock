@@ -84,7 +84,7 @@ YAML 子权重：
 | `margin_penetration_percentile_1250d` | 20% | 分位直接作为温度 |
 | `margin_balance_growth_20d` | 20% | `50 + value * 500` |
 | `main_money_net_inflow_share` | 20% | `50 + value * 1000` |
-| `market_amount_percentile_1250d` | 15% | 分位直接作为温度 |
+| `market_amount_percentile_1250d` | 15% | 全市场自由流通换手率五年分位直接作为温度（字段名沿用历史兼容名称） |
 
 `margin_buy_share` 和 `margin_penetration` 在 YAML 中权重为 0，只作事实展示。`moneyflow` 常晚于行情，资金结论必须写明资金事实日期；北向字段未经语义核验时只能称资金金额或活跃度观察。
 
@@ -97,7 +97,7 @@ YAML 子权重：
 | `limit_event_temperature` | 25% | `derived.py` 对可用涨跌停事件子项等权；已经是温度 |
 | `investor_account_temperature` | 10% | 月度新增投资者数历史分位；已经是温度 |
 
-`market_turnover_rate` 及期权、涨跌停组件的其他明细指标在当前 YAML 中权重为 0。它们可以展示或解释，但不改变情绪面分。`limit_list_d` 中 `U`、`D`、`Z` 分别代表涨停、跌停和炸板；`stk_limit` 只是涨跌停价格，不是事件明细。
+`market_turnover_rate` 及期权、涨跌停组件的其他明细指标在当前 YAML 中权重为 0。`market_amount_percentile_1250d` 虽保留历史字段名，实际计算的是全市场自由流通换手率的五年分位，不再直接对绝对成交额排序。它们可以展示或解释，但不改变情绪面分。`limit_list_d` 中 `U`、`D`、`Z` 分别代表涨停、跌停和炸板；`stk_limit` 只是涨跌停价格，不是事件明细。
 
 ### 4.4 技术面
 
@@ -123,9 +123,11 @@ YAML 当前没有 `express` 指标，六维基本面只有以下五项：
 | `fs_profit_growth_temperature` | 25% | 申万行业财报最新报告期利润 TTM 增长为正的比例，已乘 100 |
 | `fs_roe_temperature` | 10% | ROE TTM 的历史中位温度 |
 | `forecast_positive_temperature` | 20% | 最近 20 个交易日业绩预告正向样本占比，已乘 100 |
-| `report_revision_temperature` | 25% | 可比样本中盈利预测上修数 / 上修与下修总数，已乘 100 |
+| `report_revision_temperature` | 25% | 全部可比样本的净修正率映射温度：`50 + (上修数 - 下修数) / 总可比样本数 * 50`；总可比样本数小于 5 时为 `insufficient` |
 
 正式财报由 `sw_2021_fs_non_financial`、`sw_2021_fs_bank`、`sw_2021_fs_security` 和 `sw_2021_fs_insurance` 提供，通常是季频底座。`forecast` 只能称业绩预告改善或承压，`report_rc` 是卖方预测修正，不等同真实财报改善。当前六维基本面没有行业结构模块中的正式/快速 70%/30% 混合规则；不得把行业结构内部规则移植到六维评分。
+
+`report_revision_temperature` 的可比样本由同一 `symbol + org_name + quarter` 在最近 20 个交易日内的最新预测，与窗口开始前最近一次预测配对得到。预测不变项仍计入分母：原始净修正率为 `(up - down) / total_comparable * 100`，再映射到 `[0, 100]` 温度；因此全上修为 100、全下修为 0、全不变为 50。
 
 ### 4.6 宏观流动性
 

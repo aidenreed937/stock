@@ -39,8 +39,10 @@
   $$\text{Revision Ratio} = \frac{N_{\text{up}} - N_{\text{down}}}{N_{\text{total}}} \times 100\%$$
   * $N_{\text{up}}$：过去 30/90 天卖方机构调高该行业净利润预测的次数；
   * $N_{\text{down}}$：过去 30/90 天卖方机构调低该行业净利润预测的次数；
-  * $N_{\text{total}}$：该行业同期的总预测覆盖次数（需满足 $N_{\text{total}} \ge 5$ 以免小样本失真）。
+  * $N_{\text{total}}$：该行业同期全部可比预测覆盖次数，包含预测不变项（需满足 $N_{\text{total}} \ge 5$ 以免小样本失真）。
 * **含义**：衡量中观行业景气度的前瞻边际变化。
+
+本项目市场温度使用同一 `symbol + org_name + quarter` 的窗口内最新预测与窗口前最新预测进行配对；不变项保留在分母。原始净修正率为 `-100%~100%`，市场温度再用 `50 + Revision Ratio / 2` 映射为 `0~100`。
 
 ### ③ 全市场均线站上比例 / 市场宽度 (Market Breadth MA Ratio)
 * **权威依据**：Ned Davis 市场宽度模型。

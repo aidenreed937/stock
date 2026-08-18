@@ -29,7 +29,11 @@ def calculate_amihud_illiquidity(
     else:
         ret = (pl.col(price_col) / pl.col(price_col).shift(1) - 1.0).abs()
 
-    daily_impact = ret / (pl.col(amount_col) + 1.0) * scale_factor
+    daily_impact = (
+        pl.when(pl.col(amount_col) > 0)
+        .then(ret / pl.col(amount_col) * scale_factor)
+        .otherwise(None)
+    )
     temp_df = df.with_columns(daily_impact.alias("_daily_impact"))
 
     col_name = f"amihud_illiq_{window}d"

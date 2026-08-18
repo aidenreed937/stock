@@ -14,7 +14,7 @@ from stock_analytics.metrics.spec import (
     MetricDomain,
     MetricSpec,
 )
-from stock_analytics.primitives.rules import growth, rolling_percentile, rolling_zscore
+from stock_analytics.primitives.rules import growth, rolling_percentile, rolling_zscore, share
 
 _TRADING_DAYS_5Y = 1250
 _FLOW_ZSCORE_WINDOW = 60
@@ -32,13 +32,14 @@ def _load_daily_inputs(context: MetricContext) -> tuple[pl.DataFrame, pl.DataFra
 
 def _load_market_flow_inputs(
     context: MetricContext,
-) -> tuple[pl.DataFrame, pl.DataFrame, pl.DataFrame]:
+) -> tuple[pl.DataFrame, pl.DataFrame, pl.DataFrame, pl.DataFrame]:
     cols_mf = ["trade_date", "net_mf_amount", "buy_elg_amount", "sell_elg_amount"]
     moneyflow = load_metric_dataset(context, "moneyflow", columns=cols_mf)
     cols_hsgt = ["trade_date", "north_money", "south_money", "hgt", "sgt"]
     hsgt = load_metric_dataset(context, "moneyflow_hsgt", columns=cols_hsgt)
     bars = load_metric_dataset(context, "stock_daily_bar", columns=["trade_date", "amount"])
-    return moneyflow, hsgt, bars
+    daily_basic = load_metric_dataset(context, "daily_basic", columns=["trade_date", "circ_mv"])
+    return moneyflow, hsgt, bars, daily_basic
 
 
 def _margin_daily(margin: pl.DataFrame) -> pl.DataFrame:
@@ -110,12 +111,7 @@ def _main_moneyflow_daily(moneyflow: pl.DataFrame) -> pl.DataFrame:
 
 
 def _northbound_daily(hsgt: pl.DataFrame) -> pl.DataFrame:
-    north_col = _first_column(
-        hsgt,
-        ("north_money",),
-        "moneyflow_hsgt",
-    )
-    if hsgt.is_empty() or north_col is None:
+    if hsgt.is_empty() or "north_money" not in hsgt.columns:
         return pl.DataFrame(
             schema={
                 "trade_date": pl.Date,
@@ -126,7 +122,7 @@ def _northbound_daily(hsgt: pl.DataFrame) -> pl.DataFrame:
     return (
         hsgt.select(
             "trade_date",
-            pl.col(north_col).cast(pl.Float64, strict=False).alias("northbound_net_inflow"),
+            pl.col("north_money").cast(pl.Float64, strict=False).alias("northbound_net_inflow"),
         )
         .drop_nulls(subset=["trade_date"])
         .group_by("trade_date")
@@ -191,12 +187,13 @@ def _base_frame(context: MetricContext) -> pl.DataFrame:
 
 
 def _market_flow_frame(context: MetricContext) -> pl.DataFrame:
-    moneyflow, hsgt, bars = _load_market_flow_inputs(context)
+    moneyflow, hsgt, bars, daily_basic = _load_market_flow_inputs(context)
     frame = _join_daily_frames(
         (
             _market_amount(bars),
             _main_moneyflow_daily(moneyflow),
             _northbound_daily(hsgt),
+            _circ_mv(daily_basic),
         )
     )
     if frame.is_empty():
@@ -209,24 +206,23 @@ def _market_flow_frame(context: MetricContext) -> pl.DataFrame:
             "super_large_net_inflow",
             "northbound_net_inflow",
             "northbound_net_inflow_zscore_60d",
+            "circ_mv",
         ),
     )
     return (
         frame.with_columns(
-            pl.when(pl.col("market_amount") > 0)
-            .then(pl.col("main_money_net_inflow") / pl.col("market_amount"))
-            .otherwise(None)
-            .alias("main_money_net_inflow_share"),
-            pl.when(pl.col("market_amount") > 0)
-            .then(pl.col("super_large_net_inflow") / pl.col("market_amount"))
-            .otherwise(None)
-            .alias("super_large_net_inflow_share"),
-            pl.when(pl.col("market_amount") > 0)
-            .then(pl.col("northbound_net_inflow") / pl.col("market_amount"))
-            .otherwise(None)
-            .alias("northbound_net_inflow_share"),
+            share("market_amount", "circ_mv", "market_turnover_rate") * 100.0,
+            share("main_money_net_inflow", "market_amount", "main_money_net_inflow_share"),
+            share("super_large_net_inflow", "market_amount", "super_large_net_inflow_share"),
+            share("northbound_net_inflow", "market_amount", "northbound_net_inflow_share"),
         )
-        .with_columns(rolling_percentile("market_amount", _TRADING_DAYS_5Y))
+        .with_columns(
+            rolling_percentile(
+                "market_turnover_rate",
+                _TRADING_DAYS_5Y,
+                "market_amount_percentile_1250d",
+            )
+        )
         .sort("trade_date")
     )
 
@@ -436,11 +432,11 @@ METRIC_SPECS: tuple[MetricSpec, ...] = (
     ),
     MetricSpec(
         metric_id="market_amount_percentile_1250d",
-        name="全市场成交额五年分位数",
+        name="全市场自由流通换手率五年分位数",
         domain=MetricDomain.FLOW,
         entity_type=EntityType.MARKET,
         windows=(_TRADING_DAYS_5Y,),
-        required_datasets=("stock_daily_bar",),
+        required_datasets=("stock_daily_bar", "daily_basic"),
         output_columns=("trade_date", "market_amount_percentile_1250d"),
     ),
 )

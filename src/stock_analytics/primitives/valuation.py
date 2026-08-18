@@ -8,6 +8,8 @@ from __future__ import annotations
 
 import polars as pl
 
+from stock_analytics.primitives.rules import rolling_percentile
+
 
 def calculate_equity_risk_premium(
     df: pl.DataFrame,
@@ -23,8 +25,13 @@ def calculate_equity_risk_premium(
     if df.is_empty() or not required.issubset(df.columns):
         return df
 
-    earning_yield = (1.0 / (pl.col(pe_col) + 1e-6)) * 100.0
-    erp_expr = (earning_yield - pl.col(bond_yield_col)).alias(erp_col_name)
+    earning_yield = pl.when(pl.col(pe_col) > 0).then(100.0 / pl.col(pe_col)).otherwise(None)
+    erp_expr = (
+        pl.when(pl.col(bond_yield_col) > 0)
+        .then(earning_yield - pl.col(bond_yield_col))
+        .otherwise(None)
+        .alias(erp_col_name)
+    )
 
     return df.with_columns(erp_expr)
 
@@ -43,8 +50,13 @@ def calculate_ey_by_ratio(
     if df.is_empty() or not required.issubset(df.columns):
         return df
 
-    earning_yield = (1.0 / (pl.col(pe_col) + 1e-6)) * 100.0
-    ey_by_expr = (earning_yield / (pl.col(bond_yield_col) + 1e-6)).alias(ey_by_col_name)
+    earning_yield = pl.when(pl.col(pe_col) > 0).then(100.0 / pl.col(pe_col)).otherwise(None)
+    ey_by_expr = (
+        pl.when(pl.col(bond_yield_col) > 0)
+        .then(earning_yield / pl.col(bond_yield_col))
+        .otherwise(None)
+        .alias(ey_by_col_name)
+    )
 
     return df.with_columns(ey_by_expr)
 
@@ -72,10 +84,7 @@ def calculate_rolling_percentile(
     metric_cols: tuple[str, ...] = ("pe_ttm", "pb"),
     window_days: int = 1250,
 ) -> pl.DataFrame:
-    """计算估值指标在过去 N 个交易日 (如 5 年约 1250 日) 滚动窗口内的历史百分位 (0~100)。
-
-    公式: (x_t - Rolling_Min) / (Rolling_Max - Rolling_Min) * 100
-    """
+    """计算估值指标在过去 N 个交易日滚动窗口内的历史百分位 (0~100)。"""
     if df.is_empty():
         return df
 
@@ -88,19 +97,8 @@ def calculate_rolling_percentile(
 
     for col in valid_cols:
         col_name = f"{col}_percentile_{window_days}d"
-        if has_symbol:
-            rolling_min = pl.col(col).rolling_min(window_size=window_days).over("symbol")
-            rolling_max = pl.col(col).rolling_max(window_size=window_days).over("symbol")
-        else:
-            rolling_min = pl.col(col).rolling_min(window_size=window_days)
-            rolling_max = pl.col(col).rolling_max(window_size=window_days)
-
-        pct_expr = (
-            ((pl.col(col) - rolling_min) / (rolling_max - rolling_min + 1e-8) * 100.0)
-            .clip(0.0, 100.0)
-            .alias(col_name)
-        )
-        exprs.append(pct_expr)
+        pct_expr = rolling_percentile(col, window_days, col_name)
+        exprs.append(pct_expr.over("symbol") if has_symbol else pct_expr)
 
     return df.with_columns(exprs)
 

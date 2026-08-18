@@ -11,6 +11,7 @@ from stock_analytics.pipelines.market_temperature.derived_options import (
     OPTION_RISK_COMPONENT_IDS,
     option_rows,
 )
+from stock_analytics.primitives.rules import percentile_rank
 from stock_core.contracts import MarketDataCatalog
 
 if TYPE_CHECKING:
@@ -24,6 +25,7 @@ _FS_DATASETS = (
     "sw_2021_fs_insurance",
 )
 _POSITIVE_FORECAST_TYPES = {"预增", "略增", "续盈", "扭亏"}
+_MIN_REVISION_SAMPLES = 5
 _LIMIT_COMPONENT_IDS = (
     "limit_up_count_temperature",
     "limit_down_count_temperature",
@@ -290,24 +292,20 @@ def _report_revision_rows(
         .tail(1)
         .rename({"_np": "_prev_np", "_report_date": "_prev_report_date"})
     )
-    revised = latest.join(previous, on=keys, how="inner").filter(
-        pl.col("_np") != pl.col("_prev_np")
+    comparable = latest.join(previous, on=keys, how="inner")
+    denominator = comparable.height
+    up_count = comparable.filter(pl.col("_np") > pl.col("_prev_np")).height
+    down_count = comparable.filter(pl.col("_np") < pl.col("_prev_np")).height
+    unchanged_count = denominator - up_count - down_count
+    note = (
+        f"ann_window={start_date}..{as_of_date}; up={up_count}; down={down_count}; "
+        f"unchanged={unchanged_count}; total={denominator}"
     )
-    if revised.is_empty():
-        return [
-            _metric_row(
-                "fundamental",
-                "report_revision_temperature",
-                as_of_date,
-                None,
-                status="insufficient",
-                note="最近20个交易日无可比研报上修/下修样本",
-            )
-        ]
-    up_count = revised.filter(pl.col("_np") > pl.col("_prev_np")).height
-    down_count = revised.filter(pl.col("_np") < pl.col("_prev_np")).height
-    denominator = up_count + down_count
-    temperature = up_count / denominator * 100.0 if denominator else None
+    if denominator < _MIN_REVISION_SAMPLES:
+        note = f"{note}; insufficient_samples"
+        temperature = None
+    else:
+        temperature = 50.0 + (up_count - down_count) / denominator * 50.0
     return [
         _metric_row(
             "fundamental",
@@ -315,7 +313,7 @@ def _report_revision_rows(
             as_of_date,
             temperature,
             sample_size=denominator,
-            note=f"ann_window={start_date}..{as_of_date}; up={up_count}; down={down_count}",
+            note=note,
         )
     ]
 
@@ -947,8 +945,9 @@ def _percentile_temperature(
     if data.is_empty():
         return None, None, None, 0
     latest_value = float(data["_value"][-1])
-    values = data["_value"].to_list()
-    percentile = sum(1 for value in values if value <= latest_value) / len(values) * 100.0
+    percentile = percentile_rank(data["_value"], data.height, current=latest_value)
+    if percentile is None:
+        return None, latest_value, data[date_col][-1], data.height
     temperature = 100.0 - percentile if inverse else percentile
     return _clip_temperature(temperature), latest_value, data[date_col][-1], data.height
 

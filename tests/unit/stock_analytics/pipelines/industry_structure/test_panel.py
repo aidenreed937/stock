@@ -39,12 +39,12 @@ def test_build_industry_panel_adds_fast_fundamental_fields(tmp_path: Path) -> No
     assert coal["forecast_p_change_mid_median"] == 75.0
     assert coal["express_sample_size"] == 1
     assert coal["express_profit_growth_median"] == 50.0
-    assert coal["report_rc_sample_size"] == 1
-    assert coal["report_rc_revision_ratio"] == 100.0
-    assert coal["report_rc_up_count"] == 1
-    assert coal["report_rc_down_count"] == 0
+    assert coal["report_rc_sample_size"] == 5
+    assert coal["report_rc_revision_ratio"] == 20.0
+    assert coal["report_rc_up_count"] == 2
+    assert coal["report_rc_down_count"] == 1
     assert bank["forecast_positive_share"] == 0.0
-    assert bank["report_rc_revision_ratio"] == 0.0
+    assert bank["report_rc_revision_ratio"] == -100.0
     assert coal["moneyflow_date"] == as_of_date
     assert coal["moneyflow_sample_size"] == 20
     assert coal["moneyflow_stock_count"] == 1
@@ -215,6 +215,62 @@ def _write_fast_fundamental_inputs(storage_dir: Path) -> None:
                 "np": 120.0,
             },
             {
+                "symbol": "000001.SZ",
+                "report_date": "20260702",
+                "org_name": "机构A2",
+                "quarter": "2026Q2",
+                "np": 100.0,
+            },
+            {
+                "symbol": "000001.SZ",
+                "report_date": "20260806",
+                "org_name": "机构A2",
+                "quarter": "2026Q2",
+                "np": 120.0,
+            },
+            {
+                "symbol": "000001.SZ",
+                "report_date": "20260703",
+                "org_name": "机构A3",
+                "quarter": "2026Q2",
+                "np": 100.0,
+            },
+            {
+                "symbol": "000001.SZ",
+                "report_date": "20260807",
+                "org_name": "机构A3",
+                "quarter": "2026Q2",
+                "np": 100.0,
+            },
+            {
+                "symbol": "000001.SZ",
+                "report_date": "20260704",
+                "org_name": "机构A4",
+                "quarter": "2026Q2",
+                "np": 100.0,
+            },
+            {
+                "symbol": "000001.SZ",
+                "report_date": "20260808",
+                "org_name": "机构A4",
+                "quarter": "2026Q2",
+                "np": 90.0,
+            },
+            {
+                "symbol": "000001.SZ",
+                "report_date": "20260705",
+                "org_name": "机构A5",
+                "quarter": "2026Q2",
+                "np": 100.0,
+            },
+            {
+                "symbol": "000001.SZ",
+                "report_date": "20260809",
+                "org_name": "机构A5",
+                "quarter": "2026Q2",
+                "np": 100.0,
+            },
+            {
                 "symbol": "000002.SZ",
                 "report_date": "20260701",
                 "org_name": "机构B",
@@ -225,6 +281,62 @@ def _write_fast_fundamental_inputs(storage_dir: Path) -> None:
                 "symbol": "000002.SZ",
                 "report_date": "20260805",
                 "org_name": "机构B",
+                "quarter": "2026Q2",
+                "np": 80.0,
+            },
+            {
+                "symbol": "000002.SZ",
+                "report_date": "20260702",
+                "org_name": "机构B2",
+                "quarter": "2026Q2",
+                "np": 100.0,
+            },
+            {
+                "symbol": "000002.SZ",
+                "report_date": "20260806",
+                "org_name": "机构B2",
+                "quarter": "2026Q2",
+                "np": 80.0,
+            },
+            {
+                "symbol": "000002.SZ",
+                "report_date": "20260703",
+                "org_name": "机构B3",
+                "quarter": "2026Q2",
+                "np": 100.0,
+            },
+            {
+                "symbol": "000002.SZ",
+                "report_date": "20260807",
+                "org_name": "机构B3",
+                "quarter": "2026Q2",
+                "np": 80.0,
+            },
+            {
+                "symbol": "000002.SZ",
+                "report_date": "20260704",
+                "org_name": "机构B4",
+                "quarter": "2026Q2",
+                "np": 100.0,
+            },
+            {
+                "symbol": "000002.SZ",
+                "report_date": "20260808",
+                "org_name": "机构B4",
+                "quarter": "2026Q2",
+                "np": 80.0,
+            },
+            {
+                "symbol": "000002.SZ",
+                "report_date": "20260705",
+                "org_name": "机构B5",
+                "quarter": "2026Q2",
+                "np": 100.0,
+            },
+            {
+                "symbol": "000002.SZ",
+                "report_date": "20260809",
+                "org_name": "机构B5",
                 "quarter": "2026Q2",
                 "np": 80.0,
             },

@@ -37,7 +37,7 @@ def _latest_non_null_date(filtered: pl.DataFrame, column: str) -> date | None:
 
 def _calc_percentile_metric(filtered: pl.DataFrame, metric_id: str) -> tuple[float, date] | None:
     col_map = {
-        "market_amount_percentile_1250d": "total_turnover",
+        "market_amount_percentile_1250d": "market_turnover_rate",
         "turnover_rate_percentile_1250d": "market_turnover_rate",
         "margin_penetration_percentile_1250d": "margin_penetration",
     }

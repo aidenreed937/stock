@@ -128,10 +128,10 @@ _BUILTIN_MARKET_DAILY_SPECS: tuple[FeatureSpec, ...] = (
         kind=FeatureKind.INDICATOR,
         entity_type=EntityType.MARKET,
         unit=FeatureUnit.RATIO,
-        required_datasets=("daily_basic",),
-        required_columns=("trade_date", "turnover_rate_f"),
+        required_datasets=("daily_basic", "stock_daily_bar"),
+        required_columns=("trade_date", "circ_mv", "amount"),
         is_materialized_wide=True,
-        description="全市场自由流通换手率算术均值",
+        description="全市场自由流通换手率（总成交额 / 总流通市值 * 100）",
     ),
     FeatureSpec(
         feature_id="main_net_inflow_ratio",

@@ -88,7 +88,7 @@ make market-cycle-review START=YYYY-MM-DD END=YYYY-MM-DD
 5. 若核心行情或估值缺失，先说明数据缺口，不要硬算综合温度。
 6. 用 `MetricEngine` 和温度计派生事实按 YAML 中 `weight > 0` 的指标合成六维分数；当前入分清单为：
    - 估值：`valuation_temperature`, `pe_percentile_5y`, `pb_percentile_5y`；YAML 虽配置 `equity_risk_premium` 10%，但当前 `metric_temperature.py` 没有 raw ERP 转换分支，不能假定它已入分。
-   - 资金：`margin_buy_share_zscore_60d`, `margin_penetration_percentile_1250d`, `margin_balance_growth_20d`, `main_money_net_inflow_share`, `market_amount_percentile_1250d`。
+   - 资金：`margin_buy_share_zscore_60d`, `margin_penetration_percentile_1250d`, `margin_balance_growth_20d`, `main_money_net_inflow_share`, `market_amount_percentile_1250d`（实际为自由流通换手率分位）。
    - 情绪：`turnover_rate_percentile_1250d`, `advance_share`, `limit_event_temperature`, `investor_account_temperature`。
    - 技术：`return_20d`, `rsi_14d`, `ma_bias_20d`, `above_ma20_share`, `above_ma60_share`, `new_high_share_252d`, `new_low_share_252d`。
    - 基本面：`fs_revenue_growth_temperature`, `fs_profit_growth_temperature`, `fs_roe_temperature`, `forecast_positive_temperature`, `report_revision_temperature`；六维基本面没有 `express` 子项。
@@ -107,7 +107,7 @@ make market-cycle-review START=YYYY-MM-DD END=YYYY-MM-DD
 | 维度 | 权重 | 主指标 |
 |---|---:|---|
 | 估值面 | 20% | 中证全指 `valuation_temperature` 结果行，辅以沪深300、中证500、中证1000 |
-| 资金面 | 20% | 融资买入占比、两融渗透率、两融余额20日变化、主力/北向资金净流入占比、成交额分位低权重活跃度 |
+| 资金面 | 20% | 融资买入占比、两融渗透率、两融余额20日变化、主力/北向资金净流入占比、自由流通换手率分位低权重活跃度 |
 | 情绪面 | 15% | 换手率分位、上涨家数占比、涨跌停/炸板事件温度 |
 | 技术面 | 15% | 20日收益、RSI、均线乖离、站上20/60日线比例、距252日高点距离 |
 | 基本面 | 15% | 申万2021行业收入/利润 TTM 增速、ROE、业绩预告、盈利预测上修比例 |

@@ -72,6 +72,7 @@ def _prepare_mock_catalog_data(storage_dir: Path) -> None:
                     "symbol": "000001.SZ",
                     "trade_date": t_date,
                     "turnover_rate_f": 2.5,
+                    "circ_mv": 1_000_000.0,
                     "schema_version": "v2",
                     "market": "CN",
                 },
@@ -79,6 +80,7 @@ def _prepare_mock_catalog_data(storage_dir: Path) -> None:
                     "symbol": "000002.SZ",
                     "trade_date": t_date,
                     "turnover_rate_f": 1.5,
+                    "circ_mv": 1_000_000.0,
                     "schema_version": "v2",
                     "market": "CN",
                 },
@@ -109,6 +111,7 @@ def test_market_daily_builder_full(tmp_path: Path) -> None:
     persisted = store.get_market_daily()
     assert len(persisted) == 14
     assert persisted["total_turnover"][0] == 300000.0
+    assert persisted["market_turnover_rate"][0] == pytest.approx(15.0)
     assert store.get_market_daily_metadata()["definition_fingerprint"]
     feature_values = store.values.get(feature_ids=["total_turnover"])
     assert len(feature_values) == 14

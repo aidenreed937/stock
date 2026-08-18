@@ -299,8 +299,7 @@ def _report_revision_panel(
         (pl.col("np") > pl.col("_prev_np")).cast(pl.Int64).alias("_up"),
         (pl.col("np") < pl.col("_prev_np")).cast(pl.Int64).alias("_down"),
     )
-    revisions = window.filter((pl.col("_up") + pl.col("_down")) > 0)
-    joined = revisions.join(stock_map, on="stock_key", how="inner")
+    joined = window.join(stock_map, on="stock_key", how="inner")
     if joined.is_empty():
         return pl.DataFrame()
     grouped = joined.group_by("industry_code").agg(
@@ -310,10 +309,10 @@ def _report_revision_panel(
         pl.col("_down").sum().alias("report_rc_down_count"),
     )
     return grouped.with_columns(
-        pl.when((pl.col("report_rc_up_count") + pl.col("report_rc_down_count")) > 0)
+        pl.when(pl.col("report_rc_sample_size") >= 5)
         .then(
-            pl.col("report_rc_up_count")
-            / (pl.col("report_rc_up_count") + pl.col("report_rc_down_count"))
+            (pl.col("report_rc_up_count") - pl.col("report_rc_down_count"))
+            / pl.col("report_rc_sample_size")
             * 100.0
         )
         .otherwise(None)

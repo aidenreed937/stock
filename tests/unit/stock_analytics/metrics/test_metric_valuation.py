@@ -75,8 +75,8 @@ def test_engine_computes_valuation_percentiles_and_zscore(
     )
 
     assert results[0].frame["earnings_yield"].to_list() == [0.05, 0.025]
-    assert results[1].frame["pe_percentile_5y"].to_list() == pytest.approx([66.6666667, 100.0])
-    assert results[2].frame["pb_percentile_5y"].to_list() == pytest.approx([33.3333333, 33.3333333])
+    assert results[1].frame["pe_percentile_5y"].to_list() == pytest.approx([50.0, 100.0])
+    assert results[2].frame["pb_percentile_5y"].to_list() == pytest.approx([0.0, 0.0])
     assert results[3].frame["pe_zscore_5y"].null_count() == 0
 
 
@@ -98,6 +98,4 @@ def test_cross_source_metrics_use_latest_prior_bond_yield(
     assert results[0].frame["equity_risk_premium"].to_list() == pytest.approx([0.03, 0.005])
     assert results[1].frame["equity_bond_yield_ratio"].to_list() == pytest.approx([2.5, 1.25])
     assert results[2].frame["dividend_bond_spread"].to_list() == pytest.approx([0.0, 0.01])
-    assert results[3].frame["valuation_temperature"].to_list() == pytest.approx(
-        [41.6666667, 58.3333333]
-    )
+    assert results[3].frame["valuation_temperature"].to_list() == pytest.approx([37.5, 62.5])

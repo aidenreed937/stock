@@ -16,6 +16,7 @@ from stock_analytics.pipelines.industry_structure.panel_sources import (
     optional_text_expr,
 )
 from stock_analytics.pipelines.industry_structure.pb_roe import IndustryPBROEAnalyzer
+from stock_analytics.primitives.rules import percentile_rank
 
 if TYPE_CHECKING:
     from stock_core.contracts import MarketDataCatalog
@@ -207,7 +208,8 @@ def historical_percentile(values: list[object], current: float | None) -> float 
             clean.append(numeric)
     if len(clean) < 3:
         return None
-    return round(sum(value <= current for value in clean) / len(clean) * 100.0, 2)
+    percentile = percentile_rank(pl.Series(clean), len(clean), current=current)
+    return round(percentile, 2) if percentile is not None else None
 
 
 def median_value(frame: pl.DataFrame, column: str) -> float | None:

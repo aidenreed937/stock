@@ -287,7 +287,7 @@ METRIC_KEY_NAMES: dict[str, str] = {
     "macro_liquidity": "宏观流动性",
     "positive_return_20d_count": "20日上涨行业数",
     "positive_return_60d_count": "60日上涨行业数",
-    "market_amount_percentile_1250d": "成交额五年分位",
+    "market_amount_percentile_1250d": "自由流通换手率五年分位",
     "turnover_rate_percentile_1250d": "换手率五年分位",
     "margin_balance_growth_20d": "两融余额20日变化",
     "above_ma20_share": "站上20日线占比",
