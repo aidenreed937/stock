@@ -1,5 +1,6 @@
 """Parquet 分区写入器单元测试。"""
 
+from concurrent.futures import ThreadPoolExecutor
 from datetime import date
 from pathlib import Path
 
@@ -40,6 +41,34 @@ def test_partition_writer_batch_buffer_append_uses_file_lock(tmp_path: Path) -> 
     assert lock.entered == 1
     assert saved_path in writer._write_buffer
     assert len(writer._write_buffer[saved_path]) == 1
+
+
+def test_partition_writer_serializes_cross_instance_writes_to_same_file(tmp_path: Path) -> None:
+    path = tmp_path / "market=CN" / "margin_detail" / "year=2026" / "month=08" / "data.parquet"
+    frames = [
+        pl.DataFrame(
+            {
+                "symbol": [symbol],
+                "trade_date": [date(2026, 8, day)],
+                "rzye": [1.0],
+                "data_source": ["tushare"],
+                "schema_version": ["v2"],
+            }
+        )
+        for symbol, day in (("000001.SZ", 17), ("600519.SH", 18))
+    ]
+
+    def write_frame(frame: pl.DataFrame) -> None:
+        ParquetPartitionWriter(data_source="tushare").merge_and_save_parquet(
+            path, [frame], source="tushare"
+        )
+
+    with ThreadPoolExecutor(max_workers=2) as pool:
+        list(pool.map(write_frame, frames))
+
+    merged = pl.read_parquet(path)
+    assert set(merged.get_column("symbol")) == {"000001.SZ", "600519.SH"}
+    assert not list(path.parent.glob("*.tmp.parquet"))
 
 
 def test_partition_writer_preserves_optional_legacy_bar_columns(tmp_path: Path) -> None:

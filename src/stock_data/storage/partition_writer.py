@@ -3,6 +3,7 @@
 from __future__ import annotations
 
 import threading
+import uuid
 from datetime import date
 from typing import TYPE_CHECKING, Any
 
@@ -34,6 +35,20 @@ _OPTIONAL_INDEX_FUNDAMENTAL_COLUMNS = frozenset(
         "mc",
     }
 )
+
+_FILE_LOCKS_GUARD = threading.Lock()
+_FILE_LOCKS: dict[Path, threading.Lock] = {}
+
+
+def _shared_file_lock(file_path: Path) -> threading.Lock:
+    """返回当前进程内按目标文件复用的读写锁。"""
+    resolved_path = file_path.resolve()
+    with _FILE_LOCKS_GUARD:
+        lock = _FILE_LOCKS.get(resolved_path)
+        if lock is None:
+            lock = threading.Lock()
+            _FILE_LOCKS[resolved_path] = lock
+    return lock
 
 
 def _append_write_buffer(
@@ -173,7 +188,7 @@ class ParquetPartitionWriter:
         self, file_path: Path, dfs: list[pl.DataFrame], source: str | None = None
     ) -> pl.DataFrame:
         """读取现有文件、合并新数据帧列表、去重与时序排序，并原子写回 Parquet。"""
-        with self._file_lock:
+        with _shared_file_lock(file_path):
             dataset_name = (
                 file_path.parent.parent.parent.name
                 if file_path.parent.name.startswith("month=")
@@ -227,9 +242,13 @@ class ParquetPartitionWriter:
                 merged = merged.sort(sort_cols)
 
             file_path.parent.mkdir(parents=True, exist_ok=True)
-            temp_path = file_path.with_suffix(".tmp.parquet")
-            merged.write_parquet(temp_path)
-            temp_path.replace(file_path)
+            temp_path = file_path.with_name(f"{file_path.stem}.{uuid.uuid4().hex}.tmp.parquet")
+            try:
+                merged.write_parquet(temp_path)
+                temp_path.replace(file_path)
+            finally:
+                if temp_path.exists():
+                    temp_path.unlink()
 
         return merged
 
