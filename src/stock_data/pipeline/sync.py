@@ -19,6 +19,7 @@ from stock_data.core.factory import create_pipeline
 from stock_data.core.task_registry import expand_task_targets, resolve_task
 from stock_data.pipeline.planner import _filter_supported_symbols, _should_expand_single_sync
 from stock_data.pipeline.scheduler import DataUpdateScheduler
+from stock_data.pipeline.sync_target import resolve_sync_target_date as _resolve_sync_target_date
 
 logger = logging.getLogger(__name__)
 
@@ -162,25 +163,6 @@ def _symbol_base_date(data_source: str, symbol: str, endpoint: str = "") -> date
     return None
 
 
-def _resolve_sync_target_date(
-    data_source: str,
-    endpoint: str,
-    target_date: date,
-    target_date_is_explicit: bool,
-) -> date | None:
-    """为默认增量同步解析 T+1 端点实际应补的最近交易日。"""
-    if target_date_is_explicit:
-        return target_date
-
-    meta = DataUpdateScheduler.get_endpoint_update_meta(data_source, endpoint)
-    if not meta.delay_in_trading_days:
-        return target_date
-
-    return DataUpdateScheduler.get_latest_trading_date(
-        target_date, data_source=data_source, strictly_before=True
-    )
-
-
 def _run_sync_task(task: SyncTaskItem, force_refresh: bool) -> SyncExecutionResult:
     t0 = time.perf_counter()
     try:
@@ -269,7 +251,7 @@ class DailySyncEngine:
                 continue
 
             sync_target = _resolve_sync_target_date(
-                self.data_source, ep, t_target, target_date_is_explicit
+                self.data_source, ep, t_target, target_date_is_explicit, current_datetime
             )
             if sync_target is None:
                 for sym in symbols:

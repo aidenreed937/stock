@@ -106,7 +106,22 @@ def scan_latest_trade_dates(files: list[Path], n: int = 1) -> list[date]:
         try:
             df_lazy = pl.scan_parquet(path)
             cols = df_lazy.collect_schema().names()
-            date_col = next((c for c in ("trade_date", "date", "Date", "month") if c in cols), None)
+            date_col = next(
+                (
+                    c
+                    for c in (
+                        "trade_date",
+                        "report_date",
+                        "ann_date",
+                        "end_date",
+                        "date",
+                        "Date",
+                        "month",
+                    )
+                    if c in cols
+                ),
+                None,
+            )
             if not date_col:
                 continue
             selected = df_lazy.select(pl.col(date_col).drop_nulls().unique())

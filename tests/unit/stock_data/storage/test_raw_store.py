@@ -212,6 +212,32 @@ def test_raw_storage_save_dataset_multi_month(tmp_path: Path) -> None:
     assert df_26["trade_date"][0] == "20260812"
 
 
+def test_raw_storage_uses_report_date_for_partition_and_range_cache(tmp_path: Path) -> None:
+    store = RawDataStorage(base_dir=tmp_path)
+    key = DatasetKey(
+        provider="tushare",
+        dataset="report_rc",
+        endpoint="report_rc",
+        start_date=date(2026, 8, 15),
+        end_date=date(2026, 8, 17),
+    )
+    frame = pl.DataFrame(
+        {
+            "ts_code": ["600519.SH", "000001.SZ"],
+            "report_date": ["20260815", "20260817"],
+            "org_name": ["A", "B"],
+        }
+    )
+
+    store.save_dataset(key, frame)
+
+    path = tmp_path / "tushare/market=CN/report_rc/year=2026/month=08/data.parquet"
+    assert path.exists()
+    loaded = store.load_dataset(key)
+    assert loaded is not None
+    assert set(loaded["report_date"].to_list()) == {"20260815", "20260817"}
+
+
 def test_raw_storage_rejects_mixed_invalid_dates_without_partial_write(tmp_path: Path) -> None:
     store = RawDataStorage(base_dir=tmp_path)
     key = DatasetKey(

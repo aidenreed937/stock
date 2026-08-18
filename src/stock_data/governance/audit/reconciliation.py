@@ -216,12 +216,11 @@ def _clean_raw_bar_frame(
     from stock_data.pipeline.cleaner.bar_cleaner import BarDataCleaner
     from stock_data.pipeline.normalizer.unit_normalizer import UnitNormalizer
 
-    working = frame
+    if {"symbol", "ts_code"} <= set(frame.columns):
+        frame = frame.with_columns(pl.coalesce("symbol", "ts_code").alias("symbol"))
     if data_source == "tushare" and (task is None or task.dataset == "stock_daily_bar"):
         endpoint_name = task.task_name if task is not None else endpoint
-        working, _ = UnitNormalizer(data_source, endpoint_name).normalize_units_with_quarantine(
-            working
-        )
+        frame, _ = UnitNormalizer(data_source, endpoint_name).normalize_units_with_quarantine(frame)
 
     listing_dates = (
         BarDataCleaner.load_listing_dates(data_source)
@@ -229,8 +228,7 @@ def _clean_raw_bar_frame(
         else {}
     )
     cleaner = BarDataCleaner(listing_dates=listing_dates)
-    eligible, _ = cleaner._exclude_pre_listing(working)
-    cleaned = cleaner.clean(eligible)
+    cleaned = cleaner.clean(cleaner._exclude_pre_listing(frame)[0])
     return cleaned, len(frame) - len(cleaned)
 
 

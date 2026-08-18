@@ -307,6 +307,18 @@ def test_latest_trade_dates_parses_month_only_macro_dataset(tmp_path: Path) -> N
     assert catalog.latest_trade_dates("cn_m") == [date(2026, 7, 1)]
 
 
+def test_latest_trade_dates_parses_report_date_dataset(tmp_path: Path) -> None:
+    dataset_dir = tmp_path / "tushare/market=CN/report_rc/year=2026/month=08"
+    dataset_dir.mkdir(parents=True, exist_ok=True)
+    pl.DataFrame(
+        {"ts_code": ["600519.SH", "000001.SZ"], "report_date": ["20260814", "20260817"]}
+    ).write_parquet(dataset_dir / "data.parquet")
+
+    catalog = DataCatalog(data_source="tushare", storage_dir=tmp_path)
+
+    assert catalog.latest_trade_dates("report_rc") == [date(2026, 8, 17)]
+
+
 def test_load_dataset_with_columns_projection(tmp_path: Path) -> None:
     """load_dataset 支持列投影，只返回请求的列。"""
     partition = tmp_path / "tushare/market=CN/daily_basic/year=2026/month=08"

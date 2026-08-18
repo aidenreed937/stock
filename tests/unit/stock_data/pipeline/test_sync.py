@@ -101,6 +101,66 @@ def test_build_sync_plan_retries_previous_trading_day_for_default_margin_sync() 
     )
 
 
+def test_default_sync_falls_back_to_ready_trading_day_for_history_gap() -> None:
+    engine = DailySyncEngine(data_source="tushare")
+    target = date(2026, 8, 18)
+    previous = date(2026, 8, 17)
+
+    with (
+        patch.object(engine, "sniff_watermarks", return_value={"daily_basic": date(2026, 8, 14)}),
+        patch.object(
+            DataUpdateScheduler,
+            "get_latest_trading_date",
+            side_effect=lambda target_date, data_source, strictly_before=False: (
+                previous if target_date == target and not strictly_before else None
+            ),
+        ),
+        patch(
+            "stock_data.pipeline.scheduler.DataUpdateScheduler.is_data_ready",
+            side_effect=lambda endpoint,
+            target_date,
+            current_datetime=None,
+            data_source="tushare": (target_date == previous),
+        ),
+    ):
+        plan = engine.build_sync_plan(
+            target_date=target,
+            endpoints=["daily_basic"],
+            target_date_is_explicit=False,
+        )
+
+    assert len(plan) == 1
+    assert plan[0].status == "PENDING"
+    assert plan[0].start_date == date(2026, 8, 15)
+    assert plan[0].end_date == previous
+    assert plan[0].watermark == date(2026, 8, 14)
+
+
+def test_default_sync_keeps_non_daily_endpoint_on_target_date() -> None:
+    engine = DailySyncEngine(data_source="tushare")
+    target = date(2026, 8, 18)
+
+    with (
+        patch.object(engine, "sniff_watermarks", return_value={"cn_cpi": date(2026, 7, 1)}),
+        patch.object(DataUpdateScheduler, "get_latest_trading_date") as latest_trading_date,
+        patch(
+            "stock_data.pipeline.scheduler.DataUpdateScheduler.is_data_ready",
+            return_value=False,
+        ),
+    ):
+        plan = engine.build_sync_plan(
+            target_date=target,
+            endpoints=["cn_cpi"],
+            target_date_is_explicit=False,
+        )
+
+    assert len(plan) == 1
+    assert plan[0].status == "SKIPPED"
+    assert plan[0].start_date == target
+    assert plan[0].end_date == target
+    latest_trading_date.assert_not_called()
+
+
 def test_execute_plan_success_and_error() -> None:
     engine = DailySyncEngine(data_source="tushare", max_workers=2)
 

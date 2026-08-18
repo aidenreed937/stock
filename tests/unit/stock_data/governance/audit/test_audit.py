@@ -384,8 +384,10 @@ def test_run_hk_hold_audit():
     from stock_data.governance.audit.reconciliation import run_hk_hold_audit
 
     hk_df = pl.DataFrame({"symbol": ["600000.SH"], "trade_date": ["2026-08-01"], "vol": [100000.0]})
+    patterns = []
 
     def mock_glob(self, pattern):
+        patterns.append(pattern)
         return [self / "data.parquet"]
 
     with (
@@ -396,6 +398,30 @@ def test_run_hk_hold_audit():
         res = run_hk_hold_audit(date(2026, 8, 1))
         assert res["symbols_count"] == 1
         assert res["total_vol"] == 100000.0
+        assert any("market=*/hk_hold" in pattern for pattern in patterns)
+
+
+def test_clean_raw_bar_frame_normalizes_source_symbol_alias() -> None:
+    from stock_data.governance.audit.reconciliation import _clean_raw_bar_frame
+
+    raw = pl.DataFrame(
+        {
+            "ts_code": ["000001.SZ"],
+            "symbol": pl.Series("symbol", [None], dtype=pl.String),
+            "trade_date": ["20260817"],
+            "open": [11.2],
+            "high": [11.3],
+            "low": [11.1],
+            "close": [11.25],
+            "vol": [1000.0],
+            "amount": [11250.0],
+        }
+    )
+
+    cleaned, dropped = _clean_raw_bar_frame("stock_daily_bar", "tushare", raw)
+
+    assert dropped == 0
+    assert cleaned["symbol"].to_list() == ["000001.SZ"]
 
 
 def test_run_sw_industry_audit():

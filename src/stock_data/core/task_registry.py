@@ -178,6 +178,9 @@ _CUSTOM_TASKS: dict[tuple[str, str], TaskSpec] = {
         fetch_mode="per_day",
         partitioned=True,
     ),
+    ("tushare", "hk_hold"): _make_spec(
+        "hk_hold", "tushare", "hk_hold", "hk_hold", fetch_mode="per_day", partitioned=True
+    ),
     ("tushare", "report_rc"): _make_spec(
         "report_rc", "tushare", "report_rc", "report_rc", fetch_mode="per_day", partitioned=True
     ),

@@ -50,6 +50,7 @@ def test_is_per_symbol_task_rules() -> None:
     assert not is_per_symbol_task("tushare", "adj_factor")
     assert not is_per_symbol_task("tushare", "stk_limit")
     assert not is_per_symbol_task("tushare", "limit_list_d")
+    assert not is_per_symbol_task("tushare", "hk_hold")
 
 
 def test_list_available_tasks() -> None:

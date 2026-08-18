@@ -16,13 +16,13 @@ def run_hk_hold_audit(
     """审计 hk_hold (北向个股持仓明细) 数据集在开港通交易日的真实落盘记录与持股规模。"""
     logger.info(f"开始 hk_hold 北向持仓对账审计，目标日期: {target_date} [数据源: {data_source}]")
 
-    hk_dir = Path(
-        f"data/curated/{data_source}/market=CN/hk_hold/"
-        f"year={target_date.year:04d}/month={target_date.month:02d}"
+    curated_root = Path(f"data/curated/{data_source}")
+    target_pattern = (
+        f"market=*/hk_hold/year={target_date.year:04d}/month={target_date.month:02d}/*.parquet"
     )
     hk_files = (
-        [p for p in hk_dir.glob("*.parquet") if not StorageCompat.is_artifact_path(p)]
-        if hk_dir.exists()
+        [p for p in curated_root.glob(target_pattern) if not StorageCompat.is_artifact_path(p)]
+        if curated_root.exists()
         else []
     )
     try:
@@ -41,10 +41,13 @@ def run_hk_hold_audit(
 
     max_date_str = "N/A"
     try:
-        base_dir = Path(f"data/curated/{data_source}/market=CN/hk_hold")
         all_hk_files = (
-            [p for p in base_dir.rglob("*.parquet") if not StorageCompat.is_artifact_path(p)]
-            if base_dir.exists()
+            [
+                p
+                for p in curated_root.glob("market=*/hk_hold/**/*.parquet")
+                if not StorageCompat.is_artifact_path(p)
+            ]
+            if curated_root.exists()
             else []
         )
         if all_hk_files:

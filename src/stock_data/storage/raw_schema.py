@@ -7,8 +7,8 @@ import polars as pl
 
 from stock_core.contracts import DatasetKey
 
-RAW_DATE_COLUMNS = ("trade_date", "date", "end_date", "month", "quarter")
-RAW_RANGE_DATE_COLUMNS = ("trade_date", "date", "end_date")
+RAW_DATE_COLUMNS = ("trade_date", "report_date", "date", "end_date", "month", "quarter")
+RAW_RANGE_DATE_COLUMNS = ("trade_date", "report_date", "date", "end_date")
 RAW_SYMBOL_COLUMNS = (
     "symbol",
     "ts_code",
@@ -29,6 +29,7 @@ RAW_ENTITY_COLUMNS = (
 )
 RAW_DATE_CANDIDATE_COLUMNS = (
     "trade_date",
+    "report_date",
     "date",
     "end_date",
     "ann_date",
@@ -49,6 +50,7 @@ RAW_PRIMARY_KEY_FALLBACK_COLUMNS = (
     "market_type",
     "report_type",
     "trade_date",
+    "report_date",
     "date",
     "end_date",
     "ann_date",
