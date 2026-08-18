@@ -3,6 +3,7 @@
 import threading
 import time
 from datetime import date
+from email.utils import parsedate_to_datetime
 from typing import Any
 
 import pandas as pd
@@ -12,19 +13,35 @@ from stock_core.config.loader import load_data_config
 from stock_core.exceptions import DataFetchError
 from stock_core.utils.logger import logger
 from stock_data.core.settings import data_settings
-from stock_data.fetcher.lixinger.registry import LIXINGER_API_REGISTRY
 from stock_data.fetcher.rate_limiter import RateLimiter
 
 MAX_STOCK_CODES = 100
 
-_SHARED_LIMITERS: dict[tuple[str, int], RateLimiter] = {}
+_SHARED_LIMITERS: dict[int, RateLimiter] = {}
 _SHARED_LIMITERS_LOCK = threading.Lock()
+
+
+def _retry_after_seconds(response: requests.Response) -> float | None:
+    """读取服务端 429 响应的 Retry-After 秒数或 HTTP 日期。"""
+    value = response.headers.get("Retry-After") or response.headers.get("retry-after")
+    if value is None:
+        return None
+    try:
+        return max(0.0, float(value))
+    except (TypeError, ValueError):
+        try:
+            retry_at = parsedate_to_datetime(str(value))
+        except (TypeError, ValueError, OverflowError):
+            return None
+        if retry_at.tzinfo is None:
+            return None
+        return max(0.0, retry_at.timestamp() - time.time())
 
 
 class LixingerClient:
     """理杏仁开放平台 HTTP API 底层客户端。
 
-    提供 Token 鉴权注入、按接口粒度滑动窗口限频、HTTP POST 请求封装、状态码判定与指数退避重试机制。
+    提供 Token 鉴权注入、数据源全局滑动窗口限频、HTTP POST 请求封装、状态码判定与指数退避重试机制。
     """
 
     DEFAULT_USER_AGENT = (
@@ -57,23 +74,19 @@ class LixingerClient:
             if rate_limit_per_min is not None
             else data_cfg.rate_limits.lixinger_per_min
         )
-        self._limiters: dict[str, RateLimiter] = {}
-        self._limiter_lock = threading.Lock()
         self.max_retries = max_retries
         self.timeout = timeout
         self._session = requests.Session()
 
     def _get_rate_limiter(self, api_path: str) -> RateLimiter:
-        """根据接口类型获取当前进程共享的 RateLimiter 实例。"""
-        meta = LIXINGER_API_REGISTRY.get(api_path)
-        limit = meta.rate_limit_per_min if meta else self.default_rate_limit
-        limiter_key = (api_path, limit)
+        """获取当前进程共享的理杏仁全局限流器。"""
+        del api_path
+        limiter_key = self.default_rate_limit
         with _SHARED_LIMITERS_LOCK:
             limiter = _SHARED_LIMITERS.get(limiter_key)
             if limiter is None:
-                limiter = RateLimiter(max_requests=limit)
+                limiter = RateLimiter(max_requests=limiter_key)
                 _SHARED_LIMITERS[limiter_key] = limiter
-            self._limiters[api_path] = limiter
             return limiter
 
     def query(self, api_path: str, **kwargs: Any) -> pd.DataFrame:
@@ -90,8 +103,7 @@ class LixingerClient:
             DataFetchError: 当缺少 Token、请求校验失败、Token 无效或重试用尽时抛出。
         """
         if not self.token:
-            logger.warning("理杏仁 Token 未设置！返回空结果。")
-            return pd.DataFrame()
+            raise DataFetchError("未配置理杏仁 API Token！请在 .env 文件中设置 LIXINGER_TOKEN")
 
         self._validate_date_range(api_path, kwargs)
 
@@ -143,9 +155,11 @@ class LixingerClient:
                 raise DataFetchError(msg)
             if status == 429:
                 if attempt < self.max_retries:
-                    delay = retry_delays[min(attempt, len(retry_delays) - 1)]
-                    logger.warning(f"理杏仁 API 触发限流 (429)，等待 {delay} 秒后重试...")
-                    time.sleep(delay)
+                    delay_seconds = _retry_after_seconds(response)
+                    if delay_seconds is None:
+                        delay_seconds = float(retry_delays[min(attempt, len(retry_delays) - 1)])
+                    logger.warning(f"理杏仁 API 触发限流 (429)，等待 {delay_seconds} 秒后重试...")
+                    time.sleep(delay_seconds)
                     continue
                 raise DataFetchError(f"理杏仁 API 限流重试次数超限 ({self.max_retries} 次)")
 

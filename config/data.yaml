@@ -11,7 +11,7 @@ data:
 
   concurrency:
     tushare_max_workers: 4
-    lixinger_max_workers: 4
+    lixinger_max_workers: 2
     yfinance_max_workers: 4
     alphavantage_max_workers: 1
     default_max_workers: 4
@@ -48,6 +48,12 @@ data:
         - "000922"
         - "399006"
         - "000688"
+
+  # 当前账户无权限或额度不足的接口。恢复权限后移除对应任务即可重新启用。
+  disabled_endpoints:
+    lixinger:
+      - sw_2021_fundamental
+      - sw_2021_l2_fundamental
 
   # 默认回填策略与参数
   backfill:

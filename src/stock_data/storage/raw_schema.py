@@ -7,8 +7,17 @@ import polars as pl
 
 from stock_core.contracts import DatasetKey
 
-RAW_DATE_COLUMNS = ("trade_date", "report_date", "date", "end_date", "month", "quarter")
-RAW_RANGE_DATE_COLUMNS = ("trade_date", "report_date", "date", "end_date")
+RAW_DATE_COLUMNS = (
+    "trade_date",
+    "report_date",
+    "date",
+    "end_date",
+    "as_of_date",
+    "asOfDate",
+    "month",
+    "quarter",
+)
+RAW_RANGE_DATE_COLUMNS = ("trade_date", "report_date", "date", "end_date", "as_of_date", "asOfDate")
 RAW_SYMBOL_COLUMNS = (
     "symbol",
     "ts_code",
@@ -32,6 +41,8 @@ RAW_DATE_CANDIDATE_COLUMNS = (
     "report_date",
     "date",
     "end_date",
+    "as_of_date",
+    "asOfDate",
     "ann_date",
     "month",
     "quarter",
@@ -53,6 +64,8 @@ RAW_PRIMARY_KEY_FALLBACK_COLUMNS = (
     "report_date",
     "date",
     "end_date",
+    "as_of_date",
+    "asOfDate",
     "ann_date",
     "month",
     "quarter",
@@ -107,6 +120,10 @@ def resolve_raw_primary_keys(key: DatasetKey, df: pl.DataFrame) -> list[str]:
             from stock_data.fetcher.alphavantage.registry import ALPHAVANTAGE_API_REGISTRY
 
             meta = ALPHAVANTAGE_API_REGISTRY.get(resolve_task(key.provider, key.endpoint).api_name)
+        elif key.provider == "yfinance":
+            from stock_data.fetcher.yfinance.registry import YFINANCE_API_REGISTRY
+
+            meta = YFINANCE_API_REGISTRY.get(resolve_task(key.provider, key.endpoint).api_name)
     except Exception as e:
         logger.debug(f"解析 RAW 主键失败 [{key.provider}/{key.endpoint}]: {e}")
 

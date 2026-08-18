@@ -69,6 +69,43 @@ def test_static_tushare_endpoint_does_not_add_date_filter() -> None:
     assert query_kwargs == {}
 
 
+@pytest.mark.parametrize(
+    ("endpoint", "start_date", "end_date", "expected"),
+    [
+        ("cn_cpi", date(2026, 7, 1), date(2026, 7, 1), {"m": "202607"}),
+        (
+            "cn_cpi",
+            date(2026, 6, 1),
+            date(2026, 7, 1),
+            {"start_m": "202606", "end_m": "202607"},
+        ),
+        ("cn_gdp", date(2026, 4, 1), date(2026, 6, 30), {"q": "2026Q2"}),
+        (
+            "cn_gdp",
+            date(2026, 1, 1),
+            date(2026, 6, 30),
+            {"start_q": "2026Q1", "end_q": "2026Q2"},
+        ),
+        ("shibor", date(2026, 8, 18), date(2026, 8, 18), {"date": "20260818"}),
+        (
+            "shibor_lpr",
+            date(2026, 7, 1),
+            date(2026, 7, 1),
+            {"start_date": "20260701", "end_date": "20260731"},
+        ),
+        ("cn_schedule", date(2026, 7, 1), date(2026, 7, 1), {"m": "202607"}),
+    ],
+)
+def test_low_frequency_tushare_query_uses_endpoint_parameters(
+    endpoint: str, start_date: date, end_date: date, expected: dict[str, str]
+) -> None:
+    _, query_kwargs = build_tushare_query(
+        TUSHARE_API_REGISTRY[endpoint], endpoint, start_date, end_date, {}
+    )
+
+    assert query_kwargs == expected
+
+
 def test_tushare_factory_uses_bar_cleaner_for_bar_profiles() -> None:
     pipeline = create_tushare_pipeline(endpoint="fund_daily")
 
@@ -257,3 +294,22 @@ def test_tushare_limit_endpoints_query_by_trade_date() -> None:
     )
     fetcher.fetch_daily_bars_df("", date(2026, 8, 12), date(2026, 8, 12), endpoint="limit_list_d")
     fetcher.client._pro_api.query.assert_called_with("limit_list_d", trade_date="20260812")
+
+
+def test_tushare_drops_internal_endpoint_name_from_upstream_request() -> None:
+    fetcher = TuShareDataFetcher(token="test_token")
+    fetcher.client._pro_api = MagicMock()
+    fetcher.client._pro_api.query.return_value = pd.DataFrame(
+        {"month": ["202607"], "m2": [300000.0]}
+    )
+
+    result = fetcher.fetch_daily_bars_df(
+        "",
+        date(2026, 7, 1),
+        date(2026, 7, 1),
+        endpoint="cn_m",
+        endpoint_name="cn_m",
+    )
+
+    assert not result.is_empty()
+    fetcher.client._pro_api.query.assert_called_once_with("cn_m", m="202607")

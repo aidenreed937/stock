@@ -102,7 +102,7 @@ flowchart LR
 
 1. **空复权因子容错（Zero-Event Resilience）**：
    - 对于 `fund_adj` 等事件型/复权型接口，历史回填中单标的从未分红除权导致源端返回 0 行属于正常业务状态，可记录为跳过而不阻断后续标的。
-   - 每日增量同步不同：执行结果若为 `NO_DATA` 会被 CLI 视为失败退出，避免 `per_symbol` 任务因空标的、错误路由或源端异常被误判为成功。
+   - 每日增量同步中，`NO_DATA` 表示上游在请求区间内没有返回记录，通常对应尚未发布的月/季/周期间或事件型标的无记录；CLI 只对 `FAILED` 退出失败，并在执行报告中保留原因。
 2. **全局并发与限流单例（RateLimiter Singleton）**：
    - 全局通过 `get_shared_fetcher()` 维护单例连接池与 `RateLimiter`（默认 180 次/分钟），避免多线程并发击穿 API 频控。
 3. **攒批合并落盘（Micro-batching）**：

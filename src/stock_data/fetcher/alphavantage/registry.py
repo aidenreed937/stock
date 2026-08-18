@@ -33,5 +33,6 @@ ALPHAVANTAGE_API_REGISTRY: dict[str, AlphaVantageEndpointMeta] = {
     "FX_DAILY": AlphaVantageEndpointMeta(
         api_name="FX_DAILY",
         description="Daily foreign exchange OHLC data for USD/CNH and other supported pairs",
+        update_delay_days=1,
     ),
 }

@@ -51,6 +51,27 @@ def test_raw_storage_save_and_load(tmp_path: Path) -> None:
     assert loaded_df["ts_code"][0] == "600000.SH"
 
 
+def test_raw_storage_encodes_empty_nested_struct_for_parquet(tmp_path: Path) -> None:
+    store = RawDataStorage(base_dir=tmp_path)
+    target_date = date(2026, 8, 14)
+    key = DatasetKey(
+        provider="lixinger",
+        dataset="fs_bank",
+        endpoint="fs_bank",
+        start_date=target_date,
+        end_date=target_date,
+    )
+
+    saved_path = store.save_dataset(
+        key,
+        pl.DataFrame({"stockCode": ["600519"], "date": ["2026-08-14"], "q": [{}]}),
+    )
+
+    saved = pl.read_parquet(saved_path)
+    assert saved.schema["q"] == pl.String
+    assert saved["q"].to_list() == ["{}"]
+
+
 def test_raw_storage_legacy_has_raw_checks_symbol(tmp_path: Path) -> None:
     store = RawDataStorage(base_dir=tmp_path)
     target_date = date(2026, 8, 12)

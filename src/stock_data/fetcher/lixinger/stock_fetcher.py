@@ -105,43 +105,43 @@ def _resolve_sw_2021_industry_codes(
 
         df_ind = _INDUSTRY_TABLE_CACHE
         if df_ind.empty or "level" not in df_ind.columns or "stockCode" not in df_ind.columns:
-            return []
+            raise DataFetchError("理杏仁申万 2021 行业目录为空或缺少 level/stockCode 字段")
 
-        # 1. 银行行业接口 -> 动态筛选包含“银行”的分类
+        def select_codes(mask: Any) -> list[str]:
+            codes = sorted(df_ind[mask]["stockCode"].dropna().astype(str).unique().tolist())
+            if not codes:
+                raise DataFetchError(f"理杏仁申万 2021 行业目录未找到匹配分类 [{endpoint}/{level}]")
+            return codes
+
         if "/bank" in endpoint:
             mask = df_ind["name"].str.contains("银行", na=False) & (
                 df_ind["level"].isin(["one", "two"])
             )
-            return sorted(df_ind[mask]["stockCode"].dropna().astype(str).unique().tolist())
+            return select_codes(mask)
 
-        # 2. 证券行业接口 -> 动态筛选包含“证券”的分类
         if "/security" in endpoint:
             mask = df_ind["name"].str.contains("证券", na=False) & (
                 df_ind["level"].isin(["one", "two"])
             )
-            return sorted(df_ind[mask]["stockCode"].dropna().astype(str).unique().tolist())
+            return select_codes(mask)
 
-        # 3. 保险行业接口 -> 动态筛选包含“保险”的分类
         if "/insurance" in endpoint:
             mask = df_ind["name"].str.contains("保险", na=False) & (
                 df_ind["level"].isin(["one", "two"])
             )
-            return sorted(df_ind[mask]["stockCode"].dropna().astype(str).unique().tolist())
+            return select_codes(mask)
 
-        # 4. 非金融行业接口 -> 动态排除“银行”与“非银金融”
         if "/non_financial" in endpoint:
             mask = ~df_ind["name"].str.contains("银行|非银", na=False) & (df_ind["level"] == level)
-            return sorted(df_ind[mask]["stockCode"].dropna().astype(str).unique().tolist())
+            return select_codes(mask)
 
-        # 5. 通用行业估值/行情 -> 按指定 level 动态获取
         mask = df_ind["level"] == level
-        return sorted(df_ind[mask]["stockCode"].dropna().astype(str).unique().tolist())
+        return select_codes(mask)
 
     except DataFetchError:
         raise
     except Exception as e:
-        logger.warning(f"动态获取申万行业分类失败: {e}")
-        return []
+        raise DataFetchError(f"动态获取申万行业分类失败: {e}") from e
 
 
 def _get_lixinger_universe() -> list[str]:
@@ -197,8 +197,7 @@ def _fetch_batch_index_fundamentals(
     except DataFetchError:
         raise
     except Exception as err:
-        logger.debug(f"理杏仁指数批量查询失败: {err}")
-        return pl.DataFrame()
+        raise DataFetchError(f"理杏仁指数批量查询失败: {err}") from err
     return pl.from_pandas(result) if not result.empty else pl.DataFrame()
 
 
@@ -233,7 +232,7 @@ def _fetch_batch_sw_industries(
         except DataFetchError:
             raise
         except Exception as err:
-            logger.debug(f"理杏仁行业代码批次 [{code_group}] 查询跳过或不适用: {err}")
+            raise DataFetchError(f"理杏仁行业代码批次 [{code_group}] 查询失败: {err}") from err
     if not dfs:
         return pl.DataFrame()
     return pl.concat(dfs, how="diagonal_relaxed")

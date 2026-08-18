@@ -19,9 +19,13 @@ def requires_read_normalization(path: Path, dataset_name: str) -> bool:
         return True
     if dataset_name in {"hk_hold", "margin", "moneyflow_hsgt", "sw_daily"}:
         return True
+    if dataset_name == "interest_rates":
+        return any(column in schema for column in ("lpr_y1", "lpr_y5"))
     if dataset_name == "index_valuation" and "total_assets" in schema:
         return True
     if "trade_date" in schema and schema["trade_date"] != pl.Date:
+        return True
+    if "as_of_date" in schema and schema["as_of_date"] != pl.Date:
         return True
     if "updated_at" in schema:
         updated_at_dtype = schema["updated_at"]

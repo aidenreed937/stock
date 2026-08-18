@@ -9,158 +9,140 @@ from __future__ import annotations
 import logging
 import time
 from concurrent.futures import ThreadPoolExecutor, as_completed
-from dataclasses import dataclass
-from datetime import date, datetime, timedelta
+from datetime import date, datetime
 from typing import Any
 
 from stock_core.config.loader import load_data_config
 from stock_data.catalog import DataCatalog
 from stock_data.core.factory import create_pipeline
 from stock_data.core.task_registry import expand_task_targets, resolve_task
-from stock_data.pipeline.planner import _filter_supported_symbols, _should_expand_single_sync
-from stock_data.pipeline.scheduler import DataUpdateScheduler
-from stock_data.pipeline.sync_target import resolve_sync_target_date as _resolve_sync_target_date
+from stock_data.pipeline.scheduler import DataUpdateScheduler as _DataUpdateScheduler
+from stock_data.pipeline.sync_helpers import (
+    configured_max_workers as _configured_max_workers_impl,
+)
+from stock_data.pipeline.sync_helpers import (
+    disabled_endpoints as _disabled_endpoints_impl,
+)
+from stock_data.pipeline.sync_helpers import (
+    next_increment_start as _next_increment_start_impl,
+)
+from stock_data.pipeline.sync_helpers import (
+    parse_watermark_value as _parse_watermark_value_impl,
+)
+from stock_data.pipeline.sync_helpers import (
+    schedule_endpoint as _schedule_endpoint_impl,
+)
+from stock_data.pipeline.sync_helpers import (
+    sniff_watermarks as _sniff_watermarks_impl,
+)
+from stock_data.pipeline.sync_helpers import (
+    symbol_base_date as _symbol_base_date_impl,
+)
+from stock_data.pipeline.sync_helpers import (
+    symbol_refresh_watermarks as _symbol_refresh_watermarks_impl,
+)
+from stock_data.pipeline.sync_helpers import (
+    symbol_watermark as _symbol_watermark_impl,
+)
+from stock_data.pipeline.sync_helpers import (
+    symbol_watermarks as _symbol_watermarks_impl,
+)
+from stock_data.pipeline.sync_helpers import (
+    sync_symbols_for_task as _sync_symbols_for_task_impl,
+)
+from stock_data.pipeline.sync_helpers import (
+    watermark_date_column as _watermark_date_column_impl,
+)
+from stock_data.pipeline.sync_models import SyncExecutionResult, SyncTaskItem
+from stock_data.pipeline.sync_planner import build_sync_plan as _build_sync_plan_impl
+
+DataUpdateScheduler = _DataUpdateScheduler
 
 logger = logging.getLogger(__name__)
 
-_INDEX_ENDPOINTS = {
-    "index_daily",
-    "index_dailybasic",
-    "index_weight",
-    "global_index_daily",
-    "index_daily_bar",
-    "index_valuation",
-    "index_fundamental",
-}
-_FUND_ENDPOINTS = {"fund_daily", "fund_adj", "fund_share", "etf_share_size"}
-_YFINANCE_MACRO_SYMBOLS = ["^TNX", "^IRX", "DX-Y.NYB", "GC=F", "CL=F", "HG=F", "^VIX"]
+__all__ = ["DailySyncEngine", "SyncExecutionResult", "SyncTaskItem"]
 
-
-@dataclass(frozen=True)
-class SyncTaskItem:
-    """单个端点增量同步任务项。"""
-
-    data_source: str
-    endpoint: str
-    dataset: str
-    start_date: date
-    end_date: date
-    watermark: date | None
-    status: str
-    is_ready: bool
-    reason: str = ""
-    symbol: str = ""
-
-
-@dataclass
-class SyncExecutionResult:
-    """增量同步执行统计结果。"""
-
-    data_source: str
-    endpoint: str
-    start_date: date
-    end_date: date
-    records: int
-    duration_s: float
-    status: str
-    error: str | None = None
-    symbol: str = ""
+_NO_DATA_REASON = "上游在请求区间内未返回记录；可能是该统计期间尚未发布，或该标的没有对应业务数据"
 
 
 def _sniff_watermarks(
     catalog: DataCatalog, data_source: str, endpoints: list[str] | None = None
 ) -> dict[str, date | None]:
-    targets = expand_task_targets(data_source, endpoints)
-    watermarks: dict[str, date | None] = {}
-    for ep in targets:
-        try:
-            task = resolve_task(data_source, ep)
-            latest_dates = catalog.latest_trade_dates(dataset=task.dataset, n=1)
-            watermarks[ep] = latest_dates[0] if latest_dates else None
-        except Exception as e:
-            logger.debug(f"探测端点 [{ep}] 水位异常: {e}")
-            watermarks[ep] = None
-    return watermarks
+    return _sniff_watermarks_impl(
+        catalog,
+        data_source,
+        endpoints,
+        disabled_endpoints_fn=_disabled_endpoints,
+        watermark_date_column_fn=_watermark_date_column,
+        expand_task_targets_fn=expand_task_targets,
+        resolve_task_fn=resolve_task,
+    )
+
+
+def _disabled_endpoints(data_source: str) -> set[str]:
+    return _disabled_endpoints_impl(data_source, load_config=load_data_config)
+
+
+def _configured_max_workers(data_source: str) -> int:
+    return _configured_max_workers_impl(data_source, load_config=load_data_config)
 
 
 def _sync_symbols_for_task(data_source: str, endpoint: str) -> list[str]:
-    task = resolve_task(data_source, endpoint)
-    if task.fetch_mode != "per_symbol" or (
-        task.is_single_sync and not _should_expand_single_sync(data_source, task.task_name)
-    ):
-        return [""]
+    return _sync_symbols_for_task_impl(
+        data_source,
+        endpoint,
+        load_config=load_data_config,
+        resolve_task_fn=resolve_task,
+    )
 
-    try:
-        data_cfg = load_data_config()
-        watchlist = getattr(data_cfg.watchlists, data_source, None)
-    except Exception as exc:
-        logger.warning(f"加载同步标的池失败 [{data_source}/{endpoint}]: {exc}")
-        watchlist = None
 
-    if data_source in {"yfinance", "alphavantage"} and task.dataset == "macro_indicators":
-        return _YFINANCE_MACRO_SYMBOLS if data_source == "yfinance" else ["CNH=X"]
-    if watchlist is None:
-        return []
-    if data_source == "fred":
-        return list(getattr(watchlist, "macro_series", []) or [])
-    if task.task_name in _FUND_ENDPOINTS or task.dataset in _FUND_ENDPOINTS:
-        return list(getattr(watchlist, "funds", []) or [])
-    if task.task_name in _INDEX_ENDPOINTS or task.dataset in _INDEX_ENDPOINTS:
-        indices = list(getattr(watchlist, "indices", []) or [])
-        return _filter_supported_symbols(indices, data_source, task.task_name, data_cfg)
-    stocks = list(getattr(watchlist, "stocks", []) or [])
-    if stocks:
-        return stocks
-    return list(getattr(watchlist, "all_symbols", []) or [])
+def _schedule_endpoint(data_source: str, endpoint: str, symbol: str) -> str:
+    return _schedule_endpoint_impl(data_source, endpoint, symbol)
+
+
+def _watermark_date_column(data_source: str, endpoint: str) -> str:
+    return _watermark_date_column_impl(data_source, endpoint)
+
+
+def _next_increment_start(watermark: date, data_source: str, endpoint: str, frequency: str) -> date:
+    return _next_increment_start_impl(watermark, data_source, endpoint, frequency)
+
+
+def _parse_watermark_value(value: Any) -> date | None:
+    return _parse_watermark_value_impl(value)
 
 
 def _symbol_watermark(
     catalog: DataCatalog, data_source: str, dataset: str, symbol: str
 ) -> date | None:
-    if not symbol:
-        latest_dates = catalog.latest_trade_dates(dataset=dataset, n=1)
-        return latest_dates[0] if latest_dates else None
-    try:
-        df = catalog.load_dataset(dataset, symbols=[symbol])
-    except Exception as exc:
-        logger.debug(f"探测标的水位异常 [{data_source}/{dataset}/{symbol}]: {exc}")
-        return None
-    if df.is_empty() or "trade_date" not in df.columns:
-        return None
-    max_date = df.get_column("trade_date").max()
-    if isinstance(max_date, date):
-        return max_date
-    if max_date is not None:
-        try:
-            return date.fromisoformat(str(max_date))
-        except ValueError:
-            return None
-    return None
+    return _symbol_watermark_impl(catalog, data_source, dataset, symbol)
+
+
+def _symbol_watermarks(
+    catalog: DataCatalog,
+    data_source: str,
+    dataset: str,
+    symbols: list[str],
+) -> dict[str, date | None]:
+    return _symbol_watermarks_impl(catalog, data_source, dataset, symbols)
+
+
+def _symbol_refresh_watermarks(
+    catalog: DataCatalog,
+    data_source: str,
+    dataset: str,
+    symbols: list[str],
+) -> dict[str, date | None]:
+    return _symbol_refresh_watermarks_impl(catalog, data_source, dataset, symbols)
 
 
 def _symbol_base_date(data_source: str, symbol: str, endpoint: str = "") -> date | None:
-    if not symbol:
-        return None
-    try:
-        data_cfg = load_data_config()
-        watchlist = getattr(data_cfg.watchlists, data_source, None)
-        get_base_date = getattr(watchlist, "get_base_date", None)
-        if callable(get_base_date):
-            asset_type = (
-                "index"
-                if endpoint in _INDEX_ENDPOINTS
-                else "fund"
-                if endpoint in _FUND_ENDPOINTS
-                else "stock"
-            )
-            try:
-                base_date = get_base_date(symbol, asset_type)
-            except TypeError:
-                base_date = get_base_date(symbol)
-            return base_date if isinstance(base_date, date) else None
-    except Exception:
-        return None
-    return None
+    return _symbol_base_date_impl(
+        data_source,
+        symbol,
+        endpoint,
+        load_config=load_data_config,
+    )
 
 
 def _run_sync_task(task: SyncTaskItem, force_refresh: bool) -> SyncExecutionResult:
@@ -184,6 +166,7 @@ def _run_sync_task(task: SyncTaskItem, force_refresh: bool) -> SyncExecutionResu
             records=row_count,
             duration_s=dur,
             status="SUCCESS" if row_count > 0 else "NO_DATA",
+            error=None if row_count > 0 else _NO_DATA_REASON,
             symbol=task.symbol,
         )
     except Exception as e:
@@ -239,9 +222,13 @@ def _run_incremental_audit(
 class DailySyncEngine:
     """增量数据同步与自愈引擎。"""
 
-    def __init__(self, data_source: str = "tushare", max_workers: int = 4) -> None:
+    def __init__(self, data_source: str = "tushare", max_workers: int | None = None) -> None:
         self.data_source = data_source
-        self.max_workers = max_workers
+        self.max_workers = (
+            _configured_max_workers(data_source) if max_workers is None else max_workers
+        )
+        if self.max_workers <= 0:
+            raise ValueError("同步并发数必须大于 0")
         self.catalog = DataCatalog(data_source=data_source)
 
     def sniff_watermarks(self, endpoints: list[str] | None = None) -> dict[str, date | None]:
@@ -257,132 +244,25 @@ class DailySyncEngine:
         target_date_is_explicit: bool = True,
     ) -> list[SyncTaskItem]:
         """结合落盘水位与更新时间窗口，生成最小必要增量同步任务计划。"""
-        t_target = target_date or date.today()
-        targets = expand_task_targets(self.data_source, endpoints)
-        watermarks = self.sniff_watermarks(targets)
-
-        plan: list[SyncTaskItem] = []
-        for ep in targets:
-            task = resolve_task(self.data_source, ep)
-            symbols = _sync_symbols_for_task(self.data_source, ep)
-            if task.fetch_mode == "per_symbol" and not symbols:
-                plan.append(
-                    SyncTaskItem(
-                        data_source=self.data_source,
-                        endpoint=ep,
-                        dataset=task.dataset,
-                        start_date=t_target,
-                        end_date=t_target,
-                        watermark=None,
-                        status="FAILED",
-                        is_ready=False,
-                        reason="per_symbol 任务缺少同步标的池",
-                    )
-                )
-                continue
-
-            sync_target = _resolve_sync_target_date(
-                self.data_source, ep, t_target, target_date_is_explicit, current_datetime
-            )
-            if sync_target is None:
-                for sym in symbols:
-                    plan.append(
-                        SyncTaskItem(
-                            data_source=self.data_source,
-                            endpoint=ep,
-                            dataset=task.dataset,
-                            start_date=t_target,
-                            end_date=t_target,
-                            watermark=_symbol_watermark(
-                                self.catalog, self.data_source, task.dataset, sym
-                            )
-                            if sym
-                            else watermarks.get(ep),
-                            status="SKIPPED",
-                            is_ready=False,
-                            reason="交易日历不可用",
-                            symbol=sym,
-                        )
-                    )
-                continue
-
-            ready = DataUpdateScheduler.is_data_ready(
-                endpoint=ep,
-                target_date=sync_target,
-                current_datetime=current_datetime,
-                data_source=self.data_source,
-            )
-
-            if not ready and not force:
-                meta = DataUpdateScheduler.get_endpoint_update_meta(self.data_source, ep)
-                for sym in symbols:
-                    plan.append(
-                        SyncTaskItem(
-                            data_source=self.data_source,
-                            endpoint=ep,
-                            dataset=task.dataset,
-                            start_date=sync_target,
-                            end_date=sync_target,
-                            watermark=_symbol_watermark(
-                                self.catalog, self.data_source, task.dataset, sym
-                            )
-                            if sym
-                            else watermarks.get(ep),
-                            status="SKIPPED",
-                            is_ready=False,
-                            reason=f"窗口未到 ({meta.update_time} T+{meta.update_delay_days})",
-                            symbol=sym,
-                        )
-                    )
-                continue
-
-            for sym in symbols:
-                w_date = (
-                    _symbol_watermark(self.catalog, self.data_source, task.dataset, sym)
-                    if sym
-                    else watermarks.get(ep)
-                )
-                if not force and w_date is not None and w_date >= sync_target:
-                    plan.append(
-                        SyncTaskItem(
-                            data_source=self.data_source,
-                            endpoint=ep,
-                            dataset=task.dataset,
-                            start_date=sync_target,
-                            end_date=sync_target,
-                            watermark=w_date,
-                            status="UP_TO_DATE",
-                            is_ready=True,
-                            reason="已是最新",
-                            symbol=sym,
-                        )
-                    )
-                    continue
-
-                # 推导待补齐起始日期（自愈缺口）
-                if w_date is not None:
-                    start_d = w_date + timedelta(days=1)
-                    # 若水位已经是当天或更晚，且处于 force 模式，覆盖更新当天
-                    start_d = min(start_d, sync_target)
-                else:
-                    base_date = _symbol_base_date(self.data_source, sym, ep)
-                    start_d = base_date if base_date and base_date <= sync_target else sync_target
-
-                plan.append(
-                    SyncTaskItem(
-                        data_source=self.data_source,
-                        endpoint=ep,
-                        dataset=task.dataset,
-                        start_date=start_d,
-                        end_date=sync_target,
-                        watermark=w_date,
-                        status="PENDING",
-                        is_ready=True,
-                        reason=f"待增量 ({start_d} ~ {sync_target})",
-                        symbol=sym,
-                    )
-                )
-        return plan
+        return _build_sync_plan_impl(
+            catalog=self.catalog,
+            data_source=self.data_source,
+            target_date=target_date,
+            endpoints=endpoints,
+            force=force,
+            current_datetime=current_datetime,
+            target_date_is_explicit=target_date_is_explicit,
+            sniff_watermarks=self.sniff_watermarks,
+            disabled_endpoints=_disabled_endpoints,
+            sync_symbols_for_task=_sync_symbols_for_task,
+            symbol_watermarks=_symbol_watermarks,
+            symbol_refresh_watermarks=_symbol_refresh_watermarks,
+            schedule_endpoint=_schedule_endpoint,
+            next_increment_start=_next_increment_start,
+            symbol_base_date=_symbol_base_date,
+            expand_task_targets_fn=expand_task_targets,
+            resolve_task_fn=resolve_task,
+        )
 
     def execute_plan(
         self, plan: list[SyncTaskItem], force_refresh: bool = False

@@ -13,6 +13,13 @@ from stock_core.utils.logger import logger
 from stock_data.pipeline.sync import DailySyncEngine, SyncExecutionResult, SyncTaskItem
 
 
+def _positive_int(value: str) -> int:
+    parsed = int(value)
+    if parsed <= 0:
+        raise argparse.ArgumentTypeError("并发工作线程数必须大于 0")
+    return parsed
+
+
 def _build_parser() -> argparse.ArgumentParser:
     parser = argparse.ArgumentParser(description="一键极速增量数据同步与自愈 CLI")
     parser.add_argument(
@@ -56,9 +63,9 @@ def _build_parser() -> argparse.ArgumentParser:
         "-w",
         "--max-workers",
         dest="max_workers",
-        type=int,
-        default=4,
-        help="最大并发工作线程数 (默认 4)",
+        type=_positive_int,
+        default=None,
+        help="最大并发工作线程数 (默认按 config/data.yaml 的数据源配置)",
     )
     return parser
 
@@ -88,7 +95,7 @@ def _render_summary(
     if results:
         exec_rows = []
         for r in results:
-            if r.status in {"FAILED", "NO_DATA"}:
+            if r.status == "FAILED":
                 exec_failed = True
             symbol = getattr(r, "symbol", "")
             exec_rows.append(
@@ -99,6 +106,7 @@ def _render_summary(
                     "落盘记录数": r.records,
                     "耗时(秒)": r.duration_s,
                     "执行状态": r.status,
+                    "原因": r.error or "",
                 }
             )
         df_exec = pl.DataFrame(exec_rows)

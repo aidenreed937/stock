@@ -4,6 +4,7 @@ from typing import Any
 
 import polars as pl
 
+from stock_core.exceptions import DataFetchError
 from stock_data.fetcher.base import BaseDataFetcher
 from stock_data.fetcher.fred.client import FredClient
 from stock_data.fetcher.fred.registry import FRED_API_REGISTRY
@@ -48,7 +49,7 @@ class FredDataFetcher(BaseDataFetcher):
         meta = FRED_API_REGISTRY.get(series_id.upper())
         val_col = series_id.upper()
         if val_col not in raw_df.columns:
-            return pl.DataFrame()
+            raise DataFetchError(f"FRED Fetcher 响应缺少序列列 [{series_id}/{val_col}]")
 
         pl_df = pl.from_pandas(raw_df)
         pl_df = pl_df.rename({"DATE": "date_str", val_col: "value"})

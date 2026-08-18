@@ -1,6 +1,9 @@
 from datetime import date
 from unittest.mock import MagicMock, patch
 
+import pytest
+
+from stock_core.exceptions import DataFetchError
 from stock_data.fetcher.fred.client import FredClient
 from stock_data.fetcher.fred.factory import create_fred_fetcher
 from stock_data.fetcher.fred.global_fetcher import FredDataFetcher
@@ -56,3 +59,22 @@ def test_fred_fetch_daily_bars_df_dispatches_macro_indicators() -> None:
 
     assert result is sentinel
     mock_macro.assert_called_once_with(date(2026, 8, 1), date(2026, 8, 12))
+
+
+def test_fred_client_propagates_request_errors() -> None:
+    client = FredClient()
+    with patch.object(client.session, "get", side_effect=RuntimeError("network down")):
+        with pytest.raises(DataFetchError, match="FRED 请求宏观序列失败"):
+            client.fetch_series_raw("FEDFUNDS")
+
+
+def test_fred_client_rejects_malformed_response() -> None:
+    client = FredClient()
+    with patch.object(client.session, "get") as mock_get:
+        response = MagicMock()
+        response.text = "observation_date,OTHER\n2026-08-10,4.5"
+        response.raise_for_status.return_value = None
+        mock_get.return_value = response
+
+        with pytest.raises(DataFetchError, match="缺少序列列"):
+            client.fetch_series_raw("FEDFUNDS")

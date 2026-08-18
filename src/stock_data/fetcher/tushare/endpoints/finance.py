@@ -83,6 +83,7 @@ FINANCE_ENDPOINTS: dict[str, EndpointMeta] = {
         frequency="quarterly",
         group="macro_data",
         primary_keys=["quarter"],
+        query_mode="quarter",
     ),
     "cn_cpi": EndpointMeta(
         api_name="cn_cpi",
@@ -90,6 +91,7 @@ FINANCE_ENDPOINTS: dict[str, EndpointMeta] = {
         frequency="monthly",
         group="macro_data",
         primary_keys=["month"],
+        query_mode="month",
     ),
     "cn_ppi": EndpointMeta(
         api_name="cn_ppi",
@@ -97,6 +99,7 @@ FINANCE_ENDPOINTS: dict[str, EndpointMeta] = {
         frequency="monthly",
         group="macro_data",
         primary_keys=["month"],
+        query_mode="month",
     ),
     "cn_pmi": EndpointMeta(
         api_name="cn_pmi",
@@ -104,6 +107,7 @@ FINANCE_ENDPOINTS: dict[str, EndpointMeta] = {
         frequency="monthly",
         group="macro_data",
         primary_keys=["month"],
+        query_mode="month",
     ),
     "cn_m": EndpointMeta(
         api_name="cn_m",
@@ -111,6 +115,7 @@ FINANCE_ENDPOINTS: dict[str, EndpointMeta] = {
         frequency="monthly",
         group="macro_data",
         primary_keys=["month"],
+        query_mode="month",
     ),
     "sf_month": EndpointMeta(
         api_name="sf_month",
@@ -118,6 +123,7 @@ FINANCE_ENDPOINTS: dict[str, EndpointMeta] = {
         frequency="monthly",
         group="macro_data",
         primary_keys=["month"],
+        query_mode="month",
     ),
     "shibor": EndpointMeta(
         api_name="shibor",
@@ -125,6 +131,7 @@ FINANCE_ENDPOINTS: dict[str, EndpointMeta] = {
         frequency="daily",
         group="macro_data",
         primary_keys=["date"],
+        query_mode="date",
         date_columns=["date"],
         required_columns=["date"],
     ),
@@ -134,16 +141,18 @@ FINANCE_ENDPOINTS: dict[str, EndpointMeta] = {
         frequency="monthly",
         group="macro_data",
         primary_keys=["date"],
+        query_mode="date",
         date_columns=["date"],
         required_columns=["date"],
     ),
     "cn_schedule": EndpointMeta(
         api_name="cn_schedule",
         description="中国经济数据发布日程",
-        frequency="daily",
+        frequency="monthly",
         group="macro_data",
         primary_keys=["publish_date", "title"],
-        date_columns=["publish_date"],
+        query_mode="month",
+        date_columns=["month", "publish_date"],
         required_columns=["publish_date", "title"],
     ),
     "forecast": EndpointMeta(

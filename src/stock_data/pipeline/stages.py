@@ -27,9 +27,18 @@ from stock_data.pipeline.normalizer.bar_normalizer import (
 )
 from stock_data.pipeline.normalizer.base import BaseDataNormalizer
 from stock_data.pipeline.normalizer.unit_normalizer import UnitNormalizer
+from stock_data.storage.compat import StorageCompat
 from stock_data.storage.duckdb_store import DuckDBMarketStore
 from stock_data.storage.raw_schema import RAW_DATE_CANDIDATE_COLUMNS, normalize_raw_date_series
 from stock_data.storage.raw_store import RawDataStorage
+
+_VALIDATION_COLUMN_ALIASES = {
+    "ts_code": "symbol",
+    "stockCode": "symbol",
+    "date": "trade_date",
+    "as_of_date": "asOfDate",
+    "endDate": "trade_date",
+}
 
 
 class FetcherStage:
@@ -221,26 +230,20 @@ class FetcherStage:
             meta = None
         if not meta:
             return
-        aliases = {
-            "ts_code": "symbol",
-            "stockCode": "symbol",
-            "date": "trade_date",
-            "endDate": "trade_date",
-        }
         required_columns = getattr(meta, "required_columns", [])
         required = [
             col
             for col in required_columns
-            if col not in frame.columns and aliases.get(col) not in frame.columns
+            if col not in frame.columns and _VALIDATION_COLUMN_ALIASES.get(col) not in frame.columns
         ]
         if required:
             raise DataValidationError(
                 f"接口 [{self.data_source}/{endpoint}] 缺少契约字段: {required}"
             )
         keys = [
-            k if k in frame.columns else aliases.get(k, k)
+            k if k in frame.columns else _VALIDATION_COLUMN_ALIASES.get(k, k)
             for k in meta.primary_keys
-            if k in frame.columns or aliases.get(k) in frame.columns
+            if k in frame.columns or _VALIDATION_COLUMN_ALIASES.get(k) in frame.columns
         ]
         if keys:
             validation_frame = frame
@@ -326,6 +329,7 @@ class NormalizerStage:
         normalized_df = self.normalizer.normalize(cleaned_df)
         if normalized_df.is_empty():
             return normalized_df
+        normalized_df = StorageCompat.ensure_dataset_identity(dataset or api_name, normalized_df)
 
         market_expr, exchange_expr, currency_expr = infer_metadata_expressions(
             normalized_df, instrument, self.data_source, api_name, dataset

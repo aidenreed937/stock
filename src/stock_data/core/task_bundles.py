@@ -27,7 +27,7 @@ _TASK_BUNDLE_TASKS: dict[str, dict[str, tuple[str, ...]]] = {
         "hsgt_flow_bundle": ("moneyflow_hsgt", "hsgt_top10"),
         "financial_statement_bundle": ("income", "fina_indicator", "balancesheet"),
         "pit_bundle": ("forecast", "express"),
-        "macro_daily_bundle": ("shibor", "cn_schedule"),
+        "macro_daily_bundle": ("shibor",),
         "macro_monthly_bundle": (
             "cn_cpi",
             "cn_ppi",
@@ -35,6 +35,7 @@ _TASK_BUNDLE_TASKS: dict[str, dict[str, tuple[str, ...]]] = {
             "cn_m",
             "sf_month",
             "shibor_lpr",
+            "cn_schedule",
         ),
         "metadata_bundle": (
             "stock_basic",

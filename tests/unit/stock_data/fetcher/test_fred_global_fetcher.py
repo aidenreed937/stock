@@ -2,7 +2,9 @@ from datetime import date
 from unittest.mock import MagicMock
 
 import pandas as pd
+import pytest
 
+from stock_core.exceptions import DataFetchError
 from stock_data.fetcher.fred.global_fetcher import FredDataFetcher
 
 
@@ -39,6 +41,20 @@ def test_fred_data_fetcher_macro_indicators() -> None:
     )
     assert not df.is_empty()
     assert len(df) == 1
+
+
+def test_fred_data_fetcher_rejects_nonempty_malformed_response() -> None:
+    mock_client = MagicMock()
+    mock_client.fetch_series_raw.return_value = pd.DataFrame(
+        {
+            "DATE": ["2024-01-01"],
+            "OTHER": [5.33],
+        }
+    )
+    fetcher = FredDataFetcher(client=mock_client)
+
+    with pytest.raises(DataFetchError, match="缺少序列列"):
+        fetcher.fetch_series_df("FEDFUNDS", date(2024, 1, 1), date(2024, 1, 1))
 
 
 def test_fred_macro_endpoint_respects_explicit_symbol() -> None:

@@ -349,6 +349,20 @@ def test_normalizer_stage_empty_and_inferred_metadata() -> None:
     assert res_macro["currency"][0] == "USD"
 
 
+def test_normalizer_stage_adds_stable_identity_for_period_macro_dataset() -> None:
+    stage = NormalizerStage(GenericNormalizer(), data_source="tushare")
+
+    result = stage.normalize(
+        pl.DataFrame({"month": ["202607"], "m2": [300000.0]}),
+        None,
+        "cn_m",
+        "req_macro",
+        dataset="cn_m",
+    )
+
+    assert result["symbol"].to_list() == ["cn_m"]
+
+
 def test_curated_storage_stage(tmp_path: Path) -> None:
     store = MagicMock()
     stage = CuratedStorageStage(store)

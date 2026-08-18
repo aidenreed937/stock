@@ -192,6 +192,7 @@ def test_tushare_task_bundles() -> None:
         "cn_m",
         "sf_month",
         "shibor_lpr",
+        "cn_schedule",
     )
     pit = resolve_bundle("tushare", "pit_bundle")
     assert pit.tasks == ("forecast", "express")
@@ -274,6 +275,12 @@ def test_fred_task_bundles_do_not_duplicate_aggregate_task() -> None:
     )
     assert "macro_indicators" not in list_available_tasks("fred")
     assert resolve_task("fred", "macro_indicators").dataset == "macro_indicators"
+
+
+def test_fred_series_tasks_share_the_aggregate_curated_dataset() -> None:
+    for series_id in ("FEDFUNDS", "CPIAUCSL", "UNRATE", "PAYEMS", "GDP", "T10Y2Y", "WALCL"):
+        task = resolve_task("fred", series_id)
+        assert task.dataset == "macro_indicators"
 
 
 def test_task_bundles_cover_registered_tasks_except_explicit_aggregate_routes() -> None:

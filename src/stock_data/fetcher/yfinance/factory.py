@@ -7,6 +7,7 @@ from typing import TYPE_CHECKING
 from stock_data.core.task_registry import resolve_task
 from stock_data.fetcher.yfinance.client import YFinanceClient
 from stock_data.fetcher.yfinance.global_fetcher import YFinanceDataFetcher
+from stock_data.fetcher.yfinance.registry import YFINANCE_API_REGISTRY
 
 if TYPE_CHECKING:
     from pathlib import Path
@@ -38,6 +39,8 @@ def create_yfinance_pipeline(
         proxy_pool_file: 本地代理池文件或目录。
     """
     from stock_data.pipeline.cleaner.bar_cleaner import BarDataCleaner
+    from stock_data.pipeline.cleaner.base import BaseDataCleaner
+    from stock_data.pipeline.cleaner.generic_cleaner import GenericCleaner
     from stock_data.pipeline.pipeline import MarketDataPipeline
 
     active_fetcher = (
@@ -46,7 +49,14 @@ def create_yfinance_pipeline(
         else create_yfinance_fetcher(proxy=proxy, proxy_pool_file=proxy_pool_file)
     )
     task = resolve_task("yfinance", endpoint)
-    cleaner = BarDataCleaner() if task.quality_profile == "bar" else None
+    cleaner: BaseDataCleaner | None
+    if task.quality_profile == "bar":
+        cleaner = BarDataCleaner()
+    elif task.quality_profile == "macro":
+        cleaner = None
+    else:
+        meta = YFINANCE_API_REGISTRY.get(task.api_name)
+        cleaner = GenericCleaner(primary_keys=meta.primary_keys if meta else None)
     return MarketDataPipeline(
         fetcher=active_fetcher,
         cleaner=cleaner,

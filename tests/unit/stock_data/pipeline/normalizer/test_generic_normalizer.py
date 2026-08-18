@@ -1,3 +1,5 @@
+from datetime import date
+
 import polars as pl
 
 from stock_data.pipeline.normalizer.bar_normalizer import BarDataNormalizer
@@ -88,6 +90,21 @@ def test_normalizers_parse_mixed_date_formats_without_dropping_rows():
 
     assert [str(value) for value in generic["trade_date"]] == expected
     assert [str(value) for value in bars["trade_date"]] == expected
+
+
+def test_generic_normalizer_maps_yfinance_statement_date_alias():
+    normalized = GenericNormalizer().normalize(
+        pl.DataFrame(
+            {
+                "symbol": ["AAPL"],
+                "asOfDate": ["2024-06-30T00:00:00"],
+                "Total Revenue": [100.0],
+            }
+        )
+    )
+
+    assert normalized["as_of_date"].to_list() == [date(2024, 6, 30)]
+    assert "asOfDate" not in normalized.columns
 
 
 def test_bar_normalizer_maps_lixinger_stock_code_to_symbol():

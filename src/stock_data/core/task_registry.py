@@ -606,7 +606,7 @@ def _derive_task_spec(provider_name: str, requested: str, meta: Any) -> TaskSpec
         task_name=requested,
         provider=provider_name,
         api_name=api_name,
-        dataset=requested,
+        dataset="macro_indicators" if provider_name == "fred" else requested,
         frequency=frequency,
         quality_profile=qp,
         fetch_mode=fetch_mode,

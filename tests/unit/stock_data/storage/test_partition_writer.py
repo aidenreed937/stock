@@ -99,6 +99,67 @@ def test_partition_writer_preserves_optional_legacy_bar_columns(tmp_path: Path) 
     assert merged.filter(pl.col("trade_date") == date(2026, 8, 14))["complexFactor"].item() is None
 
 
+def test_partition_writer_aligns_empty_nested_struct_to_existing_schema(tmp_path: Path) -> None:
+    writer = ParquetPartitionWriter(data_source="lixinger")
+    path = tmp_path / "market=CN" / "fs_bank" / "data.parquet"
+    existing = pl.DataFrame(
+        {
+            "symbol": ["600519"],
+            "trade_date": [date(2026, 8, 13)],
+            "q": [{"metrics": {"roe": 1.0}}],
+            "data_source": ["lixinger"],
+            "schema_version": ["v2"],
+        }
+    )
+    incoming = pl.DataFrame(
+        {
+            "symbol": ["000001"],
+            "trade_date": [date(2026, 8, 14)],
+            "q": [{"metrics": {}}],
+            "data_source": ["lixinger"],
+            "schema_version": ["v2"],
+        }
+    )
+    path.parent.mkdir(parents=True)
+    existing.write_parquet(path)
+
+    merged = writer.merge_and_save_parquet(path, [incoming], source="lixinger")
+
+    assert merged.schema["q"] == existing.schema["q"]
+    assert merged.filter(pl.col("symbol") == "000001")["q"].item() == {"metrics": {"roe": None}}
+
+
+def test_partition_writer_aligns_missing_macro_identity_to_existing_schema(
+    tmp_path: Path,
+) -> None:
+    writer = ParquetPartitionWriter(data_source="tushare")
+    path = tmp_path / "market=CN" / "cn_m" / "data.parquet"
+    existing = pl.DataFrame(
+        {
+            "symbol": ["cn_m"],
+            "month": ["202606"],
+            "m2": [299000.0],
+            "data_source": ["tushare"],
+            "schema_version": ["v2"],
+        }
+    )
+    incoming = pl.DataFrame(
+        {
+            "month": ["202607"],
+            "m2": [300000.0],
+            "data_source": ["tushare"],
+            "schema_version": ["v2"],
+        }
+    )
+    path.parent.mkdir(parents=True)
+    existing.write_parquet(path)
+
+    merged = writer.merge_and_save_parquet(path, [incoming], source="tushare")
+
+    assert merged["month"].to_list() == ["202606", "202607"]
+    assert merged["symbol"].to_list() == ["cn_m", "cn_m"]
+
+
 def test_partition_writer_allows_index_fundamental_metric_expansion(tmp_path: Path) -> None:
     writer = ParquetPartitionWriter(data_source="lixinger")
     path = tmp_path / "market=CN" / "index_fundamental" / "data.parquet"
@@ -176,3 +237,104 @@ def test_partition_writer_normalizes_legacy_index_valuation_assets_column(
 
     assert "total_assets" not in merged.columns
     assert merged["market_cap"].to_list() == [500.0, 510.0]
+
+
+def test_partition_writer_drops_retired_interest_rate_columns_before_schema_check(
+    tmp_path: Path,
+) -> None:
+    writer = ParquetPartitionWriter(data_source="lixinger")
+    path = tmp_path / "market=CN" / "interest_rates" / "data.parquet"
+    existing = pl.DataFrame(
+        {
+            "trade_date": [date(2026, 8, 13)],
+            "areaCode": ["cn"],
+            "shibor_on": [1.0],
+            "lpr_y1": [3.0],
+            "lpr_y5": [3.5],
+            "data_source": ["lixinger"],
+            "schema_version": ["v2"],
+        }
+    )
+    incoming = pl.DataFrame(
+        {
+            "trade_date": [date(2026, 8, 14)],
+            "areaCode": ["cn"],
+            "shibor_on": [1.1],
+            "data_source": ["lixinger"],
+            "schema_version": ["v2"],
+        }
+    )
+    path.parent.mkdir(parents=True)
+    existing.write_parquet(path)
+
+    merged = writer.merge_and_save_parquet(path, [incoming], source="lixinger")
+
+    assert "lpr_y1" not in merged.columns
+    assert "lpr_y5" not in merged.columns
+    assert merged["shibor_on"].to_list() == [1.0, 1.1]
+
+
+def test_partition_writer_aligns_yfinance_financial_statement_column_union(
+    tmp_path: Path,
+) -> None:
+    writer = ParquetPartitionWriter(data_source="yfinance")
+    path = tmp_path / "market=US" / "financials" / "data.parquet"
+    existing = pl.DataFrame(
+        {
+            "symbol": ["AAPL"],
+            "as_of_date": [date(2026, 3, 31)],
+            "total_revenue": [100.0],
+            "data_source": ["yfinance"],
+            "schema_version": ["v2"],
+        }
+    )
+    incoming = pl.DataFrame(
+        {
+            "symbol": ["AAPL"],
+            "asOfDate": ["2026-06-30"],
+            "total_revenue": [110.0],
+            "net_income": [20.0],
+            "data_source": ["yfinance"],
+            "schema_version": ["v2"],
+        }
+    )
+    path.parent.mkdir(parents=True)
+    existing.write_parquet(path)
+
+    merged = writer.merge_and_save_parquet(path, [incoming], source="yfinance")
+
+    assert merged.schema["as_of_date"] == pl.Date
+    assert merged["as_of_date"].to_list() == [date(2026, 3, 31), date(2026, 6, 30)]
+    assert merged["net_income"].to_list() == [None, 20.0]
+
+
+def test_partition_writer_replaces_same_yfinance_statement_period(
+    tmp_path: Path,
+) -> None:
+    writer = ParquetPartitionWriter(data_source="yfinance")
+    path = tmp_path / "market=US" / "financials" / "data.parquet"
+    existing = pl.DataFrame(
+        {
+            "symbol": ["AAPL"],
+            "as_of_date": [date(2026, 6, 30)],
+            "total_revenue": [100.0],
+            "data_source": ["yfinance"],
+            "schema_version": ["v2"],
+        }
+    )
+    incoming = pl.DataFrame(
+        {
+            "symbol": ["AAPL"],
+            "as_of_date": [date(2026, 6, 30)],
+            "total_revenue": [110.0],
+            "data_source": ["yfinance"],
+            "schema_version": ["v2"],
+        }
+    )
+    path.parent.mkdir(parents=True)
+    existing.write_parquet(path)
+
+    merged = writer.merge_and_save_parquet(path, [incoming], source="yfinance")
+
+    assert len(merged) == 1
+    assert merged["total_revenue"].item() == 110.0

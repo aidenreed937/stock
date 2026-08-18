@@ -46,24 +46,40 @@ class GenericNormalizer(BaseDataNormalizer):
                     ).alias("symbol")
                 ).drop("code")
 
-        if "date" in normalized_df.columns:
+        for alias in ("date", "Date"):
+            if alias not in normalized_df.columns:
+                continue
             if "trade_date" not in normalized_df.columns:
-                normalized_df = normalized_df.rename({"date": "trade_date"})
+                normalized_df = normalized_df.rename({alias: "trade_date"})
             else:
                 normalized_df = normalized_df.with_columns(
                     pl.coalesce(
                         [
                             pl.col("trade_date").cast(pl.Utf8, strict=False),
-                            pl.col("date").cast(pl.Utf8, strict=False),
+                            pl.col(alias).cast(pl.Utf8, strict=False),
                         ]
                     ).alias("trade_date")
-                ).drop("date")
+                ).drop(alias)
 
-        # 2. 转换 trade_date 为 Date 类型
-        if "trade_date" in normalized_df.columns:
-            normalized_df = normalized_df.with_columns(
-                parse_mixed_date("trade_date").alias("trade_date")
-            )
+        if "asOfDate" in normalized_df.columns:
+            if "as_of_date" not in normalized_df.columns:
+                normalized_df = normalized_df.rename({"asOfDate": "as_of_date"})
+            else:
+                normalized_df = normalized_df.with_columns(
+                    pl.coalesce(
+                        [
+                            pl.col("as_of_date").cast(pl.Utf8, strict=False),
+                            pl.col("asOfDate").cast(pl.Utf8, strict=False),
+                        ]
+                    ).alias("as_of_date")
+                ).drop("asOfDate")
+
+        # 2. 转换业务日期为 Date 类型
+        for date_column in ("trade_date", "as_of_date"):
+            if date_column in normalized_df.columns:
+                normalized_df = normalized_df.with_columns(
+                    parse_mixed_date(date_column).alias(date_column)
+                )
 
         # 3. 移除历史明细记录统计字段 (若存在)
         for legacy_col in ("raw_row_count", "clean_row_count"):

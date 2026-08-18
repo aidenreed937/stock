@@ -109,6 +109,9 @@ def _watchlist_symbols(
     if watchlist is None:
         return []
     if data_source == "fred":
+        task = resolve_task("fred", endpoint)
+        if task.api_name.upper() != "MACRO_INDICATORS":
+            return [task.api_name.upper()]
         return list(getattr(watchlist, "macro_series", []) or [])
     if endpoint in _FUND_ENDPOINTS and getattr(watchlist, "funds", None):
         return list(watchlist.funds)

@@ -98,6 +98,8 @@ class TuShareStockFetcher(BaseDataFetcher):
         **extra_kwargs: Any,
     ) -> pl.DataFrame:
         """抓取指定股票或全市场在给定日期范围内的行情/基本面原始数据。"""
+        # endpoint_name 是流水线内部任务名，不是 TuShare 上游参数。
+        extra_kwargs.pop("endpoint_name", None)
         meta = TUSHARE_API_REGISTRY.get(
             endpoint, EndpointMeta(api_name=endpoint, description=endpoint)
         )

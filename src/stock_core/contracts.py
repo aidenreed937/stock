@@ -356,6 +356,17 @@ class MarketDataCatalog(Protocol):
         dataset: str = "stock_daily_bar",
         market: str | None = None,
         n: int = 1,
+        date_column: str | None = None,
     ) -> Sequence[date]:
         """获取指定数据集最新落盘的 N 个交易日。"""
+        ...
+
+    def latest_refresh_dates(
+        self,
+        dataset: str,
+        market: str | None = None,
+        n: int = 1,
+        symbols: list[str] | None = None,
+    ) -> Sequence[date]:
+        """获取指定数据集最近刷新日期，兼容历史文件 mtime 回退。"""
         ...

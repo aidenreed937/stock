@@ -79,6 +79,8 @@ class GenericCleaner(BaseDataCleaner):
                     target_keys.append("trade_date")
                 elif k in ("trade_date", "date") and "date" in cleaned_df.columns:
                     target_keys.append("date")
+                elif k == "as_of_date" and "asOfDate" in cleaned_df.columns:
+                    target_keys.append("asOfDate")
         else:
             # 默认推理主键：综合考虑所有实体列与期间列
             entity_cols = [
@@ -103,9 +105,15 @@ class GenericCleaner(BaseDataCleaner):
                     "month",
                     "quarter",
                     "end_date",
+                    "as_of_date",
+                    "asOfDate",
                     "in_date",
                     "out_date",
                     "suspend_date",
+                    "publish_date",
+                    "period",
+                    "Date",
+                    "Start Date",
                 ]
                 if c in cleaned_df.columns
             ]

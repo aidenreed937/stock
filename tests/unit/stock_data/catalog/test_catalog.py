@@ -1,6 +1,6 @@
 """DataCatalog 单元测试：覆盖读取、过滤、去重、单位校验与 schema 容错。"""
 
-from datetime import date
+from datetime import UTC, date, datetime
 from pathlib import Path
 
 import polars as pl
@@ -299,6 +299,33 @@ def test_catalog_standardized_methods(tmp_path) -> None:
     assert not basic_df.is_empty()
 
 
+def test_latest_refresh_dates_prefers_updated_at_and_supports_mtime_fallback(
+    tmp_path: Path,
+) -> None:
+    partition = tmp_path / "tushare" / "market=CN" / "stock_basic"
+    partition.mkdir(parents=True, exist_ok=True)
+    updated = partition / "data.parquet"
+    pl.DataFrame(
+        {
+            "symbol": ["AAA"],
+            "updated_at": [datetime(2026, 8, 18, 12, 0, tzinfo=UTC)],
+        }
+    ).write_parquet(updated)
+
+    catalog = DataCatalog(data_source="tushare", storage_dir=tmp_path)
+    assert catalog.latest_refresh_dates("stock_basic") == [date(2026, 8, 18)]
+
+    fallback = tmp_path / "tushare" / "market=CN" / "fund_basic"
+    fallback.mkdir(parents=True, exist_ok=True)
+    fallback_file = fallback / "data.parquet"
+    pl.DataFrame({"symbol": ["AAA"]}).write_parquet(fallback_file)
+    fallback_timestamp = datetime(2026, 8, 17, tzinfo=UTC).timestamp()
+    import os
+
+    os.utime(fallback_file, (fallback_timestamp, fallback_timestamp))
+    assert catalog.latest_refresh_dates("fund_basic") == [date(2026, 8, 17)]
+
+
 def test_latest_trade_dates_scans_all_markets_in_latest_month(tmp_path: Path) -> None:
     """最新日期不能被同月某个市场文件的较早水位提前截断。"""
     us_partition = tmp_path / "yfinance/market=US/stock_daily_bar/year=2026/month=08"
@@ -346,6 +373,30 @@ def test_latest_trade_dates_parses_report_date_dataset(tmp_path: Path) -> None:
     catalog = DataCatalog(data_source="tushare", storage_dir=tmp_path)
 
     assert catalog.latest_trade_dates("report_rc") == [date(2026, 8, 17)]
+
+
+def test_latest_trade_dates_parses_publish_and_quarter_dates(tmp_path: Path) -> None:
+    schedule_dir = tmp_path / "tushare/market=CN/cn_schedule"
+    schedule_dir.mkdir(parents=True, exist_ok=True)
+    pl.DataFrame(
+        {
+            "month": ["202608", "202611"],
+            "publish_date": ["20260815", "20261231"],
+            "title": ["A", "B"],
+        }
+    ).write_parquet(schedule_dir / "data.parquet")
+
+    quarter_dir = tmp_path / "tushare/market=CN/quarterly_data"
+    quarter_dir.mkdir(parents=True, exist_ok=True)
+    pl.DataFrame({"symbol": ["AAA"], "quarter": ["2026Q2"]}).write_parquet(
+        quarter_dir / "data.parquet"
+    )
+
+    catalog = DataCatalog(data_source="tushare", storage_dir=tmp_path)
+
+    assert catalog.latest_trade_dates("cn_schedule") == [date(2026, 12, 31)]
+    assert catalog.latest_trade_dates("cn_schedule", date_column="month") == [date(2026, 11, 1)]
+    assert catalog.latest_trade_dates("quarterly_data") == [date(2026, 4, 1)]
 
 
 def test_load_dataset_with_columns_projection(tmp_path: Path) -> None:

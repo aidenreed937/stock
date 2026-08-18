@@ -3,6 +3,7 @@ from unittest.mock import MagicMock, patch
 
 import pandas as pd
 import polars as pl
+import pytest
 
 from stock_data.fetcher.yfinance.client import YFinanceClient
 from stock_data.fetcher.yfinance.factory import create_yfinance_pipeline
@@ -125,6 +126,36 @@ def test_yfinance_retry_keeps_proxy_aware_session() -> None:
     sleep.assert_called_once_with(client.RETRY_DELAY_SECONDS)
     assert ticker_cls.call_args_list[0].kwargs["session"] is first_session
     assert ticker_cls.call_args_list[1].kwargs["session"] is retry_session
+
+
+def test_yfinance_ticker_request_propagates_authentication_error() -> None:
+    client = YFinanceClient(proxy="http://mock-proxy")
+    with (
+        patch.object(client.rate_limiter, "acquire"),
+        patch.object(client, "_get_session", return_value=MagicMock()),
+        patch("stock_data.fetcher.yfinance.client.time.sleep"),
+        patch("yfinance.Ticker", side_effect=RuntimeError("HTTP 401 Invalid Crumb")),
+    ):
+        with pytest.raises(RuntimeError, match="Invalid Crumb"):
+            client.query_ticker("MSFT", lambda ticker: ticker.institutional_holders)
+
+
+def test_yfinance_extended_endpoint_does_not_turn_request_error_into_no_data() -> None:
+    client = YFinanceClient(proxy="http://mock-proxy")
+    fetcher = YFinanceDataFetcher(client=client)
+    with (
+        patch.object(client.rate_limiter, "acquire"),
+        patch.object(client, "_get_session", return_value=MagicMock()),
+        patch("stock_data.fetcher.yfinance.client.time.sleep"),
+        patch("yfinance.Ticker", side_effect=RuntimeError("HTTP 401 Invalid Crumb")),
+    ):
+        with pytest.raises(RuntimeError, match="Invalid Crumb"):
+            fetcher.fetch_daily_bars_df(
+                "MSFT",
+                date(2026, 8, 18),
+                date(2026, 8, 18),
+                endpoint="institutional_holders",
+            )
 
 
 def test_yfinance_proxy_pool_rotates_on_retry(tmp_path) -> None:
@@ -305,6 +336,9 @@ def test_fetch_extended_endpoints() -> None:
         # Test financials
         fin_df = fetcher.fetch_financials_df("AAPL", statement_type="financials", freq="quarterly")
         assert not fin_df.is_empty()
+        assert "as_of_date" in fin_df.columns
+        assert "total_revenue" in fin_df.columns
+        assert "Total Revenue" not in fin_df.columns
 
         # Test dividends
         div_df = fetcher.fetch_actions_df("AAPL", action_type="dividends")
@@ -492,6 +526,8 @@ def test_yfinance_fetcher_financials_and_actions() -> None:
         df_fin = fetcher.fetch_financials_df("AAPL", statement_type="financials", freq="quarterly")
         assert not df_fin.is_empty()
         assert df_fin["symbol"][0] == "AAPL"
+        assert "as_of_date" in df_fin.columns
+        assert {"total_revenue", "net_income"}.issubset(df_fin.columns)
 
         df_act = fetcher.fetch_actions_df("AAPL", action_type="dividends")
         assert not df_act.is_empty()

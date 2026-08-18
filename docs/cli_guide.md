@@ -106,7 +106,7 @@ uv run python -m stock_cli.sync --data-source lixinger --endpoint industry_bundl
 - yfinance：`fundamental_bundle`、`corporate_action_bundle`、`research_daily_bundle`、`research_event_bundle`。
 - FRED：`macro_monthly_bundle`。日频、季频和周频目前各只有一个序列，继续使用原子任务；聚合任务 `macro_indicators` 仅保留显式调用，避免重复请求。
 
-Alpha Vantage 增量同步只有 `fx_daily` 一个任务。由于 `make sync` CLI 默认使用 4 个 Worker，执行时显式设置单并发：
+Alpha Vantage 增量同步只有 `fx_daily` 一个任务。同步 CLI 默认读取 `config/data.yaml` 中的数据源并发配置；当前 Alpha Vantage 配置为单并发，直接执行即可：
 
 ```bash
 make sync SOURCE=alphavantage ENDPOINT=fx_daily WORKERS=1

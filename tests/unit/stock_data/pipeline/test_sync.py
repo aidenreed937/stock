@@ -4,7 +4,6 @@ from datetime import date
 from unittest.mock import MagicMock, patch
 
 import polars as pl
-import pytest
 
 from stock_cli.sync import main as sync_cli_main
 from stock_data.pipeline.scheduler import DataUpdateScheduler
@@ -12,6 +11,9 @@ from stock_data.pipeline.sync import (
     DailySyncEngine,
     SyncExecutionResult,
     SyncTaskItem,
+    _sniff_watermarks,
+    _symbol_refresh_watermarks,
+    _symbol_watermarks,
     _sync_symbols_for_task,
 )
 
@@ -28,6 +30,126 @@ def test_sniff_watermarks() -> None:
         watermarks = engine.sniff_watermarks(["stock_daily_bar", "daily_basic"])
         assert watermarks["stock_daily_bar"] == date(2026, 8, 12)
         assert watermarks["daily_basic"] is None
+
+
+def test_sync_engine_reads_source_specific_worker_configuration() -> None:
+    class Concurrency:
+        lixinger_max_workers = 2
+        default_max_workers = 4
+
+    class DataCfg:
+        concurrency = Concurrency()
+
+    with patch("stock_data.pipeline.sync.load_data_config", return_value=DataCfg()):
+        engine = DailySyncEngine(data_source="lixinger")
+
+    assert engine.max_workers == 2
+
+
+def test_symbol_watermarks_support_report_and_statement_dates() -> None:
+    class Catalog:
+        @staticmethod
+        def load_dataset(dataset: str, **kwargs):
+            return pl.DataFrame(
+                {
+                    "symbol": ["AAPL", "MSFT"],
+                    "asOfDate": ["2026-06-30", "20260630"],
+                }
+            )
+
+    assert _symbol_watermarks(Catalog(), "yfinance", "financials", ["AAPL", "MSFT"]) == {
+        "AAPL": date(2026, 6, 30),
+        "MSFT": date(2026, 6, 30),
+    }
+
+
+def test_sniff_watermarks_scans_shared_dataset_once() -> None:
+    catalog = MagicMock()
+    catalog.latest_trade_dates.return_value = [date(2026, 8, 18)]
+    task = MagicMock(dataset="shared_dataset")
+
+    with (
+        patch(
+            "stock_data.pipeline.sync.expand_task_targets",
+            return_value=["endpoint_a", "endpoint_b"],
+        ),
+        patch("stock_data.pipeline.sync.resolve_task", return_value=task),
+        patch("stock_data.pipeline.sync._disabled_endpoints", return_value=set()),
+    ):
+        watermarks = _sniff_watermarks(catalog, "tushare", ["bundle"])
+
+    assert watermarks == {"endpoint_a": date(2026, 8, 18), "endpoint_b": date(2026, 8, 18)}
+    catalog.latest_trade_dates.assert_called_once_with(dataset="shared_dataset", n=1)
+
+
+def test_sniff_watermarks_uses_endpoint_period_column() -> None:
+    catalog = MagicMock()
+    catalog.latest_trade_dates.return_value = [date(2026, 11, 1)]
+
+    with (
+        patch(
+            "stock_data.pipeline.sync.expand_task_targets",
+            return_value=["cn_schedule"],
+        ),
+        patch(
+            "stock_data.pipeline.sync.resolve_task",
+            return_value=MagicMock(dataset="cn_schedule", api_name="cn_schedule"),
+        ),
+        patch("stock_data.pipeline.sync._disabled_endpoints", return_value=set()),
+        patch(
+            "stock_data.pipeline.sync._watermark_date_column",
+            return_value="month",
+        ),
+    ):
+        assert _sniff_watermarks(catalog, "tushare", ["cn_schedule"]) == {
+            "cn_schedule": date(2026, 11, 1)
+        }
+
+    catalog.latest_trade_dates.assert_called_once_with(
+        dataset="cn_schedule", n=1, date_column="month"
+    )
+
+
+def test_sniff_watermarks_uses_refresh_date_for_static_endpoint() -> None:
+    catalog = MagicMock()
+    catalog.latest_refresh_dates.return_value = [date(2026, 8, 18)]
+    task = MagicMock(dataset="stock_basic", api_name="stock_basic")
+
+    with (
+        patch(
+            "stock_data.pipeline.sync.expand_task_targets",
+            return_value=["stock_basic"],
+        ),
+        patch("stock_data.pipeline.sync.resolve_task", return_value=task),
+        patch("stock_data.pipeline.sync._disabled_endpoints", return_value=set()),
+        patch(
+            "stock_data.pipeline.sync.DataUpdateScheduler.get_endpoint_update_meta",
+            return_value=MagicMock(frequency="event"),
+        ),
+    ):
+        assert _sniff_watermarks(catalog, "tushare", ["stock_basic"]) == {
+            "stock_basic": date(2026, 8, 18)
+        }
+
+    catalog.latest_refresh_dates.assert_called_once_with(dataset="stock_basic", n=1)
+    catalog.latest_trade_dates.assert_not_called()
+
+
+def test_symbol_refresh_watermarks_reads_updated_at() -> None:
+    class Catalog:
+        @staticmethod
+        def load_dataset(dataset: str, **kwargs):
+            return pl.DataFrame(
+                {
+                    "symbol": ["AAPL", "MSFT"],
+                    "updated_at": ["2026-08-18T08:00:00+00:00", "2026-08-17T08:00:00+00:00"],
+                }
+            )
+
+    assert _symbol_refresh_watermarks(Catalog(), "yfinance", "dividends", ["AAPL", "MSFT"]) == {
+        "AAPL": date(2026, 8, 18),
+        "MSFT": date(2026, 8, 17),
+    }
 
 
 def test_build_sync_plan_skips_unready_and_uptodate() -> None:
@@ -141,7 +263,7 @@ def test_default_sync_falls_back_to_ready_trading_day_for_history_gap() -> None:
     assert plan[0].watermark == date(2026, 8, 14)
 
 
-def test_default_sync_keeps_non_daily_endpoint_on_target_date() -> None:
+def test_default_sync_targets_previous_complete_month() -> None:
     engine = DailySyncEngine(data_source="tushare")
     target = date(2026, 8, 18)
 
@@ -161,9 +283,44 @@ def test_default_sync_keeps_non_daily_endpoint_on_target_date() -> None:
 
     assert len(plan) == 1
     assert plan[0].status == "SKIPPED"
-    assert plan[0].start_date == target
-    assert plan[0].end_date == target
+    assert plan[0].start_date == date(2026, 7, 1)
+    assert plan[0].end_date == date(2026, 7, 1)
     latest_trading_date.assert_not_called()
+
+
+def test_monthly_increment_starts_at_next_month_period() -> None:
+    engine = DailySyncEngine(data_source="tushare")
+    with (
+        patch.object(engine, "sniff_watermarks", return_value={"cn_cpi": date(2026, 6, 1)}),
+        patch(
+            "stock_data.pipeline.scheduler.DataUpdateScheduler.is_data_ready",
+            return_value=True,
+        ),
+    ):
+        plan = engine.build_sync_plan(
+            target_date=date(2026, 8, 18),
+            endpoints=["cn_cpi"],
+            target_date_is_explicit=False,
+        )
+
+    assert plan[0].status == "PENDING"
+    assert plan[0].start_date == date(2026, 7, 1)
+    assert plan[0].end_date == date(2026, 7, 1)
+
+
+def test_monthly_date_watermark_is_compared_by_period() -> None:
+    engine = DailySyncEngine(data_source="tushare")
+    with (
+        patch.object(engine, "sniff_watermarks", return_value={"shibor_lpr": date(2026, 7, 20)}),
+        patch("stock_data.pipeline.scheduler.DataUpdateScheduler.is_data_ready", return_value=True),
+    ):
+        plan = engine.build_sync_plan(
+            target_date=date(2026, 8, 18),
+            endpoints=["shibor_lpr"],
+            target_date_is_explicit=False,
+        )
+
+    assert plan[0].status == "UP_TO_DATE"
 
 
 def test_execute_plan_success_and_error() -> None:
@@ -269,6 +426,7 @@ def test_build_sync_plan_expands_task_bundle_into_atomic_tasks() -> None:
             return_value=dict.fromkeys(bundle_tasks),
         ) as sniff_watermarks,
         patch("stock_data.pipeline.sync._sync_symbols_for_task", return_value=[""]),
+        patch("stock_data.pipeline.sync._disabled_endpoints", return_value=set()),
         patch("stock_data.pipeline.scheduler.DataUpdateScheduler.is_data_ready", return_value=True),
     ):
         plan = engine.build_sync_plan(target_date=date(2026, 8, 13), endpoints=["industry_bundle"])
@@ -320,6 +478,53 @@ def test_sync_symbols_filters_lixinger_unsupported_index() -> None:
         ]
 
 
+def test_sync_symbols_isolates_each_fred_series_task() -> None:
+    class Watchlist:
+        macro_series = ["FEDFUNDS", "CPIAUCSL", "GDP"]
+
+    class Watchlists:
+        fred = Watchlist()
+
+    class DataCfg:
+        watchlists = Watchlists()
+
+    with patch("stock_data.pipeline.sync.load_data_config", return_value=DataCfg()):
+        assert _sync_symbols_for_task("fred", "FEDFUNDS") == ["FEDFUNDS"]
+        assert _sync_symbols_for_task("fred", "macro_indicators") == [
+            "FEDFUNDS",
+            "CPIAUCSL",
+            "GDP",
+        ]
+
+
+def test_build_sync_plan_uses_series_frequency_for_fred() -> None:
+    engine = DailySyncEngine(data_source="fred", max_workers=1)
+    with (
+        patch.object(engine, "sniff_watermarks", return_value={"macro_indicators": None}),
+        patch(
+            "stock_data.pipeline.sync._sync_symbols_for_task",
+            return_value=["CPIAUCSL"],
+        ),
+        patch(
+            "stock_data.pipeline.sync._symbol_watermarks",
+            return_value={"CPIAUCSL": date(2026, 7, 1)},
+        ),
+        patch(
+            "stock_data.pipeline.scheduler.DataUpdateScheduler.is_data_ready",
+            return_value=True,
+        ),
+    ):
+        plan = engine.build_sync_plan(
+            target_date=date(2026, 8, 18),
+            endpoints=["macro_indicators"],
+            target_date_is_explicit=False,
+        )
+
+    assert len(plan) == 1
+    assert plan[0].status == "UP_TO_DATE"
+    assert plan[0].end_date == date(2026, 7, 1)
+
+
 def test_build_sync_plan_filters_unsupported_tushare_index_dailybasic() -> None:
     supported = ["000001.SH", "399001.SZ", "000300.SH", "000905.SH", "399006.SZ"]
     unsupported = ["000852.SH", "000985.CSI", "000922.CSI", "399102.SZ", "000688.SH"]
@@ -341,13 +546,31 @@ def test_build_sync_plan_filters_unsupported_tushare_index_dailybasic() -> None:
     with (
         patch("stock_data.pipeline.sync.load_data_config", return_value=DataCfg()),
         patch.object(engine, "sniff_watermarks", return_value={"index_dailybasic": None}),
-        patch("stock_data.pipeline.sync._symbol_watermark", return_value=None),
+        patch("stock_data.pipeline.sync._symbol_watermarks", return_value=dict.fromkeys(supported)),
         patch("stock_data.pipeline.sync.DataUpdateScheduler.is_data_ready", return_value=True),
     ):
         plan = engine.build_sync_plan(target_date=date(2026, 8, 14), endpoints=["index_dailybasic"])
 
     assert [item.symbol for item in plan] == supported
     assert not any(item.symbol in unsupported for item in plan)
+
+
+def test_build_sync_plan_skips_disabled_endpoint() -> None:
+    engine = DailySyncEngine(data_source="lixinger")
+
+    with (
+        patch.object(engine, "sniff_watermarks", return_value={"sw_2021_fundamental": None}),
+        patch("stock_data.pipeline.sync._disabled_endpoints", return_value={"sw_2021_fundamental"}),
+        patch("stock_data.pipeline.sync._sync_symbols_for_task") as sync_symbols,
+    ):
+        plan = engine.build_sync_plan(
+            target_date=date(2026, 8, 14), endpoints=["sw_2021_fundamental"]
+        )
+
+    assert len(plan) == 1
+    assert plan[0].status == "SKIPPED"
+    assert "权限或额度" in plan[0].reason
+    sync_symbols.assert_not_called()
 
 
 def test_execute_plan_passes_task_symbol_to_pipeline() -> None:
@@ -510,7 +733,7 @@ def test_sync_cli_forwards_comma_separated_task_bundles() -> None:
     ]
 
 
-def test_sync_cli_treats_no_data_as_failure() -> None:
+def test_sync_cli_treats_no_data_as_warning() -> None:
     mock_plan = [
         SyncTaskItem(
             data_source="fred",
@@ -539,8 +762,5 @@ def test_sync_cli_treats_no_data_as_failure() -> None:
     with (
         patch("sys.argv", ["sync.py", "-s", "fred", "-d", "2026-08-13"]),
         patch.object(DailySyncEngine, "sync_daily", return_value=(mock_plan, mock_res, None)),
-        pytest.raises(SystemExit) as exc,
     ):
         sync_cli_main()
-
-    assert exc.value.code == 1

@@ -167,6 +167,23 @@ def test_lixinger_industry_batch_propagates_data_fetch_error() -> None:
         )
 
 
+def test_lixinger_industry_directory_contract_failure_is_not_no_data() -> None:
+    mock_client = MagicMock()
+    mock_client.query.return_value = pd.DataFrame({"name": ["农林牧渔"]})
+    fetcher = LixingerStockFetcher(client=mock_client)
+
+    with (
+        patch("stock_data.fetcher.lixinger.stock_fetcher._INDUSTRY_TABLE_CACHE", None),
+        pytest.raises(DataFetchError, match="缺少 level/stockCode"),
+    ):
+        fetcher.fetch_daily_bars_df(
+            symbol="",
+            start_date=date(2024, 1, 2),
+            end_date=date(2024, 1, 2),
+            endpoint="sw_2021_fundamental",
+        )
+
+
 def test_lixinger_stock_fetcher_bars_conversion() -> None:
     mock_client = MagicMock()
     mock_client.query.return_value = pd.DataFrame(

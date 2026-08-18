@@ -10,12 +10,28 @@ import polars as pl
 from stock_core.constants import BAR_DATASETS
 from stock_core.exceptions import DataValidationError
 from stock_core.utils.logger import logger
+from stock_data.catalog.watermarks import (
+    scan_latest_refresh_dates as _scan_latest_refresh_dates,
+)
+from stock_data.catalog.watermarks import (
+    scan_latest_trade_dates as _scan_latest_trade_dates,
+)
 from stock_data.governance.quality.margin_coverage import filter_complete_margin_dates
 from stock_data.storage.compat import StorageCompat
 from stock_data.storage.read_compat import normalize_read_frame, validate_schema_version
 
 _IDENTITY_ALIASES = ("ts_code", "stockCode", "code")
 _DATE_ALIASES = ("date",)
+
+
+def scan_latest_trade_dates(*args: Any, **kwargs: Any) -> list[date]:
+    """兼容旧目录工具导入路径。"""
+    return _scan_latest_trade_dates(*args, **kwargs)
+
+
+def scan_latest_refresh_dates(*args: Any, **kwargs: Any) -> list[date]:
+    """兼容旧目录工具导入路径。"""
+    return _scan_latest_refresh_dates(*args, **kwargs)
 
 
 def path_intersects_range(path: Path, start_ym: tuple[int, int], end_ym: tuple[int, int]) -> bool:
@@ -73,80 +89,6 @@ def normalize_identity_columns(df: pl.DataFrame) -> pl.DataFrame:
             ).drop(alias)
         columns = set(result.columns)
     return result
-
-
-def _extract_path_ym(path: Path) -> tuple[int, int] | None:
-    year_part = month_part = None
-    for part in path.parts:
-        if part.startswith("year="):
-            try:
-                year_part = int(part.removeprefix("year="))
-            except ValueError:
-                pass
-        elif part.startswith("month="):
-            try:
-                month_part = int(part.removeprefix("month="))
-            except ValueError:
-                pass
-    if year_part is not None:
-        return (year_part, month_part or 12)
-    return None
-
-
-def scan_latest_trade_dates(files: list[Path], n: int = 1) -> list[date]:
-    if not files:
-        return []
-    found: set[date] = set()
-    current_ym: tuple[int, int] | None = None
-    for path in reversed(files):
-        ym = _extract_path_ym(path)
-        if current_ym is None:
-            current_ym = ym
-        elif ym is not None and ym < current_ym and len(found) >= n:
-            break
-        try:
-            df_lazy = pl.scan_parquet(path)
-            cols = df_lazy.collect_schema().names()
-            date_col = next(
-                (
-                    c
-                    for c in (
-                        "trade_date",
-                        "report_date",
-                        "ann_date",
-                        "end_date",
-                        "date",
-                        "Date",
-                        "month",
-                    )
-                    if c in cols
-                ),
-                None,
-            )
-            if not date_col:
-                continue
-            selected = df_lazy.select(pl.col(date_col).drop_nulls().unique())
-            if date_col == "month":
-                distinct_df = (
-                    selected.with_columns(
-                        pl.col(date_col)
-                        .cast(pl.Utf8, strict=False)
-                        .str.strptime(pl.Date, "%Y%m", strict=False)
-                        .alias(date_col)
-                    )
-                    .drop_nulls()
-                    .collect()
-                )
-            else:
-                distinct_df = StorageCompat.safe_cast_date_col(selected.collect(), date_col)
-            for d in distinct_df[date_col].to_list():
-                if isinstance(d, date):
-                    found.add(d)
-            if ym is None and len(found) >= n:
-                break
-        except Exception:
-            continue
-    return sorted(found, reverse=True)[:n]
 
 
 def dataset_name(path: Path) -> str:
@@ -314,13 +256,7 @@ def build_catalog_summary(
 
 
 def resolve_dataset_alias(data_source: str, name: str) -> str:
-    try:
-        from stock_data.core.task_registry import resolve_task
-
-        task = resolve_task(data_source, name)
-        return task.dataset
-    except Exception:
-        return name
+    return StorageCompat.canonical_dataset_name(name, data_source)
 
 
 def validate_bars(df: pl.DataFrame, dataset: str) -> None:

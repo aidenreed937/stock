@@ -49,6 +49,25 @@ def test_normalize_numeric_columns() -> None:
     assert normalized["rqyl"][0] == 12345.6
 
 
+def test_normalize_nested_columns_encodes_empty_struct_without_reference() -> None:
+    df = pl.DataFrame({"symbol": ["600519"], "q": [{}]})
+
+    normalized = StorageCompat.normalize_nested_columns(df)
+
+    assert normalized.schema["q"] == pl.String
+    assert normalized["q"].to_list() == ["{}"]
+
+
+def test_normalize_nested_columns_casts_empty_struct_to_stable_reference() -> None:
+    stable = pl.DataFrame({"q": [{"metrics": {"roe": 1.0}}]})
+    empty = pl.DataFrame({"q": [{"metrics": {}}]})
+
+    normalized = StorageCompat.normalize_nested_columns(empty, reference_frames=[stable])
+
+    assert normalized.schema["q"] == stable.schema["q"]
+    assert normalized["q"].to_list() == [{"metrics": {"roe": None}}]
+
+
 def test_safe_normalize_frame() -> None:
     df = pl.DataFrame(
         {
@@ -85,3 +104,35 @@ def test_post_process_moneyflow_hsgt_drops_legacy_symbol() -> None:
     assert normalized["market"].to_list() == ["CN"]
     assert normalized["currency"].to_list() == ["CNY"]
     assert normalized["exchange"].to_list() == ["SOURCE"]
+
+
+def test_post_process_adds_stable_identity_for_period_macro_dataset() -> None:
+    normalized = StorageCompat.post_process_dataset(
+        "sf_month", pl.DataFrame({"month": ["202607"], "inc_month": [1.0]})
+    )
+
+    assert normalized["symbol"].to_list() == ["sf_month"]
+
+
+def test_post_process_interest_rates_drops_retired_lpr_columns() -> None:
+    df = pl.DataFrame(
+        {
+            "trade_date": ["2026-08-14"],
+            "lpr_y1": [3.0],
+            "lpr_y5": [3.5],
+            "shibor_on": [1.0],
+        }
+    )
+
+    normalized = StorageCompat.post_process_dataset("interest_rates", df)
+
+    assert normalized.columns == ["trade_date", "shibor_on"]
+
+
+def test_fred_dataset_aliases_keep_legacy_directories_readable() -> None:
+    assert StorageCompat.canonical_dataset_name("FEDFUNDS", "fred") == "macro_indicators"
+    assert StorageCompat.dataset_aliases("FEDFUNDS", "fred") == (
+        "macro_indicators",
+        "fedfunds",
+    )
+    assert StorageCompat.dataset_symbol_filter("FEDFUNDS", "fred") == "FEDFUNDS"

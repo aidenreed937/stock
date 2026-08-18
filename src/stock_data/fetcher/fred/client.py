@@ -5,6 +5,8 @@ from typing import Any
 import pandas as pd
 from curl_cffi import requests
 
+from stock_core.exceptions import DataFetchError
+
 logger = logging.getLogger(__name__)
 
 
@@ -39,22 +41,24 @@ class FredClient:
             df.columns = [c.strip() for c in df.columns]
             date_col = "observation_date" if "observation_date" in df.columns else "DATE"
             if date_col not in df.columns:
-                logger.warning(f"FRED 返回数据为空或缺失日期列 [{series_id}]")
-                return pd.DataFrame()
+                raise DataFetchError(f"FRED 响应缺少日期列 [{series_id}]")
 
             if date_col != "DATE":
                 df = df.rename(columns={date_col: "DATE"})
 
             # 转换数值类型 (处理 '.' 缺失值)
             val_col = series_id.upper()
-            if val_col in df.columns:
-                df[val_col] = pd.to_numeric(df[val_col], errors="coerce")
-                df = df.dropna(subset=[val_col])
+            if val_col not in df.columns:
+                raise DataFetchError(f"FRED 响应缺少序列列 [{series_id}/{val_col}]")
+            df[val_col] = pd.to_numeric(df[val_col], errors="coerce")
+            df = df.dropna(subset=[val_col])
 
             return df
+        except DataFetchError:
+            raise
         except Exception as e:
             logger.error(f"FRED 请求宏观序列失败 [{series_id}]: {e}")
-            return pd.DataFrame()
+            raise DataFetchError(f"FRED 请求宏观序列失败 [{series_id}]: {e}") from e
 
     def get(self, endpoint: str, **kwargs: Any) -> pd.DataFrame:
         """通用查询入口，兼容标准 Client 接口。"""

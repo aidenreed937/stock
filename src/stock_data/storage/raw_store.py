@@ -17,11 +17,11 @@ from stock_data.governance.quality.margin_coverage import is_margin_complete
 from stock_data.pipeline.cleaner.date_utils import parse_mixed_date
 from stock_data.storage.compat import StorageCompat
 from stock_data.storage.raw_cache import has_raw_cache
+from stock_data.storage.raw_merge import merge_raw_frames
 from stock_data.storage.raw_schema import (
     RAW_DATE_COLUMNS,
     RAW_RANGE_DATE_COLUMNS,
     RAW_SYMBOL_COLUMNS,
-    deduplicate_raw_merged_frame,
     first_existing_column,
     month_key_for,
     normalize_raw_date_series,
@@ -270,21 +270,12 @@ class RawDataStorage:
                     logger.warning(f"读取原有 RAW 文件失败 [{file_path}]: {e}")
                     self._backup_legacy_file(file_path)
 
-            incoming_columns = {column for _, frame in items for column in frame.columns}
-            if (
-                replace_existing
-                and not existing.is_empty()
-                and not incoming_columns.issubset(existing.columns)
-            ):
-                self._backup_legacy_file(file_path)
-                existing = pl.DataFrame()
-
-            dfs_to_concat = [existing] if not existing.is_empty() else []
-            for _, df in items:
-                dfs_to_concat.append(df)
-
-            merged = pl.concat(dfs_to_concat, how="diagonal_relaxed")
-            merged = deduplicate_raw_merged_frame(merged, items[0][0] if items else None)
+            merged = merge_raw_frames(
+                existing,
+                items,
+                replace_existing=replace_existing,
+                backup_legacy_file=lambda: self._backup_legacy_file(file_path),
+            )
 
             temp_path = file_path.with_suffix(f".{threading.get_ident()}.tmp.parquet")
             merged.write_parquet(temp_path)

@@ -2,6 +2,7 @@ import os
 import random
 import threading
 import time
+from collections.abc import Callable
 from datetime import UTC, datetime
 from email.utils import parsedate_to_datetime
 from pathlib import Path
@@ -231,6 +232,10 @@ class YFinanceClient:
             history_kwargs.update(history_options)
         return ticker.history(**history_kwargs)
 
+    def query_ticker(self, symbol: str, operation: Callable[[Any], Any]) -> Any:
+        """通过统一的限频、代理轮换和退避策略访问 Ticker 属性。"""
+        return _query_ticker(self, symbol, operation)
+
     def query_history(
         self,
         symbol: str,
@@ -296,3 +301,36 @@ class YFinanceClient:
         if last_error is not None:
             raise last_error
         return last_result
+
+
+def _query_ticker(client: YFinanceClient, symbol: str, operation: Callable[[Any], Any]) -> Any:
+    """执行一次 Ticker 属性请求，并在出口失败时切换代理重试。"""
+    last_error: Exception | None = None
+    for attempt in range(client.MAX_ATTEMPTS):
+        client.rate_limiter.acquire()
+        proxy = client._next_proxy()
+        try:
+            ticker = yf.Ticker(symbol, session=client._get_session(proxy))
+            return operation(ticker)
+        except Exception as error:
+            last_error = error
+            rate_limited = _is_rate_limited(error)
+            cooldown = (
+                client.RATE_LIMIT_PROXY_COOLDOWN_SECONDS
+                if rate_limited
+                else client.PROXY_COOLDOWN_SECONDS
+            )
+            client._mark_proxy_failed(proxy, cooldown_seconds=cooldown)
+            logger.warning(f"Yahoo Finance Ticker 抓取异常 [{symbol}]: {error}")
+
+        if attempt + 1 >= client.MAX_ATTEMPTS:
+            break
+        delay = _retry_delay_seconds(attempt, last_error)
+        logger.warning(
+            f"Yahoo Finance Ticker 将在 {delay:.1f} 秒后重试 ({attempt + 2}/{client.MAX_ATTEMPTS})"
+        )
+        time.sleep(delay)
+
+    if last_error is not None:
+        raise last_error
+    raise RuntimeError(f"Yahoo Finance Ticker 请求失败 [{symbol}]")

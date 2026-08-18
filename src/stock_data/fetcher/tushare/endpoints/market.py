@@ -133,6 +133,7 @@ MARKET_ENDPOINTS: dict[str, EndpointMeta] = {
     "fund_basic": EndpointMeta(
         api_name="fund_basic",
         description="基金基本信息",
+        frequency="static",
         group="basic_info",
         primary_keys=["ts_code"],
     ),

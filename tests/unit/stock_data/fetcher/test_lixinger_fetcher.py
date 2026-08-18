@@ -14,14 +14,18 @@ from stock_data.fetcher.lixinger import (
     LixingerStockFetcher,
     create_lixinger_pipeline,
 )
+from stock_data.fetcher.lixinger.client import _SHARED_LIMITERS
+from stock_data.fetcher.lixinger.registry import LIXINGER_API_REGISTRY
 from stock_data.pipeline.scheduler import DataUpdateScheduler
 
 
-def test_lixinger_clients_share_rate_limiter_per_api() -> None:
+def test_lixinger_clients_share_one_global_rate_limiter() -> None:
+    _SHARED_LIMITERS.clear()
     first = LixingerClient(token="mock_token", rate_limit_per_min=7)
     second = LixingerClient(token="mock_token", rate_limit_per_min=7)
 
-    assert first._get_rate_limiter("test/api") is second._get_rate_limiter("test/api")
+    assert first._get_rate_limiter("first/api") is second._get_rate_limiter("second/api")
+    assert len(_SHARED_LIMITERS) == 1
 
 
 def test_lixinger_client_query_success() -> None:
@@ -51,6 +55,30 @@ def test_lixinger_client_query_success() -> None:
         assert len(df) == 1
         assert df["stockCode"].iloc[0] == "600519"
         assert df["pe_ttm"].iloc[0] == 25.5
+
+
+def test_lixinger_client_requires_token() -> None:
+    client = LixingerClient(token="")
+
+    with pytest.raises(DataFetchError, match="未配置理杏仁 API Token"):
+        client.query("cn/index/fundamental")
+
+
+def test_lixinger_pledge_contract_uses_last_data_date() -> None:
+    meta = LIXINGER_API_REGISTRY["cn/company/hot/ple"]
+
+    assert meta.primary_keys == ["stockCode"]
+    assert meta.required_columns == ["stockCode", "last_data_date"]
+    assert meta.date_columns == ["last_data_date"]
+
+
+def test_lixinger_financial_contracts_exclude_probe_invalid_metrics() -> None:
+    assert "q.fi.roe.t" not in LIXINGER_API_REGISTRY["cn/company/fs/non_financial"].default_metrics
+    assert "q.bs.pcr.t" not in LIXINGER_API_REGISTRY["cn/company/fs/bank"].default_metrics
+    assert "q.ps.bni.t" not in LIXINGER_API_REGISTRY["cn/company/fs/security"].default_metrics
+    assert "q.ps.ibni.t" not in LIXINGER_API_REGISTRY["cn/company/fs/security"].default_metrics
+    assert "q.fi.roe.t" not in LIXINGER_API_REGISTRY["cn/company/fs/security"].default_metrics
+    assert "q.fi.roe.t" not in LIXINGER_API_REGISTRY["cn/company/fs/insurance"].default_metrics
 
 
 def test_lixinger_client_query_batch_uses_one_request_for_date_query() -> None:
@@ -170,15 +198,17 @@ def test_lixinger_client_429_retry() -> None:
 
     mock_429 = MagicMock()
     mock_429.status_code = 429
+    mock_429.headers = {"Retry-After": "3"}
 
     mock_200 = MagicMock()
     mock_200.status_code = 200
     mock_200.json.return_value = {"code": 0, "data": [{"stockCode": "600519"}]}
 
     with patch.object(client._session, "post", side_effect=[mock_429, mock_200]):
-        with patch("time.sleep", return_value=None):
+        with patch("time.sleep", return_value=None) as sleep:
             df = client.query("cn/company/fundamental/non_financial")
             assert len(df) == 1
+    sleep.assert_called_once_with(3.0)
 
 
 def test_lixinger_stock_fetcher() -> None:

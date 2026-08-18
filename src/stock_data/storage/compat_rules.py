@@ -1,6 +1,6 @@
 """历史 Curated 文件读取兼容规则。"""
 
-_IDENTITY_ALIASES = frozenset({"ts_code", "stockCode", "code", "date"})
+_IDENTITY_ALIASES = frozenset({"ts_code", "stockCode", "code", "date", "asOfDate"})
 _KNOWN_FLOAT_COLUMNS = frozenset(
     {
         "rqyl",

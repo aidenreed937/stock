@@ -149,7 +149,7 @@ class ConcurrencyConfig(BaseModel):
     """数据源并发数配置。"""
 
     tushare_max_workers: int = Field(default=4, gt=0, description="TuShare 抓取最大并发线程数")
-    lixinger_max_workers: int = Field(default=4, gt=0, description="理杏仁抓取最大并发线程数")
+    lixinger_max_workers: int = Field(default=2, gt=0, description="理杏仁抓取最大并发线程数")
     yfinance_max_workers: int = Field(default=4, gt=0, description="YFinance 抓取最大并发线程数")
     alphavantage_max_workers: int = Field(
         default=1, gt=0, description="Alpha Vantage 抓取最大并发线程数"
@@ -179,6 +179,10 @@ class DataConfig(BaseModel):
     watchlists: WatchlistsConfig = Field(default_factory=WatchlistsConfig)
     backfill: BackfillDefaultsConfig = Field(default_factory=BackfillDefaultsConfig)
     source_endpoint_supports: dict[str, dict[str, list[str]]] = Field(default_factory=dict)
+    disabled_endpoints: dict[str, list[str]] = Field(
+        default_factory=dict,
+        description="按本地账户能力停用的数据源任务列表",
+    )
     endpoint_start_date_overrides: dict[str, str] = Field(default_factory=dict)
 
 

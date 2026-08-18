@@ -32,17 +32,13 @@ def fetch_macro_daily_bars_df(
 ) -> pl.DataFrame:
     """抓取宏观资产原始 OHLC，绕过股票 DailyBar 的正价格约束。"""
     end_date_ex = end_date + timedelta(days=1)
-    try:
-        df = client.query_history(
-            symbol=symbol,
-            start_date_str=start_date.isoformat(),
-            end_date_str=end_date_ex.isoformat(),
-            auto_adjust=False,
-            repair=True,
-        )
-    except Exception as exc:
-        logger.error(f"YFinance 宏观数据抓取失败 [{symbol}]: {exc}", exc_info=True)
-        return pl.DataFrame()
+    df = client.query_history(
+        symbol=symbol,
+        start_date_str=start_date.isoformat(),
+        end_date_str=end_date_ex.isoformat(),
+        auto_adjust=False,
+        repair=True,
+    )
 
     if df.empty:
         logger.warning(f"YFinance 宏观数据为空: {symbol}")
