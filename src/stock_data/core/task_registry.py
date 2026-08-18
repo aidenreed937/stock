@@ -3,7 +3,13 @@
 from dataclasses import dataclass
 from typing import Any
 
-from stock_data.core.task_bundles import TASK_BUNDLE_ALIASES, TASK_BUNDLES, TaskBundle
+from stock_data.core.task_bundles import expand_task_targets as _expand_task_targets
+from stock_data.core.task_bundles import list_available_bundles as _list_available_bundles
+from stock_data.core.task_bundles import resolve_bundle as _resolve_bundle
+from stock_data.core.task_bundles import resolve_bundle_or_alias as _resolve_bundle_or_alias
+
+list_available_bundles = _list_available_bundles
+resolve_bundle = _resolve_bundle
 
 
 @dataclass(frozen=True)
@@ -501,56 +507,11 @@ _DISABLED_TASKS = {"bak_daily", "stk_account"}
 _EXPLICIT_ONLY_TASKS = {("fred", "macro_indicators")}
 
 
-def list_available_bundles(provider: str) -> list[str]:
-    """返回指定数据源下已注册的调度任务包名称。"""
-    prov = provider.lower()
-    return [
-        bundle.bundle_name
-        for (bundle_provider, _), bundle in TASK_BUNDLES.items()
-        if bundle_provider == prov
-    ]
-
-
-def _resolve_bundle_or_alias(provider: str, bundle_name: str) -> TaskBundle | None:
-    provider_name = provider.lower()
-    requested = bundle_name.strip()
-    bundle = TASK_BUNDLES.get((provider_name, requested))
-    if bundle is not None:
-        return bundle
-    alias_tasks = TASK_BUNDLE_ALIASES.get((provider_name, requested))
-    if alias_tasks is None:
-        return None
-    return TaskBundle(requested, provider_name, alias_tasks)
-
-
-def resolve_bundle(provider: str, bundle_name: str) -> TaskBundle:
-    """解析任务包，并返回其原子任务列表。"""
-    bundle = _resolve_bundle_or_alias(provider, bundle_name)
-    if bundle is None:
-        raise ValueError(f"未知任务包 [{provider.lower()}/{bundle_name}]。")
-    return bundle
-
-
 def expand_task_targets(provider: str, endpoints: list[str] | None = None) -> list[str]:
-    """将任务包展开为去重后的原子任务；未指定端点时保持全量任务自发现。"""
-    provider_name = provider.lower()
+    """展开任务包，并保留任务注册表的别名规范化行为。"""
     if not endpoints:
-        return list_available_tasks(provider_name)
-
-    expanded: list[str] = []
-    seen: set[str] = set()
-    for endpoint in endpoints:
-        requested = endpoint.strip()
-        if not requested:
-            continue
-        bundle = _resolve_bundle_or_alias(provider_name, requested)
-        targets = bundle.tasks if bundle is not None else (requested,)
-        for target in targets:
-            canonical_target = _ALIASES.get((provider_name, target), target)
-            if canonical_target not in seen:
-                expanded.append(canonical_target)
-                seen.add(canonical_target)
-    return expanded
+        return list_available_tasks(provider)
+    return _expand_task_targets(provider, endpoints, _ALIASES)
 
 
 def _provider_registry(provider: str) -> dict[str, Any]:
@@ -657,9 +618,7 @@ def resolve_task(provider: str, task_name: str, symbol: str = "") -> TaskSpec:
     provider_name = provider.lower()
     requested = task_name.strip()
     if requested in _DISABLED_TASKS:
-        raise ValueError(
-            f"项目任务 [{provider_name}/{task_name}] 已停用；请使用 stock_daily_bar。"
-        )
+        raise ValueError(f"项目任务 [{provider_name}/{task_name}] 已停用；请使用 stock_daily_bar。")
     if _resolve_bundle_or_alias(provider_name, requested) is not None:
         raise ValueError(
             f"[{provider_name}/{task_name}] 是任务包，不是原子任务；"
@@ -712,9 +671,7 @@ def resolve_public_task(provider: str, task_name: str, symbol: str = "") -> Task
     provider_name = provider.lower()
     requested = task_name.strip()
     if requested in _DISABLED_TASKS:
-        raise ValueError(
-            f"项目任务 [{provider_name}/{task_name}] 已停用；请使用 stock_daily_bar。"
-        )
+        raise ValueError(f"项目任务 [{provider_name}/{task_name}] 已停用；请使用 stock_daily_bar。")
     if _resolve_bundle_or_alias(provider_name, requested) is not None:
         raise ValueError(
             f"[{provider_name}/{task_name}] 是任务包，不是公开原子任务；请在调度入口中展开。"

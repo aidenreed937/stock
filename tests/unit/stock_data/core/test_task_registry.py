@@ -210,12 +210,13 @@ def test_tushare_task_bundles() -> None:
 
 def test_expand_tushare_task_bundles_keeps_order_and_deduplicates() -> None:
     assert expand_task_targets(
-        "tushare", [
+        "tushare",
+        [
             "daily_market_bundle",
             "fund_daily_bundle",
             "hsgt_flow_bundle",
             "daily_market_bundle",
-        ]
+        ],
     ) == [
         "daily_basic",
         "adj_factor",
@@ -320,9 +321,9 @@ def test_task_bundle_members_share_scheduling_contract() -> None:
     from stock_data.pipeline.scheduler import DataUpdateScheduler
 
     for (provider, _), bundle in {
-        (provider, name): resolve_bundle(provider, name)
-        for provider in ("tushare", "lixinger", "yfinance", "fred")
-        for name in list_available_bundles(provider)
+        (provider_name, name): resolve_bundle(provider_name, name)
+        for provider_name in ("tushare", "lixinger", "yfinance", "fred")
+        for name in list_available_bundles(provider_name)
     }.items():
         signatures = set()
         for task_name in bundle.tasks:
@@ -346,9 +347,7 @@ def test_task_bundle_members_share_scheduling_contract() -> None:
 def test_tushare_index_daily_alias_is_not_a_second_public_task() -> None:
     assert "index_daily" not in list_available_tasks("tushare")
     assert resolve_task("tushare", "index_daily").task_name == "index_daily_bar"
-    assert expand_task_targets("tushare", ["index_daily", "index_daily_bar"]) == [
-        "index_daily_bar"
-    ]
+    assert expand_task_targets("tushare", ["index_daily", "index_daily_bar"]) == ["index_daily_bar"]
 
 
 def test_legacy_bundle_names_still_expand() -> None:
