@@ -140,3 +140,39 @@ def test_partition_writer_allows_index_fundamental_metric_expansion(tmp_path: Pa
     assert set(merged["trade_date"].to_list()) == {date(2026, 8, 13), date(2026, 8, 14)}
     assert merged.filter(pl.col("trade_date") == date(2026, 8, 13))["pe_ttm.mcw"].item() is None
     assert merged.filter(pl.col("trade_date") == date(2026, 8, 14))["pe_ttm.mcw"].item() == 11.8
+
+
+def test_partition_writer_normalizes_legacy_index_valuation_assets_column(
+    tmp_path: Path,
+) -> None:
+    writer = ParquetPartitionWriter(data_source="yfinance")
+    path = tmp_path / "market=US" / "index_valuation" / "data.parquet"
+    existing = pl.DataFrame(
+        {
+            "symbol": ["SPY"],
+            "target_index": ["^GSPC"],
+            "trade_date": [date(2026, 8, 12)],
+            "trailing_pe": [22.0],
+            "forward_pe": [None],
+            "price_to_book": [4.0],
+            "price_to_sales": [None],
+            "dividend_yield": [1.2],
+            "total_assets": [500.0],
+            "market": ["US"],
+            "exchange": ["US_EXCHANGE"],
+            "currency": ["USD"],
+            "data_source": ["yfinance"],
+            "schema_version": ["v2"],
+        }
+    )
+    incoming = existing.drop("total_assets").with_columns(
+        pl.lit(date(2026, 8, 13)).alias("trade_date"),
+        pl.lit(510.0).alias("market_cap"),
+    )
+    path.parent.mkdir(parents=True)
+    existing.write_parquet(path)
+
+    merged = writer.merge_and_save_parquet(path, [incoming], source="yfinance")
+
+    assert "total_assets" not in merged.columns
+    assert merged["market_cap"].to_list() == [500.0, 510.0]

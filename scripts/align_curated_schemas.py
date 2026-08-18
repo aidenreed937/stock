@@ -88,7 +88,6 @@ def migrate_yfinance_index_valuation() -> int:
         "price_to_book",
         "price_to_sales",
         "market_cap",
-        "total_assets",
         "target_index",
         "market",
         "exchange",
@@ -110,6 +109,16 @@ def migrate_yfinance_index_valuation() -> int:
                 dtype = pl.Utf8 if c in ("target_index",) else pl.Float64
                 df = df.with_columns(pl.lit(None).cast(dtype).alias(c))
                 needs_write = True
+        if "total_assets" in df.columns:
+            df = df.with_columns(
+                pl.coalesce(
+                    [
+                        pl.col("market_cap").cast(pl.Float64, strict=False),
+                        pl.col("total_assets").cast(pl.Float64, strict=False),
+                    ]
+                ).alias("market_cap")
+            ).drop("total_assets")
+            needs_write = True
         extra_cols = [c for c in df.columns if c not in all_cols]
         if extra_cols:
             df = df.drop(extra_cols)

@@ -8,7 +8,12 @@ import pytest
 
 from stock_cli.sync import main as sync_cli_main
 from stock_data.pipeline.scheduler import DataUpdateScheduler
-from stock_data.pipeline.sync import DailySyncEngine, SyncTaskItem, _sync_symbols_for_task
+from stock_data.pipeline.sync import (
+    DailySyncEngine,
+    SyncExecutionResult,
+    SyncTaskItem,
+    _sync_symbols_for_task,
+)
 
 
 def test_sniff_watermarks() -> None:
@@ -389,6 +394,62 @@ def test_sync_daily_workflow_with_audit() -> None:
         assert plan == []
         assert results == []
         assert audit_res is None  # 无成功任务时不触发对账
+
+
+def test_sync_daily_skips_a_share_audit_for_non_tushare_source() -> None:
+    engine = DailySyncEngine(data_source="alphavantage", max_workers=1)
+    result = SyncExecutionResult(
+        data_source="alphavantage",
+        endpoint="fx_daily",
+        start_date=date(2026, 8, 17),
+        end_date=date(2026, 8, 17),
+        records=1,
+        duration_s=0.1,
+        status="SUCCESS",
+    )
+
+    with (
+        patch.object(engine, "build_sync_plan", return_value=[]),
+        patch.object(engine, "execute_plan", return_value=[result]),
+        patch("stock_data.governance.audit.reconciliation.run_audit") as run_audit,
+    ):
+        plan, results, audit_res = engine.sync_daily(
+            target_date=date(2026, 8, 17), run_audit_gate=True
+        )
+
+    assert plan == []
+    assert results == [result]
+    assert audit_res is None
+    run_audit.assert_not_called()
+
+
+def test_sync_daily_runs_a_share_audit_after_tushare_stock_bar() -> None:
+    engine = DailySyncEngine(data_source="tushare", max_workers=1)
+    result = SyncExecutionResult(
+        data_source="tushare",
+        endpoint="stock_daily_bar",
+        start_date=date(2026, 8, 17),
+        end_date=date(2026, 8, 17),
+        records=1,
+        duration_s=0.1,
+        status="SUCCESS",
+    )
+    audit_result = {"integrity_rate": 100.0}
+
+    with (
+        patch.object(engine, "build_sync_plan", return_value=[]),
+        patch.object(engine, "execute_plan", return_value=[result]),
+        patch(
+            "stock_data.governance.audit.reconciliation.run_audit",
+            return_value=audit_result,
+        ) as run_audit,
+    ):
+        _, _, audit_res = engine.sync_daily(target_date=date(2026, 8, 17), run_audit_gate=True)
+
+    assert audit_res == audit_result
+    run_audit.assert_called_once_with(
+        target_date=date(2026, 8, 17), data_source="tushare", quiet=True
+    )
 
 
 def test_sync_cli_main(capsys) -> None:

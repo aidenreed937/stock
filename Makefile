@@ -1,4 +1,4 @@
-.PHONY: help install lint format test check run scan market-temperature industry-structure report-consistency market-cycle-review backfill baseline migrate-data cleanup-data backfill-accept repair-stock-daily-bar
+.PHONY: help install lint format test check run scan market-temperature industry-structure report-consistency market-cycle-review backfill baseline migrate-data migrate-curated cleanup-data backfill-accept repair-stock-daily-bar
 
 help:
 	@echo "Available commands:"
@@ -16,6 +16,7 @@ help:
 	@echo "  make backfill - Backfill historical data (e.g., make backfill START=2026-08-01 END=2026-08-12)"
 	@echo "  make baseline - Generate immutable data inventory"
 	@echo "  make migrate-data [APPLY=1] - Preview/apply local dedup migration"
+	@echo "  make migrate-curated [APPLY=1] - Preview/apply Curated Schema v2 migration"
 	@echo "  make cleanup-data [APPLY=1] [OLDER_THAN_DAYS=7] - Preview/clean stale Parquet artifacts"
 	@echo "  make backfill-accept ENDPOINT=stock_daily_bar - Run fail-closed backfill acceptance"
 	@echo "  make repair-stock-daily-bar [APPLY=1] - Replay stock_daily_bar RAW into staged Curated"
@@ -57,6 +58,9 @@ baseline:
 
 migrate-data:
 	UV_CACHE_DIR=.uv_cache UV_PYTHON_INSTALL_DIR=.uv_python uv run python -m stock_data.governance.ops.migration --root $(or $(ROOT),data) $(if $(APPLY),--apply) $(if $(REPAIR_LINEAGE),--repair-lineage)
+
+migrate-curated:
+	UV_CACHE_DIR=.uv_cache UV_PYTHON_INSTALL_DIR=.uv_python uv run python scripts/migrate_curated_schema_v2.py --root $(or $(CURATED_ROOT),data/curated) $(if $(APPLY),--apply)
 
 cleanup-data:
 	UV_CACHE_DIR=.uv_cache UV_PYTHON_INSTALL_DIR=.uv_python uv run python -m stock_data.governance.ops.cleanup_artifacts --root $(or $(ROOT),data) --older-than-days $(or $(OLDER_THAN_DAYS),7) $(if $(filter 1 true yes,$(APPLY)),--apply)

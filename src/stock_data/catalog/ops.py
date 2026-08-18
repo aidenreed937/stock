@@ -12,6 +12,7 @@ from stock_core.exceptions import DataValidationError
 from stock_core.utils.logger import logger
 from stock_data.governance.quality.margin_coverage import filter_complete_margin_dates
 from stock_data.storage.compat import StorageCompat
+from stock_data.storage.read_compat import normalize_read_frame, validate_schema_version
 
 _IDENTITY_ALIASES = ("ts_code", "stockCode", "code")
 _DATE_ALIASES = ("date",)
@@ -148,23 +149,6 @@ def scan_latest_trade_dates(files: list[Path], n: int = 1) -> list[date]:
     return sorted(found, reverse=True)[:n]
 
 
-def validate_schema_version(df: pl.DataFrame, path: Path) -> None:
-    if "schema_version" not in df.columns or df.is_empty():
-        return
-    versions = {
-        str(v)
-        for v in df.get_column("schema_version")
-        .cast(pl.Utf8, strict=False)
-        .drop_nulls()
-        .unique()
-        .to_list()
-        if str(v)
-    }
-    invalid = versions - {"v2"}
-    if invalid:
-        raise DataValidationError(f"文件 [{path}] 包含旧版或未知 schema_version: {sorted(invalid)}")
-
-
 def dataset_name(path: Path) -> str:
     parts = path.parts
     for i in range(len(parts) - 1, -1, -1):
@@ -241,6 +225,8 @@ def read_dataset_files(
                         "exchange_id",
                     }
                 )
+                if dataset == "index_valuation":
+                    wanted.add("total_assets")
                 try:
                     file_schema = pl.read_parquet_schema(path)
                     read_cols = [c for c in file_schema if c in wanted]
@@ -252,7 +238,7 @@ def read_dataset_files(
         except Exception as e:
             logger.error(f"DataCatalog 读取文件失败 [{path}]: {e}")
             continue
-        frame = StorageCompat.safe_normalize_frame(frame)
+        frame = normalize_read_frame(dataset, frame)
         validate_schema_version(frame, path)
         frames.append(frame)
     if not frames:

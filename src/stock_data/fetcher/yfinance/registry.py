@@ -14,6 +14,9 @@ class YFinanceEndpointMeta:
     rate_limit_per_min: int = 40
     update_time: str = "06:00"
     update_delay_days: int = 1
+    date_columns: list[str] = field(default_factory=list)
+    required_columns: list[str] = field(default_factory=list)
+    max_range_days: int | None = None
 
 
 # YFinance 接口元数据注册表 (全局统一由 YFinanceClient / data.yaml 控制限频)
@@ -23,7 +26,9 @@ YFINANCE_API_REGISTRY: dict[str, YFinanceEndpointMeta] = {
         description="日线 K 线行情 (包含个股 stock_daily_bar 与指数 index_daily_bar)",
         frequency="daily",
         group="market_data",
-        primary_keys=["Date"],
+        primary_keys=["symbol", "trade_date"],
+        date_columns=["trade_date"],
+        required_columns=["symbol", "trade_date"],
         update_time="06:00",
         update_delay_days=1,
     ),
@@ -33,6 +38,8 @@ YFINANCE_API_REGISTRY: dict[str, YFinanceEndpointMeta] = {
         frequency="daily",
         group="market_indicators",
         primary_keys=["symbol", "trade_date"],
+        date_columns=["trade_date"],
+        required_columns=["symbol", "trade_date"],
         update_time="06:00",
         update_delay_days=0,
     ),
@@ -43,6 +50,8 @@ YFINANCE_API_REGISTRY: dict[str, YFinanceEndpointMeta] = {
         frequency="daily",
         group="macro_data",
         primary_keys=["symbol", "trade_date"],
+        date_columns=["trade_date"],
+        required_columns=["symbol", "trade_date"],
         update_time="06:00",
         update_delay_days=1,
     ),
@@ -52,6 +61,8 @@ YFINANCE_API_REGISTRY: dict[str, YFinanceEndpointMeta] = {
         frequency="quarterly",
         group="financial_reports",
         primary_keys=["symbol", "asOfDate"],
+        date_columns=["asOfDate"],
+        required_columns=["symbol", "asOfDate"],
     ),
     "balance_sheet": YFinanceEndpointMeta(
         api_name="balance_sheet",
@@ -59,6 +70,8 @@ YFINANCE_API_REGISTRY: dict[str, YFinanceEndpointMeta] = {
         frequency="quarterly",
         group="financial_reports",
         primary_keys=["symbol", "asOfDate"],
+        date_columns=["asOfDate"],
+        required_columns=["symbol", "asOfDate"],
     ),
     "cashflow": YFinanceEndpointMeta(
         api_name="cashflow",
@@ -66,6 +79,8 @@ YFINANCE_API_REGISTRY: dict[str, YFinanceEndpointMeta] = {
         frequency="quarterly",
         group="financial_reports",
         primary_keys=["symbol", "asOfDate"],
+        date_columns=["asOfDate"],
+        required_columns=["symbol", "asOfDate"],
     ),
     "dividends": YFinanceEndpointMeta(
         api_name="dividends",
@@ -73,6 +88,8 @@ YFINANCE_API_REGISTRY: dict[str, YFinanceEndpointMeta] = {
         frequency="event",
         group="corporate_actions",
         primary_keys=["symbol", "Date"],
+        date_columns=["Date"],
+        required_columns=["symbol", "Date"],
     ),
     "splits": YFinanceEndpointMeta(
         api_name="splits",
@@ -80,6 +97,8 @@ YFINANCE_API_REGISTRY: dict[str, YFinanceEndpointMeta] = {
         frequency="event",
         group="corporate_actions",
         primary_keys=["symbol", "Date"],
+        date_columns=["Date"],
+        required_columns=["symbol", "Date"],
     ),
     "analyst_price_target": YFinanceEndpointMeta(
         api_name="analyst_price_target",
@@ -87,6 +106,8 @@ YFINANCE_API_REGISTRY: dict[str, YFinanceEndpointMeta] = {
         frequency="daily",
         group="market_indicators",
         primary_keys=["symbol", "trade_date"],
+        date_columns=["trade_date"],
+        required_columns=["symbol", "trade_date"],
     ),
     "recommendations": YFinanceEndpointMeta(
         api_name="recommendations",
@@ -94,6 +115,7 @@ YFINANCE_API_REGISTRY: dict[str, YFinanceEndpointMeta] = {
         frequency="event",
         group="market_indicators",
         primary_keys=["symbol", "period"],
+        required_columns=["symbol", "period"],
     ),
     "institutional_holders": YFinanceEndpointMeta(
         api_name="institutional_holders",
@@ -101,6 +123,7 @@ YFINANCE_API_REGISTRY: dict[str, YFinanceEndpointMeta] = {
         frequency="quarterly",
         group="holders_info",
         primary_keys=["symbol", "Holder"],
+        required_columns=["symbol", "Holder"],
     ),
     "insider_transactions": YFinanceEndpointMeta(
         api_name="insider_transactions",
@@ -108,6 +131,8 @@ YFINANCE_API_REGISTRY: dict[str, YFinanceEndpointMeta] = {
         frequency="event",
         group="holders_info",
         primary_keys=["symbol", "Start Date", "Insider"],
+        date_columns=["Start Date"],
+        required_columns=["symbol", "Start Date", "Insider"],
     ),
     "fast_info": YFinanceEndpointMeta(
         api_name="fast_info",
@@ -115,5 +140,7 @@ YFINANCE_API_REGISTRY: dict[str, YFinanceEndpointMeta] = {
         frequency="daily",
         group="market_data",
         primary_keys=["symbol", "trade_date"],
+        date_columns=["trade_date"],
+        required_columns=["symbol", "trade_date"],
     ),
 }

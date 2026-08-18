@@ -55,3 +55,74 @@ def test_duckdb_query_engine_empty_input() -> None:
     assert engine.query_daily_bars([], "000001.SZ", "tushare").is_empty()
     assert engine.query_history([], "tushare").is_empty()
     assert engine.query_universe_snapshots([]).is_empty()
+
+
+def test_duckdb_query_engine_normalizes_legacy_identity_columns(tmp_path: Path) -> None:
+    engine = DuckDBQueryEngine()
+    parquet_path = tmp_path / "legacy-bars.parquet"
+    pl.DataFrame(
+        {
+            "ts_code": ["000001.SZ", "600519.SH"],
+            "date": ["2024-01-02", "2024-01-03"],
+            "open": [10.0, 1800.0],
+            "high": [11.0, 1850.0],
+            "low": [9.5, 1780.0],
+            "close": [10.2, 1820.0],
+            "data_source": ["tushare", "tushare"],
+        }
+    ).write_parquet(parquet_path)
+
+    result = engine.query_dataset(
+        [parquet_path],
+        symbol="000001.SZ",
+        start_date=date(2024, 1, 2),
+        end_date=date(2024, 1, 2),
+    )
+
+    assert result.columns[0] == "symbol"
+    assert result["symbol"].to_list() == ["000001.SZ"]
+    assert result["trade_date"].to_list() == [date(2024, 1, 2)]
+
+
+def test_duckdb_query_engine_normalizes_legacy_index_valuation(tmp_path: Path) -> None:
+    engine = DuckDBQueryEngine()
+    parquet_path = tmp_path / "legacy-index-valuation.parquet"
+    pl.DataFrame(
+        {
+            "symbol": ["SPY"],
+            "trade_date": [date(2026, 8, 14)],
+            "trailing_pe": [20.0],
+            "forward_pe": [19.0],
+            "price_to_book": [2.0],
+            "price_to_sales": [3.0],
+            "dividend_yield": [1.2],
+            "market_cap": [None],
+            "total_assets": [500.0],
+            "data_source": ["yfinance"],
+        }
+    ).write_parquet(parquet_path)
+
+    result = engine.query_dataset([parquet_path], symbol="SPY", dataset_name="index_valuation")
+
+    assert result["market_cap"].to_list() == [500.0]
+    assert "total_assets" not in result.columns
+
+
+def test_duckdb_query_engine_infers_dataset_from_curated_path(tmp_path: Path) -> None:
+    engine = DuckDBQueryEngine()
+    parquet_path = tmp_path / "market=US" / "index_valuation" / "data.parquet"
+    parquet_path.parent.mkdir(parents=True)
+    pl.DataFrame(
+        {
+            "symbol": ["SPY"],
+            "trade_date": [date(2026, 8, 14)],
+            "market_cap": [None],
+            "total_assets": [500.0],
+            "data_source": ["yfinance"],
+        }
+    ).write_parquet(parquet_path)
+
+    result = engine.query_dataset([parquet_path], symbol="SPY")
+
+    assert result["market_cap"].to_list() == [500.0]
+    assert "total_assets" not in result.columns

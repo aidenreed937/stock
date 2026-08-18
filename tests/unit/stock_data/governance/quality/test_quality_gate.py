@@ -168,6 +168,27 @@ def test_quality_gate_fails_on_duplicate_keys(tmp_path: Path) -> None:
         gate.validate_all()
 
 
+def test_quality_gate_uses_registered_event_keys(tmp_path: Path) -> None:
+    target_dir = tmp_path / "tushare" / "market=CN" / "cn_schedule"
+    target_dir.mkdir(parents=True, exist_ok=True)
+    valid_df = pl.DataFrame(
+        {
+            "market": ["CN", "CN"],
+            "month": ["202611", "202611"],
+            "publish_date": ["20261109", "20261116"],
+            "title": ["居民消费价格指数月度报告", "商品住宅销售价格指数月度报告"],
+        }
+    )
+    path = target_dir / "data.parquet"
+    valid_df.write_parquet(path)
+
+    gate = QualityGate(tmp_path)
+    assert gate.assert_no_duplicate_keys(gate._active_parquet_files())
+
+    pl.concat([valid_df, valid_df.head(1)]).write_parquet(path)
+    assert not gate.assert_no_duplicate_keys(gate._active_parquet_files())
+
+
 def test_quality_gate_fails_on_mixed_adjustment(tmp_path: Path) -> None:
     now_utc = datetime.now(UTC)
     target_dir = tmp_path / "tushare" / "market=CN" / "stock_daily_bar" / "year=2026" / "month=08"

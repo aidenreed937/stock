@@ -67,6 +67,32 @@ def test_yfinance_fetcher_empty() -> None:
         assert df.is_empty()
 
 
+def test_yfinance_fetcher_skips_invalid_rows_but_keeps_valid_rows() -> None:
+    mock_df = pd.DataFrame(
+        {
+            "Open": [float("nan"), 101.0],
+            "High": [float("nan"), 103.0],
+            "Low": [float("nan"), 100.0],
+            "Close": [float("nan"), 102.0],
+            "Volume": [float("nan"), 2000.0],
+        },
+        index=pd.to_datetime(["2026-01-01", "2026-01-02"]),
+    )
+    client = YFinanceClient()
+    fetcher = YFinanceDataFetcher(client=client)
+
+    with patch("yfinance.Ticker") as mock_ticker_class:
+        mock_ticker_instance = MagicMock()
+        mock_ticker_instance.history.return_value = mock_df
+        mock_ticker_class.return_value = mock_ticker_instance
+
+        bars = fetcher.fetch_daily_bars("^GSPC", date(2026, 1, 1), date(2026, 1, 2))
+
+    assert len(bars) == 1
+    assert bars[0].trade_date == date(2026, 1, 2)
+    assert bars[0].close == 102.0
+
+
 def test_yfinance_retry_keeps_proxy_aware_session() -> None:
     client = YFinanceClient(proxy="http://mock-proxy")
     first_session = MagicMock(name="first_session")

@@ -1,4 +1,5 @@
 import logging
+import math
 from datetime import date, timedelta
 from typing import Any
 
@@ -12,6 +13,50 @@ from stock_data.fetcher.yfinance.models import IndexValuation
 from stock_data.fetcher.yfinance.registry import YFINANCE_API_REGISTRY
 
 logger = logging.getLogger(__name__)
+
+
+def _parse_finite_float(value: Any) -> float | None:
+    """将行情字段解析为有限浮点数。"""
+    try:
+        parsed = float(value)
+    except (TypeError, ValueError):
+        return None
+    return parsed if math.isfinite(parsed) else None
+
+
+def _build_daily_bar(symbol: str, trade_date_value: Any, row: Any) -> DailyBar:
+    """从单行 yfinance 响应构造标准行情模型。"""
+    trade_date = trade_date_value.date() if hasattr(trade_date_value, "date") else trade_date_value
+    open_price = _parse_finite_float(row["Open"])
+    high_price = _parse_finite_float(row["High"])
+    low_price = _parse_finite_float(row["Low"])
+    close_price = _parse_finite_float(row["Close"])
+    volume = _parse_finite_float(row["Volume"])
+    if (
+        open_price is None
+        or high_price is None
+        or low_price is None
+        or close_price is None
+        or volume is None
+        or min(open_price, high_price, low_price, close_price) <= 0
+        or volume < 0
+    ):
+        raise ValueError("OHLC 必须为有限正数，成交量必须为有限非负数")
+
+    amount = _parse_finite_float(volume * close_price)
+    if amount is None or amount < 0:
+        raise ValueError("成交额必须为有限非负数")
+
+    return DailyBar(
+        symbol=symbol,
+        trade_date=trade_date,
+        open=round(open_price, 4),
+        high=round(high_price, 4),
+        low=round(low_price, 4),
+        close=round(close_price, 4),
+        volume=volume,
+        amount=round(amount, 2),
+    )
 
 
 class YFinanceDataFetcher(BaseDataFetcher):
@@ -55,24 +100,15 @@ class YFinanceDataFetcher(BaseDataFetcher):
 
             bars: list[DailyBar] = []
             for dt, row_series in df.iterrows():
-                row: Any = row_series
-                trade_date = dt.date() if hasattr(dt, "date") else dt
-                volume = float(row["Volume"])
-                close_price = float(row["Close"])
-                amount = round(volume * close_price, 2)
-
-                bars.append(
-                    DailyBar(
-                        symbol=symbol,
-                        trade_date=trade_date,
-                        open=round(float(row["Open"]), 4),
-                        high=round(float(row["High"]), 4),
-                        low=round(float(row["Low"]), 4),
-                        close=round(close_price, 4),
-                        volume=volume,
-                        amount=amount,
+                try:
+                    bars.append(_build_daily_bar(symbol, dt, row_series))
+                except (KeyError, TypeError, ValueError, OverflowError) as exc:
+                    logger.warning(
+                        "YFinance 跳过无效行情行 [%s/%s]: %s",
+                        symbol,
+                        dt,
+                        exc,
                     )
-                )
             logger.info(f"YFinance 成功抓取 {symbol} 共 {len(bars)} 条记录")
             return bars
 

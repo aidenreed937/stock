@@ -205,6 +205,37 @@ def _run_sync_task(task: SyncTaskItem, force_refresh: bool) -> SyncExecutionResu
         )
 
 
+def _run_incremental_audit(
+    data_source: str,
+    exec_results: list[SyncExecutionResult],
+    enabled: bool,
+) -> dict[str, Any] | None:
+    """仅为 TuShare 日行情同步触发 A 股专用对账。"""
+    stock_bar_results = [
+        result
+        for result in exec_results
+        if result.status == "SUCCESS" and result.endpoint == "stock_daily_bar"
+    ]
+    if not enabled:
+        return None
+    if data_source != "tushare" or not stock_bar_results:
+        if any(result.status == "SUCCESS" for result in exec_results):
+            logger.info(
+                "增量同步包含非 TuShare 数据源或非 stock_daily_bar 任务，跳过 A 股专用对账审计"
+            )
+        return None
+
+    try:
+        from stock_data.governance.audit.reconciliation import run_audit
+
+        audit_date = stock_bar_results[0].end_date
+        logger.info(f"增量同步完成，正在触发 [{audit_date}] 质量对账门禁...")
+        return run_audit(target_date=audit_date, data_source=data_source, quiet=True)
+    except Exception as e:
+        logger.warning(f"增量后自动审计异常: {e}")
+        return None
+
+
 class DailySyncEngine:
     """增量数据同步与自愈引擎。"""
 
@@ -393,24 +424,6 @@ class DailySyncEngine:
         )
         exec_results = self.execute_plan(plan, force_refresh=force)
 
-        audit_result: dict[str, Any] | None = None
-        if run_audit_gate and any(r.status == "SUCCESS" for r in exec_results):
-            try:
-                from stock_data.governance.audit.reconciliation import run_audit
-
-                logger.info(f"增量同步完成，正在触发 [{t_target}] 质量对账门禁...")
-                audit_date = next(
-                    (
-                        result.end_date
-                        for result in exec_results
-                        if result.endpoint == "stock_daily_bar" and result.status == "SUCCESS"
-                    ),
-                    t_target,
-                )
-                audit_result = run_audit(
-                    target_date=audit_date, data_source=self.data_source, quiet=True
-                )
-            except Exception as e:
-                logger.warning(f"增量后自动审计异常: {e}")
+        audit_result = _run_incremental_audit(self.data_source, exec_results, run_audit_gate)
 
         return plan, exec_results, audit_result

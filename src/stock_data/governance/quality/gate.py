@@ -13,6 +13,7 @@ from stock_data.governance.quality.margin_quality import (
     margin_quality_issues,
     margin_quality_report,
 )
+from stock_data.storage.compat import StorageCompat
 
 _BAR_REQUIRED_COLUMNS = {
     "symbol",
@@ -38,6 +39,15 @@ def _is_quality_bar_file(file: Path) -> bool:
     return dataset_name in BAR_DATASETS and not (
         dataset_name == "stock_daily_bar" and "fred" in file.parts
     )
+
+
+def _data_source_from_path(file: Path, curated_dir: Path) -> str:
+    """从 Curated 相对路径解析数据源，供注册表主键查询使用。"""
+    try:
+        relative = file.resolve().relative_to(curated_dir.resolve())
+    except ValueError:
+        return "unknown"
+    return relative.parts[0] if relative.parts else "unknown"
 
 
 def _validate_generic_bar_frame(df: pl.DataFrame, dataset_name: str, file: Path) -> bool:
@@ -243,31 +253,20 @@ class QualityGate:
         return True
 
     def assert_no_duplicate_keys(self, files: list[Path]) -> bool:
-        """断言所有 parquet 文件内没有重复主键。"""
+        """按数据源注册表主键断言所有 Parquet 文件没有重复记录。"""
         for file in files:
             try:
                 df = pl.read_parquet(file)
                 if df.is_empty():
                     continue
-                keys = [
-                    c
-                    for c in (
-                        "market",
-                        "symbol",
-                        "index_code",
-                        "con_code",
-                        "ts_code",
-                        "exchange_id",
-                        "trade_date",
-                        "month",
-                        "quarter",
-                        "date",
-                        "end_date",
-                        "ann_date",
-                        "in_date",
-                    )
-                    if c in df.columns
-                ]
+                dataset_name = _dataset_name_from_path(file)
+                data_source = _data_source_from_path(file, self.curated_dir)
+                keys = StorageCompat.resolve_dedup_keys(
+                    dataset_name,
+                    data_source,
+                    data_source,
+                    df,
+                )
                 if len(keys) >= 2:
                     dups = len(df) - len(df.unique(subset=keys))
                     if dups > 0:

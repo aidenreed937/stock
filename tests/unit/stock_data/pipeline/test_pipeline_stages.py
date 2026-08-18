@@ -132,6 +132,27 @@ def test_fetcher_stage_validates_normalized_margin_primary_key() -> None:
         )
 
 
+def test_fetcher_stage_validates_yfinance_history_contract() -> None:
+    stage = FetcherStage(MagicMock(), MagicMock(), data_source="yfinance")
+    frame = pl.DataFrame(
+        {
+            "symbol": ["AAPL"],
+            "trade_date": [date(2026, 8, 17)],
+            "open": [100.0],
+            "high": [101.0],
+            "low": [99.0],
+            "close": [100.5],
+        }
+    )
+
+    stage.validate_endpoint_frame(
+        frame,
+        start_date=date(2026, 8, 17),
+        end_date=date(2026, 8, 17),
+        endpoint="stock_daily_bar",
+    )
+
+
 def test_fetcher_stage_saves_unclipped_raw_before_returning_clipped_frame() -> None:
     fetcher = MagicMock()
     raw_store = MagicMock()

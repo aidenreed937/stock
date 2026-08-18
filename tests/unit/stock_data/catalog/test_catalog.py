@@ -89,6 +89,35 @@ def test_load_dataset_renames_ts_code(tmp_path: Path) -> None:
     assert set(df["symbol"].to_list()) == {"AAA", "BBB"}
 
 
+def test_load_dataset_normalizes_legacy_index_valuation(tmp_path: Path) -> None:
+    partition = tmp_path / "yfinance/market=US/index_valuation"
+    partition.mkdir(parents=True, exist_ok=True)
+    pl.DataFrame(
+        {
+            "symbol": ["SPY"],
+            "trade_date": [date(2026, 8, 14)],
+            "trailing_pe": [20.0],
+            "forward_pe": [19.0],
+            "price_to_book": [2.0],
+            "price_to_sales": [3.0],
+            "dividend_yield": [1.2],
+            "market_cap": [None],
+            "total_assets": [500.0],
+            "data_source": ["yfinance"],
+        }
+    ).write_parquet(partition / "data.parquet")
+
+    catalog = DataCatalog(data_source="yfinance", storage_dir=tmp_path)
+    df = catalog.load_dataset("index_valuation")
+
+    assert df["market_cap"].to_list() == [500.0]
+    assert "total_assets" not in df.columns
+
+    projected = catalog.load_dataset("index_valuation", columns=["market_cap"])
+    assert projected.columns == ["market_cap"]
+    assert projected["market_cap"].to_list() == [500.0]
+
+
 def test_skips_bak_files(tmp_path: Path) -> None:
     """.bak / .tmp 文件应被跳过，不影响可用数据集列表。"""
     _make_bar_file(tmp_path, "stock_daily_bar", "CN", 2026, 8)

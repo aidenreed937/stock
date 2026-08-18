@@ -6,6 +6,8 @@ from typing import Any
 import polars as pl
 
 from stock_data.core.task_registry import resolve_task
+from stock_data.storage.compat_rules import _KNOWN_FLOAT_COLUMNS
+from stock_data.storage.legacy_compat import normalize_legacy_index_valuation
 
 
 class StorageCompat:
@@ -114,54 +116,9 @@ class StorageCompat:
     @staticmethod
     def normalize_numeric_columns(df: pl.DataFrame) -> pl.DataFrame:
         """将历史残留或不同分区中误存为 String 的数值度量列安全转为 Float64。"""
-        known_floats = {
-            "rqyl",
-            "rzye",
-            "rqye",
-            "rzmre",
-            "rzche",
-            "rqchl",
-            "rqmcl",
-            "rzrqye",
-            "open",
-            "high",
-            "low",
-            "close",
-            "volume",
-            "amount",
-            "vol",
-            "pe",
-            "pb",
-            "ps",
-            "pe_ttm",
-            "pb_mrq",
-            "ps_ttm",
-            "dv_ratio",
-            "dv_ttm",
-            "total_mv",
-            "circ_mv",
-            "turnover_rate",
-            "turnover_rate_f",
-            "volume_ratio",
-            "adj_factor",
-            "fd_share",
-            "total_share",
-            "n_shares",
-            "value",
-            "yield",
-            "net_mf_amount",
-            "buy_sm_amount",
-            "sell_sm_amount",
-            "buy_md_amount",
-            "sell_md_amount",
-            "buy_lg_amount",
-            "sell_lg_amount",
-            "buy_elg_amount",
-            "sell_elg_amount",
-        }
         casts = []
         for col_name in df.columns:
-            if col_name in known_floats and df.schema[col_name] in (pl.Utf8, pl.String):
+            if col_name in _KNOWN_FLOAT_COLUMNS and df.schema[col_name] in (pl.Utf8, pl.String):
                 casts.append(pl.col(col_name).cast(pl.Float64, strict=False).alias(col_name))
         return df.with_columns(casts) if casts else df
 
@@ -192,7 +149,7 @@ class StorageCompat:
 
     @staticmethod
     def post_process_dataset(dataset_name: str, df: pl.DataFrame) -> pl.DataFrame:
-        """对特定数据集做安全后处理（如北向持仓标的代码格式过滤、两融与申万行情冗余字段清理）。"""
+        df = normalize_legacy_index_valuation(df) if dataset_name == "index_valuation" else df
         if dataset_name == "hk_hold" and "symbol" in df.columns:
             qualified = df.filter(pl.col("symbol").cast(pl.Utf8, strict=False).str.contains(r"\."))
             if not qualified.is_empty():
