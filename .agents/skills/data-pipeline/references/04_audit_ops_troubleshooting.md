@@ -10,7 +10,7 @@ make master-audit
 # 或
 make audit TYPE=master
 
-# 2. RAW vs Curated 1-to-1 物理对账 (确保清洗过程零丢行、成交额一致)
+# 2. RAW / Curated / Quarantine 可解释对账
 make audit TYPE=reconciliation
 
 # 3. 估值指标专项对账 (daily_basic 每日估值对齐率)
@@ -21,7 +21,12 @@ make audit TYPE=factor
 
 # 5. 全套系联动主审计
 make audit TYPE=all
+
+# 6. 回填验收（按端点检查范围、主键和缺口归因）
+make backfill-accept ENDPOINT=stock_daily_bar SOURCE=tushare START=YYYY-MM-DD END=YYYY-MM-DD
 ```
+
+对账不能把“Curated 行数少于 RAW”直接判定为丢失：合法主键去重、质量规则隔离和领域 Mart 聚合都会改变行数。应同时检查 Quarantine 和审计明细；只有无法归因到上述机制的缺口，才记为未解释数据丢失。
 
 ---
 

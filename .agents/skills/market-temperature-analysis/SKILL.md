@@ -18,8 +18,13 @@ description: 用本地 Curated 黄金表和现有 analytics/metrics 体系生成
 优先使用仓库内标准产物管线，而不是每次手工拼装 facts：
 
 ```bash
-# 0. 特征集市宽表构建与加速 (物化全市场 5000+ 股票日频聚合指标至 data/curated/mart/market_daily.parquet)
+# 0. 特征集市宽表构建与加速 (物化全市场股票日频聚合指标至 data/curated/mart/)
 make features-build [TARGET=market_daily] [OVERWRITE=1] [START=YYYY-MM-DD] [END=YYYY-MM-DD]
+make features-build TARGET=domain_marts [START=YYYY-MM-DD] [END=YYYY-MM-DD]
+make features-build TARGET=all [START=YYYY-MM-DD] [END=YYYY-MM-DD]
+
+# 领域 Mart 输入缺失时只生成稳定空 Schema/不可用观察事实，不伪造数据；
+# TARGET=all 会先构建 market_daily，再构建领域 Mart。
 
 # 1. 市场温度计产物管线
 make market-temperature DATE=YYYY-MM-DD
@@ -80,14 +85,14 @@ make market-cycle-review START=YYYY-MM-DD END=YYYY-MM-DD
 2. 读取 `data-catalog` 技能，确认 `DataCatalog` 用法和数据口径。
 3. 先用 `codegraph_explore` 查看 `src/stock_analytics/metrics` 的当前实现，确认 `MetricEngine`、`BUILTIN_METRIC_SPECS`、`BUILTIN_CALCULATORS` 和各 `calculators/*.py` 里的实际计算口径。
 4. 查询关键数据集最新水位：
-   - `tushare`: `stock_daily_bar`, `daily_basic`, `margin`, `moneyflow`, `moneyflow_hsgt`, `index_daily`, `sw_daily`, `stk_limit`, `limit_list_d`, `opt_basic`, `opt_daily`, `forecast`, `report_rc`, `index_member`, `shibor`, `cn_cpi`
+   - `tushare`: `stock_daily_bar`, `daily_basic`, `margin`, `moneyflow`, `moneyflow_hsgt`, `index_daily`, `sw_daily`, `stk_limit`, `limit_list_d`, `opt_basic`, `opt_daily`, `cb_basic`, `cb_daily`, `stk_holdertrade`, `repurchase`, `block_trade`, `forecast`, `report_rc`, `index_member`, `shibor`, `cn_cpi`
    - `lixinger`: `index_fundamental`, `national_debt`, `investor_accounts`, `cn_m`, `sf_month`, `sw_2021_fundamental`, `sw_2021_constituents`, 四类 `sw_2021_fs_*`
    - `yfinance`: `index_daily_bar`, `macro_indicators`
    - `alphavantage`: `macro_indicators`，用于 `CNH=X` / USD-CNH 外汇日线
    - `fred`: `macro_indicators`，仅在需要美国宏观背景时使用
 5. 若核心行情或估值缺失，先说明数据缺口，不要硬算综合温度。
 6. 用 `MetricEngine` 和温度计派生事实按 YAML 中 `weight > 0` 的指标合成六维分数；当前入分清单为：
-   - 估值：`valuation_temperature`；PE/PB/ERP 的 10Y 指标只作辅助事实，5Y 指标保留作历史兼容，raw `equity_risk_premium` 仍作为事实展示，不直接参与温度评分。
+   - 估值：`valuation_temperature`（由 PE/PB/ERP/股息率的 **10Y 分位** 等权合成）；`pe_percentile_10y`、`pb_percentile_10y`、`equity_risk_premium_percentile_10y` 是可解释的辅助事实，`dividend_yield_percentile_10y` 是综合温度的内部组件，不是独立 YAML 入分项；相关 5Y 分位只作历史兼容，raw `equity_risk_premium` 仍作为事实展示，不直接参与温度评分。
    - 资金：`margin_buy_share_zscore_60d`, `margin_penetration_percentile_1250d`, `margin_balance_growth_20d`, `main_money_net_inflow_share`。
    - 情绪：`turnover_rate_percentile_1250d`, `advance_share`, `limit_event_temperature`, `investor_account_temperature`。
    - 技术：`return_20d`, `rsi_14d`, `ma_bias_20d`, `above_ma20_share`, `above_ma60_share`, `new_high_share_252d`, `new_low_share_252d`。
@@ -106,8 +111,8 @@ make market-cycle-review START=YYYY-MM-DD END=YYYY-MM-DD
 
 | 维度 | 权重 | 主指标 |
 |---|---:|---|
-| 估值面 | 20% | 中证全指 `valuation_temperature` 结果行，辅以沪深300、中证500、中证1000 |
-| 资金面 | 20% | 融资买入占比、两融渗透率、两融余额20日变化、主力/北向资金净流入占比、自由流通换手率分位低权重活跃度 |
+| 估值面 | 20% | 最新日期所有可用指数 `valuation_temperature` 结果的均值；报告必须核对具体 `symbol`，不能默认称为中证全指 |
+| 资金面 | 20% | 融资买入占比、两融渗透率、两融余额20日变化、主力/北向资金净流入占比；自由流通换手率分位仅作历史兼容观察 |
 | 情绪面 | 15% | 换手率分位、上涨家数占比、涨跌停/炸板事件温度 |
 | 技术面 | 15% | 20日收益、RSI、均线乖离、站上20/60日线比例、距252日高点距离 |
 | 基本面 | 15% | 申万2021行业收入/利润 TTM 增速、ROE、业绩预告、盈利预测上修比例 |
@@ -121,7 +126,7 @@ make market-cycle-review START=YYYY-MM-DD END=YYYY-MM-DD
 
 - 已验证事实：本地数据直接计算得到的日期、数值、分位、变化。
 - 机制推断：由指标组合推出的市场状态，如“短线偏热但中期趋势未全面确认”。
-- 数据限制：数据滞后、字段口径不明、缺少政策/新闻/隐含波动率等。
+- 数据限制：数据滞后、字段口径不明、缺少政策/新闻/标准隐含波动率指数或 VIX 等。
 
 常用结论分档：
 
@@ -145,7 +150,7 @@ make market-cycle-review START=YYYY-MM-DD END=YYYY-MM-DD
 
 FRED 美国宏观背景归入宏观流动性维度的观察项，默认 `weight: 0`，只落 facts 和报告展示，不参与 `macro_external_environment_temperature` 或综合温度。当前观察项包括 `T10Y2Y` 期限利差、`FEDFUNDS` 政策利率、`WALCL` 美联储资产负债表、`CPIAUCSL` 同比、`UNRATE`、`PAYEMS` 同比和 `GDP` 同比；政策利率、通胀和失业率使用反向历史分位，期限利差、资产负债表、非农同比和 GDP 同比使用正向历史分位。月频/季频项只能解释最新美国宏观背景，不要写成最近 20 个 A 股交易日内的边际变化。
 
-`limit_list_d` 已可作为涨跌停/炸板事件表纳入情绪面；`limit=U` 计为涨停，`D` 计为跌停，`Z` 计为炸板。`stk_limit` 只代表涨跌停价格，不等同事件明细。`lixinger.investor_accounts` 已可作为月度新增投资者慢变量纳入情绪面，不能解释为最近 20 个交易日内的开户变化。`opt_basic` 和 `opt_daily` 已可计算认沽/认购成交量比、认沽/认购持仓比、期权成交额、持仓量和近月合约成交占比温度，但这些期权项默认 `weight: 0`，只作风险观察，不进入情绪面正式分或综合温度；当前仍未定义隐含波动率。项目没有新闻舆情、政策文本、隐含波动率或中国信用利差 AA-AAA 的稳定本地表。除非用户明确要求联网并给出来源，否则不要把无本地表支撑的维度纳入综合温度。
+`limit_list_d` 已可作为涨跌停/炸板事件表纳入情绪面；`limit=U` 计为涨停，`D` 计为跌停，`Z` 计为炸板。`stk_limit` 只代表涨跌停价格，不等同事件明细。`lixinger.investor_accounts` 已可作为月度新增投资者慢变量纳入情绪面，不能解释为最近 20 个交易日内的开户变化。`opt_basic` 和 `opt_daily` 已可计算认沽/认购成交量比、认沽/认购持仓比、期权成交额、持仓量和近月合约成交占比温度，但这些期权项默认 `weight: 0`，只作风险观察，不进入情绪面正式分或综合温度。`settlement_iv_proxy_daily` 已基于期权结算价、合约、标的行情和利率生成波动率代理观察；它不是标准隐含波动率指数或 VIX，仍只作观察项。项目没有新闻舆情、政策文本、标准 IV/VIX 或中国信用利差 AA-AAA 的稳定本地表。除非用户明确要求联网并给出来源，否则不要把无本地表支撑的维度纳入综合温度。
 
 行业资金流可由 `tushare.moneyflow` 通过 `tushare.index_member` / `lixinger.sw_2021_constituents` 的申万2021成分映射聚合到一级行业，并用 `stock_daily_bar.amount` 作分母计算行业主力净流入成交占比。行业资金流当前只作为“资金确认/资金流出压力”观察项输出，不进入行业结构总分。
 

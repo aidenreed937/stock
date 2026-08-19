@@ -40,14 +40,17 @@ DataCatalog + industry pipeline
 
 | 目的 | 当前路径 | 职责 |
 |---|---|---|
-| 特征集市 | `src/stock_analytics/features/` | 构建和读取 `market_daily.parquet` |
+| 特征集市与领域 Mart | `src/stock_analytics/features/`、`src/stock_analytics/marts/` | 构建和读取 `market_daily.parquet` 及领域 Mart |
 | 通用指标 | `src/stock_analytics/metrics/` | 注册、计算和返回可复用 `MetricResult.frame` |
 | 市场温度计 | `src/stock_analytics/pipelines/market_temperature/` | 交易窗口、事实、派生指标、评分和产物编排 |
 | 行业结构 | `src/stock_analytics/pipelines/industry_structure/` | 行业面板、子分、结构分和行业产物 |
 | 评分配置加载 | `src/stock_reporting/interpretation/market_temperature/config.py` | 读取并转换市场温度 YAML |
 | 温度转换 | `src/stock_analytics/pipelines/market_temperature/metric_temperature.py` | 将事实映射为 0-100 温度 |
 | 六维评分 | `src/stock_analytics/pipelines/market_temperature/scoring.py` | 按方向、权重和可用性生成维度与综合温度 |
-| 事实采集 | `src/stock_analytics/pipelines/market_temperature/facts.py` | 采集窗口、水位、MetricEngine 和派生事实 |
+| 事实采集 | `src/stock_analytics/pipelines/market_temperature/facts.py` | 采集窗口、水位、MetricEngine、派生事实和短线事实 |
+| 短线事实 | `src/stock_analytics/pipelines/market_temperature/short_term.py` | 从 `market_daily` 生成 5/10 日附加温度；每窗口只生成一行 |
+| 可选观察事实 | `src/stock_analytics/pipelines/market_temperature/optional_facts.py`、`domain_mart_facts.py` | 读取领域 Mart 观察项，不进入六维主评分 |
+| 领域 Mart 构建 | `src/stock_analytics/marts/builder.py`、`build_steps.py` | 从 Curated 输入构建可转债、公司行为和结算价波动率代理 Mart |
 | 温度计派生事实 | `src/stock_analytics/pipelines/market_temperature/derived.py` | 基本面、情绪和宏观流动性派生温度 |
 | 质量报告 | `src/stock_analytics/data_quality.py` | 基于 manifest、facts 和 YAML 生成质量 JSON |
 | 质量报告渲染 | `src/stock_reporting/core/quality.py` | 将质量 JSON 渲染为 Markdown |
@@ -62,6 +65,8 @@ DataCatalog + industry pipeline
 
 `MarketDailyBuilder` 从行情、两融、估值和资金流等黄金表构建全市场日频宽表；`FeatureStore` 负责 mart 的读取、持久化和元数据指纹。特征集市只负责事实加速，不决定六维评分权重。
 
+`FeatureStore` 还负责 `convertible_bond_daily`、`insider_activity_daily`、`repurchase_daily`、`block_trade_daily` 和 `settlement_iv_proxy_daily` 的领域 Mart 读写。领域 Mart 缺少输入时保持稳定 Schema 或返回不可用事实，不生成伪造数值。
+
 ### `src/stock_analytics/metrics`
 
 `MetricEngine.compute()` 是通用指标统一入口；`MetricRegistry` 管理指标定义；`calculators/*.py` 实现估值、资金、流动性、表现、趋势、广度和波动等计算。该层不感知六维权重、报告模板或市场温度文案。
@@ -70,6 +75,8 @@ DataCatalog + industry pipeline
 
 - `pipeline.py` 编排一次标准运行；
 - `facts.py` / `facts_mart.py` 采集交易窗口、水位、MetricEngine 和 mart 事实；
+- `short_term.py` 计算短线附加事实；`optional_facts.py` 只汇总领域 Mart 观察事实，避免重复采集短线事实；
+- `domain_mart_facts.py` 将领域 Mart 转成可追溯观察事实；这些事实可以进入报告，但不进入六维主评分；
 - `derived.py` / `derived_options.py` 计算温度计专用派生事实；
 - `metric_temperature.py` 负责原始 MetricEngine 事实的 0-100 温度转换；
 - `scoring.py` 按 YAML 规则生成六维温度、综合温度和系统性风险摘要；

@@ -80,12 +80,14 @@
 ### ② 股债利差 (ERP) 与宏观配置时钟
 * **股票端收益率（$E/P$）**：
   * 路径：`data/curated/lixinger/market=CN/index_fundamental/`
-  * 计算：$\text{Earnings Yield} = \frac{1}{\text{pe\_ttm.ew}} \times 100\%$
+  * 当前估值计算优先使用市值加权字段 `pe_ttm.mcw`；仅在该字段不存在时才回退到 `pe_ttm.ew`。
+  * raw 计算：$\text{Earnings Yield} = \frac{1}{\text{PE}}$，结果以小数保存；展示为百分比时再乘以 100。
 * **债券端无风险利率**：
   * **中国 10 年期国债收益率**：`data/curated/lixinger/market=CN/national_debt/data.parquet`（`tcm_y10`）
   * **全球/美债 10 年期基准**：`data/curated/yfinance/market=GLOBAL/macro_indicators/`（`^TNX`）
 * **股债利差计算公式**：
-  $$\text{ERP} = \left(\frac{1}{\text{PE}_{\text{TTM}}} \times 100\%\right) - \left(\text{tcm\_y10} \times 100\right)$$
+  $$\text{ERP}_{raw} = \frac{1}{\text{PE}_{\text{TTM}}} - \text{tcm\_y10}$$
+  当前 `tcm_y10` 在 Curated 中按小数保存（如 1.7% 记为 0.017），因此 raw ERP 也为小数；展示为百分比时统一乘以 100。估值温度使用 ERP 的滚动历史分位，并对其执行反向温度映射。
 
 ---
 

@@ -59,10 +59,10 @@ df_idx = cat.load_dataset("index_fundamental", symbols=["000300"])
 
 # 计算 PE-TTM 的 10 年滚动分位数 (Percentile)
 df_pe = (
-    df_idx.sort("date")
+    df_idx.sort("trade_date")
     .select(
         [
-            pl.col("date"),
+            pl.col("trade_date"),
             pl.col("pe_ttm.mcw").alias("pe_ttm"),
             pl.col("pb.mcw").alias("pb"),
             pl.col("dyr.mcw").alias("dividend_yield"),

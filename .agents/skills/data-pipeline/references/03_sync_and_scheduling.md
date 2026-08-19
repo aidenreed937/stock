@@ -31,9 +31,11 @@ make sync SOURCE=alphavantage ENDPOINT=fx_daily WORKERS=1
 make sync SOURCE=lixinger ENDPOINT=market_bundle    # 股票与指数 K 线
 make sync SOURCE=lixinger ENDPOINT=industry_bundle  # 申万 2021 成份、估值与四类行业财报
 make sync SOURCE=lixinger ENDPOINT=company_bundle   # 公司基本面、财报与股权质押
-make sync SOURCE=lixinger ENDPOINT=macro_bundle     # 国债、利率、有色金属、M1/M2 与社融
-make sync SOURCE=lixinger ENDPOINT=index_bundle     # 指数基本面估值
+make sync SOURCE=lixinger ENDPOINT=macro_daily_bundle,macro_monthly_bundle  # 国债、利率、投资者与宏观序列
+make sync SOURCE=lixinger ENDPOINT=index_fundamental                     # 指数基本面估值（原子任务）
 ```
+
+`macro_bundle` 和 `index_bundle` 是历史兼容别名，不作为新配置或生产调度的推荐名称。指数基本面当前按原子任务 `index_fundamental` 维护独立水位和失败状态。
 
 ---
 

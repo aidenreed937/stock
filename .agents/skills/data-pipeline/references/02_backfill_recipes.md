@@ -30,6 +30,12 @@ make backfill START=2020-01-01 END=2026-08-14 SOURCE=tushare ENDPOINT=forecast,e
 
 # 6. 回填 26 只核心 ETF 全历史行情、复权与份额
 make backfill START=2005-01-01 END=2026-08-14 SOURCE=tushare ENDPOINT=fund_daily,etf_share_size,fund_adj SYMBOL=watchlist FORCE_REFRESH=1
+
+# 7. 回填可转债、公司行为事件
+make backfill START=YYYY-MM-DD END=YYYY-MM-DD SOURCE=tushare ENDPOINT=cb_basic,cb_daily,stk_holdertrade,repurchase,block_trade
+
+# 8. 回填期权静态合约与日行情（用于 PCR/成交观察及结算价波动率代理）
+make backfill START=YYYY-MM-DD END=YYYY-MM-DD SOURCE=tushare ENDPOINT=opt_basic,opt_daily
 ```
 
 ---
@@ -98,3 +104,19 @@ make backfill SOURCE=fred SYMBOL=FEDFUNDS START=2014-08-01 END=2026-08-12
 export ALPHA_VANTAGE_API_KEY='你的真实API_KEY'
 make backfill START=2014-08-01 END=2026-08-14 SOURCE=alphavantage ENDPOINT=fx_daily SYMBOL='CNH=X' FORCE_REFRESH=1
 ```
+
+## 6. 回填后的真实数据验收
+
+回填完成后按以下顺序验收；`backfill-accept` 只读检查 RAW 与 Curated 的范围、主键和可解释缺口，不替代质量门禁：
+
+```bash
+make backfill-accept ENDPOINT=stock_daily_bar SOURCE=tushare START=YYYY-MM-DD END=YYYY-MM-DD
+make features-build TARGET=domain_marts START=YYYY-MM-DD END=YYYY-MM-DD
+make validate
+make master-audit
+make audit TYPE=all
+make features-build TARGET=all START=YYYY-MM-DD END=YYYY-MM-DD
+make scan DATE=YYYY-MM-DD FORMAT=markdown
+```
+
+领域 Mart 的输入数据集缺失时，构建器应保持稳定 Schema 并输出空结果；验收报告必须区分“上游无数据”“质量隔离”“合法主键去重”和“未解释丢失”。

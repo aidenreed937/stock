@@ -18,10 +18,12 @@ description: 本地落盘数据资产统一目录 (DataCatalog) 与极速查询�
 ```python
 from datetime import date
 from stock_data.catalog import DataCatalog
+from stock_data.core.runtime import DataRuntimeContext
 
 # 1. 实例化 DataCatalog (支持指定数据源或全库)
-cat_ts = DataCatalog(data_source="tushare")
-cat_lx = DataCatalog(data_source="lixinger")
+runtime = DataRuntimeContext.from_root("data")
+cat_ts = DataCatalog(data_source="tushare", runtime=runtime)
+cat_lx = DataCatalog(data_source="lixinger", runtime=runtime)
 
 # 2. 获取某数据集最新落盘交易日 (防时滞错位)
 latest_date = cat_ts.get_latest_trade_date("stock_daily_bar")
@@ -45,6 +47,8 @@ df_basic = cat_ts.load_dataset(
 df_summary = DataCatalog().summary()
 ```
 
+运行时通过 `DataRuntimeContext` 统一注入 `data/raw`、`data/curated` 和 `data/cache`；下游读取 Curated 仍使用 `DataCatalog`。`market_daily` 与领域 Mart 不属于 DataCatalog 数据集目录，统一通过 `FeatureStore` 读取，例如 `FeatureStore().get_domain_mart("repurchase_daily")`。
+
 ---
 
 ## 2. 各领域核心数据集快速路由索引
@@ -58,6 +62,9 @@ df_summary = DataCatalog().summary()
 | **申万行业体系** | `sw_daily`, `sw_2021_fundamental`, `sw_2021_constituents` | `tushare` / `lixinger` | 31 行业行情、估值序列与 797 行业成份股图谱 |
 | **卖方预测与业绩** | `report_rc`, `forecast`, `express` | `tushare` | 一致预期盈利预测 (`np`, `tp`)、业绩预告与快报 |
 | **场内基金与 ETF** | `fund_daily`, `etf_share_size` | `tushare` | 26 只核心自选 ETF 历史日线与份额规模 |
+| **可转债与期权** | `cb_basic`, `cb_daily`, `opt_basic`, `opt_daily` | `tushare` | 可转债静态/日行情、期权合约静态/日行情 |
+| **公司行为事件** | `stk_holdertrade`, `repurchase`, `block_trade` | `tushare` | 增减持、回购与大宗交易事件明细 |
+| **领域 Mart** | `market_daily`、`convertible_bond_daily`、`insider_activity_daily`、`repurchase_daily`、`block_trade_daily`、`settlement_iv_proxy_daily` | `FeatureStore` | 聚合事实与观察项；不通过 `DataCatalog` 直接加载 |
 | **外盘与全球宏观** | `stock_daily_bar`, `index_daily_bar`, `macro_indicators` | `yfinance` / `fred` | 美股巨头、外盘指数、美债/黄金/原油/VIX、FED 宏观序列 |
 
 ---

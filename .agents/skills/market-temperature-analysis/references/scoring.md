@@ -42,7 +42,7 @@ make market-temperature DATE=YYYY-MM-DD
 ## 3. 窗口和质量
 
 - 主窗口是最近 20 个已落盘 A 股交易日，来自 `stock_daily_bar`；
-- YAML 的 `short_windows` 是 `[5, 10]`，`facts.py` 从 `market_daily` 计算短线附加事实；样本充足时输出温度，样本不足时标记 `insufficient`，不进入六维主温度；
+- YAML 的 `short_windows` 是 `[5, 10]`，`facts.py` 通过 `short_term.py` 从 `market_daily` 计算短线附加事实；样本充足时输出温度，样本不足时标记 `insufficient`，不进入六维主温度。`optional_facts.py` 只负责领域 Mart 观察项，不能重复追加短线事实；每个窗口在 `facts.parquet` 应只有一行；
 - 行业/个股估值使用五年滚动窗口，大盘宽基估值与 ERP 使用十年滚动窗口；其他派生宏观分位以其实际历史样本为准；
 - 所有数据按基准日过滤，不能使用未来事实；
 - 必需数据缺失或超过 `max_lag_days` 时，质量报告产生硬问题；可选数据缺失或滞后时产生警告；
@@ -55,7 +55,7 @@ make market-temperature DATE=YYYY-MM-DD
 | 维度 | 权重 | 当前有效入分指标 |
 |---|---:|---|
 | 估值面 | 20% | `valuation_temperature`（唯一入分合成指标；PE/PB/ERP 分位只作辅助事实） |
-| 资金面 | 20% | `margin_buy_share_zscore_60d`、`margin_penetration_percentile_1250d`、`margin_balance_growth_20d`、`main_money_net_inflow_share`、`market_amount_percentile_1250d` |
+| 资金面 | 20% | `margin_buy_share_zscore_60d`、`margin_penetration_percentile_1250d`、`margin_balance_growth_20d`、`main_money_net_inflow_share`；`market_amount_percentile_1250d` 权重为 0，仅作历史兼容观察 |
 | 情绪面 | 15% | `turnover_rate_percentile_1250d`、`advance_share`、`limit_event_temperature`、`investor_account_temperature` |
 | 技术面 | 15% | `return_20d`、`rsi_14d`、`ma_bias_20d`、`above_ma20_share`、`above_ma60_share`、`new_high_share_252d`、`new_low_share_252d` |
 | 基本面 | 15% | `fs_revenue_growth_temperature`、`fs_profit_growth_temperature`、`fs_roe_temperature`、`forecast_positive_temperature`、`report_revision_temperature` |
@@ -71,10 +71,11 @@ YAML 子权重：
 | `pe_percentile_10y` | 0% | 正向 | 大盘宽基 PE 十年分位，仅作辅助事实 |
 | `pb_percentile_10y` | 0% | 正向 | 大盘宽基 PB 十年分位，仅作辅助事实 |
 | `equity_risk_premium_percentile_10y` | 0% | 反向 | ERP 十年历史分位，仅作辅助事实；ERP 越高通常越便宜 |
+| `dividend_yield_percentile_10y` | 未单独入分 | 反向 | 股息率十年分位；已进入 `valuation_temperature` 内部组合，不再作为独立 YAML 子项重复计权 |
 
 `valuation_temperature` 的 MetricEngine 结果是每个指数一行；YAML 的 `aggregation: mean` 会对最新日期的所有可用指数结果求均值。当前实现不会自动筛选 `000985`。需要使用中证全指时，必须在报告中核对结果行的 `symbol`；不能把“均值结果”直接称为 `000985`。
 
-`equity_risk_premium` 在 `valuation.py` 中仍保留为盈利收益率减 10 年国债收益率的 raw 值，供事实展示和研究使用；分位指标也保留为辅助事实，但不与 `valuation_temperature` 重复计权。大盘宽基估值与 ERP 使用约 2500 个交易日的十年滚动窗口，行业/个股估值继续使用五年窗口。
+`valuation_temperature` 的实际公式为：`(PE10Y + PB10Y + (100 - ERP10Y) + (100 - DY10Y)) / 4`。其中 `equity_risk_premium` raw 值为 `1 / PE - tcm_y10`，收益率在 Curated 中按小数保存；展示为百分比时再乘以 100。大盘宽基估值与 ERP 使用项目实现的 2,500 个交易日十年窗口，行业/个股估值继续使用 1,250 个交易日五年窗口。同一基准日切换窗口会改变历史样本参照，不能直接解释为底层数据变化。
 
 ### 4.2 资金面
 
@@ -187,7 +188,7 @@ YAML 子权重：
 
 ## 7. 短线温度和行业结构
 
-YAML 配置 `[5, 10]` 日短窗，但当前标准管线的 `scores.json` 对两项输出 `pending`，所以不能声称已经计算出 5 日或 10 日温度。若临时研究短线节奏，必须明确它是附加分析，不得写入主综合温度。
+YAML 配置 `[5, 10]` 日短窗，标准管线从 `market_daily` 计算两项短线温度。样本足够时 `scores.json` 输出 `status: ready` 和温度；样本不足或输入缺失时输出 `status: insufficient`，不得填充默认值。短线事实只作附加节奏观察，不写入六维主综合温度。
 
 行业结构必须单独运行：
 
