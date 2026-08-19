@@ -117,7 +117,14 @@ class CatalogReadMixin:
     ) -> pl.DataFrame:
         """读取行情数据并进行时序排序与有效性校验。"""
         resolved = _resolve_dataset_alias(self.data_source, dataset)
-        if symbol is not None:
+        alias_symbol = StorageCompat.dataset_symbol_filter(dataset, self.data_source)
+        if alias_symbol:
+            if symbol is not None and symbol != alias_symbol:
+                return pl.DataFrame()
+            if symbols is not None and alias_symbol not in symbols:
+                return pl.DataFrame()
+            symbols = [alias_symbol]
+        elif symbol is not None:
             symbols = [symbol]
         df = _read_dataset_files(
             self._parquet_files(dataset=dataset, market=market),

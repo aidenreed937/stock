@@ -46,6 +46,7 @@ class DatasetAliasMixin:
 
                 if endpoint.upper() in FRED_API_REGISTRY:
                     aliases.append(endpoint.lower())
+                    aliases.append(endpoint.upper())
             except Exception:
                 pass
         return tuple(dict.fromkeys(aliases))

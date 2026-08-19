@@ -242,6 +242,19 @@ def get_contract_for_dataset(dataset_name: str) -> DatasetContract | None:
     return contracts.get(dataset_name)
 
 
+def validate_dataset_units(dataset_name: str, df: pl.DataFrame) -> None:
+    """校验需要明确单位语义的数据集字段。"""
+    if df.is_empty() or dataset_name != "national_debt" or "tcm_y10" not in df.columns:
+        return
+    raw = pl.col("tcm_y10")
+    numeric = raw.cast(pl.Float64, strict=False)
+    invalid = raw.is_not_null() & (numeric.is_null() | ~numeric.is_finite() | (numeric.abs() > 1.0))
+    if df.filter(invalid).height:
+        raise DataValidationError(
+            "数据集 [national_debt] tcm_y10 必须使用小数制收益率，禁止百分数值"
+        )
+
+
 def instrument_for_symbol(symbol: str, provider: str) -> InstrumentId | None:
     """根据当前支持的代码约定推断跨市场标的身份。空代码表示全市场快照。"""
     if not symbol:

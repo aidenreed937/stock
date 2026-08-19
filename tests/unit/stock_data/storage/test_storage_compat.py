@@ -134,5 +134,6 @@ def test_fred_dataset_aliases_keep_legacy_directories_readable() -> None:
     assert StorageCompat.dataset_aliases("FEDFUNDS", "fred") == (
         "macro_indicators",
         "fedfunds",
+        "FEDFUNDS",
     )
     assert StorageCompat.dataset_symbol_filter("FEDFUNDS", "fred") == "FEDFUNDS"

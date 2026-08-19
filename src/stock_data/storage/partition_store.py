@@ -5,7 +5,7 @@ from pathlib import Path
 
 import polars as pl
 
-from stock_core.contracts import DAILY_BAR_CONTRACT, DatasetKey
+from stock_core.contracts import DAILY_BAR_CONTRACT, DatasetKey, validate_dataset_units
 from stock_core.exceptions import DataValidationError
 from stock_core.utils.logger import logger
 from stock_data.core.settings import data_settings
@@ -17,6 +17,11 @@ from stock_data.governance.quality.margin_coverage import (
 )
 from stock_data.storage.compat import StorageCompat
 from stock_data.storage.partition_writer import ParquetPartitionWriter, validate_frame_source
+
+
+def _validate_curated_frame(df: pl.DataFrame, source: str, label: str, endpoint: str) -> None:
+    validate_frame_source(df, source, label)
+    validate_dataset_units(endpoint, df)
 
 
 def _reject_legacy_schema_version(df: pl.DataFrame, context: str) -> None:
@@ -40,6 +45,7 @@ def _prepare_curated_frame(
     df: pl.DataFrame, endpoint: str, data_source: str | None = None
 ) -> pl.DataFrame:
     df = _normalize_yfinance_macro_frame(df, data_source, endpoint)
+    df = StorageCompat.normalize_dataset_contract_columns(endpoint, df)
     _reject_legacy_schema_version(df, f"Curated 数据集 [{endpoint}] ")
     if "source_endpoint" not in df.columns:
         df = df.with_columns(pl.lit(endpoint).alias("source_endpoint"))
@@ -303,7 +309,7 @@ class ParquetPartitionStore:
             raise DataValidationError(
                 f"Curated 数据集 [margin] 交易所覆盖不完整: {'; '.join(issues)}"
             )
-        validate_frame_source(df, source, f"Curated 数据 [{file_path}]")
+        _validate_curated_frame(df, source, f"Curated 数据 [{file_path}]", endpoint)
         if endpoint in {"daily_bar", "stock_daily_bar", "index_daily_bar", "fund_daily"}:
             DAILY_BAR_CONTRACT.validate(df)
 
@@ -341,7 +347,7 @@ class ParquetPartitionStore:
             raise DataValidationError(
                 f"Curated 数据集 [margin] 交易所覆盖不完整: {'; '.join(issues)}"
             )
-        validate_frame_source(df, key.provider, f"Curated 数据 [{file_path}]")
+        _validate_curated_frame(df, key.provider, f"Curated 数据 [{file_path}]", dataset_name)
         if dataset_name in {"daily_bar", "stock_daily_bar", "index_daily_bar", "fund_daily"}:
             DAILY_BAR_CONTRACT.validate(df)
 

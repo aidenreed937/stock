@@ -6,7 +6,7 @@ from pathlib import Path
 import polars as pl
 import pytest
 
-from stock_core.exceptions import DataValidationError
+from stock_core.exceptions import DataValidationError, StorageError
 from stock_data.catalog import DataCatalog, load_dataset_compat
 
 
@@ -297,6 +297,69 @@ def test_catalog_standardized_methods(tmp_path) -> None:
     # 6. load_dataset with alias
     basic_df = catalog.load_dataset("daily_basic")
     assert not basic_df.is_empty()
+
+
+def test_fred_catalog_reads_canonical_and_case_variant_legacy_directories_without_duplicates(
+    tmp_path: Path,
+) -> None:
+    source_root = tmp_path / "fred"
+    canonical = source_root / "market=US" / "macro_indicators"
+    legacy = source_root / "market=US" / "CPIAUCSL"
+    canonical.mkdir(parents=True)
+    legacy.mkdir(parents=True)
+    pl.DataFrame(
+        {
+            "symbol": ["FEDFUNDS", "CPIAUCSL"],
+            "trade_date": [date(2026, 8, 1), date(2026, 8, 1)],
+            "value": [5.0, 320.0],
+            "data_source": ["fred", "fred"],
+        }
+    ).write_parquet(canonical / "data.parquet")
+    pl.DataFrame(
+        {
+            "symbol": ["CPIAUCSL"],
+            "trade_date": [date(2026, 8, 1)],
+            "value": [320.0],
+            "data_source": ["fred"],
+        }
+    ).write_parquet(legacy / "data.parquet")
+
+    catalog = DataCatalog(data_source="fred", storage_dir=tmp_path)
+    df = catalog.load_bars(dataset="CPIAUCSL")
+
+    assert len(df) == 1
+    assert df["symbol"].to_list() == ["CPIAUCSL"]
+    assert df["trade_date"].n_unique() == 1
+
+
+def test_catalog_read_failure_is_not_reported_as_empty(tmp_path: Path) -> None:
+    partition = tmp_path / "tushare" / "market=CN" / "daily_basic"
+    partition.mkdir(parents=True)
+    (partition / "broken.parquet").write_bytes(b"not parquet")
+
+    catalog = DataCatalog(data_source="tushare", storage_dir=tmp_path)
+    with pytest.raises(StorageError, match="读取文件失败"):
+        catalog.load_dataset("daily_basic")
+
+
+def test_catalog_maps_express_legacy_profit_field_to_contract_name(tmp_path: Path) -> None:
+    partition = tmp_path / "tushare" / "market=CN" / "express"
+    partition.mkdir(parents=True)
+    pl.DataFrame(
+        {
+            "symbol": ["000001.SZ"],
+            "ann_date": ["20260801"],
+            "yoy_net_profit": [100.0],
+            "n_income": [150.0],
+        }
+    ).write_parquet(partition / "data.parquet")
+
+    catalog = DataCatalog(data_source="tushare", storage_dir=tmp_path)
+    df = catalog.load_dataset("express")
+
+    assert "prior_period_net_profit" in df.columns
+    assert "yoy_net_profit" not in df.columns
+    assert df["prior_period_net_profit"].to_list() == [100.0]
 
 
 def test_latest_refresh_dates_prefers_updated_at_and_supports_mtime_fallback(

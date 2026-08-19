@@ -7,6 +7,7 @@ from pathlib import Path
 import duckdb
 import polars as pl
 
+from stock_core.exceptions import StorageError
 from stock_core.utils.logger import logger
 from stock_data.storage.compat import StorageCompat
 from stock_data.storage.read_compat import (
@@ -84,6 +85,21 @@ def _filter_compatible_frame(
     return result.sort(sort_columns) if sort_columns else result
 
 
+def _deduplicate_result(df: pl.DataFrame, dataset_name: str, data_source: str) -> pl.DataFrame:
+    """在所有 DuckDB 查询出口应用与 DataCatalog 相同的业务键去重。"""
+    if df.is_empty():
+        return df
+    keys = StorageCompat.resolve_dedup_keys(
+        dataset_name,
+        data_source,
+        data_source,
+        df,
+    )
+    if keys and all(column in df.columns for column in keys):
+        return df.unique(subset=keys, keep="last")
+    return df
+
+
 class DuckDBQueryEngine:
     """维护 DuckDB 内存连接并执行高性能 SQL / Arrow 数据集检索。"""
 
@@ -102,6 +118,7 @@ class DuckDBQueryEngine:
         start_date: date | None = None,
         end_date: date | None = None,
         dataset_name: str | None = None,
+        data_source: str | None = None,
     ) -> pl.DataFrame:
         """根据 Parquet 路径列表与过滤条件查询标准数据集。"""
         str_files = [str(p) for p in matched_files]
@@ -110,24 +127,29 @@ class DuckDBQueryEngine:
         resolved_dataset = dataset_name or _infer_dataset_name(str_files)
         if _requires_compatibility_read(str_files, resolved_dataset):
             try:
-                return _filter_compatible_frame(
+                result = _filter_compatible_frame(
                     _read_compatible_frames(str_files, resolved_dataset),
                     symbol=symbol,
                     start_date=start_date,
                     end_date=end_date,
                 )
+                return _deduplicate_result(result, resolved_dataset, data_source or "")
             except Exception as e:
                 logger.error(f"DuckDB 兼容数据集查询异常: {e}")
-                return pl.DataFrame()
+                if isinstance(e, StorageError):
+                    raise
+                raise StorageError(f"DuckDB 兼容数据集查询异常: {e}") from e
         conditions, order_clause = StorageCompat.build_dataset_query_clause(
             str_files, symbol=symbol, start_date=start_date, end_date=end_date
         )
         sql = build_read_parquet_sql(str_files, conditions=conditions, order_clause=order_clause)
         try:
-            return self.query_by_sql(sql)
+            return _deduplicate_result(self.query_by_sql(sql), resolved_dataset, data_source or "")
         except Exception as e:
             logger.error(f"DuckDB 数据集查询异常: {e}")
-            return pl.DataFrame()
+            if isinstance(e, StorageError):
+                raise
+            raise StorageError(f"DuckDB 数据集查询异常: {e}") from e
 
     def query_daily_bars(
         self,
@@ -144,15 +166,18 @@ class DuckDBQueryEngine:
         resolved_dataset = dataset_name or _infer_dataset_name(str_files)
         if _requires_compatibility_read(str_files, resolved_dataset):
             try:
-                return _filter_compatible_frame(
+                result = _filter_compatible_frame(
                     _read_compatible_frames(str_files, resolved_dataset),
                     symbol=symbol,
                     data_source=data_source,
                     min_price=min_price,
                 )
+                return _deduplicate_result(result, resolved_dataset, data_source)
             except Exception as e:
                 logger.error(f"DuckDB 兼容日线查询异常: {e}")
-                return pl.DataFrame()
+                if isinstance(e, StorageError):
+                    raise
+                raise StorageError(f"DuckDB 兼容日线查询异常: {e}") from e
         sql = build_daily_bars_sql(
             matched_files=str_files,
             symbol=symbol,
@@ -160,10 +185,12 @@ class DuckDBQueryEngine:
             min_price=min_price,
         )
         try:
-            return self.query_by_sql(sql)
+            return _deduplicate_result(self.query_by_sql(sql), resolved_dataset, data_source)
         except Exception as e:
             logger.error(f"DuckDB 日线查询异常: {e}")
-            return pl.DataFrame()
+            if isinstance(e, StorageError):
+                raise
+            raise StorageError(f"DuckDB 日线查询异常: {e}") from e
 
     def query_history(
         self,
@@ -181,16 +208,19 @@ class DuckDBQueryEngine:
         resolved_dataset = dataset_name or _infer_dataset_name(str_files)
         if _requires_compatibility_read(str_files, resolved_dataset):
             try:
-                return _filter_compatible_frame(
+                result = _filter_compatible_frame(
                     _read_compatible_frames(str_files, resolved_dataset),
                     data_source=data_source,
                     start_date=start_date,
                     end_date=end_date,
                     symbols=symbols,
                 )
+                return _deduplicate_result(result, resolved_dataset, data_source)
             except Exception as e:
                 logger.error(f"DuckDB 兼容历史查询异常: {e}")
-                return pl.DataFrame()
+                if isinstance(e, StorageError):
+                    raise
+                raise StorageError(f"DuckDB 兼容历史查询异常: {e}") from e
         sql = build_history_sql(
             matched_files=str_files,
             data_source=data_source,
@@ -199,10 +229,12 @@ class DuckDBQueryEngine:
             symbols=symbols,
         )
         try:
-            return self.query_by_sql(sql)
+            return _deduplicate_result(self.query_by_sql(sql), resolved_dataset, data_source)
         except Exception as e:
             logger.error(f"DuckDB 面板查询异常: {e}")
-            return pl.DataFrame()
+            if isinstance(e, StorageError):
+                raise
+            raise StorageError(f"DuckDB 面板查询异常: {e}") from e
 
     def query_universe_snapshots(
         self, matched_files: Sequence[str | Path], as_of_date: date | str | None = None
@@ -216,4 +248,6 @@ class DuckDBQueryEngine:
             return self.query_by_sql(sql)
         except Exception as e:
             logger.error(f"DuckDB 选股快照查询异常: {e}")
-            return pl.DataFrame()
+            if isinstance(e, StorageError):
+                raise
+            raise StorageError(f"DuckDB 选股快照查询异常: {e}") from e

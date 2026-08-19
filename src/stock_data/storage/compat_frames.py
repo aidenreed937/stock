@@ -107,6 +107,30 @@ class FrameCompatMixin:
         return ColumnCompatMixin.normalize_numeric_columns(normalized)
 
     @staticmethod
+    def normalize_dataset_contract_columns(dataset_name: str, df: pl.DataFrame) -> pl.DataFrame:
+        """将历史字段映射到数据集规范字段，并固定关键数值类型。"""
+        if df.is_empty():
+            return df
+        normalized = df
+        if dataset_name == "express" and "yoy_net_profit" in normalized.columns:
+            if "prior_period_net_profit" not in normalized.columns:
+                normalized = normalized.rename({"yoy_net_profit": "prior_period_net_profit"})
+            else:
+                normalized = normalized.with_columns(
+                    pl.coalesce(
+                        [
+                            pl.col("prior_period_net_profit").cast(pl.Float64, strict=False),
+                            pl.col("yoy_net_profit").cast(pl.Float64, strict=False),
+                        ]
+                    ).alias("prior_period_net_profit")
+                ).drop("yoy_net_profit")
+        if dataset_name == "national_debt" and "tcm_y10" in normalized.columns:
+            normalized = normalized.with_columns(
+                pl.col("tcm_y10").cast(pl.Float64, strict=False).alias("tcm_y10")
+            )
+        return normalized
+
+    @staticmethod
     def post_process_dataset(dataset_name: str, df: pl.DataFrame) -> pl.DataFrame:
         from stock_data.storage.compat_columns import ColumnCompatMixin
 

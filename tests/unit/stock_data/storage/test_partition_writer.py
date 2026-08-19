@@ -1,8 +1,10 @@
 """Parquet 分区写入器单元测试。"""
 
+import multiprocessing
 from concurrent.futures import ThreadPoolExecutor
 from datetime import date
 from pathlib import Path
+from typing import Any
 
 import polars as pl
 
@@ -19,6 +21,21 @@ class TrackingLock:
 
     def __exit__(self, exc_type: object, exc: object, traceback: object) -> None:
         return None
+
+
+def _hold_file_lock(path: str, ready: Any, release: Any) -> None:
+    from stock_data.storage.parquet_merge import _shared_file_lock
+
+    with _shared_file_lock(Path(path)):
+        ready.set()
+        release.wait(10)
+
+
+def _acquire_file_lock(path: str, acquired: Any) -> None:
+    from stock_data.storage.parquet_merge import _shared_file_lock
+
+    with _shared_file_lock(Path(path)):
+        acquired.set()
 
 
 def test_partition_writer_batch_buffer_append_uses_file_lock(tmp_path: Path) -> None:
@@ -69,6 +86,38 @@ def test_partition_writer_serializes_cross_instance_writes_to_same_file(tmp_path
     merged = pl.read_parquet(path)
     assert set(merged.get_column("symbol")) == {"000001.SZ", "600519.SH"}
     assert not list(path.parent.glob("*.tmp.parquet"))
+
+
+def test_partition_writer_file_lock_serializes_across_processes(tmp_path: Path) -> None:
+    path = tmp_path / "market=CN" / "stock_daily_bar" / "data.parquet"
+    context = multiprocessing.get_context("fork")
+    ready = context.Event()
+    release = context.Event()
+    acquired = context.Event()
+    first = context.Process(target=_hold_file_lock, args=(str(path), ready, release))
+    second = context.Process(target=_acquire_file_lock, args=(str(path), acquired))
+    first.start()
+    second_started = False
+    try:
+        assert ready.wait(5)
+        second.start()
+        second_started = True
+        assert not acquired.wait(0.2)
+        release.set()
+        assert acquired.wait(5)
+    finally:
+        release.set()
+        first.join(5)
+        if second_started:
+            second.join(5)
+        if first.is_alive():
+            first.terminate()
+            first.join(5)
+        if second_started and second.is_alive():
+            second.terminate()
+            second.join(5)
+    assert first.exitcode == 0
+    assert second.exitcode == 0
 
 
 def test_partition_writer_preserves_optional_legacy_bar_columns(tmp_path: Path) -> None:

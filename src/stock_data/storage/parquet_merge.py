@@ -2,9 +2,13 @@
 
 from __future__ import annotations
 
+import fcntl
 import threading
 import uuid
+from os import O_CREAT, O_RDWR
+from os import open as os_open
 from pathlib import Path
+from typing import Any
 
 import polars as pl
 
@@ -33,15 +37,45 @@ _FILE_LOCKS_GUARD = threading.Lock()
 _FILE_LOCKS: dict[Path, threading.Lock] = {}
 
 
-def _shared_file_lock(file_path: Path) -> threading.Lock:
-    """返回当前进程内按目标文件复用的读写锁。"""
+class _CrossProcessFileLock:
+    """同时覆盖线程与进程的目标文件锁。"""
+
+    def __init__(self, file_path: Path, thread_lock: threading.Lock) -> None:
+        self.file_path = file_path.resolve()
+        self.thread_lock = thread_lock
+        self._fd: int | None = None
+
+    def __enter__(self) -> _CrossProcessFileLock:
+        self.thread_lock.acquire()
+        try:
+            lock_path = self.file_path.with_name(f".{self.file_path.name}.lock")
+            lock_path.parent.mkdir(parents=True, exist_ok=True)
+            self._fd = os_open(lock_path, O_CREAT | O_RDWR, 0o600)
+            fcntl.flock(self._fd, fcntl.LOCK_EX)
+        except Exception:
+            self.thread_lock.release()
+            raise
+        return self
+
+    def __exit__(self, exc_type: Any, exc_value: Any, traceback: Any) -> None:
+        if self._fd is not None:
+            fcntl.flock(self._fd, fcntl.LOCK_UN)
+            import os
+
+            os.close(self._fd)
+            self._fd = None
+        self.thread_lock.release()
+
+
+def _shared_file_lock(file_path: Path) -> _CrossProcessFileLock:
+    """返回按目标文件复用且跨进程生效的排他写锁。"""
     resolved_path = file_path.resolve()
     with _FILE_LOCKS_GUARD:
         lock = _FILE_LOCKS.get(resolved_path)
         if lock is None:
             lock = threading.Lock()
             _FILE_LOCKS[resolved_path] = lock
-    return lock
+    return _CrossProcessFileLock(resolved_path, lock)
 
 
 def validate_frame_source(df: pl.DataFrame, data_source: str, context: str) -> None:

@@ -39,6 +39,7 @@ _KNOWN_FLOAT_COLUMNS = frozenset(
         "n_shares",
         "value",
         "yield",
+        "tcm_y10",
         "market_cap",
         "total_assets",
         "trailing_pe",

@@ -23,6 +23,10 @@ def requires_read_normalization(path: Path, dataset_name: str) -> bool:
         return any(column in schema for column in ("lpr_y1", "lpr_y5"))
     if dataset_name == "index_valuation" and "total_assets" in schema:
         return True
+    if dataset_name == "express" and "yoy_net_profit" in schema:
+        return True
+    if dataset_name == "national_debt" and "tcm_y10" in schema:
+        return schema["tcm_y10"] in (pl.Utf8, pl.String)
     if "trade_date" in schema and schema["trade_date"] != pl.Date:
         return True
     if "as_of_date" in schema and schema["as_of_date"] != pl.Date:
@@ -42,6 +46,7 @@ def normalize_read_frame(dataset_name: str, df: pl.DataFrame) -> pl.DataFrame:
     if df.is_empty():
         return df
     normalized = StorageCompat.safe_normalize_frame(df)
+    normalized = StorageCompat.normalize_dataset_contract_columns(dataset_name, normalized)
     return StorageCompat.post_process_dataset(dataset_name, normalized)
 
 

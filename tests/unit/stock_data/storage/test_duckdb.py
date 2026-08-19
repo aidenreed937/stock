@@ -111,6 +111,59 @@ def test_yfinance_macro_curated_market_is_global(tmp_path) -> None:
     assert saved["exchange"].unique().to_list() == ["GLOBAL"]
 
 
+def test_fred_duckdb_queries_deduplicate_canonical_and_legacy_paths(tmp_path) -> None:
+    source_root = tmp_path / "fred"
+    canonical = source_root / "market=US" / "macro_indicators"
+    legacy = source_root / "market=US" / "FEDFUNDS"
+    canonical.mkdir(parents=True)
+    legacy.mkdir(parents=True)
+    frame = pl.DataFrame(
+        {
+            "symbol": ["FEDFUNDS", "CPIAUCSL"],
+            "trade_date": [date(2026, 8, 1), date(2026, 8, 1)],
+            "value": [5.0, 320.0],
+            "close": [5.0, 320.0],
+            "data_source": ["fred", "fred"],
+        }
+    )
+    frame.write_parquet(canonical / "data.parquet")
+    frame.filter(pl.col("symbol") == "FEDFUNDS").write_parquet(legacy / "data.parquet")
+
+    store = DuckDBMarketStore(storage_dir=tmp_path, data_source="fred")
+    queried = store.query_daily_bars("FEDFUNDS", endpoint="FEDFUNDS")
+    history = store.query_history(endpoint="FEDFUNDS", symbols=["FEDFUNDS"])
+
+    assert len(queried) == 1
+    assert len(history) == 1
+    assert history.select("symbol", "trade_date").unique().height == 1
+
+
+def test_duckdb_query_failure_is_not_reported_as_empty(tmp_path) -> None:
+    source_root = tmp_path / "tushare" / "market=CN" / "daily_basic"
+    source_root.mkdir(parents=True)
+    (source_root / "broken.parquet").write_bytes(b"not parquet")
+
+    store = DuckDBMarketStore(storage_dir=tmp_path, data_source="tushare")
+    with pytest.raises(Exception, match=r"查询异常|Parquet"):
+        store.query_history(endpoint="daily_basic")
+
+
+def test_national_debt_rejects_percentage_unit_at_storage_boundary(tmp_path) -> None:
+    store = DuckDBMarketStore(storage_dir=tmp_path, data_source="lixinger")
+    frame = pl.DataFrame(
+        {
+            "symbol": ["national_debt"],
+            "trade_date": [date(2026, 8, 1)],
+            "tcm_y10": [2.5],
+            "data_source": ["lixinger"],
+            "market": ["CN"],
+        }
+    )
+
+    with pytest.raises(DataValidationError, match=r"tcm_y10.*小数制"):
+        store.save_curated(frame, endpoint="national_debt", target_date=date(2026, 8, 1))
+
+
 def test_pipeline_binds_explicit_store_to_source_directory(tmp_path) -> None:
     from stock_data.pipeline import MarketDataPipeline
 

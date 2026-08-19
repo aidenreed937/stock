@@ -8,7 +8,7 @@ from typing import Any
 import polars as pl
 
 from stock_core.constants import BAR_DATASETS
-from stock_core.exceptions import DataValidationError
+from stock_core.exceptions import DataValidationError, StorageError
 from stock_core.utils.logger import logger
 from stock_data.catalog.watermarks import (
     scan_latest_refresh_dates as _scan_latest_refresh_dates,
@@ -111,12 +111,11 @@ def list_parquet_files(
 ) -> list[Path]:
     if not base_dir.exists():
         return []
-    glob_pattern = "**/*.parquet" if dataset is None else f"**/{dataset}/**/*.parquet"
     files: list[Path] = []
-    for path in base_dir.glob(glob_pattern):
-        if path.name.endswith(artifact_suffixes):
+    for path in base_dir.rglob("*.parquet"):
+        if path.name.casefold().endswith(tuple(suffix.casefold() for suffix in artifact_suffixes)):
             continue
-        if dataset is not None and dataset_name(path) != dataset:
+        if dataset is not None and dataset_name(path).casefold() != dataset.casefold():
             continue
         if market is not None and f"market={market.upper()}" not in path.parts:
             continue
@@ -179,7 +178,7 @@ def read_dataset_files(
                 frame = pl.read_parquet(path)
         except Exception as e:
             logger.error(f"DataCatalog 读取文件失败 [{path}]: {e}")
-            continue
+            raise StorageError(f"DataCatalog 读取文件失败 [{path}]: {e}") from e
         frame = normalize_read_frame(dataset, frame)
         validate_schema_version(frame, path)
         frames.append(frame)
@@ -189,7 +188,7 @@ def read_dataset_files(
         df = pl.concat(frames, how="diagonal_relaxed")
     except Exception as e:
         logger.error(f"DataCatalog 合并数据集 [{dataset}] 失败: {e}")
-        return pl.DataFrame()
+        raise StorageError(f"DataCatalog 合并数据集 [{dataset}] 失败: {e}") from e
 
     if df.is_empty():
         return df

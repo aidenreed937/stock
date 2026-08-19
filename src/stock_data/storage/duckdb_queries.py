@@ -14,6 +14,11 @@ from stock_data.storage.partition_store import ParquetPartitionStore
 from stock_data.storage.query_engine import DuckDBQueryEngine
 
 
+def _matches_dataset_alias(path: Path, aliases: tuple[str, ...]) -> bool:
+    path_parts = {part.casefold() for part in path.parts}
+    return any(alias.casefold() in path_parts for alias in aliases)
+
+
 class DuckDBQueryMixin:
     """提供历史数据集、行情和标的查询。"""
 
@@ -35,13 +40,15 @@ class DuckDBQueryMixin:
         matched_files = [
             str(path)
             for path in self.partition_store.active_parquet_paths()
-            if any(alias in path.parts for alias in dataset_aliases)
+            if _matches_dataset_alias(path, dataset_aliases)
         ]
         result = self.query_engine.query_dataset(
             matched_files=matched_files,
             symbol=query_symbol,
             start_date=start_date,
             end_date=end_date,
+            dataset_name=target_dataset,
+            data_source=data_source,
         )
         if data_source == "tushare" and target_dataset == "margin":
             return filter_complete_margin_dates(result, start_date=start_date, end_date=end_date)
@@ -57,10 +64,7 @@ class DuckDBQueryMixin:
         matched_files = [
             str(path)
             for path in self.partition_store.active_parquet_paths()
-            if any(
-                alias in path.parts
-                for alias in StorageCompat.dataset_aliases(endpoint, data_source)
-            )
+            if _matches_dataset_alias(path, StorageCompat.dataset_aliases(endpoint, data_source))
         ]
         if not matched_files:
             logger.warning(f"本地无 {target_endpoint} 分区 Parquet 缓存文件")
@@ -70,6 +74,7 @@ class DuckDBQueryMixin:
             symbol=symbol,
             data_source=data_source,
             min_price=min_price,
+            dataset_name=target_endpoint,
         )
 
     def query_history(
@@ -100,10 +105,7 @@ class DuckDBQueryMixin:
         matched_files = [
             str(path)
             for path in self.partition_store.active_parquet_paths()
-            if any(
-                alias in path.parts
-                for alias in StorageCompat.dataset_aliases(endpoint, data_source)
-            )
+            if _matches_dataset_alias(path, StorageCompat.dataset_aliases(endpoint, data_source))
         ]
         if not matched_files:
             logger.warning(f"本地无 {target_endpoint} 分区 Parquet 缓存文件")
@@ -114,6 +116,7 @@ class DuckDBQueryMixin:
             start_date=start_date,
             end_date=end_date,
             symbols=query_symbols,
+            dataset_name=target_endpoint,
         )
         if data_source == "tushare" and target_endpoint == "margin":
             return filter_complete_margin_dates(result, start_date=start_date, end_date=end_date)
