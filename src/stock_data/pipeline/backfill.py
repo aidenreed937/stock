@@ -11,7 +11,7 @@ from typing import Any
 from stock_core.exceptions import DataFetchError
 from stock_core.utils.logger import logger
 from stock_data.core.factory import create_pipeline
-from stock_data.core.task_registry import is_per_symbol_task, resolve_public_task, resolve_task
+from stock_data.core.task_registry import is_per_symbol_task, resolve_public_task
 from stock_data.fetcher.base import BaseDataFetcher
 from stock_data.pipeline.pipeline import MarketDataPipeline
 from stock_data.pipeline.planner import (
@@ -125,7 +125,7 @@ class HistoricalBackfiller:
     ) -> None:
         self.symbol = symbol
         self.data_source = data_source
-        self.endpoint = resolve_task(data_source, endpoint).task_name
+        self.endpoint = resolve_public_task(data_source, endpoint).task_name
         self._calendar_cache: dict[tuple[date, date], list[date]] = {}
 
         if pipeline is not None:
@@ -156,7 +156,7 @@ class HistoricalBackfiller:
                     or getattr(mod, "YFINANCE_API_REGISTRY", None)
                     or getattr(mod, "FRED_API_REGISTRY", None)
                 )
-                task = resolve_task(self.data_source, self.endpoint)
+                task = resolve_public_task(self.data_source, self.endpoint)
                 if reg_dict and task.api_name in reg_dict:
                     return getattr(reg_dict[task.api_name], "frequency", task.frequency)
             except Exception:
@@ -212,7 +212,7 @@ class HistoricalBackfiller:
         """按交易日范围进行历史数据批量回填。"""
         total_days = (end_date - start_date).days + 1
         freq = self.frequency
-        task_spec = resolve_task(self.data_source, self.endpoint)
+        task_spec = resolve_public_task(self.data_source, self.endpoint)
         is_per_sym = is_per_symbol_task(self.data_source, self.endpoint)
 
         # 1. 范围拉取模式 (月频/宏观/静态/按标的历史范围)

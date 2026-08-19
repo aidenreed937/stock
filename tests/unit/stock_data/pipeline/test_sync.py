@@ -4,6 +4,7 @@ from datetime import date
 from unittest.mock import MagicMock, patch
 
 import polars as pl
+import pytest
 
 from stock_cli.sync import main as sync_cli_main
 from stock_data.pipeline.scheduler import DataUpdateScheduler
@@ -367,6 +368,46 @@ def test_execute_plan_success_and_error() -> None:
         assert success.records == 1
         assert failed.status == "FAILED"
         assert "API Rate Limit" in str(failed.error)
+
+
+def test_execute_plan_distinguishes_expected_empty_from_source_empty() -> None:
+    engine = DailySyncEngine(data_source="tushare", max_workers=1)
+    empty_frame = pl.DataFrame()
+    plan = [
+        SyncTaskItem(
+            data_source="tushare",
+            endpoint="fund_adj",
+            dataset="fund_adj",
+            start_date=date(2026, 8, 13),
+            end_date=date(2026, 8, 13),
+            watermark=None,
+            status="PENDING",
+            is_ready=True,
+            symbol="510300.SH",
+        ),
+        SyncTaskItem(
+            data_source="tushare",
+            endpoint="daily_basic",
+            dataset="daily_basic",
+            start_date=date(2026, 8, 13),
+            end_date=date(2026, 8, 13),
+            watermark=None,
+            status="PENDING",
+            is_ready=True,
+        ),
+    ]
+
+    with patch(
+        "stock_data.pipeline.sync.create_pipeline",
+        return_value=MagicMock(sync_daily_bars=MagicMock(return_value=empty_frame)),
+    ):
+        results = engine.execute_plan(plan)
+
+    expected = next(result for result in results if result.endpoint == "fund_adj")
+    source_empty = next(result for result in results if result.endpoint == "daily_basic")
+    assert expected.status == "NO_DATA_EXPECTED"
+    assert source_empty.status == "NO_DATA_SOURCE"
+    assert expected.error != source_empty.error
 
 
 def test_build_sync_plan_expands_per_symbol_with_symbol_watermark() -> None:
@@ -754,7 +795,7 @@ def test_sync_cli_treats_no_data_as_warning() -> None:
             end_date=date(2026, 8, 13),
             records=0,
             duration_s=0.1,
-            status="NO_DATA",
+            status="NO_DATA_SOURCE",
             symbol="CPIAUCSL",
         )
     ]
@@ -764,3 +805,27 @@ def test_sync_cli_treats_no_data_as_warning() -> None:
         patch.object(DailySyncEngine, "sync_daily", return_value=(mock_plan, mock_res, None)),
     ):
         sync_cli_main()
+
+
+def test_sync_cli_exits_nonzero_for_failed_execution() -> None:
+    mock_res = [
+        MagicMock(
+            endpoint="macro_indicators",
+            start_date=date(2026, 8, 13),
+            end_date=date(2026, 8, 13),
+            records=0,
+            duration_s=0.1,
+            status="FAILED",
+            error="FRED 请求失败",
+            symbol="CPIAUCSL",
+        )
+    ]
+
+    with (
+        patch("sys.argv", ["sync.py", "-s", "fred", "-d", "2026-08-13"]),
+        patch.object(DailySyncEngine, "sync_daily", return_value=([], mock_res, None)),
+        pytest.raises(SystemExit) as exc_info,
+    ):
+        sync_cli_main()
+
+    assert exc_info.value.code == 1

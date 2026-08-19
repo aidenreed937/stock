@@ -86,6 +86,33 @@ def test_client_raises_alpha_vantage_error_payload() -> None:
     session.get.assert_called_once()
 
 
+def test_client_retries_rate_limit_with_backoff() -> None:
+    retry_response = MagicMock()
+    retry_response.status_code = 429
+    retry_response.headers = {}
+    success_response = MagicMock()
+    success_response.status_code = 200
+    success_response.raise_for_status.return_value = None
+    success_response.json.return_value = {"Time Series FX (Daily)": _series()}
+    session = MagicMock()
+    session.get.side_effect = [retry_response, success_response]
+    sleep_fn = MagicMock()
+    client = AlphaVantageClient(
+        api_key="test-key",
+        session=session,
+        rate_limit_per_min=5,
+        max_retries=1,
+        backoff_factor=0.5,
+        sleep_fn=sleep_fn,
+    )
+
+    result = client.fetch_fx_daily_raw("USD", "CNH")
+
+    assert result == _series()
+    assert session.get.call_count == 2
+    sleep_fn.assert_called_once_with(0.5)
+
+
 def test_fetch_trade_cal_uses_weekdays() -> None:
     fetcher = AlphaVantageDataFetcher(client=MagicMock())
 

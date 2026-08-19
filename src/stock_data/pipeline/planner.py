@@ -11,7 +11,9 @@ from stock_core.exceptions import DataFetchError
 from stock_core.utils.logger import logger
 from stock_data.core.constants import ENDPOINT_START_DATE_OVERRIDES
 from stock_data.core.task_registry import (
+    expand_public_task_targets,
     list_available_tasks,
+    resolve_public_task,
     resolve_task,
 )
 
@@ -219,12 +221,14 @@ class BackfillPlanner:
         if not endpoints:
             targets = list_available_tasks(data_source)
             endpoints = ["stock_daily_bar"] if not targets else targets
+        else:
+            endpoints = expand_public_task_targets(data_source, endpoints)
 
         tasks: list[BackfillTask] = []
         src_watchlist = getattr(data_cfg.watchlists, data_source, None) if data_cfg else None
 
         for raw_ep in endpoints:
-            task_spec = resolve_task(data_source, raw_ep)
+            task_spec = resolve_public_task(data_source, raw_ep)
             public_name = task_spec.task_name
             is_per_sym = task_spec.fetch_mode == "per_symbol"
             is_single = task_spec.is_single_sync

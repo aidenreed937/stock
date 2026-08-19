@@ -691,6 +691,23 @@ def resolve_public_task(provider: str, task_name: str, symbol: str = "") -> Task
     return resolve_task(provider_name, requested, symbol=symbol)
 
 
+def expand_public_task_targets(provider: str, endpoints: list[str] | None = None) -> list[str]:
+    provider_name = provider.lower()
+    if not endpoints:
+        return list_available_tasks(provider_name)
+    candidates = [
+        candidate
+        for endpoint in endpoints
+        if (requested := endpoint.strip())
+        for candidate in (
+            expand_task_targets(provider_name, [requested])
+            if _resolve_bundle_or_alias(provider_name, requested) is not None
+            else [requested]
+        )
+    ]
+    return list(dict.fromkeys(resolve_public_task(provider_name, c).task_name for c in candidates))
+
+
 def task_api_name(provider: str, task_name: str, symbol: str = "") -> str:
     """返回任务对应的真实上游 API 名称。"""
     return resolve_task(provider, task_name, symbol=symbol).api_name

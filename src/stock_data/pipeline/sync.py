@@ -15,7 +15,12 @@ from typing import Any
 from stock_core.config.loader import load_data_config
 from stock_data.catalog import DataCatalog
 from stock_data.core.factory import create_pipeline
-from stock_data.core.task_registry import expand_task_targets, resolve_task
+from stock_data.core.task_registry import (
+    expand_public_task_targets,
+    expand_task_targets,
+    resolve_public_task,
+    resolve_task,
+)
 from stock_data.pipeline.scheduler import DataUpdateScheduler as _DataUpdateScheduler
 from stock_data.pipeline.sync_helpers import (
     configured_max_workers as _configured_max_workers_impl,
@@ -55,14 +60,13 @@ from stock_data.pipeline.sync_helpers import (
 )
 from stock_data.pipeline.sync_models import SyncExecutionResult, SyncTaskItem
 from stock_data.pipeline.sync_planner import build_sync_plan as _build_sync_plan_impl
+from stock_data.pipeline.sync_status import empty_result_reason, empty_result_status
 
 DataUpdateScheduler = _DataUpdateScheduler
 
 logger = logging.getLogger(__name__)
 
 __all__ = ["DailySyncEngine", "SyncExecutionResult", "SyncTaskItem"]
-
-_NO_DATA_REASON = "上游在请求区间内未返回记录；可能是该统计期间尚未发布，或该标的没有对应业务数据"
 
 
 def _sniff_watermarks(
@@ -165,8 +169,10 @@ def _run_sync_task(task: SyncTaskItem, force_refresh: bool) -> SyncExecutionResu
             end_date=task.end_date,
             records=row_count,
             duration_s=dur,
-            status="SUCCESS" if row_count > 0 else "NO_DATA",
-            error=None if row_count > 0 else _NO_DATA_REASON,
+            status=(
+                "SUCCESS" if row_count > 0 else empty_result_status(task.data_source, task.endpoint)
+            ),
+            error=None if row_count > 0 else empty_result_reason(task.data_source, task.endpoint),
             symbol=task.symbol,
         )
     except Exception as e:
@@ -244,11 +250,12 @@ class DailySyncEngine:
         target_date_is_explicit: bool = True,
     ) -> list[SyncTaskItem]:
         """结合落盘水位与更新时间窗口，生成最小必要增量同步任务计划。"""
+        public_endpoints = expand_public_task_targets(self.data_source, endpoints)
         return _build_sync_plan_impl(
             catalog=self.catalog,
             data_source=self.data_source,
             target_date=target_date,
-            endpoints=endpoints,
+            endpoints=public_endpoints,
             force=force,
             current_datetime=current_datetime,
             target_date_is_explicit=target_date_is_explicit,
@@ -261,7 +268,7 @@ class DailySyncEngine:
             next_increment_start=_next_increment_start,
             symbol_base_date=_symbol_base_date,
             expand_task_targets_fn=expand_task_targets,
-            resolve_task_fn=resolve_task,
+            resolve_task_fn=resolve_public_task,
         )
 
     def execute_plan(

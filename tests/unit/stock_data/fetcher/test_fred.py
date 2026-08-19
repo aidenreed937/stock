@@ -78,3 +78,35 @@ def test_fred_client_rejects_malformed_response() -> None:
 
         with pytest.raises(DataFetchError, match="缺少序列列"):
             client.fetch_series_raw("FEDFUNDS")
+
+
+def test_fred_client_retries_network_failure_with_backoff() -> None:
+    client = FredClient(max_retries=1, backoff_factor=0.25, sleep_fn=MagicMock())
+    response = MagicMock()
+    response.status_code = 200
+    response.text = "observation_date,FEDFUNDS\n2026-08-10,4.5"
+    response.raise_for_status.return_value = None
+
+    with patch.object(
+        client.session,
+        "get",
+        side_effect=[RuntimeError("temporary network error"), response],
+    ) as mock_get:
+        frame = client.fetch_series_raw("FEDFUNDS")
+
+    assert frame["FEDFUNDS"].tolist() == [4.5]
+    assert mock_get.call_count == 2
+    client.sleep_fn.assert_called_once_with(0.25)
+
+
+def test_fred_client_returns_empty_frame_for_successful_empty_series() -> None:
+    client = FredClient()
+    response = MagicMock()
+    response.status_code = 200
+    response.text = "observation_date,FEDFUNDS\n2026-08-10,."
+    response.raise_for_status.return_value = None
+
+    with patch.object(client.session, "get", return_value=response):
+        frame = client.fetch_series_raw("FEDFUNDS")
+
+    assert frame.empty

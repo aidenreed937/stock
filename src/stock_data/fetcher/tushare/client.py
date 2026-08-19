@@ -135,6 +135,7 @@ class TuShareClient:
                 # 如果启用自动分页翻页 (Cursor Pagination)
                 if auto_paginate and len(df) >= self.paginate_threshold:
                     pages = [df]
+                    seen_page_signatures = {df.to_json(orient="split", date_format="iso")}
                     limit = len(df)
                     offset = limit
                     while True:
@@ -145,6 +146,12 @@ class TuShareClient:
                         page_df: pd.DataFrame = self.pro.query(api_name, **page_kwargs)
                         if page_df is None or page_df.empty:
                             break
+                        page_signature = page_df.to_json(orient="split", date_format="iso")
+                        if page_signature in seen_page_signatures:
+                            raise DataFetchError(
+                                f"TuShare 接口 [{api_name}] 分页无进展: offset={offset} 返回重复页"
+                            )
+                        seen_page_signatures.add(page_signature)
                         pages.append(page_df)
                         if len(page_df) < limit:
                             break
@@ -153,6 +160,8 @@ class TuShareClient:
 
                 return df
             except Exception as e:
+                if isinstance(e, DataFetchError):
+                    raise
                 err_msg = str(e)
                 if (
                     "ip超限" in err_msg or "频率" in err_msg or "最多" in err_msg

@@ -3,6 +3,7 @@ from types import SimpleNamespace
 from unittest.mock import MagicMock, PropertyMock, mock_open, patch
 
 import polars as pl
+import pytest
 
 from stock_cli.backfill import (
     main as backfill_main,
@@ -39,7 +40,7 @@ def test_backfill_daily_multi_worker():
         ),
         patch("stock_data.pipeline.backfill.DataUpdateScheduler.is_data_ready", return_value=True),
     ):
-        backfiller = HistoricalBackfiller(data_source="tushare", endpoint="daily")
+        backfiller = HistoricalBackfiller(data_source="tushare", endpoint="stock_daily_bar")
         summary = backfiller.backfill_range(date(2026, 8, 1), date(2026, 9, 2), max_workers=2)
         assert summary["open_days"] == 4
         assert summary["synced_days"] == 4
@@ -58,17 +59,22 @@ def test_backfill_non_daily_single_request():
     ):
         mock_freq.return_value = "monthly"
 
-        backfiller = HistoricalBackfiller(data_source="tushare", endpoint="cpi")
+        backfiller = HistoricalBackfiller(data_source="tushare", endpoint="cn_cpi")
         summary = backfiller.backfill_range(date(2026, 1, 1), date(2026, 8, 1))
 
         assert summary["synced_days"] == 1
         mock_pipeline.sync_daily_bars.assert_called_once_with(
-            symbol="cpi",
+            symbol="cn_cpi",
             start_date=date(2026, 1, 1),
             end_date=date(2026, 8, 1),
             use_raw_cache=True,
             force_refresh=False,
         )
+
+
+def test_backfill_rejects_unknown_public_task() -> None:
+    with pytest.raises(ValueError, match="不是已注册的项目任务名"):
+        HistoricalBackfiller(data_source="tushare", endpoint="not_a_task")
 
 
 def test_backfill_per_symbol_without_symbol_does_not_use_endpoint_as_symbol() -> None:
