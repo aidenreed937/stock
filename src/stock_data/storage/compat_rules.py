@@ -1,5 +1,7 @@
 """历史 Curated 文件读取兼容规则。"""
 
+from collections.abc import Iterable
+
 _IDENTITY_ALIASES = frozenset({"ts_code", "stockCode", "code", "date", "asOfDate"})
 _KNOWN_FLOAT_COLUMNS = frozenset(
     {
@@ -56,5 +58,206 @@ _KNOWN_FLOAT_COLUMNS = frozenset(
         "sell_lg_amount",
         "buy_elg_amount",
         "sell_elg_amount",
+        "money_cap",
+        "total_cur_assets",
+        "total_cur_liab",
+        "total_nca",
+        "total_ncl",
+        "oper_cost",
+        "fin_exp",
+        "minority_gain",
+        "expense_of_sales",
+        "fa_turn",
+        "gc_of_gr",
+        "q_gc_to_gr",
+        "tangible_asset",
+        "tangibleasset_to_debt",
+        "tbassets_to_totalassets",
+        "total_size",
+        "limit_amount",
+        "pre_close",
+        "max_price",
+        "min_price",
+        "op_pr",
+        "rd",
+        "ev_ebitda",
+        "diluted_roe",
     }
 )
+
+_KNOWN_DATE_COLUMNS = frozenset(
+    {
+        "trade_date",
+        "ann_date",
+        "f_ann_date",
+        "report_date",
+        "end_date",
+        "as_of_date",
+        "list_date",
+        "delist_date",
+        "base_date",
+        "found_date",
+        "due_date",
+        "issue_date",
+        "purc_startdate",
+        "redm_startdate",
+        "pretrade_date",
+        "first_ann_date",
+        "publish_date",
+        "cal_date",
+        "begin_date",
+        "close_date",
+        "exp_date",
+        "value_date",
+        "maturity_date",
+        "conv_start_date",
+        "conv_end_date",
+        "conv_stop_date",
+        "in_date",
+        "out_date",
+        "last_data_date",
+        "last_edate",
+        "last_ddate",
+        "start_date",
+        "suspend_date",
+        "reportDate",
+        "standardDate",
+        "Date Reported",
+        "Start Date",
+        "announcement_date",
+        "observation_date",
+    }
+)
+
+_FINANCIAL_TEXT_COLUMNS = frozenset(
+    {
+        "ann_date",
+        "f_ann_date",
+        "end_date",
+        "report_date",
+        "report_type",
+        "comp_type",
+        "end_type",
+        "update_flag",
+        "symbol",
+        "ts_code",
+        "data_source",
+        "source_endpoint",
+        "request_id",
+        "updated_at",
+        "market",
+        "exchange",
+        "currency",
+        "adjustment",
+        "schema_version",
+        "name",
+        "report_title",
+        "classify",
+        "org_name",
+        "author_name",
+        "quarter",
+        "rating",
+        "perf_summary",
+        "type",
+        "summary",
+        "change_reason",
+    }
+)
+
+_FINANCIAL_DATASETS = frozenset(
+    {"balancesheet", "income", "fina_indicator", "cashflow", "forecast"}
+)
+
+_DATASET_FLOAT_COLUMNS: dict[str, frozenset[str]] = {
+    "etf_share_size": frozenset(
+        {"total_share", "total_size", "float_share", "float_size", "nav", "close"}
+    ),
+    "report_rc": frozenset(
+        {
+            "op_rt",
+            "op_pr",
+            "tp",
+            "np",
+            "eps",
+            "pe",
+            "rd",
+            "roe",
+            "ev_ebitda",
+            "max_price",
+            "min_price",
+        }
+    ),
+    "limit_list_d": frozenset(
+        {
+            "close",
+            "pct_chg",
+            "amount",
+            "limit_amount",
+            "float_mv",
+            "total_mv",
+            "turnover_ratio",
+            "fd_amount",
+            "limit_times",
+        }
+    ),
+    "opt_daily": frozenset(
+        {
+            "pre_settle",
+            "pre_close",
+            "open",
+            "high",
+            "low",
+            "close",
+            "settle",
+            "vol",
+            "amount",
+            "oi",
+        }
+    ),
+    "express": frozenset(
+        {
+            "revenue",
+            "operate_profit",
+            "total_profit",
+            "n_income",
+            "total_assets",
+            "total_hldr_eqy_exc_min_int",
+            "diluted_eps",
+            "diluted_roe",
+            "yoy_net_profit",
+            "prior_period_net_profit",
+            "bps",
+            "open_net_assets",
+            "open_bps",
+        }
+    ),
+    "fina_indicator": frozenset(
+        {
+            "expense_of_sales",
+            "fa_turn",
+            "gc_of_gr",
+            "q_gc_to_gr",
+            "tangible_asset",
+            "tangibleasset_to_debt",
+            "tbassets_to_totalassets",
+        }
+    ),
+    "hsgt_top10": frozenset({"change", "net_amount", "buy", "sell"}),
+    "sf_month": frozenset({"stk_endval", "stk_endval_yoy"}),
+    "shibor_lpr": frozenset({"1y", "5y"}),
+    "opt_basic": frozenset({"per_unit", "exercise_price", "list_price", "min_price_chg"}),
+    "fund_basic": frozenset({"exp_return"}),
+}
+
+
+def numeric_columns_for_dataset(dataset_name: str, columns: Iterable[str]) -> frozenset[str]:
+    """返回指定数据集当前列中应为数值的字段。"""
+    available = {str(column) for column in columns}
+    if dataset_name in _FINANCIAL_DATASETS:
+        return frozenset(available - _FINANCIAL_TEXT_COLUMNS - _KNOWN_DATE_COLUMNS)
+    return frozenset(
+        available & (_KNOWN_FLOAT_COLUMNS | _DATASET_FLOAT_COLUMNS.get(dataset_name, frozenset()))
+    )
+
+
+__all__ = ["_KNOWN_DATE_COLUMNS", "_KNOWN_FLOAT_COLUMNS", "numeric_columns_for_dataset"]

@@ -28,7 +28,7 @@ DOMAIN_INPUT_REQUIRED_COLUMNS: dict[str, tuple[str, ...]] = {
 }
 
 DOMAIN_INPUT_DATE_COLUMNS: dict[str, tuple[str, ...]] = {
-    "cb_basic": ("list_date",),
+    "cb_basic": ("list_date", "delist_date"),
     "cb_daily": ("trade_date",),
     "stk_holdertrade": ("ann_date",),
     "repurchase": ("ann_date",),
@@ -107,13 +107,15 @@ def assert_domain_input_quality(_gate: object, files: list[Path]) -> bool:
             if missing:
                 logger.error(f"输入数据集 [{file}] 缺少必需列: {missing}")
                 return False
-            for column in DOMAIN_INPUT_DATE_COLUMNS[dataset_name]:
+            for column in DOMAIN_INPUT_DATE_COLUMNS.get(dataset_name, ()):
+                if column not in frame.columns:
+                    continue
                 if frame[column].dtype != pl.Date:
                     logger.error(f"输入数据集 [{file}] 日期列不是 pl.Date: {column}")
                     return False
             numeric_columns = [
                 column
-                for column in DOMAIN_INPUT_NON_NEGATIVE_COLUMNS[dataset_name]
+                for column in DOMAIN_INPUT_NON_NEGATIVE_COLUMNS.get(dataset_name, ())
                 if column in frame.columns
             ]
             if numeric_columns:

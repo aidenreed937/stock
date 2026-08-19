@@ -20,6 +20,60 @@ from stock_data.storage.read_compat import normalize_read_frame
 _PROVIDERS = frozenset({"tushare", "lixinger", "yfinance", "fred", "alphavantage"})
 _ARTIFACT_SUFFIXES = (".bak.parquet", ".tmp.parquet", ".migration.tmp.parquet")
 _UTC_DATETIME = pl.Datetime("us", "UTC")
+_DATASET_SCHEMA_COLUMNS: dict[str, tuple[tuple[str, pl.DataType], ...]] = {
+    "etf_share_size": (
+        ("trade_date", pl.Date),
+        ("etf_name", pl.String),
+        ("fund_type", pl.String),
+        ("total_share", pl.Float64),
+        ("total_size", pl.Float64),
+        ("float_share", pl.Float64),
+        ("float_size", pl.Float64),
+        ("nav", pl.Float64),
+        ("close", pl.Float64),
+        ("exchange", pl.String),
+        ("symbol", pl.String),
+        ("source_unit_note", pl.String),
+        ("source_id", pl.String),
+        ("fetched_at", pl.String),
+        ("data_source", pl.String),
+        ("source_endpoint", pl.String),
+        ("request_id", pl.String),
+        ("updated_at", _UTC_DATETIME),
+        ("market", pl.String),
+        ("currency", pl.String),
+        ("adjustment", pl.String),
+        ("schema_version", pl.String),
+    ),
+    "express": (
+        ("symbol", pl.String),
+        ("ann_date", pl.Date),
+        ("end_date", pl.Date),
+        ("revenue", pl.Float64),
+        ("operate_profit", pl.Float64),
+        ("total_profit", pl.Float64),
+        ("n_income", pl.Float64),
+        ("total_assets", pl.Float64),
+        ("total_hldr_eqy_exc_min_int", pl.Float64),
+        ("diluted_eps", pl.Float64),
+        ("diluted_roe", pl.Float64),
+        ("prior_period_net_profit", pl.Float64),
+        ("bps", pl.Float64),
+        ("open_net_assets", pl.Float64),
+        ("open_bps", pl.Float64),
+        ("perf_summary", pl.String),
+        ("update_flag", pl.String),
+        ("data_source", pl.String),
+        ("source_endpoint", pl.String),
+        ("request_id", pl.String),
+        ("updated_at", _UTC_DATETIME),
+        ("market", pl.String),
+        ("exchange", pl.String),
+        ("currency", pl.String),
+        ("adjustment", pl.String),
+        ("schema_version", pl.String),
+    ),
+}
 
 
 def _curated_root(root: str | Path) -> Path:
@@ -104,6 +158,26 @@ def _normalize_bar_metadata(df: pl.DataFrame, dataset: str, provider: str) -> pl
     return normalized
 
 
+def _normalize_dataset_schema(df: pl.DataFrame, dataset: str) -> pl.DataFrame:
+    """补齐已登记的历史可选列，并固定其物理类型与列顺序。"""
+    specification = _DATASET_SCHEMA_COLUMNS.get(dataset)
+    if specification is None or df.is_empty():
+        return df
+
+    normalized = df
+    expected_columns = [column for column, _ in specification]
+    for column, dtype in specification:
+        if column not in normalized.columns:
+            normalized = normalized.with_columns(pl.lit(None, dtype=dtype).alias(column))
+        elif normalized.schema[column] != dtype:
+            normalized = normalized.with_columns(
+                pl.col(column).cast(dtype, strict=False).alias(column)
+            )
+
+    extras = [column for column in normalized.columns if column not in expected_columns]
+    return normalized.select([*expected_columns, *extras])
+
+
 def normalize_curated_frame(df: pl.DataFrame, path: Path) -> pl.DataFrame:
     """按路径数据集契约将单个历史 Curated 文件规范化为 v2。"""
     provider = _provider_from_path(path)
@@ -122,6 +196,8 @@ def normalize_curated_frame(df: pl.DataFrame, path: Path) -> pl.DataFrame:
 
     if "schema_version" in normalized.columns:
         normalized = normalized.with_columns(pl.lit("v2").alias("schema_version"))
+
+    normalized = _normalize_dataset_schema(normalized, dataset)
 
     dedup_keys = StorageCompat.resolve_dedup_keys(
         dataset,

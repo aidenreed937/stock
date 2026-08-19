@@ -611,8 +611,8 @@ def test_duckdb_store_partitions_financial_rows_by_report_end_date(tmp_path) -> 
     assert march_path.exists()
     assert june_path.exists()
     assert not fallback_path.exists()
-    assert pl.read_parquet(march_path)["end_date"].to_list() == ["20240331"]
-    assert pl.read_parquet(june_path)["end_date"].to_list() == ["20240630"]
+    assert pl.read_parquet(march_path)["end_date"].to_list() == [date(2024, 3, 31)]
+    assert pl.read_parquet(june_path)["end_date"].to_list() == [date(2024, 6, 30)]
 
 
 def test_duckdb_store_routes_mixed_date_formats_without_dropping_rows(tmp_path) -> None:

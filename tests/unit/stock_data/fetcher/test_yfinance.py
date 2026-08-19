@@ -532,3 +532,5 @@ def test_yfinance_fetcher_financials_and_actions() -> None:
         df_act = fetcher.fetch_actions_df("AAPL", action_type="dividends")
         assert not df_act.is_empty()
         assert df_act["symbol"][0] == "AAPL"
+        assert "trade_date" in df_act.columns
+        assert "Date" not in df_act.columns

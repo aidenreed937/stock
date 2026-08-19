@@ -49,6 +49,80 @@ def test_normalize_numeric_columns() -> None:
     assert normalized["rqyl"][0] == 12345.6
 
 
+def test_normalize_dataset_schema_types() -> None:
+    df = pl.DataFrame(
+        {
+            "ann_date": ["20260814"],
+            "end_date": ["20260630"],
+            "diluted_roe": ["12.5"],
+            "report_type": ["1"],
+        }
+    )
+
+    normalized = StorageCompat.post_process_dataset("express", df)
+
+    assert normalized.schema["ann_date"] == pl.Date
+    assert normalized.schema["end_date"] == pl.Date
+    assert normalized.schema["diluted_roe"] == pl.Float64
+    assert normalized.schema["report_type"] == pl.String
+
+
+def test_normalize_null_numeric_column_to_float() -> None:
+    df = pl.DataFrame({"forward_pe": [None], "price_to_sales": [None]})
+
+    normalized = StorageCompat.normalize_numeric_columns(df, "index_valuation")
+
+    assert normalized.schema["forward_pe"] == pl.Float64
+    assert normalized.schema["price_to_sales"] == pl.Float64
+
+
+def test_normalize_financial_cashflow_dates_and_values() -> None:
+    df = pl.DataFrame(
+        {
+            "ann_date": ["20260814"],
+            "end_date": ["20260630"],
+            "finan_exp": ["12.5"],
+            "c_fr_sale_sg": ["100.0"],
+            "report_type": ["1"],
+        }
+    )
+
+    normalized = StorageCompat.post_process_dataset("cashflow", df)
+
+    assert normalized.schema["ann_date"] == pl.Date
+    assert normalized.schema["end_date"] == pl.Date
+    assert normalized.schema["finan_exp"] == pl.Float64
+    assert normalized.schema["c_fr_sale_sg"] == pl.Float64
+    assert normalized.schema["report_type"] == pl.String
+
+
+def test_normalize_additional_business_date_and_numeric_aliases() -> None:
+    df = pl.DataFrame(
+        {
+            "list_date": ["20260101"],
+            "pretrade_date": ["20251231"],
+            "Date Reported": ["2026-06-30T00:00:00+08:00"],
+            "Start Date": ["2026-06-30"],
+            "announcement_date": ["2026-06-30"],
+            "observation_date": ["2026-06-30"],
+            "buy": ["100.0"],
+            "5y": ["2.5"],
+        }
+    )
+
+    normalized = StorageCompat.post_process_dataset("hsgt_top10", df)
+    normalized = StorageCompat.post_process_dataset("shibor_lpr", normalized)
+
+    assert normalized.schema["list_date"] == pl.Date
+    assert normalized.schema["pretrade_date"] == pl.Date
+    assert normalized.schema["Date Reported"] == pl.Date
+    assert normalized.schema["Start Date"] == pl.Date
+    assert normalized.schema["announcement_date"] == pl.Date
+    assert normalized.schema["observation_date"] == pl.Date
+    assert normalized.schema["buy"] == pl.Float64
+    assert normalized.schema["5y"] == pl.Float64
+
+
 def test_normalize_nested_columns_encodes_empty_struct_without_reference() -> None:
     df = pl.DataFrame({"symbol": ["600519"], "q": [{}]})
 

@@ -4,6 +4,7 @@ from pathlib import Path
 import polars as pl
 
 from stock_data.storage.query_engine import DuckDBQueryEngine
+from stock_data.storage.read_compat import requires_read_normalization
 
 
 def test_duckdb_query_engine_basic_sql() -> None:
@@ -55,6 +56,13 @@ def test_duckdb_query_engine_empty_input() -> None:
     assert engine.query_daily_bars([], "000001.SZ", "tushare").is_empty()
     assert engine.query_history([], "tushare").is_empty()
     assert engine.query_universe_snapshots([]).is_empty()
+
+
+def test_read_compat_detects_non_trade_business_date_columns(tmp_path: Path) -> None:
+    path = tmp_path / "schedule.parquet"
+    pl.DataFrame({"publish_date": ["20260814"], "title": ["经济数据"]}).write_parquet(path)
+
+    assert requires_read_normalization(path, "cn_schedule")
 
 
 def test_duckdb_query_engine_normalizes_legacy_identity_columns(tmp_path: Path) -> None:

@@ -45,8 +45,8 @@ def test_repartition_dataset_uses_report_end_date_and_preserves_backup(tmp_path)
         curated_dir / "tushare" / "market=CN" / "income" / "year=2024" / "month=03" / "data.parquet"
     )
     june_path = march_path.with_name("data.parquet").parents[1] / "month=06" / "data.parquet"
-    assert pl.read_parquet(march_path)["end_date"].to_list() == ["20240331"]
-    assert pl.read_parquet(june_path)["end_date"].to_list() == ["20240630"]
+    assert pl.read_parquet(march_path)["end_date"].to_list() == [date(2024, 3, 31)]
+    assert pl.read_parquet(june_path)["end_date"].to_list() == [date(2024, 6, 30)]
 
     # 3. Create dummy file
     file_dir = curated_dir / "tushare" / "market=CN" / "daily_bar"

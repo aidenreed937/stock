@@ -9,6 +9,7 @@ from stock_core.contracts import get_contract_for_dataset
 from stock_core.exceptions import DataValidationError
 from stock_core.utils.logger import logger
 from stock_data.core.settings import data_settings
+from stock_data.core.task_registry import resolve_task
 from stock_data.governance.quality.domain_quality import (
     assert_domain_input_quality as _assert_domain_input_quality,
 )
@@ -21,6 +22,7 @@ from stock_data.governance.quality.margin_quality import (
     margin_quality_report,
 )
 from stock_data.storage.compat import StorageCompat
+from stock_data.storage.compat_rules import _KNOWN_DATE_COLUMNS, numeric_columns_for_dataset
 
 _BAR_REQUIRED_COLUMNS = {
     "symbol",
@@ -32,6 +34,22 @@ _BAR_REQUIRED_COLUMNS = {
     "volume",
     "amount",
 }
+
+_NUMERIC_DTYPES = frozenset(
+    {
+        pl.Int8,
+        pl.Int16,
+        pl.Int32,
+        pl.Int64,
+        pl.UInt8,
+        pl.UInt16,
+        pl.UInt32,
+        pl.UInt64,
+        pl.Float32,
+        pl.Float64,
+    }
+)
+_DATE_COLUMN_ALIASES = {"Date": "trade_date", "date": "trade_date", "asOfDate": "as_of_date"}
 
 
 def _dataset_name_from_path(file: Path) -> str:
@@ -77,6 +95,94 @@ def _validate_generic_bar_frame(df: pl.DataFrame, dataset_name: str, file: Path)
     if not physical_errors.is_empty():
         logger.error(f"文件 [{file}] 行情 OHLC 物理异常 {len(physical_errors)} 行")
         return False
+    return True
+
+
+def _assert_schema_contracts(files: list[Path], curated_dir: Path) -> bool:
+    """断言 parquet 文件契约、日期类型与 UTC 更新时间。"""
+    for file in files:
+        try:
+            df = pl.read_parquet(file)
+            if df.is_empty():
+                continue
+
+            dataset_name = _dataset_name_from_path(file)
+            data_source = _data_source_from_path(file, curated_dir)
+
+            if "trade_date" in df.columns and df["trade_date"].dtype != pl.Date:
+                logger.error(f"文件 [{file}] trade_date 不是 pl.Date 类型")
+                return False
+
+            for column in sorted(_KNOWN_DATE_COLUMNS - {"month", "quarter"}):
+                if column in df.columns and df.schema[column] != pl.Date:
+                    logger.error(
+                        f"文件 [{file}] 业务日期列不是 pl.Date 类型: {column} ({df.schema[column]})"
+                    )
+                    return False
+
+            if "updated_at" in df.columns:
+                dtype = df["updated_at"].dtype
+                if not isinstance(dtype, pl.Datetime) or dtype.time_zone != "UTC":
+                    logger.error(f"文件 [{file}] updated_at 不是 Datetime[us, UTC] 类型: {dtype}")
+                    return False
+
+            if "raw_row_count" in df.columns or "clean_row_count" in df.columns:
+                logger.error(f"文件 [{file}] 包含废弃的明细统计列")
+                return False
+
+            if "schema_version" in df.columns:
+                versions = {
+                    str(value)
+                    for value in df.get_column("schema_version")
+                    .cast(pl.Utf8, strict=False)
+                    .drop_nulls()
+                    .unique()
+                    .to_list()
+                }
+                if versions - {"v2"}:
+                    logger.error(f"文件 [{file}] schema_version 不是 v2: {sorted(versions)}")
+                    return False
+
+            try:
+                task = resolve_task(data_source, dataset_name)
+            except Exception:
+                task = None
+            if task is not None:
+                for declared_column in task.date_columns:
+                    if declared_column in {"month", "quarter"}:
+                        continue
+                    column = _DATE_COLUMN_ALIASES.get(declared_column, declared_column)
+                    if column not in df.columns:
+                        if (
+                            declared_column in task.required_columns
+                            or column in task.required_columns
+                        ):
+                            logger.error(f"文件 [{file}] 缺少注册契约日期列: {column}")
+                            return False
+                        continue
+                    if df.schema[column] != pl.Date:
+                        logger.error(
+                            f"文件 [{file}] 注册契约日期列不是 pl.Date: {column} ({df.schema[column]})"
+                        )
+                        return False
+
+            numeric_columns = numeric_columns_for_dataset(dataset_name, df.columns)
+            non_numeric = [
+                column for column in numeric_columns if df.schema[column] not in _NUMERIC_DTYPES
+            ]
+            if non_numeric:
+                logger.error(f"文件 [{file}] 数值契约列类型异常: {non_numeric}")
+                return False
+
+            if _is_quality_bar_file(file):
+                contract = get_contract_for_dataset(dataset_name)
+                if contract is not None:
+                    contract.validate(df)
+                elif not _validate_generic_bar_frame(df, dataset_name, file):
+                    return False
+        except Exception as e:
+            logger.error(f"文件 [{file}] 契约校验失败: {e}")
+            return False
     return True
 
 
@@ -131,44 +237,7 @@ class QualityGate:
         return results
 
     def assert_schema_contracts(self, files: list[Path]) -> bool:
-        """断言 parquet 文件契约、日期类型与 UTC 更新时间。"""
-        for file in files:
-            try:
-                df = pl.read_parquet(file)
-                if df.is_empty():
-                    continue
-
-                dataset_name = _dataset_name_from_path(file)
-
-                # 校验 trade_date 类型
-                if "trade_date" in df.columns and df["trade_date"].dtype != pl.Date:
-                    logger.error(f"文件 [{file}] trade_date 不是 pl.Date 类型")
-                    return False
-
-                # 校验 updated_at 类型与 UTC 时区
-                if "updated_at" in df.columns:
-                    dtype = df["updated_at"].dtype
-                    if not isinstance(dtype, pl.Datetime) or dtype.time_zone != "UTC":
-                        logger.error(
-                            f"文件 [{file}] updated_at 不是 Datetime[us, UTC] 类型: {dtype}"
-                        )
-                        return False
-
-                # 检查废弃统计列
-                if "raw_row_count" in df.columns or "clean_row_count" in df.columns:
-                    logger.error(f"文件 [{file}] 包含废弃的明细统计列")
-                    return False
-
-                if _is_quality_bar_file(file):
-                    contract = get_contract_for_dataset(dataset_name)
-                    if contract is not None:
-                        contract.validate(df)
-                    elif not _validate_generic_bar_frame(df, dataset_name, file):
-                        return False
-            except Exception as e:
-                logger.error(f"文件 [{file}] 契约校验失败: {e}")
-                return False
-        return True
+        return _assert_schema_contracts(files, self.curated_dir)
 
     def assert_margin_quality(self, files: list[Path]) -> bool:
         """断言两融数值关系和交易所覆盖符合质量规则。"""

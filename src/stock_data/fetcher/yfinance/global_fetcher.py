@@ -289,7 +289,7 @@ class YFinanceDataFetcher(BaseDataFetcher):
             return pl.DataFrame()
 
         df_raw = series_raw.reset_index()
-        df_raw.columns = ["Date", action_type]
+        df_raw.columns = ["trade_date", action_type]
         df_raw["symbol"] = symbol
         return pl.from_pandas(df_raw)
 

@@ -101,8 +101,7 @@ class FrameCompatMixin:
         from stock_data.storage.compat_columns import ColumnCompatMixin
 
         normalized = ColumnCompatMixin.normalize_identity_columns(df)
-        normalized = ColumnCompatMixin.safe_cast_date_col(normalized, "trade_date")
-        normalized = ColumnCompatMixin.safe_cast_date_col(normalized, "as_of_date")
+        normalized = ColumnCompatMixin.normalize_date_columns(normalized)
         normalized = ColumnCompatMixin.normalize_datetime_columns(normalized)
         return ColumnCompatMixin.normalize_numeric_columns(normalized)
 
@@ -135,6 +134,8 @@ class FrameCompatMixin:
         from stock_data.storage.compat_columns import ColumnCompatMixin
 
         df = ColumnCompatMixin.normalize_financial_statement_columns(dataset_name, df)
+        df = ColumnCompatMixin.normalize_date_columns(df)
+        df = ColumnCompatMixin.normalize_numeric_columns(df, dataset_name)
         df = FrameCompatMixin.ensure_dataset_identity(dataset_name, df)
         df = normalize_legacy_index_valuation(df) if dataset_name == "index_valuation" else df
         if dataset_name == "hk_hold" and "symbol" in df.columns:

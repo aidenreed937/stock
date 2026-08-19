@@ -9,6 +9,8 @@ from stock_core.constants import BAR_DATASETS
 from stock_data.governance.audit.baseline import build_baseline
 from stock_data.governance.quality.quarantine import QuarantineStore
 from stock_data.pipeline.cleaner.bar_cleaner import BarDataCleaner
+from stock_data.storage.compat import StorageCompat
+from stock_data.storage.compat_rules import _KNOWN_FLOAT_COLUMNS, numeric_columns_for_dataset
 
 _BAR_DATASETS = BAR_DATASETS
 
@@ -42,13 +44,20 @@ def _primary_keys(path: Path, columns: list[str]) -> list[str]:
     for module_name, registry_name in (
         ("stock_data.fetcher.tushare.registry", "TUSHARE_API_REGISTRY"),
         ("stock_data.fetcher.lixinger.registry", "LIXINGER_API_REGISTRY"),
+        ("stock_data.fetcher.yfinance.registry", "YFINANCE_API_REGISTRY"),
         ("stock_data.fetcher.alphavantage.registry", "ALPHAVANTAGE_API_REGISTRY"),
     ):
         try:
             module = __import__(module_name, fromlist=[registry_name])
             meta = getattr(module, registry_name).get(endpoint)
             if meta:
-                aliases = {"ts_code": "symbol", "stockCode": "symbol", "date": "trade_date"}
+                aliases = {
+                    "ts_code": "symbol",
+                    "stockCode": "symbol",
+                    "date": "trade_date",
+                    "Date": "trade_date",
+                    "asOfDate": "as_of_date",
+                }
                 keys = []
                 for key in meta.primary_keys:
                     canonical = aliases.get(key, key)
@@ -98,53 +107,19 @@ def _normalize_identity_columns(df: pl.DataFrame) -> tuple[pl.DataFrame, bool]:
     return normalized, changed
 
 
-_KNOWN_FLOAT_COLUMNS = frozenset(
-    {
-        "rqyl",
-        "rzye",
-        "rqye",
-        "rzmre",
-        "rzche",
-        "rqchl",
-        "rqmcl",
-        "rzrqye",
-        "open",
-        "high",
-        "low",
-        "close",
-        "volume",
-        "amount",
-        "vol",
-        "pe",
-        "pb",
-        "ps",
-        "pe_ttm",
-        "pb_mrq",
-        "ps_ttm",
-        "dv_ratio",
-        "dv_ttm",
-        "total_mv",
-        "circ_mv",
-        "turnover_rate",
-        "turnover_rate_f",
-        "volume_ratio",
-        "adj_factor",
-        "fd_share",
-        "total_share",
-        "n_shares",
-        "value",
-    }
-)
-
-
-def _normalize_numeric_columns(df: pl.DataFrame) -> tuple[pl.DataFrame, bool]:
+def _normalize_numeric_columns(
+    df: pl.DataFrame, dataset_name: str | None = None
+) -> tuple[pl.DataFrame, bool]:
     """将历史文件中误存为 String 的已知数值型度量列转换为 Float64。"""
     normalized = df
     changed = False
+    known_columns = set(_KNOWN_FLOAT_COLUMNS)
+    if dataset_name is not None:
+        known_columns.update(numeric_columns_for_dataset(dataset_name, df.columns))
     for col_name in df.columns:
-        if col_name in _KNOWN_FLOAT_COLUMNS:
+        if col_name in known_columns:
             col_type = df.schema[col_name]
-            if col_type in (pl.Utf8, pl.String):
+            if col_type in (pl.Utf8, pl.String, pl.Null):
                 normalized = normalized.with_columns(
                     pl.col(col_name).cast(pl.Float64, strict=False).alias(col_name)
                 )
@@ -351,10 +326,14 @@ def migrate_parquet(
     )
     for path in sorted(paths):
         df = pl.read_parquet(path)
+        endpoint = _endpoint_name(path)
         normalized, id_changed = _normalize_identity_columns(df)
-        normalized, num_changed = _normalize_numeric_columns(normalized)
+        date_normalized = StorageCompat.normalize_date_columns(normalized)
+        date_changed = date_normalized.schema != normalized.schema
+        normalized = date_normalized
+        normalized, num_changed = _normalize_numeric_columns(normalized, endpoint)
         normalized, ver_changed = _normalize_schema_version(normalized, path)
-        schema_changed = id_changed or num_changed or ver_changed
+        schema_changed = id_changed or date_changed or num_changed or ver_changed
         keys = _primary_keys(path, normalized.columns)
         deduped = _dedupe_frame(normalized, keys)
         removed = len(df) - len(deduped)

@@ -104,6 +104,52 @@ def test_quality_gate_fails_on_index_bar_missing_ohlc(tmp_path: Path) -> None:
     assert not gate.assert_schema_contracts(gate._active_parquet_files())
 
 
+def test_quality_gate_fails_on_registered_date_and_numeric_schema_drift(tmp_path: Path) -> None:
+    target_dir = tmp_path / "tushare" / "market=CN" / "cn_schedule"
+    target_dir.mkdir(parents=True, exist_ok=True)
+    pl.DataFrame(
+        {
+            "publish_date": ["20260814"],
+            "title": ["经济数据"],
+            "schema_version": ["v2"],
+        }
+    ).write_parquet(target_dir / "schedule.parquet")
+
+    gate = QualityGate(tmp_path)
+    assert not gate.assert_schema_contracts(gate._active_parquet_files())
+
+    numeric_root = tmp_path / "numeric"
+    target_dir = numeric_root / "yfinance" / "market=US" / "index_valuation"
+    target_dir.mkdir(parents=True, exist_ok=True)
+    pl.DataFrame(
+        {
+            "symbol": ["SPY"],
+            "trade_date": [date(2026, 8, 14)],
+            "forward_pe": ["20.0"],
+        }
+    ).write_parquet(target_dir / "data.parquet")
+
+    numeric_gate = QualityGate(numeric_root)
+    assert not numeric_gate.assert_schema_contracts(numeric_gate._active_parquet_files())
+
+
+def test_quality_gate_allows_optional_cb_delist_date_to_be_missing(tmp_path: Path) -> None:
+    target_dir = tmp_path / "tushare" / "market=CN" / "cb_basic"
+    target_dir.mkdir(parents=True, exist_ok=True)
+    pl.DataFrame(
+        {
+            "symbol": ["110001.SH"],
+            "bond_short_name": ["测试转债"],
+            "stk_code": ["600000.SH"],
+            "list_date": [date(2026, 1, 1)],
+            "exchange": ["SSE"],
+        }
+    ).write_parquet(target_dir / "data.parquet")
+
+    gate = QualityGate(tmp_path)
+    assert gate.assert_domain_input_quality(gate._active_parquet_files())
+
+
 def test_quality_gate_checks_adjustment_for_fund_daily(tmp_path: Path) -> None:
     now_utc = datetime.now(UTC)
     target_dir = tmp_path / "tushare" / "market=CN" / "fund_daily" / "year=2026" / "month=08"

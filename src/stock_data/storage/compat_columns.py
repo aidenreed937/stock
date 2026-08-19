@@ -6,7 +6,11 @@ import re
 
 import polars as pl
 
-from stock_data.storage.compat_rules import _KNOWN_FLOAT_COLUMNS
+from stock_data.storage.compat_rules import (
+    _KNOWN_DATE_COLUMNS,
+    _KNOWN_FLOAT_COLUMNS,
+    numeric_columns_for_dataset,
+)
 
 _YFINANCE_FINANCIAL_DATASETS = frozenset({"financials", "balance_sheet", "cashflow"})
 
@@ -109,20 +113,25 @@ class ColumnCompatMixin:
         dtype = df[col_name].dtype
         if dtype == pl.Date:
             return df
-        if dtype == pl.Datetime:
+        if isinstance(dtype, pl.Datetime):
             return df.with_columns(pl.col(col_name).dt.date().alias(col_name))
-        return df.with_columns(
-            pl.coalesce(
-                [
-                    pl.col(col_name)
-                    .cast(pl.Utf8, strict=False)
-                    .str.to_date("%Y-%m-%d", strict=False),
-                    pl.col(col_name)
-                    .cast(pl.Utf8, strict=False)
-                    .str.to_date("%Y%m%d", strict=False),
-                ]
-            ).alias(col_name)
-        )
+        # 延迟导入，避免 storage.compat -> cleaner 包入口 -> quality gate 的循环依赖。
+        from stock_data.pipeline.cleaner.date_utils import parse_mixed_date
+
+        return df.with_columns(parse_mixed_date(col_name).alias(col_name))
+
+    @classmethod
+    def normalize_date_columns(
+        cls, df: pl.DataFrame, columns: set[str] | frozenset[str] | None = None
+    ) -> pl.DataFrame:
+        """将已知业务日期列统一为 pl.Date，保留 month/quarter 周期字符串。"""
+        normalized = df
+        date_columns = columns or _KNOWN_DATE_COLUMNS
+        for column in date_columns:
+            if column in {"month", "quarter"} or column not in normalized.columns:
+                continue
+            normalized = cls.safe_cast_date_col(normalized, column)
+        return normalized
 
     @staticmethod
     def normalize_datetime_columns(df: pl.DataFrame) -> pl.DataFrame:
@@ -142,11 +151,16 @@ class ColumnCompatMixin:
         return df.with_columns(expressions) if expressions else df
 
     @staticmethod
-    def normalize_numeric_columns(df: pl.DataFrame) -> pl.DataFrame:
+    def normalize_numeric_columns(
+        df: pl.DataFrame, dataset_name: str | None = None
+    ) -> pl.DataFrame:
         """将历史残留的 String 数值度量列安全转为 Float64。"""
+        known_columns = set(_KNOWN_FLOAT_COLUMNS)
+        if dataset_name is not None:
+            known_columns.update(numeric_columns_for_dataset(dataset_name, df.columns))
         casts = [
             pl.col(column).cast(pl.Float64, strict=False).alias(column)
             for column in df.columns
-            if column in _KNOWN_FLOAT_COLUMNS and df.schema[column] in (pl.Utf8, pl.String)
+            if column in known_columns and df.schema[column] in (pl.Utf8, pl.String, pl.Null)
         ]
         return df.with_columns(casts) if casts else df

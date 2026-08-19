@@ -70,13 +70,13 @@ def _resolve_dedup_keys(
                     if candidate in merged.columns:
                         mapped_keys.append(candidate)
                         break
-            elif key in {"trade_date", "date", "suspend_date"}:
-                for candidate in (key, "trade_date", "date", "suspend_date"):
+            elif key in {"Date", "trade_date", "date", "suspend_date"}:
+                for candidate in (key, "trade_date", "date", "Date", "suspend_date"):
                     if candidate in merged.columns:
                         mapped_keys.append(candidate)
                         break
-            elif key in {"as_of_date", "end_date", "report_date"}:
-                for candidate in (key, "as_of_date", "end_date", "report_date"):
+            elif key in {"asOfDate", "as_of_date", "end_date", "report_date"}:
+                for candidate in (key, "as_of_date", "asOfDate", "end_date", "report_date"):
                     if candidate in merged.columns:
                         mapped_keys.append(candidate)
                         break

@@ -88,6 +88,57 @@ def test_curated_migration_normalizes_index_valuation_legacy_field(tmp_path: Pat
     assert "total_assets" not in migrated.columns
 
 
+def test_curated_migration_fills_etf_history_schema_without_dropping_values(
+    tmp_path: Path,
+) -> None:
+    path = tmp_path / "curated/tushare/market=CN/etf_share_size/year=2012/month=01/data.parquet"
+    path.parent.mkdir(parents=True, exist_ok=True)
+    pl.DataFrame(
+        {
+            "trade_date": ["2012-01-04"],
+            "symbol": ["510300.SH"],
+            "total_share": [100.0],
+            "total_size": ["250.0"],
+        }
+    ).write_parquet(path)
+
+    migrate_curated(tmp_path / "curated", apply=True)
+    migrated = pl.read_parquet(path)
+
+    assert migrated.schema["trade_date"] == pl.Date
+    assert migrated.schema["total_size"] == pl.Float64
+    assert migrated["total_share"].to_list() == [100.0]
+    assert migrated["total_size"].to_list() == [250.0]
+    assert migrated.schema["float_size"] == pl.Float64
+    assert migrated["float_size"].to_list() == [None]
+
+
+def test_curated_migration_maps_express_legacy_alias_and_fills_update_flag(
+    tmp_path: Path,
+) -> None:
+    path = tmp_path / "curated/tushare/market=CN/express/year=2021/month=12/data.parquet"
+    path.parent.mkdir(parents=True, exist_ok=True)
+    pl.DataFrame(
+        {
+            "symbol": ["000001.SZ"],
+            "ann_date": ["20220301"],
+            "end_date": ["20211231"],
+            "diluted_roe": ["8.5"],
+            "yoy_net_profit": ["123.0"],
+        }
+    ).write_parquet(path)
+
+    migrate_curated(tmp_path / "curated", apply=True)
+    migrated = pl.read_parquet(path)
+
+    assert migrated.schema["ann_date"] == pl.Date
+    assert migrated.schema["end_date"] == pl.Date
+    assert migrated.schema["diluted_roe"] == pl.Float64
+    assert migrated["prior_period_net_profit"].to_list() == [123.0]
+    assert "yoy_net_profit" not in migrated.columns
+    assert migrated["update_flag"].to_list() == [None]
+
+
 def test_curated_migration_rejects_non_curated_root(tmp_path: Path) -> None:
     with pytest.raises(ValueError, match="curated"):
         migrate_curated(tmp_path)

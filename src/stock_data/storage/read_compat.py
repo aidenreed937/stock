@@ -6,7 +6,11 @@ import polars as pl
 
 from stock_core.exceptions import DataValidationError
 from stock_data.storage.compat import StorageCompat
-from stock_data.storage.compat_rules import _IDENTITY_ALIASES, _KNOWN_FLOAT_COLUMNS
+from stock_data.storage.compat_rules import (
+    _IDENTITY_ALIASES,
+    _KNOWN_DATE_COLUMNS,
+    numeric_columns_for_dataset,
+)
 
 
 def requires_read_normalization(path: Path, dataset_name: str) -> bool:
@@ -31,12 +35,18 @@ def requires_read_normalization(path: Path, dataset_name: str) -> bool:
         return True
     if "as_of_date" in schema and schema["as_of_date"] != pl.Date:
         return True
+    if any(
+        column in schema and schema[column] != pl.Date
+        for column in _KNOWN_DATE_COLUMNS - {"month", "quarter"}
+    ):
+        return True
     if "updated_at" in schema:
         updated_at_dtype = schema["updated_at"]
         if not isinstance(updated_at_dtype, pl.Datetime) or updated_at_dtype.time_zone != "UTC":
             return True
+    known_numeric = numeric_columns_for_dataset(dataset_name, schema)
     return any(
-        column in _KNOWN_FLOAT_COLUMNS and dtype in (pl.Utf8, pl.String)
+        column in known_numeric and dtype in (pl.Utf8, pl.String, pl.Null)
         for column, dtype in schema.items()
     )
 
