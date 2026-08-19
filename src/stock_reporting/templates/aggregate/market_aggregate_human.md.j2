@@ -1,0 +1,29 @@
+# {{ title }}人工阅读版
+
+- 基准日期: {{ manifest.quote_date }}
+- 接收时间: {{ manifest.received_at }}
+- 覆盖: {{ coverage_text }}
+- 状态: {{ status }}
+- 新鲜度: {{ freshness }}（{{ "%.1f"|format(age_seconds) }} 秒）
+
+## 一句话结论
+
+{{ headline }}
+
+## 聚合指标
+
+{% for section in metric_sections %}
+### {{ section.title }}
+
+{% set rows = section.rows %}
+{% include table_template %}
+{% endfor %}
+## 阅读提示
+
+{% for note in reading_notes %}- {{ note }}
+{% endfor %}
+
+## 口径限制
+
+{% for limitation in limitations %}- {{ limitation }}
+{% endfor %}

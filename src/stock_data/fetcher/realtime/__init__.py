@@ -10,6 +10,7 @@ from stock_data.fetcher.realtime.market_aggregate import (
     BaseMarketAggregateFetcher,
     MarketAggregateFetcher,
     MarketAggregateSnapshot,
+    TencentMarketAggregateFetcher,
 )
 from stock_data.fetcher.realtime.market_aggregate_recorder import (
     MarketAggregateSnapshotRecorder,
@@ -25,6 +26,7 @@ __all__ = [
     "MarketAggregateSnapshotRecorder",
     "RealtimeQuote",
     "RealtimeSnapshotRecorder",
+    "TencentMarketAggregateFetcher",
     "TencentRealtimeFetcher",
     "normalize_local_symbol",
     "to_tencent_symbol",

@@ -130,20 +130,27 @@ uv run python -m stock_cli.market_temperature --date 2026-08-14 --format markdow
 
 ## 4. 全市场实时聚合 CLI (Market Aggregate CLI)
 
-独立于核心观察池腾讯逐标的监控，低频抓取 A 股全市场并只输出聚合摘要，不输出 5,500+ 只股票的逐标的明细：
+独立于核心观察池腾讯逐标的监控，低频抓取 A 股全市场并只输出聚合摘要，不输出 5,500+ 只股票的逐标的明细。默认配置为 `config/analytics/market_aggregate.yaml`，报告模板由 `stock_reporting` 的 Jinja2 渲染器加载：
 
 ```bash
 # 单次聚合快照
 make market-aggregate
 
-# Markdown 摘要并将一行快照留档到 data/raw/realtime/market_aggregate/eastmoney
+# Markdown 摘要并将一行快照留档到 data/raw/realtime/market_aggregate/tencent
 make market-aggregate FORMAT=markdown RECORD=1
 
 # 建议 30～60 秒一轮的低频监控
 make market-aggregate WATCH=1 INTERVAL=60
+
+# 使用自定义配置和产物目录
+make market-aggregate CONFIG=config/analytics/market_aggregate.yaml OUTPUT_ROOT=data/analytics/market_aggregate
 ```
 
+全市场聚合默认读取本地 `stock_basic` 股票全集，按批次调用腾讯行情接口；不会用核心观察池代替全市场。若本地基础库缺失，先运行 `make backfill ENDPOINT=stock_basic`。单批请求数量可通过 `BATCH_SIZE` 覆盖。
+
 输出包括覆盖率、涨跌家数及占比、±5% 强势家数、中位数与分位数涨跌幅、成交额加权涨跌幅、成交额、总/流通市值、流通市值换手率和成交额前 5% 集中度。覆盖不完整或使用缓存时会分别显示 `partial`、`stale`/`expired`。这些指标不等同于涨跌停、全市场均线比例或行业轮动结论。
+
+每次运行生成 `manifest.json`、`snapshot.json`、`facts.parquet`、`report.md`、`report.json`、`human_report.md`、`quality_report.md/json`，并按配置刷新 `latest/`。
 
 ---
 

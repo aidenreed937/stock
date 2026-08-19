@@ -13,6 +13,10 @@ from stock_analytics.pipelines.investor_brief.pipeline import (
     InvestorBriefRunResult,
     run_investor_brief,
 )
+from stock_analytics.pipelines.market_aggregate.pipeline import (
+    MarketAggregateRunResult,
+    run_market_aggregate,
+)
 from stock_analytics.pipelines.market_temperature.pipeline import (
     MarketTemperatureRunResult,
     run_market_temperature,
@@ -21,8 +25,10 @@ from stock_analytics.pipelines.market_temperature.pipeline import (
 __all__ = [
     "IndustryStructureRunResult",
     "InvestorBriefRunResult",
+    "MarketAggregateRunResult",
     "MarketTemperatureRunResult",
     "run_industry_structure",
     "run_investor_brief",
+    "run_market_aggregate",
     "run_market_temperature",
 ]

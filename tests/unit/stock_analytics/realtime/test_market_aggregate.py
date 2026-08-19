@@ -19,7 +19,7 @@ from stock_data.fetcher.realtime.market_aggregate_recorder import (
 
 
 class _Fetcher(BaseMarketAggregateFetcher):
-    source = "eastmoney"
+    source = "tencent"
 
     def __init__(self, snapshot: MarketAggregateSnapshot, *, fail: bool = False) -> None:
         self.snapshot = snapshot
@@ -72,18 +72,18 @@ def test_market_aggregate_cache_tracks_fresh_stale_expired_and_date_boundary() -
     cache.put(snapshot)
 
     assert (
-        cache.lookup("eastmoney", now=received_at + timedelta(seconds=1)).freshness
+        cache.lookup("tencent", now=received_at + timedelta(seconds=1)).freshness
         == MarketAggregateFreshness.FRESH
     )
     assert (
-        cache.lookup("eastmoney", now=received_at + timedelta(seconds=31)).freshness
+        cache.lookup("tencent", now=received_at + timedelta(seconds=31)).freshness
         == MarketAggregateFreshness.STALE
     )
     assert (
-        cache.lookup("eastmoney", now=received_at + timedelta(seconds=301)).freshness
+        cache.lookup("tencent", now=received_at + timedelta(seconds=301)).freshness
         == MarketAggregateFreshness.EXPIRED
     )
-    assert cache.lookup("eastmoney", now=datetime(2026, 8, 20, 10, 0)) is None
+    assert cache.lookup("tencent", now=datetime(2026, 8, 20, 10, 0)) is None
 
 
 def test_monitor_falls_back_to_same_day_cached_snapshot() -> None:
@@ -114,7 +114,7 @@ def test_monitor_uses_snapshot_time_for_cross_midnight_cache_and_raw_partition(
     targets = list((tmp_path / "date=2026-08-20" / "hour=00").glob("*.parquet"))
     assert len(targets) == 1
     saved = pl.read_parquet(targets[0])
-    assert saved["source"].to_list() == ["eastmoney"]
+    assert saved["source"].to_list() == ["tencent"]
     assert saved["returned_count"].to_list() == [4]
 
 

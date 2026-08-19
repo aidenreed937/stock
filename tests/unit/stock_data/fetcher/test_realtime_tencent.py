@@ -75,6 +75,13 @@ def _quote_body(code: str = "600519", name: str = "贵州茅台") -> str:
         "37548",
         "487677",
         "0.30",
+        "",
+        "",
+        "",
+        "",
+        "",
+        "2187.02",
+        "2187.05",
     ]
     return "~".join(parts)
 
@@ -110,6 +117,8 @@ def test_tencent_fetcher_parses_snapshot_and_normalizes_units() -> None:
     assert quotes[0].status == "valid"
     assert quotes[0].volume == 3_754_800
     assert quotes[0].amount == 4_876_774_762
+    assert quotes[0].free_float_market_value_yuan == pytest.approx(218_702_000_000)
+    assert quotes[0].total_market_value_yuan == pytest.approx(218_705_000_000)
     assert quotes[0].bid_prices == (1305.0, 1303.69, 1303.0, 1302.66, 1302.01)
     assert quotes[0].quote_at == datetime(2026, 8, 19, 15, 56, 41, tzinfo=_SHANGHAI_TZ)
     assert quotes[2].status == "missing"

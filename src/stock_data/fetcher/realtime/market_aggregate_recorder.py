@@ -21,7 +21,7 @@ class MarketAggregateSnapshotRecorder:
         root: Path | str | None = None,
         *,
         runtime: DataRuntimeContext | None = None,
-        source: str = "eastmoney",
+        source: str = "tencent",
         flush_interval_seconds: float = 60.0,
     ) -> None:
         if runtime is None:

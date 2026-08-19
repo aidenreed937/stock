@@ -64,6 +64,8 @@ class RealtimeQuote(BaseModel):
     low: float | None = None
     volume: float | None = None
     amount: float | None = None
+    total_market_value_yuan: float | None = None
+    free_float_market_value_yuan: float | None = None
     bid_prices: tuple[float | None, ...] = (None, None, None, None, None)
     bid_volumes: tuple[float | None, ...] = (None, None, None, None, None)
     ask_prices: tuple[float | None, ...] = (None, None, None, None, None)

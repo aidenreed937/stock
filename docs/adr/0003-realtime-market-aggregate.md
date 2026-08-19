@@ -11,13 +11,15 @@
 ## 决策
 
 - `TencentRealtimeFetcher` 只负责 `watchlist.yaml` 中的核心观察池逐标的快照。
-- 新增独立的 `BaseMarketAggregateFetcher` / `MarketAggregateFetcher`，默认使用东方财富轻量列表接口分页获取全市场必要字段，并在内存中计算聚合结果。
+- 新增独立的 `BaseMarketAggregateFetcher` / `TencentMarketAggregateFetcher`，默认读取本地 `stock_basic` 股票全集，再通过腾讯批量行情接口获取实时快照并在内存中计算聚合结果；`MarketAggregateFetcher` 保留为兼容别名。
+- 聚合监控采用与市场温度计相同的配置驱动产物模式：`config/analytics/market_aggregate.yaml` 控制请求参数、缓存 TTL、阈值、质量门禁、指标顺序/标签、模板路径和口径限制；运行结果写入 `runs/as_of=.../run_.../` 并同步 `latest/`。
+- 报告通过 `stock_reporting` 的 `ReportRenderer` 和 Jinja2 模板生成，分为机器/审计版 `report.md`、人工阅读版 `human_report.md`、结构化 `report.json` 和质量报告；CLI 只负责运行参数覆盖与终端输出。
 - 聚合接口只输出 `MarketAggregateSnapshot`，不向调用方暴露全市场逐标的明细，也不写入 Curated 黄金表。
-- 每次请求按 `reported_count`、`returned_count` 和 `coverage_ratio` 标记 `valid` 或 `partial`；覆盖不完整时仍保留结果，但报告必须显示覆盖状态。
+- 每次请求按本地股票全集数、腾讯实际返回数和 `coverage_ratio` 标记 `valid` 或 `partial`；批次失败时继续处理其余批次，覆盖不完整时仍保留结果，但报告必须显示覆盖状态。
 - 聚合指标只使用已核验字段：覆盖率、涨跌家数及占比、±5% 强势家数、中位数/P25/P75 涨跌幅、成交额加权涨跌幅、总成交额、总市值、流通市值、流通市值换手率和成交额前 5% 集中度。±5% 强势统计不命名为涨跌停统计。
 - 聚合缓存只保留进程内当天最近快照，30 秒内为 `fresh`、30～300 秒为 `stale`、超过 300 秒为 `expired`；请求失败时回退当天缓存，并明确呈现新鲜度。
 - RAW 只留档一行聚合快照，按 `date=YYYY-MM-DD/hour=HH` 分区，默认不进入离线 Curated/历史回填管道。建议每 30～60 秒运行一次，不能接入 3 秒核心池循环。
 
 ## 代价与触发信号
 
-分页请求仍可能受上游限流或连接中断影响，因此必须依赖覆盖率和重试结果判断可信度。若未来需要全市场实时选股、行业轮动或涨跌停明细，应新增有明确字段契约的专用数据集/Fetcher，不在该聚合摘要上反推逐标的事实。
+腾讯批量请求仍可能受上游限流或连接中断影响，且公共接口市值字段不是正式稳定契约，因此必须依赖覆盖率、字段计数和重试结果判断可信度。若未来需要全市场实时选股、行业轮动或涨跌停明细，应新增有明确字段契约的专用数据集/Fetcher，不在该聚合摘要上反推逐标的事实。

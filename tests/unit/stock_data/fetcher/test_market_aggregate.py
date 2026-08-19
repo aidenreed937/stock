@@ -1,99 +1,78 @@
-"""东方财富全市场聚合行情适配器测试。"""
+"""腾讯批量快照全市场聚合适配器测试。"""
 
+from collections.abc import Sequence
 from datetime import datetime
-from typing import Any
 from zoneinfo import ZoneInfo
 
 import pytest
-import requests
 
 from stock_core.exceptions import DataFetchError
-from stock_data.fetcher.realtime.market_aggregate import MarketAggregateFetcher
+from stock_data.fetcher.realtime.base import BaseRealtimeFetcher, RealtimeQuote, to_tencent_symbol
+from stock_data.fetcher.realtime.market_aggregate import TencentMarketAggregateFetcher
 
 _SHANGHAI_TZ = ZoneInfo("Asia/Shanghai")
 
 
-class _Response:
-    def __init__(self, payload: dict[str, Any]) -> None:
-        self.payload = payload
+class _QuoteFetcher(BaseRealtimeFetcher):
+    source = "tencent"
 
-    def raise_for_status(self) -> None:
-        return None
-
-    def json(self) -> dict[str, Any]:
-        return self.payload
-
-
-class _Session:
     def __init__(self, responses: list[object]) -> None:
         self.responses = responses
-        self.params: list[dict[str, object]] = []
+        self.batches: list[tuple[str, ...]] = []
 
-    def get(
-        self,
-        url: str,
-        *,
-        params: dict[str, object],
-        timeout: float,
-        headers: dict[str, str],
-    ) -> _Response:
-        del url, timeout, headers
-        self.params.append(params)
+    def fetch_quotes(self, symbols: Sequence[str]) -> tuple[RealtimeQuote, ...]:
+        self.batches.append(tuple(symbols))
         response = self.responses.pop(0)
         if isinstance(response, Exception):
             raise response
-        assert isinstance(response, _Response)
+        assert isinstance(response, tuple)
         return response
 
 
-def _row(
-    code: str,
-    change: float,
+def _quote(
+    symbol: str,
+    price: float,
+    pre_close: float,
     amount: float,
     market_value: float,
     free_float_value: float,
-) -> dict[str, object]:
-    return {
-        "f2": 10.0,
-        "f3": change,
-        "f5": 100.0,
-        "f6": amount,
-        "f8": 1.0,
-        "f12": code,
-        "f13": 0,
-        "f14": code,
-        "f18": 10.0,
-        "f20": market_value,
-        "f21": free_float_value,
-    }
-
-
-def _payload(total: int, *rows: dict[str, object]) -> dict[str, Any]:
-    return {"rc": 0, "data": {"total": total, "diff": list(rows)}}
-
-
-def test_fetcher_aggregates_multiple_pages_without_exposing_rows() -> None:
-    rows = [
-        _row("000001", 10.0, 100.0, 1000.0, 500.0),
-        _row("000002", -5.0, 300.0, 2000.0, 1000.0),
-        _row("000003", 0.0, 50.0, 3000.0, 1500.0),
-        _row("000004", 2.0, 50.0, 4000.0, 2000.0),
-    ]
-    session = _Session(
-        [
-            _Response(_payload(4, *rows[:3])),
-            _Response(_payload(4, rows[3])),
-        ]
-    )
+    *,
+    quote_at: datetime | None = None,
+) -> RealtimeQuote:
     received_at = datetime(2026, 8, 19, 10, 0, tzinfo=_SHANGHAI_TZ)
-    fetcher = MarketAggregateFetcher(
-        session=session,
-        page_size=3,
+    return RealtimeQuote(
+        symbol=symbol,
+        provider_symbol=to_tencent_symbol(symbol),
+        received_at=received_at,
+        quote_at=quote_at,
+        price=price,
+        pre_close=pre_close,
+        amount=amount,
+        total_market_value_yuan=market_value,
+        free_float_market_value_yuan=free_float_value,
+    )
+
+
+def test_fetcher_aggregates_tencent_batches_without_exposing_rows() -> None:
+    quote_at = datetime(2026, 8, 19, 10, 0, 3, tzinfo=_SHANGHAI_TZ)
+    quotes = (
+        _quote("000001.SZ", 11.0, 10.0, 100.0, 1000.0, 500.0, quote_at=quote_at),
+        _quote("000002.SZ", 9.5, 10.0, 300.0, 2000.0, 1000.0, quote_at=quote_at),
+        _quote("000003.SZ", 10.0, 10.0, 50.0, 3000.0, 1500.0, quote_at=quote_at),
+        _quote("000004.SZ", 10.2, 10.0, 50.0, 4000.0, 2000.0, quote_at=quote_at),
+    )
+    quote_fetcher = _QuoteFetcher([quotes[:2], quotes[2:]])
+    received_at = datetime(2026, 8, 19, 10, 0, tzinfo=_SHANGHAI_TZ)
+    fetcher = TencentMarketAggregateFetcher(
+        symbols=["000001.SZ", "000002.SZ", "000003.SZ", "000004.SZ"],
+        quote_fetcher=quote_fetcher,
+        batch_size=2,
         clock=lambda: received_at,
     )
 
     snapshot = fetcher.fetch_aggregate()
 
+    assert snapshot.source == "tencent"
     assert snapshot.status == "valid"
     assert snapshot.reported_count == 4
     assert snapshot.returned_count == 4
@@ -117,66 +96,70 @@ def test_fetcher_aggregates_multiple_pages_without_exposing_rows() -> None:
     assert snapshot.free_float_market_value_yuan == pytest.approx(5000.0)
     assert snapshot.free_float_turnover_pct == pytest.approx(10.0)
     assert snapshot.amount_top_5pct_share == pytest.approx(0.6)
-    assert [params["pn"] for params in session.params] == [1, 2]
+    assert quote_fetcher.batches == [
+        ("000001.SZ", "000002.SZ"),
+        ("000003.SZ", "000004.SZ"),
+    ]
 
 
-def test_fetcher_marks_partial_coverage_when_page_limit_or_response_is_incomplete() -> None:
-    session = _Session(
+def test_fetcher_normalizes_symbols_and_marks_missing_quotes_partial() -> None:
+    quotes = (
+        _quote("000001.SZ", 11.0, 10.0, 100.0, 1000.0, 500.0),
+        _quote("600519.SH", 100.0, 100.0, 300.0, 2000.0, 1000.0),
+    )
+    quote_fetcher = _QuoteFetcher([quotes])
+    fetcher = TencentMarketAggregateFetcher(
+        symbols=["000001", "sh600519", "000001.SZ"],
+        quote_fetcher=quote_fetcher,
+        batch_size=10,
+    )
+
+    snapshot = fetcher.fetch_aggregate()
+
+    assert snapshot.status == "valid"
+    assert snapshot.reported_count == 2
+    assert snapshot.returned_count == 2
+    assert quote_fetcher.batches == [("000001.SZ", "600519.SH")]
+
+
+def test_fetcher_continues_after_one_batch_failure_and_marks_partial() -> None:
+    quote_fetcher = _QuoteFetcher(
         [
-            _Response(
-                _payload(
-                    5,
-                    _row("000001", 1.0, 10.0, 100.0, 50.0),
-                    _row("000002", -1.0, 10.0, 100.0, 50.0),
-                )
+            DataFetchError("temporary"),
+            (
+                _quote("000003.SZ", 10.0, 10.0, 50.0, 3000.0, 1500.0),
+                _quote("000004.SZ", 10.2, 10.0, 50.0, 4000.0, 2000.0),
             ),
-            _Response(_payload(5, _row("000003", 0.0, 10.0, 100.0, 50.0))),
         ]
     )
-    fetcher = MarketAggregateFetcher(session=session, page_size=2)
+    fetcher = TencentMarketAggregateFetcher(
+        symbols=["000001.SZ", "000002.SZ", "000003.SZ", "000004.SZ"],
+        quote_fetcher=quote_fetcher,
+        batch_size=2,
+    )
 
     snapshot = fetcher.fetch_aggregate()
 
     assert snapshot.status == "partial"
-    assert snapshot.returned_count == 3
-    assert snapshot.reported_count == 5
-    assert snapshot.coverage_ratio == pytest.approx(0.6)
-    assert len(session.params) == 2
+    assert snapshot.returned_count == 2
+    assert snapshot.reported_count == 4
+    assert snapshot.coverage_ratio == pytest.approx(0.5)
 
 
-def test_fetcher_retries_transient_request_failure() -> None:
-    session = _Session(
-        [
-            requests.ConnectionError("temporary"),
-            _Response(_payload(1, _row("000001", 1.0, 10.0, 100.0, 50.0))),
-        ]
+def test_fetcher_raises_when_all_tencent_batches_fail() -> None:
+    quote_fetcher = _QuoteFetcher([DataFetchError("first"), DataFetchError("second")])
+    fetcher = TencentMarketAggregateFetcher(
+        symbols=["000001.SZ", "000002.SZ"],
+        quote_fetcher=quote_fetcher,
+        batch_size=1,
     )
-    fetcher = MarketAggregateFetcher(session=session, max_retries=1, retry_backoff_seconds=0)
 
-    snapshot = fetcher.fetch_aggregate()
-
-    assert snapshot.is_usable
-    assert len(session.params) == 2
-
-
-def test_fetcher_raises_after_all_request_attempts_fail() -> None:
-    session = _Session(
-        [
-            requests.ConnectionError("temporary"),
-            requests.Timeout("timeout"),
-        ]
-    )
-    fetcher = MarketAggregateFetcher(session=session, max_retries=1, retry_backoff_seconds=0)
-
-    with pytest.raises(DataFetchError, match="attempts=2"):
+    with pytest.raises(DataFetchError, match="所有批次请求失败"):
         fetcher.fetch_aggregate()
 
 
-def test_fetcher_rejects_empty_market_response() -> None:
-    fetcher = MarketAggregateFetcher(
-        session=_Session([_Response(_payload(0))]),
-        max_retries=0,
-    )
+def test_fetcher_requires_a_local_stock_universe() -> None:
+    fetcher = TencentMarketAggregateFetcher(quote_fetcher=_QuoteFetcher([]))
 
-    with pytest.raises(DataFetchError, match="未返回 A 股标的"):
+    with pytest.raises(DataFetchError, match="stock_basic"):
         fetcher.fetch_aggregate()

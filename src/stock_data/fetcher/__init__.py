@@ -16,6 +16,7 @@ from stock_data.fetcher.realtime import (
     MarketAggregateSnapshotRecorder,
     RealtimeQuote,
     RealtimeSnapshotRecorder,
+    TencentMarketAggregateFetcher,
     TencentRealtimeFetcher,
 )
 from stock_data.fetcher.yfinance import YFinanceDataFetcher
@@ -34,6 +35,7 @@ __all__ = [
     "MarketAggregateSnapshotRecorder",
     "RealtimeQuote",
     "RealtimeSnapshotRecorder",
+    "TencentMarketAggregateFetcher",
     "TencentRealtimeFetcher",
     "YFinanceDataFetcher",
     "create_alphavantage_fetcher",

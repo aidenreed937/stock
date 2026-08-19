@@ -1,0 +1,21 @@
+# {{ report.title }}
+
+- 基准日期: {{ report.as_of_date }}
+- 质量状态: {{ report.status }}
+- 覆盖率: {{ "%.2f"|format(report.summary.coverage_ratio * 100) }}%
+- 新鲜度: {{ report.summary.freshness }}（{{ "%.1f"|format(report.summary.age_seconds) }} 秒）
+
+## 约束结果
+
+- 错误数: {{ report.summary.error_count }}
+- 警告数: {{ report.summary.warning_count }}
+{% if report.issues %}
+{% for issue in report.issues %}- [{{ issue.severity }}] {{ issue.message }}
+{% endfor %}
+{% else %}- 未发现质量问题。
+{% endif %}
+
+## 口径规则
+
+{% for item in report.constraints %}- [{{ item.level }}] {{ item.id }}: {{ item.rule }}
+{% endfor %}

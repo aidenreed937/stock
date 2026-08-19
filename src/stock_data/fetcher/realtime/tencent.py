@@ -65,6 +65,12 @@ def _parse_amount(parts: list[str]) -> float | None:
     return None
 
 
+def _parse_market_value(parts: list[str], index: int) -> float | None:
+    """解析腾讯响应中以亿元表示的市值字段并统一换算为元。"""
+    value = _float_or_none(parts[index] if len(parts) > index else None)
+    return value * 100_000_000 if value is not None and value >= 0 else None
+
+
 def _parse_row(
     provider_symbol: str,
     body: str,
@@ -113,6 +119,9 @@ def _parse_row(
         # 腾讯接口的 volume 字段单位为手；Curated 契约统一使用股。
         volume=raw_volume * 100 if raw_volume is not None else None,
         amount=_parse_amount(parts),
+        # 腾讯公共行情字段 44/45 分别为流通市值/总市值，单位为亿元。
+        free_float_market_value_yuan=_parse_market_value(parts, 44),
+        total_market_value_yuan=_parse_market_value(parts, 45),
         bid_prices=bid_prices,
         bid_volumes=bid_volumes,
         ask_prices=ask_prices,

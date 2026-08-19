@@ -1,9 +1,8 @@
-"""A 股全市场低频聚合行情抓取器。"""
+"""基于腾讯批量快照的 A 股全市场聚合行情抓取器。"""
 
 from __future__ import annotations
 
 import math
-import time
 from abc import ABC, abstractmethod
 from collections.abc import Callable, Mapping, Sequence
 from datetime import date, datetime
@@ -14,13 +13,16 @@ import requests
 from pydantic import BaseModel, ConfigDict, Field
 
 from stock_core.exceptions import DataFetchError
+from stock_data.fetcher.realtime.base import (
+    BaseRealtimeFetcher,
+    RealtimeQuote,
+    normalize_local_symbol,
+)
+from stock_data.fetcher.realtime.tencent import TencentRealtimeFetcher
 
 MarketAggregateStatus = Literal["valid", "partial"]
 
 _SHANGHAI_TZ = ZoneInfo("Asia/Shanghai")
-_DEFAULT_ENDPOINT = "https://82.push2.eastmoney.com/api/qt/clist/get"
-_DEFAULT_MARKET_FILTER = "m:0+t:6,m:0+t:80,m:1+t:2,m:1+t:23,m:0+t:81+s:2048"
-_DEFAULT_FIELDS = "f2,f3,f6,f12,f20,f21"
 
 
 class MarketAggregateSnapshot(BaseModel):
@@ -28,7 +30,7 @@ class MarketAggregateSnapshot(BaseModel):
 
     model_config = ConfigDict(frozen=True, extra="forbid")
 
-    source: str = "eastmoney"
+    source: str = "tencent"
     scope: str = "a_share_full_market"
     status: MarketAggregateStatus
     quote_at: datetime | None = None
@@ -63,7 +65,7 @@ class MarketAggregateSnapshot(BaseModel):
 
     @property
     def quote_date(self) -> date:
-        """返回快照所属日期；东方财富列表没有逐行撮合时间，回退接收日期。"""
+        """返回快照所属日期；缺少腾讯撮合时间时回退接收日期。"""
         return (self.quote_at or self.received_at).date()
 
     @property
@@ -83,113 +85,107 @@ class BaseMarketAggregateFetcher(ABC):
         raise NotImplementedError
 
 
-class MarketAggregateFetcher(BaseMarketAggregateFetcher):
-    """通过东方财富轻量列表接口抓取 A 股全市场聚合指标。"""
+class TencentMarketAggregateFetcher(BaseMarketAggregateFetcher):
+    """读取本地股票全集，并通过腾讯接口分批获取实时快照后聚合。"""
 
-    source = "eastmoney"
+    source = "tencent"
 
     def __init__(
         self,
+        symbols: Sequence[str] = (),
         session: requests.Session | None = None,
         *,
-        endpoint: str = _DEFAULT_ENDPOINT,
-        page_size: int = 100,
-        max_pages: int = 100,
-        timeout_seconds: float = 8.0,
+        quote_fetcher: BaseRealtimeFetcher | None = None,
+        batch_size: int = 100,
+        timeout_seconds: float = 5.0,
         max_retries: int = 2,
-        retry_backoff_seconds: float = 0.3,
+        retry_backoff_seconds: float = 0.2,
         strong_move_threshold_pct: float = 5.0,
         clock: Callable[[], datetime] | None = None,
     ) -> None:
-        """初始化聚合客户端；默认每 100 条分页，避免单个超大响应。"""
-        self.session = session or requests.Session()
-        self.endpoint = endpoint
-        self.page_size = min(100, max(1, page_size))
-        self.max_pages = max(1, max_pages)
-        self.timeout_seconds = timeout_seconds
-        self.max_retries = max(0, max_retries)
-        self.retry_backoff_seconds = max(0.0, retry_backoff_seconds)
+        """初始化客户端；股票全集由管线从本地 stock_basic 提供。"""
+        self.symbols = _normalize_symbols(symbols)
+        self.batch_size = max(1, batch_size)
+        self.quote_fetcher = quote_fetcher or TencentRealtimeFetcher(
+            session=session,
+            timeout_seconds=timeout_seconds,
+            max_retries=max_retries,
+            retry_backoff_seconds=retry_backoff_seconds,
+        )
         self.strong_move_threshold_pct = max(0.01, strong_move_threshold_pct)
         self.clock = clock or (lambda: datetime.now(_SHANGHAI_TZ))
 
     def fetch_aggregate(self) -> MarketAggregateSnapshot:
-        """分页抓取轻量字段后在内存中聚合，不返回逐标的行情明细。"""
-        rows, reported_count = self._fetch_rows()
+        """分批抓取腾讯快照并在内存中聚合，不返回逐标的行情明细。"""
+        if not self.symbols:
+            raise DataFetchError(
+                "腾讯全市场聚合需要本地 stock_basic 股票全集，请先运行："
+                "make backfill ENDPOINT=stock_basic"
+            )
+
+        quotes, failures = self._fetch_quotes()
+        if not quotes:
+            if failures:
+                last_error = failures[-1]
+                raise DataFetchError(
+                    f"腾讯全市场聚合所有批次请求失败: batches={len(failures)}, error={last_error}"
+                ) from last_error
+            raise DataFetchError("腾讯全市场聚合未返回任何股票快照")
+
         received_at = self.clock()
+        quote_times = [quote.quote_at for quote in quotes if quote.quote_at is not None]
         return _aggregate_rows(
-            rows,
-            reported_count=reported_count,
+            [_quote_to_row(quote) for quote in quotes],
+            reported_count=len(self.symbols),
             received_at=received_at,
+            quote_at=max(quote_times) if quote_times else None,
             source=self.source,
             strong_move_threshold_pct=self.strong_move_threshold_pct,
         )
 
-    def _fetch_rows(self) -> tuple[list[Mapping[str, Any]], int]:
-        rows: list[Mapping[str, Any]] = []
-        reported_count = 0
-        for page in range(1, self.max_pages + 1):
-            payload = self._request_page(page)
-            data = payload.get("data")
-            if not isinstance(data, Mapping):
-                raise DataFetchError("东方财富市场聚合响应缺少 data 对象")
-            if page == 1:
-                reported_count = _nonnegative_int(data.get("total"))
-            diff = data.get("diff") or []
-            if not isinstance(diff, list):
-                raise DataFetchError("东方财富市场聚合响应的 diff 不是列表")
-            page_rows = [row for row in diff if isinstance(row, Mapping)]
-            rows.extend(page_rows)
-            if not page_rows:
-                break
-            if reported_count and len(rows) >= reported_count:
-                break
-            if len(page_rows) < self.page_size:
-                break
-
-        if not rows:
-            raise DataFetchError("东方财富市场聚合响应未返回 A 股标的")
-        return rows, reported_count or len(rows)
-
-    def _request_page(self, page: int) -> Mapping[str, Any]:
-        params: dict[str, str | int] = {
-            "pn": page,
-            "pz": self.page_size,
-            "po": 1,
-            "np": 1,
-            "ut": "bd1d9ddb04089700cf9c27f6f7426281",
-            "fltt": 2,
-            "invt": 2,
-            "fid": "f12",
-            "fs": _DEFAULT_MARKET_FILTER,
-            "fields": _DEFAULT_FIELDS,
-        }
-        last_error: Exception | None = None
-        for attempt in range(self.max_retries + 1):
+    def _fetch_quotes(self) -> tuple[list[RealtimeQuote], list[DataFetchError]]:
+        quotes: list[RealtimeQuote] = []
+        failures: list[DataFetchError] = []
+        for start in range(0, len(self.symbols), self.batch_size):
+            batch = self.symbols[start : start + self.batch_size]
             try:
-                response = self.session.get(
-                    self.endpoint,
-                    params=params,
-                    timeout=self.timeout_seconds,
-                    headers={
-                        "User-Agent": "Mozilla/5.0",
-                        "Referer": "https://quote.eastmoney.com/",
-                    },
-                )
-                response.raise_for_status()
-                payload = response.json()
-                if not isinstance(payload, Mapping):
-                    raise ValueError("响应 JSON 顶层不是对象")
-                if payload.get("rc") not in (None, 0):
-                    raise ValueError(f"响应返回 rc={payload.get('rc')}")
-                return payload
-            except (requests.RequestException, UnicodeError, ValueError) as exc:
-                last_error = exc
-                if attempt < self.max_retries:
-                    time.sleep(self.retry_backoff_seconds * (attempt + 1))
-        raise DataFetchError(
-            f"东方财富市场聚合请求失败: page={page}, attempts={self.max_retries + 1}, "
-            f"error={last_error}"
-        ) from last_error
+                batch_quotes = self.quote_fetcher.fetch_quotes(batch)
+            except DataFetchError as exc:
+                failures.append(exc)
+                continue
+            quotes.extend(quote for quote in batch_quotes if quote.status != "missing")
+        return quotes, failures
+
+
+# 保留原有公共名称，避免调用方因为数据源替换而需要改动导入路径。
+MarketAggregateFetcher = TencentMarketAggregateFetcher
+
+
+def _normalize_symbols(symbols: Sequence[str]) -> tuple[str, ...]:
+    normalized: list[str] = []
+    seen: set[str] = set()
+    for symbol in symbols:
+        local_symbol = normalize_local_symbol(symbol)
+        if local_symbol not in seen:
+            normalized.append(local_symbol)
+            seen.add(local_symbol)
+    return tuple(normalized)
+
+
+def _quote_to_row(quote: RealtimeQuote) -> dict[str, float | None]:
+    return {
+        "price": quote.price,
+        "change": _quote_pct_change(quote),
+        "amount": quote.amount,
+        "total_market_value_yuan": quote.total_market_value_yuan,
+        "free_float_market_value_yuan": quote.free_float_market_value_yuan,
+    }
+
+
+def _quote_pct_change(quote: RealtimeQuote) -> float | None:
+    if quote.price is None or quote.pre_close is None or quote.price <= 0 or quote.pre_close <= 0:
+        return None
+    return (quote.price - quote.pre_close) / quote.pre_close * 100
 
 
 def _aggregate_rows(
@@ -197,16 +193,19 @@ def _aggregate_rows(
     *,
     reported_count: int,
     received_at: datetime,
+    quote_at: datetime | None,
     source: str,
     strong_move_threshold_pct: float,
 ) -> MarketAggregateSnapshot:
-    changes = [_as_float(row.get("f3")) for row in rows]
+    changes = [_as_float(row.get("change")) for row in rows]
     valid_changes = [value for value in changes if value is not None]
-    amounts = [_as_nonnegative_float(row.get("f6")) for row in rows]
+    amounts = [_as_nonnegative_float(row.get("amount")) for row in rows]
     valid_amounts = [value for value in amounts if value is not None]
-    market_values = [_as_nonnegative_float(row.get("f20")) for row in rows]
+    market_values = [_as_nonnegative_float(row.get("total_market_value_yuan")) for row in rows]
     valid_market_values = [value for value in market_values if value is not None]
-    free_float_values = [_as_nonnegative_float(row.get("f21")) for row in rows]
+    free_float_values = [
+        _as_nonnegative_float(row.get("free_float_market_value_yuan")) for row in rows
+    ]
     valid_free_float_values = [value for value in free_float_values if value is not None]
 
     epsilon = 1e-9
@@ -234,10 +233,11 @@ def _aggregate_rows(
     return MarketAggregateSnapshot(
         source=source,
         status="valid" if len(rows) >= reported_count else "partial",
+        quote_at=quote_at,
         received_at=received_at,
         reported_count=reported_count,
         returned_count=len(rows),
-        priced_count=sum(_as_positive_float(row.get("f2")) is not None for row in rows),
+        priced_count=sum(_as_positive_float(row.get("price")) is not None for row in rows),
         change_count=len(valid_changes),
         amount_count=len(valid_amounts),
         market_cap_count=len(valid_market_values),
@@ -291,11 +291,6 @@ def _as_nonnegative_float(value: object) -> float | None:
     return number if number is not None and number >= 0 else None
 
 
-def _nonnegative_int(value: object) -> int:
-    number = _as_float(value)
-    return int(number) if number is not None and number >= 0 else 0
-
-
 def _share(numerator: int, denominator: int) -> float | None:
     return numerator / denominator if denominator > 0 else None
 
@@ -325,4 +320,5 @@ __all__ = [
     "MarketAggregateFetcher",
     "MarketAggregateSnapshot",
     "MarketAggregateStatus",
+    "TencentMarketAggregateFetcher",
 ]

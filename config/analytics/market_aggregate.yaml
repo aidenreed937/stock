@@ -1,0 +1,76 @@
+market_aggregate:
+  schema_version: 1
+  title: "A 股全市场实时聚合监控"
+  artifact_root: "data/analytics/market_aggregate"
+  source: "tencent"
+  scope: "a_share_full_market"
+  interval_seconds: 60.0
+
+  universe:
+    dataset: "stock_basic"
+
+  fetch:
+    batch_size: 100
+    timeout_seconds: 5.0
+    max_retries: 2
+    retry_backoff_seconds: 0.2
+
+  cache:
+    fresh_ttl_seconds: 30.0
+    max_age_seconds: 300.0
+
+  thresholds:
+    strong_move_pct: 5.0
+
+  quality:
+    min_coverage_ratio: 0.95
+
+  raw:
+    flush_interval_seconds: 60.0
+
+  report:
+    template: "aggregate/market_aggregate.md.j2"
+    human_template: "aggregate/market_aggregate_human.md.j2"
+    table_template: "aggregate/market_aggregate_table.md.j2"
+    quality_template: "aggregate/market_aggregate_quality.md.j2"
+    metrics:
+      - id: coverage
+        label: "覆盖数 / 返回数 / 覆盖率"
+        section: "覆盖与质量"
+      - id: breadth_counts
+        label: "上涨 / 下跌 / 平盘"
+        section: "市场广度"
+      - id: breadth_shares
+        label: "上涨占比 / 下跌占比"
+        section: "市场广度"
+      - id: advance_decline_ratio
+        label: "涨跌比（上涨 / 下跌）"
+        section: "市场广度"
+      - id: strong_move_counts
+        label: "强势上涨 / 强势下跌"
+        section: "市场广度"
+        note: "阈值由 thresholds.strong_move_pct 配置，不等同于涨跌停。"
+      - id: change_distribution
+        label: "P25 / 中位 / P75 涨跌幅"
+        section: "涨跌分布"
+      - id: weighted_pct_change
+        label: "成交额加权涨跌幅"
+        section: "涨跌分布"
+      - id: amount_total
+        label: "全市场成交额"
+        section: "成交与市值"
+      - id: market_value
+        label: "总市值 / 流通市值"
+        section: "成交与市值"
+      - id: free_float_turnover
+        label: "流通市值换手率"
+        section: "成交与市值"
+      - id: amount_top_5pct_share
+        label: "成交额前 5% 集中度"
+        section: "成交与市值"
+
+    limitations:
+      - "本报告是全市场聚合摘要，不包含逐标的实时明细。"
+      - "强势上涨/下跌阈值仅表示涨跌幅达到配置阈值，不等同于涨跌停统计。"
+      - "本通道不计算全市场 MA20/MA60 比例、行业轮动或涨跌停事件。"
+      - "覆盖率低于质量阈值或使用缓存时，应结合 status 与 freshness 谨慎解读。"

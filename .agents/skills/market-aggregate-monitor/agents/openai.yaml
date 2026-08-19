@@ -1,0 +1,4 @@
+interface:
+  display_name: "全市场聚合监控"
+  short_description: "生成配置化 A 股全市场聚合监控、质量与温度报告产物"
+  default_prompt: "使用 $market-aggregate-monitor 运行或改进 A 股全市场聚合监控，并核验覆盖率、缓存新鲜度和报告口径。"
