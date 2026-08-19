@@ -48,6 +48,7 @@ def build_brief_json(
         "market_snapshot": {
             "composite_temperature": _composite_temperature(market_scores),
             "systemic_risk": market_scores.get("systemic_risk", {}),
+            "external_risk": market_scores.get("external_risk", {}),
             "dimensions": dimensions,
         },
         "data_freshness": market_scores.get("data_freshness", {}),
@@ -97,6 +98,7 @@ def render_brief_markdown(brief: dict[str, Any]) -> str:
         "manifest": manifest,
         "participation": participation,
         "market": market,
+        "external_risk": market.get("external_risk", {}),
         "market_composite_temp": _value_text(market.get("composite_temperature")),
         "structure_health_level": _structure_health_level(industry),
         "candidate_industries": _format_table_rows(brief.get("candidate_industries", [])),

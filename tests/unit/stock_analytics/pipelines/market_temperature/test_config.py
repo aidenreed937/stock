@@ -148,3 +148,40 @@ market_temperature:
     assert config.dimensions[0].stale_weight_scale == pytest.approx(0.4)
     assert config.datasets[0].in_score is True
     assert config.datasets[1].in_score is False
+
+
+def test_load_config_parses_external_risk_rules(tmp_path: Path) -> None:
+    config_path = tmp_path / "market_temperature.yaml"
+    config_path.write_text(
+        """
+market_temperature:
+  schema_version: 1
+  title: "测试温度计"
+  artifact_root: "data/analytics/market_temperature"
+  main_window: 20
+  short_windows: []
+  external_risk:
+    shock:
+      min_trigger_count: 2
+      rules:
+        - metric_id: macro_nasdaq_1d_return
+          operator: lte
+          threshold: -0.02
+          label: "纳斯达克"
+        - metric_id: macro_vix_1d_change
+          operator: gte
+          threshold: 0.04
+          label: "VIX"
+    message_on_shock: "测试冲击消息"
+    observation_focus: ["科技成长", "两融"]
+""",
+        encoding="utf-8",
+    )
+
+    config = load_market_temperature_config(config_path)
+
+    assert config.external_risk.shock.min_trigger_count == 2
+    assert config.external_risk.shock.rules[0].metric_id == "macro_nasdaq_1d_return"
+    assert config.external_risk.shock.rules[0].threshold == pytest.approx(-0.02)
+    assert config.external_risk.message_on_shock == "测试冲击消息"
+    assert config.external_risk.observation_focus == ("科技成长", "两融")

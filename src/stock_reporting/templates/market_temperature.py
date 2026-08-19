@@ -57,6 +57,7 @@ from stock_reporting.interpretation.market_temperature.interpretation import (
 from stock_reporting.templates.availability import (
     domain_observation_lines as _domain_observation_lines,
 )
+from stock_reporting.templates.external_risk import external_risk_lines as _external_risk_section
 
 _PREFERRED_METRICS = {
     "valuation": ("valuation_temperature", "pe_percentile_10y", "pb_percentile_10y"),
@@ -142,6 +143,7 @@ def render_report_markdown(
         "short_windows_str": ", ".join(str(value) for value in manifest.get("short_windows", [])),
         "composite": scores.get("composite", {}),
         "systemic_risk_lines": _systemic_risk_section(scores),
+        "external_risk_lines": _external_risk_section(scores, config),
         "dimensions": scores.get("dimensions", []),
         "facts_sections": facts_sec,
     }
@@ -182,9 +184,8 @@ def render_human_report_markdown(
         current_manifest=manifest,
         current_scores=scores,
     )
-    # 移除末尾多余空行以便模板精准排版
     if cross_period_lines and cross_period_lines[-1] == "":
-        cross_period_lines = cross_period_lines[:-1]
+        cross_period_lines.pop()
 
     context = {
         "title": config.title,
@@ -199,6 +200,7 @@ def render_human_report_markdown(
         "quality_brief_lines": _human_quality_brief(facts),
         "divergence_lines": _key_divergence_section(dimensions, facts),
         "systemic_risk_lines": _systemic_risk_section(scores),
+        "external_risk_lines": _external_risk_section(scores, config),
         "external_pressure_lines": _external_pressure_section(facts),
         "follow_up_lines": _follow_up_section(dimensions, facts, scores),
         "interpretation_priority_lines": _interpretation_priority_rows(dimensions),
@@ -212,7 +214,6 @@ def render_human_report_markdown(
 
 
 def summarize_facts(facts: pl.DataFrame) -> dict[str, Any]:
-    """汇总事实表状态。"""
     return _input_validation.summarize_facts(facts, _input_validation.MARKET_FACT_COLUMNS)
 
 

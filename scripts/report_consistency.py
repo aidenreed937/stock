@@ -9,7 +9,7 @@ import sys
 from dataclasses import asdict, dataclass
 from datetime import date
 from pathlib import Path
-from typing import Any
+from typing import Any, cast
 
 import polars as pl
 
@@ -190,6 +190,44 @@ class ConsistencyValidator:
         self._require_number(report + human, composite, "composite", bundle.name, as_of_date)
         self._require_text(report + human, risk_level, "risk_level", bundle.name, as_of_date)
 
+        external_risk = scores.get("external_risk")
+        if isinstance(external_risk, dict):
+            self._require_number(
+                report + human,
+                external_risk.get("background_pressure"),
+                "external_background_pressure",
+                bundle.name,
+                as_of_date,
+            )
+            self._require_number(
+                report + human,
+                external_risk.get("environment_temperature"),
+                "external_environment_temperature",
+                bundle.name,
+                as_of_date,
+            )
+            self._require_text(
+                report + human,
+                external_risk.get("shock_status"),
+                "external_shock_status",
+                bundle.name,
+                as_of_date,
+            )
+            self._require_text(
+                report + human,
+                external_risk.get("transmission_status"),
+                "external_transmission_status",
+                bundle.name,
+                as_of_date,
+            )
+            self._require_text(
+                report + human,
+                external_risk.get("message"),
+                "external_risk_message",
+                bundle.name,
+                as_of_date,
+            )
+
         for dimension in scores.get("dimensions", []):
             self._require_text(
                 report + human,
@@ -298,6 +336,11 @@ class ConsistencyValidator:
         brief_risk = brief_json.get("participation", {}).get("risk_level")
         if risk != brief_risk:
             message = f"简报风险等级={brief_risk!r}，市场风险等级={risk!r}"
+            self._error("brief_market_snapshot", "investor_brief", as_of_date, message)
+        external_risk = market_scores.get("external_risk")
+        brief_external_risk = brief_json.get("market_snapshot", {}).get("external_risk")
+        if isinstance(external_risk, dict) and external_risk != brief_external_risk:
+            message = "简报外盘风险状态与市场温度外盘风险状态不一致"
             self._error("brief_market_snapshot", "investor_brief", as_of_date, message)
 
     def _check_brief_watermarks(
@@ -491,7 +534,8 @@ def _latest_run_dir(root: Path, as_of_date: str) -> Path | None:
 
 
 def _read_json(path: Path) -> dict[str, Any]:
-    return json.loads(path.read_text(encoding="utf-8"))
+    payload = json.loads(path.read_text(encoding="utf-8"))
+    return cast("dict[str, Any]", payload)
 
 
 def _read_text(path: Path) -> str:
@@ -518,7 +562,7 @@ def _numbers_equal(left: Any, right: Any, *, precision: int = 2) -> bool:
     left_number = _to_float(left)
     right_number = _to_float(right)
     if not _is_finite(left_number) or not _is_finite(right_number):
-        return left == right
+        return bool(left == right)
     return round(left_number, precision) == round(right_number, precision)
 
 

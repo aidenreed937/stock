@@ -25,6 +25,9 @@ from stock_analytics.pipelines.market_temperature.derived import (
 from stock_analytics.pipelines.market_temperature.derived_options import (
     build_option_daily_frame,
 )
+from stock_analytics.pipelines.market_temperature.external_risk_facts import (
+    raw_external_change_metric_row,
+)
 
 
 class FakeCatalog:
@@ -371,6 +374,48 @@ def test_return_frame_calculates_window_return_for_symbol() -> None:
     value = result.filter(pl.col("trade_date") == dates[20])["_return"][0]
 
     assert value == pytest.approx(0.20)
+
+
+def test_raw_external_change_metric_preserves_value_and_unit() -> None:
+    frame = pl.DataFrame(
+        {
+            "trade_date": [date(2026, 8, 17), date(2026, 8, 18)] * 3,
+            "symbol": ["^GSPC", "^GSPC", "^VIX", "^VIX", "^TNX", "^TNX"],
+            "close": [100.0, 98.0, 100.0, 104.28, 4.0, 4.2],
+        }
+    )
+
+    sp500 = raw_external_change_metric_row(
+        frame,
+        "^GSPC",
+        "macro_sp500_1d_return",
+        date(2026, 8, 18),
+        note="标普500 1日收益",
+        unit="return",
+    )
+    vix = raw_external_change_metric_row(
+        frame,
+        "^VIX",
+        "macro_vix_1d_change",
+        date(2026, 8, 18),
+        note="VIX 1日相对变化",
+        unit="return",
+    )
+    us_10y = raw_external_change_metric_row(
+        frame,
+        "^TNX",
+        "macro_us_10y_1d_change",
+        date(2026, 8, 18),
+        note="美债10年期收益率1日变化",
+        unit="percentage_point",
+        relative=False,
+    )
+
+    assert sp500["value_float"] == pytest.approx(-0.02)
+    assert sp500["unit"] == "return"
+    assert vix["value_float"] == pytest.approx(0.0428)
+    assert us_10y["value_float"] == pytest.approx(0.2)
+    assert us_10y["unit"] == "percentage_point"
 
 
 def test_external_environment_row_averages_available_components_only() -> None:

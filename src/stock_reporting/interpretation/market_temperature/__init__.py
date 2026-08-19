@@ -6,6 +6,11 @@ from stock_reporting.interpretation.market_temperature.config import (
     MarketTemperatureConfig,
     load_market_temperature_config,
 )
+from stock_reporting.interpretation.market_temperature.external_risk_config import (
+    ExternalRiskConfig,
+    ExternalShockConfig,
+    ExternalShockRuleConfig,
+)
 from stock_reporting.interpretation.market_temperature.interpretation import (
     _DIMENSION_FOCUS,
     _DIMENSION_LABELS,
@@ -33,6 +38,9 @@ __all__ = [
     "_DIMENSION_TIMELINESS",
     "_METRIC_LABELS",
     "BandsConfig",
+    "ExternalRiskConfig",
+    "ExternalShockConfig",
+    "ExternalShockRuleConfig",
     "MarketTemperatureConfig",
     "evaluate_external_pressure_section",
     "evaluate_follow_ups",

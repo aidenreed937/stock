@@ -9,6 +9,7 @@ from typing import TYPE_CHECKING, Any, cast
 import polars as pl
 
 from stock_analytics.catalog_compat import load_dataset_compat
+from stock_analytics.pipelines.market_temperature import external_risk_facts as _risk_facts
 from stock_analytics.pipelines.market_temperature.derived_options import (
     option_rows,
 )
@@ -524,8 +525,7 @@ def _macro_liquidity_rows(
     rows.extend(_money_credit_rows(cat_ts, cat_lx, as_of_date))
     rows.extend(_external_macro_rows(cat_yf, cat_av, as_of_date))
     rows.extend(_us_macro_background_rows(cat_fred, as_of_date))
-    rows.extend(_external_pressure_rows(rows, as_of_date))
-    return rows
+    return [*rows, *_external_pressure_rows(rows, as_of_date)]
 
 
 def _money_credit_rows(
@@ -664,6 +664,7 @@ def _external_macro_rows(
             note=("Alpha Vantage 离岸人民币USD/CNH 20日变化历史反向分位，人民币贬值压力外部观察"),
         ),
     ]
+    rows.extend(_risk_facts.raw_external_change_rows(index_frame, macro_frame, as_of_date))
     rows.append(_external_environment_row(rows, as_of_date))
     return rows
 

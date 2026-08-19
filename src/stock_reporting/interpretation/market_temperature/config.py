@@ -9,6 +9,10 @@ from typing import Any, Self, cast
 
 import yaml
 
+from stock_reporting.interpretation.market_temperature.external_risk_config import (
+    ExternalRiskConfig,
+)
+
 _PROJECT_ROOT = Path(__file__).resolve().parents[4]
 DEFAULT_CONFIG_PATH = _PROJECT_ROOT / "config/analytics/market_temperature.yaml"
 
@@ -220,6 +224,7 @@ class MarketTemperatureConfig:
     metric_values: MetricValuesConfig = field(default_factory=MetricValuesConfig)
     domain_mart_observations_enabled: bool = False
     bands: BandsConfig = field(default_factory=BandsConfig)
+    external_risk: ExternalRiskConfig = field(default_factory=ExternalRiskConfig)
 
     @classmethod
     def from_mapping(cls, data: Mapping[str, Any]) -> Self:
@@ -230,6 +235,7 @@ class MarketTemperatureConfig:
         metric_values = data.get("metric_values")
         domain_mart_observations_enabled = bool(data.get("domain_mart_observations_enabled", False))
         bands = data.get("bands")
+        external_risk = data.get("external_risk")
         return cls(
             schema_version=int(data.get("schema_version", 1)),
             title=str(data.get("title", "A 股六维市场温度计")),
@@ -249,6 +255,9 @@ class MarketTemperatureConfig:
             domain_mart_observations_enabled=domain_mart_observations_enabled,
             bands=BandsConfig.from_mapping(
                 _as_mapping(bands, "bands") if bands is not None else None
+            ),
+            external_risk=ExternalRiskConfig.from_mapping(
+                _as_mapping(external_risk, "external_risk") if external_risk is not None else None
             ),
         )
 

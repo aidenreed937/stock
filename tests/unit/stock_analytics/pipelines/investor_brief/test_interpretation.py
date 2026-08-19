@@ -39,6 +39,22 @@ def test_evaluate_participation_decision_high_risk() -> None:
     assert any("估值已经偏热" in r for r in decision["reasons"])
 
 
+def test_evaluate_participation_decision_surfaces_external_shock_boundary() -> None:
+    market_scores = {
+        "composite": {"temperature": 60.0},
+        "systemic_risk": {"status": "contained_systemic_risk", "level": "中等"},
+        "external_risk": {"shock_status": "short_term_shock"},
+    }
+
+    decision = evaluate_participation_decision(
+        market_scores,
+        {"structure_health": {}},
+        {"valuation": 50.0, "fund_flow": 55.0, "technical": 55.0},
+    )
+
+    assert any("外盘短线风险已出现" in reason for reason in decision["reasons"])
+
+
 def test_evaluate_candidate_and_risk_industries() -> None:
     panel = pl.DataFrame(
         {

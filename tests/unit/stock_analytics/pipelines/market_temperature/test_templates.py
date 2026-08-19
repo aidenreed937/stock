@@ -70,6 +70,70 @@ def test_human_report_includes_interpretation_priority() -> None:
     assert "财报是低频底座，预告和研报才反映近20日预期变化" in report
 
 
+def test_human_report_includes_external_risk_status() -> None:
+    config = MarketTemperatureConfig(
+        schema_version=1,
+        title="测试温度计",
+        artifact_root=Path("data/analytics/market_temperature"),
+        main_window=20,
+        short_windows=(),
+        dimensions=(),
+        datasets=(),
+    )
+    scores = {
+        "composite": {"temperature": 60.0, "status": "ready"},
+        "dimensions": [],
+        "external_risk": {
+            "background_pressure": 74.61,
+            "environment_temperature": 49.41,
+            "shock_status": "short_term_shock",
+            "transmission_status": "pending_next_ashare_session",
+            "message": "外盘短线冲击已出现，等待下一交易日 A 股确认。",
+            "triggered_rules": [
+                {
+                    "metric_id": "macro_nasdaq_1d_return",
+                    "label": "纳斯达克",
+                    "value": -0.0133,
+                    "unit": "return",
+                },
+                {
+                    "metric_id": "macro_sox_1d_return",
+                    "label": "费城半导体",
+                    "value": -0.0498,
+                    "unit": "return",
+                },
+                {
+                    "metric_id": "macro_vix_1d_change",
+                    "label": "VIX",
+                    "value": 0.0428,
+                    "unit": "return",
+                },
+            ],
+            "observation_focus": ["科技成长", "两融", "主力净流入", "上涨行业扩散"],
+        },
+    }
+
+    report = render_human_report_markdown(
+        config=config,
+        manifest={
+            "as_of_date": "2026-08-18",
+            "trade_dates": [],
+            "main_window": 20,
+            "short_windows": [],
+        },
+        scores=scores,
+        facts=pl.DataFrame(schema=FACT_SCHEMA),
+    )
+
+    assert "## 外盘扰动与 A 股传导" in report
+    assert "外盘背景压力：中等偏高（74.61）" in report
+    assert "纳斯达克 -1.33%" in report
+    assert "费城半导体 -4.98%" in report
+    assert "VIX +4.28%" in report
+    assert "A 股传导状态：待确认" in report
+    assert "科技成长、两融、主力净流入、上涨行业扩散" in report
+
+
 def test_human_report_surfaces_quality_divergence_and_followups() -> None:
     config = MarketTemperatureConfig(
         schema_version=1,

@@ -6,6 +6,7 @@ from typing import TYPE_CHECKING, Any
 
 import polars as pl
 
+from stock_analytics.pipelines.market_temperature.external_risk_scoring import build_external_risk
 from stock_analytics.pipelines.market_temperature.freshness import (
     composite_freshness,
     dimension_freshness,
@@ -47,6 +48,7 @@ def build_scores(
     if composite_temperature is None:
         composite_status = "pending"
     systemic_risk = _systemic_risk(composite_temperature, dimensions)
+    external_risk = build_external_risk(config.external_risk, facts)
     return {
         "schema_version": config.schema_version,
         "as_of_date": as_of_date.isoformat(),
@@ -58,6 +60,7 @@ def build_scores(
             "reason": "按可用维度温度和默认权重重归一合成",
         },
         "systemic_risk": systemic_risk,
+        "external_risk": external_risk,
         "data_freshness": composite_freshness(dimensions),
         "dimensions": dimensions,
         "short_term": [_short_term_score(facts, window) for window in config.short_windows],

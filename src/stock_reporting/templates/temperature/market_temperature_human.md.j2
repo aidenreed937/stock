@@ -29,6 +29,12 @@
 {% for line in systemic_risk_lines %}
 {{ line }}
 {% endfor %}
+
+## 外盘扰动与 A 股传导
+
+{% for line in external_risk_lines %}
+{{ line }}
+{% endfor %}
 {% if cross_period_lines %}
 
 {% for line in cross_period_lines %}

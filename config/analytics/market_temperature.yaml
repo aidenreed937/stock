@@ -25,6 +25,44 @@ market_temperature:
       moderate: 5.0
       significant: 20.0
 
+  external_risk:
+    background_pressure_metric_id: macro_external_pressure_temperature
+    environment_temperature_metric_id: macro_external_environment_temperature
+    shock:
+      min_trigger_count: 1
+      rules:
+        - metric_id: macro_sp500_1d_return
+          operator: lte
+          threshold: -0.01
+          label: "标普500"
+        - metric_id: macro_nasdaq_1d_return
+          operator: lte
+          threshold: -0.01
+          label: "纳斯达克"
+        - metric_id: macro_sox_1d_return
+          operator: lte
+          threshold: -0.03
+          label: "费城半导体"
+        - metric_id: macro_vix_1d_change
+          operator: gte
+          threshold: 0.03
+          label: "VIX"
+        - metric_id: macro_us_10y_1d_change
+          operator: gte
+          threshold: 0.05
+          label: "美债10年期收益率"
+    transmission_status_on_shock: pending_next_ashare_session
+    transmission_status_without_shock: not_applicable
+    transmission_status_insufficient: insufficient_external_data
+    message_on_shock: "外盘短线冲击已出现，等待下一交易日 A 股确认。"
+    message_without_shock: "当前未检测到配置阈值触发的外盘短线冲击。"
+    message_insufficient: "外盘单日冲击数据不足，暂不能判断。"
+    observation_focus:
+      - "科技成长"
+      - "两融"
+      - "主力净流入"
+      - "上涨行业扩散"
+
   dimensions:
     - id: valuation
       name: "估值面"
@@ -308,6 +346,26 @@ market_temperature:
           direction: positive
           weight: 0.00
         - metric_id: macro_external_pressure_temperature
+          source: derived
+          direction: positive
+          weight: 0.00
+        - metric_id: macro_sp500_1d_return
+          source: derived
+          direction: positive
+          weight: 0.00
+        - metric_id: macro_nasdaq_1d_return
+          source: derived
+          direction: positive
+          weight: 0.00
+        - metric_id: macro_sox_1d_return
+          source: derived
+          direction: positive
+          weight: 0.00
+        - metric_id: macro_vix_1d_change
+          source: derived
+          direction: positive
+          weight: 0.00
+        - metric_id: macro_us_10y_1d_change
           source: derived
           direction: positive
           weight: 0.00

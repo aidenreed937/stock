@@ -20,6 +20,9 @@
 {% else %}
 - 暂无。
 {% endfor %}
+{% if external_risk.message %}
+- 外盘状态: {{ external_risk.message }}
+{% endif %}
 
 ## 2. 短期配置观察
 

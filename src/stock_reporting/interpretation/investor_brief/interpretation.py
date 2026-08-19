@@ -46,7 +46,10 @@ def evaluate_participation_decision(
     if health_status in {"short_rebound_medium_unconfirmed", "localized_strength_weak_breadth"}:
         action += " 当前行业结构尚未形成中期全面确认，短期参与不应按趋势反转处理。"
 
-    reasons = _decision_reasons(risk, industry_scores, dimensions, composite)
+    external_risk = market_scores.get("external_risk", {})
+    if not isinstance(external_risk, dict):
+        external_risk = {}
+    reasons = _decision_reasons(risk, external_risk, industry_scores, dimensions, composite)
     return {
         "stance": stance,
         "action": action,
@@ -134,6 +137,7 @@ def evaluate_reading_notes(
 
 def _decision_reasons(
     risk: dict[str, Any],
+    external_risk: dict[str, Any],
     industry_scores: dict[str, Any],
     dimensions: dict[str, float | None],
     composite: float | None,
@@ -155,6 +159,10 @@ def _decision_reasons(
         reasons.append("估值已经偏热，但资金面未确认；这类环境更需要控仓参与，而不是追涨。")
     if _gte(technical, 60) and fund_flow is not None and fund_flow < 50:
         reasons.append("技术修复快于资金确认，需看后续两融和主力净流入能否跟上。")
+    if external_risk.get("shock_status") == "short_term_shock":
+        reasons.append(
+            "外盘短线风险已出现，但 A 股尚未完成传导确认，当前按短线扰动处理，不直接视为系统性风险。"
+        )
     health = industry_scores.get("structure_health", {})
     if isinstance(health, dict) and health.get("message"):
         reasons.append(f"行业结构: {health['message']}")

@@ -12,6 +12,11 @@ from stock_reporting.interpretation.market_temperature.config import (
     MarketTemperatureConfig,
     MetricInputConfig,
 )
+from stock_reporting.interpretation.market_temperature.external_risk_config import (
+    ExternalRiskConfig,
+    ExternalShockConfig,
+    ExternalShockRuleConfig,
+)
 
 
 def test_build_scores_uses_configured_metric_weights() -> None:
@@ -156,6 +161,78 @@ def test_build_scores_ignores_zero_weight_observation_metrics() -> None:
     assert scores["dimensions"][0]["metric_count"] == 1
     assert scores["dimensions"][0]["ok_metric_count"] == 1
     assert scores["dimensions"][0]["reason"] == "指标事实已温度化"
+
+
+def test_build_scores_adds_configured_external_risk_without_changing_composite() -> None:
+    facts = pl.DataFrame(
+        [
+            _metric_fact("valuation", "valuation_temperature", 60.0),
+            _metric_fact("macro_liquidity", "macro_external_pressure_temperature", 74.61),
+            _metric_fact("macro_liquidity", "macro_external_environment_temperature", 49.41),
+            _metric_fact("macro_liquidity", "macro_nasdaq_1d_return", -0.0133),
+            _metric_fact("macro_liquidity", "macro_vix_1d_change", 0.0428),
+        ],
+        schema=FACT_SCHEMA,
+    )
+    config = MarketTemperatureConfig(
+        schema_version=1,
+        title="test",
+        artifact_root="data/analytics/market_temperature",
+        main_window=20,
+        short_windows=(),
+        dimensions=(_dimension_config("valuation", "估值面", "valuation_temperature"),),
+        datasets=(),
+    )
+
+    scores = build_scores(config, as_of_date=date(2026, 8, 18), facts=facts)
+
+    assert scores["composite"]["temperature"] == pytest.approx(60.0)
+    external_risk = scores["external_risk"]
+    assert external_risk["background_pressure"] == pytest.approx(74.61)
+    assert external_risk["environment_temperature"] == pytest.approx(49.41)
+    assert external_risk["shock_status"] == "short_term_shock"
+    assert external_risk["transmission_status"] == "pending_next_ashare_session"
+    assert external_risk["triggered_rules"][0]["metric_id"] == "macro_nasdaq_1d_return"
+
+
+def test_build_scores_uses_configured_external_shock_thresholds() -> None:
+    facts = pl.DataFrame(
+        [
+            _metric_fact("valuation", "valuation_temperature", 60.0),
+            _metric_fact("macro_liquidity", "macro_nasdaq_1d_return", -0.015),
+            _metric_fact("macro_liquidity", "macro_vix_1d_change", 0.05),
+        ],
+        schema=FACT_SCHEMA,
+    )
+    config = MarketTemperatureConfig(
+        schema_version=1,
+        title="test",
+        artifact_root="data/analytics/market_temperature",
+        main_window=20,
+        short_windows=(),
+        dimensions=(_dimension_config("valuation", "估值面", "valuation_temperature"),),
+        datasets=(),
+        external_risk=ExternalRiskConfig(
+            shock=ExternalShockConfig(
+                min_trigger_count=2,
+                rules=(
+                    ExternalShockRuleConfig("macro_nasdaq_1d_return", "lte", -0.02, "纳斯达克"),
+                    ExternalShockRuleConfig("macro_vix_1d_change", "gte", 0.04, "VIX"),
+                ),
+            ),
+            transmission_status_without_shock="custom_no_shock",
+        ),
+    )
+
+    external_risk = build_scores(
+        config,
+        as_of_date=date(2026, 8, 18),
+        facts=facts,
+    )["external_risk"]
+
+    assert external_risk["shock_status"] == "no_shock"
+    assert external_risk["transmission_status"] == "custom_no_shock"
+    assert external_risk["triggered_rule_count"] == 1
 
 
 def test_build_scores_adds_systemic_risk_summary() -> None:
