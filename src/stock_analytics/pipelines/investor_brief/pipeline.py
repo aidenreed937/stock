@@ -45,8 +45,16 @@ def run_investor_brief(
 ) -> InvestorBriefRunResult:
     """读取市场温度和行业结构产物，生成普通投资者简报。"""
     config = load_investor_brief_config(config_path).with_artifact_root(output_root)
-    market = _load_market_artifacts(config, target_date)
-    industry = _load_industry_artifacts(config, target_date)
+    resolved_date = (
+        target_date
+        if target_date is not None
+        else _resolve_latest_common_date(
+            config.market_temperature_root,
+            config.industry_structure_root,
+        )
+    )
+    market = _load_market_artifacts(config, resolved_date)
+    industry = _load_industry_artifacts(config, resolved_date)
     as_of_date = _resolve_as_of_date(market["manifest"], industry["manifest"])
     paths = build_run_paths(as_of_date, config.artifact_root)
     manifest = _build_manifest(config, as_of_date, paths, market=market, industry=industry)
@@ -82,7 +90,7 @@ def run_investor_brief(
 
 def _load_market_artifacts(
     config: InvestorBriefConfig,
-    target_date: date | None,
+    target_date: date,
 ) -> dict[str, Any]:
     artifact_dir = _resolve_artifact_dir(config.market_temperature_root, target_date)
     facts_path = artifact_dir / "facts.parquet"
@@ -96,7 +104,7 @@ def _load_market_artifacts(
 
 def _load_industry_artifacts(
     config: InvestorBriefConfig,
-    target_date: date | None,
+    target_date: date,
 ) -> dict[str, Any]:
     artifact_dir = _resolve_artifact_dir(config.industry_structure_root, target_date)
     return {
@@ -107,12 +115,35 @@ def _load_industry_artifacts(
     }
 
 
-def _resolve_artifact_dir(root: Path, target_date: date | None) -> Path:
-    if target_date is None:
-        latest = root / "latest"
-        if not latest.exists():
-            raise FileNotFoundError(f"未找到 latest 产物目录: {latest}")
-        return latest
+def _resolve_latest_common_date(market_root: Path, industry_root: Path) -> date:
+    """返回两个上游产物共同拥有的最新观测日期。"""
+    market_dates = _available_run_dates(market_root)
+    industry_dates = _available_run_dates(industry_root)
+    common_dates = market_dates & industry_dates
+    if not common_dates:
+        raise FileNotFoundError(
+            "市场温度和行业结构没有共同的已落盘观测日期，请先生成同一 DATE 的上游产物"
+        )
+    return max(common_dates)
+
+
+def _available_run_dates(root: Path) -> set[date]:
+    """扫描包含运行目录的 as_of 分区。"""
+    run_root = root / "runs"
+    if not run_root.exists():
+        return set()
+    dates: set[date] = set()
+    for path in run_root.glob("as_of=*"):
+        if not path.is_dir() or not any(child.is_dir() for child in path.glob("run_*")):
+            continue
+        try:
+            dates.add(date.fromisoformat(path.name.removeprefix("as_of=")))
+        except ValueError:
+            continue
+    return dates
+
+
+def _resolve_artifact_dir(root: Path, target_date: date) -> Path:
     run_root = root / "runs" / f"as_of={target_date.isoformat()}"
     run_dirs = sorted(path for path in run_root.glob("run_*") if path.is_dir())
     if not run_dirs:

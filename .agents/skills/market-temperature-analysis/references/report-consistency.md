@@ -26,3 +26,15 @@ make report-consistency START=YYYY-MM-DD END=YYYY-MM-DD OUTPUT=data/analytics/re
 ## 使用要求
 
 跨周期研究、案例复盘和对外输出前必须先跑一致性校验。校验失败时，不继续输出投资判断，只报告失败项和需要修复的产物。
+
+产物选择以 `manifest.json` 的 `as_of_date` 为准，不以目录修改时间或 `latest/` 名称推断观测日期。无 `DATE` 运行投资者简报时，系统会在市场温度和行业结构的 `runs/as_of=*` 中选择共同的最新观测日期，再读取该日期下最新运行。
+
+批量或并行生成多个交易日时，各 worker 必须使用 `NO_LATEST=1`，避免并发覆盖共享的 `latest/` 目录；简报必须按 `DATE` 绑定同日的市场温度和行业结构运行。全部日期完成后再执行区间校验，并由单个收口任务发布选定日期的 `latest/`。同一交易日不要重复启动同一类产物，当前 `run_id` 只有秒级时间精度，可能发生目录冲突。
+
+可直接使用 skill 内快捷脚本执行上述流程：
+
+```bash
+UV_CACHE_DIR=.uv_cache UV_PYTHON_INSTALL_DIR=.uv_python \
+  uv run python .agents/skills/market-temperature-analysis/scripts/build_multi_date_artifacts.py \
+  --start YYYY-MM-DD --end YYYY-MM-DD --workers 3
+```

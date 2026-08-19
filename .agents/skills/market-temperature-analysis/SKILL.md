@@ -11,6 +11,8 @@ description: 用本地 Curated 黄金表和现有 analytics/metrics 体系生成
 
 默认分析周期为最近 20 个已落盘 A 股交易日，而不是最近 20 个自然日。先用 `DataCatalog.latest_trade_dates("stock_daily_bar", n=20)` 取得窗口，再以最新行情交易日作为主口径日期。5 日/10 日窗口只作为短线温度补充观察，不替代 20 日主温度。
 
+观测日期规则：显式传入 `DATE` 时以 `DATE` 为准；未传 `DATE` 的市场温度和行业结构分别取各自主数据集的最新交易日；未传 `DATE` 的投资者简报扫描两类上游 `runs/as_of=*`，取共同的最新观测日期，再读取该日期下最新一次运行。`latest/` 只是最近一次成功发布的副本，不能替代 `as_of_date` 判断。
+
 需要理解 `metrics` 与 `market_temperature` 的职责边界、数据流和扩展落点时，读取 `references/architecture.md`。需要系统性理解综合温度金融物理机制、五档操作时钟、快慢背离诊断、一票否决规则与跨周期实战口诀时，读取 `references/composite-temperature-interpretation.md`。需要分析申万2021行业轮动、行业强弱、景气-估值矩阵时，读取 `references/industry-structure.md`。需要具体字段、打分方向、metrics 源码位置和输出模板时，读取 `references/scoring.md`。需要做多日期联合分析、资金运动规律、重要信号日或跨周期验证时，读取 `references/cross-cycle-study.md` 和 `references/signal-days.md`。需要面向普通投资者解释“能不能参与/参与什么方向/如何控风险”时，读取 `references/investor-interpretation.md`。需要验证产物是否可追溯、无编造和无串线时，读取 `references/report-consistency.md`。
 
 ## 已落地产物链路
@@ -42,7 +44,33 @@ UV_CACHE_DIR=.uv_cache UV_PYTHON_INSTALL_DIR=.uv_python uv run python -m stock_c
 - `report.md` / `report.json`：面向阅读和机器消费的报告（Markdown 由 `stock_reporting` 经 Jinja2 模板渲染）；
 - `human_report.md`：面向人工阅读的结论版报告；
 - `quality_report.md` / `quality_report.json`：口径、窗口、水位、滞后和质量约束报告；
-- `latest/`：最近一次成功运行的同名文件副本。
+- `latest/`：最近一次成功发布运行的同名文件副本；仅作展示，不作为观测日期判断依据。
+
+### 多交易日批量/并行生成约束
+
+连续多个交易日生成产物时，可以按日期并行执行，但必须遵守以下约束：
+
+- 并行 worker 统一使用 `NO_LATEST=1`，不能同时写共享的 `latest/` 目录；
+- 同一交易日不要重复启动同一类产物，当前 `run_id` 只有秒级时间精度，重复运行可能产生目录冲突或互相覆盖；
+- 投资者简报必须等待同一基准日的市场温度和行业结构产物完成后再生成，并显式传入 `DATE`，不能依赖并行变化中的 `latest/`；
+- 所有日期产物完成后，先执行区间 `report-consistency`；确认全部通过后，再由单个收口任务将选定的最新交易日发布到 `latest/`。
+
+仓库内提供批量快捷脚本
+`.agents/skills/market-temperature-analysis/scripts/build_multi_date_artifacts.py`：
+
+```bash
+# 从本地 stock_daily_bar 解析区间交易日；日期间最多并行 3 个日期
+UV_CACHE_DIR=.uv_cache UV_PYTHON_INSTALL_DIR=.uv_python \
+  uv run python .agents/skills/market-temperature-analysis/scripts/build_multi_date_artifacts.py \
+  --start YYYY-MM-DD --end YYYY-MM-DD --workers 3
+
+# 显式指定日期，适合非连续交易日；默认发布其中最新日期到 latest/
+UV_CACHE_DIR=.uv_cache UV_PYTHON_INSTALL_DIR=.uv_python \
+  uv run python .agents/skills/market-temperature-analysis/scripts/build_multi_date_artifacts.py \
+  --dates YYYY-MM-DD YYYY-MM-DD --dry-run
+```
+
+脚本按日期并行、按单日期串行执行市场温度、行业结构和投资者简报；生成完成后自动运行一致性校验，校验通过才发布 `latest/`，并再次校验 `latest/`。使用 `--no-publish-latest` 可只生成并校验运行目录，使用 `--dry-run` 可只查看计划。
 
 需要解释两个基准日的驱动差异时，使用 `COMPARE_DATE` / `--compare-date`。它读取对比日期最近一次已落盘的 `manifest.json` 和 `scores.json`，只在人读版报告中加入“跨期驱动变化”表；不会重算或改写前期产物。
 
@@ -60,7 +88,7 @@ UV_CACHE_DIR=.uv_cache UV_PYTHON_INSTALL_DIR=.uv_python uv run python -m stock_c
 
 行业结构默认权重为动量 40%、估值 25%、基本面 15%、拥挤度 20%。行业基本面由理杏仁 `sw_2021_fs_*` 正式财报和 Tushare `forecast` / `express` / `report_rc` 快速确认项合成；正式财报超过配置天数未更新时自动降权，默认从 70% 降到 40%，快速项从 30% 提到 60%。TCR 使用最近 20 个行业交易日的行业成交额占全部申万一级行业成交额比例均值，并以行业自身历史分位转换为拥挤温度。结构健康度单独输出，核心看 20 日行业扩散、60 日中期确认、Top 行业中期收益和拥挤行业占比。落后方向使用 `lagging_or_weak`，即结构分倒序靠后的行业，用于补充观察弱势和回避方向。
 
-普通投资者简报使用合并产物管线，只读取同一基准日的市场温度计与行业结构已落盘结果，不重新计算指标：
+普通投资者简报使用合并产物管线，只读取同一基准日的市场温度计与行业结构已落盘结果，不重新计算指标。传入 `DATE` 时读取该日期下最新一次运行；省略 `DATE` 时自动选择两个上游产物共同的最新观测日期，不直接信任 `latest/`：
 
 ```bash
 make investor-brief DATE=YYYY-MM-DD

@@ -3,6 +3,7 @@
 from __future__ import annotations
 
 import json
+import shutil
 from datetime import date
 from typing import TYPE_CHECKING
 
@@ -115,10 +116,57 @@ investor_brief:
     assert "食品饮料" in lagging_names
 
 
-def _write_market_artifacts(root: Path) -> None:
-    run_dir = root / "runs" / "as_of=2026-08-14" / "run_market"
+def test_run_investor_brief_without_date_uses_latest_common_observation_date(
+    tmp_path: Path,
+) -> None:
+    market_root = tmp_path / "market_temperature"
+    industry_root = tmp_path / "industry_structure"
+    output_root = tmp_path / "investor_brief"
+    old_date = date(2026, 8, 14)
+    latest_date = date(2026, 8, 18)
+    _write_market_artifacts(market_root, old_date)
+    _write_market_artifacts(market_root, latest_date)
+    _write_industry_artifacts(industry_root, old_date)
+    _write_industry_artifacts(industry_root, latest_date)
+    shutil.copytree(
+        market_root / "runs" / f"as_of={old_date.isoformat()}" / "run_market",
+        market_root / "latest",
+    )
+    shutil.copytree(
+        industry_root / "runs" / f"as_of={old_date.isoformat()}" / "run_industry",
+        industry_root / "latest",
+    )
+    config_path = tmp_path / "investor_brief.yaml"
+    config_path.write_text(
+        f"""
+investor_brief:
+  schema_version: 1
+  title: "测试投资者简报"
+  artifact_root: "{output_root}"
+  market_temperature_root: "{market_root}"
+  industry_structure_root: "{industry_root}"
+""",
+        encoding="utf-8",
+    )
+
+    result = run_investor_brief(config_path=config_path)
+
+    assert result.as_of_date == latest_date
+    assert result.manifest["inputs"]["market_temperature"]["artifact_dir"].endswith(
+        f"as_of={latest_date.isoformat()}/run_market"
+    )
+    assert result.manifest["inputs"]["industry_structure"]["artifact_dir"].endswith(
+        f"as_of={latest_date.isoformat()}/run_industry"
+    )
+
+
+def _write_market_artifacts(root: Path, target_date: date = date(2026, 8, 14)) -> None:
+    run_dir = root / "runs" / f"as_of={target_date.isoformat()}" / "run_market"
     run_dir.mkdir(parents=True)
-    _write_json(run_dir / "manifest.json", {"as_of_date": "2026-08-14", "run_id": "run_market"})
+    _write_json(
+        run_dir / "manifest.json",
+        {"as_of_date": target_date.isoformat(), "run_id": "run_market"},
+    )
     _write_json(
         run_dir / "scores.json",
         {
@@ -154,17 +202,17 @@ def _write_market_artifacts(root: Path) -> None:
             "dataset": ["stock_daily_bar", "margin", "moneyflow"],
             "metric_id": ["latest_trade_date"] * 3,
             "status": ["ok"] * 3,
-            "value_text": ["2026-08-14"] * 3,
+            "value_text": [target_date.isoformat()] * 3,
         }
     ).write_parquet(run_dir / "facts.parquet")
 
 
-def _write_industry_artifacts(root: Path) -> None:
-    run_dir = root / "runs" / "as_of=2026-08-14" / "run_industry"
+def _write_industry_artifacts(root: Path, target_date: date = date(2026, 8, 14)) -> None:
+    run_dir = root / "runs" / f"as_of={target_date.isoformat()}" / "run_industry"
     run_dir.mkdir(parents=True)
     _write_json(
         run_dir / "manifest.json",
-        {"as_of_date": "2026-08-14", "run_id": "run_industry"},
+        {"as_of_date": target_date.isoformat(), "run_id": "run_industry"},
     )
     _write_json(
         run_dir / "scores.json",
