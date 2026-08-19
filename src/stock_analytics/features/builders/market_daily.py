@@ -78,7 +78,15 @@ class MarketDailyBuilder:
     def _join_auxiliary_features(
         self, result: pl.DataFrame, start: date, end: date
     ) -> pl.DataFrame:
-        turnover_df = build_turnover_rate_features(self.catalog, start, end)
+        turnover = (
+            result.select("trade_date", "total_turnover") if "total_turnover" in result else None
+        )
+        turnover_df = build_turnover_rate_features(
+            self.catalog,
+            start,
+            end,
+            turnover=turnover,
+        )
         if not turnover_df.is_empty():
             result = result.join(turnover_df, on="trade_date", how="left")
 

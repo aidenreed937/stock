@@ -147,6 +147,8 @@ def build_turnover_rate_features(
     catalog: MarketDataCatalog,
     start_date: date,
     end_date: date,
+    *,
+    turnover: pl.DataFrame | None = None,
 ) -> pl.DataFrame:
     """按总成交额 / 总流通市值计算全市场自由流通换手率。"""
     basic = catalog.load_dataset(
@@ -169,23 +171,38 @@ def build_turnover_rate_features(
         .group_by("trade_date")
         .agg(pl.col("market_circ_mv").sum())
     )
-    bars = catalog.load_dataset(
-        "stock_daily_bar",
-        start_date=start_date,
-        end_date=end_date,
-        columns=["trade_date", "amount"],
-    )
-    if bars.is_empty() or "amount" not in bars.columns:
-        return circ_mv.with_columns(pl.lit(None, dtype=pl.Float64).alias("market_turnover_rate"))
-    amount = (
-        bars.select(
-            "trade_date",
-            pl.col("amount").cast(pl.Float64, strict=False).alias("total_turnover"),
+    if turnover is None:
+        bars = catalog.load_dataset(
+            "stock_daily_bar",
+            start_date=start_date,
+            end_date=end_date,
+            columns=["trade_date", "amount"],
         )
-        .drop_nulls()
-        .group_by("trade_date")
-        .agg(pl.col("total_turnover").sum())
-    )
+        if bars.is_empty() or "amount" not in bars.columns:
+            return circ_mv.with_columns(
+                pl.lit(None, dtype=pl.Float64).alias("market_turnover_rate")
+            )
+        amount = (
+            bars.select(
+                "trade_date",
+                pl.col("amount").cast(pl.Float64, strict=False).alias("total_turnover"),
+            )
+            .drop_nulls()
+            .group_by("trade_date")
+            .agg(pl.col("total_turnover").sum())
+        )
+    elif {"trade_date", "total_turnover"}.issubset(turnover.columns):
+        amount = (
+            turnover.select(
+                "trade_date",
+                pl.col("total_turnover").cast(pl.Float64, strict=False),
+            )
+            .drop_nulls()
+            .group_by("trade_date")
+            .agg(pl.col("total_turnover").sum())
+        )
+    else:
+        return circ_mv.with_columns(pl.lit(None, dtype=pl.Float64).alias("market_turnover_rate"))
     return (
         circ_mv.join(amount, on="trade_date", how="left")
         .with_columns(

@@ -51,6 +51,12 @@ def test_rolling_percentile_uses_rank_instead_of_min_max_position() -> None:
     assert frame["value_percentile_3d"][-1] == pytest.approx(50.0)
 
 
+def test_rolling_percentile_uses_min_rank_for_ties() -> None:
+    frame = pl.DataFrame({"value": [1.0, 2.0, 2.0]}).with_columns(rolling_percentile("value", 3))
+
+    assert frame["value_percentile_3d"][-1] == pytest.approx(50.0)
+
+
 def test_percentile_rank_uses_min_rank_for_ties_and_standard_boundaries() -> None:
     values = pl.Series([1.0, 2.0, 2.0, 4.0])
 

@@ -84,13 +84,27 @@ def percentile_rank(
 
 def rolling_percentile(column: str, window: int, output: str | None = None) -> pl.Expr:
     """构造允许历史缺失值的滚动分位表达式。"""
-    return (
+    min_valid_samples = ceil(window * _MIN_VALID_RATIO)
+    valid_count = (
         pl.col(column)
-        .rolling_map(
-            lambda values: percentile_rank(values, window),
+        .is_not_null()
+        .cast(pl.UInt32)
+        .rolling_sum(
             window_size=window,
             min_samples=1,
         )
+    )
+    rank = pl.col(column).rolling_rank(
+        window_size=window,
+        method="min",
+        min_samples=1,
+    )
+    return (
+        pl.when(
+            pl.col(column).is_not_null() & (valid_count >= min_valid_samples) & (valid_count > 1)
+        )
+        .then((rank.cast(pl.Float64) - 1.0) / (valid_count.cast(pl.Float64) - 1.0) * 100.0)
+        .otherwise(None)
         .alias(output or f"{column}_percentile_{window}d")
     )
 

@@ -27,6 +27,34 @@ if TYPE_CHECKING:
     from stock_data.core.runtime import DataRuntimeContext
 
 
+def _incremental_start_date(
+    store: FeatureStore,
+    mart_name: str,
+    *,
+    date_column: str,
+    requested_start: date | None,
+    end_date: date | None,
+    overwrite: bool,
+) -> date | None:
+    """非覆盖构建时从已有 Mart 最新日期继续计算。"""
+    if overwrite:
+        return requested_start
+    existing = store.get_domain_mart(
+        mart_name,
+        date_column=date_column,
+        columns=[date_column],
+    )
+    if existing.is_empty() or date_column not in existing.columns:
+        return requested_start
+    latest_value = existing[date_column].drop_nulls().max()
+    latest = latest_value if isinstance(latest_value, date) else None
+    if latest is None or (end_date is not None and latest > end_date):
+        return requested_start
+    if requested_start is None or requested_start <= latest:
+        return latest
+    return requested_start
+
+
 def build_convertible_bond(
     catalog: DataCatalog,
     store: FeatureStore,
@@ -36,9 +64,17 @@ def build_convertible_bond(
     overwrite: bool,
 ) -> pl.DataFrame:
     """加载可转债行情并物化日频聚合。"""
+    effective_start = _incremental_start_date(
+        store,
+        CB_MART_NAME,
+        date_column="trade_date",
+        requested_start=start_date,
+        end_date=end_date,
+        overwrite=overwrite,
+    )
     daily = catalog.load_dataset(
         "cb_daily",
-        start_date=start_date,
+        start_date=effective_start,
         end_date=end_date,
         columns=["symbol", "trade_date", "close", "cb_over_rate", "bond_over_rate"],
     )
@@ -64,21 +100,51 @@ def build_corporate_actions(
     include_block_trade_discount: bool,
 ) -> dict[str, pl.DataFrame]:
     """加载并物化增减持、回购与大宗交易聚合。"""
+    incremental_starts = (
+        _incremental_start_date(
+            store,
+            INSIDER_MART_NAME,
+            date_column="announcement_date",
+            requested_start=start_date,
+            end_date=end_date,
+            overwrite=overwrite,
+        ),
+        _incremental_start_date(
+            store,
+            REPURCHASE_MART_NAME,
+            date_column="announcement_date",
+            requested_start=start_date,
+            end_date=end_date,
+            overwrite=overwrite,
+        ),
+        _incremental_start_date(
+            store,
+            BLOCK_TRADE_MART_NAME,
+            date_column="trade_date",
+            requested_start=start_date,
+            end_date=end_date,
+            overwrite=overwrite,
+        ),
+    )
+    available_starts = [value for value in incremental_starts if value is not None]
+    effective_start = (
+        min(available_starts) if len(available_starts) == len(incremental_starts) else None
+    )
     holdertrade = catalog.load_dataset(
         "stk_holdertrade",
-        start_date=start_date,
+        start_date=effective_start,
         end_date=end_date,
         columns=["symbol", "ann_date", "holder_name", "in_de", "change_vol", "avg_price"],
     )
     repurchase = catalog.load_dataset(
         "repurchase",
-        start_date=start_date,
+        start_date=effective_start,
         end_date=end_date,
         columns=["symbol", "ann_date", "proc", "vol", "amount"],
     )
     block_trade = catalog.load_dataset(
         "block_trade",
-        start_date=start_date,
+        start_date=effective_start,
         end_date=end_date,
         columns=[
             "symbol",
@@ -94,7 +160,7 @@ def build_corporate_actions(
     bars = None
     if include_block_trade_discount and not block_trade.is_empty():
         bars = catalog.load_bars(
-            start_date=start_date,
+            start_date=effective_start,
             end_date=end_date,
             columns=["symbol", "trade_date", "close"],
         )
@@ -138,9 +204,17 @@ def build_settlement_iv_proxy(
     risk_free_rates: pl.DataFrame | None = None,
 ) -> pl.DataFrame:
     """加载期权结算价及标的行情并物化波动率代理。"""
+    effective_start = _incremental_start_date(
+        store,
+        SETTLEMENT_IV_PROXY_MART_NAME,
+        date_column="trade_date",
+        requested_start=start_date,
+        end_date=end_date,
+        overwrite=overwrite,
+    )
     daily = catalog.load_dataset(
         "opt_daily",
-        start_date=start_date,
+        start_date=effective_start,
         end_date=end_date,
         columns=["symbol", "trade_date", "settle"],
     )
@@ -160,14 +234,14 @@ def build_settlement_iv_proxy(
         for frame in (
             catalog.load_dataset(
                 "fund_daily",
-                start_date=start_date,
+                start_date=effective_start,
                 end_date=end_date,
                 symbols=list(underlying_symbols),
                 columns=["symbol", "trade_date", "close"],
             ),
             catalog.load_dataset(
                 "index_daily_bar",
-                start_date=start_date,
+                start_date=effective_start,
                 end_date=end_date,
                 symbols=list(underlying_symbols),
                 columns=["symbol", "trade_date", "close"],
@@ -185,7 +259,7 @@ def build_settlement_iv_proxy(
         risk_free = _load_risk_free_rates(
             catalog,
             runtime=runtime,
-            start_date=start_date,
+            start_date=effective_start,
             end_date=end_date,
         )
     result = build_settlement_iv_proxy_mart(

@@ -18,6 +18,7 @@ from stock_analytics.pipelines.market_temperature.facts_mart import (
     parse_date_value as _parse_date_value,  # noqa: F401
     try_get_market_daily_fact,
 )
+from stock_analytics.pipelines.market_temperature import metric_windows as _metric_windows
 from stock_analytics.pipelines.market_temperature.optional_facts import collect_optional_fact_rows
 from stock_analytics.pipelines.market_temperature.short_term import collect_short_term_rows
 from stock_core.contracts import MarketDataCatalog
@@ -294,13 +295,9 @@ def _metric_rows(
 
     from stock_data.catalog import DataCatalog
 
-    context = MetricContext(
-        catalog=DataCatalog(data_source="tushare", storage_dir=storage_dir),
-        target_date=as_of_date,
-        start_date=as_of_date - timedelta(days=365 * 7),
-        end_date=as_of_date,
-    )
+    catalog = DataCatalog(data_source="tushare", storage_dir=storage_dir)
     engine = MetricEngine()
+    contexts: dict[int, MetricContext] = {}
     for dimension in dimensions:
         for metric in dimension.metrics:
             if not metric.enabled or metric.source != "metric_engine":
@@ -311,6 +308,9 @@ def _metric_rows(
             if fact is not None:
                 rows.append(fact)
             else:
+                context = _metric_windows.context_for_metric(
+                    contexts, engine, catalog, as_of_date, metric.metric_id
+                )
                 rows.append(_compute_metric_fact(engine, context, dimension.id, metric, as_of_date))
     return rows
 
