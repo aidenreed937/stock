@@ -351,6 +351,25 @@ def test_latest_trade_dates_scans_all_markets_in_latest_month(tmp_path: Path) ->
     assert catalog.get_latest_trade_date("stock_daily_bar") == date(2026, 8, 14)
 
 
+def test_latest_trade_dates_scans_all_unpartitioned_markets(tmp_path: Path) -> None:
+    """未按年月分区的数据集也不能被第一个市场文件截断。"""
+    us_dataset = tmp_path / "yfinance/market=US/macro_indicators"
+    global_dataset = tmp_path / "yfinance/market=GLOBAL/macro_indicators"
+    us_dataset.mkdir(parents=True, exist_ok=True)
+    global_dataset.mkdir(parents=True, exist_ok=True)
+
+    pl.DataFrame({"symbol": ["^VIX"], "trade_date": [date(2026, 8, 13)]}).write_parquet(
+        us_dataset / "data.parquet"
+    )
+    pl.DataFrame({"symbol": ["^TNX"], "trade_date": [date(2026, 8, 18)]}).write_parquet(
+        global_dataset / "data.parquet"
+    )
+
+    catalog = DataCatalog(data_source="yfinance", storage_dir=tmp_path)
+
+    assert catalog.get_latest_trade_date("macro_indicators") == date(2026, 8, 18)
+
+
 def test_latest_trade_dates_parses_month_only_macro_dataset(tmp_path: Path) -> None:
     dataset_dir = tmp_path / "lixinger/market=CN/cn_m"
     dataset_dir.mkdir(parents=True, exist_ok=True)

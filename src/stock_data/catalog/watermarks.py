@@ -116,8 +116,6 @@ def scan_latest_trade_dates(
             for value in distinct_df[date_col].to_list():
                 if isinstance(value, date):
                     found.add(value)
-            if ym is None and len(found) >= n:
-                break
         except Exception:
             continue
     return sorted(found, reverse=True)[:n]
