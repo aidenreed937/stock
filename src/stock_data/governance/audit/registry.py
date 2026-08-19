@@ -26,6 +26,7 @@ class DatasetAuditSpec:
     raw_reconciliation_reason: str = ""
     lineage_status: str = "raw_backed"
     source_endpoint: str = ""
+    industry_level: str | None = None
 
 
 # 全库核心数据集审计规则注册表
@@ -113,6 +114,7 @@ AUDIT_DATASET_REGISTRY: dict[str, DatasetAuditSpec] = {
         raw_reconciliation_reason="LiXinger 行业估值接口当前返回 403，暂按 Curated-only 数据集审计",
         lineage_status="raw_backed",
         source_endpoint="cn/industry/fundamental/sw_2021",
+        industry_level="L1",
     ),
     "sw_2021_l2_fundamental": DatasetAuditSpec(
         dataset="sw_2021_l2_fundamental",
@@ -122,6 +124,7 @@ AUDIT_DATASET_REGISTRY: dict[str, DatasetAuditSpec] = {
         min_expected_ratio=1.0,
         lineage_status="raw_backed",
         source_endpoint="cn/industry/fundamental/sw_2021",
+        industry_level="L2",
     ),
     # 3. 大盘指数领域 (INDEX - DAILY)
     "index_daily": DatasetAuditSpec(
@@ -248,8 +251,10 @@ def get_audit_spec(dataset: str, data_source: str = "tushare") -> DatasetAuditSp
     return DatasetAuditSpec(
         dataset=dataset,
         data_source=data_source,
-        domain=AuditDomain.EQUITY,
+        domain=AuditDomain.UNSUPPORTED,
         frequency=AuditFrequency.DAILY,
+        min_expected_ratio=0.0,
+        lineage_status="unsupported",
     )
 
 
@@ -258,6 +263,7 @@ def resolve_benchmark_provider(
     catalog: DataCatalog | None = None,
 ) -> BenchmarkProvider:
     """根据审计规范的 Domain 和 Frequency 自动路由到对应的事实基准提供者。"""
+    from stock_data.governance.audit.benchmarks.base import UnsupportedBenchmarkProvider
     from stock_data.governance.audit.benchmarks.calendar import MacroCalendarBenchmarkProvider
     from stock_data.governance.audit.benchmarks.equity import EquityDailyBenchmarkProvider
     from stock_data.governance.audit.benchmarks.index import IndexDailyBenchmarkProvider
@@ -266,12 +272,17 @@ def resolve_benchmark_provider(
     if spec.domain == AuditDomain.EQUITY and spec.frequency == AuditFrequency.DAILY:
         return EquityDailyBenchmarkProvider(catalog=catalog)
     if spec.domain == AuditDomain.INDUSTRY and spec.frequency == AuditFrequency.DAILY:
-        return IndustryDailyBenchmarkProvider(catalog=catalog, data_source=spec.data_source)
+        return IndustryDailyBenchmarkProvider(
+            catalog=catalog,
+            data_source=spec.data_source,
+            level=spec.industry_level or "L1",
+        )
     if spec.domain == AuditDomain.INDEX and spec.frequency == AuditFrequency.DAILY:
         return IndexDailyBenchmarkProvider(catalog=catalog)
     if spec.domain == AuditDomain.MACRO_ECON:
         freq_str = "monthly" if spec.frequency == AuditFrequency.MONTHLY else "quarterly"
         return MacroCalendarBenchmarkProvider(frequency=freq_str)
 
-    # 默认回退为个股基准
-    return EquityDailyBenchmarkProvider(catalog=catalog)
+    if spec.domain == AuditDomain.UNSUPPORTED:
+        return UnsupportedBenchmarkProvider()
+    return UnsupportedBenchmarkProvider()

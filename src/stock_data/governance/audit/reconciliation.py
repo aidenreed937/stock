@@ -16,6 +16,7 @@ from stock_data.governance.audit.factor_audit import run_adj_factor_audit, run_s
 from stock_data.governance.audit.moneyflow_audit import run_hk_hold_audit
 from stock_data.governance.audit.registry import get_audit_spec
 from stock_data.governance.audit.valuation_audit import run_daily_basic_audit, run_sw_industry_audit
+from stock_data.pipeline.cleaner.date_utils import parse_mixed_date
 from stock_data.storage.compat import StorageCompat
 
 _DATE_COLUMNS = ("trade_date", "date", "end_date", "suspend_date", "Date")
@@ -469,32 +470,18 @@ def run_audit(
 
     # 3. 筛选理论上在 target_date 已经上市且未退市的个股
     sym_col = "symbol" if "symbol" in basic_df.columns else "ts_code"
-    if "delist_date" in basic_df.columns and basic_df["delist_date"].dtype != pl.Null:
-        basic_df = basic_df.with_columns(
-            [
-                pl.col("list_date").str.to_date("%Y%m%d", strict=False).alias("list_date_d"),
-                pl.col("delist_date").str.to_date("%Y%m%d", strict=False).alias("delist_date_d"),
-            ]
+    date_exprs = [parse_mixed_date("list_date").alias("list_date_d")]
+    if "delist_date" in basic_df.columns:
+        date_exprs.append(parse_mixed_date("delist_date").alias("delist_date_d"))
+    basic_df = basic_df.with_columns(date_exprs)
+    expected_filter = (
+        (pl.col("list_date_d") >= date(1990, 12, 1)) | (pl.col(sym_col).is_in(list(actual_symbols)))
+    ) & (pl.col("list_date_d") <= target_date)
+    if "delist_date_d" in basic_df.columns:
+        expected_filter = expected_filter & (
+            pl.col("delist_date_d").is_null() | (pl.col("delist_date_d") > target_date)
         )
-        expected_df = basic_df.filter(
-            (
-                (pl.col("list_date_d") >= date(1990, 12, 1))
-                | (pl.col(sym_col).is_in(list(actual_symbols)))
-            )
-            & (pl.col("list_date_d") <= target_date)
-            & (pl.col("delist_date_d").is_null() | (pl.col("delist_date_d") > target_date))
-        )
-    else:
-        basic_df = basic_df.with_columns(
-            pl.col("list_date").str.to_date("%Y%m%d", strict=False).alias("list_date_d")
-        )
-        expected_df = basic_df.filter(
-            (
-                (pl.col("list_date_d") >= date(1990, 12, 1))
-                | (pl.col(sym_col).is_in(list(actual_symbols)))
-            )
-            & (pl.col("list_date_d") <= target_date)
-        )
+    expected_df = basic_df.filter(expected_filter)
     expected_symbols = set(expected_df[sym_col].unique().to_list())
 
     theoretical_count = len(expected_symbols)

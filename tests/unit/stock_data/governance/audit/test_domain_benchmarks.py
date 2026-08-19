@@ -37,7 +37,7 @@ def test_registry_lookup() -> None:
     assert spec.min_expected_ratio >= 0.99
 
     spec_unknown = get_audit_spec("unknown_table")
-    assert spec_unknown.domain == AuditDomain.EQUITY
+    assert spec_unknown.domain == AuditDomain.UNSUPPORTED
     assert spec_unknown.frequency == AuditFrequency.DAILY
 
 
@@ -190,3 +190,25 @@ def test_resolve_benchmark_provider_routing() -> None:
         frequency=AuditFrequency.DAILY,
     )
     assert isinstance(resolve_benchmark_provider(spec_idx), IndexDailyBenchmarkProvider)
+
+
+def test_lixinger_industry_audit_levels_match_expected_code_sets() -> None:
+    l1 = get_audit_spec("sw_2021_fundamental", data_source="lixinger")
+    l2 = get_audit_spec("sw_2021_l2_fundamental", data_source="lixinger")
+
+    assert l1.industry_level == "L1"
+    assert l2.industry_level == "L2"
+
+    mock_catalog = MagicMock()
+    mock_catalog.data_source = "lixinger"
+    mock_catalog.load_dataset.return_value = pl.DataFrame(
+        {"symbol": ["110000", "110100"], "industryCode": ["110000", "110100"]}
+    )
+    l1_provider = IndustryDailyBenchmarkProvider(
+        catalog=mock_catalog, data_source="lixinger", level=l1.industry_level
+    )
+    l2_provider = IndustryDailyBenchmarkProvider(
+        catalog=mock_catalog, data_source="lixinger", level=l2.industry_level
+    )
+    assert l1_provider._get_industry_codes() == ["110000"]
+    assert l2_provider._get_industry_codes() == ["110100"]

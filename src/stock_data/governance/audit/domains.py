@@ -18,6 +18,7 @@ class AuditDomain(StrEnum):
     MACRO_ECON = "macro_econ"  # 宏观经济基本面 (GDP、CPI、PPI、PMI、社融、美联储指标)
     FUNDAMENTAL = "fundamental"  # 公司财务基本面 (利润表、资产负债表、现金流、财务指标)
     METADATA = "metadata"  # 字典与元数据领域 (股票列表、指数定义、行业分类)
+    UNSUPPORTED = "unsupported"  # 未注册或尚未定义事实基准的数据集
 
 
 class AuditFrequency(StrEnum):

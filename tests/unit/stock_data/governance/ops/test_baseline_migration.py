@@ -589,6 +589,78 @@ def test_backfill_acceptance_reconciles_cleaned_raw_history(tmp_path: Path) -> N
     assert report["status"] == "PASSED"
 
 
+def test_backfill_acceptance_reports_independent_raw_daily_gap(tmp_path: Path) -> None:
+    raw_dir = tmp_path / "raw" / "tushare" / "adj_factor"
+    curated_dir = tmp_path / "curated" / "tushare" / "adj_factor"
+    raw_dir.mkdir(parents=True)
+    curated_dir.mkdir(parents=True)
+    dates = ["20260812", "20260814"]
+    pl.DataFrame(
+        {"ts_code": ["A", "A"], "trade_date": dates, "adj_factor": [1.0, 1.1]}
+    ).write_parquet(raw_dir / "data.parquet")
+    pl.DataFrame(
+        {
+            "symbol": ["A", "A"],
+            "trade_date": dates,
+            "adj_factor": [1.0, 1.1],
+            "data_source": ["tushare", "tushare"],
+            "source_endpoint": ["adj_factor", "adj_factor"],
+            "request_id": ["r1", "r2"],
+            "updated_at": ["2026-08-12", "2026-08-14"],
+        }
+    ).write_parquet(curated_dir / "data.parquet")
+
+    with patch(
+        "stock_data.pipeline.scheduler.DataUpdateScheduler.get_trading_days",
+        return_value=(date(2026, 8, 12), date(2026, 8, 13), date(2026, 8, 14)),
+    ):
+        report = accept_backfill(
+            str(tmp_path / "curated"),
+            "adj_factor",
+            date(2026, 8, 12),
+            date(2026, 8, 14),
+            raw_root=str(tmp_path / "raw"),
+        )
+
+    assert report["raw_missing_dates"] == ["2026-08-13"]
+    assert report["raw_gap_passed"] is False
+    assert report["raw_curated_status"] == "PASSED"
+    assert report["status"] == "FAILED"
+
+
+def test_backfill_acceptance_reports_independent_raw_monthly_gap(tmp_path: Path) -> None:
+    raw_dir = tmp_path / "raw" / "lixinger" / "cn_m"
+    curated_dir = tmp_path / "curated" / "lixinger" / "cn_m"
+    raw_dir.mkdir(parents=True)
+    curated_dir.mkdir(parents=True)
+    months = ["202601", "202603"]
+    pl.DataFrame({"month": months, "m.m2.t": [1.0, 3.0]}).write_parquet(raw_dir / "data.parquet")
+    pl.DataFrame(
+        {
+            "month": months,
+            "m.m2.t": [1.0, 3.0],
+            "data_source": ["lixinger", "lixinger"],
+            "source_endpoint": ["macro/money-supply", "macro/money-supply"],
+            "request_id": ["r1", "r2"],
+            "updated_at": ["2026-01-31", "2026-03-31"],
+        }
+    ).write_parquet(curated_dir / "data.parquet")
+
+    report = accept_backfill(
+        str(tmp_path / "curated"),
+        "cn_m",
+        date(2026, 1, 1),
+        date(2026, 3, 31),
+        data_source="lixinger",
+        raw_root=str(tmp_path / "raw"),
+    )
+
+    assert report["raw_missing_periods"] == ["2026-02"]
+    assert report["raw_gap_passed"] is False
+    assert report["raw_curated_status"] == "PASSED"
+    assert report["status"] == "FAILED"
+
+
 def test_bar_cleaner_quarantines_rejected_rows(tmp_path: Path) -> None:
     frame = pl.DataFrame(
         {

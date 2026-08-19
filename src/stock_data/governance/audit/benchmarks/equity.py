@@ -7,7 +7,11 @@ from typing import TYPE_CHECKING
 
 import polars as pl
 
-from stock_data.governance.audit.benchmarks.base import BenchmarkProvider, get_trading_calendar
+from stock_data.governance.audit.benchmarks.base import (
+    BenchmarkProvider,
+    get_trading_calendar,
+)
+from stock_data.pipeline.cleaner.date_utils import parse_mixed_date
 
 if TYPE_CHECKING:
     from stock_data.catalog import DataCatalog
@@ -51,18 +55,34 @@ class EquityDailyBenchmarkProvider(BenchmarkProvider):
             )
 
         # 统一清洗 basic 字段
-        basic_clean = df_basic.select(
-            [pl.col("symbol").cast(pl.Utf8), pl.col("list_date").cast(pl.Utf8)]
-        ).drop_nulls()
-
+        columns = ["symbol", "list_date"]
+        if "delist_date" in df_basic.columns:
+            columns.append("delist_date")
         # 3. 构造交易日 DataFrame 并执行笛卡尔积 / 区间过滤
-        dates_str = [d.strftime("%Y%m%d") for d in trading_dates]
-        dates_df = pl.DataFrame({"trade_date": dates_str})
+        dates_df = pl.DataFrame({"trade_date": trading_dates})
 
+        basic_clean = df_basic.select(columns).with_columns(
+            parse_mixed_date("list_date").alias("_list_date")
+        )
+        if "delist_date" in basic_clean.columns:
+            basic_clean = basic_clean.with_columns(
+                parse_mixed_date("delist_date").alias("_delist_date")
+            )
         expected = (
-            basic_clean.join(dates_df, how="cross")
-            .filter(pl.col("trade_date") >= pl.col("list_date"))
-            .select(["symbol", "trade_date"])
+            basic_clean.with_columns(
+                pl.col("symbol").cast(pl.Utf8),
+            )
+            .join(dates_df, how="cross")
+            .filter(pl.col("_list_date") <= pl.col("trade_date"))
+            .filter(
+                pl.col("_delist_date").is_null() | (pl.col("trade_date") < pl.col("_delist_date"))
+                if "delist_date" in columns
+                else pl.lit(True)
+            )
+            .select(
+                "symbol",
+                pl.col("trade_date").dt.strftime("%Y%m%d").alias("trade_date"),
+            )
             .unique()
         )
         return expected

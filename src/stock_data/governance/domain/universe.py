@@ -23,6 +23,12 @@ from stock_data.governance.domain.rules import (
 )
 
 
+def _normalize_stock_basic_frame(df: pd.DataFrame) -> pd.DataFrame:
+    if "ts_code" not in df.columns and "symbol" in df.columns:
+        return df.rename(columns={"symbol": "ts_code"})
+    return df
+
+
 class UniverseFilter:
     """生产级股票池筛选引擎 (Facade / Orchestrator)。"""
 
@@ -44,7 +50,7 @@ class UniverseFilter:
                 df_pl = store.query_dataset(dataset="stock_basic")
                 if not df_pl.is_empty():
                     logger.info("命中本地 DuckDB [stock_basic] 股票基础库归档。")
-                    df = df_pl.to_pandas()
+                    df = _normalize_stock_basic_frame(df_pl.to_pandas())
                     if "ts_code" in df.columns and "list_date" in df.columns:
                         return df
             except Exception as e:

@@ -110,6 +110,36 @@ class IndustryDailyBenchmarkProvider(BenchmarkProvider):
     def _get_industry_codes(self) -> list[str]:
         """动态从落盘元数据表提取行业代码全集，若表未落盘则安全回退至官方代码常量。"""
         if self.data_source == "lixinger":
+            if self.level == "L2":
+                try:
+                    df_const = self.catalog.load_dataset("sw_2021_constituents")
+                    if not df_const.is_empty():
+                        code_col = next(
+                            (
+                                column
+                                for column in (
+                                    "industryCode",
+                                    "industry_code",
+                                    "symbol",
+                                    "stockCode",
+                                )
+                                if column in df_const.columns
+                            ),
+                            None,
+                        )
+                        if code_col:
+                            codes = sorted(
+                                {
+                                    str(value)
+                                    for value in df_const[code_col].drop_nulls().to_list()
+                                    if str(value) and not str(value).endswith("0000")
+                                }
+                            )
+                            if codes:
+                                return codes
+                except Exception:
+                    pass
+                return []
             try:
                 # 优先从理杏仁成分股图谱元数据中提取一级行业 (后四位为 0000 且属于可交付代码)
                 df_const = self.catalog.load_dataset("sw_2021_constituents")

@@ -8,6 +8,19 @@ from typing import Any
 
 import polars as pl
 
+from stock_data.governance.audit.raw_gap import (
+    boundary_period as _boundary_period,
+)
+from stock_data.governance.audit.raw_gap import (
+    expected_coverage as _expected_coverage,
+)
+from stock_data.governance.audit.raw_gap import (
+    frame_coverage as _frame_coverage,
+)
+from stock_data.governance.audit.raw_gap import (
+    raw_gap_status as _raw_gap_status,
+)
+
 _KNOWN_PROVIDERS = {"tushare", "lixinger", "yfinance", "fred", "alphavantage"}
 
 
@@ -170,48 +183,9 @@ def _normalize_key_frame(frame: pl.DataFrame) -> pl.DataFrame:
     return normalized
 
 
-def _date_key(value: object) -> str:
-    """将日期列中的紧凑格式和 ISO 格式统一为 YYYY-MM-DD。"""
-    text = str(value)
-    compact = text.replace("-", "").replace("/", "")
-    if len(compact) >= 8 and compact[:8].isdigit():
-        return f"{compact[:4]}-{compact[4:6]}-{compact[6:8]}"
-    return text[:10]
-
-
 def _path_provider(path: Path) -> str | None:
     """从路径片段中识别 provider，兼容 data/curated/{source}/... 和扁平测试目录。"""
     return next((part for part in path.parts if part in _KNOWN_PROVIDERS), None)
-
-
-def _period_key(value: object, frequency: str) -> str:
-    """将月频/季频业务日期转换为可比较的业务期间。"""
-    text = str(value)
-    compact = text.replace("-", "").replace("/", "")
-    if frequency == "quarterly":
-        if "Q" in text.upper():
-            year, quarter = text.upper().split("Q", 1)
-            if year.isdigit() and quarter[:1] in {"1", "2", "3", "4"}:
-                return f"{int(year)}Q{quarter[0]}"
-        if compact[:8].isdigit():
-            month = int(compact[4:6])
-            return f"{compact[:4]}Q{(month - 1) // 3 + 1}"
-        if compact[:6].isdigit():
-            month = int(compact[4:6])
-            return f"{compact[:4]}Q{(month - 1) // 3 + 1}"
-    if frequency == "monthly":
-        if compact[:6].isdigit():
-            return f"{compact[:4]}-{compact[4:6]}"
-    return _date_key(value)
-
-
-def _boundary_period(value: date, frequency: str) -> str:
-    """将请求边界转换为与源端业务期间一致的格式。"""
-    if frequency == "quarterly":
-        return f"{value.year}Q{(value.month - 1) // 3 + 1}"
-    if frequency == "monthly":
-        return f"{value.year:04d}-{value.month:02d}"
-    return str(value)
 
 
 def accept_backfill(
@@ -249,6 +223,17 @@ def accept_backfill(
     meta = _meta(endpoint, data_source=data_source)
     frequency = getattr(meta, "frequency", "daily") if meta else "daily"
     matched_count = 0
+    expected_dates: list[str] = []
+    expected_periods: list[str] = []
+    gap_dates: set[str] = set()
+    gap_periods: set[str] = set()
+    calendar_error: str | None = None
+    if start and end:
+        expected_dates, expected_periods, gap_dates, gap_periods, calendar_error = (
+            _expected_coverage(start, end, frequency, data_source, source_gaps or [])
+        )
+        if calendar_error:
+            errors.append(calendar_error)
     for path in matched:
         try:
             frame = pl.read_parquet(path)
@@ -275,19 +260,9 @@ def accept_backfill(
                 key_frames.append(
                     _normalize_key_frame(_reconciliation_key_frame(endpoint, frame, data_source))
                 )
-            date_col = next(
-                (
-                    col
-                    for col in ("trade_date", "date", "end_date", "month", "quarter")
-                    if col in frame.columns
-                ),
-                None,
-            )
-            if date_col:
-                # 仅对唯一值提取日期与期间，避免全量转 Python List
-                unique_values = frame[date_col].drop_nulls().unique().to_list()
-                dates.update(_date_key(value) for value in unique_values)
-                periods.update(_period_key(value, frequency) for value in unique_values)
+            frame_dates, frame_periods = _frame_coverage(frame, frequency)
+            dates.update(frame_dates)
+            periods.update(frame_periods)
         except Exception as exc:
             errors.append(f"{path}: {exc}")
     curated_all_keys = _concat_key_frames(key_frames)
@@ -308,6 +283,11 @@ def accept_backfill(
     curated_key_count: int | None = len(curated_unique_keys) if curated_all_keys.width else None
     raw_curated_status: str | None = None
     raw_curated_reason = ""
+    raw_dates: set[str] = set()
+    raw_periods: set[str] = set()
+    raw_missing_dates: list[str] | None = None
+    raw_missing_periods: list[str] | None = None
+    raw_gap_passed: bool | None = None
     raw_missing_in_curated_count: int | None = None
     raw_extra_in_curated_count: int | None = None
     raw_missing_in_curated_sample: list[str] = []
@@ -334,6 +314,9 @@ def accept_backfill(
                 )
                 if key_frame.width:
                     raw_key_frames.append(key_frame)
+                frame_dates, frame_periods = _frame_coverage(cleaned, frequency)
+                raw_dates.update(frame_dates)
+                raw_periods.update(frame_periods)
             except Exception as exc:
                 raw_errors.append(f"{path}: {exc}")
         if raw_effective_rows:
@@ -352,6 +335,18 @@ def accept_backfill(
         raw_unique_keys = raw_all_keys.unique() if raw_all_keys.width else raw_all_keys
         raw_key_count = len(raw_unique_keys) if raw_all_keys.width else 0
         raw_duplicate_keys = len(raw_all_keys) - len(raw_unique_keys) if raw_all_keys.width else 0
+
+        raw_missing_dates, raw_missing_periods, raw_gap_passed = _raw_gap_status(
+            expected_dates,
+            expected_periods,
+            raw_dates,
+            raw_periods,
+            gap_dates,
+            gap_periods,
+            frequency,
+            calendar_error,
+            bool(start and end),
+        )
 
         if not raw_files:
             raw_curated_status = "FAILED"
@@ -392,7 +387,6 @@ def accept_backfill(
                 raw_curated_reason = "；".join(reason_parts)
 
     missing: list[str] = []
-    calendar_error: str | None = None
     end_period = _boundary_period(end, frequency) if end else ""
     if start and end:
         start_period = _boundary_period(start, frequency)
@@ -402,16 +396,6 @@ def accept_backfill(
             if start_period not in periods:
                 missing.append(str(start))
         else:
-            gap_dates = {_date_key(value) for value in (source_gaps or [])}
-            from stock_data.pipeline.scheduler import DataUpdateScheduler
-
-            trading_days = DataUpdateScheduler.get_trading_days(start, end, data_source=data_source)
-            if not trading_days:
-                calendar_error = (
-                    f"[{data_source}] 无法取得 {start} ~ {end} 的可信交易日历，拒绝按工作日推算"
-                )
-                errors.append(calendar_error)
-            expected_dates = [str(trading_day) for trading_day in trading_days]
             missing = [day for day in expected_dates if day not in dates and day not in gap_dates]
     gaps = source_gaps or []
     source_lag = bool(
@@ -428,6 +412,7 @@ def accept_backfill(
         and not missing_columns
         and not lineage_errors
         and (raw_exempt or raw_ratio_passed is not False)
+        and (raw_exempt or raw_gap_passed is not False)
         and (raw_root is None or raw_exempt or raw_curated_status == "PASSED")
     )
     return {
@@ -453,6 +438,9 @@ def accept_backfill(
         "raw_curated_reason": (
             audit_spec.raw_reconciliation_reason if raw_exempt else raw_curated_reason
         ),
+        "raw_missing_dates": raw_missing_dates,
+        "raw_missing_periods": raw_missing_periods,
+        "raw_gap_passed": raw_gap_passed,
         "raw_key_count": raw_key_count,
         "curated_key_count": curated_key_count,
         "raw_duplicate_keys": raw_duplicate_keys,

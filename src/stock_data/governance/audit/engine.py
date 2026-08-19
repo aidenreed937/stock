@@ -111,6 +111,21 @@ class UniversalAuditEngine:
         """对单个交易日执行事实基准差集对账。"""
         spec = get_audit_spec(dataset, data_source)
         cat = self._get_catalog(data_source)
+        if spec.domain.value == "unsupported":
+            return AuditReportResult(
+                dataset=dataset,
+                data_source=data_source,
+                domain=spec.domain,
+                frequency=spec.frequency,
+                start_date=target_date,
+                end_date=target_date,
+                expected_count=0,
+                actual_count=0,
+                integrity_rate=0.0,
+                status="UNSUPPORTED",
+                diagnostics=[f"数据集 [{data_source}/{dataset}] 未注册审计事实基准"],
+                raw_curated_status="UNSUPPORTED",
+            )
         provider = resolve_benchmark_provider(spec, catalog=cat)
 
         expected_df = provider.get_expected_keys(target_date, target_date)
