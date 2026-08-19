@@ -59,7 +59,15 @@ def _write_market(root: Path, as_of_date: str, run_id: str) -> None:
     }
     report = "2026-08-14 62.96 中等偏高 估值面 81.23 资金面 47.64"
     _write_common_json_and_reports(run_dir, manifest, scores, report)
-    pl.DataFrame({"metric": ["x"]}).write_parquet(run_dir / "facts.parquet")
+    pl.DataFrame(
+        {
+            "category": ["data_watermark"] * 3,
+            "dataset": ["stock_daily_bar", "margin", "moneyflow"],
+            "metric_id": ["latest_trade_date"] * 3,
+            "status": ["ok"] * 3,
+            "value_text": [as_of_date] * 3,
+        }
+    ).write_parquet(run_dir / "facts.parquet")
 
 
 def _write_industry(root: Path, as_of_date: str, run_id: str) -> None:
@@ -120,6 +128,11 @@ def _write_brief(
         "manifest": manifest,
         "participation": {"risk_level": "中等偏高"},
         "market_snapshot": {"composite_temperature": 62.96},
+        "data_watermarks": {
+            "stock_daily_bar": as_of_date,
+            "margin": as_of_date,
+            "moneyflow": as_of_date,
+        },
         "industry_snapshot": {"structure_health": {"level": "修复中但偏脆弱"}},
         "candidate_industries": [
             {
@@ -154,7 +167,7 @@ def _write_brief(
     }
     markdown = (
         f"{as_of_date} {market_run_id} {industry_run_id} 62.96 中等偏高 "
-        f"修复中但偏脆弱 {candidate_name} 通信"
+        f"修复中但偏脆弱 {candidate_name} 通信 {as_of_date}"
     )
     _write_json(run_dir / "manifest.json", manifest)
     _write_json(run_dir / "brief_report.json", brief_json)

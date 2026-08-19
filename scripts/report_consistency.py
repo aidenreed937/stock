@@ -271,9 +271,14 @@ class ConsistencyValidator:
         brief_md = _read_text(brief.run_dir / "brief_report.md")
         market_scores = _read_json(market.run_dir / "scores.json")
         industry_scores = _read_json(industry.run_dir / "scores.json")
+        market_facts_path = market.run_dir / "facts.parquet"
+        market_facts = (
+            pl.read_parquet(market_facts_path) if market_facts_path.exists() else pl.DataFrame()
+        )
         panel = pl.read_parquet(industry.run_dir / "industry_panel.parquet")
 
         self._check_brief_market_snapshot(brief_json, market_scores, as_of_date)
+        self._check_brief_watermarks(brief_json, brief_md, market_facts, as_of_date)
         self._check_brief_industry_snapshot(brief_json, industry_scores, as_of_date)
         self._require_text(brief_md, as_of_date, "brief_date", brief.name, as_of_date)
         self._check_industry_lists(brief_json, brief_md, panel, industry_scores, as_of_date)
@@ -294,6 +299,33 @@ class ConsistencyValidator:
         if risk != brief_risk:
             message = f"简报风险等级={brief_risk!r}，市场风险等级={risk!r}"
             self._error("brief_market_snapshot", "investor_brief", as_of_date, message)
+
+    def _check_brief_watermarks(
+        self,
+        brief_json: dict[str, Any],
+        brief_md: str,
+        market_facts: pl.DataFrame,
+        as_of_date: str,
+    ) -> None:
+        expected = _watermark_dates(market_facts)
+        tracked = {"stock_daily_bar", "margin", "moneyflow"} & expected.keys()
+        if not tracked:
+            return
+
+        actual = brief_json.get("data_watermarks")
+        actual = actual if isinstance(actual, dict) else {}
+        for dataset in sorted(tracked):
+            expected_date = expected[dataset]
+            if actual.get(dataset) != expected_date:
+                message = f"简报 {dataset} 日期={actual.get(dataset)!r}，市场事实={expected_date!r}"
+                self._error("brief_data_watermark", "investor_brief", as_of_date, message)
+            if expected_date not in brief_md:
+                self._error(
+                    "brief_data_watermark_display",
+                    "investor_brief",
+                    as_of_date,
+                    f"简报文本未展示 {dataset} 日期 {expected_date}",
+                )
 
     def _check_brief_industry_snapshot(
         self,
@@ -505,6 +537,28 @@ def _panel_by_name(panel: pl.DataFrame) -> dict[str, dict[str, Any]]:
     if "industry_name" not in panel.columns:
         return {}
     return {str(row["industry_name"]): row for row in panel.to_dicts()}
+
+
+def _watermark_dates(facts: pl.DataFrame) -> dict[str, str]:
+    if facts.is_empty():
+        return {}
+    required = {"category", "dataset", "metric_id", "status", "value_text"}
+    if not required.issubset(facts.columns):
+        return {}
+    rows = (
+        facts.filter(
+            (facts["category"] == "data_watermark")
+            & (facts["metric_id"] == "latest_trade_date")
+            & (facts["status"] == "ok")
+        )
+        .select(["dataset", "value_text"])
+        .to_dicts()
+    )
+    return {
+        str(row["dataset"]): str(row["value_text"])
+        for row in rows
+        if row.get("dataset") and row.get("value_text")
+    }
 
 
 def _in_range(value: str, start: str | None, end: str | None) -> bool:

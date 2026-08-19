@@ -59,6 +59,7 @@ def run_investor_brief(
         market_scores=market["scores"],
         industry_scores=industry["scores"],
         industry_panel=industry["industry_panel"],
+        market_facts=market["facts"],
     )
     brief_markdown = render_brief_markdown(brief_json)
     write_artifacts(
@@ -84,10 +85,12 @@ def _load_market_artifacts(
     target_date: date | None,
 ) -> dict[str, Any]:
     artifact_dir = _resolve_artifact_dir(config.market_temperature_root, target_date)
+    facts_path = artifact_dir / "facts.parquet"
     return {
         "artifact_dir": artifact_dir,
         "manifest": _read_json(artifact_dir / "manifest.json"),
         "scores": _read_json(artifact_dir / "scores.json"),
+        "facts": pl.read_parquet(facts_path) if facts_path.exists() else pl.DataFrame(),
     }
 
 

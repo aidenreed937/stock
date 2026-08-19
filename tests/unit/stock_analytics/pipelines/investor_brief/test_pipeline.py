@@ -42,6 +42,24 @@ def test_data_quality_notes_without_stale_keep_static() -> None:
     assert not any("降权" in note for note in notes)
 
 
+def test_data_quality_notes_show_actual_funding_watermarks() -> None:
+    notes = _data_quality_notes(
+        {"as_of_date": "2026-08-14"},
+        {},
+        {
+            "stock_daily_bar": "2026-08-14",
+            "margin": "2026-08-14",
+            "moneyflow": "2026-08-13",
+        },
+    )
+
+    funding_note = notes[1]
+    assert "行情基准日: 2026-08-14" in notes[0]
+    assert "两融数据日期: 2026-08-14" in funding_note
+    assert "个股资金流数据日期: 2026-08-13" in funding_note
+    assert "个股资金流数据较行情基准日滞后" in funding_note
+
+
 def test_run_investor_brief_writes_plain_language_report(tmp_path: Path) -> None:
     market_root = tmp_path / "market_temperature"
     industry_root = tmp_path / "industry_structure"
@@ -81,7 +99,11 @@ investor_brief:
     assert "不构成个性化投资建议" in result.brief_markdown
     assert "fs_profit_growth_temperature" in result.brief_markdown
     assert "已超过新鲜度阈值" in result.brief_markdown
+    assert "行情基准日: 2026-08-14" in result.brief_markdown
+    assert "两融数据日期: 2026-08-14" in result.brief_markdown
+    assert "个股资金流数据日期: 2026-08-14" in result.brief_markdown
     assert result.brief_json["data_freshness"]["stale_metric_count"] == 1
+    assert result.brief_json["data_watermarks"]["moneyflow"] == "2026-08-14"
 
     candidate_names = {row["industry_name"] for row in result.brief_json["candidate_industries"]}
     risk_names = {row["industry_name"] for row in result.brief_json["risk_industries"]}
@@ -126,6 +148,15 @@ def _write_market_artifacts(root: Path) -> None:
             },
         },
     )
+    pl.DataFrame(
+        {
+            "category": ["data_watermark"] * 3,
+            "dataset": ["stock_daily_bar", "margin", "moneyflow"],
+            "metric_id": ["latest_trade_date"] * 3,
+            "status": ["ok"] * 3,
+            "value_text": ["2026-08-14"] * 3,
+        }
+    ).write_parquet(run_dir / "facts.parquet")
 
 
 def _write_industry_artifacts(root: Path) -> None:
