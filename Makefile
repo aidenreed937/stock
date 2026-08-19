@@ -1,4 +1,4 @@
-.PHONY: help install lint format test check run scan market-temperature industry-structure report-consistency market-cycle-review backfill baseline migrate-data migrate-curated cleanup-data backfill-accept repair-stock-daily-bar
+.PHONY: help install lint format test check run scan realtime market-temperature industry-structure report-consistency market-cycle-review backfill baseline migrate-data migrate-curated cleanup-data backfill-accept repair-stock-daily-bar
 
 help:
 	@echo "Available commands:"
@@ -9,6 +9,7 @@ help:
 	@echo "  make check    - Run format, lint, and test (recommended before commit)"
 	@echo "  make run      - Run the main application"
 	@echo "  make scan     - Run 3-layer market scan (e.g., make scan [DATE=YYYY-MM-DD] [FORMAT=markdown])"
+	@echo "  make realtime - Run Tencent core watchlist realtime monitor (e.g., make realtime WATCH=1)"
 	@echo "  make market-temperature - Generate market temperature artifacts under data/analytics"
 	@echo "  make industry-structure - Generate SW industry structure artifacts under data/analytics"
 	@echo "  make report-consistency - Validate report consistency across analytics artifacts"
@@ -45,6 +46,9 @@ check: format lint test
 
 run:
 	uv run python -m stock_cli.main
+
+realtime:
+	UV_CACHE_DIR=.uv_cache UV_PYTHON_INSTALL_DIR=.uv_python uv run python -m stock_cli.realtime $(if $(WATCH),--watch) $(if $(INTERVAL),--interval $(INTERVAL)) $(if $(FORMAT),--format $(FORMAT)) $(if $(RECORD),--record) $(if $(STORAGE_DIR),--storage-dir $(STORAGE_DIR)) $(if $(RAW_ROOT),--raw-root $(RAW_ROOT))
 
 sync:
 	UV_CACHE_DIR=.uv_cache UV_PYTHON_INSTALL_DIR=.uv_python uv run python -m stock_cli.sync --source $(or $(SOURCE),$(DATA_SOURCE),tushare) $(if $(DATE),--date $(DATE)) $(if $(or $(ENDPOINT),$(ENDPOINTS)),--endpoints $(or $(ENDPOINT),$(ENDPOINTS))) $(if $(FORCE),--force) $(if $(NO_AUDIT),--no-audit) $(if $(WORKERS),--max-workers $(WORKERS))
