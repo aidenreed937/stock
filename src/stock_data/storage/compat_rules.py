@@ -249,6 +249,30 @@ _DATASET_FLOAT_COLUMNS: dict[str, frozenset[str]] = {
     "fund_basic": frozenset({"exp_return"}),
 }
 
+_DATASET_OPTIONAL_COLUMNS: dict[str, frozenset[str]] = {
+    "etf_share_size": frozenset(
+        {"etf_name", "fund_type", "total_size", "float_share", "float_size", "nav", "close"}
+    ),
+    "express": frozenset(
+        {
+            "revenue",
+            "operate_profit",
+            "total_profit",
+            "n_income",
+            "total_assets",
+            "total_hldr_eqy_exc_min_int",
+            "diluted_eps",
+            "diluted_roe",
+            "prior_period_net_profit",
+            "bps",
+            "open_net_assets",
+            "open_bps",
+            "perf_summary",
+            "update_flag",
+        }
+    ),
+}
+
 
 def numeric_columns_for_dataset(dataset_name: str, columns: Iterable[str]) -> frozenset[str]:
     """返回指定数据集当前列中应为数值的字段。"""
@@ -260,4 +284,14 @@ def numeric_columns_for_dataset(dataset_name: str, columns: Iterable[str]) -> fr
     )
 
 
-__all__ = ["_KNOWN_DATE_COLUMNS", "_KNOWN_FLOAT_COLUMNS", "numeric_columns_for_dataset"]
+def optional_columns_for_dataset(dataset_name: str) -> frozenset[str]:
+    """返回允许随数据源响应变化、但需在合并时补齐的业务可选列。"""
+    return _DATASET_OPTIONAL_COLUMNS.get(dataset_name, frozenset())
+
+
+__all__ = [
+    "_KNOWN_DATE_COLUMNS",
+    "_KNOWN_FLOAT_COLUMNS",
+    "numeric_columns_for_dataset",
+    "optional_columns_for_dataset",
+]

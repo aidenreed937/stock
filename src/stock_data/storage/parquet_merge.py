@@ -15,6 +15,7 @@ import polars as pl
 from stock_core.constants import BAR_DATASETS, SYSTEM_METADATA_COLUMNS
 from stock_core.exceptions import DataValidationError
 from stock_data.storage.compat import StorageCompat
+from stock_data.storage.compat_rules import optional_columns_for_dataset
 from stock_data.storage.read_compat import validate_schema_version
 
 _OPTIONAL_BAR_COLUMNS = frozenset({"backwardComplexFactor", "complexFactor"})
@@ -160,6 +161,31 @@ def _align_financial_statement_columns(
     return existing, incoming
 
 
+def _align_optional_dataset_columns(
+    existing: pl.DataFrame, incoming: list[pl.DataFrame], dataset_name: str
+) -> tuple[pl.DataFrame, list[pl.DataFrame]]:
+    """补齐已登记的业务可选列，避免历史迁移后的新回填被严格 Schema 阻断。"""
+    if existing.is_empty() or not incoming:
+        return existing, incoming
+
+    optional_columns = optional_columns_for_dataset(dataset_name)
+    existing_columns = set(existing.columns)
+    incoming_columns = set().union(*(set(frame.columns) for frame in incoming))
+    for column in optional_columns & (existing_columns | incoming_columns):
+        if column not in existing_columns:
+            dtype = next(frame.schema[column] for frame in incoming if column in frame.columns)
+            existing = existing.with_columns(pl.lit(None, dtype=dtype).alias(column))
+            existing_columns.add(column)
+        dtype = existing.schema[column]
+        incoming = [
+            frame
+            if column in frame.columns
+            else frame.with_columns(pl.lit(None, dtype=dtype).alias(column))
+            for frame in incoming
+        ]
+    return existing, incoming
+
+
 def merge_and_save_parquet(
     file_path: Path,
     dfs: list[pl.DataFrame],
@@ -204,6 +230,9 @@ def merge_and_save_parquet(
             existing, normalized_dfs, dataset_name
         )
         existing, normalized_dfs = _align_financial_statement_columns(
+            existing, normalized_dfs, dataset_name
+        )
+        existing, normalized_dfs = _align_optional_dataset_columns(
             existing, normalized_dfs, dataset_name
         )
 

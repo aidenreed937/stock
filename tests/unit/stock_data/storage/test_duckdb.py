@@ -615,6 +615,104 @@ def test_duckdb_store_partitions_financial_rows_by_report_end_date(tmp_path) -> 
     assert pl.read_parquet(june_path)["end_date"].to_list() == [date(2024, 6, 30)]
 
 
+def test_duckdb_store_merges_partial_migrated_dataset_schema(tmp_path) -> None:
+    updated_at = datetime(2026, 8, 18, tzinfo=UTC)
+    cases = (
+        (
+            "express",
+            date(2026, 6, 30),
+            {
+                "symbol": ["000001.SZ"],
+                "ann_date": [date(2026, 6, 30)],
+                "end_date": [date(2026, 6, 30)],
+                "revenue": [10.0],
+                "operate_profit": [2.0],
+                "total_profit": [2.0],
+                "n_income": [1.0],
+                "total_assets": [100.0],
+                "total_hldr_eqy_exc_min_int": [50.0],
+                "diluted_eps": [0.1],
+                "diluted_roe": [2.0],
+                "prior_period_net_profit": [0.8],
+                "bps": [1.0],
+                "open_net_assets": [49.0],
+                "open_bps": [0.98],
+                "perf_summary": ["历史"],
+                "update_flag": ["0"],
+                "data_source": ["tushare"],
+                "source_endpoint": ["express"],
+                "request_id": ["legacy"],
+                "updated_at": [updated_at],
+                "market": ["CN"],
+                "exchange": ["SSE"],
+                "currency": ["CNY"],
+                "adjustment": ["raw"],
+                "schema_version": ["v2"],
+            },
+            {
+                "symbol": ["000002.SZ"],
+                "ann_date": [date(2026, 6, 30)],
+                "end_date": [date(2026, 6, 30)],
+                "revenue": [20.0],
+                "n_income": [2.0],
+                "data_source": ["tushare"],
+                "market": ["CN"],
+                "exchange": ["SZSE"],
+                "currency": ["CNY"],
+                "schema_version": ["v2"],
+            },
+        ),
+        (
+            "etf_share_size",
+            date(2020, 3, 31),
+            {
+                "trade_date": [date(2020, 3, 31)],
+                "etf_name": ["ETF"],
+                "fund_type": ["股票型"],
+                "total_share": [100.0],
+                "total_size": [1000.0],
+                "float_share": [90.0],
+                "float_size": [900.0],
+                "nav": [10.0],
+                "close": [10.1],
+                "exchange": ["SSE"],
+                "symbol": ["510300.SH"],
+                "data_source": ["tushare"],
+                "source_endpoint": ["etf_share_size"],
+                "request_id": ["legacy"],
+                "updated_at": [updated_at],
+                "market": ["CN"],
+                "currency": ["CNY"],
+                "adjustment": ["raw"],
+                "schema_version": ["v2"],
+            },
+            {
+                "trade_date": [date(2020, 3, 31)],
+                "symbol": ["510301.SH"],
+                "total_share": [120.0],
+                "data_source": ["tushare"],
+                "market": ["CN"],
+                "exchange": ["SSE"],
+                "currency": ["CNY"],
+                "schema_version": ["v2"],
+            },
+        ),
+    )
+
+    for dataset, target_date, existing_data, incoming_data in cases:
+        store = DuckDBMarketStore(storage_dir=tmp_path / dataset, data_source="tushare")
+        existing_path = store.get_parquet_path(dataset, target_date, market="CN")
+        existing_path.parent.mkdir(parents=True)
+        pl.DataFrame(existing_data).write_parquet(existing_path)
+
+        saved_path = store.save_market_data(dataset, target_date, pl.DataFrame(incoming_data))
+        merged = pl.read_parquet(saved_path)
+
+        assert len(merged) == 2
+        assert merged.schema["updated_at"] == pl.Datetime("us", "UTC")
+        assert set(merged.columns).issuperset({"data_source", "source_endpoint", "schema_version"})
+
+
 def test_duckdb_store_routes_mixed_date_formats_without_dropping_rows(tmp_path) -> None:
     store = DuckDBMarketStore(storage_dir=tmp_path, data_source="tushare")
     frame = pl.DataFrame(
