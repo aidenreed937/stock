@@ -8,6 +8,8 @@ market_temperature:
   metric_values:
     enabled: true
 
+  domain_mart_observations_enabled: true
+
   bands:
     temperature_levels:
       low_opportunity: 20.0

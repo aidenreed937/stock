@@ -1,6 +1,6 @@
 """市场温度计事实层采集。"""
 
-from __future__ import annotations
+from __future__ import annotations  # noqa: I001
 
 from datetime import date, timedelta
 from pathlib import Path
@@ -15,9 +15,10 @@ from stock_analytics.metrics.engine import MetricEngine
 from stock_analytics.pipelines.market_temperature.derived import collect_derived_metric_rows
 from stock_analytics.pipelines.market_temperature.facts_mart import (
     date_values,
-    parse_date_value,
+    parse_date_value as _parse_date_value,  # noqa: F401
     try_get_market_daily_fact,
 )
+from stock_analytics.pipelines.market_temperature.optional_facts import collect_optional_fact_rows
 from stock_analytics.pipelines.market_temperature.short_term import collect_short_term_rows
 from stock_core.contracts import MarketDataCatalog
 
@@ -31,7 +32,6 @@ if TYPE_CHECKING:
         MetricInputConfig,
     )
 
-_parse_date_value = parse_date_value
 FACT_SCHEMA: dict[str, Any] = {
     "fact_id": pl.Utf8,
     "category": pl.Utf8,
@@ -123,6 +123,7 @@ def collect_facts(
             )
         )
         rows.extend(collect_short_term_rows(config.short_windows, as_of_date, storage_dir))
+        rows.extend(collect_optional_fact_rows(config, as_of_date, storage_dir))
     return pl.DataFrame(rows, schema=FACT_SCHEMA) if rows else empty_facts()
 
 
@@ -245,7 +246,6 @@ def _latest_dataset_date(
         latest_dates = catalog.latest_trade_dates(item.dataset, n=1)
         if latest_dates and latest_dates[0] <= as_of_date:
             return latest_dates[0]
-
     lookback_days = max(item.max_lag_days * 2, 14)
     start_date = as_of_date - timedelta(days=lookback_days)
     try:

@@ -148,6 +148,49 @@ AUDIT_DATASET_REGISTRY: dict[str, DatasetAuditSpec] = {
         frequency=AuditFrequency.DAILY,
         min_expected_ratio=1.0,
     ),
+    # 4. 衍生品与公司行为事件：事件接口天然稀疏，不套用全市场逐股覆盖率门槛。
+    # 当前尚无统一交易所事实基准，因此显式注册为 UNSUPPORTED，避免误路由到股票行情基准。
+    "cb_basic": DatasetAuditSpec(
+        dataset="cb_basic",
+        data_source="tushare",
+        domain=AuditDomain.UNSUPPORTED,
+        frequency=AuditFrequency.STATIC,
+        min_expected_ratio=0.0,
+        is_partitioned=False,
+        source_endpoint="cb_basic",
+    ),
+    "cb_daily": DatasetAuditSpec(
+        dataset="cb_daily",
+        data_source="tushare",
+        domain=AuditDomain.UNSUPPORTED,
+        frequency=AuditFrequency.DAILY,
+        min_expected_ratio=0.0,
+        source_endpoint="cb_daily",
+    ),
+    "stk_holdertrade": DatasetAuditSpec(
+        dataset="stk_holdertrade",
+        data_source="tushare",
+        domain=AuditDomain.UNSUPPORTED,
+        frequency=AuditFrequency.DAILY,
+        min_expected_ratio=0.0,
+        source_endpoint="stk_holdertrade",
+    ),
+    "repurchase": DatasetAuditSpec(
+        dataset="repurchase",
+        data_source="tushare",
+        domain=AuditDomain.UNSUPPORTED,
+        frequency=AuditFrequency.DAILY,
+        min_expected_ratio=0.0,
+        source_endpoint="repurchase",
+    ),
+    "block_trade": DatasetAuditSpec(
+        dataset="block_trade",
+        data_source="tushare",
+        domain=AuditDomain.UNSUPPORTED,
+        frequency=AuditFrequency.DAILY,
+        min_expected_ratio=0.0,
+        source_endpoint="block_trade",
+    ),
     # 4. 宏观流动性领域 (MACRO_LIQUIDITY - DAILY)
     "margin": DatasetAuditSpec(
         dataset="margin",

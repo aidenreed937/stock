@@ -194,7 +194,19 @@ class CatalogReadMixin:
             from stock_data.catalog.service import DataCatalog
 
             catalog = DataCatalog(source, self.storage_dir)
-        dates = catalog.latest_trade_dates(dataset=dataset, market=market, n=1)
+        try:
+            from stock_data.core.task_registry import resolve_task
+
+            date_columns = resolve_task(source, dataset).date_columns
+            date_column = date_columns[0] if date_columns else None
+        except Exception:
+            date_column = None
+        dates = catalog.latest_trade_dates(
+            dataset=dataset,
+            market=market,
+            n=1,
+            date_column=date_column,
+        )
         return dates[0] if dates else None
 
     def list_datasets(self, data_source: str | None = None, market: str | None = None) -> list[str]:

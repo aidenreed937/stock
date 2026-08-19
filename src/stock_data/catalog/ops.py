@@ -20,6 +20,48 @@ from stock_data.governance.quality.margin_coverage import filter_complete_margin
 from stock_data.storage.compat import StorageCompat
 from stock_data.storage.read_compat import normalize_read_frame, validate_schema_version
 
+
+def _dataset_date_columns(data_source: str, dataset: str) -> tuple[str, ...]:
+    """读取任务契约中的业务日期列，并保留历史数据集的兼容候选。"""
+    try:
+        from stock_data.core.task_registry import resolve_task
+
+        task_columns = tuple(resolve_task(data_source, dataset).date_columns)
+    except Exception:
+        task_columns = ()
+    fallback = (
+        "trade_date",
+        "ann_date",
+        "report_date",
+        "date",
+        "end_date",
+        "publish_date",
+        "as_of_date",
+        "asOfDate",
+        "month",
+        "quarter",
+    )
+    return tuple(dict.fromkeys((*task_columns, *fallback)))
+
+
+def _business_date_expr(column: str) -> pl.Expr:
+    if column == "month":
+        return (
+            pl.col(column)
+            .cast(pl.Utf8, strict=False)
+            .str.slice(0, 6)
+            .str.strptime(pl.Date, "%Y%m", strict=False)
+        )
+    if column == "quarter":
+        text = pl.col(column).cast(pl.Utf8, strict=False)
+        year = text.str.extract(r"^(\\d{4})Q[1-4]$", 1).cast(pl.Int32, strict=False)
+        quarter = text.str.extract(r"^\\d{4}Q([1-4])$", 1).cast(pl.Int32, strict=False)
+        return pl.date(year, (quarter - 1) * 3 + 1, 1)
+    from stock_data.pipeline.cleaner.date_utils import parse_mixed_date
+
+    return parse_mixed_date(column)
+
+
 _IDENTITY_ALIASES = ("ts_code", "stockCode", "code")
 _DATE_ALIASES = ("date",)
 
@@ -146,6 +188,7 @@ def read_dataset_files(
         if not candidate_files:
             return pl.DataFrame()
 
+    date_candidates = _dataset_date_columns(data_source, dataset)
     frames: list[pl.DataFrame] = []
     for path in candidate_files:
         try:
@@ -158,7 +201,11 @@ def read_dataset_files(
                         "stockCode",
                         "code",
                         "trade_date",
+                        "ann_date",
                         "date",
+                        "report_date",
+                        "end_date",
+                        "publish_date",
                         "schema_version",
                         "market",
                         "adjustment",
@@ -166,6 +213,7 @@ def read_dataset_files(
                         "exchange_id",
                     }
                 )
+                wanted.update(date_candidates)
                 if dataset == "index_valuation":
                     wanted.add("total_assets")
                 try:
@@ -194,12 +242,14 @@ def read_dataset_files(
         return df
 
     df = normalize_identity_columns(df)
-    if "trade_date" in df.columns:
-        df = StorageCompat.safe_cast_date_col(df, "trade_date")
+    date_column = next((column for column in date_candidates if column in df.columns), None)
+    if date_column is not None and (start_date is not None or end_date is not None):
+        df = df.with_columns(_business_date_expr(date_column).alias("__catalog_date"))
         if start_date is not None:
-            df = df.filter(pl.col("trade_date") >= start_date)
+            df = df.filter(pl.col("__catalog_date") >= start_date)
         if end_date is not None:
-            df = df.filter(pl.col("trade_date") <= end_date)
+            df = df.filter(pl.col("__catalog_date") <= end_date)
+        df = df.drop("__catalog_date")
 
     if symbols:
         symbol_col = "symbol" if "symbol" in df.columns else None

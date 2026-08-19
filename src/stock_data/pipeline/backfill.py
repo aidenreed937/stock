@@ -133,7 +133,7 @@ class HistoricalBackfiller:
             self.fetcher = fetcher or pipeline.fetcher
         else:
             self.pipeline = create_pipeline(
-                data_source=data_source, endpoint=endpoint, fetcher=fetcher
+                data_source=data_source, endpoint=self.endpoint, fetcher=fetcher
             )
             self.fetcher = self.pipeline.fetcher
 

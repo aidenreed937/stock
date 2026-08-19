@@ -15,6 +15,8 @@ from typing import Any
 from stock_core.config.loader import load_data_config
 from stock_data.catalog import DataCatalog
 from stock_data.core.factory import create_pipeline
+from stock_data.core.runtime import DataRuntimeContext
+from stock_data.core.settings import data_settings
 from stock_data.core.task_registry import (
     expand_public_task_targets,
     expand_task_targets,
@@ -228,14 +230,21 @@ def _run_incremental_audit(
 class DailySyncEngine:
     """增量数据同步与自愈引擎。"""
 
-    def __init__(self, data_source: str = "tushare", max_workers: int | None = None) -> None:
+    def __init__(
+        self,
+        data_source: str = "tushare",
+        max_workers: int | None = None,
+        *,
+        runtime: DataRuntimeContext | None = None,
+    ) -> None:
         self.data_source = data_source
         self.max_workers = (
             _configured_max_workers(data_source) if max_workers is None else max_workers
         )
         if self.max_workers <= 0:
             raise ValueError("同步并发数必须大于 0")
-        self.catalog = DataCatalog(data_source=data_source)
+        self.runtime = runtime or data_settings.runtime_context
+        self.catalog = DataCatalog(data_source=data_source, runtime=self.runtime)
 
     def sniff_watermarks(self, endpoints: list[str] | None = None) -> dict[str, date | None]:
         """逆序探测指定端点的最新落盘交易日水位 (Watermark)。"""

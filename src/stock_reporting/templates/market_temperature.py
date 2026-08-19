@@ -54,6 +54,9 @@ from stock_reporting.interpretation.market_temperature.interpretation import (
 from stock_reporting.interpretation.market_temperature.interpretation import (
     get_temperature_band as _temperature_band,
 )
+from stock_reporting.templates.availability import (
+    domain_observation_lines as _domain_observation_lines,
+)
 
 _PREFERRED_METRICS = {
     "valuation": ("valuation_temperature", "pe_percentile_10y", "pb_percentile_10y"),
@@ -260,6 +263,7 @@ def _facts_sections(facts: pl.DataFrame) -> list[str]:
                 note=row["note"],
             )
         )
+    lines.extend(_domain_observation_lines(facts))
     return lines
 
 

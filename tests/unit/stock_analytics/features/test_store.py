@@ -166,6 +166,62 @@ def test_feature_store_incremental_requires_metadata(tmp_path: Path) -> None:
         store.save_market_daily(frame)
 
 
+def test_feature_store_domain_mart_merge_deduplicates_by_domain_key(tmp_path: Path) -> None:
+    store = FeatureStore(mart_dir=tmp_path / "mart")
+    store.save_domain_mart(
+        "convertible_bond_daily",
+        pl.DataFrame({"trade_date": [date(2026, 8, 1)], "cb_price_median": [105.0]}),
+        keys=["trade_date"],
+        date_column="trade_date",
+    )
+    store.save_domain_mart(
+        "convertible_bond_daily",
+        pl.DataFrame(
+            {
+                "trade_date": [date(2026, 8, 1), date(2026, 8, 2)],
+                "cb_price_median": [106.0, 107.0],
+            }
+        ),
+        keys=["trade_date"],
+        date_column="trade_date",
+    )
+
+    loaded = store.get_domain_mart("convertible_bond_daily", date_column="trade_date")
+    assert loaded["trade_date"].to_list() == [date(2026, 8, 1), date(2026, 8, 2)]
+    assert loaded["cb_price_median"].to_list() == [106.0, 107.0]
+
+
+def test_feature_store_domain_mart_rejects_duplicate_or_non_finite_rows(tmp_path: Path) -> None:
+    store = FeatureStore(mart_dir=tmp_path / "mart")
+    duplicate = pl.DataFrame(
+        {
+            "trade_date": [date(2026, 8, 1), date(2026, 8, 1)],
+            "cb_price_median": [105.0, 106.0],
+        }
+    )
+    with pytest.raises(ValueError, match="重复主键"):
+        store.save_domain_mart(
+            "convertible_bond_daily",
+            duplicate,
+            keys=["trade_date"],
+            date_column="trade_date",
+        )
+
+    non_finite = pl.DataFrame(
+        {
+            "trade_date": [date(2026, 8, 1)],
+            "cb_price_median": [float("inf")],
+        }
+    )
+    with pytest.raises(ValueError, match="非有限"):
+        store.save_domain_mart(
+            "convertible_bond_daily",
+            non_finite,
+            keys=["trade_date"],
+            date_column="trade_date",
+        )
+
+
 def _feature_row(
     version: str, value: float | None, observation_date: date = date(2026, 8, 1)
 ) -> dict[str, object]:

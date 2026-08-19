@@ -9,6 +9,7 @@ from pathlib import Path
 
 from stock_analytics.features.builders.market_daily import MarketDailyBuilder
 from stock_analytics.features.store import FeatureStore
+from stock_analytics.marts.builder import DomainMartBuilder
 from stock_core.utils.logger import logger
 from stock_data.catalog import DataCatalog
 
@@ -23,9 +24,9 @@ def _build_parser() -> argparse.ArgumentParser:
     build_parser = subparsers.add_parser("build", help="构建并物化市场/行业日频特征宽表")
     build_parser.add_argument(
         "--target",
-        choices=["market_daily", "all"],
+        choices=["market_daily", "domain_marts", "all"],
         default="market_daily",
-        help="待构建的目标宽表",
+        help="待构建的目标宽表或领域 Mart",
     )
     build_parser.add_argument(
         "-s",
@@ -71,8 +72,10 @@ def main() -> None:
         store = FeatureStore(mart_dir=storage_dir / "mart" if storage_dir else None)
 
         if args.target in ("market_daily", "all"):
-            builder = MarketDailyBuilder(catalog=catalog, store=store, storage_dir=storage_dir)
-            df = builder.build(
+            market_builder = MarketDailyBuilder(
+                catalog=catalog, store=store, storage_dir=storage_dir
+            )
+            df = market_builder.build(
                 start_date=start_date,
                 end_date=end_date,
                 save=True,
@@ -86,6 +89,23 @@ def main() -> None:
             logger.info(
                 f"成功构建并物化 market_daily: {len(df)} 行 (时间跨度: {date_min} ~ {date_max})"
             )
+
+        if args.target in ("domain_marts", "all"):
+            domain_builder = DomainMartBuilder(catalog=catalog, store=store)
+            results = domain_builder.build_all(
+                start_date=start_date,
+                end_date=end_date,
+                overwrite=args.overwrite,
+            )
+            output_count = 0
+            for name, result in results.items():
+                if isinstance(result, dict):
+                    count = sum(frame.height for frame in result.values())
+                else:
+                    count = result.height
+                output_count += count
+                logger.info(f"领域 Mart [{name}] 构建完成: {count} 行")
+            logger.info(f"领域 Mart 全部构建完成: {output_count} 行")
 
 
 def _parse_date(value: str | None) -> date | None:

@@ -218,6 +218,7 @@ class MarketTemperatureConfig:
     dimensions: tuple[DimensionConfig, ...]
     datasets: tuple[DatasetConfig, ...]
     metric_values: MetricValuesConfig = field(default_factory=MetricValuesConfig)
+    domain_mart_observations_enabled: bool = False
     bands: BandsConfig = field(default_factory=BandsConfig)
 
     @classmethod
@@ -227,6 +228,7 @@ class MarketTemperatureConfig:
         raw_datasets = _as_sequence(data.get("datasets", ()), "datasets")
         raw_short_windows = _as_sequence(data.get("short_windows", ()), "short_windows")
         metric_values = data.get("metric_values")
+        domain_mart_observations_enabled = bool(data.get("domain_mart_observations_enabled", False))
         bands = data.get("bands")
         return cls(
             schema_version=int(data.get("schema_version", 1)),
@@ -244,6 +246,7 @@ class MarketTemperatureConfig:
             metric_values=MetricValuesConfig.from_mapping(
                 _as_mapping(metric_values, "metric_values") if metric_values is not None else None
             ),
+            domain_mart_observations_enabled=domain_mart_observations_enabled,
             bands=BandsConfig.from_mapping(
                 _as_mapping(bands, "bands") if bands is not None else None
             ),

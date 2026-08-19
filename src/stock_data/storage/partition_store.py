@@ -8,8 +8,9 @@ import polars as pl
 from stock_core.contracts import DAILY_BAR_CONTRACT, DatasetKey, validate_dataset_units
 from stock_core.exceptions import DataValidationError
 from stock_core.utils.logger import logger
+from stock_data.core.runtime import DataRuntimeContext
 from stock_data.core.settings import data_settings
-from stock_data.core.task_registry import get_endpoint_market, is_task_partitioned
+from stock_data.core.task_registry import get_endpoint_market, is_task_partitioned, resolve_task
 from stock_data.governance.quality.margin_coverage import (
     is_margin_complete,
     is_margin_date_complete,
@@ -58,9 +59,40 @@ def _prepare_curated_frame(
     return df
 
 
-def _date_matches_expr(target_date: date) -> pl.Expr:
-    as_text = pl.col("trade_date").cast(pl.Utf8, strict=False)
-    return as_text.is_in([target_date.strftime("%Y-%m-%d"), target_date.strftime("%Y%m%d")])
+def _curated_date_column(data_source: str, dataset: str, df: pl.DataFrame) -> str | None:
+    try:
+        candidates = tuple(resolve_task(data_source, dataset).date_columns)
+    except Exception:
+        candidates = ()
+    candidates = (*candidates, "trade_date", "ann_date", "date", "report_date", "end_date")
+    return next((column for column in dict.fromkeys(candidates) if column in df.columns), None)
+
+
+def _normalized_date_values(df: pl.DataFrame, date_column: str) -> pl.Series:
+    width = 6 if date_column == "month" else 8
+    return (
+        df.get_column(date_column)
+        .cast(pl.Utf8, strict=False)
+        .str.replace_all(r"[^0-9]", "")
+        .str.slice(0, width)
+    )
+
+
+def _date_matches_expr(date_column: str, target_date: date) -> pl.Expr:
+    width = 6 if date_column == "month" else 8
+    return pl.col(date_column).cast(pl.Utf8, strict=False).str.replace_all(r"[^0-9]", "").str.slice(
+        0, width
+    ) == target_date.strftime("%Y%m" if width == 6 else "%Y%m%d")
+
+
+def _resolve_curated_root(
+    storage_dir: Path | str | None, runtime: DataRuntimeContext | None
+) -> Path:
+    return (
+        Path(storage_dir)
+        if storage_dir is not None
+        else (runtime or data_settings.runtime_context).curated_root
+    )
 
 
 def _resolve_market_code(
@@ -130,12 +162,14 @@ class ParquetPartitionStore:
     """负责 Parquet 分区路径、缓存状态检查，并将写入委托给 ParquetPartitionWriter。"""
 
     def __init__(
-        self, storage_dir: Path | str | None = None, data_source: str | None = None
+        self,
+        storage_dir: Path | str | None = None,
+        data_source: str | None = None,
+        *,
+        runtime: DataRuntimeContext | None = None,
     ) -> None:
         self.data_source = data_source
-        self._storage_root = (
-            Path(storage_dir) if storage_dir is not None else data_settings.curated_data_dir
-        )
+        self._storage_root = _resolve_curated_root(storage_dir, runtime)
         if self.data_source is None and storage_dir is None:
             self.data_source = data_settings.data_source_mode
         self.storage_dir = self._get_source_dir()
@@ -218,33 +252,29 @@ class ParquetPartitionStore:
         if not matching_files:
             return False
 
-        date_str_hyphen = target_date.strftime("%Y-%m-%d")
-        date_str_plain = target_date.strftime("%Y%m%d")
-
         for file_path in matching_files:
             try:
+                if file_path not in self._curated_cache:
+                    self._curated_cache[file_path] = pl.read_parquet(file_path)
+                df = self._curated_cache[file_path]
                 if file_path not in self._curated_dates_cache:
-                    if file_path not in self._curated_cache:
-                        self._curated_cache[file_path] = pl.read_parquet(file_path)
-                    df = self._curated_cache[file_path]
                     validate_frame_source(df, data_source, f"Curated 文件 [{file_path}]")
-                    if "trade_date" in df.columns:
+                    date_column = _curated_date_column(data_source, target_dataset, df)
+                    if date_column:
                         self._curated_dates_cache[file_path] = set(
-                            df["trade_date"]
-                            .cast(pl.Utf8, strict=False)
-                            .drop_nulls()
-                            .unique()
-                            .to_list()
+                            _normalized_date_values(df, date_column).drop_nulls().unique().to_list()
                         )
                     else:
                         self._curated_dates_cache[file_path] = set()
 
                 dates_str = self._curated_dates_cache[file_path]
-                if date_str_hyphen in dates_str or date_str_plain in dates_str:
+                date_column = _curated_date_column(data_source, target_dataset, df)
+                date_key = target_date.strftime("%Y%m" if date_column == "month" else "%Y%m%d")
+                if not date_column or date_key in dates_str:
                     df = self._curated_cache[file_path]
                     day_df = (
-                        df.filter(_date_matches_expr(target_date))
-                        if "trade_date" in df.columns
+                        df.filter(_date_matches_expr(date_column, target_date))
+                        if date_column
                         else df
                     )
                     if (

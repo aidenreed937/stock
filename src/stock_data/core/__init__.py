@@ -13,6 +13,7 @@ from stock_data.core.factory import (
     create_pipeline,
     get_shared_fetcher,
 )
+from stock_data.core.runtime import DataRuntimeContext
 from stock_data.core.settings import DataSettings, data_settings
 from stock_data.core.task_bundles import TASK_BUNDLES, TaskBundle
 from stock_data.core.task_registry import (
@@ -30,6 +31,7 @@ __all__ = [
     "EXCHANGE_START_DATES",
     "TASK_BUNDLES",
     "CapabilityRegistration",
+    "DataRuntimeContext",
     "DataSettings",
     "TaskBundle",
     "TaskSpec",

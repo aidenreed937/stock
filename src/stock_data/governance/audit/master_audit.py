@@ -6,6 +6,8 @@ from typing import Any
 
 import polars as pl
 
+from stock_data.core.settings import data_settings
+
 # 记录数允许较少的特定宏观与结构数据集
 LOW_VOLUME_DATASETS = {
     "cn_cpi",
@@ -51,7 +53,7 @@ def _format_year_gaps(years: list[Any]) -> str | None:
     return f"警告: 年份断档 (缺失 {missing[0]}..{missing[-1]} 年)"
 
 
-def run_master_audit(base_dir: str = "data/curated") -> pl.DataFrame:
+def run_master_audit(base_dir: str | Path | None = None) -> pl.DataFrame:
     """物理扫描指定目录下的全部 Parquet 文件，按数据源与数据集汇总审计信息。
 
     Args:
@@ -60,9 +62,9 @@ def run_master_audit(base_dir: str = "data/curated") -> pl.DataFrame:
     Returns:
         pl.DataFrame: 汇总审计对账结果表
     """
-    curated_path = Path(base_dir)
+    curated_path = Path(base_dir) if base_dir is not None else data_settings.curated_data_dir
     if not curated_path.exists():
-        logger.warning(f"审计目标目录不存在: {base_dir}")
+        logger.warning(f"审计目标目录不存在: {curated_path}")
         return pl.DataFrame()
 
     files = [
@@ -71,7 +73,7 @@ def run_master_audit(base_dir: str = "data/curated") -> pl.DataFrame:
         if not f.name.endswith((".bak.parquet", ".tmp.parquet"))
     ]
     if not files:
-        logger.info(f"目录 [{base_dir}] 下未扫描到任何有效 Parquet 数据文件。")
+        logger.info(f"目录 [{curated_path}] 下未扫描到任何有效 Parquet 数据文件。")
         return pl.DataFrame()
 
     records: list[dict[str, Any]] = []
@@ -251,7 +253,7 @@ def print_master_audit_summary(summary: pl.DataFrame) -> None:
 
 def main() -> None:
     """主审计 CLI 入口。"""
-    summary = run_master_audit("data/curated")
+    summary = run_master_audit()
     print_master_audit_summary(summary)
 
 

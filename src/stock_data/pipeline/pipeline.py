@@ -47,7 +47,8 @@ class MarketDataPipeline:
     ) -> None:
         self.fetcher = fetcher
         self.data_source = data_source
-        self.endpoint = resolve_task(data_source, endpoint).task_name
+        task = resolve_task(data_source, endpoint)
+        self.endpoint = task.task_name
 
         profile = self._endpoint_quality_profile(data_source, self.endpoint)
         if cleaner is not None:
@@ -59,12 +60,16 @@ class MarketDataPipeline:
         elif profile == "macro":
             self.cleaner = MacroDataCleaner()
         else:
-            self.cleaner = GenericCleaner()
+            self.cleaner = GenericCleaner(primary_keys=list(task.primary_keys) or None)
 
         self.normalizer = (
             normalizer
             if normalizer is not None
-            else (BarDataNormalizer() if profile == "bar" else GenericNormalizer())
+            else (
+                BarDataNormalizer()
+                if profile == "bar"
+                else GenericNormalizer(date_columns=list(task.date_columns) or None)
+            )
         )
         self.store = store if store is not None else DuckDBMarketStore(data_source=data_source)
         bind_data_source = getattr(self.store, "bind_data_source", None)

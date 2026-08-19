@@ -245,10 +245,9 @@ def test_default_sync_falls_back_to_ready_trading_day_for_history_gap() -> None:
         ),
         patch(
             "stock_data.pipeline.scheduler.DataUpdateScheduler.is_data_ready",
-            side_effect=lambda endpoint,
-            target_date,
-            current_datetime=None,
-            data_source="tushare": (target_date == previous),
+            side_effect=lambda endpoint, target_date, current_datetime=None, data_source="tushare": (
+                target_date == previous
+            ),
         ),
     ):
         plan = engine.build_sync_plan(

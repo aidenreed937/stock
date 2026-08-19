@@ -159,6 +159,7 @@ def test_tushare_task_bundles() -> None:
         "macro_daily_bundle",
         "macro_monthly_bundle",
         "metadata_bundle",
+        "corporate_action_bundle",
     ]
 
     market = resolve_bundle("tushare", "daily_market_bundle")
@@ -182,6 +183,11 @@ def test_tushare_task_bundles() -> None:
         "income",
         "fina_indicator",
         "balancesheet",
+    )
+    assert resolve_bundle("tushare", "corporate_action_bundle").tasks == (
+        "stk_holdertrade",
+        "repurchase",
+        "block_trade",
     )
 
     monthly = resolve_bundle("tushare", "macro_monthly_bundle")
@@ -244,6 +250,11 @@ def test_expand_task_targets_keeps_atomic_tasks_and_deduplicates() -> None:
         "sw_2021_fs_insurance",
     ]
 
+    assert expand_task_targets("tushare", ["convertible_bond_bundle"]) == [
+        "cb_basic",
+        "cb_daily",
+    ]
+
 
 def test_yfinance_task_bundles_follow_endpoint_families() -> None:
     assert list_available_bundles("yfinance") == [
@@ -304,6 +315,8 @@ def test_task_bundles_cover_registered_tasks_except_explicit_aggregate_routes() 
             "margin",
             "margin_detail",
             "cn_gdp",
+            "cb_basic",
+            "cb_daily",
         },
         "lixinger": {"index_fundamental"},
         "yfinance": {

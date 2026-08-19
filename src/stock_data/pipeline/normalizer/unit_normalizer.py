@@ -61,6 +61,16 @@ UNIT_CONVERSION_RULES: dict[str, dict[str, dict[str, tuple[str, float]]]] = {
             # TuShare 期权成交金额单位为万元；成交量和持仓量保留为合约数。
             "amount": ("amount", 10000.0),
         },
+        "cb_daily": {
+            # 可转债行情的成交量为手（1 手 = 10 张），成交金额为万元。
+            "vol": ("volume", 10.0),
+            "amount": ("amount", 10000.0),
+        },
+        "block_trade": {
+            # 大宗交易成交量为万股，成交金额为万元。
+            "vol": ("volume", 10000.0),
+            "amount": ("amount", 10000.0),
+        },
         "stk_account": {
             # TuShare 股票开户数据的账户数量单位为万户。
             "weekly_new": ("weekly_new", 10000.0),

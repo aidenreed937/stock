@@ -10,7 +10,7 @@ import polars as pl
 
 from stock_core.exceptions import DataValidationError
 from stock_core.utils.logger import logger
-from stock_data.core.task_registry import is_task_partitioned
+from stock_data.core.task_registry import is_task_partitioned, resolve_task
 from stock_data.pipeline.cleaner.date_utils import parse_mixed_date
 
 
@@ -33,14 +33,26 @@ def save_partitioned(
         save_single(file_path, df, dataset_name, source, cache_updater)
         return file_path
 
-    date_col = next(
-        (
-            column
-            for column in ("trade_date", "date", "end_date", "as_of_date", "Date")
-            if column in df.columns
-        ),
-        None,
+    date_candidates: list[str] = []
+    try:
+        date_candidates.extend(resolve_task(source, dataset_name).date_columns)
+    except Exception:
+        pass
+    date_candidates.extend(
+        column
+        for column in (
+            "trade_date",
+            "ann_date",
+            "date",
+            "report_date",
+            "end_date",
+            "as_of_date",
+            "publish_date",
+            "Date",
+        )
+        if column not in date_candidates
     )
+    date_col = next((column for column in date_candidates if column in df.columns), None)
     if not date_col or df.is_empty():
         file_path = path_resolver(dataset_name, fallback_date, market_code)
         save_single(file_path, df, dataset_name, source, cache_updater)

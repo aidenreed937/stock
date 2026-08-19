@@ -22,6 +22,14 @@ from stock_data.governance.audit.registry import (
 )
 
 
+def test_domain_mart_input_datasets_are_registered_without_dense_coverage_gate() -> None:
+    for dataset in ("cb_basic", "cb_daily", "stk_holdertrade", "repurchase", "block_trade"):
+        spec = get_audit_spec(dataset, "tushare")
+        assert spec.source_endpoint == dataset
+        assert spec.min_expected_ratio == 0.0
+        assert spec.domain.value == "unsupported"
+
+
 def test_domains_and_frequency_enums() -> None:
     assert AuditDomain.EQUITY == "equity"
     assert AuditDomain.INDUSTRY == "industry"

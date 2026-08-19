@@ -8,6 +8,13 @@ from stock_core.constants import BAR_DATASETS
 from stock_core.contracts import get_contract_for_dataset
 from stock_core.exceptions import DataValidationError
 from stock_core.utils.logger import logger
+from stock_data.core.settings import data_settings
+from stock_data.governance.quality.domain_quality import (
+    assert_domain_input_quality as _assert_domain_input_quality,
+)
+from stock_data.governance.quality.domain_quality import (
+    assert_domain_mart_quality as _assert_domain_mart_quality,
+)
 from stock_data.governance.quality.margin_coverage import margin_coverage_issues
 from stock_data.governance.quality.margin_quality import (
     margin_quality_issues,
@@ -76,8 +83,10 @@ def _validate_generic_bar_frame(df: pl.DataFrame, dataset_name: str, file: Path)
 class QualityGate:
     """全库离线 Curated 数据质量门禁。"""
 
-    def __init__(self, curated_dir: Path | str = "data/curated") -> None:
-        self.curated_dir = Path(curated_dir)
+    def __init__(self, curated_dir: Path | str | None = None) -> None:
+        self.curated_dir = (
+            Path(curated_dir) if curated_dir is not None else data_settings.curated_data_dir
+        )
 
     def _active_parquet_files(self) -> list[Path]:
         """按有效扩展名扫描非备份 parquet 文件。"""
@@ -88,6 +97,9 @@ class QualityGate:
             for f in self.curated_dir.rglob("*.parquet")
             if not f.name.endswith((".bak.parquet", ".tmp.parquet"))
         ]
+
+    assert_domain_mart_quality = _assert_domain_mart_quality
+    assert_domain_input_quality = _assert_domain_input_quality
 
     def validate_all(self) -> dict[str, bool]:
         """运行全库质量门禁所有断言。
@@ -106,6 +118,8 @@ class QualityGate:
             "no_mixed_adjustment": self.assert_no_mixed_adjustment(files),
             "no_duplicate_keys": self.assert_no_duplicate_keys(files),
             "margin_quality": self.assert_margin_quality(files),
+            "domain_input_quality": self.assert_domain_input_quality(files),
+            "domain_mart_quality": self.assert_domain_mart_quality(files),
         }
 
         all_passed = all(results.values())
@@ -278,7 +292,7 @@ class QualityGate:
         return True
 
 
-def run_quality_gate(curated_dir: str = "data/curated") -> bool:
+def run_quality_gate(curated_dir: str | None = None) -> bool:
     """质量门禁一键校验入口。"""
     gate = QualityGate(curated_dir)
     try:

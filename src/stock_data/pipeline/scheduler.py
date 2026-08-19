@@ -36,6 +36,23 @@ class EndpointUpdateMeta:
     timezone: ZoneInfo
 
 
+def _resolve_update_values(task: Any, meta: Any) -> tuple[str, int, bool, str]:
+    """合并任务契约与 Provider 元数据中的更新窗口。"""
+    update_time = task.update_time
+    delay_days = task.update_delay_days
+    delay_in_trading_days = task.delay_in_trading_days
+    frequency = task.frequency
+    if meta:
+        frequency = getattr(meta, "frequency", frequency)
+        if not task.update_time:
+            update_time = getattr(meta, "update_time", update_time)
+        if task.update_delay_days == 0:
+            delay_days = getattr(meta, "update_delay_days", delay_days)
+        if not task.delay_in_trading_days:
+            delay_in_trading_days = getattr(meta, "delay_in_trading_days", False)
+    return update_time, delay_days, delay_in_trading_days, frequency
+
+
 class DataUpdateScheduler:
     """数据更新时间窗口调度拦截与就绪诊断工具。"""
 
@@ -45,19 +62,10 @@ class DataUpdateScheduler:
         target_tz = DATA_SOURCE_TIMEZONES.get(data_source, _DEFAULT_TZ)
         task = resolve_task(data_source, endpoint)
 
-        update_time_str = "18:00"
-        update_delay_days = 0
-        delay_in_trading_days = False
-        freq = task.frequency
-
         meta = (_provider_registry(data_source) or _provider_registry("tushare")).get(task.api_name)
-        if meta:
-            freq = getattr(meta, "frequency", freq)
-            if data_source != "fred":
-                update_time_str = meta.update_time
-                update_delay_days = meta.update_delay_days
-            if data_source == "tushare":
-                delay_in_trading_days = getattr(meta, "delay_in_trading_days", False)
+        update_time_str, update_delay_days, delay_in_trading_days, freq = _resolve_update_values(
+            task, meta
+        )
 
         # 支持全局 Settings 配置项覆盖 update_time (HH:MM 格式)
         if task.task_name in data_settings.endpoint_update_time_overrides:

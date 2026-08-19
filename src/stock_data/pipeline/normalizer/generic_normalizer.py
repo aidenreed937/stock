@@ -1,5 +1,7 @@
 """通用数据标准化器，适用于非 K 线（如基本面估值、指数基本面等）接口。"""
 
+from collections.abc import Sequence
+
 import polars as pl
 
 from stock_core.utils.logger import logger
@@ -9,6 +11,10 @@ from stock_data.pipeline.normalizer.base import BaseDataNormalizer
 
 class GenericNormalizer(BaseDataNormalizer):
     """通用数据标准化器，负责日期转换与通用列对齐。"""
+
+    def __init__(self, date_columns: Sequence[str] | None = None) -> None:
+        """初始化标准化器。"""
+        self.date_columns = tuple(date_columns or ())
 
     def normalize(self, df: pl.DataFrame) -> pl.DataFrame:
         if df.is_empty():
@@ -74,8 +80,11 @@ class GenericNormalizer(BaseDataNormalizer):
                     ).alias("as_of_date")
                 ).drop("asOfDate")
 
-        # 2. 转换业务日期为 Date 类型
-        for date_column in ("trade_date", "as_of_date"):
+        # 2. 转换注册契约声明的业务日期为 Date 类型
+        date_columns = list(dict.fromkeys((*self.date_columns, "trade_date", "as_of_date")))
+        for date_column in date_columns:
+            if date_column in {"month", "quarter"}:
+                continue
             if date_column in normalized_df.columns:
                 normalized_df = normalized_df.with_columns(
                     parse_mixed_date(date_column).alias(date_column)

@@ -19,6 +19,11 @@ TUSHARE_TASK_REGISTRY: dict[str, EndpointMeta] = {
     "limit_list_d": TUSHARE_API_REGISTRY["limit_list_d"],
     "opt_basic": TUSHARE_API_REGISTRY["opt_basic"],
     "opt_daily": TUSHARE_API_REGISTRY["opt_daily"],
+    "cb_basic": TUSHARE_API_REGISTRY["cb_basic"],
+    "cb_daily": TUSHARE_API_REGISTRY["cb_daily"],
+    "stk_holdertrade": TUSHARE_API_REGISTRY["stk_holdertrade"],
+    "repurchase": TUSHARE_API_REGISTRY["repurchase"],
+    "block_trade": TUSHARE_API_REGISTRY["block_trade"],
 }
 
 # 对已注册但尚未逐项声明的接口，至少从自然键生成结构化基础契约
@@ -232,6 +237,66 @@ _TUSHARE_PROFILES: dict[str, tuple[list[str], dict[str, str], str]] = {
             "oi": "contract",
         },
         "options_daily",
+    ),
+    "cb_basic": (
+        ["ts_code", "bond_short_name", "stk_code", "list_date", "exchange"],
+        {
+            "par": "CNY/bond",
+            "issue_price": "CNY/bond",
+            "issue_size": "CNY",
+            "remain_size": "CNY",
+            "coupon_rate": "percent",
+            "add_rate": "percent",
+            "first_conv_price": "CNY/share",
+            "conv_price": "CNY/share",
+        },
+        "bond_static",
+    ),
+    "cb_daily": (
+        ["ts_code", "trade_date", "close"],
+        {
+            "pre_close": "CNY/bond",
+            "open": "CNY/bond",
+            "high": "CNY/bond",
+            "low": "CNY/bond",
+            "close": "CNY/bond",
+            "change": "CNY/bond",
+            "pct_chg": "percent",
+            "vol": "hand",
+            "amount": "CNY10k",
+            "bond_value": "CNY/bond",
+            "bond_over_rate": "percent",
+            "cb_value": "CNY/bond",
+            "cb_over_rate": "percent",
+        },
+        "bond_daily",
+    ),
+    "stk_holdertrade": (
+        ["ts_code", "ann_date", "holder_name", "in_de", "change_vol"],
+        {
+            "change_vol": "share",
+            "change_ratio": "percent",
+            "after_share": "share",
+            "after_ratio": "percent",
+            "avg_price": "CNY/share",
+            "total_share": "share",
+        },
+        "corporate_action_event",
+    ),
+    "repurchase": (
+        ["ts_code", "ann_date", "proc"],
+        {
+            "vol": "share",
+            "amount": "CNY",
+            "high_limit": "CNY/share",
+            "low_limit": "CNY/share",
+        },
+        "corporate_action_event",
+    ),
+    "block_trade": (
+        ["ts_code", "trade_date", "price", "vol", "amount"],
+        {"price": "CNY/share", "vol": "10k_share", "amount": "CNY10k"},
+        "corporate_action_event",
     ),
     "stk_account": (
         ["date"],

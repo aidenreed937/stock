@@ -82,6 +82,13 @@ def _build_period_query(
             query_kwargs["start_date"] = start_date.strftime("%Y%m%d")
             query_kwargs["end_date"] = end_date.strftime("%Y%m%d")
         return True
+    if query_mode == "ann_date":
+        if start_date == end_date:
+            query_kwargs["ann_date"] = start_date.strftime("%Y%m%d")
+        else:
+            query_kwargs["start_date"] = start_date.strftime("%Y%m%d")
+            query_kwargs["end_date"] = end_date.strftime("%Y%m%d")
+        return True
     if query_mode == "trade_date":
         if start_date == end_date:
             query_kwargs["trade_date"] = start_date.strftime("%Y%m%d")
@@ -122,11 +129,16 @@ def build_tushare_query(
             query_kwargs["end_date"] = end_str
         return endpoint, query_kwargs
 
-    if meta.frequency in ("event", "static"):
+    if meta.frequency == "static":
         if is_real_symbol:
             query_kwargs[symbol_param] = symbol
         if endpoint == "stock_basic" and not is_real_symbol:
             query_kwargs["list_status"] = "L"
+    elif meta.frequency == "event":
+        if is_real_symbol:
+            query_kwargs[symbol_param] = symbol
+        if meta.date_columns and meta.query_mode in {"ann_date", "trade_date"}:
+            _build_period_query(meta, start_date, end_date, query_kwargs)
     elif is_real_symbol:
         query_kwargs[symbol_param] = symbol
         query_kwargs["start_date"], query_kwargs["end_date"] = start_str, end_str
@@ -148,6 +160,8 @@ def build_tushare_query(
         if meta.api_name in ("forecast", "express") and not is_real_symbol
         else meta.api_name
     )
+    if meta.request_fields:
+        query_kwargs.setdefault("fields", meta.request_fields)
     return api_to_call, query_kwargs
 
 

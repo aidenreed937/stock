@@ -8,6 +8,7 @@ from typing import TYPE_CHECKING, Any
 
 import polars as pl
 
+from stock_analytics.features.domain_store import DomainMartStoreMixin
 from stock_analytics.features.feature_values import FeatureValueStore
 from stock_analytics.features.store_ops import (
     merge_incremental,
@@ -17,20 +18,30 @@ from stock_analytics.features.store_ops import (
     write_metadata,
 )
 from stock_core.utils.logger import logger
+from stock_data.core.runtime import DataRuntimeContext
+from stock_data.core.settings import data_settings
 
 if TYPE_CHECKING:
     from collections.abc import Mapping, Sequence
     from datetime import date
 
 
-class FeatureStore:
+class FeatureStore(DomainMartStoreMixin):
     """特征集市存储抽象，统一管理 market_daily 宽表与指标特征的物化和增量读写。"""
 
     DEFAULT_MART_DIR = Path("./data/curated/mart")
 
-    def __init__(self, mart_dir: Path | str | None = None) -> None:
+    def __init__(
+        self,
+        mart_dir: Path | str | None = None,
+        *,
+        runtime: DataRuntimeContext | None = None,
+    ) -> None:
         """初始化 FeatureStore。"""
-        self.mart_dir = Path(mart_dir) if mart_dir is not None else self.DEFAULT_MART_DIR
+        active_runtime = runtime or data_settings.runtime_context
+        self.mart_dir = (
+            Path(mart_dir) if mart_dir is not None else active_runtime.curated_root / "mart"
+        )
         self.mart_dir.mkdir(parents=True, exist_ok=True)
         self.values = FeatureValueStore(self.mart_dir)
 

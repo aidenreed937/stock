@@ -9,6 +9,7 @@ from stock_core.contracts import DatasetKey
 
 RAW_DATE_COLUMNS = (
     "trade_date",
+    "ann_date",
     "report_date",
     "date",
     "end_date",
@@ -17,7 +18,15 @@ RAW_DATE_COLUMNS = (
     "month",
     "quarter",
 )
-RAW_RANGE_DATE_COLUMNS = ("trade_date", "report_date", "date", "end_date", "as_of_date", "asOfDate")
+RAW_RANGE_DATE_COLUMNS = (
+    "trade_date",
+    "ann_date",
+    "report_date",
+    "date",
+    "end_date",
+    "as_of_date",
+    "asOfDate",
+)
 RAW_SYMBOL_COLUMNS = (
     "symbol",
     "ts_code",

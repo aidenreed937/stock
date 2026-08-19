@@ -1,12 +1,23 @@
 """项目任务名与数据源 API 名称的显式路由表 (SSOT 统一注册模型)。"""
 
-from dataclasses import dataclass
-from typing import Any
+from dataclasses import dataclass, field
+from typing import Any, cast
 
+from stock_data.core.public_tasks import (
+    expand_public_task_targets as _expand_public_task_targets,
+)
+from stock_data.core.public_tasks import (
+    resolve_public_task as _resolve_public_task,
+)
 from stock_data.core.task_bundles import expand_task_targets as _expand_task_targets
 from stock_data.core.task_bundles import list_available_bundles as _list_available_bundles
 from stock_data.core.task_bundles import resolve_bundle as _resolve_bundle
 from stock_data.core.task_bundles import resolve_bundle_or_alias as _resolve_bundle_or_alias
+from stock_data.core.task_contracts import (
+    PARTITIONED_EVENT_TASKS,
+    contract_fields,
+    enrich_task_spec,
+)
 
 list_available_bundles = _list_available_bundles
 resolve_bundle = _resolve_bundle
@@ -26,6 +37,17 @@ class TaskSpec:
     fetch_mode: str = "per_day"  # "per_day" | "per_symbol"
     is_single_sync: bool = False
     required_pool: str | None = None
+    primary_keys: tuple[str, ...] = ()
+    date_columns: tuple[str, ...] = ()
+    required_columns: tuple[str, ...] = ()
+    units: dict[str, str] = field(default_factory=dict)
+    query_mode: str = "trade_date"
+    update_time: str = "18:00"
+    update_delay_days: int = 0
+    delay_in_trading_days: bool = False
+    request_window_days: int | None = None
+    max_rows_per_request: int | None = None
+    request_fields: str | None = None
 
 
 # 向后兼容保留的集合别名（内部已统一由 TaskSpec 属性驱动）
@@ -580,14 +602,19 @@ def _derive_task_spec(provider_name: str, requested: str, meta: Any) -> TaskSpec
         provider_name in ("fred", "lixinger")
         or requested in _EXPLICIT_NON_PARTITIONED
         or group in ("macro_data", "basic_info")
-        or (frequency in ("static", "event") and requested not in ("suspend_d", "index_weight"))
+        or (
+            frequency in ("static", "event")
+            and requested not in ("suspend_d", "index_weight", *PARTITIONED_EVENT_TASKS)
+        )
     ):
         partitioned = False
     else:
         partitioned = True
 
     # 3. 推导 is_single_sync (是否单表/宏观全量一次性同步)
-    if (
+    if requested in PARTITIONED_EVENT_TASKS:
+        is_single_sync = False
+    elif (
         requested in _EXPLICIT_SINGLE_SYNC
         or group in ("macro_data", "basic_info")
         or (
@@ -613,6 +640,7 @@ def _derive_task_spec(provider_name: str, requested: str, meta: Any) -> TaskSpec
         partitioned=partitioned,
         is_single_sync=is_single_sync,
         required_pool=required_pool,
+        **contract_fields(meta),
     )
 
 
@@ -632,7 +660,7 @@ def resolve_task(provider: str, task_name: str, symbol: str = "") -> TaskSpec:
 
     custom = _CUSTOM_TASKS.get((provider_name, requested))
     if custom is not None:
-        return custom
+        return cast("TaskSpec", enrich_task_spec(custom, _provider_registry))
 
     registry = _provider_registry(provider_name)
     meta = registry.get(requested)
@@ -670,42 +698,13 @@ def is_task_partitioned(provider: str, task_or_dataset: str) -> bool:
 
 
 def resolve_public_task(provider: str, task_name: str, symbol: str = "") -> TaskSpec:
-    """解析 CLI/配置公开任务名，拒绝上游接口别名和路径。"""
-    provider_name = provider.lower()
-    requested = task_name.strip()
-    if requested in _DISABLED_TASKS:
-        raise ValueError(f"项目任务 [{provider_name}/{task_name}] 已停用；请使用 stock_daily_bar。")
-    if _resolve_bundle_or_alias(provider_name, requested) is not None:
-        raise ValueError(
-            f"[{provider_name}/{task_name}] 是任务包，不是公开原子任务；请在调度入口中展开。"
-        )
-    if (provider_name, requested) in _ALIASES or "/" in requested:
-        raise ValueError(f"[{provider_name}/{task_name}] 不是项目任务名；请使用已注册的短任务名。")
-    if (provider_name, requested) not in _CUSTOM_TASKS and requested not in _provider_registry(
-        provider_name
-    ):
-        raise ValueError(
-            f"[{provider_name}/{task_name}] 不是已注册的项目任务名；"
-            "请使用项目任务注册表中的短任务名。"
-        )
-    return resolve_task(provider_name, requested, symbol=symbol)
+    """解析 CLI/配置公开任务名，拒绝别名、路径和未注册任务。"""
+    return cast("TaskSpec", _resolve_public_task(provider, task_name, symbol))
 
 
 def expand_public_task_targets(provider: str, endpoints: list[str] | None = None) -> list[str]:
-    provider_name = provider.lower()
-    if not endpoints:
-        return list_available_tasks(provider_name)
-    candidates = [
-        candidate
-        for endpoint in endpoints
-        if (requested := endpoint.strip())
-        for candidate in (
-            expand_task_targets(provider_name, [requested])
-            if _resolve_bundle_or_alias(provider_name, requested) is not None
-            else [requested]
-        )
-    ]
-    return list(dict.fromkeys(resolve_public_task(provider_name, c).task_name for c in candidates))
+    """展开公共调度入口的任务包并严格校验。"""
+    return _expand_public_task_targets(provider, endpoints)
 
 
 def task_api_name(provider: str, task_name: str, symbol: str = "") -> str:

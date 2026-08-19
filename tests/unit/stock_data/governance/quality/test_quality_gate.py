@@ -189,6 +189,48 @@ def test_quality_gate_uses_registered_event_keys(tmp_path: Path) -> None:
     assert not gate.assert_no_duplicate_keys(gate._active_parquet_files())
 
 
+def test_quality_gate_checks_domain_mart_date_keys_and_finite_values(tmp_path: Path) -> None:
+    mart_dir = tmp_path / "mart"
+    mart_dir.mkdir(parents=True)
+    valid = pl.DataFrame(
+        {
+            "trade_date": [date(2026, 8, 1)],
+            "cb_price_median": [108.0],
+            "cb_valid_count": [100],
+        }
+    )
+    valid.write_parquet(mart_dir / "convertible_bond_daily.parquet")
+
+    gate = QualityGate(tmp_path)
+    assert gate.assert_domain_mart_quality(gate._active_parquet_files())
+
+    bad = valid.with_columns(pl.lit(float("inf")).alias("cb_price_median"))
+    bad.write_parquet(mart_dir / "convertible_bond_daily.parquet")
+    assert not gate.assert_domain_mart_quality(gate._active_parquet_files())
+
+
+def test_quality_gate_checks_domain_input_contracts(tmp_path: Path) -> None:
+    target_dir = tmp_path / "tushare" / "market=CN" / "block_trade"
+    target_dir.mkdir(parents=True)
+    valid = pl.DataFrame(
+        {
+            "symbol": ["000001.SZ"],
+            "trade_date": [date(2026, 8, 1)],
+            "price": [10.0],
+            "volume": [100.0],
+            "amount": [1000.0],
+        }
+    )
+    valid.write_parquet(target_dir / "data.parquet")
+
+    gate = QualityGate(tmp_path)
+    assert gate.assert_domain_input_quality(gate._active_parquet_files())
+
+    invalid = valid.with_columns(pl.lit(-1.0).alias("amount"))
+    invalid.write_parquet(target_dir / "data.parquet")
+    assert not gate.assert_domain_input_quality(gate._active_parquet_files())
+
+
 def test_quality_gate_fails_on_mixed_adjustment(tmp_path: Path) -> None:
     now_utc = datetime.now(UTC)
     target_dir = tmp_path / "tushare" / "market=CN" / "stock_daily_bar" / "year=2026" / "month=08"

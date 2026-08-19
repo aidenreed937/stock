@@ -5,6 +5,7 @@ from typing import TYPE_CHECKING, Any
 if TYPE_CHECKING:
     from stock_data.catalog.service import DataCatalog
     from stock_data.core.factory import create_pipeline, get_shared_fetcher
+    from stock_data.core.runtime import DataRuntimeContext
     from stock_data.core.settings import DataSettings, data_settings
     from stock_data.fetcher.base import BaseDataFetcher
     from stock_data.pipeline.backfill import HistoricalBackfiller
@@ -17,6 +18,7 @@ __all__ = [
     "BaseDataFetcher",
     "DailySyncEngine",
     "DataCatalog",
+    "DataRuntimeContext",
     "DataSettings",
     "DuckDBMarketStore",
     "HistoricalBackfiller",
@@ -32,6 +34,7 @@ _EXPORT_MAP: dict[str, tuple[str, str]] = {
     "DailySyncEngine": ("stock_data.pipeline.sync", "DailySyncEngine"),
     "DataCatalog": ("stock_data.catalog.service", "DataCatalog"),
     "DataSettings": ("stock_data.core.settings", "DataSettings"),
+    "DataRuntimeContext": ("stock_data.core.runtime", "DataRuntimeContext"),
     "DuckDBMarketStore": ("stock_data.storage.duckdb_store", "DuckDBMarketStore"),
     "HistoricalBackfiller": ("stock_data.pipeline.backfill", "HistoricalBackfiller"),
     "MarketDataPipeline": ("stock_data.pipeline.pipeline", "MarketDataPipeline"),

@@ -428,13 +428,6 @@ def _data_limit_sections(facts: pl.DataFrame) -> list[str]:
     return lines
 
 
-def _count_by(facts: pl.DataFrame, column: str) -> dict[str, int]:
-    return {
-        str(row[column]): int(row["len"])
-        for row in facts.group_by(column).len().sort(column).to_dicts()
-    }
-
-
 def _weights_text(weights: dict[str, Any]) -> str:
     parts = []
     for key, value in weights.items():

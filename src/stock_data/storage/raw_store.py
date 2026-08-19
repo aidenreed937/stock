@@ -12,6 +12,7 @@ import polars as pl
 from stock_core.contracts import DatasetKey
 from stock_core.exceptions import DataValidationError
 from stock_core.utils.logger import logger
+from stock_data.core.runtime import DataRuntimeContext
 from stock_data.core.settings import data_settings
 from stock_data.governance.quality.margin_coverage import is_margin_complete
 from stock_data.pipeline.cleaner.date_utils import parse_mixed_date
@@ -97,13 +98,17 @@ class RawDataStorage:
     路径规范: data/raw/{data_source}/{endpoint}/year={YYYY}/month={MM}/{endpoint}_{YYYYMMDD}.parquet
     """
 
-    def __init__(self, base_dir: Path | None = None) -> None:
+    def __init__(
+        self, base_dir: Path | None = None, *, runtime: DataRuntimeContext | None = None
+    ) -> None:
         """初始化 RAW 存储引擎。
 
         Args:
             base_dir: RAW 数据根目录，若为 None 则默认从 data_settings.raw_data_dir 读取。
+            runtime: 可选的统一数据运行时目录上下文。
         """
-        self.base_dir = base_dir if base_dir is not None else data_settings.raw_data_dir
+        active_runtime = runtime or data_settings.runtime_context
+        self.base_dir = base_dir if base_dir is not None else active_runtime.raw_root
         self._batch_mode = False
         self._write_buffer: dict[Path, list[tuple[DatasetKey, pl.DataFrame]]] = {}
         self._replace_paths: set[Path] = set()

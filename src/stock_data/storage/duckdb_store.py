@@ -8,6 +8,7 @@ import polars as pl
 
 from stock_core.constants import BAR_DATASETS
 from stock_core.contracts import DatasetKey
+from stock_data.core.runtime import DataRuntimeContext
 from stock_data.storage.compat import StorageCompat
 from stock_data.storage.duckdb_queries import DuckDBQueryMixin
 from stock_data.storage.partition_store import ParquetPartitionStore
@@ -24,10 +25,14 @@ class DuckDBMarketStore(DuckDBQueryMixin):
     _BAR_DATASETS = BAR_DATASETS
 
     def __init__(
-        self, storage_dir: Path | str | None = None, data_source: str | None = None
+        self,
+        storage_dir: Path | str | None = None,
+        data_source: str | None = None,
+        *,
+        runtime: DataRuntimeContext | None = None,
     ) -> None:
         self.partition_store = ParquetPartitionStore(
-            storage_dir=storage_dir, data_source=data_source
+            storage_dir=storage_dir, data_source=data_source, runtime=runtime
         )
         self.query_engine = DuckDBQueryEngine()
         self.data_source = self.partition_store.data_source

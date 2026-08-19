@@ -3,6 +3,67 @@
 from stock_data.fetcher.tushare.registry_meta import EndpointMeta
 
 FINANCE_ENDPOINTS: dict[str, EndpointMeta] = {
+    "stk_holdertrade": EndpointMeta(
+        api_name="stk_holdertrade",
+        description="上市公司股东及董监高增减持事件",
+        frequency="event",
+        query_mode="ann_date",
+        group="corporate_action",
+        primary_keys=["ts_code", "ann_date", "holder_name", "in_de", "change_vol"],
+        date_columns=["ann_date", "begin_date", "close_date"],
+        required_columns=["ts_code", "ann_date", "holder_name", "in_de", "change_vol"],
+        units={
+            "change_vol": "share",
+            "change_ratio": "percent",
+            "after_share": "share",
+            "after_ratio": "percent",
+            "avg_price": "CNY/share",
+            "total_share": "share",
+        },
+        request_window_days=31,
+        max_rows_per_request=3000,
+        request_fields=(
+            "ts_code,ann_date,holder_name,holder_type,in_de,change_vol,change_ratio,"
+            "after_share,after_ratio,avg_price,total_share,begin_date,close_date"
+        ),
+    ),
+    "repurchase": EndpointMeta(
+        api_name="repurchase",
+        description="上市公司股票回购计划与实施事件",
+        frequency="event",
+        query_mode="ann_date",
+        group="corporate_action",
+        primary_keys=["ts_code", "ann_date", "proc"],
+        date_columns=["ann_date", "end_date", "exp_date"],
+        required_columns=["ts_code", "ann_date", "proc"],
+        units={
+            "vol": "share",
+            "amount": "CNY",
+            "high_limit": "CNY/share",
+            "low_limit": "CNY/share",
+        },
+        request_window_days=31,
+        max_rows_per_request=2000,
+        request_fields=("ts_code,ann_date,end_date,proc,exp_date,vol,amount,high_limit,low_limit"),
+    ),
+    "block_trade": EndpointMeta(
+        api_name="block_trade",
+        description="股票大宗交易明细",
+        frequency="event",
+        query_mode="trade_date",
+        group="corporate_action",
+        primary_keys=["ts_code", "trade_date", "price", "vol", "buyer", "seller"],
+        date_columns=["trade_date"],
+        required_columns=["ts_code", "trade_date", "price", "vol", "amount"],
+        units={
+            "price": "CNY/share",
+            "vol": "10k_share",
+            "amount": "CNY10k",
+        },
+        request_window_days=31,
+        max_rows_per_request=1000,
+        request_fields="ts_code,trade_date,price,vol,amount,buyer,seller",
+    ),
     "income": EndpointMeta(
         api_name="income",
         description="上市公司利润表",

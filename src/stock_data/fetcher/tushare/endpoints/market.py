@@ -192,6 +192,64 @@ MARKET_ENDPOINTS: dict[str, EndpointMeta] = {
         request_window_days=1,
         max_rows_per_request=15000,
     ),
+    "cb_basic": EndpointMeta(
+        api_name="cb_basic",
+        description="可转债基础信息",
+        frequency="static",
+        group="bond_data",
+        primary_keys=["ts_code"],
+        date_columns=["list_date", "delist_date"],
+        required_columns=["ts_code", "bond_short_name", "stk_code", "list_date", "exchange"],
+        units={
+            "par": "CNY/bond",
+            "issue_price": "CNY/bond",
+            "issue_size": "CNY",
+            "remain_size": "CNY",
+            "coupon_rate": "percent",
+            "add_rate": "percent",
+            "first_conv_price": "CNY/share",
+            "conv_price": "CNY/share",
+        },
+        request_fields=(
+            "ts_code,bond_full_name,bond_short_name,cb_code,cb_type,stk_code,stk_short_name,"
+            "maturity,par,issue_price,issue_size,remain_size,value_date,maturity_date,rate_type,"
+            "coupon_rate,add_rate,pay_per_year,list_date,delist_date,exchange,conv_start_date,"
+            "conv_end_date,conv_stop_date,first_conv_price,conv_price,issue_rating,newest_rating,"
+            "rating_comp"
+        ),
+        max_rows_per_request=2000,
+    ),
+    "cb_daily": EndpointMeta(
+        api_name="cb_daily",
+        description="可转债日行情与转股溢价率",
+        frequency="daily",
+        group="bond_data",
+        primary_keys=["ts_code", "trade_date"],
+        date_columns=["trade_date"],
+        required_columns=["ts_code", "trade_date", "close"],
+        units={
+            "pre_close": "CNY/bond",
+            "open": "CNY/bond",
+            "high": "CNY/bond",
+            "low": "CNY/bond",
+            "close": "CNY/bond",
+            "change": "CNY/bond",
+            "pct_chg": "percent",
+            "vol": "hand",
+            "amount": "CNY10k",
+            "bond_value": "CNY/bond",
+            "bond_over_rate": "percent",
+            "cb_value": "CNY/bond",
+            "cb_over_rate": "percent",
+        },
+        query_mode="trade_date",
+        request_window_days=1,
+        max_rows_per_request=2000,
+        request_fields=(
+            "ts_code,trade_date,pre_close,open,high,low,close,change,pct_chg,vol,amount,"
+            "bond_value,bond_over_rate,cb_value,cb_over_rate"
+        ),
+    ),
     "trade_cal": EndpointMeta(
         api_name="trade_cal",
         description="A 股各大交易所开闭市交易日历",

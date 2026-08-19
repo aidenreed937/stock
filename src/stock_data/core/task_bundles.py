@@ -43,6 +43,7 @@ _TASK_BUNDLE_TASKS: dict[str, dict[str, tuple[str, ...]]] = {
             "index_classify",
             "index_member",
         ),
+        "corporate_action_bundle": ("stk_holdertrade", "repurchase", "block_trade"),
     },
     "lixinger": {
         "market_bundle": ("stock_daily_bar", "index_daily_bar"),
@@ -114,6 +115,9 @@ TASK_BUNDLE_ALIASES: dict[tuple[str, str], tuple[str, ...]] = {
     ("tushare", "futures_bundle"): ("fut_index_daily",),
     ("tushare", "options_daily_bundle"): ("opt_daily",),
     ("tushare", "options_static_bundle"): ("opt_basic",),
+    ("tushare", "convertible_bond_daily_bundle"): ("cb_daily",),
+    ("tushare", "convertible_bond_static_bundle"): ("cb_basic",),
+    ("tushare", "convertible_bond_bundle"): ("cb_basic", "cb_daily"),
     ("tushare", "derivatives_bundle"): ("fut_index_daily", "opt_basic", "opt_daily"),
     ("tushare", "macro_periodic_bundle"): (
         "cn_gdp",

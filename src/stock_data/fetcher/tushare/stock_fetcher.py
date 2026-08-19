@@ -116,9 +116,10 @@ class TuShareStockFetcher(BaseDataFetcher):
         is_real_symbol = bool(symbol and (symbol != endpoint))
         if (
             not is_real_symbol
-            and meta.frequency not in ("event", "static")
+            and meta.frequency != "static"
             and endpoint != "trade_cal"
             and start_date != end_date
+            and (meta.request_window_days is not None or meta.frequency not in ("event", "static"))
         ):
             if (end_date - start_date).days >= (meta.request_window_days or 300):
                 return self._fetch_windowed(
