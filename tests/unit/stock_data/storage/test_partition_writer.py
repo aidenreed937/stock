@@ -148,6 +148,36 @@ def test_partition_writer_preserves_optional_legacy_bar_columns(tmp_path: Path) 
     assert merged.filter(pl.col("trade_date") == date(2026, 8, 14))["complexFactor"].item() is None
 
 
+def test_partition_writer_aligns_sw_daily_classification_columns(tmp_path: Path) -> None:
+    writer = ParquetPartitionWriter(data_source="tushare")
+    path = tmp_path / "market=CN" / "sw_daily" / "year=2026" / "month=08" / "data.parquet"
+    existing = pl.DataFrame(
+        {
+            "symbol": ["801010.SI"],
+            "trade_date": [date(2026, 8, 13)],
+            "close": [1500.0],
+            "data_source": ["tushare"],
+            "schema_version": ["v2"],
+        }
+    )
+    incoming = existing.drop("trade_date").with_columns(
+        pl.lit(date(2026, 8, 14)).alias("trade_date"),
+        pl.lit("SW2021").alias("classification"),
+        pl.lit("L1").alias("industry_level"),
+    )
+    path.parent.mkdir(parents=True)
+    existing.write_parquet(path)
+
+    merged = writer.merge_and_save_parquet(path, [incoming], source="tushare")
+
+    assert merged.height == 2
+    assert merged.filter(pl.col("trade_date") == date(2026, 8, 13))["classification"].item() is None
+    assert (
+        merged.filter(pl.col("trade_date") == date(2026, 8, 14))["classification"].item()
+        == "SW2021"
+    )
+
+
 def test_partition_writer_aligns_empty_nested_struct_to_existing_schema(tmp_path: Path) -> None:
     writer = ParquetPartitionWriter(data_source="lixinger")
     path = tmp_path / "market=CN" / "fs_bank" / "data.parquet"

@@ -49,7 +49,7 @@ graph TD
 | **ETF/场内基金日线** | `fund_daily` | `per_symbol` | TuShare | `[ts_code, trade_date]` | 支持场内 ETF 连续交易行情与成交统计 |
 | **ETF 复权因子** | `fund_adj` | `per_symbol` | TuShare | `[ts_code, trade_date]` | **重要**：若标的从未分红除权，源端返回 0 行，系统标记为 `skipped` 而非网络失败 |
 | **ETF 份额与规模** | `etf_share_size` | `per_symbol` | TuShare | `[ts_code, trade_date]` | 记录 ETF 每日份额与资产净值规模变动 |
-| **申万行业日行情** | `sw_daily` | `per_day` | TuShare | `[ts_code, trade_date]` | 每日单次返回 31 个申万一级行业的涨跌幅与成交量快照 |
+| **申万行业日行情** | `sw_daily` | `per_day` | TuShare | `[ts_code, trade_date]` | 每日单次返回可用的申万行业节点（可能包含 L1/L2/L3）；必须用 `index_classify(src=SW2021)` 补充层级，行业分析默认只消费 SW2021 L1 |
 | **每日估值指标** | `daily_basic` | `per_day` | TuShare | `[ts_code, trade_date]` | 全市场 5,300+ 股票当日 PE、PB、换手率、总市值截面 |
 
 ---

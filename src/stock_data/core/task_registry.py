@@ -97,7 +97,6 @@ _EXPLICIT_NON_PARTITIONED: frozenset[str] = frozenset(
         "global_index_daily",
         "financials",
         "balance_sheet",
-        "cashflow",
         "dividends",
         "splits",
         "index_valuation",
@@ -601,6 +600,7 @@ def _derive_task_spec(provider_name: str, requested: str, meta: Any) -> TaskSpec
     if (
         provider_name in ("fred", "lixinger")
         or requested in _EXPLICIT_NON_PARTITIONED
+        or (provider_name == "yfinance" and requested == "cashflow")
         or group in ("macro_data", "basic_info")
         or (
             frequency in ("static", "event")

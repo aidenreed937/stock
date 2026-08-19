@@ -20,6 +20,7 @@ from stock_data.pipeline.normalizer.bar_normalizer import (
 )
 from stock_data.pipeline.normalizer.base import BaseDataNormalizer
 from stock_data.pipeline.normalizer.generic_normalizer import GenericNormalizer
+from stock_data.pipeline.normalizer.sw_daily_enricher import normalize_sw_daily_identity
 from stock_data.pipeline.normalizer.unit_normalizer import UnitNormalizer
 from stock_data.storage.compat import StorageCompat
 from stock_data.storage.duckdb_store import DuckDBMarketStore
@@ -91,6 +92,8 @@ def _process_single_raw_file(file_path: Path, ctx: RepairContext) -> int:
         return 0
 
     raw_df = StorageCompat.normalize_identity_columns(raw_df)
+    if ctx.provider == "tushare" and ctx.dataset == "sw_daily":
+        raw_df = normalize_sw_daily_identity(raw_df)
     unit_df = ctx.unit_norm.normalize_units(raw_df)
     cleaned_df = ctx.cleaner.clean(unit_df)
     if cleaned_df.is_empty():
@@ -163,7 +166,11 @@ def repair_all_raw_to_curated(
         logger.info(f"===> 开始重放清洗落盘: [{prov}/{mkt}/{ds}] (共 {len(files)} 个原始文件)")
         api_name, profile, meta_keys = _resolve_endpoint_meta(prov, ds)
 
-        cleaner = BarDataCleaner() if profile == "bar" else GenericCleaner(primary_keys=meta_keys)
+        cleaner = (
+            BarDataCleaner(allow_null_volume=prov == "tushare" and ds == "sw_daily")
+            if profile == "bar"
+            else GenericCleaner(primary_keys=meta_keys)
+        )
         normalizer = BarDataNormalizer() if profile == "bar" else GenericNormalizer()
         unit_norm = UnitNormalizer(prov, api_name)
 

@@ -26,6 +26,10 @@ from stock_data.pipeline.normalizer.bar_normalizer import (
     normalize_stock_daily_bar_curated_schema,
 )
 from stock_data.pipeline.normalizer.base import BaseDataNormalizer
+from stock_data.pipeline.normalizer.sw_daily_enricher import (
+    enrich_sw_daily_frame,
+    normalize_sw_daily_identity,
+)
 from stock_data.pipeline.normalizer.unit_normalizer import UnitNormalizer
 from stock_data.storage.compat import StorageCompat
 from stock_data.storage.duckdb_store import DuckDBMarketStore
@@ -283,12 +287,13 @@ class CleanerStage:
     """清洗阶段：负责单位转换与脏数据清洗/隔离。"""
 
     def __init__(self, cleaner: BaseDataCleaner, data_source: str) -> None:
-        self.cleaner = cleaner
-        self.data_source = data_source
+        self.cleaner, self.data_source = cleaner, data_source
 
     def clean(
         self, raw_df: pl.DataFrame, api_name: str, dataset: str, request_id: str
     ) -> pl.DataFrame:
+        if self.data_source == "tushare" and dataset == "sw_daily":
+            raw_df = normalize_sw_daily_identity(raw_df)
         unit_normalizer = UnitNormalizer(self.data_source, api_name)
         unit_df, unit_rejected = unit_normalizer.normalize_units_with_quarantine(raw_df)
 
@@ -320,9 +325,14 @@ class CleanerStage:
 class NormalizerStage:
     """标准化与血统注入阶段：列名映射、类型转换与数据血统注入。"""
 
-    def __init__(self, normalizer: BaseDataNormalizer, data_source: str) -> None:
-        self.normalizer = normalizer
-        self.data_source = data_source
+    def __init__(
+        self,
+        normalizer: BaseDataNormalizer,
+        data_source: str,
+        sw_daily_classification: pl.DataFrame | None = None,
+    ) -> None:
+        self.normalizer, self.data_source = normalizer, data_source
+        self.sw_daily_classification = sw_daily_classification
 
     def normalize(
         self,
@@ -358,6 +368,8 @@ class NormalizerStage:
                 pl.lit("v2").alias("schema_version"),
             ]
         )
+        if self.data_source == "tushare" and dataset == "sw_daily":
+            decorated = enrich_sw_daily_frame(decorated, self.sw_daily_classification)
         if self.data_source == "tushare" and dataset == "stock_daily_bar":
             return normalize_stock_daily_bar_curated_schema(decorated)
         return decorated

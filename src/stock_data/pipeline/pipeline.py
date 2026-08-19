@@ -1,6 +1,7 @@
 """行情数据同步与 2-Tier ETL Pipeline 编排管道 (MarketDataPipeline)。"""
 
 from datetime import date
+from pathlib import Path
 
 import polars as pl
 
@@ -55,7 +56,8 @@ class MarketDataPipeline:
             self.cleaner = cleaner
         elif profile == "bar":
             self.cleaner = BarDataCleaner(
-                listing_dates=BarDataCleaner.load_listing_dates(data_source)
+                listing_dates=BarDataCleaner.load_listing_dates(data_source),
+                allow_null_volume=self.endpoint == "sw_daily",
             )
         elif profile == "macro":
             self.cleaner = MacroDataCleaner()
@@ -76,12 +78,47 @@ class MarketDataPipeline:
         if callable(bind_data_source):
             bind_data_source(data_source)
         self.raw_store = raw_store if raw_store is not None else RawDataStorage()
+        self.sw_daily_classification = self._load_sw_daily_classification()
 
         # 初始化单职责流水线阶段
         self.fetcher_stage = FetcherStage(self.fetcher, self.raw_store, self.data_source)
         self.cleaner_stage = CleanerStage(self.cleaner, self.data_source)
-        self.normalizer_stage = NormalizerStage(self.normalizer, self.data_source)
+        self.normalizer_stage = NormalizerStage(
+            self.normalizer,
+            self.data_source,
+            sw_daily_classification=self.sw_daily_classification,
+        )
         self.storage_stage = CuratedStorageStage(self.store)
+
+    def _load_sw_daily_classification(self) -> pl.DataFrame | None:
+        """加载本地 SW2021 分类字典；缺失时由下游显式标记为不可用。"""
+        if self.data_source != "tushare" or self.endpoint != "sw_daily":
+            return None
+        try:
+            from stock_data.catalog import DataCatalog
+
+            storage_dir = getattr(self.store, "storage_dir", None)
+            if storage_dir is not None:
+                storage_dir = Path(storage_dir)
+                if storage_dir.name == self.data_source:
+                    storage_dir = storage_dir.parent
+            return DataCatalog(
+                data_source="tushare",
+                storage_dir=storage_dir,
+            ).load_dataset(
+                "index_classify",
+                columns=[
+                    "index_code",
+                    "level",
+                    "industry_code",
+                    "industry_name",
+                    "parent_code",
+                    "src",
+                ],
+            )
+        except Exception as exc:
+            logger.debug(f"加载 SW2021 行业分类字典失败，保留未分类状态: {exc}")
+            return pl.DataFrame()
 
     @staticmethod
     def _endpoint_quality_profile(data_source: str, endpoint: str) -> str:

@@ -1,5 +1,7 @@
 """Backfill CLI 单元测试。"""
 
+import threading
+import time
 from datetime import date
 from pathlib import Path
 from unittest.mock import MagicMock, patch
@@ -201,6 +203,75 @@ def test_execute_planned_tasks_reuses_pipeline_without_reordering_tasks() -> Non
     assert instances[1].pipeline.store.committed == 1
     assert instances[1].pipeline.raw_store.committed == 1
     assert [s["symbol"] for s in summaries] == ["000001.SZ", "000300.SH", "000002.SZ"]
+
+
+def test_execute_planned_tasks_parallelizes_per_symbol_tasks_without_reordering() -> None:
+    class BatchTarget:
+        def __init__(self) -> None:
+            self.committed = 0
+
+        def enable_batch_mode(self) -> None:
+            pass
+
+        def commit(self) -> None:
+            self.committed += 1
+
+    class Pipeline:
+        def __init__(self) -> None:
+            self.store = BatchTarget()
+            self.raw_store = BatchTarget()
+
+    active = 0
+    max_active = 0
+    active_lock = threading.Lock()
+
+    class Backfiller:
+        def __init__(self, **kwargs: object) -> None:
+            self.symbol = str(kwargs.get("symbol") or "")
+            self.pipeline = kwargs.get("pipeline") or Pipeline()
+            self.fetcher = kwargs.get("fetcher") or object()
+
+        def backfill_range(
+            self,
+            start_date: date,
+            end_date: date,
+            *,
+            force_refresh: bool = False,
+            max_workers: int = 1,
+        ) -> dict[str, int]:
+            nonlocal active, max_active
+            with active_lock:
+                active += 1
+                max_active = max(max_active, active)
+            time.sleep(0.03)
+            with active_lock:
+                active -= 1
+            return {
+                "total_days": (end_date - start_date).days + 1,
+                "open_days": 1,
+                "synced_days": 1,
+                "skipped_days": 0,
+                "failed_days": 0,
+            }
+
+    tasks = [
+        BackfillTask(
+            data_source="tushare",
+            endpoint="income",
+            symbol=symbol,
+            start_date=date(2026, 8, 10),
+            end_date=date(2026, 8, 10),
+            fetch_mode="per_symbol",
+            is_single_sync=False,
+        )
+        for symbol in ("000001.SZ", "000002.SZ")
+    ]
+
+    with patch("stock_data.pipeline.backfill.HistoricalBackfiller", Backfiller):
+        summaries = _execute_planned_tasks(tasks, force_refresh=True, workers=2)
+
+    assert max_active == 2
+    assert [summary["symbol"] for summary in summaries] == ["000001.SZ", "000002.SZ"]
 
 
 def test_backfill_cli_universe_resolution() -> None:

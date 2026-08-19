@@ -1,9 +1,7 @@
 """Curated 黄金表数值分布与数量级阶跃异动审计模块。
 
-已知限制:
-- 阶跃检测基于全市场按日聚合的均值，局部标的/单一交易所的单位错位会被大多数未受损行稀释而漏检。
-- 分布审计只对"相对突变"敏感（负值、数量级阶跃），无法发现从入库首日即整体错量的持续错误，
-  因其缺少外部基准参考。
+已知限制：阶跃检测基于全市场按日聚合均值，局部标的/单一交易所的单位错位可能被稀释而漏检；
+分布审计只对相对突变敏感，无法发现入库首日即整体错量的持续错误，因缺少外部基准参考。
 """
 
 from __future__ import annotations
@@ -11,13 +9,14 @@ from __future__ import annotations
 from dataclasses import dataclass, field
 from datetime import date
 from pathlib import Path
-from typing import Any
+from typing import Any, cast
 
 import polars as pl
 
 from stock_core.utils.logger import logger
 from stock_data.catalog import DataCatalog
 from stock_data.core.settings import data_settings
+from stock_data.governance.audit.sw_daily_scope import filter_sw_daily_scope
 from stock_data.storage.compat import StorageCompat
 
 DEFAULT_DATASET_NUMERIC_COLS: dict[str, list[str]] = {
@@ -273,6 +272,10 @@ class CuratedDistributionAuditor:
         if end_date is not None:
             df = df.filter(pl.col("trade_date") <= end_date)
 
+        scope_issue: str | None = None
+        if dataset_name == "sw_daily" and data_source == "tushare":
+            df, scope_issue = filter_sw_daily_scope(df, self.base_dir)
+
         if df.is_empty():
             logger.warning(
                 f"数据集 [{dataset_name}] 在目标时间区间内无有效数据，按 fail-closed 视为未通过"
@@ -297,18 +300,24 @@ class CuratedDistributionAuditor:
         )
         target_cols = [c for c in target_cols if c in df.columns]
         dates = df["trade_date"].drop_nulls()
-        min_date, max_date = dates.min(), dates.max()
+        min_date = cast("date | None", dates.min())
+        max_date = cast("date | None", dates.max())
 
         report = DistributionAuditReport(
-            dataset_name=dataset_name,
-            data_source=data_source,
-            total_rows=len(df),
-            total_dates=dates.n_unique(),
-            date_range=(
-                min_date if isinstance(min_date, date) else None,
-                max_date if isinstance(max_date, date) else None,
-            ),
+            dataset_name, data_source, len(df), dates.n_unique(), (min_date, max_date)
         )
+
+        if scope_issue and min_date is not None:
+            report.anomalies.append(
+                DistributionAnomaly(
+                    min_date,
+                    "classification",
+                    "SCOPE_INCOMPLETE",
+                    "ERROR",
+                    len(df),
+                    detail=scope_issue,
+                )
+            )
 
         for col in target_cols:
             if df[col].drop_nulls().is_empty():

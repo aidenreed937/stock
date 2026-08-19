@@ -11,25 +11,35 @@ from stock_data.core.settings import data_settings
 from stock_data.pipeline.cleaner.base import BaseDataCleaner
 
 
+def _parse_bar_date(value: object) -> date | None:
+    if isinstance(value, datetime):
+        return value.date()
+    if isinstance(value, date):
+        return value
+    text = str(value).strip().replace("-", "")
+    if len(text) >= 8 and text[:8].isdigit():
+        try:
+            return date(int(text[:4]), int(text[4:6]), int(text[6:8]))
+        except ValueError:
+            return None
+    return None
+
+
 class BarDataCleaner(BaseDataCleaner):
     """日 K 线数据清洗器，负责过滤逻辑错误记录、与空值剔除。"""
 
-    def __init__(self, listing_dates: Mapping[str, date] | None = None) -> None:
+    def __init__(
+        self,
+        listing_dates: Mapping[str, date] | None = None,
+        *,
+        allow_null_volume: bool = False,
+    ) -> None:
         self.listing_dates = dict(listing_dates or {})
+        self.allow_null_volume = allow_null_volume
 
     @staticmethod
     def _date_value(value: object) -> date | None:
-        if isinstance(value, datetime):
-            return value.date()
-        if isinstance(value, date):
-            return value
-        text = str(value).strip().replace("-", "")
-        if len(text) >= 8 and text[:8].isdigit():
-            try:
-                return date(int(text[:4]), int(text[4:6]), int(text[6:8]))
-            except ValueError:
-                return None
-        return None
+        return _parse_bar_date(value)
 
     def _exclude_pre_listing(self, df: pl.DataFrame) -> tuple[pl.DataFrame, pl.DataFrame]:
         """隔离已知上市日前记录；缺少上市日的标的保留并交由审计提示。"""
@@ -191,7 +201,10 @@ class BarDataCleaner(BaseDataCleaner):
             & (pl.col("close") > 0)
         )
         if vol_col:
-            filter_expr = filter_expr & (pl.col(vol_col) >= 0)
+            volume_valid = pl.col(vol_col) >= 0
+            if self.allow_null_volume:
+                volume_valid = pl.col(vol_col).is_null() | volume_valid
+            filter_expr = filter_expr & volume_valid
 
         cleaned_df = cleaned_df.filter(filter_expr)
 

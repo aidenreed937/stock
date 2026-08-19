@@ -86,6 +86,58 @@ def test_clean_partition_sw_daily(tmp_path: Path) -> None:
     assert sym801980["amount"][0] == 2_000_000_000.0
 
 
+def test_clean_partition_sw_daily_enriches_sw2021_scope(tmp_path: Path) -> None:
+    cur_file = tmp_path / "sw_cur.parquet"
+    pl.DataFrame(
+        {
+            "symbol": ["801010.SI", "801012.SI", "801001.SI"],
+            "trade_date": ["2026-01-05"] * 3,
+            "close": [1500.0, 1510.0, 1520.0],
+        }
+    ).write_parquet(cur_file)
+    classification = pl.DataFrame(
+        {
+            "index_code": ["801010.SI", "801012.SI"],
+            "level": ["L1", "L2"],
+            "industry_code": ["110000", "110100"],
+            "src": ["SW2021", "SW2021"],
+        }
+    )
+
+    res = clean_partition_sw_daily(cur_file, classification_map=classification, apply=True)
+
+    assert res["changed"] is True
+    enriched = pl.read_parquet(cur_file)
+    assert enriched["industry_level"].to_list() == [None, "L1", "L2"]
+    assert enriched["classification_status"].to_list() == ["unmapped", "mapped", "mapped"]
+
+
+def test_clean_partition_sw_daily_preserves_partition_without_symbol(tmp_path: Path) -> None:
+    cur_file = tmp_path / "sw_cur.parquet"
+    pl.DataFrame(
+        {
+            "trade_date": ["2013-09-03", "2013-09-04"],
+            "close": [100.0, 101.0],
+            "request_id": ["repair_run", "repair_run"],
+        }
+    ).write_parquet(cur_file)
+    classification = pl.DataFrame(
+        {
+            "index_code": ["801010.SI"],
+            "level": ["L1"],
+            "industry_code": ["110000"],
+            "src": ["SW2021"],
+        }
+    )
+
+    res = clean_partition_sw_daily(cur_file, classification_map=classification, apply=True)
+
+    assert res["before"] == 2
+    assert res["after"] == 2
+    cleaned = pl.read_parquet(cur_file)
+    assert cleaned["classification_status"].to_list() == ["unmapped", "unmapped"]
+
+
 def test_reconciliation_filter_target_date_multi_format() -> None:
     df = pl.DataFrame(
         {

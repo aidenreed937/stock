@@ -5,6 +5,7 @@
 
 import argparse
 import sys
+from concurrent.futures import ThreadPoolExecutor, as_completed
 from datetime import date, datetime, timedelta
 from pathlib import Path
 from typing import Any
@@ -13,6 +14,7 @@ import yaml
 
 from stock_core.config.loader import load_data_config
 from stock_core.utils.logger import logger
+from stock_data.core.task_registry import is_per_symbol_task
 from stock_data.pipeline.planner import BackfillPlanner, BackfillTask
 
 
@@ -83,11 +85,13 @@ def _format_summary_table(summaries: list[dict[str, Any]]) -> None:
 def _execute_planned_tasks(
     tasks: list[BackfillTask], *, force_refresh: bool, workers: int
 ) -> list[dict[str, Any]]:
-    """以攒批事务模式驱动执行规划任务。"""
+    """以攒批事务模式驱动执行规划任务，按标的任务支持波内并发。"""
     import stock_data.pipeline.backfill as backfill_module
 
-    summaries: list[dict[str, Any]] = []
     batch_contexts: dict[tuple[str, str], dict[str, Any]] = {}
+    task_groups: dict[tuple[str, str], list[tuple[int, BackfillTask]]] = {}
+    backfillers_by_index: dict[int, Any] = {}
+    summaries_by_index: dict[int, dict[str, Any]] = {}
     try:
         for idx, task in enumerate(tasks, 1):
             context_key = (task.data_source, task.endpoint)
@@ -98,24 +102,58 @@ def _execute_planned_tasks(
                 batch_contexts[context_key] = batch_context
             else:
                 batch_context["task_count"] += 1
-                backfiller = _create_backfiller(
-                    backfill_module,
-                    task,
-                    pipeline=batch_context["pipeline"],
-                    fetcher=batch_context["fetcher"],
+                backfiller = None
+            backfillers_by_index[idx] = backfiller
+            task_groups.setdefault(context_key, []).append((idx, task))
+
+        for context_key, grouped_tasks in task_groups.items():
+            batch_context = batch_contexts[context_key]
+            data_source, endpoint = context_key
+            can_parallel = workers > 1 and is_per_symbol_task(data_source, endpoint)
+            if can_parallel and len(grouped_tasks) > 1:
+                group_workers = min(workers, 8)
+                logger.info(
+                    f"任务组 [{data_source}/{endpoint}] 启用波内并发，"
+                    f"Worker 数: {group_workers}，任务数: {len(grouped_tasks)}"
                 )
-            summaries.append(
-                _execute_one_task(
-                    backfiller,
-                    task,
-                    task_position=(idx, len(tasks)),
-                    force_refresh=force_refresh,
-                    workers=workers,
-                )
-            )
+                with ThreadPoolExecutor(max_workers=group_workers) as executor:
+                    futures = {
+                        executor.submit(
+                            _execute_one_task,
+                            backfillers_by_index[idx]
+                            or _create_backfiller(
+                                backfill_module,
+                                task,
+                                pipeline=batch_context["pipeline"],
+                                fetcher=batch_context["fetcher"],
+                            ),
+                            task,
+                            task_position=(idx, len(tasks)),
+                            force_refresh=force_refresh,
+                            workers=workers,
+                        ): idx
+                        for idx, task in grouped_tasks
+                    }
+                    for future in as_completed(futures):
+                        summaries_by_index[futures[future]] = future.result()
+            else:
+                for idx, task in grouped_tasks:
+                    summaries_by_index[idx] = _execute_one_task(
+                        backfillers_by_index[idx]
+                        or _create_backfiller(
+                            backfill_module,
+                            task,
+                            pipeline=batch_context["pipeline"],
+                            fetcher=batch_context["fetcher"],
+                        ),
+                        task,
+                        task_position=(idx, len(tasks)),
+                        force_refresh=force_refresh,
+                        workers=workers,
+                    )
     finally:
         _commit_batch_contexts(batch_contexts)
-    return summaries
+    return [summaries_by_index[idx] for idx in range(1, len(tasks) + 1)]
 
 
 def _create_backfiller(

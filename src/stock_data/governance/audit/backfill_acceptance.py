@@ -23,6 +23,18 @@ from stock_data.governance.audit.raw_gap import (
 
 _KNOWN_PROVIDERS = {"tushare", "lixinger", "yfinance", "fred", "alphavantage"}
 
+_SYMBOL_ALIASES = ("symbol", "ts_code", "stockCode", "index_id")
+_TRADE_DATE_ALIASES = ("trade_date", "date", "Date")
+_KEY_ALIASES = {
+    "symbol": _SYMBOL_ALIASES,
+    "ts_code": _SYMBOL_ALIASES,
+    "stockCode": _SYMBOL_ALIASES,
+    "index_id": _SYMBOL_ALIASES,
+    "trade_date": _TRADE_DATE_ALIASES,
+    "date": _TRADE_DATE_ALIASES,
+    "Date": _TRADE_DATE_ALIASES,
+}
+
 
 def _keys(endpoint: str, columns: list[str], data_source: str = "tushare") -> list[str]:
     try:
@@ -40,16 +52,19 @@ def _keys(endpoint: str, columns: list[str], data_source: str = "tushare") -> li
             return [
                 aliases.get(key, key)
                 for key in meta.primary_keys
-                if key in columns or (key in aliases and aliases[key] in columns)
+                if key in columns or any(alias in columns for alias in _KEY_ALIASES.get(key, ()))
             ]
         if task.dataset in {"stock_daily_bar", "index_daily_bar"}:
             return [key for key in ("symbol", "trade_date") if key in columns]
     except Exception:
         pass
     return [
-        key
-        for key in ("symbol", "ts_code", "stockCode", "trade_date", "date", "Date")
-        if key in columns
+        canonical
+        for canonical, aliases in (
+            ("symbol", _SYMBOL_ALIASES),
+            ("trade_date", _TRADE_DATE_ALIASES),
+        )
+        if any(alias in columns for alias in aliases)
     ]
 
 
@@ -61,16 +76,12 @@ def _key_frame(endpoint: str, frame: pl.DataFrame, data_source: str = "tushare")
         source: str | None
         if key == "symbol":
             source = next(
-                (
-                    column
-                    for column in ("symbol", "ts_code", "stockCode")
-                    if column in frame.columns
-                ),
+                (column for column in _SYMBOL_ALIASES if column in frame.columns),
                 None,
             )
         elif key == "trade_date":
             source = next(
-                (column for column in ("trade_date", "date", "Date") if column in frame.columns),
+                (column for column in _TRADE_DATE_ALIASES if column in frame.columns),
                 None,
             )
         else:
@@ -166,7 +177,7 @@ def _sample_key_frame(frame: pl.DataFrame) -> list[str]:
 def _normalize_key_frame(frame: pl.DataFrame) -> pl.DataFrame:
     """统一主键中的日期格式，确保源端紧凑日期可与 Curated 对齐。"""
     normalized = frame
-    for key in ("trade_date", "end_date", "suspend_date"):
+    for key in ("trade_date", "ann_date", "end_date", "suspend_date"):
         if key in normalized.columns:
             normalized = normalized.with_columns(
                 pl.col(key)

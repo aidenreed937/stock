@@ -8,6 +8,59 @@ import polars as pl
 from stock_data.governance.audit.distribution_audit import CuratedDistributionAuditor
 
 
+def test_curated_distribution_auditor_scopes_enriched_sw_daily_to_sw2021_l1(
+    tmp_path: Path,
+) -> None:
+    ds_dir = tmp_path / "tushare" / "market=CN" / "sw_daily" / "year=2026" / "month=08"
+    ds_dir.mkdir(parents=True)
+    df = pl.DataFrame(
+        {
+            "symbol": ["801010.SI", "801012.SI"],
+            "trade_date": [date(2026, 8, 11), date(2026, 8, 11)],
+            "classification": ["SW2021", "SW2021"],
+            "industry_level": ["L1", "L2"],
+            "amount": [1.0e10, 1.0e16],
+            "volume": [1.0e6, 1.0e6],
+            "close": [1000.0, 1000.0],
+        }
+    )
+    df.write_parquet(ds_dir / "data.parquet")
+
+    report = CuratedDistributionAuditor(base_dir=tmp_path).audit_dataset(
+        "sw_daily", data_source="tushare"
+    )
+
+    assert report.passed is True
+    assert report.total_rows == 1
+    assert report.columns_summary["amount"].mean == 1.0e10
+
+
+def test_curated_distribution_auditor_excludes_low_l1_coverage_days(
+    tmp_path: Path,
+) -> None:
+    ds_dir = tmp_path / "tushare" / "market=CN" / "sw_daily" / "year=2013" / "month=01"
+    ds_dir.mkdir(parents=True)
+    symbols = [f"801{i:03d}.SI" for i in range(10)]
+    df = pl.DataFrame(
+        {
+            "symbol": [*symbols, symbols[0], *symbols],
+            "trade_date": [date(2013, 1, 2)] * 10 + [date(2013, 1, 3)] + [date(2013, 1, 4)] * 10,
+            "classification": ["SW2021"] * 21,
+            "industry_level": ["L1"] * 21,
+            "amount": [1.0e10] * 10 + [1.0e8] + [1.1e10] * 10,
+        }
+    )
+    df.write_parquet(ds_dir / "data.parquet")
+
+    report = CuratedDistributionAuditor(base_dir=tmp_path).audit_dataset(
+        "sw_daily", data_source="tushare"
+    )
+
+    assert report.passed is True
+    assert report.total_rows == 20
+    assert report.total_dates == 2
+
+
 def test_curated_distribution_auditor_clean_data(tmp_path: Path) -> None:
     """测试在完全正常的数据集上，审计器通过并输出统计量。"""
     # 构造 mock parquet 目录

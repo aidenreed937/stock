@@ -5,7 +5,11 @@ from pathlib import Path
 
 import polars as pl
 
-from stock_analytics.pipelines.industry_structure.panel import build_industry_panel
+from stock_analytics.pipelines.industry_structure.panel import (
+    _industry_daily_frame,
+    build_industry_panel,
+)
+from stock_data.catalog import DataCatalog
 from stock_reporting.interpretation.industry_structure.config import (
     FundamentalBlendConfig,
     IndustryStructureConfig,
@@ -52,6 +56,26 @@ def test_build_industry_panel_adds_fast_fundamental_fields(tmp_path: Path) -> No
     assert coal["large_money_net_inflow_share_20d"] == 0.8
     assert coal["money_net_inflow_share_5d"] == 1.0
     assert bank["money_net_inflow_share_20d"] == -0.5
+
+
+def test_industry_daily_frame_consumes_explicit_sw2021_l1_scope(tmp_path: Path) -> None:
+    storage_dir = tmp_path / "curated"
+    _write_index_classify(storage_dir)
+    catalog = DataCatalog(data_source="tushare", storage_dir=storage_dir)
+    frame = pl.DataFrame(
+        {
+            "symbol": ["801001.SI", "801012.SI", "851923.SI"],
+            "trade_date": [date(2026, 8, 14)] * 3,
+            "close": [10.0, 11.0, 12.0],
+            "amount": [100.0, 200.0, 300.0],
+            "classification": ["SW2021", "SW2021", "SW2021"],
+            "industry_level": ["L1", "L2", "L3"],
+        }
+    )
+
+    result = _industry_daily_frame(frame, _config(), catalog)
+
+    assert result["industry_code"].to_list() == ["801001.SI"]
 
 
 def _config() -> IndustryStructureConfig:

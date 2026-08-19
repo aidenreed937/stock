@@ -12,6 +12,7 @@ import polars as pl
 
 from stock_core.utils.logger import logger
 from stock_data.pipeline.cleaner.date_utils import parse_mixed_date
+from stock_data.pipeline.normalizer.sw_daily_enricher import enrich_sw_daily_frame
 
 _CURATED_DIR = Path("data/curated/tushare/market=CN/sw_daily")
 
@@ -20,10 +21,34 @@ def _is_artifact(path: Path) -> bool:
     return path.name.endswith((".bak.parquet", ".tmp.parquet", ".migration.tmp.parquet"))
 
 
+def _find_classification_path(curated_root: Path) -> Path | None:
+    """在 sw_daily 同级的 Curated 目录中定位行业分类字典。"""
+    for parent in (curated_root, *curated_root.parents):
+        candidate = parent / "index_classify" / "data.parquet"
+        if candidate.exists():
+            return candidate
+    return None
+
+
+def _load_classification_frame(
+    curated_root: Path,
+    classification_path: Path | None = None,
+) -> pl.DataFrame | None:
+    path = classification_path or _find_classification_path(curated_root)
+    if path is None:
+        return None
+    try:
+        return pl.read_parquet(path)
+    except Exception as exc:
+        logger.warning(f"读取申万行业分类字典失败，跳过层级补充 [{path}]: {exc}")
+        return None
+
+
 def clean_partition_sw_daily(
     curated_path: Path,
     *,
     apply: bool = False,
+    classification_map: pl.DataFrame | None = None,
 ) -> dict[str, Any]:
     """清洗单个分区的 sw_daily 数据。"""
     df = pl.read_parquet(curated_path)
@@ -47,23 +72,37 @@ def clean_partition_sw_daily(
 
     # 3. 按 (symbol, trade_date) 去重
     # 优先保留非 repair_run 记录（即 legacy 原始记录，字段更全）
-    if "request_id" in cleaned.columns:
-        cleaned = (
-            cleaned.with_columns(
-                (pl.col("request_id") != "repair_run").cast(pl.UInt8).alias("_priority")
+    if "symbol" in cleaned.columns:
+        if "request_id" in cleaned.columns:
+            cleaned = (
+                cleaned.with_columns(
+                    (pl.col("request_id") != "repair_run").cast(pl.UInt8).alias("_priority")
+                )
+                .sort(["symbol", "trade_date", "_priority"])
+                .unique(subset=["symbol", "trade_date"], keep="last", maintain_order=True)
+                .drop("_priority")
             )
-            .sort(["symbol", "trade_date", "_priority"])
-            .unique(subset=["symbol", "trade_date"], keep="last", maintain_order=True)
-            .drop("_priority")
-        )
-    else:
-        cleaned = cleaned.sort(["symbol", "trade_date"]).unique(
-            subset=["symbol", "trade_date"], keep="last", maintain_order=True
-        )
+        else:
+            cleaned = cleaned.sort(["symbol", "trade_date"]).unique(
+                subset=["symbol", "trade_date"], keep="last", maintain_order=True
+            )
+
+    if classification_map is not None:
+        cleaned = enrich_sw_daily_frame(cleaned, classification_map)
 
     after_count = len(cleaned)
     removed_count = before_count - after_count
     has_changes = not cleaned.equals(df)
+    mapped_count = (
+        cleaned.filter(pl.col("classification_status") == "mapped").height
+        if "classification_status" in cleaned.columns
+        else 0
+    )
+    unmapped_count = (
+        cleaned.filter(pl.col("classification_status") == "unmapped").height
+        if "classification_status" in cleaned.columns
+        else 0
+    )
 
     if apply and has_changes:
         tmp = curated_path.with_suffix(".tmp.parquet")
@@ -79,6 +118,8 @@ def clean_partition_sw_daily(
         "after": after_count,
         "removed": removed_count,
         "changed": has_changes,
+        "mapped": mapped_count,
+        "unmapped": unmapped_count,
     }
 
 
@@ -86,9 +127,14 @@ def repair_all_sw_daily(
     curated_root: str | Path = _CURATED_DIR,
     *,
     apply: bool = False,
+    classification_path: str | Path | None = None,
 ) -> dict[str, Any]:
     """遍历并修复全量 sw_daily 数据。"""
     cur_base = Path(curated_root)
+    classification_map = _load_classification_frame(
+        cur_base,
+        Path(classification_path) if classification_path is not None else None,
+    )
     files = (
         sorted([p for p in cur_base.rglob("*.parquet") if not _is_artifact(p)])
         if cur_base.exists()
@@ -98,20 +144,25 @@ def repair_all_sw_daily(
     total_before = 0
     total_after = 0
     total_removed = 0
+    total_mapped = 0
+    total_unmapped = 0
     changed_files = 0
 
     for path in files:
-        res = clean_partition_sw_daily(path, apply=apply)
+        res = clean_partition_sw_daily(path, apply=apply, classification_map=classification_map)
         total_before += res["before"]
         total_after += res["after"]
         total_removed += res["removed"]
+        total_mapped += res.get("mapped", 0)
+        total_unmapped += res.get("unmapped", 0)
         if res.get("changed", False) or res["removed"] > 0:
             changed_files += 1
 
     logger.info(
         f"sw_daily 修复完成 [apply={apply}]: 处理文件 {len(files)} 个, "
         f"影响文件 {changed_files} 个, 总行数: {total_before:,} -> {total_after:,}, "
-        f"剔除重复行: {total_removed:,}"
+        f"剔除重复行: {total_removed:,}, SW2021 已映射: {total_mapped:,}, "
+        f"未映射: {total_unmapped:,}"
     )
 
     return {
@@ -120,7 +171,16 @@ def repair_all_sw_daily(
         "before": total_before,
         "after": total_after,
         "removed": total_removed,
+        "mapped": total_mapped,
+        "unmapped": total_unmapped,
         "applied": apply,
+        "classification_dictionary": str(
+            Path(classification_path)
+            if classification_path is not None
+            else _find_classification_path(cur_base)
+        )
+        if classification_map is not None
+        else None,
     }
 
 
@@ -136,9 +196,18 @@ def main() -> None:
         action="store_true",
         help="执行实际写入与替换备份 (默认只读预览)",
     )
+    parser.add_argument(
+        "--classification-path",
+        default=None,
+        help="SW2021 index_classify Parquet 路径，默认从 sw_daily 同级目录自动发现",
+    )
     args = parser.parse_args()
 
-    repair_all_sw_daily(args.curated_root, apply=args.apply)
+    repair_all_sw_daily(
+        args.curated_root,
+        apply=args.apply,
+        classification_path=args.classification_path,
+    )
 
 
 if __name__ == "__main__":

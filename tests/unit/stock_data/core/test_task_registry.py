@@ -32,6 +32,8 @@ def test_is_task_partitioned_rules() -> None:
     assert is_task_partitioned("tushare", "adj_factor")
     assert is_task_partitioned("tushare", "stk_limit")
     assert is_task_partitioned("tushare", "limit_list_d")
+    for statement in ("income", "fina_indicator", "balancesheet", "cashflow"):
+        assert is_task_partitioned("tushare", statement)
 
 
 def test_is_per_symbol_task_rules() -> None:
@@ -39,6 +41,8 @@ def test_is_per_symbol_task_rules() -> None:
     assert is_per_symbol_task("tushare", "index_daily")
     assert is_per_symbol_task("tushare", "income")
     assert is_per_symbol_task("tushare", "fina_indicator")
+    assert is_per_symbol_task("tushare", "balancesheet")
+    assert is_per_symbol_task("tushare", "cashflow")
     assert is_per_symbol_task("tushare", "margin_detail")
     assert is_per_symbol_task("fred", "CPIAUCSL")
     assert is_per_symbol_task("yfinance", "stock_daily_bar")
@@ -183,6 +187,7 @@ def test_tushare_task_bundles() -> None:
         "income",
         "fina_indicator",
         "balancesheet",
+        "cashflow",
     )
     assert resolve_bundle("tushare", "corporate_action_bundle").tasks == (
         "stk_holdertrade",
@@ -310,7 +315,6 @@ def test_task_bundles_cover_registered_tasks_except_explicit_aggregate_routes() 
             "opt_basic",
             "opt_daily",
             "trade_cal",
-            "cashflow",
             "hk_hold",
             "margin",
             "margin_detail",

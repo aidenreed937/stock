@@ -118,6 +118,20 @@ def run_sw_daily_audit(
     l1_match_count = len(l1_symbols)
     l1_coverage_rate = (l1_match_count / expected_l1_count * 100.0) if expected_l1_count else 0.0
 
+    classification_counts: dict[str, int] = {}
+    if {"classification", "industry_level"}.issubset(target_sw.columns):
+        classification_counts = {
+            f"{row['classification']}:{row['industry_level']}": row["len"]
+            for row in target_sw.group_by(["classification", "industry_level"]).len().to_dicts()
+        }
+        unmapped_count = (
+            target_sw.filter(pl.col("classification_status") == "unmapped").height
+            if "classification_status" in target_sw.columns
+            else 0
+        )
+    else:
+        unmapped_count = len(actual_symbols - expected_l1_symbols)
+
     if not quiet:
         print("\n" + "=" * 65)
         print(f"       【sw_daily 申万行业日行情对账报告 ({target_date})】")
@@ -138,4 +152,6 @@ def run_sw_daily_audit(
         "l1_coverage_rate": l1_coverage_rate,
         "total_industry_count": len(actual_symbols),
         "actual_symbols": sorted(list(actual_symbols)),
+        "classification_counts": classification_counts,
+        "unmapped_count": unmapped_count,
     }

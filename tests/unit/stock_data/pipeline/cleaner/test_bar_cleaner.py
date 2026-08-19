@@ -110,6 +110,26 @@ def test_bar_cleaner_imputes_missing_high_low() -> None:
     assert row2["low"][0] == 40.0  # min(40.0, 42.0)
 
 
+def test_bar_cleaner_can_preserve_null_volume_for_index_data() -> None:
+    cleaner = BarDataCleaner(allow_null_volume=True)
+    df = pl.DataFrame(
+        {
+            "symbol": ["801980.SI"],
+            "trade_date": ["20130104"],
+            "open": [3467.65],
+            "high": [3485.71],
+            "low": [3386.56],
+            "close": [3393.80],
+            "volume": [None],
+        }
+    )
+
+    cleaned = cleaner.clean(df)
+
+    assert len(cleaned) == 1
+    assert cleaned["volume"].to_list() == [None]
+
+
 def test_bar_cleaner_quarantine_handles_integer_amount_after_repair(tmp_path: Path) -> None:
     cleaner = BarDataCleaner()
     df = pl.DataFrame(

@@ -177,20 +177,34 @@ def _industry_daily_frame(
         if "amount" in frame.columns
         else pl.lit(None, dtype=pl.Float64)
     )
-    base = frame.select(
+    has_explicit_scope = {"classification", "industry_level"}.issubset(frame.columns)
+    select_exprs = [
         pl.col("symbol").cast(pl.String).alias("industry_code"),
         "trade_date",
         optional_text_expr(frame, ("name", "industry_name", "index_name"), "_sw_industry_name"),
         pl.col("close").cast(pl.Float64, strict=False).alias("close"),
         amount_expr.alias("amount"),
-    ).drop_nulls(subset=["industry_code", "trade_date", "close"])
+    ]
+    if has_explicit_scope:
+        select_exprs.extend(
+            [
+                pl.col("classification").cast(pl.String, strict=False).alias("classification"),
+                pl.col("industry_level").cast(pl.String, strict=False).alias("industry_level"),
+            ]
+        )
+    base = frame.select(select_exprs).drop_nulls(subset=["industry_code", "trade_date", "close"])
     base = base.filter(pl.col("close") > 0).sort(["industry_code", "trade_date"])
     classifier = IndustryClassifier(catalog)
-    l1_codes = list(classifier.get_l1_codes(config.classification))
-    if l1_codes:
-        l1_frame = base.filter(pl.col("industry_code").is_in(l1_codes))
-        if l1_frame["industry_code"].n_unique() >= 10:
-            base = l1_frame
+    if has_explicit_scope:
+        base = base.filter(
+            (pl.col("classification") == config.classification) & (pl.col("industry_level") == "L1")
+        )
+    else:
+        l1_codes = list(classifier.get_l1_codes(config.classification))
+        if l1_codes:
+            l1_frame = base.filter(pl.col("industry_code").is_in(l1_codes))
+            if l1_frame["industry_code"].n_unique() >= 10:
+                base = l1_frame
     name_map = classifier.get_name_map(config.classification)
     return base.with_columns(
         pl.struct(["industry_code", "_sw_industry_name"])

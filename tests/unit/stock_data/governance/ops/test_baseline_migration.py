@@ -258,6 +258,42 @@ def test_backfill_acceptance_normalizes_mixed_symbol_key_aliases(tmp_path: Path)
     assert report["status"] == "FAILED"
 
 
+def test_backfill_acceptance_maps_sw_daily_index_id_alias(tmp_path: Path) -> None:
+    curated = tmp_path / "curated" / "tushare" / "market=CN" / "sw_daily"
+    raw = tmp_path / "raw" / "tushare" / "market=CN" / "sw_daily"
+    curated.mkdir(parents=True)
+    raw.mkdir(parents=True)
+    lineage = {
+        "data_source": ["tushare"],
+        "source_endpoint": ["sw_daily"],
+        "request_id": ["r"],
+        "updated_at": ["2026-08-01"],
+    }
+    pl.DataFrame(
+        {"index_id": ["801010.SI"], "trade_date": ["20260801"], "close": [1000.0]}
+    ).write_parquet(raw / "legacy.parquet")
+    pl.DataFrame(
+        {
+            "symbol": ["801010.SI"],
+            "trade_date": ["2026-08-01"],
+            "close": [1000.0],
+            **lineage,
+        }
+    ).write_parquet(curated / "normalized.parquet")
+
+    report = accept_backfill(
+        str(tmp_path / "curated"),
+        "sw_daily",
+        start=date(2026, 8, 1),
+        end=date(2026, 8, 1),
+        raw_root=str(tmp_path / "raw"),
+    )
+
+    assert report["raw_curated_status"] == "PASSED"
+    assert report["raw_missing_in_curated_count"] == 0
+    assert report["raw_extra_in_curated_count"] == 0
+
+
 def test_backfill_acceptance_normalizes_compact_boundary_dates(tmp_path: Path) -> None:
     curated = tmp_path / "adj_factor"
     curated.mkdir()
@@ -411,6 +447,42 @@ def test_backfill_acceptance_handles_quarterly_report_periods(tmp_path: Path) ->
     assert report["missing_boundary_dates"] == []
     assert report["source_lag"] is True
     assert report["status"] == "PASSED"
+
+
+def test_backfill_acceptance_normalizes_announcement_date_keys(tmp_path: Path) -> None:
+    curated = tmp_path / "curated" / "balancesheet"
+    raw = tmp_path / "raw" / "balancesheet"
+    curated.mkdir(parents=True)
+    raw.mkdir(parents=True)
+    pl.DataFrame(
+        {
+            "symbol": ["A"],
+            "ann_date": ["2026-08-15"],
+            "end_date": ["20260630"],
+            "data_source": ["tushare"],
+            "source_endpoint": ["balancesheet"],
+            "request_id": ["curated"],
+            "updated_at": ["2026-08-15"],
+        }
+    ).write_parquet(curated / "data.parquet")
+    pl.DataFrame(
+        {
+            "ts_code": ["A"],
+            "ann_date": ["20260815"],
+            "end_date": ["20260630"],
+        }
+    ).write_parquet(raw / "data.parquet")
+
+    report = accept_backfill(
+        str(tmp_path / "curated"),
+        "balancesheet",
+        raw_root=str(tmp_path / "raw"),
+        data_source="tushare",
+    )
+
+    assert report["raw_curated_status"] == "PASSED"
+    assert report["raw_missing_in_curated_count"] == 0
+    assert report["raw_extra_in_curated_count"] == 0
 
 
 def test_backfill_acceptance_ignores_migration_backups(tmp_path: Path) -> None:

@@ -250,6 +250,16 @@ _DATASET_FLOAT_COLUMNS: dict[str, frozenset[str]] = {
 }
 
 _DATASET_OPTIONAL_COLUMNS: dict[str, frozenset[str]] = {
+    "sw_daily": frozenset(
+        {
+            "classification",
+            "industry_level",
+            "industry_code",
+            "industry_name",
+            "parent_code",
+            "classification_status",
+        }
+    ),
     "etf_share_size": frozenset(
         {"etf_name", "fund_type", "total_size", "float_share", "float_size", "nav", "close"}
     ),
