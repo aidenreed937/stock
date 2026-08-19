@@ -240,7 +240,7 @@ def _express_panel(
         date_column_expr(raw, "ann_date", "ann_date"),
         date_column_expr(raw, "end_date", "end_date"),
         optional_numeric_expr(raw, ("n_income",), "n_income"),
-        optional_numeric_expr(raw, ("yoy_net_profit",), "_prior_net_profit"),
+        optional_numeric_expr(raw, ("prior_period_net_profit",), "_prior_net_profit"),
         optional_numeric_expr(raw, ("diluted_roe",), "diluted_roe"),
     ).drop_nulls(subset=["stock_key", "ann_date"])
     base = base.filter((pl.col("ann_date") >= window_start) & (pl.col("ann_date") <= as_of_date))

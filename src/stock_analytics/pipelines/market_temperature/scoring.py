@@ -60,15 +60,35 @@ def build_scores(
         "systemic_risk": systemic_risk,
         "data_freshness": composite_freshness(dimensions),
         "dimensions": dimensions,
-        "short_term": [
-            {
-                "window": window,
-                "temperature": None,
-                "status": "pending",
-                "reason": "短线温度作为附加输出，待接入短窗指标公式",
-            }
-            for window in config.short_windows
-        ],
+        "short_term": [_short_term_score(facts, window) for window in config.short_windows],
+    }
+
+
+def _short_term_score(facts: pl.DataFrame, window: int) -> dict[str, Any]:
+    metric_id = f"short_term_temperature_{window}d"
+    if facts.is_empty() or not {"metric_id", "dimension", "status"}.issubset(facts.columns):
+        return {
+            "window": window,
+            "temperature": None,
+            "status": "insufficient",
+            "reason": "短线温度缺少 market_daily 事实输入",
+        }
+    frame = facts.filter((pl.col("dimension") == "short_term") & (pl.col("metric_id") == metric_id))
+    if frame.is_empty() or "value_float" not in frame.columns:
+        return {
+            "window": window,
+            "temperature": None,
+            "status": "insufficient",
+            "reason": "短线温度缺少对应窗口事实",
+        }
+    row = frame.tail(1).to_dicts()[0]
+    value = row.get("value_float")
+    status = str(row.get("status") or "insufficient")
+    return {
+        "window": window,
+        "temperature": float(value) if value is not None else None,
+        "status": "ready" if value is not None and status == "ok" else "insufficient",
+        "reason": str(row.get("note") or "短线温度样本不足"),
     }
 
 

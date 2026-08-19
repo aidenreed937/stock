@@ -1,6 +1,7 @@
 from datetime import date, timedelta
 
 import polars as pl
+import pytest
 
 from stock_analytics.primitives.indicators import (
     DEFAULT_EMA_WINDOW,
@@ -14,6 +15,7 @@ from stock_analytics.primitives.indicators import (
     calculate_rsi,
     calculate_sma,
 )
+from stock_analytics.primitives.volatility import calculate_atr
 
 
 def test_calculate_indicators() -> None:
@@ -69,3 +71,49 @@ def test_indicator_safety_guards() -> None:
     assert "ema_12" not in calculate_ema(missing_col_df, column="close").columns
     assert "rsi_14" not in calculate_rsi(missing_col_df, column="close").columns
     assert "macd" not in calculate_macd(missing_col_df, column="close").columns
+
+
+def test_rsi_matches_wilder_reference_vector() -> None:
+    prices = [
+        44.34,
+        44.09,
+        44.15,
+        43.61,
+        44.33,
+        44.83,
+        45.10,
+        45.42,
+        45.84,
+        46.08,
+        45.89,
+        46.03,
+        45.61,
+        46.28,
+        46.28,
+        46.00,
+        46.03,
+        46.41,
+        46.22,
+        45.64,
+        46.21,
+    ]
+
+    result = calculate_rsi(pl.DataFrame({"close": prices}), window=14)
+
+    assert result["rsi_14"][14] == pytest.approx(70.4641350211)
+
+
+def test_atr_matches_wilder_seed_and_recursion() -> None:
+    frame = pl.DataFrame(
+        {
+            "high": [10.0, 11.0, 12.0, 13.0],
+            "low": [8.0, 9.0, 9.0, 10.0],
+            "close": [9.0, 10.0, 11.0, 12.0],
+        }
+    )
+
+    result = calculate_atr(frame, window=3)
+
+    assert result["atr_3d"].to_list()[:2] == [None, None]
+    assert result["atr_3d"][2] == pytest.approx(7.0 / 3.0)
+    assert result["atr_3d"][3] == pytest.approx((7.0 / 3.0 * 2.0 + 3.0) / 3.0)

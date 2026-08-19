@@ -18,6 +18,7 @@ from stock_analytics.pipelines.market_temperature.facts_mart import (
     parse_date_value,
     try_get_market_daily_fact,
 )
+from stock_analytics.pipelines.market_temperature.short_term import collect_short_term_rows
 from stock_core.contracts import MarketDataCatalog
 
 if TYPE_CHECKING:
@@ -30,9 +31,7 @@ if TYPE_CHECKING:
         MetricInputConfig,
     )
 
-_date_values = date_values
 _parse_date_value = parse_date_value
-
 FACT_SCHEMA: dict[str, Any] = {
     "fact_id": pl.Utf8,
     "category": pl.Utf8,
@@ -123,6 +122,7 @@ def collect_facts(
                 storage_dir=storage_dir,
             )
         )
+        rows.extend(collect_short_term_rows(config.short_windows, as_of_date, storage_dir))
     return pl.DataFrame(rows, schema=FACT_SCHEMA) if rows else empty_facts()
 
 

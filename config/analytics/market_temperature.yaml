@@ -32,19 +32,19 @@ market_temperature:
         - metric_id: valuation_temperature
           aggregation: mean
           direction: positive
-          weight: 0.50
-        - metric_id: pe_percentile_5y
+          weight: 1.00
+        - metric_id: pe_percentile_10y
           aggregation: mean
           direction: positive
-          weight: 0.20
-        - metric_id: pb_percentile_5y
+          weight: 0.00
+        - metric_id: pb_percentile_10y
           aggregation: mean
           direction: positive
-          weight: 0.20
-        - metric_id: equity_risk_premium_percentile_5y
+          weight: 0.00
+        - metric_id: equity_risk_premium_percentile_10y
           aggregation: mean
           direction: inverse
-          weight: 0.10
+          weight: 0.00
 
     - id: fund_flow
       name: "资金面"
@@ -78,7 +78,7 @@ market_temperature:
         - metric_id: market_amount_percentile_1250d
           aggregation: latest
           direction: positive
-          weight: 0.15
+          weight: 0.00
 
     - id: sentiment
       name: "情绪面"

@@ -19,11 +19,13 @@ from stock_analytics.metrics.spec import (
 from stock_analytics.primitives.rules import rolling_percentile, rolling_zscore
 
 _TRADING_DAYS_5Y = 1250
-_CALENDAR_DAYS_5Y_WITH_BUFFER = 365 * 7
+_TRADING_DAYS_10Y = 2500
+_CALENDAR_DAYS_10Y_WITH_BUFFER = 365 * 12
 _BOND_YIELD_TOLERANCE = timedelta(days=7)
 _CROSS_SOURCE_METRICS = {
     "equity_risk_premium",
     "equity_risk_premium_percentile_5y",
+    "equity_risk_premium_percentile_10y",
     "equity_bond_yield_ratio",
     "dividend_bond_spread",
     "valuation_temperature",
@@ -34,18 +36,18 @@ def _load_start_date(context: MetricContext) -> date | None:
     end_date = context.resolve_end_date()
     if end_date is None:
         return context.start_date
-    lookback_start = end_date - timedelta(days=_CALENDAR_DAYS_5Y_WITH_BUFFER)
+    lookback_start = end_date - timedelta(days=_CALENDAR_DAYS_10Y_WITH_BUFFER)
     if context.start_date is None:
         return lookback_start
     return min(context.start_date, lookback_start)
 
 
-def _rolling_percentile(column: str, output: str) -> pl.Expr:
-    return rolling_percentile(column, _TRADING_DAYS_5Y, output).over("symbol")
+def _rolling_percentile(column: str, output: str, window: int) -> pl.Expr:
+    return rolling_percentile(column, window, output).over("symbol")
 
 
-def _rolling_zscore(column: str, output: str) -> pl.Expr:
-    return rolling_zscore(column, _TRADING_DAYS_5Y, output).over("symbol")
+def _rolling_zscore(column: str, output: str, window: int) -> pl.Expr:
+    return rolling_zscore(column, window, output).over("symbol")
 
 
 def _valuation_frame(context: MetricContext) -> pl.DataFrame:
@@ -89,11 +91,20 @@ def _valuation_frame(context: MetricContext) -> pl.DataFrame:
             .sort(["symbol", "trade_date"])
             .with_columns((1.0 / pl.col("pe_ttm")).alias("earnings_yield"))
             .with_columns(
-                _rolling_zscore("pe_ttm", "pe_zscore_5y"),
-                _rolling_zscore("pb", "pb_zscore_5y"),
-                _rolling_percentile("pe_ttm", "pe_percentile_5y"),
-                _rolling_percentile("pb", "pb_percentile_5y"),
-                _rolling_percentile("dividend_yield", "dividend_yield_percentile_5y"),
+                _rolling_zscore("pe_ttm", "pe_zscore_5y", _TRADING_DAYS_5Y),
+                _rolling_zscore("pb", "pb_zscore_5y", _TRADING_DAYS_5Y),
+                _rolling_percentile("pe_ttm", "pe_percentile_5y", _TRADING_DAYS_5Y),
+                _rolling_percentile("pb", "pb_percentile_5y", _TRADING_DAYS_5Y),
+                _rolling_percentile(
+                    "dividend_yield", "dividend_yield_percentile_5y", _TRADING_DAYS_5Y
+                ),
+                _rolling_zscore("pe_ttm", "pe_zscore_10y", _TRADING_DAYS_10Y),
+                _rolling_zscore("pb", "pb_zscore_10y", _TRADING_DAYS_10Y),
+                _rolling_percentile("pe_ttm", "pe_percentile_10y", _TRADING_DAYS_10Y),
+                _rolling_percentile("pb", "pb_percentile_10y", _TRADING_DAYS_10Y),
+                _rolling_percentile(
+                    "dividend_yield", "dividend_yield_percentile_10y", _TRADING_DAYS_10Y
+                ),
             )
         )
     context.cache[cache_key] = frame
@@ -129,12 +140,6 @@ def _cross_source_frame(context: MetricContext) -> pl.DataFrame:
                 pl.col(bond_col).cast(pl.Float64).alias("bond_yield_10y"),
             )
             .filter(pl.col("bond_yield_10y") > 0)
-            .with_columns(
-                pl.when(pl.col("bond_yield_10y") > 0.2)
-                .then(pl.col("bond_yield_10y") / 100.0)
-                .otherwise(pl.col("bond_yield_10y"))
-                .alias("bond_yield_10y")
-            )
             .sort("bond_trade_date")
         )
         frame = (
@@ -155,23 +160,32 @@ def _cross_source_frame(context: MetricContext) -> pl.DataFrame:
             )
             .sort(["symbol", "trade_date"])
             .with_columns(
-                _rolling_percentile("equity_risk_premium", "equity_risk_premium_percentile_5y")
+                _rolling_percentile(
+                    "equity_risk_premium",
+                    "equity_risk_premium_percentile_5y",
+                    _TRADING_DAYS_5Y,
+                ),
+                _rolling_percentile(
+                    "equity_risk_premium",
+                    "equity_risk_premium_percentile_10y",
+                    _TRADING_DAYS_10Y,
+                ),
             )
             .with_columns(
                 pl.when(
                     pl.all_horizontal(
-                        pl.col("pe_percentile_5y").is_not_null(),
-                        pl.col("pb_percentile_5y").is_not_null(),
-                        pl.col("equity_risk_premium_percentile_5y").is_not_null(),
-                        pl.col("dividend_yield_percentile_5y").is_not_null(),
+                        pl.col("pe_percentile_10y").is_not_null(),
+                        pl.col("pb_percentile_10y").is_not_null(),
+                        pl.col("equity_risk_premium_percentile_10y").is_not_null(),
+                        pl.col("dividend_yield_percentile_10y").is_not_null(),
                     )
                 )
                 .then(
                     pl.mean_horizontal(
-                        "pe_percentile_5y",
-                        "pb_percentile_5y",
-                        100.0 - pl.col("equity_risk_premium_percentile_5y"),
-                        100.0 - pl.col("dividend_yield_percentile_5y"),
+                        "pe_percentile_10y",
+                        "pb_percentile_10y",
+                        100.0 - pl.col("equity_risk_premium_percentile_10y"),
+                        100.0 - pl.col("dividend_yield_percentile_10y"),
                     )
                 )
                 .otherwise(None)
@@ -224,6 +238,15 @@ METRIC_SPECS: tuple[MetricSpec, ...] = (
         "股息率五年历史分位数",
         windows=(_TRADING_DAYS_5Y,),
     ),
+    _spec("pe_zscore_10y", "PE十年Z分数", windows=(_TRADING_DAYS_10Y,)),
+    _spec("pb_zscore_10y", "PB十年Z分数", windows=(_TRADING_DAYS_10Y,)),
+    _spec("pe_percentile_10y", "PE十年历史分位数", windows=(_TRADING_DAYS_10Y,)),
+    _spec("pb_percentile_10y", "PB十年历史分位数", windows=(_TRADING_DAYS_10Y,)),
+    _spec(
+        "dividend_yield_percentile_10y",
+        "股息率十年历史分位数",
+        windows=(_TRADING_DAYS_10Y,),
+    ),
     _spec(
         "equity_risk_premium",
         "股权风险溢价",
@@ -234,6 +257,12 @@ METRIC_SPECS: tuple[MetricSpec, ...] = (
         "股权风险溢价五年历史分位数",
         datasets=("index_fundamental", "national_debt"),
         windows=(_TRADING_DAYS_5Y,),
+    ),
+    _spec(
+        "equity_risk_premium_percentile_10y",
+        "股权风险溢价十年历史分位数",
+        datasets=("index_fundamental", "national_debt"),
+        windows=(_TRADING_DAYS_10Y,),
     ),
     _spec(
         "equity_bond_yield_ratio",
@@ -249,7 +278,7 @@ METRIC_SPECS: tuple[MetricSpec, ...] = (
         "valuation_temperature",
         "估值温度",
         datasets=("index_fundamental", "national_debt"),
-        windows=(_TRADING_DAYS_5Y,),
+        windows=(_TRADING_DAYS_10Y,),
     ),
 )
 

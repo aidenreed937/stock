@@ -7,6 +7,8 @@ from __future__ import annotations
 
 import polars as pl
 
+from stock_analytics.primitives.indicators import _wilder_mean
+
 
 def calculate_realized_volatility(
     df: pl.DataFrame,
@@ -64,7 +66,7 @@ def calculate_atr(
     """计算真实波幅与平均真实波幅 (ATR, Average True Range)。
 
     公式: TR = Max(H - L, |H - C_{t-1}|, |L - C_{t-1}|)
-          ATR = EWM(TR, window)
+          ATR = Wilder(TR, window)，首个窗口使用 SMA 作为种子
     """
     required = {high_col, low_col, close_col}
     if df.is_empty() or not required.issubset(df.columns):
@@ -80,14 +82,18 @@ def calculate_atr(
     hpc = (pl.col(high_col) - prev_close).abs()
     lpc = (pl.col(low_col) - prev_close).abs()
 
-    tr_expr = pl.max_horizontal(hl, hpc, lpc).alias("_tr")
+    tr_expr = (
+        pl.when(prev_close.is_null())
+        .then(hl)
+        .otherwise(pl.max_horizontal(hl, hpc, lpc))
+        .alias("_tr")
+    )
     temp_df = df.with_columns(tr_expr)
 
     atr_name = f"atr_{window}d"
     natr_name = f"atr_ratio_{window}d"
 
-    atr_expr = pl.col("_tr").ewm_mean(span=window, adjust=False).alias(atr_name)
-    temp_df = temp_df.with_columns(atr_expr)
+    temp_df = _wilder_mean(temp_df, "_tr", window, atr_name)
 
     natr_expr = (
         pl.when(pl.col(close_col) > 0)

@@ -182,7 +182,7 @@ def _write_fast_fundamental_inputs(storage_dir: Path) -> None:
                 "ann_date": "20260806",
                 "end_date": "20260630",
                 "n_income": 150.0,
-                "yoy_net_profit": 100.0,
+                "prior_period_net_profit": 100.0,
                 "diluted_roe": 10.0,
             },
             {
@@ -190,7 +190,7 @@ def _write_fast_fundamental_inputs(storage_dir: Path) -> None:
                 "ann_date": "20260806",
                 "end_date": "20260630",
                 "n_income": 90.0,
-                "yoy_net_profit": 100.0,
+                "prior_period_net_profit": 100.0,
                 "diluted_roe": 4.0,
             },
         ],

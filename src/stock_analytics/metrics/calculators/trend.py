@@ -12,6 +12,7 @@ from stock_analytics.metrics.datasets.windows import (
     load_start_date as _load_start_date,
 )
 from stock_analytics.metrics.spec import EntityType, MetricCalculator, MetricDomain, MetricSpec
+from stock_analytics.primitives.indicators import calculate_rsi
 
 _RSI_WINDOW = 14
 _MA_BIAS_WINDOW = 20
@@ -54,18 +55,10 @@ def _calculate_trend_columns(raw: pl.DataFrame) -> pl.DataFrame:
         .with_columns(
             pl.col("close").rolling_mean(_MA_BIAS_WINDOW).over("symbol").alias("_ma_20d"),
             pl.col("close").rolling_max(_HIGH_DISTANCE_WINDOW).over("symbol").alias("_high_252d"),
-            (pl.col("close") - pl.col("close").shift(1).over("symbol")).alias("_diff"),
         )
     )
     return (
-        base.with_columns(
-            pl.when(pl.col("_diff") > 0).then(pl.col("_diff")).otherwise(0.0).alias("_gain"),
-            pl.when(pl.col("_diff") < 0).then(-pl.col("_diff")).otherwise(0.0).alias("_loss"),
-        )
-        .with_columns(
-            pl.col("_gain").rolling_mean(_RSI_WINDOW).over("symbol").alias("_avg_gain"),
-            pl.col("_loss").rolling_mean(_RSI_WINDOW).over("symbol").alias("_avg_loss"),
-        )
+        calculate_rsi(base, window=_RSI_WINDOW)
         .with_columns(
             pl.when(pl.col("_ma_20d") > 0)
             .then(pl.col("close") / pl.col("_ma_20d") - 1.0)
@@ -75,19 +68,9 @@ def _calculate_trend_columns(raw: pl.DataFrame) -> pl.DataFrame:
             .then(pl.col("close") / pl.col("_high_252d") - 1.0)
             .otherwise(None)
             .alias("distance_to_252d_high"),
-            _rsi_expr(),
+            pl.col(f"rsi_{_RSI_WINDOW}").alias("rsi_14d"),
         )
-        .drop(["_ma_20d", "_high_252d", "_diff", "_gain", "_loss", "_avg_gain", "_avg_loss"])
-    )
-
-
-def _rsi_expr() -> pl.Expr:
-    rs = pl.col("_avg_gain") / (pl.col("_avg_loss") + 1e-10)
-    return (
-        pl.when((pl.col("_avg_gain") == 0) & (pl.col("_avg_loss") == 0))
-        .then(50.0)
-        .otherwise(100.0 - (100.0 / (1.0 + rs)))
-        .alias("rsi_14d")
+        .drop(["_ma_20d", "_high_252d", f"rsi_{_RSI_WINDOW}"])
     )
 
 
