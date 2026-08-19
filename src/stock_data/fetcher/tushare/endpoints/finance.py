@@ -53,6 +53,7 @@ FINANCE_ENDPOINTS: dict[str, EndpointMeta] = {
         query_mode="trade_date",
         group="corporate_action",
         primary_keys=["ts_code", "trade_date", "price", "vol", "buyer", "seller"],
+        nullable_primary_keys=["buyer", "seller"],
         date_columns=["trade_date"],
         required_columns=["ts_code", "trade_date", "price", "vol", "amount"],
         units={

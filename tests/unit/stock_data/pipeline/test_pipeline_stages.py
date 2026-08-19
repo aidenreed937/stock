@@ -132,6 +132,28 @@ def test_fetcher_stage_validates_normalized_margin_primary_key() -> None:
         )
 
 
+def test_fetcher_stage_allows_nullable_block_trade_counterparty_keys() -> None:
+    stage = FetcherStage(MagicMock(), MagicMock(), data_source="tushare")
+    frame = pl.DataFrame(
+        {
+            "ts_code": ["000001.SZ"],
+            "trade_date": ["20140821"],
+            "price": [84.0],
+            "vol": [3.3],
+            "amount": [277.2],
+            "buyer": [None],
+            "seller": [None],
+        }
+    )
+
+    stage.validate_endpoint_frame(
+        frame,
+        start_date=date(2014, 8, 1),
+        end_date=date(2014, 8, 31),
+        endpoint="block_trade",
+    )
+
+
 def test_fetcher_stage_validates_yfinance_history_contract() -> None:
     stage = FetcherStage(MagicMock(), MagicMock(), data_source="yfinance")
     frame = pl.DataFrame(

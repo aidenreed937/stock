@@ -258,7 +258,13 @@ class FetcherStage:
                 else:
                     validation_keys.append(key)
 
-            if any(validation_frame[k].null_count() for k in validation_keys):
+            nullable_keys = set(getattr(meta, "nullable_primary_keys", []))
+            required_validation_keys = [
+                validation_key
+                for source_key, validation_key in zip(keys, validation_keys, strict=True)
+                if source_key not in nullable_keys and validation_key not in nullable_keys
+            ]
+            if any(validation_frame[k].null_count() for k in required_validation_keys):
                 raise DataValidationError(f"接口 [{endpoint}] 主键存在空值: {keys}")
             duplicates = len(validation_frame) - len(
                 validation_frame.unique(subset=validation_keys)

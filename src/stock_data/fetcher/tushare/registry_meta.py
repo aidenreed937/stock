@@ -14,6 +14,7 @@ class EndpointMeta:
     query_mode: str = "trade_date"  # trade_date, ann_date, date, month, quarter
     group: str = "market_data"
     primary_keys: list[str] = field(default_factory=list)
+    nullable_primary_keys: list[str] = field(default_factory=list)
     rate_limit_per_min: int = 180
     update_time: str = "18:00"
     update_delay_days: int = 0

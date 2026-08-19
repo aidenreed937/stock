@@ -41,6 +41,27 @@ def test_generic_cleaner_alias_keys() -> None:
     assert len(res) == 1
 
 
+def test_generic_cleaner_preserves_null_nullable_primary_keys() -> None:
+    cleaner = GenericCleaner(
+        primary_keys=["symbol", "trade_date", "buyer", "seller"],
+        nullable_primary_keys=["buyer", "seller"],
+    )
+    df = pl.DataFrame(
+        {
+            "symbol": ["000001.SZ", "000001.SZ"],
+            "trade_date": ["2026-08-10", "2026-08-10"],
+            "buyer": [None, "营业部A"],
+            "seller": [None, "营业部B"],
+            "amount": [100.0, 200.0],
+        }
+    )
+
+    result = cleaner.clean(df)
+
+    assert len(result) == 2
+    assert result.filter(pl.col("buyer").is_null()).height == 1
+
+
 def test_generic_cleaner_compound_entity_keys_with_placeholder_symbol() -> None:
     cleaner = GenericCleaner()
     # 模拟 index_member 场景：多个成分股记录具有相同的 symbol 常量占位符

@@ -39,13 +39,19 @@ class GenericCleaner(BaseDataCleaner):
     只针对指定的 Primary Keys 进行空值过滤与唯一性去重，保留所有合法负数与特定业务字段。
     """
 
-    def __init__(self, primary_keys: list[str] | None = None) -> None:
+    def __init__(
+        self,
+        primary_keys: list[str] | None = None,
+        nullable_primary_keys: list[str] | None = None,
+    ) -> None:
         """初始化 GenericCleaner。
 
         Args:
             primary_keys: 主键列表。若为 None，默认尝试使用 symbol/ts_code 与 trade_date/end_date。
+            nullable_primary_keys: 允许为空但仍参与去重的主键列。
         """
         self.primary_keys = primary_keys
+        self.nullable_primary_keys = set(nullable_primary_keys or [])
 
     def clean(self, df: pl.DataFrame) -> pl.DataFrame:
         """清洗通用接口数据。
@@ -69,18 +75,25 @@ class GenericCleaner(BaseDataCleaner):
 
         # 确定生效的主键列
         target_keys: list[str] = []
+        nullable_target_keys: set[str] = set()
+
+        def add_target_key(source_key: str, target_key: str) -> None:
+            target_keys.append(target_key)
+            if source_key in self.nullable_primary_keys or target_key in self.nullable_primary_keys:
+                nullable_target_keys.add(target_key)
+
         if self.primary_keys:
             for k in self.primary_keys:
                 if k in cleaned_df.columns:
-                    target_keys.append(k)
+                    add_target_key(k, k)
                 elif k in ("ts_code", "stockCode", "code") and "symbol" in cleaned_df.columns:
-                    target_keys.append("symbol")
+                    add_target_key(k, "symbol")
                 elif k in ("trade_date", "date") and "trade_date" in cleaned_df.columns:
-                    target_keys.append("trade_date")
+                    add_target_key(k, "trade_date")
                 elif k in ("trade_date", "date") and "date" in cleaned_df.columns:
-                    target_keys.append("date")
+                    add_target_key(k, "date")
                 elif k == "as_of_date" and "asOfDate" in cleaned_df.columns:
-                    target_keys.append("asOfDate")
+                    add_target_key(k, "asOfDate")
         else:
             # 默认推理主键：综合考虑所有实体列与期间列
             entity_cols = [
@@ -135,8 +148,9 @@ class GenericCleaner(BaseDataCleaner):
                     target_keys.append("quarter")
 
         # 1. 过滤主键包含 null 的记录
-        if target_keys:
-            cleaned_df = cleaned_df.drop_nulls(subset=target_keys)
+        required_target_keys = [key for key in target_keys if key not in nullable_target_keys]
+        if required_target_keys:
+            cleaned_df = cleaned_df.drop_nulls(subset=required_target_keys)
 
         # 2. 主键组合去重
         if target_keys:

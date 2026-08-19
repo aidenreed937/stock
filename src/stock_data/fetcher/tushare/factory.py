@@ -35,7 +35,8 @@ def create_tushare_pipeline(
         cleaner = BarDataCleaner(listing_dates=BarDataCleaner.load_listing_dates("tushare"))
     else:
         p_keys = meta.primary_keys if meta else None
-        cleaner = GenericCleaner(primary_keys=p_keys)
+        nullable_p_keys = meta.nullable_primary_keys if meta else None
+        cleaner = GenericCleaner(primary_keys=p_keys, nullable_primary_keys=nullable_p_keys)
     return MarketDataPipeline(
         fetcher=active_fetcher,
         cleaner=cleaner,
