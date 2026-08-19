@@ -128,7 +128,26 @@ uv run python -m stock_cli.market_temperature --date 2026-08-14 --format markdow
 
 ---
 
-## 4. 全库物理存储主审计 CLI (Master Audit CLI)
+## 4. 全市场实时聚合 CLI (Market Aggregate CLI)
+
+独立于核心观察池腾讯逐标的监控，低频抓取 A 股全市场并只输出聚合摘要，不输出 5,500+ 只股票的逐标的明细：
+
+```bash
+# 单次聚合快照
+make market-aggregate
+
+# Markdown 摘要并将一行快照留档到 data/raw/realtime/market_aggregate/eastmoney
+make market-aggregate FORMAT=markdown RECORD=1
+
+# 建议 30～60 秒一轮的低频监控
+make market-aggregate WATCH=1 INTERVAL=60
+```
+
+输出包括覆盖率、涨跌家数及占比、±5% 强势家数、中位数与分位数涨跌幅、成交额加权涨跌幅、成交额、总/流通市值、流通市值换手率和成交额前 5% 集中度。覆盖不完整或使用缓存时会分别显示 `partial`、`stale`/`expired`。这些指标不等同于涨跌停、全市场均线比例或行业轮动结论。
+
+---
+
+## 5. 全库物理存储主审计 CLI (Master Audit CLI)
 
 基于 Polars 物理扫描全库全部 Parquet 文件，输出全表覆盖标的数、最小/最大交易日与完备度诊断：
 
@@ -143,7 +162,7 @@ uv run python -m stock_cli.audit --type master
 
 ---
 
-## 5. 全局数据源探测工具 (Global Data Probe CLI)
+## 6. 全局数据源探测工具 (Global Data Probe CLI)
 
 用于快速检测各大数据源（TuShare, yfinance, FRED, 理杏仁）的连通性、响应时延与 Schema 契约状态。
 
@@ -157,7 +176,7 @@ uv run python -m stock_data.ops.probe
 
 ---
 
-## 6. 离线数据质量审计工具 (Offline Data Validator CLI)
+## 7. 离线数据质量审计工具 (Offline Data Validator CLI)
 
 用于对本地 DuckDB 归档数据执行完整性与准确性规则校验（如：空值检查、主键重复、物理逻辑错误、断点检测等）。
 
@@ -174,7 +193,7 @@ uv run python -m stock_data.validator --endpoint daily
 
 ---
 
-## 7. 主示范程序 CLI
+## 8. 主示范程序 CLI
 
 运行 YAML 策略驱动的主流程测试：
 
@@ -188,7 +207,7 @@ uv run python -m stock_cli.main
 
 ---
 
-## 8. 代码质量与环境检查 CLI
+## 9. 代码质量与环境检查 CLI
 
 在提交代码或发布前，运行全量代码规范与单测检查：
 

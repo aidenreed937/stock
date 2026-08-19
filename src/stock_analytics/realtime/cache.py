@@ -11,6 +11,7 @@ from zoneinfo import ZoneInfo
 
 if TYPE_CHECKING:
     from stock_data.fetcher.realtime.base import RealtimeQuote
+    from stock_data.fetcher.realtime.market_aggregate import MarketAggregateSnapshot
 
 
 class CacheFreshness(StrEnum):
@@ -92,6 +93,71 @@ class RealtimeSnapshotCache:
         self._items = {key: quote for key, quote in self._items.items() if key[0] != source}
 
 
+class MarketAggregateFreshness(StrEnum):
+    """市场聚合快照的新鲜度状态。"""
+
+    FRESH = "fresh"
+    STALE = "stale"
+    EXPIRED = "expired"
+
+
+@dataclass(frozen=True, slots=True)
+class CachedMarketAggregate:
+    """带缓存年龄和失效状态的市场聚合快照。"""
+
+    snapshot: MarketAggregateSnapshot
+    age_seconds: float
+    freshness: MarketAggregateFreshness
+
+
+class MarketAggregateCache:
+    """按数据源和行情日期保存最近一条市场聚合快照。"""
+
+    def __init__(
+        self,
+        *,
+        fresh_ttl_seconds: float = 30.0,
+        max_age_seconds: float = 300.0,
+    ) -> None:
+        self.fresh_ttl_seconds = max(0.0, fresh_ttl_seconds)
+        self.max_age_seconds = max(self.fresh_ttl_seconds, max_age_seconds)
+        self._items: dict[tuple[str, date], MarketAggregateSnapshot] = {}
+
+    def put(self, snapshot: MarketAggregateSnapshot) -> None:
+        """写入有效或部分覆盖的市场聚合快照。"""
+        self._items[(snapshot.source, snapshot.quote_date)] = snapshot
+
+    def lookup(
+        self,
+        source: str,
+        *,
+        now: datetime | None = None,
+        quote_date: date | None = None,
+    ) -> CachedMarketAggregate | None:
+        """查找当天快照；过期项仍返回以便报告明确显示 expired。"""
+        current_time = now or datetime.now(ZoneInfo("Asia/Shanghai"))
+        snapshot = self._items.get((source, quote_date or current_time.date()))
+        if snapshot is None:
+            return None
+        age_seconds = max(0.0, _datetime_delta_seconds(current_time, snapshot.received_at))
+        freshness = (
+            MarketAggregateFreshness.FRESH
+            if age_seconds <= self.fresh_ttl_seconds
+            else MarketAggregateFreshness.STALE
+            if age_seconds <= self.max_age_seconds
+            else MarketAggregateFreshness.EXPIRED
+        )
+        return CachedMarketAggregate(snapshot, age_seconds, freshness)
+
+    def clear(self) -> None:
+        """清空全部市场聚合缓存。"""
+        self._items.clear()
+
+    def clear_source(self, source: str) -> None:
+        """清除指定数据源的市场聚合缓存。"""
+        self._items = {key: snapshot for key, snapshot in self._items.items() if key[0] != source}
+
+
 def _datetime_delta_seconds(left: datetime, right: datetime) -> float:
     """兼容测试中的 naive datetime 与生产中的带时区 datetime。"""
     if (left.tzinfo is None) != (right.tzinfo is None):
@@ -102,4 +168,11 @@ def _datetime_delta_seconds(left: datetime, right: datetime) -> float:
     return (left - right).total_seconds()
 
 
-__all__ = ["CacheFreshness", "CachedQuote", "RealtimeSnapshotCache"]
+__all__ = [
+    "CacheFreshness",
+    "CachedMarketAggregate",
+    "CachedQuote",
+    "MarketAggregateCache",
+    "MarketAggregateFreshness",
+    "RealtimeSnapshotCache",
+]

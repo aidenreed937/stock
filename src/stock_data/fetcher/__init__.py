@@ -9,7 +9,11 @@ from stock_data.fetcher.base import BaseDataFetcher
 from stock_data.fetcher.fred import FredDataFetcher, create_fred_fetcher
 from stock_data.fetcher.lixinger import LixingerDataFetcher, create_lixinger_pipeline
 from stock_data.fetcher.realtime import (
+    BaseMarketAggregateFetcher,
     BaseRealtimeFetcher,
+    MarketAggregateFetcher,
+    MarketAggregateSnapshot,
+    MarketAggregateSnapshotRecorder,
     RealtimeQuote,
     RealtimeSnapshotRecorder,
     TencentRealtimeFetcher,
@@ -21,9 +25,13 @@ __all__ = [
     "AlphaVantageDataFetcher",
     "AlphaVantageError",
     "BaseDataFetcher",
+    "BaseMarketAggregateFetcher",
     "BaseRealtimeFetcher",
     "FredDataFetcher",
     "LixingerDataFetcher",
+    "MarketAggregateFetcher",
+    "MarketAggregateSnapshot",
+    "MarketAggregateSnapshotRecorder",
     "RealtimeQuote",
     "RealtimeSnapshotRecorder",
     "TencentRealtimeFetcher",
