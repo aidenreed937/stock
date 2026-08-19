@@ -178,7 +178,7 @@ make market-cycle-review START=YYYY-MM-DD END=YYYY-MM-DD
 
 FRED 美国宏观背景归入宏观流动性维度的观察项，默认 `weight: 0`，只落 facts 和报告展示，不参与 `macro_external_environment_temperature` 或综合温度。当前观察项包括 `T10Y2Y` 期限利差、`FEDFUNDS` 政策利率、`WALCL` 美联储资产负债表、`CPIAUCSL` 同比、`UNRATE`、`PAYEMS` 同比和 `GDP` 同比；政策利率、通胀和失业率使用反向历史分位，期限利差、资产负债表、非农同比和 GDP 同比使用正向历史分位。月频/季频项只能解释最新美国宏观背景，不要写成最近 20 个 A 股交易日内的边际变化。
 
-`limit_list_d` 已可作为涨跌停/炸板事件表纳入情绪面；`limit=U` 计为涨停，`D` 计为跌停，`Z` 计为炸板。`stk_limit` 只代表涨跌停价格，不等同事件明细。`lixinger.investor_accounts` 已可作为月度新增投资者慢变量纳入情绪面，不能解释为最近 20 个交易日内的开户变化。`opt_basic` 和 `opt_daily` 已可计算认沽/认购成交量比、认沽/认购持仓比、期权成交额、持仓量和近月合约成交占比温度，但这些期权项默认 `weight: 0`，只作风险观察，不进入情绪面正式分或综合温度。`settlement_iv_proxy_daily` 已基于期权结算价、合约、标的行情和利率生成波动率代理观察；它不是标准隐含波动率指数或 VIX，仍只作观察项。项目没有新闻舆情、政策文本、标准 IV/VIX 或中国信用利差 AA-AAA 的稳定本地表。除非用户明确要求联网并给出来源，否则不要把无本地表支撑的维度纳入综合温度。
+`limit_list_d` 已可作为涨跌停/炸板事件表纳入情绪面；`limit=U` 计为涨停，`D` 计为跌停，`Z` 计为炸板。`stk_limit` 只代表涨跌停价格，不等同事件明细。`lixinger.investor_accounts` 已可作为月度新增投资者慢变量纳入情绪面，不能解释为最近 20 个交易日内的开户变化。`opt_basic` 和 `opt_daily` 已可计算认沽/认购成交量比、认沽/认购持仓比、期权成交额、持仓量和近月合约成交占比温度，但这些期权项默认 `weight: 0`，只作风险观察，不进入情绪面正式分或综合温度。`settlement_iv_proxy_daily` 已基于期权结算价、合约、标的行情和利率生成波动率代理，并已接入情绪面评分：`settlement_iv_proxy_temperature`（全市场 BS-IV 中位数历史反向分位）与 `settlement_iv_proxy_skew_temperature`（认沽-认购 IV 偏度历史反向分位）由 `derived.py` 以 `unit=temperature` 写入 `metric_value` 事实，默认 `weight: 0`，仅在明确评估后可按 YAML 上调权重。它不是标准隐含波动率指数或 VIX，升级权重后仍必须在报告中持续标注该口径限制。项目没有新闻舆情、政策文本、标准 IV/VIX 或中国信用利差 AA-AAA 的稳定本地表。除非用户明确要求联网并给出来源，否则不要把无本地表支撑的维度纳入综合温度。
 
 行业资金流可由 `tushare.moneyflow` 通过 `tushare.index_member` / `lixinger.sw_2021_constituents` 的申万2021成分映射聚合到一级行业，并用 `stock_daily_bar.amount` 作分母计算行业主力净流入成交占比。行业资金流当前只作为“资金确认/资金流出压力”观察项输出，不进入行业结构总分。
 

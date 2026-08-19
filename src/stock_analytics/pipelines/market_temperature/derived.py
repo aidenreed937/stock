@@ -2,21 +2,23 @@
 
 from __future__ import annotations
 
+from functools import partial
+from pathlib import Path
 from typing import TYPE_CHECKING, Any, cast
 
 import polars as pl
 
 from stock_analytics.catalog_compat import load_dataset_compat
 from stock_analytics.pipelines.market_temperature.derived_options import (
-    OPTION_RISK_COMPONENT_IDS,
     option_rows,
 )
+from stock_analytics.pipelines.market_temperature.derived_settlement_iv import settlement_iv_rows
 from stock_analytics.primitives.rules import percentile_rank
 from stock_core.contracts import MarketDataCatalog
+from stock_data.pipeline.cleaner.date_utils import parse_mixed_date
 
 if TYPE_CHECKING:
     from datetime import date
-    from pathlib import Path
 
 _FS_DATASETS = (
     "sw_2021_fs_non_financial",
@@ -32,7 +34,6 @@ _LIMIT_COMPONENT_IDS = (
     "limit_up_down_strength_temperature",
     "limit_seal_success_temperature",
 )
-_OPTION_RISK_COMPONENT_IDS = OPTION_RISK_COMPONENT_IDS
 _EXTERNAL_RETURN_WINDOW = 20
 _EXTERNAL_COMPONENT_IDS = (
     "macro_sp500_20d_return_temperature",
@@ -326,6 +327,7 @@ def _sentiment_rows(as_of_date: date, storage_dir: Path | str | None) -> list[di
     rows = _limit_event_rows(cat_ts, as_of_date)
     rows.extend(_investor_account_rows(cat_lx, as_of_date))
     rows.extend(_option_rows(cat_ts, as_of_date))
+    rows.extend(settlement_iv_rows(as_of_date, storage_dir, _metric_row, _percentile_metric_row))
     return rows
 
 
@@ -485,10 +487,6 @@ def _limit_event_temperature_row(
         sample_size=len(values),
         note=note,
     )
-
-
-def _option_rows(cat: MarketDataCatalog, as_of_date: date) -> list[dict[str, Any]]:
-    return option_rows(cat, as_of_date, _metric_row, _percentile_metric_row)
 
 
 def _macro_liquidity_rows(
@@ -1030,7 +1028,7 @@ def _real_rate_frame(debt: pl.DataFrame, cpi: pl.DataFrame) -> pl.DataFrame:
 
 
 def _parse_compact_date_expr(column: str) -> pl.Expr:
-    return pl.col(column).cast(pl.String).str.strptime(pl.Date, "%Y%m%d", strict=False)
+    return parse_mixed_date(column)
 
 
 def _load_dataset(
@@ -1074,17 +1072,12 @@ def _metric_row(
     }
 
 
-def _numeric_note_text(value: object) -> str:
-    if not isinstance(value, int | float | str):
-        return "NA"
-    try:
-        numeric = float(value)
-    except (TypeError, ValueError):
-        return "NA"
-    return f"{numeric:.6g}"
-
-
 def _clip_temperature(value: float | None) -> float | None:
     if value is None:
         return None
     return min(100.0, max(0.0, float(value)))
+
+
+_option_rows = partial(
+    option_rows, metric_row_factory=_metric_row, percentile_factory=_percentile_metric_row
+)

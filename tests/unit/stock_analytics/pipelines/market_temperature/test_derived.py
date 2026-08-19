@@ -94,6 +94,32 @@ def test_forecast_rows_calculates_positive_forecast_share() -> None:
     assert rows[0]["value_float"] == pytest.approx(66.6666667)
 
 
+def test_forecast_rows_handles_date_typed_ann_date() -> None:
+    catalog = FakeCatalog(
+        {
+            "forecast": pl.DataFrame(
+                {
+                    "symbol": ["AAA", "BBB", "CCC"],
+                    "ann_date": [date(2026, 7, 21), date(2026, 7, 22), date(2026, 8, 10)],
+                    "end_date": [date(2026, 6, 30), date(2026, 6, 30), date(2026, 6, 30)],
+                    "type": ["预增", "首亏", "略减"],
+                    "p_change_min": [None, -10.0, 30.0],
+                    "p_change_max": [None, -5.0, 50.0],
+                }
+            )
+        }
+    )
+
+    rows = _forecast_rows(
+        catalog,
+        date(2026, 8, 14),
+        (date(2026, 7, 20), date(2026, 8, 14)),
+    )
+
+    assert rows[0]["status"] == "ok"
+    assert rows[0]["sample_size"] == 3
+
+
 def test_report_revision_rows_uses_net_revision_ratio_and_all_comparable_samples() -> None:
     catalog = FakeCatalog(
         {

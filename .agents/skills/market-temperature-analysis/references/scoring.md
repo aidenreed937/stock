@@ -100,6 +100,8 @@ YAML 子权重：
 
 `market_turnover_rate`、`market_amount_percentile_1250d` 及期权、涨跌停组件的其他明细指标在当前 YAML 中权重为 0；情绪面只保留 `turnover_rate_percentile_1250d` 这一套换手率分位入分。`market_amount_percentile_1250d` 虽保留历史字段名，实际计算的是全市场自由流通换手率的五年分位，不再直接对绝对成交额排序。它们可以展示或解释，但不改变主分。`limit_list_d` 中 `U`、`D`、`Z` 分别代表涨停、跌停和炸板；`stk_limit` 只是涨跌停价格，不是事件明细。
 
+期权结算价 BS-IV 代理已以 `metric_value` 事实接入情绪面：`settlement_iv_proxy_temperature`（全市场 `settlement_iv_proxy_median` 历史反向分位）与 `settlement_iv_proxy_skew_temperature`（认沽-认购 IV 偏度历史反向分位）由 `derived.py` 的 `_settlement_iv_rows()` 生成，默认 `weight: 0`，不参与情绪面分；方向 `inverse` 语义为 IV/Skew 偏高代表恐慌避险需求，温度降低。该指标是结算价反解 Black-Scholes 波动率代理，非标准 VIX，升级权重后仍必须持续披露该口径限制。
+
 ### 4.4 技术面
 
 | 指标 | 子权重 | 温度规则 |
