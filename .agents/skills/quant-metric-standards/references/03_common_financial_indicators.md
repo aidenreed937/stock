@@ -12,7 +12,7 @@
   $$\text{ERP} = \left(\frac{1}{\text{PE}_{\text{TTM}}} \times 100\%\right) - Y_{10\text{Y}}$$
   * $\frac{1}{\text{PE}_{\text{TTM}}}$：股票资产的盈利收益率（Earnings Yield %）；
     * **计算关键约束**：指数或全市场 PE 必须采用**总市值加权 PE（即 $\frac{\sum \text{Total MV}}{\sum \text{Net Profit}}$）**或**盈利收益率中位数**，**严禁采用简单算术平均 PE**（避免成分股亏损或小市值极端负值扭曲大盘中枢）。
-  * $Y_{10\text{Y}}$：中国 10 年期中债官方到期收益率（`tcm_y10`，%）。
+  * $Y_{10\text{Y}}$：中国 10 年期中债官方到期收益率（`tcm_y10`，小数制；如 2.5% 记为 0.025）。
 * **经济含义**：衡量股票大盘资产相较无风险国债的超额风险补偿。ERP 处于 10 年 90% 分位以上代表大盘具备极高配置性价比。
 
 ### ② 巴菲特比值 (Buffett Indicator)

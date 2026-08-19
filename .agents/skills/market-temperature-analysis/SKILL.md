@@ -87,8 +87,8 @@ make market-cycle-review START=YYYY-MM-DD END=YYYY-MM-DD
    - `fred`: `macro_indicators`，仅在需要美国宏观背景时使用
 5. 若核心行情或估值缺失，先说明数据缺口，不要硬算综合温度。
 6. 用 `MetricEngine` 和温度计派生事实按 YAML 中 `weight > 0` 的指标合成六维分数；当前入分清单为：
-   - 估值：`valuation_temperature`, `pe_percentile_5y`, `pb_percentile_5y`, `equity_risk_premium_percentile_5y`；raw `equity_risk_premium` 仍作为事实展示，不直接参与温度评分。
-   - 资金：`margin_buy_share_zscore_60d`, `margin_penetration_percentile_1250d`, `margin_balance_growth_20d`, `main_money_net_inflow_share`, `market_amount_percentile_1250d`（实际为自由流通换手率分位）。
+   - 估值：`valuation_temperature`；PE/PB/ERP 的 10Y 指标只作辅助事实，5Y 指标保留作历史兼容，raw `equity_risk_premium` 仍作为事实展示，不直接参与温度评分。
+   - 资金：`margin_buy_share_zscore_60d`, `margin_penetration_percentile_1250d`, `margin_balance_growth_20d`, `main_money_net_inflow_share`。
    - 情绪：`turnover_rate_percentile_1250d`, `advance_share`, `limit_event_temperature`, `investor_account_temperature`。
    - 技术：`return_20d`, `rsi_14d`, `ma_bias_20d`, `above_ma20_share`, `above_ma60_share`, `new_high_share_252d`, `new_low_share_252d`。
    - 基本面：`fs_revenue_growth_temperature`, `fs_profit_growth_temperature`, `fs_roe_temperature`, `forecast_positive_temperature`, `report_revision_temperature`；六维基本面没有 `express` 子项。

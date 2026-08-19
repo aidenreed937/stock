@@ -42,8 +42,8 @@ make market-temperature DATE=YYYY-MM-DD
 ## 3. 窗口和质量
 
 - 主窗口是最近 20 个已落盘 A 股交易日，来自 `stock_daily_bar`；
-- YAML 的 `short_windows` 是 `[5, 10]`，当前 `scoring.py` 只输出 `pending` 短线槽位，尚未接入短窗温度公式；
-- 估值 MetricEngine 的五年滚动分位使用源码中的 1250 个交易日窗口；其他派生宏观分位以其实际历史样本为准；
+- YAML 的 `short_windows` 是 `[5, 10]`，`facts.py` 从 `market_daily` 计算短线附加事实；样本充足时输出温度，样本不足时标记 `insufficient`，不进入六维主温度；
+- 行业/个股估值使用五年滚动窗口，大盘宽基估值与 ERP 使用十年滚动窗口；其他派生宏观分位以其实际历史样本为准；
 - 所有数据按基准日过滤，不能使用未来事实；
 - 必需数据缺失或超过 `max_lag_days` 时，质量报告产生硬问题；可选数据缺失或滞后时产生警告；
 - 低频数据只能解释最新状态，不能写成最近 20 个交易日内发生的变化。
@@ -54,7 +54,7 @@ make market-temperature DATE=YYYY-MM-DD
 
 | 维度 | 权重 | 当前有效入分指标 |
 |---|---:|---|
-| 估值面 | 20% | `valuation_temperature`、`pe_percentile_5y`、`pb_percentile_5y`、`equity_risk_premium_percentile_5y` |
+| 估值面 | 20% | `valuation_temperature`（唯一入分合成指标；PE/PB/ERP 分位只作辅助事实） |
 | 资金面 | 20% | `margin_buy_share_zscore_60d`、`margin_penetration_percentile_1250d`、`margin_balance_growth_20d`、`main_money_net_inflow_share`、`market_amount_percentile_1250d` |
 | 情绪面 | 15% | `turnover_rate_percentile_1250d`、`advance_share`、`limit_event_temperature`、`investor_account_temperature` |
 | 技术面 | 15% | `return_20d`、`rsi_14d`、`ma_bias_20d`、`above_ma20_share`、`above_ma60_share`、`new_high_share_252d`、`new_low_share_252d` |
@@ -67,14 +67,14 @@ YAML 子权重：
 
 | 指标 | 子权重 | 方向 | 当前处理 |
 |---|---:|---|---|
-| `valuation_temperature` | 50% | 正向 | 已是 0-100 温度，直接使用 |
-| `pe_percentile_5y` | 20% | 正向 | 五年分位直接作为温度 |
-| `pb_percentile_5y` | 20% | 正向 | 五年分位直接作为温度 |
-| `equity_risk_premium_percentile_5y` | 10% | 反向 | ERP 五年历史分位；ERP 越高通常越便宜，因此用 `100 - 分位` 转成估值温度 |
+| `valuation_temperature` | 100% | 正向 | 已是 0-100 温度，作为唯一估值合成指标直接使用 |
+| `pe_percentile_10y` | 0% | 正向 | 大盘宽基 PE 十年分位，仅作辅助事实 |
+| `pb_percentile_10y` | 0% | 正向 | 大盘宽基 PB 十年分位，仅作辅助事实 |
+| `equity_risk_premium_percentile_10y` | 0% | 反向 | ERP 十年历史分位，仅作辅助事实；ERP 越高通常越便宜 |
 
 `valuation_temperature` 的 MetricEngine 结果是每个指数一行；YAML 的 `aggregation: mean` 会对最新日期的所有可用指数结果求均值。当前实现不会自动筛选 `000985`。需要使用中证全指时，必须在报告中核对结果行的 `symbol`；不能把“均值结果”直接称为 `000985`。
 
-`equity_risk_premium` 在 `valuation.py` 中仍保留为盈利收益率减 10 年国债收益率的 raw 值，供事实展示和研究使用；正式评分使用同一计算链生成的 `equity_risk_premium_percentile_5y`，再按 YAML 的 `inverse` 方向转换为温度。ERP 分位使用 1250 个交易日的五年滚动窗口，样本不足时该指标不入分。
+`equity_risk_premium` 在 `valuation.py` 中仍保留为盈利收益率减 10 年国债收益率的 raw 值，供事实展示和研究使用；分位指标也保留为辅助事实，但不与 `valuation_temperature` 重复计权。大盘宽基估值与 ERP 使用约 2500 个交易日的十年滚动窗口，行业/个股估值继续使用五年窗口。
 
 ### 4.2 资金面
 
@@ -84,7 +84,7 @@ YAML 子权重：
 | `margin_penetration_percentile_1250d` | 20% | 分位直接作为温度 |
 | `margin_balance_growth_20d` | 20% | `50 + value * 500` |
 | `main_money_net_inflow_share` | 20% | `50 + value * 1000` |
-| `market_amount_percentile_1250d` | 15% | 全市场自由流通换手率五年分位直接作为温度（字段名沿用历史兼容名称） |
+| `market_amount_percentile_1250d` | 0% | 历史兼容字段；全市场自由流通换手率不再作为资金面第二个换手率分位入分 |
 
 `margin_buy_share` 和 `margin_penetration` 在 YAML 中权重为 0，只作事实展示。`moneyflow` 常晚于行情，资金结论必须写明资金事实日期；北向字段未经语义核验时只能称资金金额或活跃度观察。
 
@@ -97,7 +97,7 @@ YAML 子权重：
 | `limit_event_temperature` | 25% | `derived.py` 对可用涨跌停事件子项等权；已经是温度 |
 | `investor_account_temperature` | 10% | 月度新增投资者数历史分位；已经是温度 |
 
-`market_turnover_rate` 及期权、涨跌停组件的其他明细指标在当前 YAML 中权重为 0。`market_amount_percentile_1250d` 虽保留历史字段名，实际计算的是全市场自由流通换手率的五年分位，不再直接对绝对成交额排序。它们可以展示或解释，但不改变情绪面分。`limit_list_d` 中 `U`、`D`、`Z` 分别代表涨停、跌停和炸板；`stk_limit` 只是涨跌停价格，不是事件明细。
+`market_turnover_rate`、`market_amount_percentile_1250d` 及期权、涨跌停组件的其他明细指标在当前 YAML 中权重为 0；情绪面只保留 `turnover_rate_percentile_1250d` 这一套换手率分位入分。`market_amount_percentile_1250d` 虽保留历史字段名，实际计算的是全市场自由流通换手率的五年分位，不再直接对绝对成交额排序。它们可以展示或解释，但不改变主分。`limit_list_d` 中 `U`、`D`、`Z` 分别代表涨停、跌停和炸板；`stk_limit` 只是涨跌停价格，不是事件明细。
 
 ### 4.4 技术面
 
@@ -211,7 +211,7 @@ UV_CACHE_DIR=.uv_cache UV_PYTHON_INSTALL_DIR=.uv_python uv run python -m stock_c
 
 - 主窗口起止日期和基准日；
 - 进入评分的有效指标与被排除指标；
-- ERP raw 值与 `equity_risk_premium_percentile_5y` 的评分分工；
+- ERP raw 值与十年分位辅助事实的展示分工；
 - 估值 `valuation_temperature` 的实际结果行聚合口径；
 - 资金流、季频财报、月频宏观和慢情绪指标的最新日期；
 - 缺失指标是否触发了维度内重归一、缺失维度是否触发了综合分重归一。
@@ -222,10 +222,10 @@ UV_CACHE_DIR=.uv_cache UV_PYTHON_INSTALL_DIR=.uv_python uv run python -m stock_c
 - [ ] 是否使用 `src/stock_analytics/pipelines/market_temperature/metric_temperature.py` 的实际转换分支？
 - [ ] 是否只让 `weight > 0` 且事实状态为 `ok` 的指标入分？
 - [ ] 是否对缺失指标和缺失维度分别重归一？
-- [ ] 是否区分 raw ERP 展示值与 ERP 五年分位评分值？
+- [ ] 是否区分 raw ERP 展示值与十年分位辅助事实？
 - [ ] 是否核对 `valuation_temperature` 的实际指数结果行，而不是默认称为 `000985`？
 - [ ] 是否将 `express` 和行业结构 70%/30% 规则限制在行业结构模块？
-- [ ] 是否明确当前 5/10 日短线槽位仍为 `pending`？
+- [ ] 是否明确 5/10 日短线温度是附加输出，并区分 `ready` 与 `insufficient`？
 - [ ] 是否披露各数据源水位、滞后和有效样本？
 
 ## 10. 最小调用骨架
@@ -248,8 +248,8 @@ context = MetricContext(
 results = engine.compute(
     [
         "valuation_temperature",
-        "pe_percentile_5y",
-        "pb_percentile_5y",
+        "pe_percentile_10y",
+        "pb_percentile_10y",
         "margin_buy_share_zscore_60d",
         "margin_penetration_percentile_1250d",
         "margin_balance_growth_20d",
