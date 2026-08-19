@@ -430,6 +430,33 @@ def test_human_report_summarizes_data_limits_without_raw_dataset_codes() -> None
     assert "行业季频财报: 更新偏慢，最新 2026-03-31" in human_report
 
 
+def test_industry_templates_fail_closed_for_non_empty_missing_columns() -> None:
+    facts = pl.DataFrame({"category": ["data_watermark"]})
+    industry_panel = pl.DataFrame({"industry_code": ["801010"]})
+
+    machine_report = render_report_markdown(
+        config=_config(),
+        manifest={},
+        scores={},
+        facts=facts,
+        industry_panel=industry_panel,
+    )
+    human_report = render_human_report_markdown(
+        config=_config(),
+        manifest={},
+        scores={},
+        facts=facts,
+        industry_panel=industry_panel,
+    )
+
+    assert "## 数据不可用" in machine_report
+    assert "## 数据不可用" in human_report
+    assert "value_text" in machine_report
+    assert "structure_score" in machine_report
+    assert "value_text" in human_report
+    assert "structure_score" in human_report
+
+
 def _config() -> IndustryStructureConfig:
     return IndustryStructureConfig(
         schema_version=1,

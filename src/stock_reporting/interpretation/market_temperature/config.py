@@ -9,7 +9,8 @@ from typing import Any, Self, cast
 
 import yaml
 
-DEFAULT_CONFIG_PATH = Path("config/analytics/market_temperature.yaml")
+_PROJECT_ROOT = Path(__file__).resolve().parents[4]
+DEFAULT_CONFIG_PATH = _PROJECT_ROOT / "config/analytics/market_temperature.yaml"
 
 
 @dataclass(frozen=True, slots=True)

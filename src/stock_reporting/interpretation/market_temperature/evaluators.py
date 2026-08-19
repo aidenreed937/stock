@@ -213,7 +213,7 @@ def evaluate_follow_ups(
     ):
         lines.append("- 慢变量更新: 月频宏观和季频财报更新后再复核基本面、宏观流动性分数。")
     if _has_pending_short_term(scores):
-        lines.append("- 短线温度: 5/10日短线温度仍待接入或待计算，短节奏暂不要当成正式温度分。")
+        lines.append("- 短线温度: 短线组件样本不足或尚未就绪，短节奏暂不要当成正式温度分。")
     return lines
 
 

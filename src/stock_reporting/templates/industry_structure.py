@@ -6,6 +6,7 @@ from typing import TYPE_CHECKING, Any
 
 import polars as pl
 
+import stock_reporting.templates.input_validation as _input_validation
 from stock_reporting.core.watermark import human_watermark_issue_lines
 from stock_reporting.engine.renderer import ReportRenderer
 from stock_reporting.interpretation.industry_structure.interpretation import (
@@ -53,6 +54,7 @@ def build_report_json(
         "scores": scores,
         "fact_summary": summarize_facts(facts),
         "industry_panel_preview": _panel_preview(industry_panel),
+        "availability": _input_validation.industry_availability(facts, industry_panel),
     }
 
 
@@ -65,6 +67,8 @@ def render_report_markdown(
     industry_panel: pl.DataFrame,
 ) -> str:
     """渲染 Markdown 报告。"""
+    if unavailable := _input_validation.industry_unavailable(config.title, facts, industry_panel):
+        return unavailable
     facts_sec = "\n".join(_facts_sections(facts)).strip()
     context = {
         "title": config.title,
@@ -92,6 +96,8 @@ def render_human_report_markdown(
     industry_panel: pl.DataFrame,
 ) -> str:
     """渲染面向人工阅读的 Markdown 报告。"""
+    if unavailable := _input_validation.industry_unavailable(config.title, facts, industry_panel):
+        return unavailable
     context = {
         "title": config.title,
         "manifest": manifest,
@@ -125,13 +131,7 @@ def render_human_report_markdown(
 
 def summarize_facts(facts: pl.DataFrame) -> dict[str, Any]:
     """汇总事实表状态。"""
-    if facts.is_empty():
-        return {"rows": 0, "by_status": {}, "by_category": {}}
-    return {
-        "rows": facts.height,
-        "by_status": _count_by(facts, "status"),
-        "by_category": _count_by(facts, "category"),
-    }
+    return _input_validation.summarize_facts(facts, _input_validation.INDUSTRY_FACT_COLUMNS)
 
 
 def _panel_preview(panel: pl.DataFrame, limit: int = 20) -> list[dict[str, Any]]:

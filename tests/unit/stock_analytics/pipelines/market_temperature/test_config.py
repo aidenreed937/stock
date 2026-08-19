@@ -4,6 +4,8 @@ from pathlib import Path
 
 import pytest
 
+from stock_reporting.interpretation.industry_structure.config import load_industry_structure_config
+from stock_reporting.interpretation.investor_brief.config import load_investor_brief_config
 from stock_reporting.interpretation.market_temperature.config import load_market_temperature_config
 
 
@@ -83,12 +85,23 @@ market_temperature:
     assert config.bands.delta_levels.significant == 15.0
 
 
+def test_default_report_configs_are_independent_of_cwd(tmp_path: Path, monkeypatch) -> None:
+    monkeypatch.chdir(tmp_path)
+
+    assert load_market_temperature_config().title
+    assert load_industry_structure_config().title
+    assert load_investor_brief_config().title
+
+
 def test_default_config_scores_erp_percentile() -> None:
     config = load_market_temperature_config()
 
     valuation_metrics = {metric.metric_id: metric for metric in config.dimensions[0].metrics}
 
-    assert valuation_metrics["equity_risk_premium_percentile_5y"].weight == pytest.approx(0.10)
+    assert valuation_metrics["valuation_temperature"].weight == pytest.approx(1.0)
+    assert valuation_metrics["equity_risk_premium_percentile_10y"].weight == pytest.approx(0.0)
+    assert valuation_metrics["pe_percentile_10y"].weight == pytest.approx(0.0)
+    assert valuation_metrics["pb_percentile_10y"].weight == pytest.approx(0.0)
     assert "equity_risk_premium" not in valuation_metrics
 
 

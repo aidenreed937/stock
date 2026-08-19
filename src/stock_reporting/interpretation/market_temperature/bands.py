@@ -44,11 +44,14 @@ _DIMENSION_FOCUS: dict[str, tuple[str, str]] = {
 
 _METRIC_LABELS: dict[str, str] = {
     "valuation_temperature": "估值综合温度",
-    "pe_percentile_5y": "PE 5年分位",
-    "pb_percentile_5y": "PB 5年分位",
+    "pe_percentile_5y": "PE 5年分位（兼容）",
+    "pb_percentile_5y": "PB 5年分位（兼容）",
+    "pe_percentile_10y": "PE 10年分位",
+    "pb_percentile_10y": "PB 10年分位",
     "dividend_yield": "股息率",
     "equity_risk_premium": "股权风险溢价 (ERP)",
-    "equity_risk_premium_percentile_5y": "ERP 5年分位",
+    "equity_risk_premium_percentile_5y": "ERP 5年分位（兼容）",
+    "equity_risk_premium_percentile_10y": "ERP 10年分位",
     "margin_penetration_percentile_1250d": "两融渗透率5年分位",
     "margin_balance_growth_20d": "两融余额20日变化",
     "main_money_net_inflow_share": "主力净流入占比",

@@ -7,7 +7,10 @@ import polars as pl
 
 from stock_analytics.pipelines.market_temperature.facts import FACT_SCHEMA
 from stock_reporting.interpretation.market_temperature.config import MarketTemperatureConfig
-from stock_reporting.templates.market_temperature import render_human_report_markdown
+from stock_reporting.templates.market_temperature import (
+    render_human_report_markdown,
+    render_report_markdown,
+)
 
 
 def test_human_report_includes_interpretation_priority() -> None:
@@ -95,8 +98,8 @@ def test_human_report_surfaces_quality_divergence_and_followups() -> None:
             _dimension("macro_liquidity", "宏观流动性", 60.57),
         ],
         "short_term": [
-            {"window": 5, "temperature": None, "status": "pending"},
-            {"window": 10, "temperature": None, "status": "pending"},
+            {"window": 5, "temperature": None, "status": "insufficient"},
+            {"window": 10, "temperature": None, "status": "insufficient"},
         ],
     }
     facts = pl.DataFrame(
@@ -230,7 +233,7 @@ def test_human_report_surfaces_quality_divergence_and_followups() -> None:
     assert "估值约束与流动性支撑并存" in report
     assert "基本面分数可用但正式财报偏慢" in report
     assert "## 后续跟踪" in report
-    assert "5/10日短线温度仍待接入或待计算" in report
+    assert "短线温度: 短线组件样本不足或尚未就绪" in report
     assert "人民币汇率20日变化温度" in report
     assert "美国期限利差温度" in report
     assert "美国期限结构压力日频背景观察" in report
@@ -239,6 +242,37 @@ def test_human_report_surfaces_quality_divergence_and_followups() -> None:
     assert "| 总体外部压力 | 76.67 | 中等偏高 | 压力偏高" in report
     assert "| 避险压力 | 75.00 | 中等偏高 | 压力偏高" in report
     assert "| 需求压力 | 57.50 | 中性 | 压力中性" in report
+
+
+def test_market_temperature_templates_fail_closed_for_non_empty_missing_columns() -> None:
+    config = MarketTemperatureConfig(
+        schema_version=1,
+        title="测试温度计",
+        artifact_root=Path("data/analytics/market_temperature"),
+        main_window=20,
+        short_windows=(5, 10),
+        dimensions=(),
+        datasets=(),
+    )
+    facts = pl.DataFrame({"category": ["metric_value"]})
+
+    machine_report = render_report_markdown(
+        config=config,
+        manifest={},
+        scores={},
+        facts=facts,
+    )
+    human_report = render_human_report_markdown(
+        config=config,
+        manifest={},
+        scores={},
+        facts=facts,
+    )
+
+    assert "## 数据不可用" in machine_report
+    assert "## 数据不可用" in human_report
+    assert "metric_id" in machine_report
+    assert "metric_id" in human_report
 
 
 def test_human_report_can_render_cross_period_driver_change() -> None:

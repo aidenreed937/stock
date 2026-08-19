@@ -6,6 +6,7 @@ from typing import TYPE_CHECKING, Any
 
 import polars as pl
 
+import stock_reporting.templates.input_validation as _input_validation
 from stock_reporting.core.watermark import (
     human_watermark_issue_lines,
     human_watermark_latest_text,
@@ -55,7 +56,7 @@ from stock_reporting.interpretation.market_temperature.interpretation import (
 )
 
 _PREFERRED_METRICS = {
-    "valuation": ("valuation_temperature", "pe_percentile_5y", "pb_percentile_5y"),
+    "valuation": ("valuation_temperature", "pe_percentile_10y", "pb_percentile_10y"),
     "fund_flow": (
         "margin_penetration_percentile_1250d",
         "margin_balance_growth_20d",
@@ -115,6 +116,9 @@ def build_report_json(
         "manifest": manifest,
         "scores": scores,
         "fact_summary": summarize_facts(facts),
+        "availability": _input_validation.fact_availability(
+            facts, _input_validation.MARKET_FACT_COLUMNS
+        ),
     }
 
 
@@ -126,6 +130,8 @@ def render_report_markdown(
     facts: pl.DataFrame,
 ) -> str:
     """渲染 Markdown 报告。"""
+    if unavailable := _input_validation.market_unavailable(config.title, facts):
+        return unavailable
     facts_sec = "\n".join(_facts_sections(facts)).strip()
     context = {
         "title": config.title,
@@ -148,6 +154,8 @@ def render_human_report_markdown(
     comparison: dict[str, Any] | None = None,
 ) -> str:
     """渲染面向人工阅读的 Markdown 报告。"""
+    if unavailable := _input_validation.market_unavailable(config.title, facts):
+        return unavailable
     composite = scores["composite"]
     temperature = composite["temperature"]
     window_text = _window_text(manifest)
@@ -202,13 +210,7 @@ def render_human_report_markdown(
 
 def summarize_facts(facts: pl.DataFrame) -> dict[str, Any]:
     """汇总事实表状态。"""
-    if facts.is_empty():
-        return {"rows": 0, "by_status": {}, "by_category": {}}
-    return {
-        "rows": facts.height,
-        "by_status": _count_by(facts, "status"),
-        "by_category": _count_by(facts, "category"),
-    }
+    return _input_validation.summarize_facts(facts, _input_validation.MARKET_FACT_COLUMNS)
 
 
 def _facts_sections(facts: pl.DataFrame) -> list[str]:
@@ -259,13 +261,6 @@ def _facts_sections(facts: pl.DataFrame) -> list[str]:
             )
         )
     return lines
-
-
-def _count_by(facts: pl.DataFrame, column: str) -> dict[str, int]:
-    return {
-        str(row[column]): int(row["len"])
-        for row in facts.group_by(column).len().sort(column).to_dicts()
-    }
 
 
 def _window_text(manifest: dict[str, Any]) -> str:
