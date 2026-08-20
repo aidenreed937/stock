@@ -39,6 +39,7 @@ def fact_temperature(row: dict[str, Any], direction: str) -> float | None:
     elif metric_id in {
         "main_money_net_inflow_share",
         "main_money_net_inflow_share_20d_cum",
+        "main_large_order_net_inflow_share",
         "super_large_net_inflow_share",
     }:
         temperature = 50.0 + numeric * 1000.0

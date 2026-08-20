@@ -42,7 +42,7 @@ def _build_parser() -> argparse.ArgumentParser:
         "--no-latest",
         dest="update_latest",
         action="store_false",
-        help="不刷新 data/analytics/quant_brief/latest",
+        help="不刷新 data/analytics/investor_brief/latest/quant_brief.*",
     )
     return parser
 

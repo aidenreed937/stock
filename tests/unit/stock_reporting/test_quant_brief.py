@@ -1,6 +1,7 @@
 """量化投研简报解读与渲染测试。"""
 
 from datetime import date
+from typing import Any
 
 import polars as pl
 
@@ -8,6 +9,7 @@ from stock_reporting.interpretation.quant_brief.config import load_quant_brief_c
 from stock_reporting.interpretation.quant_brief.interpretation import (
     evaluate_macro,
     evaluate_nature,
+    evaluate_risk_gates,
     evaluate_veto,
 )
 from stock_reporting.templates.quant_brief import (
@@ -157,17 +159,145 @@ def test_render_quant_brief_contains_four_decision_sections() -> None:
     markdown = render_quant_brief_markdown(brief)
 
     assert "## 1. 宏观定基调" in markdown
+    assert "## 0. 风控闸门总览" in markdown
     assert "## 2. 量价判性质" in markdown
     assert "## 3. 微观排雷与一票否决" in markdown
     assert "## 4. 中观选方向" in markdown
+    assert "主力资金与杠杆健康度" in markdown
     assert brief["veto"]["top5pct"]["value"] == 0.32
+
+
+def test_systemic_valuation_red_flag_sets_defensive_position_cap() -> None:
+    config = load_quant_brief_config()
+    result = evaluate_macro(
+        config,
+        {
+            "composite": {"temperature": 45.0},
+            "dimensions": [{"dimension_id": "valuation", "temperature": 85.0}],
+            "systemic_risk": {"level": "中等", "status": "moderate_systemic_risk"},
+        },
+    )
+
+    assert result["equity_position_band"] == "0%-30%"
+    assert "防守" in result["stance"]
+    assert "降低总仓位上限" in result["tactic"]
+
+
+def test_composite_red_flag_is_reduce_only_without_hard_stop() -> None:
+    config = load_quant_brief_config()
+    result = evaluate_macro(
+        config,
+        {
+            "composite": {"temperature": 65.0},
+            "dimensions": [{"dimension_id": "valuation", "temperature": 60.0}],
+            "systemic_risk": {"level": "低", "status": "normal"},
+        },
+    )
+
+    assert "只减不加" in result["stance"]
+    assert result["equity_position_band"] != "0%-30%"
+    assert result["risk_gate"]["severity"] == "watch"
+
+
+def test_funding_gate_requires_large_outflow_and_high_turnover_for_hard_stop() -> None:
+    config = load_quant_brief_config()
+    facts = _facts(
+        [
+            ("main_large_order_net_inflow_share", -0.06),
+            ("main_money_net_inflow_share_20d_cum", -0.02),
+            ("market_amount_percentile_1250d", 95.0),
+            ("margin_buy_share", 0.11),
+            ("margin_balance_growth_20d", -0.01),
+            ("margin_balance_growth_60d", 0.01),
+            ("margin_penetration_percentile_1250d", 96.0),
+        ]
+    )
+    result = evaluate_risk_gates(
+        config,
+        {},
+        {"structure_health": {"positive_return_20d_count": 15, "scored_industry_count": 31}},
+        _clear_panel(),
+        facts,
+    )
+
+    funding = _gate(result, "funding_leverage")
+    assert funding["status"] == "triggered"
+    assert funding["severity"] == "hard"
+    assert result["hard_stop"] is True
+    assert result["max_position_band"] == "0%-30%"
+
+
+def test_funding_fallback_is_observation_not_level_two_hard_stop() -> None:
+    config = load_quant_brief_config()
+    facts = _facts(
+        [
+            ("main_money_net_inflow_share", -0.06),
+            ("main_money_net_inflow_share_20d_cum", -0.02),
+            ("market_amount_percentile_1250d", 95.0),
+            ("margin_buy_share", 0.08),
+            ("margin_balance_growth_20d", 0.01),
+            ("margin_penetration_percentile_1250d", 80.0),
+        ]
+    )
+    result = evaluate_risk_gates(config, {}, {}, _clear_panel(), facts)
+
+    funding = _gate(result, "funding_leverage")
+    assert funding["status"] == "watch"
+    assert funding["severity"] == "watch"
+    assert result["hard_stop"] is False
+
+
+def test_breadth_gate_marks_weak_width_as_watch() -> None:
+    config = load_quant_brief_config()
+    facts = _facts([("above_ma60_share", 0.25)])
+    result = evaluate_risk_gates(
+        config,
+        {"dimensions": [{"dimension_id": "technical", "temperature": 55.0}]},
+        {"trend_diagnostics": {"positive_return_20d_count": 9, "scored_industry_count": 31}},
+        _clear_panel(),
+        facts,
+    )
+
+    breadth = _gate(result, "market_breadth")
+    assert breadth["status"] == "watch"
+    assert "60日线" in breadth["message"]
+    assert "20日上涨行业" in breadth["message"]
+
+
+def test_industry_crowding_is_local_avoidance_not_global_hard_stop() -> None:
+    config = load_quant_brief_config()
+    panel = pl.DataFrame(
+        [
+            {
+                "industry_name": "电子",
+                "industry_code": "801080",
+                "status": "ok",
+                "tcr": 26.0,
+                "crowding_temperature": 95.0,
+            }
+        ]
+    )
+    result = evaluate_risk_gates(config, {}, {}, panel, None)
+
+    industry = _gate(result, "industry_crowding")
+    assert industry["status"] == "triggered"
+    assert industry["severity"] == "local"
+    assert result["hard_stop"] is False
+
+
+def test_risk_gates_report_partial_when_required_facts_are_missing() -> None:
+    result = evaluate_risk_gates(load_quant_brief_config(), {}, {}, pl.DataFrame(), None)
+
+    assert result["status"] == "partial"
+    assert result["hard_stop"] is False
+    assert all(gate["status"] == "insufficient" for gate in result["gates"])
 
 
 def _facts(values: list[tuple[str, float]]) -> pl.DataFrame:
     return pl.DataFrame(
         {
             "category": ["metric_value"] * len(values),
-            "dimension": ["sentiment", "fund_flow", "fund_flow"][: len(values)],
+            "dimension": ["fund_flow"] * len(values),
             "metric_id": [item[0] for item in values],
             "value_float": [item[1] for item in values],
             "metric_date": [date(2026, 8, 14)] * len(values),
@@ -176,3 +306,21 @@ def _facts(values: list[tuple[str, float]]) -> pl.DataFrame:
             "sample_size": [31] * len(values),
         }
     )
+
+
+def _clear_panel() -> pl.DataFrame:
+    return pl.DataFrame(
+        [
+            {
+                "industry_name": "煤炭",
+                "industry_code": "801950",
+                "status": "ok",
+                "tcr": 3.0,
+                "crowding_temperature": 40.0,
+            }
+        ]
+    )
+
+
+def _gate(result: dict[str, Any], gate_id: str) -> dict[str, Any]:
+    return next(gate for gate in result["gates"] if gate["id"] == gate_id)

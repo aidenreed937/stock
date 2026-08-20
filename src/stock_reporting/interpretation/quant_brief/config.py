@@ -45,6 +45,7 @@ class QuantBriefConfig:
     schema_version: int
     title: str
     artifact_root: Path
+    latest_root: Path
     market_temperature_root: Path
     industry_structure_root: Path
     temperature_bands: tuple[TemperatureBandConfig, ...]
@@ -67,6 +68,19 @@ class QuantBriefConfig:
     max_lagging_industries: int = 5
     min_priority_structure_score: float = 50.0
     require_fund_flow_confirmation: bool = True
+    valuation_red_flag_temperature: float = 85.0
+    composite_red_flag_temperature: float = 65.0
+    defensive_position_band: str = "0%-30%"
+    main_money_outflow_share_hard: float = -0.05
+    market_amount_high_percentile: float = 90.0
+    margin_buy_share_warning: float = 0.10
+    margin_penetration_extreme_percentile: float = 95.0
+    breadth_above_ma60_healthy: float = 0.50
+    breadth_above_ma60_weak: float = 0.30
+    positive_20d_sector_min: int = 10
+    industry_tcr_warning: float = 20.0
+    industry_tcr_hard: float = 25.0
+    industry_crowding_hard_temperature: float = 90.0
 
     @classmethod
     def from_mapping(cls, data: Mapping[str, Any]) -> Self:
@@ -76,10 +90,12 @@ class QuantBriefConfig:
             raise ValueError("quant_brief.temperature_bands 不能为空")
         nature = _as_mapping(data.get("nature", {}), "nature")
         veto = _as_mapping(data.get("veto", {}), "veto")
+        risk_gates = _as_mapping(data.get("risk_gates", {}), "risk_gates")
         return cls(
             schema_version=int(data.get("schema_version", 1)),
             title=str(data.get("title", "A 股量化投研简报")),
             artifact_root=Path(str(data.get("artifact_root", "data/analytics/quant_brief"))),
+            latest_root=Path(str(data.get("latest_root", "data/analytics/investor_brief"))),
             market_temperature_root=Path(
                 str(data.get("market_temperature_root", "data/analytics/market_temperature"))
             ),
@@ -111,6 +127,31 @@ class QuantBriefConfig:
             max_lagging_industries=int(veto.get("max_lagging_industries", 5)),
             min_priority_structure_score=float(veto.get("min_priority_structure_score", 50.0)),
             require_fund_flow_confirmation=bool(veto.get("require_fund_flow_confirmation", True)),
+            valuation_red_flag_temperature=float(
+                risk_gates.get("valuation_red_flag_temperature", 85.0)
+            ),
+            composite_red_flag_temperature=float(
+                risk_gates.get("composite_red_flag_temperature", 65.0)
+            ),
+            defensive_position_band=str(risk_gates.get("defensive_position_band", "0%-30%")),
+            main_money_outflow_share_hard=float(
+                risk_gates.get("main_money_outflow_share_hard", -0.05)
+            ),
+            market_amount_high_percentile=float(
+                risk_gates.get("market_amount_high_percentile", 90.0)
+            ),
+            margin_buy_share_warning=float(risk_gates.get("margin_buy_share_warning", 0.10)),
+            margin_penetration_extreme_percentile=float(
+                risk_gates.get("margin_penetration_extreme_percentile", 95.0)
+            ),
+            breadth_above_ma60_healthy=float(risk_gates.get("breadth_above_ma60_healthy", 0.50)),
+            breadth_above_ma60_weak=float(risk_gates.get("breadth_above_ma60_weak", 0.30)),
+            positive_20d_sector_min=int(risk_gates.get("positive_20d_sector_min", 10)),
+            industry_tcr_warning=float(risk_gates.get("industry_tcr_warning", 20.0)),
+            industry_tcr_hard=float(risk_gates.get("industry_tcr_hard", 25.0)),
+            industry_crowding_hard_temperature=float(
+                risk_gates.get("industry_crowding_hard_temperature", 90.0)
+            ),
         )
 
     def with_artifact_root(self, artifact_root: Path | str | None) -> Self:

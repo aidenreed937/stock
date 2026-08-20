@@ -5,6 +5,21 @@
 - 行业结构输入: {{ manifest.inputs.industry_structure.run_id }}
 - 定位: 底层量化投研与风控决策链；外盘仅作背景，不构成个性化投资建议。
 
+## 0. 风控闸门总览
+
+- 总状态: {{ risk_gates.status }}
+- 总结: {{ risk_gates.summary }}
+- 硬性总闸门: {{ "是" if risk_gates.hard_stop else "否" }}
+- 防守仓位上限: {{ risk_gates.max_position_band or "按宏观温度档位" }}
+
+| 闸门 | 状态 | 关键事实 | 判断 | 风控动作 |
+|---|---|---|---|---|
+{% for gate in risk_gate_rows %}
+| {{ gate.title }} | {{ gate.status }} | {{ gate.facts }} | {{ gate.message }} | {{ gate.action }} |
+{% else %}
+| - | 资料不足 | - | 暂无闸门结果。 | 补齐上游事实。 |
+{% endfor %}
+
 ## 1. 宏观定基调
 
 - 综合温度: {{ macro_temperature_str }} / 100
@@ -24,6 +39,12 @@
 - 技术面温度: {{ technical_temperature_str }}；资金面温度: {{ fund_flow_temperature_str }}
 - 行业扩散: 20日 {{ breadth_20d_str }}；60日 {{ breadth_60d_str }}
 - 综合温度变化: {{ composite_delta_str }}（比较状态: {{ nature.comparison_status }}）
+- 主力资金与杠杆健康度: {{ funding_health.status }}
+- {{ funding_health.main_flow_label }}: {{ funding_health.main_flow }}；20日累计: {{ funding_health.cumulative_flow }}；超大单: {{ funding_health.super_large_flow }}
+- 融资买入占比: {{ funding_health.margin_buy }}；两融余额增速: 20日 {{ funding_health.margin_growth20 }} / 60日 {{ funding_health.margin_growth60 }}
+- 两融渗透率: {{ funding_health.margin_penetration }}；历史分位: {{ funding_health.margin_penetration_percentile }}
+- 资金风控动作: {{ funding_health.action }}
+- 资金口径说明: {{ funding_health.note }}
 - 结论: {{ nature.message }}
 
 ## 3. 微观排雷与一票否决

@@ -1,6 +1,6 @@
 # A 视角量化投研简报 `quant_brief` 设计方案
 
-> 状态：已收敛，进入实现
+> 状态：已实现，已通过针对性测试与静态检查
 > 主题：在 `data/analytics/` 下新增与 `investor_brief` 同级的 A 视角（底层量化投研 / 风控决策链）简报产物管线，并新增大盘级 Top 5% 成交占比派生指标。
 
 ---
@@ -17,7 +17,8 @@ A 视角 = **底层量化投研 / 金融工程 / 风控决策链**，是 B 视�
 3. **微观排雷区**（拥挤度 / 两融拐点 → 一票否决）
 4. **中观选方向**（行业轮动 → PB-ROE / TCR 矩阵）
 
-新产物命名为 **`quant_brief`**，产物根目录 `data/analytics/quant_brief`，与 `investor_brief` 同级。
+新产物命名为 **`quant_brief`**，运行历史保存在 `data/analytics/quant_brief`；最新报告与现有
+投资者简报并列落在 `data/analytics/investor_brief/latest/`，便于统一消费。
 
 本方案的实现约束已经收敛为：`quant_brief` 是同一基准日市场温度和行业结构产物的只读解释层；
 新增指标只进入市场温度事实 Mart，不直接扩展 `market_daily` 宽表；所有阈值、边界和仓位区间由
@@ -90,6 +91,20 @@ A 视角一票否决和事实依据。
 该指标取**最新成交日的横截面 Top5% 成交占比**，非 20 日均值；使用时按单日事实解读，不断言趋势。
 此限制写入 `report_consistency` 校验与 `quant_brief.data_quality_notes`。
 
+### 3.5 主力资金与杠杆健康度观察指标
+
+资金与杠杆作为 `market_temperature/facts.parquet` 的事实观察项，不直接把新增口径并入六维主温度：
+
+| 指标 | 计算口径 | 用途 | 限制 |
+|---|---|---|---|
+| `main_large_order_net_inflow_share` | `(buy_lg + buy_elg - sell_lg - sell_elg) / market_amount` | 识别放量下的大单净流出 | Tushare `moneyflow` 大单分类代理，不等同于 Level-2 机构账户 |
+| `main_money_net_inflow_share_20d_cum` | 20 个交易日主力净流入额 ÷ 20 日成交额 | 辅助观察资金方向是否持续偏弱 | 只能说明窗口累计事实，不能单独确认连续出货 |
+| `margin_buy_share` | 融资买入额 ÷ 全市场成交额 | 识别融资交易活跃度过热 | 不是杠杆余额拐点 |
+| `margin_penetration_percentile_1250d` | 两融余额 ÷ 流通市值的 5 年滚动分位 | 识别存量杠杆极端水位 | 高分位且余额增速为负只输出去杠杆观察 |
+| `margin_balance_growth_20d/60d` | 两融余额的 20/60 交易日增长率 | 观察杠杆方向 | 当前链路不宣称严格高位拐点 |
+
+当本地数据缺少 `buy_lg/sell_lg` 时，原有 `main_money_net_inflow_share` 仍可继续计算，新增大单指标输出为空；报告会明确标注回退到 `moneyflow` 主力净流入分类代理，不将其包装成 Level-2 事实。
+
 ---
 
 ## 4. 四步决策逻辑（interpretation）
@@ -139,15 +154,29 @@ A 视角一票否决和事实依据。
 
 ---
 
-## 5. 产物结构（镜像 investor_brief）
+## 5. 四道风控闸门
+
+`quant_brief` 在四步研判之前输出 `risk_gates`，把宏观总仓位、中观行业回避和微观资金观察分层：
+
+1. **系统性风险与估值红旗**：估值温度 `>=85` 或上游系统性风险为高风险时，触发总仓位防守上限 `0%-30%`；综合温度 `>=65` 只输出“只减不加”观察，不自动等同于硬止损。
+2. **主力资金与杠杆健康度**：精确大单净流入占比 `<=-5%` 且成交额处于 `>=90` 分位时触发资金硬风险观察；融资买入占比 `>10%`、两融高分位及余额增速为负时输出杠杆观察。单日数据不推断连续出货或必然踩踏。
+3. **全市场技术宽度**：站上 60 日均线个股占比 `<30%` 或 20 日上涨行业少于 10 家时，标记少数抱团/宽度不足；达到 50% 且行业扩散达到配置线才算通过。
+4. **行业拥挤度与成交占比**：行业 TCR `>=20%` 或拥挤温度 `>=80` 进入局部回避观察；TCR `>=25%` 或拥挤温度 `>=90` 标记为局部坚决回避，但不改写全市场总仓位硬闸门。
+
+每道闸门输出 `status / severity / facts_text / message / action`。`severity=local` 只影响候选行业，不计入 `risk_gates.hard_stop`；上游事实缺失则输出 `insufficient`，总状态为 `partial`，不以模型记忆补齐。
+
+## 6. 产物结构（镜像 investor_brief）
 
 ```
 data/analytics/quant_brief/
   runs/as_of=YYYY-MM-DD/run_*/manifest.json, brief_report.md, brief_report.json
-  latest/   # 三个文件的副本
+data/analytics/investor_brief/latest/
+  brief_report.md       # 原有投资者简报
+  quant_brief.md        # 最新量化投研简报
+  quant_brief.json
 ```
 
-`brief_report.json` 顶层：`schema_version / title / manifest / macro / nature / veto / sector /
+`brief_report.json` 顶层：`schema_version / title / manifest / macro / nature / veto / sector / risk_gates /
 data_quality_notes / reading_notes`。
 
 其中 `macro` 保存综合温度、五档区间、风险等级、仓位区间、策略动作和理由；`nature` 保存性质、
@@ -158,11 +187,11 @@ data_quality_notes / reading_notes`。
 
 ---
 
-## 6. 全链路落点（镜像 investor_brief）
+## 7. 全链路落点（镜像 investor_brief）
 
 | # | 文件 | 内容 |
 |---:|---|---|
-| 1 | `config/analytics/quant_brief.yaml` | 镜像 investor_brief.yaml，`artifact_root: data/analytics/quant_brief` |
+| 1 | `config/analytics/quant_brief.yaml` | `artifact_root: data/analytics/quant_brief` 保存运行历史，`latest_root: data/analytics/investor_brief` 共享最新目录 |
 | 2 | `src/stock_reporting/interpretation/quant_brief/{config,interpretation,__init__}.py` | `QuantBriefConfig` + 四步逻辑 |
 | 3 | `src/stock_reporting/templates/quant_brief.py` | `build_quant_brief_json` / `render_quant_brief_markdown` |
 | 4 | `src/stock_reporting/templates/temperature/quant_brief.md.j2` | 报告模板 |
@@ -179,7 +208,7 @@ data_quality_notes / reading_notes`。
 
 ---
 
-## 7. 口径与一致性保证
+## 8. 口径与一致性保证
 
 - 沿用 `investor_brief` 的 `_resolve_latest_common_date` / `_resolve_as_of_date` / manifest `inputs`
   链接；`report_consistency` 同步校验 quant 与上游的基准日 + run_id + 数值一致性。
@@ -190,9 +219,10 @@ data_quality_notes / reading_notes`。
 
 ---
 
-## 8. 已确认的兼容策略
+## 9. 已确认的兼容策略
 
-- `multi_date` / `make scan` 将 `quant_brief` 设为与 `investor_brief` 同级的**必产第四类产物**。
+- `multi_date` / `make scan` 将 `quant_brief` 设为**必产第四类产物**；运行历史独立保存，最新文件与
+  `investor_brief` 共享 `latest/` 目录。
 - `report_consistency` 对新生成日期强制校验 quant 输入基准日、run_id 和事实链接；扫描历史日期时，
   若旧日期没有 quant 目录先输出 legacy compatibility warning，不把历史存量直接判为新链路硬错误。
 - 外盘风险仍只作宏观背景，不改变五档仓位；只有 `systemic_risk` 和配置驱动的本地事实能够改变仓位档位。

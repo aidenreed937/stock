@@ -123,6 +123,18 @@ market_temperature:
           aggregation: latest
           direction: positive
           weight: 0.10
+        - metric_id: main_large_order_net_inflow_share
+          aggregation: latest
+          direction: positive
+          weight: 0.00
+        - metric_id: main_money_net_inflow_share_zscore_60d
+          aggregation: latest
+          direction: positive
+          weight: 0.00
+        - metric_id: super_large_net_inflow_share
+          aggregation: latest
+          direction: positive
+          weight: 0.00
         - metric_id: market_amount_percentile_1250d
           aggregation: latest
           direction: positive

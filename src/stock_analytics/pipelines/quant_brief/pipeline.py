@@ -50,7 +50,11 @@ def run_quant_brief(
     market = _load_market_artifacts(config, resolved_date)
     industry = _load_industry_artifacts(config, resolved_date)
     as_of_date = _resolve_as_of_date(market["manifest"], industry["manifest"])
-    paths = build_run_paths(as_of_date, config.artifact_root)
+    paths = build_run_paths(
+        as_of_date,
+        config.artifact_root,
+        latest_root=config.latest_root,
+    )
     manifest = _build_manifest(config, as_of_date, paths, market=market, industry=industry)
 
     from stock_reporting.templates.quant_brief import (

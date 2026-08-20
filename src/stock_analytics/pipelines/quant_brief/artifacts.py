@@ -37,12 +37,14 @@ def build_run_paths(
     as_of_date: date,
     artifact_root: Path | str,
     run_id: str | None = None,
+    *,
+    latest_root: Path | str | None = None,
 ) -> QuantBriefRunPaths:
-    """按基准日与 run_id 构造产物路径。"""
+    """按基准日与 run_id 构造运行和共享 latest 产物路径。"""
     root = Path(artifact_root)
     actual_run_id = run_id or f"run_{datetime.now().strftime('%Y%m%dT%H%M%S')}"
     run_dir = root / "runs" / f"as_of={as_of_date.isoformat()}" / actual_run_id
-    latest_dir = root / "latest"
+    latest_dir = (Path(latest_root) if latest_root is not None else root) / "latest"
     return QuantBriefRunPaths(
         root=root,
         run_dir=run_dir,
@@ -70,8 +72,8 @@ def write_artifacts(
 
 def _copy_to_latest(paths: QuantBriefRunPaths) -> None:
     paths.latest_dir.mkdir(parents=True, exist_ok=True)
-    for source in (paths.manifest, paths.brief_md, paths.brief_json):
-        shutil.copy2(source, paths.latest_dir / source.name)
+    shutil.copy2(paths.brief_md, paths.latest_dir / "quant_brief.md")
+    shutil.copy2(paths.brief_json, paths.latest_dir / "quant_brief.json")
 
 
 def _write_json(path: Path, payload: MappingLike) -> None:

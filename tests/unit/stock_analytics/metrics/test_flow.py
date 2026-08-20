@@ -75,6 +75,7 @@ def test_default_registry_contains_dimensionless_margin_metrics() -> None:
         "margin_penetration_percentile_1250d",
         "leverage_sentiment_score",
         "main_money_net_inflow_share",
+        "main_large_order_net_inflow_share",
         "main_money_net_inflow_share_20d_cum",
         "super_large_net_inflow_share",
         "main_money_net_inflow_share_zscore_60d",
@@ -137,7 +138,9 @@ def test_engine_computes_moneyflow_and_northbound_market_metrics() -> None:
                 {
                     "trade_date": [dates[0], dates[0], dates[1], dates[1]],
                     "net_mf_amount": [10.0, -2.0, 20.0, 5.0],
+                    "buy_lg_amount": [4.0, 1.0, 10.0, 3.0],
                     "buy_elg_amount": [8.0, 1.0, 15.0, 2.0],
+                    "sell_lg_amount": [2.0, 1.0, 4.0, 1.0],
                     "sell_elg_amount": [3.0, 2.0, 5.0, 1.0],
                 }
             ),
@@ -154,6 +157,7 @@ def test_engine_computes_moneyflow_and_northbound_market_metrics() -> None:
     results = MetricEngine().compute(
         [
             "main_money_net_inflow_share",
+            "main_large_order_net_inflow_share",
             "super_large_net_inflow_share",
             "northbound_net_inflow",
             "northbound_net_inflow_share",
@@ -162,11 +166,14 @@ def test_engine_computes_moneyflow_and_northbound_market_metrics() -> None:
     )
 
     assert results[0].frame["main_money_net_inflow_share"].to_list() == pytest.approx([0.04, 0.05])
-    assert results[1].frame["super_large_net_inflow_share"].to_list() == pytest.approx(
+    assert results[1].frame["main_large_order_net_inflow_share"].to_list() == pytest.approx(
+        [0.03, 0.038]
+    )
+    assert results[2].frame["super_large_net_inflow_share"].to_list() == pytest.approx(
         [0.02, 0.022]
     )
-    assert results[2].frame["northbound_net_inflow"].to_list() == pytest.approx([100.0, 200.0])
-    assert results[3].frame["northbound_net_inflow_share"].to_list() == pytest.approx([0.5, 0.4])
+    assert results[3].frame["northbound_net_inflow"].to_list() == pytest.approx([100.0, 200.0])
+    assert results[4].frame["northbound_net_inflow_share"].to_list() == pytest.approx([0.5, 0.4])
 
 
 def test_engine_computes_main_money_20d_cumulative_share() -> None:

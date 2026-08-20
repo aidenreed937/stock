@@ -117,6 +117,12 @@ def test_run_quant_brief_reads_upstream_artifacts_and_writes_four_step_report(
         ]
     ).write_parquet(industry_run / "industry_panel.parquet")
 
+    latest_dir = analytics_root / "investor_brief" / "latest"
+    latest_dir.mkdir(parents=True)
+    (latest_dir / "brief_report.md").write_text("investor brief", encoding="utf-8")
+    (latest_dir / "brief_report.json").write_text("{}", encoding="utf-8")
+    (latest_dir / "manifest.json").write_text("investor manifest", encoding="utf-8")
+
     result = run_quant_brief(
         target_date=as_of_date,
         output_root=analytics_root / "quant_brief",
@@ -126,6 +132,11 @@ def test_run_quant_brief_reads_upstream_artifacts_and_writes_four_step_report(
     assert result.paths.manifest.exists()
     assert result.paths.brief_md.exists()
     assert result.paths.brief_json.exists()
+    assert (latest_dir / "quant_brief.md").exists()
+    assert (latest_dir / "quant_brief.json").exists()
+    assert (latest_dir / "brief_report.md").read_text(encoding="utf-8") == "investor brief"
+    assert (latest_dir / "brief_report.json").read_text(encoding="utf-8") == "{}"
+    assert (latest_dir / "manifest.json").read_text(encoding="utf-8") == "investor manifest"
     assert result.manifest["inputs"]["market_temperature"]["run_id"] == "run_market"
     assert result.brief_json["veto"]["top5pct"]["value"] == 0.55
     assert result.brief_json["sector"]["priority"][0]["industry_name"] == "煤炭"

@@ -91,13 +91,56 @@ def _margin_observation(facts: pl.DataFrame | None) -> dict[str, Any]:
     return result
 
 
+def _funding_observation(facts: pl.DataFrame | None) -> dict[str, Any]:
+    """读取主力资金、成交放量和两融健康度观察事实。"""
+    metric_ids = (
+        "main_large_order_net_inflow_share",
+        "main_money_net_inflow_share",
+        "main_money_net_inflow_share_20d_cum",
+        "main_money_net_inflow_share_zscore_60d",
+        "super_large_net_inflow_share",
+        "market_amount_percentile_1250d",
+        "margin_buy_share",
+        "margin_balance_growth_20d",
+        "margin_balance_growth_60d",
+        "margin_penetration",
+        "margin_penetration_percentile_1250d",
+    )
+    result: dict[str, Any] = {}
+    for metric_id in metric_ids:
+        row = _fact_observation(facts, metric_id)
+        result[metric_id] = _as_float(row.get("value_float")) if row else None
+        if row and row.get("metric_date") is not None:
+            result[f"{metric_id}_date"] = _date_text(row.get("metric_date"))
+    if result.get("main_large_order_net_inflow_share") is None:
+        result["main_large_order_net_inflow_share"] = result.get("main_money_net_inflow_share")
+        result["main_large_order_net_inflow_share_source"] = "main_money_net_inflow_share"
+    else:
+        result["main_large_order_net_inflow_share_source"] = "main_large_order_net_inflow_share"
+    return result
+
+
 def _crowded_rows(panel: pl.DataFrame, config: QuantBriefConfig) -> list[dict[str, Any]]:
     rows = []
     for row in _panel_rows(panel):
         crowding = _crowding_temperature(row)
-        if row.get("status") == "ok" and _gte(crowding, config.crowding_temperature):
-            rows.append(_sector_item(row, source_group="crowding", reason="拥挤温度达到排雷阈值。"))
-    rows.sort(key=lambda item: _as_float(item.get("crowding_temperature")) or -1, reverse=True)
+        tcr = _as_float(row.get("tcr"))
+        if row.get("status") != "ok":
+            continue
+        if _gte(crowding, config.crowding_temperature) or _gte(tcr, config.industry_tcr_warning):
+            reason = (
+                "拥挤温度达到排雷阈值。"
+                if _gte(crowding, config.crowding_temperature)
+                else f"行业 TCR 达到 {config.industry_tcr_warning:.0f}% 观察线。"
+            )
+            rows.append(_sector_item(row, source_group="crowding", reason=reason))
+    rows.sort(
+        key=lambda item: (
+            _as_float(item.get("crowding_temperature")) or -1,
+            _as_float(item.get("tcr")) or -1,
+        ),
+        reverse=True,
+    )
     return rows
 
 

@@ -110,6 +110,8 @@ def format_fact_metric_value(metric_id: str, value_float: float | None) -> str:
         "margin_balance_growth_60d",
         "main_money_net_inflow_share",
         "main_money_net_inflow_share_20d_cum",
+        "main_large_order_net_inflow_share",
+        "super_large_net_inflow_share",
         "advance_share",
         "above_ma20_share",
         "above_ma60_share",
@@ -120,6 +122,8 @@ def format_fact_metric_value(metric_id: str, value_float: float | None) -> str:
             "margin_balance_growth_60d",
             "main_money_net_inflow_share",
             "main_money_net_inflow_share_20d_cum",
+            "main_large_order_net_inflow_share",
+            "super_large_net_inflow_share",
             "return_20d",
         }:
             return f"{value_float * 100:+.2f}%"

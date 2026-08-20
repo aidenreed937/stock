@@ -10,6 +10,7 @@ from stock_reporting.interpretation.quant_brief.interpretation import (
     evaluate_macro,
     evaluate_nature,
     evaluate_reading_notes,
+    evaluate_risk_gates,
     evaluate_sector,
     evaluate_veto,
 )
@@ -34,7 +35,19 @@ def build_quant_brief_json(
     nature = evaluate_nature(config, market_scores, industry_scores, market_facts)
     veto = evaluate_veto(config, market_scores, industry_scores, industry_panel, market_facts)
     sector = evaluate_sector(config, industry_panel)
-    data_quality_notes = evaluate_data_quality_notes(market_scores, industry_scores, veto)
+    risk_gates = evaluate_risk_gates(
+        config,
+        market_scores,
+        industry_scores,
+        industry_panel,
+        market_facts,
+    )
+    data_quality_notes = evaluate_data_quality_notes(
+        market_scores,
+        industry_scores,
+        veto,
+        risk_gates,
+    )
     return {
         "schema_version": config.schema_version,
         "title": config.title,
@@ -43,8 +56,9 @@ def build_quant_brief_json(
         "nature": nature,
         "veto": veto,
         "sector": sector,
+        "risk_gates": risk_gates,
         "data_quality_notes": data_quality_notes,
-        "reading_notes": evaluate_reading_notes(macro, nature, veto, sector),
+        "reading_notes": evaluate_reading_notes(macro, nature, veto, sector, risk_gates),
     }
 
 
@@ -55,6 +69,7 @@ def render_quant_brief_markdown(brief: dict[str, Any]) -> str:
     nature = brief.get("nature", {})
     veto = brief.get("veto", {})
     sector = brief.get("sector", {})
+    risk_gates = brief.get("risk_gates", {})
     reading_notes = brief.get("reading_notes", {})
     context = {
         "title": brief.get("title", ""),
@@ -63,6 +78,9 @@ def render_quant_brief_markdown(brief: dict[str, Any]) -> str:
         "nature": nature,
         "veto": veto,
         "sector": sector,
+        "risk_gates": risk_gates,
+        "risk_gate_rows": _format_risk_gates(risk_gates.get("gates", [])),
+        "funding_health": _format_funding_health(nature.get("funding_health", {})),
         "macro_temperature_str": _value_text(macro.get("temperature")),
         "technical_temperature_str": _value_text(nature.get("technical_temperature")),
         "fund_flow_temperature_str": _value_text(nature.get("fund_flow_temperature")),
@@ -114,6 +132,64 @@ def _format_rows(rows: object) -> list[dict[str, str]]:
             }
         )
     return result
+
+
+def _format_risk_gates(gates: object) -> list[dict[str, str]]:
+    if not isinstance(gates, list):
+        return []
+    result = []
+    for gate in gates:
+        if not isinstance(gate, dict):
+            continue
+        result.append(
+            {
+                "title": str(gate.get("title") or ""),
+                "status": str(gate.get("status_label") or gate.get("status") or ""),
+                "facts": str(gate.get("facts_text") or "-"),
+                "message": str(gate.get("message") or ""),
+                "action": str(gate.get("action") or ""),
+            }
+        )
+    return result
+
+
+def _format_funding_health(value: object) -> dict[str, str]:
+    if not isinstance(value, dict):
+        return {
+            "status": "资料不足",
+            "main_flow_label": "主力大单净流入占比",
+            "main_flow": "-",
+            "cumulative_flow": "-",
+            "super_large_flow": "-",
+            "margin_buy": "-",
+            "margin_growth20": "-",
+            "margin_growth60": "-",
+            "margin_penetration": "-",
+            "margin_penetration_percentile": "-",
+            "action": "补齐资金与两融事实。",
+            "note": "-",
+        }
+    return {
+        "status": str(value.get("status_label") or value.get("status") or "资料不足"),
+        "main_flow_label": (
+            "主力大单净流入占比"
+            if value.get("main_large_order_net_inflow_share_source")
+            == "main_large_order_net_inflow_share"
+            else "主力净流入代理占比"
+        ),
+        "main_flow": _ratio_percent_text(value.get("main_large_order_net_inflow_share")),
+        "cumulative_flow": _ratio_percent_text(value.get("main_money_net_inflow_share_20d_cum")),
+        "super_large_flow": _ratio_percent_text(value.get("super_large_net_inflow_share")),
+        "margin_buy": _ratio_percent_text(value.get("margin_buy_share")),
+        "margin_growth20": _ratio_percent_text(value.get("margin_balance_growth_20d")),
+        "margin_growth60": _ratio_percent_text(value.get("margin_balance_growth_60d")),
+        "margin_penetration": _ratio_percent_text(value.get("margin_penetration")),
+        "margin_penetration_percentile": _value_text(
+            value.get("margin_penetration_percentile_1250d")
+        ),
+        "action": str(value.get("action") or "-"),
+        "note": str(value.get("note") or "-"),
+    }
 
 
 def _breadth_text(count: object, total: object) -> str:

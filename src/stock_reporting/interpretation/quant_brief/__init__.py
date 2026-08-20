@@ -11,6 +11,7 @@ from stock_reporting.interpretation.quant_brief.interpretation import (
     evaluate_macro,
     evaluate_nature,
     evaluate_reading_notes,
+    evaluate_risk_gates,
     evaluate_sector,
     evaluate_veto,
 )
@@ -23,6 +24,7 @@ __all__ = [
     "evaluate_macro",
     "evaluate_nature",
     "evaluate_reading_notes",
+    "evaluate_risk_gates",
     "evaluate_sector",
     "evaluate_veto",
     "load_quant_brief_config",

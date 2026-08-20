@@ -2,6 +2,7 @@ quant_brief:
   schema_version: 1
   title: "A 股量化投研简报"
   artifact_root: "data/analytics/quant_brief"
+  latest_root: "data/analytics/investor_brief"
   market_temperature_root: "data/analytics/market_temperature"
   industry_structure_root: "data/analytics/industry_structure"
 
@@ -59,3 +60,18 @@ quant_brief:
     max_lagging_industries: 5
     min_priority_structure_score: 50.0
     require_fund_flow_confirmation: true
+
+  risk_gates:
+    valuation_red_flag_temperature: 85.0
+    composite_red_flag_temperature: 65.0
+    defensive_position_band: "0%-30%"
+    main_money_outflow_share_hard: -0.05
+    market_amount_high_percentile: 90.0
+    margin_buy_share_warning: 0.10
+    margin_penetration_extreme_percentile: 95.0
+    breadth_above_ma60_healthy: 0.50
+    breadth_above_ma60_weak: 0.30
+    positive_20d_sector_min: 10
+    industry_tcr_warning: 20.0
+    industry_tcr_hard: 25.0
+    industry_crowding_hard_temperature: 90.0
