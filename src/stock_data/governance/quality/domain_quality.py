@@ -37,7 +37,7 @@ DOMAIN_INPUT_DATE_COLUMNS: dict[str, tuple[str, ...]] = {
 
 DOMAIN_INPUT_NON_NEGATIVE_COLUMNS: dict[str, tuple[str, ...]] = {
     "cb_daily": ("close", "volume", "amount"),
-    "repurchase": ("volume", "amount"),
+    "repurchase": ("vol", "volume", "amount"),
     "block_trade": ("price", "volume", "amount"),
 }
 

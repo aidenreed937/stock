@@ -156,23 +156,21 @@ def _audit_col_distribution(
     if "trade_date" in df.columns:
         daily_agg = (
             df.group_by("trade_date")
-            .agg(pl.col(col).mean().alias("mean_val"))
-            .drop_nulls(subset=["mean_val"])
+            .agg(pl.col(col).median().alias("median_val"))
+            .drop_nulls(subset=["median_val"])
             .sort("trade_date")
         )
         if len(daily_agg) > 1:
-            # 阶跃判定使用 |cur|/|prev| 的量级倍数而非带符号比值，避免可正可负列（如净额）
-            # 在 0 附近翻号时产生无意义的负比率误报；并通过近零保护门槛避免前值≈0 时比率
-            # 爆炸成 inf 造成的误报。eps 以全时段均值量级的比例确定，与字段单位无关。
-            scale = _to_float(daily_agg["mean_val"].abs().max()) or 1.0
+            # 日中位数避免极端值拉偏；绝对值比率避免翻号误报，并保护前值≈0，eps 按中位数量级设定。
+            scale = _to_float(daily_agg["median_val"].abs().max()) or 1.0
             eps = scale * 1e-9
             jumps = (
                 daily_agg.with_columns(
-                    pl.col("mean_val").shift(1).alias("prev_mean"),
-                    pl.col("mean_val").shift(1).abs().alias("prev_abs"),
+                    pl.col("median_val").shift(1).alias("prev_median"),
+                    pl.col("median_val").shift(1).abs().alias("prev_abs"),
                 )
-                .filter(pl.col("prev_mean").is_not_null())
-                .with_columns((pl.col("mean_val").abs() / pl.col("prev_abs")).alias("fold"))
+                .filter(pl.col("prev_median").is_not_null())
+                .with_columns((pl.col("median_val").abs() / pl.col("prev_abs")).alias("fold"))
                 .filter(pl.col("prev_abs") >= eps)
                 .filter((pl.col("fold") > max_step_ratio) | (pl.col("fold") < min_step_ratio))
             )
@@ -186,10 +184,12 @@ def _audit_col_distribution(
                         column=col,
                         anomaly_type="STEP_JUMP",
                         severity="ERROR",
-                        current_val=float(r["mean_val"]),
-                        previous_val=float(r["prev_mean"]) if r["prev_mean"] is not None else None,
+                        current_val=float(r["median_val"]),
+                        previous_val=(
+                            float(r["prev_median"]) if r["prev_median"] is not None else None
+                        ),
                         ratio=round(float(r["fold"]), 4),
-                        detail=f"数量级阶跃异动: 日均值 {r['prev_mean']:.2e} -> {r['mean_val']:.2e} "
+                        detail=f"数量级阶跃异动: 日中位数 {r['prev_median']:.2e} -> {r['median_val']:.2e} "
                         f"(跳跃比率: {r['fold']:.2f}x)",
                     )
                 )

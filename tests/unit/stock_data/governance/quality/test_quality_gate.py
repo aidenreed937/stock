@@ -277,6 +277,28 @@ def test_quality_gate_checks_domain_input_contracts(tmp_path: Path) -> None:
     assert not gate.assert_domain_input_quality(gate._active_parquet_files())
 
 
+def test_quality_gate_checks_repurchase_vol_alias(tmp_path: Path) -> None:
+    target_dir = tmp_path / "tushare" / "market=CN" / "repurchase" / "year=2020" / "month=04"
+    target_dir.mkdir(parents=True)
+    valid = pl.DataFrame(
+        {
+            "symbol": ["000001.SZ"],
+            "ann_date": [date(2020, 4, 1)],
+            "proc": ["预案"],
+            "vol": [100.0],
+            "amount": [1000.0],
+        }
+    )
+    valid.write_parquet(target_dir / "data.parquet")
+
+    gate = QualityGate(tmp_path)
+    assert gate.assert_domain_input_quality(gate._active_parquet_files())
+
+    invalid = valid.with_columns(pl.lit(-1.0).alias("vol"))
+    invalid.write_parquet(target_dir / "data.parquet")
+    assert not gate.assert_domain_input_quality(gate._active_parquet_files())
+
+
 def test_quality_gate_fails_on_mixed_adjustment(tmp_path: Path) -> None:
     now_utc = datetime.now(UTC)
     target_dir = tmp_path / "tushare" / "market=CN" / "stock_daily_bar" / "year=2026" / "month=08"

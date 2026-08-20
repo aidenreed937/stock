@@ -58,7 +58,7 @@ def external_risk_lines(
         f"- 外部环境温度：{_temperature_text(environment)}",
         f"- 冲击状态：{shock_status}",
         f"- 隔夜冲击：{shock_text}",
-        f"- A 股传导状态：{transmission_text}",
+        f"- A 股传导状态：{transmission_text}（{transmission_status}）",
     ]
     if focus_text:
         lines.append(f"- 观察重点：{focus_text}")

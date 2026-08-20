@@ -187,6 +187,28 @@ def test_curated_distribution_auditor_sign_flip_no_spurious_jump(tmp_path: Path)
     assert all(a.anomaly_type != "STEP_JUMP" for a in report.anomalies)
 
 
+def test_curated_distribution_auditor_ignores_single_extreme_ratio_outlier(
+    tmp_path: Path,
+) -> None:
+    ds_dir = tmp_path / "lixinger" / "market=CN" / "index_fundamental"
+    ds_dir.mkdir(parents=True)
+    df = pl.DataFrame(
+        {
+            "symbol": ["000300", "000905", "000852", "000300", "000905", "000852"],
+            "trade_date": [date(2026, 8, 11)] * 3 + [date(2026, 8, 12)] * 3,
+            "pe_ttm.ew": [20.0, 30.0, 1_000_000.0, 21.0, 31.0, -1_000_000.0],
+        }
+    )
+    df.write_parquet(ds_dir / "data.parquet")
+
+    report = CuratedDistributionAuditor(base_dir=tmp_path).audit_dataset(
+        "index_fundamental", data_source="lixinger"
+    )
+
+    assert report.passed is True
+    assert report.columns_summary["pe_ttm.ew"].step_jumps_count == 0
+
+
 def test_curated_distribution_auditor_detect_negative_values(tmp_path: Path) -> None:
     """测试审计器捕捉非物理负值。"""
     ds_dir = tmp_path / "tushare" / "market=CN" / "daily_basic" / "year=2026" / "month=08"

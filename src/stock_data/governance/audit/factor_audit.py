@@ -28,10 +28,10 @@ def run_adj_factor_audit(
             if "stock_basic" in p.parts and not StorageCompat.is_artifact_path(p)
         ]
         basic_df = pl.read_parquet(basic_files) if basic_files else pl.DataFrame()
-        target_date_str = target_date.strftime("%Y%m%d")
-        expected_df = basic_df.filter(pl.col("list_date") <= target_date_str)
+        basic_df = StorageCompat.safe_cast_date_col(basic_df, "list_date")
+        expected_df = basic_df.filter(pl.col("list_date") <= target_date)
         sym_col = "symbol" if "symbol" in basic_df.columns else "ts_code"
-        expected_symbols = set(expected_df[sym_col].unique().to_list())
+        expected_symbols = set(expected_df[sym_col].drop_nulls().unique().to_list())
     except Exception:
         expected_symbols = set()
 

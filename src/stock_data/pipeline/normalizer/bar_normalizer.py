@@ -227,13 +227,19 @@ def infer_metadata_expressions(
     if instrument:
         return pl.lit(instrument.market), pl.lit(instrument.exchange), pl.lit(instrument.currency)
 
+    if data_source == "tushare" and dataset == "margin" and "exchange_id" in normalized_df.columns:
+        exchange_expr = (
+            pl.col("exchange_id").cast(pl.Utf8, strict=False).str.strip_chars().str.to_uppercase()
+        )
+        return pl.lit("CN"), exchange_expr, pl.lit("CNY")
+
     if "ts_code" in normalized_df.columns:
         col_ref = pl.col("ts_code")
     elif "symbol" in normalized_df.columns:
         col_ref = pl.col("symbol")
     else:
         market = "CN" if data_source in {"tushare", "lixinger"} else "US"
-        exchange = "SOURCE" if data_source in {"tushare", "lixinger"} else "US_EXCHANGE"
+        exchange_name = "SOURCE" if data_source in {"tushare", "lixinger"} else "US_EXCHANGE"
         currency = "CNY" if data_source in {"tushare", "lixinger"} else "USD"
-        return pl.lit(market), pl.lit(exchange), pl.lit(currency)
+        return pl.lit(market), pl.lit(exchange_name), pl.lit(currency)
     return infer_market_exchange_currency(col_ref, data_source=data_source)

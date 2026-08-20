@@ -409,6 +409,28 @@ def test_normalizer_stage_empty_and_inferred_metadata() -> None:
     assert res_macro["currency"][0] == "USD"
 
 
+def test_normalizer_stage_uses_margin_exchange_id_metadata() -> None:
+    stage = NormalizerStage(GenericNormalizer(), data_source="tushare")
+
+    result = stage.normalize(
+        pl.DataFrame(
+            {
+                "trade_date": ["20240801"],
+                "exchange_id": ["bse"],
+                "rzye": [100.0],
+            }
+        ),
+        None,
+        "margin",
+        "req_margin",
+        dataset="margin",
+    )
+
+    assert result["market"][0] == "CN"
+    assert result["exchange"][0] == "BSE"
+    assert result["currency"][0] == "CNY"
+
+
 def test_normalizer_stage_adds_stable_identity_for_period_macro_dataset() -> None:
     stage = NormalizerStage(GenericNormalizer(), data_source="tushare")
 

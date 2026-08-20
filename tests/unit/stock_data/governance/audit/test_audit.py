@@ -232,6 +232,41 @@ def test_run_adj_factor_audit():
         assert res["coverage_rate"] == 50.0
 
 
+def test_run_adj_factor_audit_accepts_date_list_date():
+    from stock_data.governance.audit.reconciliation import run_adj_factor_audit
+
+    basic_df = pl.DataFrame(
+        {"symbol": ["600000.SH", "000001.SZ"], "list_date": [date(1999, 11, 10), date(1991, 4, 3)]}
+    )
+    adj_df = pl.DataFrame({"symbol": ["600000.SH"], "trade_date": [date(2026, 8, 1)]})
+
+    def mock_read(pattern):
+        pattern_str = str(pattern)
+        if "stock_basic" in pattern_str:
+            return basic_df
+        return adj_df
+
+    def mock_glob(self, pattern):
+        return [self / "data.parquet"]
+
+    with (
+        patch("pathlib.Path.glob", mock_glob),
+        patch(
+            "pathlib.Path.rglob",
+            return_value=[
+                Path("data/curated/tushare/market=CN/stock_basic/data.parquet"),
+                Path("data/curated/tushare/market=CN/adj_factor/year=2026/month=08/data.parquet"),
+            ],
+        ),
+        patch("pathlib.Path.exists", return_value=True),
+        patch("polars.read_parquet", side_effect=mock_read),
+    ):
+        res = run_adj_factor_audit(date(2026, 8, 1))
+        assert res["expected_count"] == 2
+        assert res["actual_count"] == 1
+        assert res["coverage_rate"] == 50.0
+
+
 def test_raw_curated_reconciliation_detects_key_mismatch(tmp_path, monkeypatch):
     from stock_data.governance.audit.reconciliation import _run_raw_curated_reconciliation
 
@@ -449,6 +484,38 @@ def test_run_sw_industry_audit():
         res = run_sw_industry_audit(date(2026, 8, 1))
         assert res["constituents_industry_count"] == 2
         assert res["actual_industry_count"] == 1
+
+
+def test_run_sw_industry_audit_uses_latest_available_date_before_target():
+    from stock_data.governance.audit import run_sw_industry_audit
+
+    const_df = pl.DataFrame({"symbol": ["110000", "210000"]})
+    fund_df = pl.DataFrame({"symbol": ["110000"], "trade_date": [date(2026, 8, 18)]})
+
+    def mock_read(pattern: object) -> pl.DataFrame:
+        pattern_str = str(pattern)
+        if "sw_2021_constituents" in pattern_str:
+            return const_df
+        return fund_df
+
+    with (
+        patch(
+            "pathlib.Path.rglob",
+            return_value=[
+                Path("data/curated/lixinger/market=CN/sw_2021_constituents/data.parquet"),
+                Path("data/curated/lixinger/market=CN/sw_2021_fundamental/data.parquet"),
+            ],
+        ),
+        patch("polars.read_parquet", side_effect=mock_read),
+        patch(
+            "stock_data.governance.audit.benchmarks.industry.IndustryDailyBenchmarkProvider._get_industry_codes",
+            return_value=["110000", "210000"],
+        ),
+    ):
+        res = run_sw_industry_audit(date(2026, 8, 19), quiet=True)
+        assert res["effective_date"] == date(2026, 8, 18)
+        assert res["actual_industry_count"] == 1
+        assert res["missing_symbols"] == ["210000"]
 
 
 def test_run_sw_daily_audit():

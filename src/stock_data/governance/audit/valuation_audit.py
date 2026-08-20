@@ -106,6 +106,8 @@ def run_sw_industry_audit(
         const_count = 0
 
     # 2. 检查 sw_2021_fundamental 在 target_date 的估值记录
+    effective_fund_date: date | None = None
+    target_fund = pl.DataFrame()
     fund_files = [
         p
         for p in source_dir.rglob("*.parquet")
@@ -114,7 +116,16 @@ def run_sw_industry_audit(
     try:
         fund_df = pl.read_parquet(fund_files) if fund_files else pl.DataFrame()
         fund_df = StorageCompat.safe_cast_date_col(fund_df, "trade_date")
-        target_fund = fund_df.filter(pl.col("trade_date") == target_date)
+        available_dates = (
+            fund_df.filter(pl.col("trade_date") <= target_date)
+            .get_column("trade_date")
+            .drop_nulls()
+            .unique()
+            .sort()
+        )
+        if len(available_dates) > 0:
+            effective_fund_date = available_dates[-1]
+            target_fund = fund_df.filter(pl.col("trade_date") == effective_fund_date)
         ind_symbols = (
             set(target_fund["symbol"].unique().to_list())
             if "symbol" in target_fund.columns
@@ -140,6 +151,7 @@ def run_sw_industry_audit(
         print("=" * 65)
         print(f"已落盘申万行业节点总数 : {const_count:>6} 个 (包含一、二、三级全部行业)")
         print(f"理论申万一级行业总数   : {expected_ind_count:>6} 个")
+        print(f"估值实际审计日期       : {effective_fund_date or '无'} (目标日前最近有效日)")
         print(f"当日完成估值对账行业数 : {match_count:>6} 个")
         print(f"申万行业估值覆盖率     : {coverage_rate:>6.2f} %")
         if missing_symbols:
@@ -150,6 +162,7 @@ def run_sw_industry_audit(
 
     return {
         "target_date": target_date,
+        "effective_date": effective_fund_date,
         "constituents_industry_count": const_count,
         "expected_primary_industry_count": expected_ind_count,
         "actual_industry_count": match_count,
