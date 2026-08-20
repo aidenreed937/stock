@@ -2,7 +2,7 @@
 
 from __future__ import annotations
 
-from datetime import date, timedelta
+from datetime import date, datetime, timedelta
 from typing import TYPE_CHECKING
 
 import polars as pl
@@ -82,9 +82,10 @@ def load_stock_industry_map(
     ts_map = _stock_industry_map_from_index_member(cat_ts, as_of_date, index_to_l1)
     if not ts_map.is_empty():
         frames.append(ts_map.with_columns(pl.lit(0).alias("_source_priority")))
-    lx_map = _stock_industry_map_from_lixinger_constituents(cat_lx, industry_to_l1)
-    if not lx_map.is_empty():
-        frames.append(lx_map.with_columns(pl.lit(1).alias("_source_priority")))
+    if _is_current_industry_date(cat_ts, as_of_date):
+        lx_map = _stock_industry_map_from_lixinger_constituents(cat_lx, industry_to_l1)
+        if not lx_map.is_empty():
+            frames.append(lx_map.with_columns(pl.lit(1).alias("_source_priority")))
     if not frames:
         return pl.DataFrame(schema={"stock_key": pl.Utf8, "industry_code": pl.Utf8})
     return (
@@ -94,6 +95,18 @@ def load_stock_industry_map(
         .unique(subset=["stock_key"], keep="first", maintain_order=True)
         .select("stock_key", "industry_code")
     )
+
+
+def _is_current_industry_date(catalog: MarketDataCatalog, as_of_date: date) -> bool:
+    """仅在申万行情最新日允许使用无日期的静态成分补充。"""
+    try:
+        latest_dates = catalog.latest_trade_dates(dataset="sw_daily", n=1)
+    except Exception:
+        return False
+    if not latest_dates:
+        return False
+    latest_date = parse_date_value(latest_dates[0])
+    return latest_date == as_of_date
 
 
 def load_financial_statement_history(cat: MarketDataCatalog, as_of_date: date) -> pl.DataFrame:
@@ -154,28 +167,38 @@ def load_benchmark_return_20d(
     as_of_date: date,
 ) -> float | None:
     """加载基准指数20日区间收益率。"""
-    if not benchmark:
-        return None
-    frame = load_dataset(
-        catalog,
-        "index_daily",
-        start_date=as_of_date - timedelta(days=120),
-        end_date=as_of_date,
-        symbols=[benchmark],
-    )
-    if frame.is_empty() or not {"trade_date", "close"}.issubset(frame.columns):
-        return None
-    frame = frame.sort("trade_date").drop_nulls(subset=["close"])
-    if frame.height <= 20:
-        return None
-    try:
-        latest = float(frame["close"][-1])
-        previous = float(frame["close"][-21])
-    except (TypeError, ValueError):
-        return None
-    if previous <= 0:
-        return None
-    return (latest / previous - 1.0) * 100.0
+    for symbol in _benchmark_symbol_candidates(benchmark):
+        frame = load_dataset(
+            catalog,
+            "index_daily",
+            start_date=as_of_date - timedelta(days=120),
+            end_date=as_of_date,
+            symbols=[symbol],
+        )
+        if frame.is_empty() or not {"trade_date", "close"}.issubset(frame.columns):
+            continue
+        frame = frame.sort("trade_date").drop_nulls(subset=["close"])
+        if frame.height <= 20:
+            continue
+        try:
+            latest = float(frame["close"][-1])
+            previous = float(frame["close"][-21])
+        except (TypeError, ValueError):
+            continue
+        if previous <= 0:
+            continue
+        return (latest / previous - 1.0) * 100.0
+    return None
+
+
+def _benchmark_symbol_candidates(benchmark: str) -> tuple[str, ...]:
+    normalized = benchmark.strip()
+    if not normalized:
+        return ()
+    candidates = [normalized]
+    if "." not in normalized:
+        candidates.append(f"{normalized}.CSI")
+    return tuple(dict.fromkeys(candidates))
 
 
 def map_l1_code(value: object, mapping: dict[str, str]) -> str | None:
@@ -221,6 +244,8 @@ def date_column_expr(frame: pl.DataFrame, column: str, alias: str) -> pl.Expr:
 
 def parse_date_value(value: object) -> date | None:
     """通用日期解析函数。"""
+    if isinstance(value, datetime):
+        return value.date()
     if isinstance(value, date):
         return value
     if value is None:
@@ -258,20 +283,15 @@ def _stock_industry_map_from_index_member(
     raw = load_dataset(catalog, "index_member")
     if raw.is_empty() or not {"index_code", "con_code"}.issubset(raw.columns) or not index_to_l1:
         return pl.DataFrame()
-    as_of_text = as_of_date.strftime("%Y%m%d")
     base = raw.select(
         pl.col("con_code").cast(pl.String).str.slice(0, 6).alias("stock_key"),
         pl.col("index_code").cast(pl.String).alias("index_code"),
-        optional_text_expr(raw, ("in_date",), "in_date"),
-        optional_text_expr(raw, ("out_date",), "out_date"),
+        date_column_expr(raw, "in_date", "in_date"),
+        date_column_expr(raw, "out_date", "out_date"),
     )
     base = base.filter(
-        ((pl.col("in_date").is_null()) | (pl.col("in_date") <= as_of_text))
-        & (
-            (pl.col("out_date").is_null())
-            | (pl.col("out_date") == "")
-            | (pl.col("out_date") > as_of_text)
-        )
+        ((pl.col("in_date").is_null()) | (pl.col("in_date") <= pl.lit(as_of_date)))
+        & ((pl.col("out_date").is_null()) | (pl.col("out_date") > pl.lit(as_of_date)))
     )
     return base.with_columns(
         pl.col("index_code")

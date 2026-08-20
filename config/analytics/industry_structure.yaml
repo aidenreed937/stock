@@ -6,7 +6,7 @@ industry_structure:
   short_windows: [5, 10]
   medium_windows: [60, 120]
   classification: "SW2021"
-  benchmark: "000985"
+  benchmark: "000985.CSI"
 
   score_weights:
     momentum: 0.40

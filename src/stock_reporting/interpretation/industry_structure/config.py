@@ -185,7 +185,7 @@ class IndustryStructureConfig:
             short_windows=tuple(int(value) for value in raw_short_windows),
             medium_windows=tuple(int(value) for value in raw_medium_windows),
             classification=str(data.get("classification", "SW2021")),
-            benchmark=str(data.get("benchmark", "000985")),
+            benchmark=str(data.get("benchmark", "000985.CSI")),
             score_weights=ScoreWeights.from_mapping(
                 _as_mapping(score_weights, "score_weights") if score_weights is not None else None
             ),
