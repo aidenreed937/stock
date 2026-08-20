@@ -6,7 +6,7 @@ import json
 from typing import TYPE_CHECKING, Any
 
 import polars as pl
-from scripts.market_cycle_review import main
+from scripts.market_cycle_review import _build_payload, _render_markdown, main
 
 if TYPE_CHECKING:
     from pathlib import Path
@@ -74,8 +74,46 @@ def test_market_cycle_review_generates_payload_from_artifacts(tmp_path: Path) ->
         "industry_name": "煤炭",
         "days": 2,
     }
-    assert "只读取已落盘市场温度、行业结构和投资者简报产物" in markdown
+    assert payload["quant_brief"]["missing_dates"] == ["2026-08-13", "2026-08-14"]
+    assert "legacy compatibility warning" in markdown
+    assert "只读取已落盘市场温度、行业结构、投资者简报和量化投研简报产物" in markdown
     assert any("区间起点" in reason for reason in payload["signal_days"][0]["reasons"])
+
+
+def test_market_cycle_review_aggregates_quant_nature_veto_and_sectors() -> None:
+    row = {
+        "date": "2026-08-14",
+        "composite": 62.96,
+        "risk_level": "中等偏高",
+        "structure_health": "修复中但偏脆弱",
+        "positive_return_20d_count": 30,
+        "positive_return_60d_count": 3,
+        "quant_nature": "stock_pulse_short_strong_medium_weak",
+        "quant_veto_status": "triggered",
+        "quant_brief_available": True,
+        "quant_top5pct_share": 0.55,
+        "quant_priority_industries": ["煤炭"],
+        "quant_avoid_industries": ["通信"],
+    }
+    for key in (
+        "valuation",
+        "fund_flow",
+        "sentiment",
+        "technical",
+        "fundamental",
+        "macro_liquidity",
+    ):
+        row[key] = 50.0
+
+    payload = _build_payload(["2026-08-14"], [row], [])
+    markdown = _render_markdown(payload)
+
+    assert payload["quant_brief"]["nature_counts"] == {"stock_pulse_short_strong_medium_weak": 1}
+    assert payload["quant_brief"]["veto_status_counts"] == {"triggered": 1}
+    assert payload["quant_brief"]["priority_counts"] == [{"industry_name": "煤炭", "days": 1}]
+    assert payload["daily_rows"][0]["quant_top5pct_share"] == 0.55
+    assert "量化投研性质与排雷" in markdown
+    assert "行情性质分布" in markdown
 
 
 def _write_day(root: Path, day: dict[str, Any]) -> None:

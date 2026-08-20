@@ -1,4 +1,4 @@
-"""校验市场温度、行业结构和投资者简报的一致性。"""
+"""校验市场温度、行业结构、投资者简报和量化投研简报的一致性。"""
 
 from __future__ import annotations
 
@@ -36,6 +36,7 @@ ARTIFACT_FILES: dict[str, tuple[str, ...]] = {
         "quality_report.json",
     ),
     "investor_brief": ("manifest.json", "brief_report.md", "brief_report.json"),
+    "quant_brief": ("manifest.json", "brief_report.md", "brief_report.json"),
 }
 
 BANNED_UNSOURCED_PHRASES: tuple[str, ...] = (
@@ -108,7 +109,15 @@ class ConsistencyValidator:
     ) -> None:
         for artifact, bundle in bundles.items():
             if bundle is None:
-                self._error("required_files", artifact, expected_date, "缺少该日期产物目录")
+                if artifact == "quant_brief":
+                    self._warning(
+                        "legacy_compatibility",
+                        artifact,
+                        expected_date,
+                        "历史日期缺少 quant_brief，按 legacy compatibility mode 保留兼容告警",
+                    )
+                else:
+                    self._error("required_files", artifact, expected_date, "缺少该日期产物目录")
                 continue
             self._check_required_files(bundle, expected_date)
             self._check_manifest_date(bundle, expected_date)
@@ -116,6 +125,7 @@ class ConsistencyValidator:
         market = bundles.get("market_temperature")
         industry = bundles.get("industry_structure")
         brief = bundles.get("investor_brief")
+        quant = bundles.get("quant_brief")
         if market is None or industry is None or brief is None:
             return
 
@@ -123,7 +133,13 @@ class ConsistencyValidator:
         self._check_industry_report(industry, expected_date)
         self._check_brief_links(brief, market, industry, expected_date)
         self._check_brief_content(brief, market, industry, expected_date)
-        self._check_forbidden_phrases((market, industry, brief), expected_date)
+        if quant is not None:
+            self._check_quant_links(quant, market, industry, expected_date)
+            self._check_quant_content(quant, market, industry, expected_date)
+        self._check_forbidden_phrases(
+            tuple(bundle for bundle in (market, industry, brief, quant) if bundle is not None),
+            expected_date,
+        )
 
     def _load_bundles_for_latest(self) -> dict[str, ArtifactBundle | None]:
         return {
@@ -280,23 +296,35 @@ class ConsistencyValidator:
         self._check_input_link(inputs, "market_temperature", market, as_of_date)
         self._check_input_link(inputs, "industry_structure", industry, as_of_date)
 
+    def _check_quant_links(
+        self,
+        quant: ArtifactBundle,
+        market: ArtifactBundle,
+        industry: ArtifactBundle,
+        as_of_date: str,
+    ) -> None:
+        inputs = quant.manifest.get("inputs", {})
+        self._check_input_link(inputs, "market_temperature", market, as_of_date, "quant_brief")
+        self._check_input_link(inputs, "industry_structure", industry, as_of_date, "quant_brief")
+
     def _check_input_link(
         self,
         inputs: dict[str, Any],
         key: str,
         upstream: ArtifactBundle,
         as_of_date: str,
+        artifact: str = "investor_brief",
     ) -> None:
         payload = inputs.get(key, {})
         if payload.get("as_of_date") != as_of_date:
-            self._error("brief_input_date", "investor_brief", as_of_date, f"{key} 日期不一致")
+            self._error("brief_input_date", artifact, as_of_date, f"{key} 日期不一致")
         run_id = payload.get("run_id")
         upstream_run_id = upstream.manifest.get("run_id")
         if run_id != upstream_run_id:
             message = f"{key} run_id={run_id!r}，上游 run_id={upstream_run_id!r}"
-            self._error("brief_input_run", "investor_brief", as_of_date, message)
+            self._error("brief_input_run", artifact, as_of_date, message)
         if run_id and not (upstream.root / "runs" / f"as_of={as_of_date}" / str(run_id)).exists():
-            self._error("brief_input_exists", "investor_brief", as_of_date, f"{key} run 不存在")
+            self._error("brief_input_exists", artifact, as_of_date, f"{key} run 不存在")
 
     def _check_brief_content(
         self,
@@ -320,6 +348,82 @@ class ConsistencyValidator:
         self._check_brief_industry_snapshot(brief_json, industry_scores, as_of_date)
         self._require_text(brief_md, as_of_date, "brief_date", brief.name, as_of_date)
         self._check_industry_lists(brief_json, brief_md, panel, industry_scores, as_of_date)
+
+    def _check_quant_content(
+        self,
+        quant: ArtifactBundle,
+        market: ArtifactBundle,
+        industry: ArtifactBundle,
+        as_of_date: str,
+    ) -> None:
+        quant_json = _read_json(quant.run_dir / "brief_report.json")
+        quant_md = _read_text(quant.run_dir / "brief_report.md")
+        market_scores = _read_json(market.run_dir / "scores.json")
+        facts_path = market.run_dir / "facts.parquet"
+        facts = pl.read_parquet(facts_path) if facts_path.exists() else pl.DataFrame()
+        panel = pl.read_parquet(industry.run_dir / "industry_panel.parquet")
+
+        self._require_text(quant_md, as_of_date, "quant_date", quant.name, as_of_date)
+        composite = market_scores.get("composite", {}).get("temperature")
+        macro = quant_json.get("macro", {})
+        if not _numbers_equal(composite, macro.get("temperature")):
+            self._error(
+                "quant_macro_temperature",
+                quant.name,
+                as_of_date,
+                f"量化简报综合温度={macro.get('temperature')!r}，市场温度={composite!r}",
+            )
+        risk = market_scores.get("systemic_risk", {}).get("level")
+        if risk != macro.get("risk_level"):
+            self._error(
+                "quant_macro_risk",
+                quant.name,
+                as_of_date,
+                f"量化简报风险等级={macro.get('risk_level')!r}，市场风险等级={risk!r}",
+            )
+
+        expected_delta = market_scores.get("drivers", {}).get("composite_delta")
+        actual_delta = quant_json.get("nature", {}).get("composite_delta")
+        if not _numbers_equal(expected_delta, actual_delta):
+            self._error(
+                "quant_nature_delta",
+                quant.name,
+                as_of_date,
+                f"量化简报综合温度变化={actual_delta!r}，市场驱动变化={expected_delta!r}",
+            )
+        top5 = _metric_value(facts, "amount_top_5pct_share")
+        actual_top5 = quant_json.get("veto", {}).get("top5pct", {}).get("value")
+        if not _numbers_equal(top5, actual_top5):
+            self._error(
+                "quant_top5_value",
+                quant.name,
+                as_of_date,
+                f"量化简报 Top5%={actual_top5!r}，市场事实={top5!r}",
+            )
+        self._check_quant_sector_rows(quant_json, quant_md, panel, as_of_date)
+
+    def _check_quant_sector_rows(
+        self,
+        quant_json: dict[str, Any],
+        quant_md: str,
+        panel: pl.DataFrame,
+        as_of_date: str,
+    ) -> None:
+        panel_by_name = _panel_by_name(panel)
+        sector = quant_json.get("sector", {})
+        for group in ("priority", "avoid", "lagging"):
+            rows = sector.get(group, []) if isinstance(sector, dict) else []
+            if not isinstance(rows, list):
+                continue
+            for row in rows:
+                if isinstance(row, dict):
+                    self._check_brief_industry_row(
+                        row,
+                        quant_md,
+                        panel_by_name,
+                        as_of_date,
+                        artifact="quant_brief",
+                    )
 
     def _check_brief_market_snapshot(
         self,
@@ -459,14 +563,15 @@ class ConsistencyValidator:
         brief_md: str,
         panel_by_name: dict[str, dict[str, Any]],
         as_of_date: str,
+        artifact: str = "investor_brief",
     ) -> dict[str, Any] | None:
         name = str(row.get("industry_name") or "")
         source = panel_by_name.get(name)
-        self._require_text(brief_md, name, "brief_industry_name", "investor_brief", as_of_date)
+        self._require_text(brief_md, name, "brief_industry_name", artifact, as_of_date)
         if source is None:
             self._error(
                 "brief_industry_source",
-                "investor_brief",
+                artifact,
                 as_of_date,
                 f"{name} 不在行业面板",
             )
@@ -474,12 +579,12 @@ class ConsistencyValidator:
         for key in ("structure_score", "return_20d", "return_60d", "crowding_temperature"):
             if not _numbers_equal(row.get(key), source.get(key), precision=2):
                 message = f"{name}.{key}={row.get(key)!r}，行业面板={source.get(key)!r}"
-                self._error("brief_industry_value", "investor_brief", as_of_date, message)
+                self._error("brief_industry_value", artifact, as_of_date, message)
         return source
 
     def _check_forbidden_phrases(
         self,
-        bundles: tuple[ArtifactBundle, ArtifactBundle, ArtifactBundle],
+        bundles: tuple[ArtifactBundle, ...],
         as_of_date: str,
     ) -> None:
         for bundle in bundles:
@@ -520,6 +625,9 @@ class ConsistencyValidator:
     def _error(self, check: str, artifact: str, as_of_date: str, message: str) -> None:
         self.errors.append(Issue("error", check, artifact, as_of_date, message))
 
+    def _warning(self, check: str, artifact: str, as_of_date: str, message: str) -> None:
+        self.warnings.append(Issue("warning", check, artifact, as_of_date, message))
+
     def _result(self, checked_dates: list[str]) -> ValidationResult:
         status = "passed" if not self.errors else "failed"
         return ValidationResult(status, checked_dates, self.errors, self.warnings)
@@ -547,6 +655,7 @@ def _markdown_paths(bundle: ArtifactBundle) -> tuple[Path, ...]:
         "market_temperature": ("report.md", "human_report.md", "quality_report.md"),
         "industry_structure": ("report.md", "human_report.md", "quality_report.md"),
         "investor_brief": ("brief_report.md",),
+        "quant_brief": ("brief_report.md",),
     }
     return tuple(bundle.run_dir / name for name in names[bundle.name])
 
@@ -603,6 +712,22 @@ def _watermark_dates(facts: pl.DataFrame) -> dict[str, str]:
         for row in rows
         if row.get("dataset") and row.get("value_text")
     }
+
+
+def _metric_value(facts: pl.DataFrame, metric_id: str) -> float | None:
+    if facts.is_empty() or not {"category", "metric_id", "status", "value_float"}.issubset(
+        facts.columns
+    ):
+        return None
+    frame = facts.filter(
+        (facts["category"] == "metric_value")
+        & (facts["metric_id"] == metric_id)
+        & (facts["status"] == "ok")
+    )
+    if frame.is_empty():
+        return None
+    value = frame["value_float"][-1]
+    return _to_float(value) if math.isfinite(_to_float(value)) else None
 
 
 def _in_range(value: str, start: str | None, end: str | None) -> bool:

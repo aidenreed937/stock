@@ -41,6 +41,10 @@ from stock_reporting.templates.market_temperature import (
 from stock_reporting.templates.market_temperature import (
     render_report_markdown as render_market_temperature_markdown,
 )
+from stock_reporting.templates.quant_brief import (
+    build_quant_brief_json,
+    render_quant_brief_markdown,
+)
 
 __all__ = [
     "build_industry_structure_report_json",
@@ -48,6 +52,7 @@ __all__ = [
     "build_market_aggregate_quality_report",
     "build_market_aggregate_report_json",
     "build_market_temperature_report_json",
+    "build_quant_brief_json",
     "render_industry_structure_human_report_markdown",
     "render_industry_structure_markdown",
     "render_investor_brief_markdown",
@@ -57,4 +62,5 @@ __all__ = [
     "render_market_aggregate_table_markdown",
     "render_market_temperature_human_report_markdown",
     "render_market_temperature_markdown",
+    "render_quant_brief_markdown",
 ]

@@ -1,4 +1,4 @@
-"""从已落盘市场温度/行业结构/投资者简报产物生成跨周期复盘。"""
+"""从已落盘市场温度、行业结构、投资者简报和量化投研简报生成跨周期复盘。"""
 
 from __future__ import annotations
 
@@ -43,6 +43,7 @@ FACT_KEYS: tuple[str, ...] = (
     "above_ma20_share",
     "above_ma60_share",
     "return_20d",
+    "amount_top_5pct_share",
 )
 EXTREME_KEYS: tuple[str, ...] = (
     "composite",
@@ -65,6 +66,7 @@ class ArtifactDirs:
     market: Path
     industry: Path
     brief: Path
+    quant: Path | None = None
 
 
 def main(argv: list[str] | None = None) -> int:
@@ -132,6 +134,7 @@ def _artifact_dirs(root: Path, as_of_date: str) -> ArtifactDirs:
         market=_latest_run_dir(root / "market_temperature", as_of_date),
         industry=_latest_run_dir(root / "industry_structure", as_of_date),
         brief=_latest_run_dir(root / "investor_brief", as_of_date),
+        quant=_optional_latest_run_dir(root / "quant_brief", as_of_date),
     )
 
 
@@ -143,10 +146,19 @@ def _latest_run_dir(root: Path, as_of_date: str) -> Path:
     return run_dirs[-1]
 
 
+def _optional_latest_run_dir(root: Path, as_of_date: str) -> Path | None:
+    run_root = root / "runs" / f"as_of={as_of_date}"
+    if not run_root.exists():
+        return None
+    run_dirs = sorted(path for path in run_root.glob("run_*") if path.is_dir())
+    return run_dirs[-1] if run_dirs else None
+
+
 def _load_market_row(dirs: ArtifactDirs, as_of_date: str) -> dict[str, Any]:
     scores = _read_json(dirs.market / "scores.json")
     industry_scores = _read_json(dirs.industry / "scores.json")
     brief = _read_json(dirs.brief / "brief_report.json")
+    quant = _read_json(dirs.quant / "brief_report.json") if dirs.quant is not None else {}
     facts = pl.read_parquet(dirs.market / "facts.parquet")
     fact_values = {
         row["metric_id"]: row.get("value_float") for row in facts.to_dicts() if row.get("metric_id")
@@ -169,6 +181,14 @@ def _load_market_row(dirs: ArtifactDirs, as_of_date: str) -> dict[str, Any]:
         "candidate_industries": _names(brief.get("candidate_industries", [])),
         "risk_industries": _names(brief.get("risk_industries", [])),
         "lagging_industries": _names(brief.get("lagging_industries", [])),
+        "quant_nature": quant.get("nature", {}).get("nature_type"),
+        "quant_veto_status": quant.get("veto", {}).get("status"),
+        "quant_brief_available": bool(quant),
+        "quant_top5pct_share": quant.get("veto", {}).get("top5pct", {}).get(
+            "value", fact_values.get("amount_top_5pct_share")
+        ),
+        "quant_priority_industries": _names(quant.get("sector", {}).get("priority", [])),
+        "quant_avoid_industries": _names(quant.get("sector", {}).get("avoid", [])),
     }
     row.update({key: dimensions.get(key) for key in DIMENSION_KEYS})
     sentiment_row: dict[str, Any] = next(
@@ -219,6 +239,26 @@ def _build_payload(
         "phase_summary": _phase_summary(market_rows),
         "signal_days": _signal_days(market_rows),
         "industry_frequency": _industry_frequency(market_rows, panel_rows, dates),
+        "quant_brief": {
+            "available_date_count": sum(
+                bool(row.get("quant_brief_available")) for row in market_rows
+            ),
+            "missing_dates": [
+                row["date"] for row in market_rows if not row.get("quant_brief_available")
+            ],
+            "nature_counts": dict(
+                Counter(row["quant_nature"] for row in market_rows if row.get("quant_nature"))
+            ),
+            "veto_status_counts": dict(
+                Counter(
+                    row["quant_veto_status"]
+                    for row in market_rows
+                    if row.get("quant_veto_status")
+                )
+            ),
+            "priority_counts": _list_counter(market_rows, "quant_priority_industries"),
+            "avoid_counts": _list_counter(market_rows, "quant_avoid_industries"),
+        },
         "daily_rows": market_rows,
     }
 
@@ -400,6 +440,9 @@ def _signal_payload(row: dict[str, Any], reasons: list[str]) -> dict[str, Any]:
         "structure_health",
         "positive_return_20d_count",
         "positive_return_60d_count",
+        "quant_nature",
+        "quant_veto_status",
+        "quant_top5pct_share",
     )
     payload = {key: row.get(key) for key in keys}
     payload["reasons"] = reasons
@@ -415,6 +458,8 @@ def _industry_frequency(
         "brief_candidate_counts": _list_counter(market_rows, "candidate_industries"),
         "brief_risk_counts": _list_counter(market_rows, "risk_industries"),
         "brief_lagging_counts": _list_counter(market_rows, "lagging_industries"),
+        "quant_priority_counts": _list_counter(market_rows, "quant_priority_industries"),
+        "quant_avoid_counts": _list_counter(market_rows, "quant_avoid_industries"),
         "top5_counts": _panel_counter(
             panel_rows,
             "structure_rank",
@@ -491,7 +536,8 @@ def _render_markdown(payload: dict[str, Any]) -> str:
         "",
         f"- 起止日期: {payload['start_date']} 至 {payload['end_date']}",
         f"- 交易日数: {payload['date_count']}",
-        "- 口径: 只读取已落盘市场温度、行业结构和投资者简报产物；不使用新闻、政策或模型记忆。",
+        "- 口径: 只读取已落盘市场温度、行业结构、投资者简报和量化投研简报产物；"
+        "不使用新闻、政策或模型记忆。",
         "",
         "## 市场摘要",
         "",
@@ -503,6 +549,8 @@ def _render_markdown(payload: dict[str, Any]) -> str:
     lines.extend(_signal_table(payload["signal_days"]))
     lines.extend(["", "## 行业资金与结构频率", ""])
     lines.extend(_industry_frequency_lines(payload["industry_frequency"]))
+    lines.extend(["", "## 量化投研性质与排雷", ""])
+    lines.extend(_quant_brief_lines(payload.get("quant_brief", {})))
     lines.extend(["", "## 阶段研判总结", ""])
     lines.extend(_stage_conclusion_lines(payload))
     lines.extend(["", "## 使用提醒", ""])
@@ -512,6 +560,7 @@ def _render_markdown(payload: dict[str, Any]) -> str:
             "- 20日扩散强但60日确认弱时，优先按短线修复处理。",
             "- 资金温度、两融变化和主力净流入用于确认行情质量；价格先行不等于资金确认。",
             "- 高TCR或高拥挤温度行业可以继续交易活跃，但不应直接视为低风险配置方向。",
+            "- quant_brief 缺失的历史日期按兼容模式保留；有 quant 产物时只读取同日性质、排雷和行业方向。",
         ]
     )
     return "\n".join(lines) + "\n"
@@ -662,11 +711,37 @@ def _industry_frequency_lines(freq: dict[str, Any]) -> list[str]:
         f"- 候选行业出现频率 Top: {_format_industries(freq['brief_candidate_counts'], 8)}。",
         f"- 拥挤风险出现频率 Top: {_format_industries(freq['brief_risk_counts'], 8)}。",
         f"- 落后方向出现频率 Top: {_format_industries(freq['brief_lagging_counts'], 8)}。",
+        f"- 量化优先方向出现频率 Top: {_format_industries(freq['quant_priority_counts'], 8)}。",
+        f"- 量化回避方向出现频率 Top: {_format_industries(freq['quant_avoid_counts'], 8)}。",
         f"- 结构分 Top5 频率 Top: {_format_industries(freq['top5_counts'], 8)}。",
         f"- 拥挤温度>=80 频率 Top: {_format_industries(freq['crowding_counts'], 8)}。",
         f"- TCR 边际上升 Top: {_format_tcr_changes(freq['tcr_change'][:8])}。",
         f"- TCR 边际下降 Top: {_format_tcr_changes(list(reversed(freq['tcr_change'][-8:])))}。",
     ]
+
+
+def _quant_brief_lines(quant: dict[str, Any]) -> list[str]:
+    lines: list[str] = []
+    missing_dates = quant.get("missing_dates", [])
+    if missing_dates:
+        lines.append(
+            "- quant_brief 缺失日期（legacy compatibility warning）: "
+            f"{'、'.join(str(value) for value in missing_dates)}。"
+        )
+    if not quant.get("available_date_count"):
+        lines.append("- 未找到 quant_brief 日期产物，历史区间未纳入量化性质和排雷统计。")
+        return lines
+    nature = _format_counts(quant.get("nature_counts", {})) or "无"
+    veto = _format_counts(quant.get("veto_status_counts", {})) or "无"
+    lines.extend(
+        [
+        f"- 行情性质分布: {nature}。",
+        f"- 一票否决/排雷状态分布: {veto}。",
+        f"- 量化优先方向频率 Top: {_format_industries(quant.get('priority_counts', []), 8)}。",
+        f"- 量化回避方向频率 Top: {_format_industries(quant.get('avoid_counts', []), 8)}。",
+        ]
+    )
+    return lines
 
 
 def _format_counts(counts: dict[str, int]) -> str:

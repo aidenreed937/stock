@@ -1,0 +1,61 @@
+quant_brief:
+  schema_version: 1
+  title: "A 股量化投研简报"
+  artifact_root: "data/analytics/quant_brief"
+  market_temperature_root: "data/analytics/market_temperature"
+  industry_structure_root: "data/analytics/industry_structure"
+
+  temperature_bands:
+    - id: low_opportunity
+      upper_bound: 20.0
+      label: "极寒冰点区"
+      equity_position_band: "70%-90%"
+      stance: "估值和风险偏好处于极冷区，权益仓位可向进攻区间靠拢。"
+      tactic: "战略逆向定投，优先低估值和有基本面支撑的方向。"
+    - id: cool_observation
+      upper_bound: 40.0
+      label: "偏冷修复观察区"
+      equity_position_band: "50%-70%"
+      stance: "市场偏冷并处于修复观察阶段，仓位以积极但分批为主。"
+      tactic: "左侧逢低布局低估改善方向，等待右侧确认。"
+    - id: neutral_rotation
+      upper_bound: 60.0
+      label: "中性平衡轮动区"
+      equity_position_band: "40%-50%"
+      stance: "市场处于中性轮动状态，保持平衡仓位。"
+      tactic: "精选结构分高、资金确认且不拥挤的方向。"
+    - id: warm_recovery
+      upper_bound: 80.0
+      label: "偏热繁荣/修复区"
+      equity_position_band: "30%-50%"
+      stance: "市场偏热，仓位保持克制并收紧止盈。"
+      tactic: "顺势持有但不追高，严控高拥挤行业暴露。"
+    - id: high_risk
+      upper_bound: null
+      label: "高温拥挤高危区"
+      equity_position_band: "0%-30%"
+      stance: "市场进入高温拥挤区，权益仓位以防守为主。"
+      tactic: "大幅降仓，回避高拥挤和杠杆退潮方向。"
+
+  nature:
+    true_bull_min_fund_flow: 60.0
+    true_bull_min_positive_60d_count: 25
+    true_bull_min_composite_delta: 3.0
+    pulse_min_technical: 60.0
+    pulse_max_fund_flow: 50.0
+    pulse_min_positive_20d_count: 25
+    pulse_max_positive_60d_count: 5
+
+  veto:
+    crowded_industry_share: 30.0
+    crowding_temperature: 80.0
+    top5pct_share: 0.50
+    high_heat_valuation: 80.0
+    high_heat_sentiment: 80.0
+    margin_negative_threshold: 0.0
+    max_crowded_industries: 8
+    max_priority_industries: 5
+    max_avoid_industries: 5
+    max_lagging_industries: 5
+    min_priority_structure_score: 50.0
+    require_fund_flow_confirmation: true

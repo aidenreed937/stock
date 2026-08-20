@@ -1,0 +1,108 @@
+# {{ title }}
+
+- 基准日期: {{ manifest.as_of_date }}
+- 市场温度输入: {{ manifest.inputs.market_temperature.run_id }}
+- 行业结构输入: {{ manifest.inputs.industry_structure.run_id }}
+- 定位: 底层量化投研与风控决策链；外盘仅作背景，不构成个性化投资建议。
+
+## 1. 宏观定基调
+
+- 综合温度: {{ macro_temperature_str }} / 100
+- 温度档位: {{ macro.band_label }}
+- 系统风险: {{ macro.risk_level }}（{{ macro.risk_status }}）
+- 权益仓位区间: {{ macro.equity_position_band }}
+- 基调: {{ macro.stance }}
+- 策略动作: {{ macro.tactic }}
+
+{% for line in macro.reasons %}
+- {{ line }}
+{% endfor %}
+
+## 2. 量价判性质
+
+- 性质: {{ nature.nature_type }}
+- 技术面温度: {{ technical_temperature_str }}；资金面温度: {{ fund_flow_temperature_str }}
+- 行业扩散: 20日 {{ breadth_20d_str }}；60日 {{ breadth_60d_str }}
+- 综合温度变化: {{ composite_delta_str }}（比较状态: {{ nature.comparison_status }}）
+- 结论: {{ nature.message }}
+
+## 3. 微观排雷与一票否决
+
+- 排雷状态: {{ veto.status }}
+- Top5% 成交占比: {{ top5pct_str }}；阈值: {{ veto.top5pct.threshold * 100 if veto.top5pct.threshold is not none else '-' }}%
+- 拥挤行业占比: {{ crowded_share_str }}
+- 两融20日余额增速: {{ margin_growth_20d_str }}
+- 两融说明: {{ veto.margin.note }}
+- 口径说明: {{ veto.tcr_note }}
+
+### 触发信号
+
+{% for flag in veto.flags %}
+- [{{ flag.severity }}] {{ flag.message }}
+{% else %}
+- 当前没有触发配置中的硬性 Top5% 一票否决信号。
+{% endfor %}
+
+### 拥挤行业
+
+| 行业 | 结构分 | 拥挤温度 | TCR | 标签 | 说明 |
+|---|---:|---:|---:|---|---|
+{% for row in crowded_industries %}
+| {{ row.industry_name }} | {{ row.structure_score }} | {{ row.crowding_temperature }} | {{ row.tcr }} | {{ row.tags }} | {{ row.reason }} |
+{% else %}
+| - | - | - | - | - | 暂无可列示的拥挤行业。 |
+{% endfor %}
+
+## 4. 中观选方向
+
+### 优先方向
+
+| 行业 | 结构分 | 20日收益 | 60日收益 | 拥挤温度 | 资金分 | 标签 | 说明 |
+|---|---:|---:|---:|---:|---:|---|---|
+{% for row in priority_industries %}
+| {{ row.industry_name }} | {{ row.structure_score }} | {{ row.return_20d }} | {{ row.return_60d }} | {{ row.crowding_temperature }} | {{ row.fund_flow_score }} | {{ row.tags }} | {{ row.reason }} |
+{% else %}
+| - | - | - | - | - | - | - | 暂无同时满足结构、拥挤和资金确认条件的优先方向。 |
+{% endfor %}
+
+### 回避方向
+
+| 行业 | 结构分 | 20日收益 | 60日收益 | 拥挤温度 | 资金分 | 标签 | 说明 |
+|---|---:|---:|---:|---:|---:|---|---|
+{% for row in avoid_industries %}
+| {{ row.industry_name }} | {{ row.structure_score }} | {{ row.return_20d }} | {{ row.return_60d }} | {{ row.crowding_temperature }} | {{ row.fund_flow_score }} | {{ row.tags }} | {{ row.reason }} |
+{% else %}
+| - | - | - | - | - | - | - | 暂无明显回避方向。 |
+{% endfor %}
+
+### 落后方向
+
+{% for row in lagging_industries %}
+- {{ row.industry_name }}：结构分 {{ row.structure_score }}，20日收益 {{ row.return_20d }}，60日收益 {{ row.return_60d }}。
+{% else %}
+- 暂无可列示的落后方向。
+{% endfor %}
+
+## 5. 数据限制
+
+{% for note in data_quality_notes %}
+- {{ note }}
+{% endfor %}
+
+## 6. 事实与推断分层
+
+### 已验证事实
+
+{% for note in verified_facts %}
+- {{ note }}
+{% else %}
+- 暂无。
+{% endfor %}
+
+### 机制推断
+
+{% for note in mechanism_inferences %}
+- {{ note }}
+{% else %}
+- 暂无。
+{% endfor %}

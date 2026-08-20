@@ -21,14 +21,20 @@ from stock_analytics.pipelines.market_temperature.pipeline import (
     MarketTemperatureRunResult,
     run_market_temperature,
 )
+from stock_analytics.pipelines.quant_brief.pipeline import (
+    QuantBriefRunResult,
+    run_quant_brief,
+)
 
 __all__ = [
     "IndustryStructureRunResult",
     "InvestorBriefRunResult",
     "MarketAggregateRunResult",
     "MarketTemperatureRunResult",
+    "QuantBriefRunResult",
     "run_industry_structure",
     "run_investor_brief",
     "run_market_aggregate",
     "run_market_temperature",
+    "run_quant_brief",
 ]

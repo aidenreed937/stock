@@ -7,9 +7,13 @@ from typing import TYPE_CHECKING, Any
 
 import polars as pl
 
+from stock_analytics.catalog_compat import load_dataset_compat
 from stock_analytics.features.store import FeatureStore
 from stock_analytics.pipelines.market_temperature.cache import DatasetFrameCache
-from stock_analytics.pipelines.market_temperature.derived import collect_derived_metric_rows
+from stock_analytics.pipelines.market_temperature.derived import (
+    collect_amount_top_5pct_share_rows,
+    collect_derived_metric_rows,
+)
 from stock_analytics.pipelines.market_temperature.derived_options import _latest_dataset_date
 from stock_analytics.pipelines.market_temperature.facts import (
     FACT_SCHEMA,
@@ -82,6 +86,12 @@ def build_market_temperature_derived_facts_mart(
         market_daily,
         dataset_cache=lookback_cache,
     )
+    amount_top_5pct_rows = _collect_amount_top_5pct_rows(
+        catalog,
+        config,
+        dates,
+        dataset_cache=lookback_cache,
+    )
     rows: list[dict[str, Any]] = []
     max_window = max(config.main_window, *config.short_windows)
     for as_of_date in dates:
@@ -108,6 +118,7 @@ def build_market_temperature_derived_facts_mart(
                 external_cutoff_date=_external_cutoff(as_of_date, trade_dates),
                 market_daily=market_daily,
                 market_daily_option_source_valid=market_daily_option_source_valid,
+                amount_top_5pct_row=amount_top_5pct_rows.get(as_of_date),
             )
         )
         rows.extend(
@@ -157,6 +168,40 @@ def _market_daily_option_source_is_current(
     except (TypeError, ValueError):
         return False
     return current is not None and recorded_date >= current
+
+
+def _collect_amount_top_5pct_rows(
+    catalog: MarketDataCatalog,
+    config: MarketTemperatureConfig,
+    target_dates: tuple[date, ...],
+    *,
+    dataset_cache: DatasetFrameCache,
+) -> dict[date, dict[str, Any]]:
+    """一次读取行情明细，为批量目标日期生成 Top5% 成交占比事实。"""
+    configured = any(
+        metric.metric_id == "amount_top_5pct_share"
+        for dimension in config.dimensions
+        for metric in dimension.metrics
+    )
+    if not configured or not target_dates:
+        return {}
+    try:
+        stock_daily_bar = dataset_cache.load(
+            catalog,
+            "stock_daily_bar",
+            start_date=target_dates[0],
+            end_date=target_dates[-1],
+            columns=["trade_date", "amount"],
+        )
+    except Exception:
+        stock_daily_bar = load_dataset_compat(
+            catalog,
+            "stock_daily_bar",
+            start_date=target_dates[0],
+            end_date=target_dates[-1],
+            columns=["trade_date", "amount"],
+        )
+    return collect_amount_top_5pct_share_rows(stock_daily_bar, target_dates)
 
 
 def _load_market_daily(

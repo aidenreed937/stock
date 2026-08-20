@@ -21,11 +21,37 @@ def test_report_consistency_passes_for_valid_artifacts(tmp_path: Path) -> None:
         "run_market",
         "run_industry",
     )
+    _write_quant(
+        analytics_root / "quant_brief" / "runs" / "as_of=2026-08-14" / "run_quant",
+        "run_market",
+        "run_industry",
+    )
 
     result = ConsistencyValidator(analytics_root).validate_dates(["2026-08-14"])
 
     assert result.status == "passed"
     assert result.errors == []
+    assert result.warnings == []
+
+
+def test_report_consistency_warns_for_legacy_missing_quant_brief(tmp_path: Path) -> None:
+    analytics_root = tmp_path / "analytics"
+    _write_market(analytics_root, "2026-08-14", "run_market")
+    _write_industry(analytics_root, "2026-08-14", "run_industry")
+    _write_brief(
+        analytics_root / "investor_brief" / "runs" / "as_of=2026-08-14" / "run_brief",
+        "run_market",
+        "run_industry",
+    )
+
+    result = ConsistencyValidator(analytics_root).validate_dates(["2026-08-14"])
+
+    assert result.status == "passed"
+    assert result.errors == []
+    assert any(
+        issue.check == "legacy_compatibility" and issue.artifact == "quant_brief"
+        for issue in result.warnings
+    )
 
 
 def test_report_consistency_fails_for_unsourced_brief_industry(tmp_path: Path) -> None:
@@ -172,6 +198,29 @@ def _write_brief(
     _write_json(run_dir / "manifest.json", manifest)
     _write_json(run_dir / "brief_report.json", brief_json)
     (run_dir / "brief_report.md").write_text(markdown, encoding="utf-8")
+
+
+def _write_quant(run_dir: Path, market_run_id: str, industry_run_id: str) -> None:
+    run_dir.mkdir(parents=True)
+    as_of_date = run_dir.parts[-2].split("=", maxsplit=1)[1]
+    manifest = {
+        "as_of_date": as_of_date,
+        "run_id": run_dir.name,
+        "inputs": {
+            "market_temperature": {"as_of_date": as_of_date, "run_id": market_run_id},
+            "industry_structure": {"as_of_date": as_of_date, "run_id": industry_run_id},
+        },
+    }
+    brief_json = {
+        "manifest": manifest,
+        "macro": {"temperature": 62.96, "risk_level": "中等偏高"},
+        "nature": {"composite_delta": None},
+        "veto": {"top5pct": {"value": None}},
+        "sector": {"priority": [], "avoid": [], "lagging": []},
+    }
+    _write_json(run_dir / "manifest.json", manifest)
+    _write_json(run_dir / "brief_report.json", brief_json)
+    (run_dir / "brief_report.md").write_text(as_of_date, encoding="utf-8")
 
 
 def _write_common_json_and_reports(

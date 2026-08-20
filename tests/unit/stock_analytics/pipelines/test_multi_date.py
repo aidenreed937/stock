@@ -59,6 +59,13 @@ def test_run_multi_date_artifacts_serializes_and_shares_batch_state(
         assert kwargs["update_latest"] is False
         return SimpleNamespace(paths=SimpleNamespace(run_dir=tmp_path / f"brief-{target}"))
 
+    def _quant_brief(**kwargs: object):
+        target = kwargs["target_date"]
+        assert isinstance(target, date)
+        calls.append(("quant", target))
+        assert kwargs["update_latest"] is False
+        return SimpleNamespace(paths=SimpleNamespace(run_dir=tmp_path / f"quant-{target}"))
+
     shared_cache = None
 
     def _capture_contexts(target_dates, storage_dir, dataset_cache):
@@ -74,6 +81,7 @@ def test_run_multi_date_artifacts_serializes_and_shares_batch_state(
     monkeypatch.setattr(multi_date, "run_market_temperature", _market_temperature)
     monkeypatch.setattr(multi_date, "run_industry_structure", _industry_structure)
     monkeypatch.setattr(multi_date, "run_investor_brief", _investor_brief)
+    monkeypatch.setattr(multi_date, "run_quant_brief", _quant_brief)
 
     summaries = multi_date.run_multi_date_artifacts(
         [dates[1], dates[0], dates[0]],
@@ -86,8 +94,10 @@ def test_run_multi_date_artifacts_serializes_and_shares_batch_state(
         ("market", dates[0]),
         ("industry", dates[0]),
         ("brief", dates[0]),
+        ("quant", dates[0]),
         ("market", dates[1]),
         ("industry", dates[1]),
         ("brief", dates[1]),
+        ("quant", dates[1]),
     ]
     assert {dataset for dataset, _ in catalog_calls} == {"stock_daily_bar", "sw_daily"}

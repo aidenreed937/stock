@@ -1,6 +1,6 @@
 # A 视角量化投研简报 `quant_brief` 设计方案
 
-> 状态：方案稿（待评审实现）
+> 状态：已收敛，进入实现
 > 主题：在 `data/analytics/` 下新增与 `investor_brief` 同级的 A 视角（底层量化投研 / 风控决策链）简报产物管线，并新增大盘级 Top 5% 成交占比派生指标。
 
 ---
@@ -18,6 +18,10 @@ A 视角 = **底层量化投研 / 金融工程 / 风控决策链**，是 B 视�
 4. **中观选方向**（行业轮动 → PB-ROE / TCR 矩阵）
 
 新产物命名为 **`quant_brief`**，产物根目录 `data/analytics/quant_brief`，与 `investor_brief` 同级。
+
+本方案的实现约束已经收敛为：`quant_brief` 是同一基准日市场温度和行业结构产物的只读解释层；
+新增指标只进入市场温度事实 Mart，不直接扩展 `market_daily` 宽表；所有阈值、边界和仓位区间由
+`config/analytics/quant_brief.yaml` 驱动；四类产物在 `make scan` 和多日期任务中按同一基准日串行生成。
 
 ---
 
@@ -57,11 +61,14 @@ top_count = ceil(成交个股数 × 0.05)
 
 增加为市场温度计的 **DataCatalog 派生事实**，由
 `src/stock_analytics/pipelines/market_temperature/derived.py` 从 `stock_daily_bar` 按日聚合输出
-`metric_value` 事实。理由：
+`metric_value` 事实。实际构建时在
+`src/stock_analytics/marts/market_temperature.py` 读取一次所需行情窗口，批量计算所有目标日期，
+避免按日期重复扫描 `stock_daily_bar`。理由：
 
 - 它是"当日横截面排序占比"，而非标准时间序列指标值，契合派生聚合路径；
 - 只在 `market_temperature` 产物加一次，`quant_brief` 通过 `market_facts` 读取，与
   `investor_brief` 读取水位一致。
+- 不改动 `market_daily` 的 FeatureSpec 和存量 schema，降低 Mart 迁移影响面。
 
 ### 3.3 配置（YAML 观察项）
 
@@ -74,6 +81,9 @@ top_count = ceil(成交个股数 × 0.05)
 
 `weight: 0` 保证不污染六维综合温度（与 SKILL 中期权 / settlement IV 观察项同一策略），仅作为
 A 视角一票否决和事实依据。
+
+必须显式声明 `source: derived`、`direction: positive`、`subgroup: activity`，并由事实层保存
+`metric_date`、`sample_size`、`unit: ratio` 和缺失原因；比例不做 0-100 温度裁剪。
 
 ### 3.4 数据口径披露
 
@@ -99,17 +109,22 @@ A 视角一票否决和事实依据。
 
 - 读 `technical` vs `fund_flow` 温度 + `industry.trend_diagnostics` / `structure_health` 的 20D/60D 行业扩散；
 - 分类：
-  - **真牛市三维共振**：`fund_flow≥60` 且 60D 行业扩散高且 `composite` 上行；
-  - **存量诱多短强中弱**：`technical≥60` 且 `fund_flow<50` 且 20D 行业多但 60D 少；
+  - **真牛市三维共振**：`fund_flow≥60` 且 60D 行业扩散达到配置阈值且 `composite_delta` 达配置阈值；
+  - **存量诱多短强中弱**：`technical≥60` 且 `fund_flow<50` 且 20D 行业扩散达到阈值、60D 扩散不超过上限；
   - **高位极热背离 / 中性**；
 - 输出 `nature_type`、`technical/fund_flow_temp`、`breadth_20d/60d`、`message`。
+
+`composite_delta` 只读取 `market_scores.drivers.composite_delta`。没有传入对比运行或对比值缺失时，
+输出 `insufficient_comparison`，不默认判定为真牛市。
 
 > 参考：`composite-temperature-interpretation.md:51-65`。
 
 ### 第 3 步 微观排雷区 — `quant_veto`
 
-- 行业级拥挤：`crowded_industry_share≥30`、`top_crowding`、TCR≥80 计数；
-- 两融拐点：`fund_flow` 两融渗透率 / `margin_balance_growth_20d/60d`；
+- 行业级拥挤：`crowded_industry_share≥30`、`top_crowding`、`crowding_temperature≥80` 计数；
+  原始 TCR 是成交额占比/百分点，不能直接用 `tcr≥80` 代替拥挤温度判断；
+- 两融确认：读取 `fund_flow` 两融渗透率 / `margin_balance_growth_20d/60d`。当前上游事实没有
+  严格的历史拐点状态时，只输出“当前增长为负/资金确认不足”，不得宣称已完成“高位拐头转负且持续回落”；
 - **大盘 Top5% 拥挤度**：`amount_top_5pct_share`（当日横截面，`>0.50` 触发警示）；
 - 输出 `flags`（触发否决信号）、`crowded_industries`、`margin_note`、`top5pct_note`、`missing_note`。
 
@@ -132,8 +147,12 @@ data/analytics/quant_brief/
   latest/   # 三个文件的副本
 ```
 
-`brief_report.json` 顶层：`schema_version / manifest / macro / nature / veto / sector /
+`brief_report.json` 顶层：`schema_version / title / manifest / macro / nature / veto / sector /
 data_quality_notes / reading_notes`。
+
+其中 `macro` 保存综合温度、五档区间、风险等级、仓位区间、策略动作和理由；`nature` 保存性质、
+维度温度、行业 20D/60D 扩散、`composite_delta` 及比较状态；`veto` 保存旗标、拥挤行业、两融
+说明、Top5 说明和缺失项；`sector` 保存优先、回避、落后方向，并保留行业面板来源字段。
 
 模板 `quant_brief.md.j2` 按四步分节 + "数据限制"节。
 
@@ -153,7 +172,7 @@ data_quality_notes / reading_notes`。
 | 8 | `src/stock_analytics/pipelines/__init__.py`、`src/stock_reporting/templates/__init__.py`、`src/stock_reporting/__init__.py` | 导出接线 |
 | 9 | `src/stock_analytics/pipelines/multi_date.py` | 批量时追加 `quant_brief` 产物（第 4 类） |
 | 10 | `scripts/report_consistency.py` | `ARTIFACT_FILES` 加 `quant_brief`；`_check_*` 校验 quant 内容与输入链接；`_markdown_paths` 加文件；接入 `_check_forbidden_phrases` |
-| 11 | `scripts/market_cycle_review.py` | 追加 quant 产物目录（列示） |
+| 11 | `scripts/market_cycle_review.py` | 读取并列示 quant 产物，缺失时保留可定位告警 |
 | 12 | 测试 | `tests/unit/stock_analytics/pipelines/quant_brief/{test_pipeline,test_interpretation}.py`、`test_reporting.py` 加渲染、`test_report_consistency.py`、`test_market_cycle_review.py` |
 
 > 新指标落点：`src/stock_analytics/pipelines/market_temperature/derived.py` + `market_temperature.yaml` 观察项。
@@ -171,6 +190,9 @@ data_quality_notes / reading_notes`。
 
 ---
 
-## 8. 待确认项
+## 8. 已确认的兼容策略
 
-- [ ] `multi_date` / `make scan` 是否把 `quant_brief` 设为与 `investor_brief` 同级的**必产第四类产物**，还是仅作独立可选产物。
+- `multi_date` / `make scan` 将 `quant_brief` 设为与 `investor_brief` 同级的**必产第四类产物**。
+- `report_consistency` 对新生成日期强制校验 quant 输入基准日、run_id 和事实链接；扫描历史日期时，
+  若旧日期没有 quant 目录先输出 legacy compatibility warning，不把历史存量直接判为新链路硬错误。
+- 外盘风险仍只作宏观背景，不改变五档仓位；只有 `systemic_risk` 和配置驱动的本地事实能够改变仓位档位。

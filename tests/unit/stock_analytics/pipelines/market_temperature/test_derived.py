@@ -7,6 +7,7 @@ import polars as pl
 import pytest
 
 from stock_analytics.pipelines.market_temperature.derived import (
+    _amount_top_5pct_daily_frame,
     _external_environment_row,
     _external_macro_rows,
     _external_pressure_rows,
@@ -21,7 +22,45 @@ from stock_analytics.pipelines.market_temperature.derived import (
     _report_revision_rows,
     _return_frame,
     _us_macro_background_rows,
+    collect_amount_top_5pct_share_rows,
 )
+
+
+def test_amount_top_5pct_share_uses_ceil_count_and_ratio_unit() -> None:
+    frame = pl.DataFrame(
+        {
+            "trade_date": [date(2026, 8, 14)] * 5,
+            "amount": [50.0, 20.0, 10.0, 5.0, 1.0],
+        }
+    )
+
+    rows = collect_amount_top_5pct_share_rows(frame, (date(2026, 8, 14),))
+    row = rows[date(2026, 8, 14)]
+
+    assert row["status"] == "ok"
+    assert row["dataset"] == "stock_daily_bar"
+    assert row["source"] == "stock_daily_bar.amount"
+    assert row["unit"] == "ratio"
+    assert row["sample_size"] == 5
+    assert row["value_float"] == pytest.approx(50 / 86)
+    assert "top_count=1" in row["note"]
+
+
+def test_amount_top_5pct_share_keeps_missing_target_as_insufficient() -> None:
+    frame = pl.DataFrame(
+        {
+            "trade_date": [date(2026, 8, 14)],
+            "amount": [0.0],
+        }
+    )
+
+    result = _amount_top_5pct_daily_frame(frame)
+    rows = collect_amount_top_5pct_share_rows(result, (date(2026, 8, 15),))
+
+    assert result.is_empty()
+    assert rows[date(2026, 8, 15)]["status"] == "insufficient"
+
+
 from stock_analytics.pipelines.market_temperature.derived_options import (
     build_option_daily_frame,
 )

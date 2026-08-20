@@ -143,6 +143,11 @@ market_temperature:
           direction: positive
           weight: 0.00
           subgroup: activity
+        - metric_id: amount_top_5pct_share
+          source: derived
+          direction: positive
+          weight: 0.00
+          subgroup: activity
         - metric_id: advance_share
           aggregation: latest
           direction: positive

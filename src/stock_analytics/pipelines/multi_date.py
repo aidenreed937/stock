@@ -13,6 +13,7 @@ from stock_analytics.pipelines.investor_brief import run_investor_brief
 from stock_analytics.pipelines.market_temperature import run_market_temperature
 from stock_analytics.pipelines.market_temperature.cache import DatasetFrameCache
 from stock_analytics.pipelines.market_temperature.facts_mart import MARKET_DAILY_FACT_COLUMNS
+from stock_analytics.pipelines.quant_brief import run_quant_brief
 from stock_data.catalog import DataCatalog
 
 if TYPE_CHECKING:
@@ -23,12 +24,13 @@ if TYPE_CHECKING:
 
 @dataclass(frozen=True, slots=True)
 class MultiDateArtifactSummary:
-    """单个日期生成的三类产物路径摘要。"""
+    """单个日期生成的四类产物路径摘要。"""
 
     as_of_date: date
     market_temperature_run_dir: Path
     industry_structure_run_dir: Path
     investor_brief_run_dir: Path
+    quant_brief_run_dir: Path
 
 
 def run_multi_date_artifacts(
@@ -38,7 +40,7 @@ def run_multi_date_artifacts(
     update_latest: bool = False,
     collect_metric_values: bool | None = None,
 ) -> tuple[MultiDateArtifactSummary, ...]:
-    """串行生成多日期三类产物，并共享 Mart 与数据集读取缓存。
+    """串行生成多日期四类产物，并共享 Mart 与数据集读取缓存。
 
     Mart 由调用方在批量任务前重建一次；本函数只读取同一份
     ``market_daily``，不会在每个日期再次构建或重复读取原始数据集。
@@ -104,15 +106,20 @@ def run_multi_date_artifacts(
             target_date=target_date,
             update_latest=update_latest,
         )
+        quant_result = run_quant_brief(
+            target_date=target_date,
+            update_latest=update_latest,
+        )
         summaries.append(
             MultiDateArtifactSummary(
                 as_of_date=target_date,
                 market_temperature_run_dir=market_result.paths.run_dir,
                 industry_structure_run_dir=industry_result.paths.run_dir,
                 investor_brief_run_dir=brief_result.paths.run_dir,
+                quant_brief_run_dir=quant_result.paths.run_dir,
             )
         )
-        del market_result, industry_result, brief_result
+        del market_result, industry_result, brief_result, quant_result
 
     return tuple(summaries)
 

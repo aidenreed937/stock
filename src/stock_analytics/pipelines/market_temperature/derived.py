@@ -9,6 +9,9 @@ from typing import TYPE_CHECKING, Any, cast
 import polars as pl
 
 from stock_analytics.catalog_compat import load_dataset_compat
+from stock_analytics.pipelines.market_temperature.amount_concentration import (
+    amount_top_5pct_daily_frame as _amount_top_5pct_daily_frame,
+)
 from stock_analytics.pipelines.market_temperature.cache import DatasetFrameCache
 from stock_analytics.pipelines.market_temperature.derived_options import (
     option_rows,
@@ -83,6 +86,7 @@ def collect_derived_metric_rows(
     external_cutoff_date: date | None = None,
     market_daily: pl.DataFrame | None = None,
     market_daily_option_source_valid: bool | None = None,
+    amount_top_5pct_row: dict[str, Any] | None = None,
 ) -> list[dict[str, Any]]:
     """采集不在 MetricEngine 内的基本面与宏观温度事实。"""
     rows: list[dict[str, Any]] = []
@@ -94,6 +98,7 @@ def collect_derived_metric_rows(
             dataset_cache,
             market_daily=market_daily,
             market_daily_option_source_valid=market_daily_option_source_valid,
+            amount_top_5pct_row=amount_top_5pct_row,
         )
     )
     rows.extend(
@@ -367,6 +372,7 @@ def _sentiment_rows(
     *,
     market_daily: pl.DataFrame | None = None,
     market_daily_option_source_valid: bool | None = None,
+    amount_top_5pct_row: dict[str, Any] | None = None,
 ) -> list[dict[str, Any]]:
     from stock_data.catalog import DataCatalog
 
@@ -384,7 +390,56 @@ def _sentiment_rows(
         )
     )
     rows.extend(settlement_iv_rows(as_of_date, storage_dir, _metric_row, _percentile_metric_row))
+    if amount_top_5pct_row is not None:
+        rows.append(amount_top_5pct_row)
     return rows
+
+
+def collect_amount_top_5pct_share_rows(
+    stock_daily_bar: pl.DataFrame,
+    target_dates: tuple[date, ...],
+) -> dict[date, dict[str, Any]]:
+    """按目标日期批量计算全市场前 5% 个股成交额占比事实。
+
+    该指标是单日横截面比例，不做历史温度化，也不参与六维主温度合成。
+    """
+    daily = _amount_top_5pct_daily_frame(stock_daily_bar)
+    values = {row["trade_date"]: row for row in daily.to_dicts()}
+    result: dict[date, dict[str, Any]] = {}
+    for target_date in target_dates:
+        aggregate = values.get(target_date)
+        if aggregate is None:
+            result[target_date] = _metric_row(
+                "sentiment",
+                "amount_top_5pct_share",
+                target_date,
+                None,
+                unit="ratio",
+                dataset="stock_daily_bar",
+                source="stock_daily_bar.amount",
+                sample_size=0,
+                status="insufficient",
+                note="stock_daily_bar 无该交易日有效成交额，无法计算 Top5% 成交占比",
+            )
+            continue
+        result[target_date] = _metric_row(
+            "sentiment",
+            "amount_top_5pct_share",
+            target_date,
+            float(aggregate["_top_share"]),
+            unit="ratio",
+            dataset="stock_daily_bar",
+            source="stock_daily_bar.amount",
+            metric_date=target_date,
+            sample_size=int(aggregate["_sample_size"]),
+            note=(
+                "按有效成交额降序取 ceil(有效股票数×5%)，前5%成交额/全市场有效成交额；"
+                f"metric_date={target_date.isoformat()}; "
+                f"top_count={int(aggregate['_top_count'])}; "
+                f"sample_size={int(aggregate['_sample_size'])}"
+            ),
+        )
+    return result
 
 
 def _investor_account_rows(
@@ -970,9 +1025,13 @@ def _metric_row(
     as_of_date: date,
     value: float | None,
     *,
+    metric_date: date | None = None,
     sample_size: int | None = None,
     status: str = "ok",
     note: str = "",
+    unit: str = "temperature",
+    dataset: str = "",
+    source: str = "market_temperature.derived",
 ) -> dict[str, Any]:
     actual_status = status if value is not None else "insufficient"
     return {
@@ -980,17 +1039,20 @@ def _metric_row(
         "category": "metric_value",
         "dimension": dimension,
         "data_source": "derived",
-        "dataset": "",
+        "dataset": dataset,
         "as_of_date": as_of_date,
         "window": 0,
         "metric_id": metric_id,
-        "value_float": _clip_temperature(value) if value is not None else None,
+        "value_float": (
+            _clip_temperature(value) if value is not None and unit == "temperature" else value
+        ),
         "value_text": "",
-        "unit": "temperature",
+        "unit": unit,
         "sample_size": sample_size,
-        "source": "market_temperature.derived",
+        "source": source,
         "status": actual_status,
         "note": note,
+        "metric_date": metric_date,
     }
 
 
