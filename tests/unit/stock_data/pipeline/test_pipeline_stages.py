@@ -213,6 +213,24 @@ def test_fetcher_stage_validates_yfinance_history_contract() -> None:
     )
 
 
+def test_fetcher_stage_validates_fred_series_contract() -> None:
+    stage = FetcherStage(MagicMock(), MagicMock(), data_source="fred")
+    frame = pl.DataFrame(
+        {
+            "symbol": ["FEDFUNDS"],
+            "trade_date": [date(2026, 8, 17)],
+            "value": [4.33],
+        }
+    )
+
+    stage.validate_endpoint_frame(
+        frame,
+        start_date=date(2026, 8, 17),
+        end_date=date(2026, 8, 17),
+        endpoint="FEDFUNDS",
+    )
+
+
 def test_fetcher_stage_saves_unclipped_raw_before_returning_clipped_frame() -> None:
     fetcher = MagicMock()
     raw_store = MagicMock()

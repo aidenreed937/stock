@@ -11,8 +11,11 @@ class FREDEndpointMeta:
     frequency: str = "monthly"  # monthly, daily, quarterly
     group: str = "macro_data"
     primary_keys: list[str] = field(default_factory=lambda: ["symbol", "trade_date"])
+    date_columns: list[str] = field(default_factory=lambda: ["trade_date"])
+    required_columns: list[str] = field(default_factory=lambda: ["symbol", "trade_date"])
     rate_limit_per_min: int = 120
     units: str = "index"
+    max_range_days: int | None = None
 
 
 # FRED 常用核心官方宏观指标注册表
