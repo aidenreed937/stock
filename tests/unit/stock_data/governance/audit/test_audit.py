@@ -301,6 +301,50 @@ def test_raw_curated_reconciliation_detects_key_mismatch(tmp_path, monkeypatch):
     assert result["missing_in_curated_count"] == 1
 
 
+def test_raw_curated_reconciliation_filters_fred_series_from_canonical_dataset(
+    tmp_path, monkeypatch
+):
+    from stock_data.governance.audit.reconciliation import _run_raw_curated_reconciliation
+
+    raw_root = tmp_path / "raw"
+    curated_root = tmp_path / "curated"
+    monkeypatch.setattr(
+        "stock_data.governance.audit.reconciliation.data_settings.raw_data_dir", raw_root
+    )
+    monkeypatch.setattr(
+        "stock_data.governance.audit.reconciliation.data_settings.curated_data_dir", curated_root
+    )
+
+    for root in (raw_root, curated_root):
+        dataset_dir = root / "fred" / "market=US" / "macro_indicators"
+        dataset_dir.mkdir(parents=True)
+        pl.DataFrame(
+            {
+                "symbol": ["CPIAUCSL", "FEDFUNDS"],
+                "trade_date": ["2026-08-01", "2026-08-01"],
+                "value": [332.0, 4.5],
+            }
+        ).write_parquet(dataset_dir / "data.parquet")
+
+        legacy_dir = root / "fred" / "market=US" / "CPIAUCSL"
+        legacy_dir.mkdir(parents=True)
+        pl.DataFrame(
+            {
+                "symbol": ["CPIAUCSL"],
+                "trade_date": ["2026-08-01"],
+                "value": [332.0],
+            }
+        ).write_parquet(legacy_dir / "data.parquet")
+
+    result = _run_raw_curated_reconciliation(date(2026, 8, 1), "fred", "CPIAUCSL")
+
+    assert result["raw_curated_status"] == "PASSED"
+    assert result["raw_count"] == 1
+    assert result["curated_count"] == 1
+    assert result["raw_key_count"] == 1
+    assert result["curated_key_count"] == 1
+
+
 def test_raw_bar_reconciliation_reuses_units_and_listing_dates(monkeypatch):
     from stock_data.governance.audit.reconciliation import _clean_raw_bar_frame
     from stock_data.pipeline.cleaner.bar_cleaner import BarDataCleaner

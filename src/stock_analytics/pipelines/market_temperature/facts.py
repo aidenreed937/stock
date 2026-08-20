@@ -111,9 +111,12 @@ def resolve_trade_window(
 def resolve_external_cutoff_date(
     as_of_date: date,
     trade_dates: tuple[date, ...],
-) -> date | None:
+) -> date:
     """返回外盘在该 A 股基准日可使用的最后一个交易日。"""
-    return max((value for value in trade_dates if value < as_of_date), default=None)
+    return max(
+        (value for value in trade_dates if value < as_of_date),
+        default=as_of_date - timedelta(days=1),
+    )
 
 
 def collect_facts(

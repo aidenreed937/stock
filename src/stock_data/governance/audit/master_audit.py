@@ -21,6 +21,7 @@ LOW_VOLUME_DATASETS = {
 }
 
 logger = logging.getLogger(__name__)
+_SYMBOL_COLUMNS = ("symbol", "ts_code", "stockCode", "ticker")
 
 
 def _parse_source_dataset(file_path: Path, base_dir: Path) -> tuple[str, str]:
@@ -92,9 +93,7 @@ def run_master_audit(base_dir: str | Path | None = None) -> pl.DataFrame:
             df_lazy = pl.scan_parquet(f)
             columns = df_lazy.collect_schema().names()
 
-            sym_col = next(
-                (c for c in ["ts_code", "symbol", "stockCode", "ticker"] if c in columns), None
-            )
+            symbol_cols = [column for column in _SYMBOL_COLUMNS if column in columns]
             date_col = next(
                 (
                     c
@@ -115,8 +114,12 @@ def run_master_audit(base_dir: str | Path | None = None) -> pl.DataFrame:
             )
 
             exprs = [pl.len().alias("rows")]
-            if sym_col:
-                exprs.append(pl.col(sym_col).drop_nulls().n_unique().alias("symbols_count"))
+            if symbol_cols:
+                symbol_expr = pl.coalesce(
+                    [pl.col(column).cast(pl.Utf8, strict=False) for column in symbol_cols]
+                )
+                exprs.append(symbol_expr.drop_nulls().n_unique().alias("symbols_count"))
+                exprs.append(symbol_expr.drop_nulls().unique().implode().alias("symbols"))
             else:
                 exprs.append(pl.lit(0).alias("symbols_count"))
 
@@ -167,6 +170,14 @@ def run_master_audit(base_dir: str | Path | None = None) -> pl.DataFrame:
                     if value is not None and str(value).isdigit()
                 }
             )
+            raw_symbols = res["symbols"].item() if "symbols" in res.columns else []
+            if raw_symbols is None:
+                raw_symbols = []
+            if isinstance(raw_symbols, pl.Series):
+                raw_symbols = raw_symbols.to_list()
+            elif not isinstance(raw_symbols, list):
+                raw_symbols = [raw_symbols]
+            symbols = [str(value) for value in raw_symbols if value is not None]
 
             # 从 min_date/max_date 兜底推断 year
             if year_val is None and min_val:
@@ -190,6 +201,7 @@ def run_master_audit(base_dir: str | Path | None = None) -> pl.DataFrame:
                     "max_date": str(max_val)[:10] if max_val is not None else "N/A",
                     "audit_errors": 0,
                     "data_years": data_years,
+                    "symbols": symbols,
                 }
             )
         except Exception as e:
@@ -207,6 +219,7 @@ def run_master_audit(base_dir: str | Path | None = None) -> pl.DataFrame:
                     "max_date": "N/A",
                     "audit_errors": 1,
                     "data_years": [year_val] if year_val is not None else [],
+                    "symbols": [],
                 }
             )
 
@@ -218,7 +231,7 @@ def run_master_audit(base_dir: str | Path | None = None) -> pl.DataFrame:
         df_rec.group_by(["source", "dataset"])
         .agg(
             pl.len().alias("分区数"),
-            pl.col("symbols_count").max().alias("标的数"),
+            pl.col("symbols").explode(empty_as_null=True).drop_nulls().n_unique().alias("标的数"),
             pl.col("rows").sum().alias("精炼落盘总记录数"),
             pl.col("min_date").filter(pl.col("min_date") != "N/A").min().alias("最早交易日"),
             pl.col("max_date").filter(pl.col("max_date") != "N/A").max().alias("最新交易日"),

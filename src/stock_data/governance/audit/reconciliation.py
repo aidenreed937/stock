@@ -36,13 +36,24 @@ def _is_artifact_path(path: Path) -> bool:
 
 
 def _dataset_aliases(data_source: str, endpoint: str) -> set[str]:
-    aliases = {endpoint}
+    aliases = {*StorageCompat.dataset_aliases(endpoint, data_source), endpoint}
     try:
         task = resolve_task(data_source, endpoint)
         aliases.update({task.task_name, task.dataset, task.api_name})
     except Exception as exc:
         logger.debug(f"解析审计数据集别名失败 [{data_source}/{endpoint}]: {exc}")
     return {alias for alias in aliases if alias}
+
+
+def _filter_dataset_symbol(df: pl.DataFrame, source: str, endpoint: str) -> pl.DataFrame:
+    target = StorageCompat.dataset_symbol_filter(endpoint, source)
+    columns = [column for column in _SYMBOL_COLUMNS if column in df.columns]
+    if target is None or df.is_empty():
+        return df
+    if not columns:
+        return df.head(0)
+    expression = pl.coalesce([pl.col(column).cast(pl.Utf8, strict=False) for column in columns])
+    return df.filter(expression == target)
 
 
 def _collect_dataset_files(
@@ -69,7 +80,9 @@ def _collect_dataset_files(
         if has_time_partition and (target_year not in path.parts or target_month not in path.parts):
             continue
         files.append(path)
-    return sorted(files)
+    canonical = StorageCompat.canonical_dataset_name(endpoint, data_source).casefold()
+    canonical_files = [path for path in files if canonical in map(str.casefold, path.parts)]
+    return sorted(canonical_files or files)
 
 
 def _clean_date_expr(col_name: str, dtype: pl.DataType) -> pl.Expr:
@@ -303,6 +316,8 @@ def _run_raw_curated_reconciliation(
     )
     raw_df, raw_errors = _read_target_frames(raw_files, target_date)
     curated_df, curated_errors = _read_target_frames(curated_files, target_date)
+    raw_df = _filter_dataset_symbol(raw_df, data_source, endpoint)
+    curated_df = _filter_dataset_symbol(curated_df, data_source, endpoint)
     raw_count = len(raw_df)
     raw_df, raw_filtered_count = _clean_raw_frame(endpoint, data_source, raw_df)
 

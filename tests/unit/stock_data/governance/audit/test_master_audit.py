@@ -32,6 +32,32 @@ def test_run_master_audit_with_data(tmp_path: Path) -> None:
     assert summary["审计错误数"][0] == 0
 
 
+def test_run_master_audit_counts_union_of_normalized_symbols(tmp_path: Path) -> None:
+    first_dir = tmp_path / "tushare" / "market=CN" / "stock_daily_bar" / "year=2026" / "month=08"
+    second_dir = tmp_path / "tushare" / "market=CN" / "stock_daily_bar" / "year=2026" / "month=09"
+    first_dir.mkdir(parents=True, exist_ok=True)
+    second_dir.mkdir(parents=True, exist_ok=True)
+
+    pl.DataFrame(
+        {
+            "symbol": ["A", "B"],
+            "ts_code": pl.Series([None, None], dtype=pl.String),
+            "trade_date": ["2026-08-01", "2026-08-01"],
+        }
+    ).write_parquet(first_dir / "data.parquet")
+    pl.DataFrame(
+        {
+            "symbol": pl.Series([None, "C"], dtype=pl.String),
+            "ts_code": ["D", "C"],
+            "trade_date": ["2026-09-01", "2026-09-01"],
+        }
+    ).write_parquet(second_dir / "data.parquet")
+
+    summary = run_master_audit(str(tmp_path))
+
+    assert summary["标的数"].to_list() == [4]
+
+
 def test_run_master_audit_reports_bad_parquet(tmp_path: Path) -> None:
     target_dir = tmp_path / "tushare" / "market=CN" / "stock_daily_bar"
     target_dir.mkdir(parents=True)

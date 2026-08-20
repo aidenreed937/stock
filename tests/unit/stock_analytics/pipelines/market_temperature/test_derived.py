@@ -525,6 +525,25 @@ def test_external_macro_rows_use_index_daily_bar_for_us_index_returns() -> None:
     assert {end_date for _, end_date in alphavantage_catalog.load_calls} == {cutoff_date}
 
 
+def test_external_macro_rows_default_cutoff_excludes_same_day_data() -> None:
+    as_of_date = date(2026, 1, 25)
+    cutoff_date = date(2026, 1, 24)
+    frame = pl.DataFrame(
+        {
+            "symbol": ["^GSPC"],
+            "trade_date": [as_of_date],
+            "close": [100.0],
+            "value": [100.0],
+        }
+    )
+    catalog = FakeCatalog({"macro_indicators": frame, "index_daily_bar": frame})
+
+    _external_macro_rows(catalog, catalog, as_of_date)
+
+    assert catalog.load_calls
+    assert {end_date for _, end_date in catalog.load_calls} == {cutoff_date}
+
+
 def test_us_macro_background_rows_build_fred_observation_metrics() -> None:
     monthly_dates = _month_dates(date(2025, 1, 1), 14)
     quarterly_dates = [date(2025, 1, 1), date(2025, 4, 1), date(2025, 7, 1)]

@@ -114,7 +114,7 @@ def test_resolve_external_cutoff_date_uses_previous_a_share_trade_date() -> None
     assert resolve_external_cutoff_date(date(2026, 8, 18), trade_dates) == date(2026, 8, 17)
     assert resolve_external_cutoff_date(date(2026, 8, 19), trade_dates) == date(2026, 8, 18)
     assert resolve_external_cutoff_date(date(2026, 8, 17), trade_dates) == date(2026, 8, 14)
-    assert resolve_external_cutoff_date(date(2026, 8, 13), trade_dates) is None
+    assert resolve_external_cutoff_date(date(2026, 8, 13), trade_dates) == date(2026, 8, 12)
 
 
 def test_collect_facts_emits_one_short_term_fact_per_window(

@@ -2,7 +2,7 @@
 
 from __future__ import annotations
 
-from datetime import date
+from datetime import date, timedelta
 from pathlib import Path
 from typing import Any
 
@@ -207,7 +207,9 @@ def _external_macro_rows(
     dataset_cache: DatasetFrameCache | None = None,
     external_cutoff_date: date | None = None,
 ) -> list[dict[str, Any]]:
-    external_end_date = external_cutoff_date or as_of_date
+    external_end_date = (
+        external_cutoff_date if external_cutoff_date is not None else as_of_date - timedelta(days=1)
+    )
     macro_frame = _load_dataset(
         cat,
         "macro_indicators",
@@ -320,7 +322,9 @@ def _us_macro_background_rows(
     dataset_cache: DatasetFrameCache | None = None,
     external_cutoff_date: date | None = None,
 ) -> list[dict[str, Any]]:
-    external_end_date = external_cutoff_date or as_of_date
+    external_end_date = (
+        external_cutoff_date if external_cutoff_date is not None else as_of_date - timedelta(days=1)
+    )
     frame = _load_dataset(
         cat,
         "macro_indicators",
