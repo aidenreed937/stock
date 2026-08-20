@@ -26,6 +26,10 @@ venv/
 *.egg/
 build/
 dist/
+target/
+*.so
+*.dylib
+*.pyd
 
 # CodeGraph and Claude local state
 .claude/settings.local.json

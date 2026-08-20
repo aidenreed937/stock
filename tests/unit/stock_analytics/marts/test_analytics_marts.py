@@ -9,8 +9,10 @@ import stock_analytics.marts.market_temperature as market_temperature_mart
 from stock_analytics.features.store import FeatureStore
 from stock_analytics.marts.industry_structure import build_industry_daily_frame
 from stock_analytics.marts.market_temperature import (
+    _market_daily_option_source_is_current,
     build_market_temperature_derived_facts_mart,
 )
+from stock_analytics.pipelines.market_temperature.cache import DatasetFrameCache
 from stock_reporting.interpretation.industry_structure.config import (
     FundamentalBlendConfig,
     IndustryStructureConfig,
@@ -131,3 +133,34 @@ def test_market_temperature_facts_mart_persists_build_stage_rows(
 
     assert result.height == 2
     assert store.get_market_temperature_derived_facts(trade_dates[-1]).height == 1
+
+
+def test_market_daily_option_source_watermark_is_checked_once_per_batch(tmp_path: Path) -> None:
+    store = FeatureStore(mart_dir=tmp_path / "mart")
+    market_daily = pl.DataFrame(
+        {
+            "trade_date": [date(2026, 8, 3), date(2026, 8, 4)],
+            "option_put_call_volume_ratio": [1.0, 1.1],
+            "option_put_call_oi_ratio": [0.8, 0.9],
+            "option_amount": [100.0, 110.0],
+            "option_open_interest": [1000.0, 1100.0],
+            "option_near_month_amount_share": [50.0, 55.0],
+        }
+    )
+    store.save_market_daily(
+        market_daily,
+        overwrite=True,
+        metadata={"source_watermarks": {"opt_daily": "2026-08-04"}},
+    )
+
+    class _Catalog:
+        def latest_trade_dates(self, dataset: str, n: int = 1) -> list[date]:
+            assert dataset == "opt_daily"
+            return [date(2026, 8, 4)][:n]
+
+    assert _market_daily_option_source_is_current(
+        _Catalog(),
+        store,
+        market_daily,
+        dataset_cache=DatasetFrameCache(end_date=date(2026, 8, 4)),
+    )

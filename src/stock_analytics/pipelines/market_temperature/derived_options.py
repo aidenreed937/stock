@@ -57,10 +57,21 @@ def option_rows(
     metric_row_factory: Any,
     percentile_factory: Any,
     dataset_cache: DatasetFrameCache | None = None,
+    market_daily: pl.DataFrame | None = None,
+    market_daily_option_source_valid: bool | None = None,
 ) -> list[dict[str, Any]]:
     """提取期权成交与持仓衍生温度事实。"""
     storage_dir = getattr(cat, "storage_dir", None)
-    if storage_dir is not None:
+    if market_daily_option_source_valid is True and market_daily is not None:
+        frame = _select_market_daily_option_frame(market_daily, as_of_date)
+        if not frame.is_empty() and frame["_amount"].is_not_null().any():
+            return _build_option_metric_rows(
+                frame,
+                as_of_date,
+                metric_row_factory,
+                percentile_factory,
+            )
+    elif market_daily_option_source_valid is not False and storage_dir is not None:
         with contextlib.suppress(Exception):
             from stock_analytics.features.store import FeatureStore
 
@@ -77,28 +88,11 @@ def option_rows(
                 ],
             )
         source_date = _latest_dataset_date(cat, "opt_daily", as_of_date, dataset_cache)
-        mart_date = _latest_non_null_date(mart_df, "option_amount")
-        if (
-            source_date is not None
-            and mart_date == source_date
-            and not mart_df.is_empty()
-            and "option_amount" in mart_df.columns
-        ):
-            frame = (
-                mart_df.rename(
-                    {
-                        "option_put_call_volume_ratio": "_put_call_volume_ratio",
-                        "option_put_call_oi_ratio": "_put_call_oi_ratio",
-                        "option_amount": "_amount",
-                        "option_open_interest": "_oi",
-                        "option_near_month_amount_share": "_near_month_amount_share",
-                    }
-                )
-                .drop_nulls(subset=["trade_date"])
-                .sort("trade_date")
-            )
+        mart_df = _select_market_daily_option_frame(mart_df, as_of_date)
+        mart_date = _latest_non_null_date(mart_df, "_amount")
+        if source_date is not None and mart_date == source_date and not mart_df.is_empty():
             return _build_option_metric_rows(
-                frame,
+                mart_df,
                 as_of_date,
                 metric_row_factory,
                 percentile_factory,
@@ -130,6 +124,26 @@ def option_rows(
             )
         ]
     return _build_option_metric_rows(frame, as_of_date, metric_row_factory, percentile_factory)
+
+
+def _select_market_daily_option_frame(frame: pl.DataFrame, as_of_date: date) -> pl.DataFrame:
+    columns = {
+        "trade_date": "trade_date",
+        "option_put_call_volume_ratio": "_put_call_volume_ratio",
+        "option_put_call_oi_ratio": "_put_call_oi_ratio",
+        "option_amount": "_amount",
+        "option_open_interest": "_oi",
+        "option_near_month_amount_share": "_near_month_amount_share",
+    }
+    if frame.is_empty() or not set(columns).issubset(frame.columns):
+        return pl.DataFrame()
+    return (
+        frame.filter(pl.col("trade_date") <= as_of_date)
+        .select(list(columns))
+        .rename(columns)
+        .drop_nulls(subset=["trade_date"])
+        .sort("trade_date")
+    )
 
 
 def _latest_dataset_date(

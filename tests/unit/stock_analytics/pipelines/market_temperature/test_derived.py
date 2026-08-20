@@ -300,6 +300,37 @@ def test_option_rows_builds_pcr_observation_temperatures() -> None:
     assert "不是隐含波动率" in rows_by_metric["option_risk_temperature"]["note"]
 
 
+def test_option_rows_reuses_valid_market_daily_option_features() -> None:
+    trade_date = date(2026, 1, 3)
+    market_daily = pl.DataFrame(
+        {
+            "trade_date": [date(2026, 1, 1), trade_date],
+            "option_put_call_volume_ratio": [1.0, 2.0],
+            "option_put_call_oi_ratio": [0.8, 1.2],
+            "option_amount": [100.0, 200.0],
+            "option_open_interest": [1000.0, 1200.0],
+            "option_near_month_amount_share": [50.0, 100.0],
+        }
+    )
+
+    class NoRawDataCatalog:
+        storage_dir = None
+
+        def load_dataset(self, *_: object, **__: object) -> pl.DataFrame:
+            raise AssertionError("有效 market_daily 路径不应读取 opt_daily")
+
+    rows = _option_rows(
+        NoRawDataCatalog(),
+        trade_date,
+        market_daily=market_daily,
+        market_daily_option_source_valid=True,
+    )
+
+    rows_by_metric = {str(row["metric_id"]): row for row in rows}
+    assert rows_by_metric["option_put_call_volume_ratio_temperature"]["status"] == "ok"
+    assert rows_by_metric["option_risk_temperature"]["status"] == "ok"
+
+
 def test_investor_account_rows_use_monthly_new_accounts_percentile() -> None:
     catalog = FakeCatalog(
         {

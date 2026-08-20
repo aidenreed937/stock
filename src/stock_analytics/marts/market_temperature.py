@@ -10,6 +10,7 @@ import polars as pl
 from stock_analytics.features.store import FeatureStore
 from stock_analytics.pipelines.market_temperature.cache import DatasetFrameCache
 from stock_analytics.pipelines.market_temperature.derived import collect_derived_metric_rows
+from stock_analytics.pipelines.market_temperature.derived_options import _latest_dataset_date
 from stock_analytics.pipelines.market_temperature.facts import (
     FACT_SCHEMA,
     _normalize_metric_dates,
@@ -27,6 +28,16 @@ if TYPE_CHECKING:
 
 
 MARKET_TEMPERATURE_DERIVED_FACTS_MART_NAME = "market_temperature_derived_facts"
+_MARKET_DAILY_OPTION_COLUMNS = frozenset(
+    {
+        "trade_date",
+        "option_put_call_volume_ratio",
+        "option_put_call_oi_ratio",
+        "option_amount",
+        "option_open_interest",
+        "option_near_month_amount_share",
+    }
+)
 
 
 def empty_market_temperature_derived_facts() -> pl.DataFrame:
@@ -65,6 +76,12 @@ def build_market_temperature_derived_facts_mart(
 
     all_trade_dates = tuple(sorted(set(market_daily["trade_date"].drop_nulls().to_list())))
     lookback_cache = dataset_cache or DatasetFrameCache(end_date=dates[-1])
+    market_daily_option_source_valid = _market_daily_option_source_is_current(
+        catalog,
+        store,
+        market_daily,
+        dataset_cache=lookback_cache,
+    )
     rows: list[dict[str, Any]] = []
     max_window = max(config.main_window, *config.short_windows)
     for as_of_date in dates:
@@ -89,6 +106,8 @@ def build_market_temperature_derived_facts_mart(
                 storage_dir=getattr(catalog, "storage_dir", None),
                 dataset_cache=lookback_cache,
                 external_cutoff_date=_external_cutoff(as_of_date, trade_dates),
+                market_daily=market_daily,
+                market_daily_option_source_valid=market_daily_option_source_valid,
             )
         )
         rows.extend(
@@ -105,6 +124,39 @@ def build_market_temperature_derived_facts_mart(
     result = pl.DataFrame(_normalize_metric_dates(rows), schema=FACT_SCHEMA)
     store.save_market_temperature_derived_facts(result, overwrite=overwrite)
     return result
+
+
+def _market_daily_option_source_is_current(
+    catalog: MarketDataCatalog,
+    store: FeatureStore,
+    market_daily: pl.DataFrame,
+    *,
+    dataset_cache: DatasetFrameCache,
+) -> bool:
+    """在批次开始时校验 market_daily 是否覆盖 opt_daily 源水位。"""
+    if not _MARKET_DAILY_OPTION_COLUMNS.issubset(market_daily.columns):
+        return False
+    metadata = store.get_market_daily_metadata()
+    source_watermarks = metadata.get("source_watermarks")
+    if not isinstance(source_watermarks, dict):
+        return False
+    recorded = source_watermarks.get("opt_daily")
+    if not isinstance(recorded, str) or recorded in {"", "missing"}:
+        return False
+    market_daily_end = market_daily["trade_date"].drop_nulls().max()
+    if not isinstance(market_daily_end, date):
+        return False
+    try:
+        current = _latest_dataset_date(
+            catalog,
+            "opt_daily",
+            market_daily_end,
+            dataset_cache,
+        )
+        recorded_date = date.fromisoformat(recorded)
+    except (TypeError, ValueError):
+        return False
+    return current is not None and recorded_date >= current
 
 
 def _load_market_daily(

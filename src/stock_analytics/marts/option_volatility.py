@@ -3,7 +3,6 @@
 from __future__ import annotations
 
 import math
-from datetime import date
 
 import polars as pl
 
@@ -71,6 +70,7 @@ def settlement_implied_volatility(
         or strike <= 0.0
         or time_years <= 0.0
         or call_put not in {"C", "P"}
+        or not all(math.isfinite(value) for value in (settlement, spot, strike, time_years, rate))
     ):
         return None
     discount_strike = strike * math.exp(-rate * time_years)
@@ -202,36 +202,31 @@ def build_settlement_iv_proxy_mart(
     if frame.is_empty():
         return _empty_mart()
 
-    rows: list[dict[str, object]] = []
-    for row in frame.to_dicts():
-        trade_date = row.get("trade_date")
-        maturity = row.get("_maturity_date")
-        if not isinstance(trade_date, date) or not isinstance(maturity, date):
-            continue
-        time_years = (maturity - trade_date).days / 365.0
-        iv = settlement_implied_volatility(
-            float(row["_settle"]),
-            float(row["_spot"]),
-            float(row["_strike"]),
-            time_years,
-            float(row["_risk_free_rate"]),
-            str(row["_call_put"]),
-        )
-        if iv is not None and math.isfinite(iv):
-            rows.append(
-                {
-                    "trade_date": trade_date,
-                    "underlying_symbol": row["_underlying_symbol"],
-                    "_iv": iv,
-                    "_call_put": row["_call_put"],
-                    "_risk_free_rate": row["_risk_free_rate"],
-                }
+    from stock_analytics.plugins.options import compute_fast_bs_iv
+
+    evaluated = (
+        frame.with_columns(
+            ((pl.col("_maturity_date") - pl.col("trade_date")).dt.total_days() / 365.0).alias(
+                "_time_years"
             )
-    if not rows:
+        )
+        .with_columns(
+            compute_fast_bs_iv(
+                pl.col("_settle"),
+                pl.col("_spot"),
+                pl.col("_strike"),
+                pl.col("_time_years"),
+                pl.col("_risk_free_rate"),
+                pl.col("_call_put"),
+            ).alias("_iv")
+        )
+        .filter(pl.col("_iv").is_not_null() & pl.col("_iv").is_finite())
+    )
+    if evaluated.is_empty():
         return _empty_mart()
-    valid = pl.DataFrame(rows)
+
     return (
-        valid.group_by(["trade_date", "underlying_symbol"])
+        evaluated.group_by(["trade_date", "_underlying_symbol"])
         .agg(
             pl.col("_iv").median().alias("settlement_iv_proxy_median"),
             pl.when(pl.col("_call_put") == "C")
@@ -260,6 +255,8 @@ def build_settlement_iv_proxy_mart(
                 pl.col("settlement_iv_proxy_put_median") - pl.col("settlement_iv_proxy_call_median")
             ).alias("settlement_iv_proxy_put_call_skew")
         )
+        .rename({"_underlying_symbol": "underlying_symbol"})
+        .select(list(_empty_mart().columns))
         .sort(["trade_date", "underlying_symbol"])
     )
 

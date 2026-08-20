@@ -81,11 +81,21 @@ def collect_derived_metric_rows(
     storage_dir: Path | str | None = None,
     dataset_cache: DatasetFrameCache | None = None,
     external_cutoff_date: date | None = None,
+    market_daily: pl.DataFrame | None = None,
+    market_daily_option_source_valid: bool | None = None,
 ) -> list[dict[str, Any]]:
     """采集不在 MetricEngine 内的基本面与宏观温度事实。"""
     rows: list[dict[str, Any]] = []
     rows.extend(_fundamental_rows(as_of_date, trade_dates, storage_dir, dataset_cache))
-    rows.extend(_sentiment_rows(as_of_date, storage_dir, dataset_cache))
+    rows.extend(
+        _sentiment_rows(
+            as_of_date,
+            storage_dir,
+            dataset_cache,
+            market_daily=market_daily,
+            market_daily_option_source_valid=market_daily_option_source_valid,
+        )
+    )
     rows.extend(
         _macro_liquidity_rows(
             as_of_date,
@@ -354,6 +364,9 @@ def _sentiment_rows(
     as_of_date: date,
     storage_dir: Path | str | None,
     dataset_cache: DatasetFrameCache | None = None,
+    *,
+    market_daily: pl.DataFrame | None = None,
+    market_daily_option_source_valid: bool | None = None,
 ) -> list[dict[str, Any]]:
     from stock_data.catalog import DataCatalog
 
@@ -361,7 +374,15 @@ def _sentiment_rows(
     cat_lx = DataCatalog(data_source="lixinger", storage_dir=storage_dir)
     rows = _limit_event_rows(cat_ts, as_of_date, dataset_cache=dataset_cache)
     rows.extend(_investor_account_rows(cat_lx, as_of_date, dataset_cache=dataset_cache))
-    rows.extend(_option_rows(cat_ts, as_of_date, dataset_cache=dataset_cache))
+    rows.extend(
+        _option_rows(
+            cat_ts,
+            as_of_date,
+            dataset_cache=dataset_cache,
+            market_daily=market_daily,
+            market_daily_option_source_valid=market_daily_option_source_valid,
+        )
+    )
     rows.extend(settlement_iv_rows(as_of_date, storage_dir, _metric_row, _percentile_metric_row))
     return rows
 

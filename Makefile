@@ -1,8 +1,15 @@
-.PHONY: help install lint format test check run scan realtime market-aggregate market-temperature industry-structure report-consistency market-cycle-review backfill baseline migrate-data migrate-curated cleanup-data backfill-accept repair-stock-daily-bar
+.PHONY: help install lint lint-rust format test test-rust-plugins check run scan realtime market-aggregate market-temperature industry-structure report-consistency market-cycle-review backfill baseline migrate-data migrate-curated cleanup-data backfill-accept repair-stock-daily-bar build-plugins
+
+export UV_CACHE_DIR ?= .uv_cache
+export UV_PYTHON_INSTALL_DIR ?= .uv_python
+export POLARS_MAX_THREADS ?= 4
 
 help:
 	@echo "Available commands:"
 	@echo "  make install  - Install dependencies and pre-commit hooks using uv"
+	@echo "  make build-plugins - Build Rust Polars extension plugins using maturin"
+	@echo "  make lint-rust - Run Rust format and Clippy checks"
+	@echo "  make test-rust-plugins - Run Rust plugin unit tests without Python extension linking"
 	@echo "  make lint     - Run ruff check and mypy"
 	@echo "  make format   - Run ruff format and fix"
 	@echo "  make test     - Run pytest with coverage"
@@ -27,6 +34,12 @@ help:
 	@echo "  make filter-universe - Generate filtered stock universe based on liquidity"
 	@echo "  make backfill-fundamental - Backfill fundamentals from lixinger based on universe"
 
+build-plugins:
+	UV_CACHE_DIR=.uv_cache UV_PYTHON_INSTALL_DIR=.uv_python uv run maturin develop --release --manifest-path crates/stock_plugins/Cargo.toml
+
+test-rust-plugins:
+	cargo test --manifest-path crates/stock_plugins/Cargo.toml --no-default-features
+
 install:
 	uv sync
 	uv run pre-commit install
@@ -36,6 +49,10 @@ lint:
 	uv run mypy src
 	uv run python scripts/lint_class_size.py
 
+lint-rust:
+	cargo fmt --all -- --check
+	cargo clippy --manifest-path crates/stock_plugins/Cargo.toml --all-targets --all-features -- -D warnings
+
 format:
 	uv run ruff check --fix .
 	uv run ruff format .
@@ -43,7 +60,7 @@ format:
 test:
 	$(if $(TEST_PATH),uv run pytest $(TEST_PATH) --no-cov,uv run pytest)
 
-check: format lint test
+check: format lint lint-rust test test-rust-plugins
 
 run:
 	uv run python -m stock_cli.main
