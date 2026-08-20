@@ -7,6 +7,7 @@ from typing import TYPE_CHECKING
 
 import polars as pl
 
+from stock_analytics.primitives.indicators import calculate_rsi
 from stock_analytics.primitives.rules import (
     above_ma,
     at_rolling_high,
@@ -64,7 +65,12 @@ def build_breadth_and_turnover(
         above_ma("close", 120).alias("_above_ma120"),
         at_rolling_high("close", 252).alias("_new_high_252d"),
         at_rolling_low("close", 252).alias("_new_low_252d"),
+        (pl.col("close") / pl.col("close").shift(20).over("symbol") - 1.0).alias("_return_20d"),
+        (pl.col("close") / pl.col("close").rolling_mean(20).over("symbol") - 1.0).alias(
+            "_ma_bias_20d"
+        ),
     )
+    signals = calculate_rsi(signals, window=14).with_columns(pl.col("rsi_14").alias("_rsi_14d"))
 
     breadth_daily = (
         signals.group_by("trade_date")
@@ -82,6 +88,9 @@ def build_breadth_and_turnover(
             pl.col("_new_high_252d").sum().alias("_new_high_count"),
             pl.col("_new_high_252d").count().alias("_high_low_valid"),
             pl.col("_new_low_252d").sum().alias("_new_low_count"),
+            pl.col("_return_20d").median().alias("return_20d"),
+            pl.col("_rsi_14d").median().alias("rsi_14d"),
+            pl.col("_ma_bias_20d").median().alias("ma_bias_20d"),
         )
         .with_columns(
             share("_adv_count", "_dec_count", "adv_dec_ratio"),
@@ -102,6 +111,9 @@ def build_breadth_and_turnover(
             "above_ma120_ratio",
             "new_high_252d_ratio",
             "new_low_252d_ratio",
+            "return_20d",
+            "rsi_14d",
+            "ma_bias_20d",
         )
     )
 

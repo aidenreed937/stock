@@ -15,6 +15,7 @@ from stock_analytics.pipelines.market_temperature.artifacts import (
     build_run_paths,
     write_artifacts,
 )
+from stock_analytics.pipelines.market_temperature.cache import DatasetFrameCache
 from stock_analytics.pipelines.market_temperature.facts import collect_facts, resolve_trade_window
 from stock_analytics.pipelines.market_temperature.scoring import build_scores
 from stock_reporting.interpretation.market_temperature.config import (
@@ -25,6 +26,8 @@ from stock_reporting.interpretation.market_temperature.config import (
 
 if TYPE_CHECKING:
     import polars as pl
+
+    from stock_analytics.metrics.context import MetricContext
 
 
 @dataclass(frozen=True, slots=True)
@@ -52,19 +55,40 @@ def run_market_temperature(
     update_latest: bool = True,
     collect_metric_values: bool | None = None,
     storage_dir: Path | str | None = None,
+    market_daily: pl.DataFrame | None = None,
+    dataset_cache: DatasetFrameCache | None = None,
+    trade_dates: tuple[date, ...] | None = None,
+    metric_contexts: dict[int, MetricContext] | None = None,
 ) -> MarketTemperatureRunResult:
     """运行市场温度计事实采集、评分结构生成与产物写入。"""
     config = load_market_temperature_config(config_path).with_artifact_root(output_root)
-    as_of_date, trade_dates = resolve_trade_window(config, target_date, storage_dir=storage_dir)
+    if trade_dates is None:
+        as_of_date, resolved_trade_dates = resolve_trade_window(
+            config,
+            target_date,
+            storage_dir=storage_dir,
+        )
+    else:
+        resolved_trade_dates = tuple(
+            sorted(value for value in trade_dates if target_date is None or value <= target_date)
+        )[-max(config.main_window, *config.short_windows) :]
+        if not resolved_trade_dates:
+            raise ValueError("传入的市场温度交易日窗口为空")
+        as_of_date = target_date or resolved_trade_dates[-1]
     paths = build_run_paths(as_of_date, config.artifact_root)
     comparison = _load_comparison(config.artifact_root, comparison_date)
-    manifest = _build_manifest(config, as_of_date, trade_dates, paths, comparison=comparison)
+    manifest = _build_manifest(
+        config, as_of_date, resolved_trade_dates, paths, comparison=comparison
+    )
     facts = collect_facts(
         config,
         as_of_date=as_of_date,
-        trade_dates=trade_dates,
+        trade_dates=resolved_trade_dates,
         storage_dir=storage_dir,
         collect_metric_values=collect_metric_values,
+        market_daily=market_daily,
+        dataset_cache=dataset_cache,
+        metric_contexts=metric_contexts,
     )
     scores = build_scores(config, as_of_date=as_of_date, facts=facts)
     quality_report_json = build_quality_report(

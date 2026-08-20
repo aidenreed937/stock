@@ -29,6 +29,23 @@ def load_metric_dataset(
     actual_end = end_date or context.resolve_end_date()
     actual_data_source = data_source or getattr(context.catalog, "data_source", "tushare")
 
+    catalog = context.catalog
+    current_source = getattr(context.catalog, "data_source", "tushare")
+    if actual_data_source != current_source:
+        storage_dir = getattr(context.catalog, "storage_dir", None)
+        from stock_data.catalog import DataCatalog
+
+        catalog = DataCatalog(data_source=actual_data_source, storage_dir=storage_dir)
+
+    if context.dataset_cache is not None:
+        return context.dataset_cache.load(
+            catalog,
+            dataset,
+            start_date=actual_start,
+            end_date=actual_end,
+            columns=columns,
+        )
+
     base_key = context.cache_key(actual_data_source, dataset, actual_start, actual_end)
     if base_key in context.cache:
         cached = context.cache[base_key]
@@ -50,13 +67,6 @@ def load_metric_dataset(
     )
 
     if cache_key not in context.cache:
-        catalog = context.catalog
-        current_source = getattr(context.catalog, "data_source", "tushare")
-        if actual_data_source != current_source:
-            storage_dir = getattr(context.catalog, "storage_dir", None)
-            from stock_data.catalog import DataCatalog
-
-            catalog = DataCatalog(data_source=actual_data_source, storage_dir=storage_dir)
         context.cache[cache_key] = load_dataset_compat(
             catalog,
             dataset,

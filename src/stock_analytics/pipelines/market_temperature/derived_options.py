@@ -9,6 +9,7 @@ from typing import TYPE_CHECKING, Any, cast
 import polars as pl
 
 from stock_analytics.catalog_compat import load_dataset_compat
+from stock_analytics.pipelines.market_temperature.cache import DatasetFrameCache
 from stock_core.contracts import MarketDataCatalog
 
 if TYPE_CHECKING:
@@ -25,9 +26,27 @@ def _load_dataset(
     cat: MarketDataCatalog,
     dataset: str,
     columns: list[str] | None = None,
+    *,
+    start_date: date | None = None,
+    end_date: date | None = None,
+    dataset_cache: DatasetFrameCache | None = None,
 ) -> pl.DataFrame:
     try:
-        return load_dataset_compat(cat, dataset, columns=columns)
+        if dataset_cache is not None:
+            return dataset_cache.load(
+                cat,
+                dataset,
+                start_date=start_date,
+                end_date=end_date,
+                columns=columns,
+            )
+        return load_dataset_compat(
+            cat,
+            dataset,
+            start_date=start_date,
+            end_date=end_date,
+            columns=columns,
+        )
     except Exception:
         return pl.DataFrame()
 
@@ -37,6 +56,7 @@ def option_rows(
     as_of_date: date,
     metric_row_factory: Any,
     percentile_factory: Any,
+    dataset_cache: DatasetFrameCache | None = None,
 ) -> list[dict[str, Any]]:
     """提取期权成交与持仓衍生温度事实。"""
     storage_dir = getattr(cat, "storage_dir", None)
@@ -56,7 +76,7 @@ def option_rows(
                     "option_near_month_amount_share",
                 ],
             )
-        source_date = _latest_dataset_date(cat, "opt_daily", as_of_date)
+        source_date = _latest_dataset_date(cat, "opt_daily", as_of_date, dataset_cache)
         mart_date = _latest_non_null_date(mart_df, "option_amount")
         if (
             source_date is not None
@@ -88,11 +108,14 @@ def option_rows(
         cat,
         "opt_daily",
         columns=["symbol", "trade_date", "vol", "amount", "oi"],
+        end_date=as_of_date,
+        dataset_cache=dataset_cache,
     )
     basic = _load_dataset(
         cat,
         "opt_basic",
         columns=["symbol", "call_put", "s_month"],
+        dataset_cache=dataset_cache,
     )
     frame = _option_daily_frame(daily, basic)
     if frame.is_empty():
@@ -109,12 +132,23 @@ def option_rows(
     return _build_option_metric_rows(frame, as_of_date, metric_row_factory, percentile_factory)
 
 
-def _latest_dataset_date(cat: MarketDataCatalog, dataset: str, as_of_date: date) -> date | None:
+def _latest_dataset_date(
+    cat: MarketDataCatalog,
+    dataset: str,
+    as_of_date: date,
+    dataset_cache: DatasetFrameCache | None = None,
+) -> date | None:
     if hasattr(cat, "latest_trade_dates"):
         latest = cat.latest_trade_dates(dataset, n=1)
         if latest and latest[0] <= as_of_date:
             return latest[0]
-    frame = _load_dataset(cat, dataset, columns=["trade_date"])
+    frame = _load_dataset(
+        cat,
+        dataset,
+        columns=["trade_date"],
+        end_date=as_of_date,
+        dataset_cache=dataset_cache,
+    )
     if frame.is_empty() or "trade_date" not in frame.columns:
         return None
     dates = frame.filter(pl.col("trade_date") <= as_of_date)["trade_date"].drop_nulls()

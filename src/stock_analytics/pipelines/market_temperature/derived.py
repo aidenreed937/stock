@@ -9,7 +9,7 @@ from typing import TYPE_CHECKING, Any, cast
 import polars as pl
 
 from stock_analytics.catalog_compat import load_dataset_compat
-from stock_analytics.pipelines.market_temperature import external_risk_facts as _risk_facts
+from stock_analytics.pipelines.market_temperature.cache import DatasetFrameCache
 from stock_analytics.pipelines.market_temperature.derived_options import (
     option_rows,
 )
@@ -79,12 +79,13 @@ def collect_derived_metric_rows(
     as_of_date: date,
     trade_dates: tuple[date, ...],
     storage_dir: Path | str | None = None,
+    dataset_cache: DatasetFrameCache | None = None,
 ) -> list[dict[str, Any]]:
     """采集不在 MetricEngine 内的基本面与宏观温度事实。"""
     rows: list[dict[str, Any]] = []
-    rows.extend(_fundamental_rows(as_of_date, trade_dates, storage_dir))
-    rows.extend(_sentiment_rows(as_of_date, storage_dir))
-    rows.extend(_macro_liquidity_rows(as_of_date, storage_dir))
+    rows.extend(_fundamental_rows(as_of_date, trade_dates, storage_dir, dataset_cache))
+    rows.extend(_sentiment_rows(as_of_date, storage_dir, dataset_cache))
+    rows.extend(_macro_liquidity_rows(as_of_date, storage_dir, dataset_cache))
     return rows
 
 
@@ -92,19 +93,25 @@ def _fundamental_rows(
     as_of_date: date,
     trade_dates: tuple[date, ...],
     storage_dir: Path | str | None,
+    dataset_cache: DatasetFrameCache | None = None,
 ) -> list[dict[str, Any]]:
     from stock_data.catalog import DataCatalog
 
     cat_lx = DataCatalog(data_source="lixinger", storage_dir=storage_dir)
     cat_ts = DataCatalog(data_source="tushare", storage_dir=storage_dir)
-    rows = _financial_statement_rows(cat_lx, as_of_date)
-    rows.extend(_forecast_rows(cat_ts, as_of_date, trade_dates))
-    rows.extend(_report_revision_rows(cat_ts, as_of_date, trade_dates))
+    rows = _financial_statement_rows(cat_lx, as_of_date, dataset_cache=dataset_cache)
+    rows.extend(_forecast_rows(cat_ts, as_of_date, trade_dates, dataset_cache=dataset_cache))
+    rows.extend(_report_revision_rows(cat_ts, as_of_date, trade_dates, dataset_cache=dataset_cache))
     return rows
 
 
-def _financial_statement_rows(cat: MarketDataCatalog, as_of_date: date) -> list[dict[str, Any]]:
-    frame = _load_financial_statement_frame(cat)
+def _financial_statement_rows(
+    cat: MarketDataCatalog,
+    as_of_date: date,
+    *,
+    dataset_cache: DatasetFrameCache | None = None,
+) -> list[dict[str, Any]]:
+    frame = _load_financial_statement_frame(cat, dataset_cache=dataset_cache)
     if frame.is_empty():
         return [
             _metric_row(
@@ -154,10 +161,19 @@ def _financial_statement_rows(cat: MarketDataCatalog, as_of_date: date) -> list[
     ]
 
 
-def _load_financial_statement_frame(cat: MarketDataCatalog) -> pl.DataFrame:
+def _load_financial_statement_frame(
+    cat: MarketDataCatalog,
+    *,
+    dataset_cache: DatasetFrameCache | None = None,
+) -> pl.DataFrame:
     frames: list[pl.DataFrame] = []
     for dataset in _FS_DATASETS:
-        frame = _load_dataset(cat, dataset)
+        frame = _load_dataset(
+            cat,
+            dataset,
+            columns=["trade_date", "symbol", "q"],
+            dataset_cache=dataset_cache,
+        )
         if frame.is_empty() or "q" not in frame.columns:
             continue
         frames.append(
@@ -191,12 +207,15 @@ def _forecast_rows(
     cat: MarketDataCatalog,
     as_of_date: date,
     trade_dates: tuple[date, ...],
+    *,
+    dataset_cache: DatasetFrameCache | None = None,
 ) -> list[dict[str, Any]]:
     start_date = trade_dates[0]
     frame = _load_dataset(
         cat,
         "forecast",
         columns=["symbol", "end_date", "ann_date", "p_change_min", "p_change_max", "type"],
+        dataset_cache=dataset_cache,
     )
     if frame.is_empty():
         return [
@@ -257,12 +276,15 @@ def _report_revision_rows(
     cat: MarketDataCatalog,
     as_of_date: date,
     trade_dates: tuple[date, ...],
+    *,
+    dataset_cache: DatasetFrameCache | None = None,
 ) -> list[dict[str, Any]]:
     start_date = trade_dates[0]
     frame = _load_dataset(
         cat,
         "report_rc",
         columns=["symbol", "org_name", "quarter", "report_date", "np"],
+        dataset_cache=dataset_cache,
     )
     required = {"symbol", "org_name", "quarter", "report_date", "np"}
     if frame.is_empty() or not required.issubset(frame.columns):
@@ -320,20 +342,37 @@ def _report_revision_rows(
     ]
 
 
-def _sentiment_rows(as_of_date: date, storage_dir: Path | str | None) -> list[dict[str, Any]]:
+def _sentiment_rows(
+    as_of_date: date,
+    storage_dir: Path | str | None,
+    dataset_cache: DatasetFrameCache | None = None,
+) -> list[dict[str, Any]]:
     from stock_data.catalog import DataCatalog
 
     cat_ts = DataCatalog(data_source="tushare", storage_dir=storage_dir)
     cat_lx = DataCatalog(data_source="lixinger", storage_dir=storage_dir)
-    rows = _limit_event_rows(cat_ts, as_of_date)
-    rows.extend(_investor_account_rows(cat_lx, as_of_date))
-    rows.extend(_option_rows(cat_ts, as_of_date))
+    rows = _limit_event_rows(cat_ts, as_of_date, dataset_cache=dataset_cache)
+    rows.extend(_investor_account_rows(cat_lx, as_of_date, dataset_cache=dataset_cache))
+    rows.extend(_option_rows(cat_ts, as_of_date, dataset_cache=dataset_cache))
     rows.extend(settlement_iv_rows(as_of_date, storage_dir, _metric_row, _percentile_metric_row))
     return rows
 
 
-def _investor_account_rows(cat: MarketDataCatalog, as_of_date: date) -> list[dict[str, Any]]:
-    frame = _investor_account_frame(_load_dataset(cat, "investor_accounts"))
+def _investor_account_rows(
+    cat: MarketDataCatalog,
+    as_of_date: date,
+    *,
+    dataset_cache: DatasetFrameCache | None = None,
+) -> list[dict[str, Any]]:
+    frame = _investor_account_frame(
+        _load_dataset(
+            cat,
+            "investor_accounts",
+            columns=["trade_date", "nni_m", "n_non_ni_m"],
+            end_date=as_of_date,
+            dataset_cache=dataset_cache,
+        )
+    )
     if frame.is_empty():
         return [
             _metric_row(
@@ -379,8 +418,21 @@ def _investor_account_frame(frame: pl.DataFrame) -> pl.DataFrame:
     )
 
 
-def _limit_event_rows(cat: MarketDataCatalog, as_of_date: date) -> list[dict[str, Any]]:
-    frame = _limit_event_daily_frame(_load_dataset(cat, "limit_list_d"))
+def _limit_event_rows(
+    cat: MarketDataCatalog,
+    as_of_date: date,
+    *,
+    dataset_cache: DatasetFrameCache | None = None,
+) -> list[dict[str, Any]]:
+    frame = _limit_event_daily_frame(
+        _load_dataset(
+            cat,
+            "limit_list_d",
+            columns=["trade_date", "limit"],
+            end_date=as_of_date,
+            dataset_cache=dataset_cache,
+        )
+    )
     if frame.is_empty():
         return [
             _metric_row(
@@ -493,238 +545,40 @@ def _limit_event_temperature_row(
 def _macro_liquidity_rows(
     as_of_date: date,
     storage_dir: Path | str | None,
+    dataset_cache: DatasetFrameCache | None = None,
 ) -> list[dict[str, Any]]:
-    from stock_data.catalog import DataCatalog
-
-    cat_ts = DataCatalog(data_source="tushare", storage_dir=storage_dir)
-    cat_lx = DataCatalog(data_source="lixinger", storage_dir=storage_dir)
-    cat_yf = DataCatalog(data_source="yfinance", storage_dir=storage_dir)
-    cat_av = DataCatalog(data_source="alphavantage", storage_dir=storage_dir)
-    cat_fred = DataCatalog(data_source="fred", storage_dir=storage_dir)
-    rows: list[dict[str, Any]] = []
-    rows.append(
-        _percentile_metric_row(
-            _load_dataset(cat_lx, "national_debt"),
-            "macro_bond_yield_10y_temperature",
-            "tcm_y10",
-            as_of_date,
-            inverse=True,
-            note="10年国债收益率历史反向分位",
-        )
+    from stock_analytics.pipelines.market_temperature.derived_macro import (
+        _macro_liquidity_rows as collect_macro_rows,
     )
-    rows.append(
-        _percentile_metric_row(
-            _load_dataset(cat_ts, "shibor"),
-            "macro_shibor_on_temperature",
-            "on",
-            as_of_date,
-            inverse=True,
-            note="Shibor O/N 历史反向分位",
-        )
-    )
-    rows.extend(_money_credit_rows(cat_ts, cat_lx, as_of_date))
-    rows.extend(_external_macro_rows(cat_yf, cat_av, as_of_date))
-    rows.extend(_us_macro_background_rows(cat_fred, as_of_date))
-    return [*rows, *_external_pressure_rows(rows, as_of_date)]
 
-
-def _money_credit_rows(
-    cat_ts: MarketDataCatalog,
-    cat_lx: MarketDataCatalog,
-    as_of_date: date,
-) -> list[dict[str, Any]]:
-    cn_m = _with_month_date(_load_dataset(cat_lx, "cn_m"))
-    sf_month = _with_month_date(_load_dataset(cat_lx, "sf_month"))
-    cn_cpi = _with_month_date(_load_dataset(cat_ts, "cn_cpi"))
-    rows = [
-        _percentile_metric_row(
-            cn_m,
-            "macro_m2_yoy_temperature",
-            "m2_yoy",
-            as_of_date,
-            date_col="_month_date",
-            note="M2同比历史分位",
-        ),
-        _percentile_metric_row(
-            cn_m.with_columns((pl.col("m1_yoy") - pl.col("m2_yoy")).alias("_m1_m2_gap")),
-            "macro_m1_m2_gap_temperature",
-            "_m1_m2_gap",
-            as_of_date,
-            date_col="_month_date",
-            note="M1-M2剪刀差历史分位",
-        ),
-        _percentile_metric_row(
-            _with_social_finance_yoy(sf_month),
-            "macro_social_finance_stock_temperature",
-            "_sf_stock_yoy",
-            as_of_date,
-            date_col="_month_date",
-            note="社融存量同比历史分位",
-        ),
-    ]
-    real_rate = _real_rate_frame(_load_dataset(cat_lx, "national_debt"), cn_cpi)
-    rows.append(
-        _percentile_metric_row(
-            real_rate,
-            "macro_real_rate_temperature",
-            "_real_rate",
-            as_of_date,
-            date_col="_month_date",
-            inverse=True,
-            note="10年国债-CPI同比的实际利率反向分位",
-        )
-    )
-    return rows
+    return collect_macro_rows(as_of_date, storage_dir, dataset_cache)
 
 
 def _external_macro_rows(
     cat: MarketDataCatalog,
     fx_cat: MarketDataCatalog,
     as_of_date: date,
+    *,
+    dataset_cache: DatasetFrameCache | None = None,
 ) -> list[dict[str, Any]]:
-    macro_frame = _load_dataset(cat, "macro_indicators")
-    fx_frame = _load_dataset(fx_cat, "macro_indicators")
-    index_frame = _load_dataset(cat, "index_daily_bar")
-    if index_frame.is_empty():
-        index_frame = macro_frame
-    rows = [
-        _return_percentile_metric_row(
-            index_frame,
-            "^GSPC",
-            "macro_sp500_20d_return_temperature",
-            as_of_date,
-            note="标普500 20日收益历史分位",
-        ),
-        _return_percentile_metric_row(
-            index_frame,
-            "^IXIC",
-            "macro_nasdaq_20d_return_temperature",
-            as_of_date,
-            note="纳斯达克综合指数20日收益历史分位",
-        ),
-        _percentile_metric_row(
-            macro_frame.filter(pl.col("symbol") == "^VIX"),
-            "macro_vix_temperature",
-            "close",
-            as_of_date,
-            inverse=True,
-            note="VIX历史反向分位",
-        ),
-        _return_percentile_metric_row(
-            macro_frame,
-            "DX-Y.NYB",
-            "macro_usd_index_20d_change_temperature",
-            as_of_date,
-            inverse=True,
-            note="美元指数20日变化历史反向分位",
-        ),
-        _percentile_metric_row(
-            macro_frame.filter(pl.col("symbol") == "^TNX"),
-            "macro_us_10y_temperature",
-            "close",
-            as_of_date,
-            inverse=True,
-            note="美债10年收益率历史反向分位",
-        ),
-        _return_percentile_metric_row(
-            macro_frame,
-            "HG=F",
-            "macro_copper_20d_return_temperature",
-            as_of_date,
-            note="铜价20日收益历史分位",
-        ),
-        _return_percentile_metric_row(
-            macro_frame,
-            "GC=F",
-            "macro_gold_20d_return_pressure",
-            as_of_date,
-            note="黄金20日收益历史分位，作为避险压力观察项",
-        ),
-        _return_percentile_metric_row(
-            macro_frame,
-            "CL=F",
-            "macro_oil_20d_return_pressure",
-            as_of_date,
-            note="原油20日收益历史分位，作为通胀压力观察项",
-        ),
-        _percentile_metric_row(
-            macro_frame.filter(pl.col("symbol") == "DX-Y.NYB"),
-            "macro_usd_index_temperature",
-            "close",
-            as_of_date,
-            inverse=True,
-            note="美元指数水平历史反向分位，辅助观察",
-        ),
-        _return_percentile_metric_row(
-            fx_frame,
-            "CNH=X",
-            "macro_cnh_20d_change_temperature",
-            as_of_date,
-            inverse=True,
-            note=("Alpha Vantage 离岸人民币USD/CNH 20日变化历史反向分位，人民币贬值压力外部观察"),
-        ),
-    ]
-    rows.extend(_risk_facts.raw_external_change_rows(index_frame, macro_frame, as_of_date))
-    rows.append(_external_environment_row(rows, as_of_date))
-    return rows
+    from stock_analytics.pipelines.market_temperature.derived_macro import (
+        _external_macro_rows as collect_external_rows,
+    )
+
+    return collect_external_rows(cat, fx_cat, as_of_date, dataset_cache=dataset_cache)
 
 
-def _us_macro_background_rows(cat: MarketDataCatalog, as_of_date: date) -> list[dict[str, Any]]:
-    frame = _load_dataset(cat, "macro_indicators")
-    return [
-        _percentile_metric_row(
-            _fred_symbol_frame(frame, "T10Y2Y"),
-            "macro_fred_t10y2y_temperature",
-            "_value",
-            as_of_date,
-            note="FRED T10Y2Y期限利差历史分位，美国期限结构压力日频背景观察",
-        ),
-        _percentile_metric_row(
-            _fred_symbol_frame(frame, "FEDFUNDS"),
-            "macro_fred_fedfunds_temperature",
-            "_value",
-            as_of_date,
-            inverse=True,
-            note="FRED FEDFUNDS政策利率历史反向分位，美国政策利率月频背景观察",
-        ),
-        _percentile_metric_row(
-            _fred_symbol_frame(frame, "WALCL"),
-            "macro_fred_walcl_temperature",
-            "_value",
-            as_of_date,
-            note="FRED WALCL美联储资产负债表规模历史分位，周频流动性背景观察",
-        ),
-        _percentile_metric_row(
-            _fred_yoy_frame(frame, "CPIAUCSL", periods=12),
-            "macro_fred_cpi_yoy_temperature",
-            "_yoy",
-            as_of_date,
-            inverse=True,
-            note="FRED CPIAUCSL同比小数历史反向分位，美国通胀压力月频背景观察",
-        ),
-        _percentile_metric_row(
-            _fred_symbol_frame(frame, "UNRATE"),
-            "macro_fred_unrate_temperature",
-            "_value",
-            as_of_date,
-            inverse=True,
-            note="FRED UNRATE失业率历史反向分位，美国就业压力月频背景观察",
-        ),
-        _percentile_metric_row(
-            _fred_yoy_frame(frame, "PAYEMS", periods=12),
-            "macro_fred_payems_yoy_temperature",
-            "_yoy",
-            as_of_date,
-            note="FRED PAYEMS非农就业人数同比小数历史分位，美国就业周期月频背景观察",
-        ),
-        _percentile_metric_row(
-            _fred_yoy_frame(frame, "GDP", periods=4),
-            "macro_fred_gdp_yoy_temperature",
-            "_yoy",
-            as_of_date,
-            note="FRED GDP同比小数历史分位，美国经济底座季频背景观察",
-        ),
-    ]
+def _us_macro_background_rows(
+    cat: MarketDataCatalog,
+    as_of_date: date,
+    *,
+    dataset_cache: DatasetFrameCache | None = None,
+) -> list[dict[str, Any]]:
+    from stock_analytics.pipelines.market_temperature.derived_macro import (
+        _us_macro_background_rows as collect_us_rows,
+    )
+
+    return collect_us_rows(cat, as_of_date, dataset_cache=dataset_cache)
 
 
 def _return_percentile_metric_row(
@@ -1036,9 +890,27 @@ def _load_dataset(
     cat: MarketDataCatalog,
     dataset: str,
     columns: list[str] | None = None,
+    *,
+    start_date: date | None = None,
+    end_date: date | None = None,
+    dataset_cache: DatasetFrameCache | None = None,
 ) -> pl.DataFrame:
     try:
-        return load_dataset_compat(cat, dataset, columns=columns)
+        if dataset_cache is not None:
+            return dataset_cache.load(
+                cat,
+                dataset,
+                start_date=start_date,
+                end_date=end_date,
+                columns=columns,
+            )
+        return load_dataset_compat(
+            cat,
+            dataset,
+            start_date=start_date,
+            end_date=end_date,
+            columns=columns,
+        )
     except Exception:
         return pl.DataFrame()
 

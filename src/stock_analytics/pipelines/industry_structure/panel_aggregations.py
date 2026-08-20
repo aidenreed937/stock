@@ -188,7 +188,18 @@ def _forecast_panel(
     as_of_date: date,
     target_period: date,
 ) -> pl.DataFrame:
-    raw = load_dataset(catalog, "forecast")
+    raw = load_dataset(
+        catalog,
+        "forecast",
+        columns=[
+            "symbol",
+            "ann_date",
+            "end_date",
+            "type",
+            "p_change_min",
+            "p_change_max",
+        ],
+    )
     if raw.is_empty() or not {"symbol", "ann_date"}.issubset(raw.columns):
         return pl.DataFrame()
     positive_labels = ("预增", "略增", "续盈", "扭亏")
@@ -232,7 +243,18 @@ def _express_panel(
     as_of_date: date,
     target_period: date,
 ) -> pl.DataFrame:
-    raw = load_dataset(catalog, "express")
+    raw = load_dataset(
+        catalog,
+        "express",
+        columns=[
+            "symbol",
+            "ann_date",
+            "end_date",
+            "n_income",
+            "prior_period_net_profit",
+            "diluted_roe",
+        ],
+    )
     if raw.is_empty() or not {"symbol", "ann_date"}.issubset(raw.columns):
         return pl.DataFrame()
     base = raw.select(
@@ -273,7 +295,11 @@ def _report_revision_panel(
     window_start: date,
     as_of_date: date,
 ) -> pl.DataFrame:
-    raw = load_dataset(catalog, "report_rc")
+    raw = load_dataset(
+        catalog,
+        "report_rc",
+        columns=["symbol", "report_date", "org_name", "quarter", "np"],
+    )
     required = {"symbol", "report_date", "org_name", "quarter", "np"}
     if raw.is_empty() or not required.issubset(raw.columns):
         return pl.DataFrame()

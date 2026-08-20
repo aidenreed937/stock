@@ -46,23 +46,28 @@ UV_CACHE_DIR=.uv_cache UV_PYTHON_INSTALL_DIR=.uv_python uv run python -m stock_c
 - `quality_report.md` / `quality_report.json`：口径、窗口、水位、滞后和质量约束报告；
 - `latest/`：最近一次成功发布运行的同名文件副本；仅作展示，不作为观测日期判断依据。
 
-### 多交易日批量/并行生成约束
+### 多交易日批量/串行生成约束
 
-连续多个交易日生成产物时，可以按日期并行执行，但必须遵守以下约束：
+连续多个交易日生成产物时，默认按日期串行执行，并在同一进程内复用一次 Mart 与数据读取缓存：
 
-- 并行 worker 统一使用 `NO_LATEST=1`，不能同时写共享的 `latest/` 目录；
-- 同一交易日不要重复启动同一类产物，当前 `run_id` 只有秒级时间精度，重复运行可能产生目录冲突或互相覆盖；
-- 投资者简报必须等待同一基准日的市场温度和行业结构产物完成后再生成，并显式传入 `DATE`，不能依赖并行变化中的 `latest/`；
+- 批量生成阶段统一不刷新 `latest/`，不能让日期任务交错写共享目录；
+- Mart 在批量开始前最多重建一次；报告阶段只读取该次重建结果；
+- 投资者简报必须等待同一基准日的市场温度和行业结构产物完成后再生成，并显式传入 `DATE`；
 - 所有日期产物完成后，先执行区间 `report-consistency`；确认全部通过后，再由单个收口任务将选定的最新交易日发布到 `latest/`。
 
 仓库内提供批量快捷脚本
 `.agents/skills/market-temperature-analysis/scripts/build_multi_date_artifacts.py`：
 
 ```bash
-# 从本地 stock_daily_bar 解析区间交易日；日期间最多并行 3 个日期
+# 从本地 stock_daily_bar 解析区间交易日；日期任务串行执行并共享一次读取缓存
 UV_CACHE_DIR=.uv_cache UV_PYTHON_INSTALL_DIR=.uv_python \
   uv run python .agents/skills/market-temperature-analysis/scripts/build_multi_date_artifacts.py \
-  --start YYYY-MM-DD --end YYYY-MM-DD --workers 3
+  --start YYYY-MM-DD --end YYYY-MM-DD
+
+# 如需在报告前重建一次全部 Mart：
+UV_CACHE_DIR=.uv_cache UV_PYTHON_INSTALL_DIR=.uv_python \
+  uv run python .agents/skills/market-temperature-analysis/scripts/build_multi_date_artifacts.py \
+  --start YYYY-MM-DD --end YYYY-MM-DD --rebuild-mart --mart-start YYYY-MM-DD
 
 # 显式指定日期，适合非连续交易日；默认发布其中最新日期到 latest/
 UV_CACHE_DIR=.uv_cache UV_PYTHON_INSTALL_DIR=.uv_python \
@@ -70,7 +75,7 @@ UV_CACHE_DIR=.uv_cache UV_PYTHON_INSTALL_DIR=.uv_python \
   --dates YYYY-MM-DD YYYY-MM-DD --dry-run
 ```
 
-脚本按日期并行、按单日期串行执行市场温度、行业结构和投资者简报；生成完成后自动运行一致性校验，校验通过才发布 `latest/`，并再次校验 `latest/`。使用 `--no-publish-latest` 可只生成并校验运行目录，使用 `--dry-run` 可只查看计划。
+脚本按日期串行执行市场温度、行业结构和投资者简报，并在进程内复用一次 Mart 与数据集缓存；生成完成后自动运行一致性校验，校验通过才发布 `latest/`，并再次校验 `latest/`。使用 `--no-publish-latest` 可只生成并校验运行目录，使用 `--dry-run` 可只查看计划。
 
 需要解释两个基准日的驱动差异时，使用 `COMPARE_DATE` / `--compare-date`。它读取对比日期最近一次已落盘的 `manifest.json` 和 `scores.json`，只在人读版报告中加入“跨期驱动变化”表；不会重算或改写前期产物。
 

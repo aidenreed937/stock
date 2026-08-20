@@ -16,6 +16,9 @@ if TYPE_CHECKING:
 
 # 温度计配置 metric_id -> market_daily 宽表列名（仅收录配置实际使用的指标）
 _MARKET_DAILY_COLUMN_MAP: dict[str, str] = {
+    "return_20d": "return_20d",
+    "rsi_14d": "rsi_14d",
+    "ma_bias_20d": "ma_bias_20d",
     "advance_share": "advance_ratio",
     "above_ma20_share": "above_ma20_ratio",
     "above_ma60_share": "above_ma60_ratio",
@@ -26,6 +29,9 @@ _MARKET_DAILY_COLUMN_MAP: dict[str, str] = {
     "market_turnover_rate": "market_turnover_rate",
     "main_money_net_inflow_share": "main_net_inflow_ratio",
 }
+MARKET_DAILY_FACT_COLUMNS: tuple[str, ...] = tuple(
+    dict.fromkeys(("trade_date", *_MARKET_DAILY_COLUMN_MAP.values()))
+)
 
 
 def _latest_non_null_date(filtered: pl.DataFrame, column: str) -> date | None:

@@ -114,3 +114,26 @@ def test_new_low_share_maps_to_mart_wide_column() -> None:
 
     assert fact is not None
     assert fact["value_float"] == pytest.approx(0.02)
+
+
+@pytest.mark.parametrize(
+    ("metric_id", "value"),
+    [("return_20d", 0.12), ("rsi_14d", 58.0), ("ma_bias_20d", 0.03)],
+)
+def test_technical_metrics_map_to_materialized_market_daily_columns(
+    metric_id: str, value: float
+) -> None:
+    target = date(2026, 8, 17)
+    frame = pl.DataFrame({"trade_date": [target], metric_id: [value]})
+
+    fact = try_get_market_daily_fact(
+        frame,
+        "technical",
+        MetricInputConfig(metric_id),
+        target,
+        expected_trade_date=target,
+    )
+
+    assert fact is not None
+    assert fact["data_source"] == "mart"
+    assert fact["value_float"] == pytest.approx(value)

@@ -62,7 +62,12 @@ def _fit_linear_regression(
 class IndustryPBROEAnalyzer:
     """行业 PB-ROE 横截面残差分析器。"""
 
-    def __init__(self, catalog: MarketDataCatalog | None = None) -> None:
+    def __init__(
+        self,
+        catalog: MarketDataCatalog | None = None,
+        *,
+        classifier_catalog: MarketDataCatalog | None = None,
+    ) -> None:
         """初始化分析器。"""
         if catalog is not None:
             self.catalog: MarketDataCatalog = catalog
@@ -70,7 +75,7 @@ class IndustryPBROEAnalyzer:
             from stock_data.catalog import DataCatalog
 
             self.catalog = DataCatalog(data_source="lixinger")
-        self.classifier = IndustryClassifier(catalog=self.catalog)
+        self.classifier = IndustryClassifier(catalog=classifier_catalog or self.catalog)
 
     def analyze_cross_section(
         self,

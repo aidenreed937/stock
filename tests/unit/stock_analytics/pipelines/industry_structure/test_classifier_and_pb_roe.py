@@ -84,3 +84,36 @@ def test_industry_pb_roe_analyzer() -> None:
     assert result.trade_date == date(2026, 8, 14)
     assert len(result.industries) == 10
     assert result.r_squared >= 0.0
+
+
+def test_industry_pb_roe_uses_explicit_tushare_classifier_catalog() -> None:
+    valuation_catalog = MagicMock(spec=DataCatalog)
+    classifier_catalog = MagicMock(spec=DataCatalog)
+    classifier_catalog.load_dataset.return_value = pl.DataFrame(
+        {
+            "index_code": ["801001.SI"],
+            "industry_name": ["农林牧渔"],
+            "level": ["L1"],
+            "src": ["SW2021"],
+        }
+    )
+    analyzer = IndustryPBROEAnalyzer(
+        catalog=valuation_catalog,
+        classifier_catalog=classifier_catalog,
+    )
+
+    result = analyzer.analyze_cross_section(
+        target_date=date(2026, 8, 14),
+        val_df=pl.DataFrame(
+            {
+                "symbol": ["801001.SI"] * 5,
+                "trade_date": [date(2026, 8, 14)] * 5,
+                "pb.ew": [1.0, 1.1, 1.2, 1.3, 1.4],
+                "roe.ttm": [5.0, 6.0, 7.0, 8.0, 9.0],
+            }
+        ),
+    )
+
+    assert result is not None
+    assert classifier_catalog.load_dataset.call_args.args == ("index_classify",)
+    valuation_catalog.load_dataset.assert_not_called()

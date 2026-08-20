@@ -42,6 +42,7 @@ def _volatility_frame(context: MetricContext) -> pl.DataFrame:
         "stock_daily_bar",
         start_date=start_date,
         end_date=end_date,
+        columns=["trade_date", "symbol", "close"],
     )
     if raw.is_empty():
         frame = pl.DataFrame()

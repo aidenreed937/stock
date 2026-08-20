@@ -13,6 +13,8 @@ if TYPE_CHECKING:
 
     import polars as pl
 
+    from stock_analytics.pipelines.market_temperature.cache import DatasetFrameCache
+
 
 def _create_default_catalog() -> MarketDataCatalog:
     from stock_data.catalog import DataCatalog
@@ -29,6 +31,7 @@ class MetricContext:
     start_date: date | None = None
     end_date: date | None = None
     cache: MutableMapping[str, pl.DataFrame] = field(default_factory=dict)
+    dataset_cache: DatasetFrameCache | None = None
 
     def resolve_end_date(self) -> date | None:
         """返回本次计算的结束日期。"""

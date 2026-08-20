@@ -7,9 +7,30 @@ from typing import TYPE_CHECKING
 
 import polars as pl
 
+from stock_analytics.catalog_compat import load_dataset_compat
+from stock_analytics.pipelines.industry_structure.industry_mapping import (
+    _stock_industry_map_from_index_member,
+    _stock_industry_map_from_lixinger_constituents,
+    load_industry_l1_maps,
+    load_stock_industry_map,
+    map_l1_code,
+)
+
 if TYPE_CHECKING:
     from stock_core.contracts import MarketDataCatalog
-    from stock_reporting.interpretation.industry_structure.config import IndustryStructureConfig
+
+__all__ = [
+    "_stock_industry_map_from_index_member",
+    "_stock_industry_map_from_lixinger_constituents",
+    "load_benchmark_return_20d",
+    "load_dataset",
+    "load_financial_statement_history",
+    "load_industry_l1_maps",
+    "load_moneyflow_base_frame",
+    "load_stock_amount_frame",
+    "load_stock_industry_map",
+    "map_l1_code",
+]
 
 _FS_DATASETS = (
     "sw_2021_fs_non_financial",
@@ -26,87 +47,20 @@ def load_dataset(
     start_date: date | None = None,
     end_date: date | None = None,
     symbols: list[str] | None = None,
+    columns: list[str] | None = None,
 ) -> pl.DataFrame:
     """从 DataCatalog 加载指定数据集，异常时返回空 DataFrame。"""
     try:
-        return catalog.load_dataset(
+        return load_dataset_compat(
+            catalog,
             dataset,
             start_date=start_date,
             end_date=end_date,
             symbols=symbols,
+            columns=columns,
         )
     except Exception:
         return pl.DataFrame()
-
-
-def load_industry_l1_maps(
-    catalog: MarketDataCatalog,
-    config: IndustryStructureConfig,
-) -> tuple[dict[str, str], dict[str, str]]:
-    """加载指数/行业代码到申万一级代码的映射字典。"""
-    raw = load_dataset(catalog, "index_classify")
-    if raw.is_empty() or not {"index_code", "industry_code", "level"}.issubset(raw.columns):
-        return {}, {}
-    frame = _classify_frame(raw, config.classification)
-    if frame.is_empty():
-        return {}, {}
-    l1_by_industry_code = _l1_by_industry_code(frame)
-    index_to_l1: dict[str, str] = {}
-    industry_to_l1: dict[str, str] = {}
-    for row in frame.to_dicts():
-        index_code = str(row.get("index_code") or "")
-        industry_code = str(row.get("industry_code") or "")
-        if not industry_code:
-            continue
-        l1_key = f"{industry_code[:2]}0000" if len(industry_code) >= 2 else industry_code
-        l1_code = l1_by_industry_code.get(industry_code) or l1_by_industry_code.get(l1_key)
-        if not l1_code:
-            continue
-        industry_to_l1[industry_code] = l1_code
-        if index_code:
-            index_to_l1[index_code] = l1_code
-            if "." in index_code:
-                index_to_l1[index_code.split(".")[0]] = l1_code
-    return index_to_l1, industry_to_l1
-
-
-def load_stock_industry_map(
-    cat_ts: MarketDataCatalog,
-    cat_lx: MarketDataCatalog,
-    config: IndustryStructureConfig,
-    as_of_date: date,
-) -> pl.DataFrame:
-    """加载个股到申万一级行业的归属映射表。"""
-    index_to_l1, industry_to_l1 = load_industry_l1_maps(cat_ts, config)
-    frames: list[pl.DataFrame] = []
-    ts_map = _stock_industry_map_from_index_member(cat_ts, as_of_date, index_to_l1)
-    if not ts_map.is_empty():
-        frames.append(ts_map.with_columns(pl.lit(0).alias("_source_priority")))
-    if _is_current_industry_date(cat_ts, as_of_date):
-        lx_map = _stock_industry_map_from_lixinger_constituents(cat_lx, industry_to_l1)
-        if not lx_map.is_empty():
-            frames.append(lx_map.with_columns(pl.lit(1).alias("_source_priority")))
-    if not frames:
-        return pl.DataFrame(schema={"stock_key": pl.Utf8, "industry_code": pl.Utf8})
-    return (
-        pl.concat(frames, how="vertical_relaxed")
-        .drop_nulls(subset=["stock_key", "industry_code"])
-        .sort(["stock_key", "_source_priority", "industry_code"])
-        .unique(subset=["stock_key"], keep="first", maintain_order=True)
-        .select("stock_key", "industry_code")
-    )
-
-
-def _is_current_industry_date(catalog: MarketDataCatalog, as_of_date: date) -> bool:
-    """仅在申万行情最新日允许使用无日期的静态成分补充。"""
-    try:
-        latest_dates = catalog.latest_trade_dates(dataset="sw_daily", n=1)
-    except Exception:
-        return False
-    if not latest_dates:
-        return False
-    latest_date = parse_date_value(latest_dates[0])
-    return latest_date == as_of_date
 
 
 def load_financial_statement_history(cat: MarketDataCatalog, as_of_date: date) -> pl.DataFrame:
@@ -118,6 +72,16 @@ def load_financial_statement_history(cat: MarketDataCatalog, as_of_date: date) -
             dataset,
             start_date=as_of_date - timedelta(days=365 * 6),
             end_date=as_of_date,
+            columns=[
+                "symbol",
+                "trade_date",
+                "q",
+                "revenue_growth_ttm",
+                "revenue_ttm_yoy",
+                "profit_growth_ttm",
+                "profit_ttm_yoy",
+                "roe_ttm",
+            ],
         )
         extracted = _extract_fs_frame(raw)
         if not extracted.is_empty():
@@ -131,7 +95,21 @@ def load_moneyflow_base_frame(
     as_of_date: date,
 ) -> pl.DataFrame:
     """加载个股资金流基础数据。"""
-    raw = load_dataset(catalog, "moneyflow", start_date=start_date, end_date=as_of_date)
+    raw = load_dataset(
+        catalog,
+        "moneyflow",
+        start_date=start_date,
+        end_date=as_of_date,
+        columns=[
+            "symbol",
+            "trade_date",
+            "net_mf_amount",
+            "buy_lg_amount",
+            "buy_elg_amount",
+            "sell_lg_amount",
+            "sell_elg_amount",
+        ],
+    )
     required = {"symbol", "trade_date"}
     if raw.is_empty() or not required.issubset(raw.columns):
         return pl.DataFrame()
@@ -151,7 +129,13 @@ def load_stock_amount_frame(
     as_of_date: date,
 ) -> pl.DataFrame:
     """加载个股成交金额基础数据。"""
-    raw = load_dataset(catalog, "stock_daily_bar", start_date=start_date, end_date=as_of_date)
+    raw = load_dataset(
+        catalog,
+        "stock_daily_bar",
+        start_date=start_date,
+        end_date=as_of_date,
+        columns=["symbol", "trade_date", "amount"],
+    )
     if raw.is_empty() or not {"symbol", "trade_date", "amount"}.issubset(raw.columns):
         return pl.DataFrame()
     return raw.select(
@@ -174,6 +158,7 @@ def load_benchmark_return_20d(
             start_date=as_of_date - timedelta(days=120),
             end_date=as_of_date,
             symbols=[symbol],
+            columns=["symbol", "trade_date", "close"],
         )
         if frame.is_empty() or not {"trade_date", "close"}.issubset(frame.columns):
             continue
@@ -199,16 +184,6 @@ def _benchmark_symbol_candidates(benchmark: str) -> tuple[str, ...]:
     if "." not in normalized:
         candidates.append(f"{normalized}.CSI")
     return tuple(dict.fromkeys(candidates))
-
-
-def map_l1_code(value: object, mapping: dict[str, str]) -> str | None:
-    """将行业代码通过映射表归一化为申万一级代码。"""
-    if value is None:
-        return None
-    text = str(value).strip()
-    if not text:
-        return None
-    return mapping.get(text) or mapping.get(text.split(".")[0])
 
 
 def optional_numeric_expr(
@@ -257,63 +232,6 @@ def parse_date_value(value: object) -> date | None:
     if len(compact) == 8 and compact.isdigit():
         return date(int(compact[:4]), int(compact[4:6]), int(compact[6:8]))
     return None
-
-
-def _classify_frame(raw: pl.DataFrame, classification: str) -> pl.DataFrame:
-    if "src" not in raw.columns:
-        return raw
-    return raw.filter(pl.col("src") == classification)
-
-
-def _l1_by_industry_code(frame: pl.DataFrame) -> dict[str, str]:
-    mapping: dict[str, str] = {}
-    for row in frame.filter(pl.col("level") == "L1").to_dicts():
-        industry_code = str(row.get("industry_code") or "")
-        index_code = str(row.get("index_code") or "")
-        if industry_code and index_code:
-            mapping[industry_code] = index_code
-    return mapping
-
-
-def _stock_industry_map_from_index_member(
-    catalog: MarketDataCatalog,
-    as_of_date: date,
-    index_to_l1: dict[str, str],
-) -> pl.DataFrame:
-    raw = load_dataset(catalog, "index_member")
-    if raw.is_empty() or not {"index_code", "con_code"}.issubset(raw.columns) or not index_to_l1:
-        return pl.DataFrame()
-    base = raw.select(
-        pl.col("con_code").cast(pl.String).str.slice(0, 6).alias("stock_key"),
-        pl.col("index_code").cast(pl.String).alias("index_code"),
-        date_column_expr(raw, "in_date", "in_date"),
-        date_column_expr(raw, "out_date", "out_date"),
-    )
-    base = base.filter(
-        ((pl.col("in_date").is_null()) | (pl.col("in_date") <= pl.lit(as_of_date)))
-        & ((pl.col("out_date").is_null()) | (pl.col("out_date") > pl.lit(as_of_date)))
-    )
-    return base.with_columns(
-        pl.col("index_code")
-        .map_elements(lambda value: map_l1_code(value, index_to_l1), return_dtype=pl.Utf8)
-        .alias("industry_code")
-    ).select("stock_key", "industry_code")
-
-
-def _stock_industry_map_from_lixinger_constituents(
-    catalog: MarketDataCatalog,
-    industry_to_l1: dict[str, str],
-) -> pl.DataFrame:
-    raw = load_dataset(catalog, "sw_2021_constituents")
-    if raw.is_empty() or not {"symbol", "industryCode"}.issubset(raw.columns) or not industry_to_l1:
-        return pl.DataFrame()
-    return raw.select(
-        pl.col("symbol").cast(pl.String).str.slice(0, 6).alias("stock_key"),
-        pl.col("industryCode")
-        .cast(pl.String)
-        .map_elements(lambda value: map_l1_code(value, industry_to_l1), return_dtype=pl.Utf8)
-        .alias("industry_code"),
-    )
 
 
 def _extract_fs_frame(frame: pl.DataFrame) -> pl.DataFrame:

@@ -16,6 +16,7 @@ from stock_analytics.pipelines.industry_structure.artifacts import (
 from stock_analytics.pipelines.industry_structure.facts import collect_facts, resolve_trade_window
 from stock_analytics.pipelines.industry_structure.panel import build_industry_panel
 from stock_analytics.pipelines.industry_structure.scoring import score_industry_panel
+from stock_analytics.pipelines.market_temperature.cache import DatasetFrameCache
 from stock_reporting.interpretation.industry_structure.config import (
     DEFAULT_CONFIG_PATH,
     IndustryStructureConfig,
@@ -52,25 +53,41 @@ def run_industry_structure(
     output_root: Path | str | None = None,
     update_latest: bool = True,
     storage_dir: Path | str | None = None,
+    dataset_cache: DatasetFrameCache | None = None,
+    trade_dates: tuple[date, ...] | None = None,
 ) -> IndustryStructureRunResult:
     """运行行业结构事实采集、评分结构生成与产物写入。"""
     config = load_industry_structure_config(config_path).with_artifact_root(output_root)
-    as_of_date, trade_dates = resolve_trade_window(config, target_date, storage_dir=storage_dir)
+    if trade_dates is None:
+        as_of_date, resolved_trade_dates = resolve_trade_window(
+            config,
+            target_date,
+            storage_dir=storage_dir,
+        )
+    else:
+        resolved_trade_dates = tuple(
+            sorted(value for value in trade_dates if target_date is None or value <= target_date)
+        )[-max(config.windows, default=config.main_window) :]
+        if not resolved_trade_dates:
+            raise ValueError("传入的行业结构交易日窗口为空")
+        as_of_date = target_date or resolved_trade_dates[-1]
     paths = build_run_paths(as_of_date, config.artifact_root)
-    manifest = _build_manifest(config, as_of_date, trade_dates, paths)
+    manifest = _build_manifest(config, as_of_date, resolved_trade_dates, paths)
     base_panel = build_industry_panel(
         config,
         as_of_date=as_of_date,
-        trade_dates=trade_dates,
+        trade_dates=resolved_trade_dates,
         storage_dir=storage_dir,
+        dataset_cache=dataset_cache,
     )
     industry_panel, scores = score_industry_panel(config, base_panel)
     facts = collect_facts(
         config,
         as_of_date=as_of_date,
-        trade_dates=trade_dates,
+        trade_dates=resolved_trade_dates,
         industry_panel=industry_panel,
         storage_dir=storage_dir,
+        dataset_cache=dataset_cache,
     )
     quality_report_json = build_quality_report(
         title=config.title,

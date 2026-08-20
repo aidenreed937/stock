@@ -12,13 +12,20 @@ from stock_analytics.features.store import FeatureStore
 
 
 def collect_short_term_rows(
-    windows: tuple[int, ...], as_of_date: date, storage_dir: Path | str | None
+    windows: tuple[int, ...],
+    as_of_date: date,
+    storage_dir: Path | str | None,
+    *,
+    market_daily: pl.DataFrame | None = None,
 ) -> list[dict[str, Any]]:
     """从 market_daily 宽表计算独立的短线温度附加事实。"""
     if not windows:
         return []
-    store = FeatureStore(mart_dir=Path(storage_dir) / "mart" if storage_dir else None)
-    frame = store.get_market_daily(end_date=as_of_date)
+    if market_daily is None:
+        store = FeatureStore(mart_dir=Path(storage_dir) / "mart" if storage_dir else None)
+        frame = store.get_market_daily(end_date=as_of_date)
+    else:
+        frame = market_daily.filter(pl.col("trade_date") <= as_of_date)
     if frame.is_empty() or "trade_date" not in frame.columns:
         return [
             _short_term_fact(window, as_of_date, None, 0, "market_daily 不可用")

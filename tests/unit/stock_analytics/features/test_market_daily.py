@@ -2,6 +2,7 @@
 
 from datetime import date, timedelta
 from pathlib import Path
+from typing import cast
 
 import polars as pl
 import pytest
@@ -9,7 +10,9 @@ import pytest
 from stock_analytics.features.builders.market_daily import MarketDailyBuilder
 from stock_analytics.features.builders.market_daily_ops import build_breadth_and_turnover
 from stock_analytics.features.store import FeatureStore
+from stock_analytics.metrics import MetricContext, MetricEngine
 from stock_analytics.metrics.calculators.breadth import _calculate_breadth_columns
+from stock_core.contracts import MarketDataCatalog
 from stock_data.catalog import DataCatalog
 
 
@@ -103,6 +106,9 @@ def test_market_daily_builder_full(tmp_path: Path) -> None:
     assert "adv_dec_ratio" in df.columns
     assert "advance_ratio" in df.columns
     assert "above_ma20_ratio" in df.columns
+    assert "return_20d" in df.columns
+    assert "rsi_14d" in df.columns
+    assert "ma_bias_20d" in df.columns
     assert "margin_balance" in df.columns
     assert "margin_buy_ratio" in df.columns
     assert "market_turnover_rate" in df.columns
@@ -155,3 +161,58 @@ def test_market_daily_breadth_matches_metric_engine_semantics() -> None:
     assert latest_mart["new_high_252d_ratio"][0] == pytest.approx(
         latest_engine["new_high_share_252d"][0]
     )
+
+
+def test_market_daily_technical_metrics_match_metric_engine_medians() -> None:
+    start = date(2025, 1, 1)
+    rows: list[dict[str, object]] = []
+    for index in range(45):
+        trade_date = start + timedelta(days=index)
+        rows.extend(
+            [
+                {
+                    "trade_date": trade_date,
+                    "symbol": "A",
+                    "close": 10.0 + index * 0.2,
+                    "amount": 100.0,
+                },
+                {
+                    "trade_date": trade_date,
+                    "symbol": "B",
+                    "close": 30.0 - index * 0.1 + (index % 3) * 0.05,
+                    "amount": 100.0,
+                },
+            ]
+        )
+    bars = pl.DataFrame(rows)
+    end = start + timedelta(days=44)
+
+    class _Catalog:
+        data_source = "tushare"
+
+        def load_bars(self, **_: object) -> pl.DataFrame:
+            return bars
+
+        def load_dataset(self, dataset: str, **_: object) -> pl.DataFrame:
+            return bars if dataset == "stock_daily_bar" else pl.DataFrame()
+
+    mart = build_breadth_and_turnover(
+        _Catalog(),
+        start,
+        end,  # type: ignore[arg-type]
+    ).filter(pl.col("trade_date") == end)
+    engine = MetricEngine()
+    results = engine.compute(
+        ["return_20d", "rsi_14d", "ma_bias_20d"],
+        context=MetricContext(
+            catalog=cast("MarketDataCatalog", _Catalog()),
+            target_date=end,
+            start_date=start,
+            end_date=end,
+        ),
+    )
+
+    for result in results:
+        expected = result.frame.filter(pl.col("trade_date") == end)[result.metric_id].median()
+        assert expected is not None
+        assert mart[result.metric_id][0] == pytest.approx(expected)

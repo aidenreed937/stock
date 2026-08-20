@@ -8,11 +8,15 @@ from typing import TYPE_CHECKING, Any
 
 import polars as pl
 
-from stock_analytics.data_quality import is_dataset_lagging
 from stock_analytics.features.store import FeatureStore
 from stock_analytics.metrics.context import MetricContext
 from stock_analytics.metrics.engine import MetricEngine
+from stock_analytics.pipelines.market_temperature.fact_watermarks import (
+    _latest_dataset_date,
+    collect_dataset_rows as _dataset_rows,
+)
 from stock_analytics.pipelines.market_temperature.derived import collect_derived_metric_rows
+from stock_analytics.pipelines.market_temperature.cache import DatasetFrameCache
 from stock_analytics.pipelines.market_temperature.facts_mart import (
     date_values,
     parse_date_value as _parse_date_value,  # noqa: F401
@@ -27,7 +31,6 @@ if TYPE_CHECKING:
     from collections.abc import Iterable
 
     from stock_reporting.interpretation.market_temperature.config import (
-        DatasetConfig,
         DimensionConfig,
         MarketTemperatureConfig,
         MetricInputConfig,
@@ -50,6 +53,8 @@ FACT_SCHEMA: dict[str, Any] = {
     "status": pl.Utf8,
     "note": pl.Utf8,
 }
+
+__all__ = ["_latest_dataset_date", "collect_facts", "empty_facts", "resolve_trade_window"]
 
 
 def empty_facts() -> pl.DataFrame:
@@ -104,26 +109,53 @@ def collect_facts(
     trade_dates: tuple[date, ...],
     storage_dir: Path | str | None = None,
     collect_metric_values: bool | None = None,
+    market_daily: pl.DataFrame | None = None,
+    dataset_cache: DatasetFrameCache | None = None,
+    metric_contexts: dict[int, MetricContext] | None = None,
 ) -> pl.DataFrame:
     """采集窗口、数据水位和可选指标事实。"""
     rows: list[dict[str, Any]] = []
     rows.extend(_window_rows(config, as_of_date, trade_dates))
-    rows.extend(_dataset_rows(config.datasets, as_of_date, storage_dir=storage_dir))
+    rows.extend(
+        _dataset_rows(
+            config.datasets,
+            as_of_date,
+            storage_dir=storage_dir,
+            dataset_cache=dataset_cache,
+            fact_row=_fact_row,
+        )
+    )
     should_collect_metrics = (
         config.metric_values.enabled if collect_metric_values is None else collect_metric_values
     )
     if should_collect_metrics:
         rows.extend(
-            _metric_rows(config.dimensions, as_of_date, trade_dates[-1], storage_dir=storage_dir)
+            _metric_rows(
+                config.dimensions,
+                as_of_date,
+                trade_dates[-1],
+                storage_dir=storage_dir,
+                market_daily=market_daily,
+                dataset_cache=dataset_cache,
+                metric_contexts=metric_contexts,
+            )
         )
         rows.extend(
             collect_derived_metric_rows(
                 as_of_date=as_of_date,
                 trade_dates=trade_dates,
                 storage_dir=storage_dir,
+                dataset_cache=dataset_cache,
             )
         )
-        rows.extend(collect_short_term_rows(config.short_windows, as_of_date, storage_dir))
+        rows.extend(
+            collect_short_term_rows(
+                config.short_windows,
+                as_of_date,
+                storage_dir,
+                market_daily=market_daily,
+            )
+        )
         rows.extend(collect_optional_fact_rows(config, as_of_date, storage_dir))
     return pl.DataFrame(rows, schema=FACT_SCHEMA) if rows else empty_facts()
 
@@ -162,142 +194,28 @@ def _window_rows(
     return rows
 
 
-def _dataset_rows(
-    datasets: Iterable[DatasetConfig],
-    as_of_date: date,
-    *,
-    storage_dir: Path | str | None,
-) -> list[dict[str, Any]]:
-    rows: list[dict[str, Any]] = []
-    catalogs: dict[str, MarketDataCatalog] = {}
-    for item in datasets:
-        if item.data_source not in catalogs:
-            from stock_data.catalog import DataCatalog
-
-            catalogs[item.data_source] = DataCatalog(
-                data_source=item.data_source, storage_dir=storage_dir
-            )
-        catalog = catalogs[item.data_source]
-        status = "ok"
-        latest_text = ""
-        note = item.note
-        sample_size: int | None = None
-        try:
-            latest = _latest_dataset_date(catalog, item, as_of_date)
-            if latest is None:
-                if item.static:
-                    sample_size = _static_dataset_sample_size(catalog, item.dataset)
-                    if sample_size > 0:
-                        status = "ok"
-                        latest_text = "static"
-                        note = f"{note}; 静态表，无交易日期列".strip("; ")
-                    else:
-                        status = "missing" if item.required else "unavailable"
-                        note = f"{note}; 静态表无可用记录".strip("; ")
-                else:
-                    status = "missing" if item.required else "unavailable"
-                    note = f"{note}; 未找到最新日期".strip("; ")
-            else:
-                latest_text = latest.isoformat()
-                if latest > as_of_date:
-                    status = "future"
-                elif is_dataset_lagging(
-                    latest, as_of_date, required=item.required, max_lag_days=item.max_lag_days
-                ):
-                    status = "lagging"
-        except Exception as exc:
-            status = "error" if item.required else "unavailable"
-            note = f"{note}; {type(exc).__name__}: {exc}".strip("; ")
-        rows.append(
-            _fact_row(
-                {
-                    "fact_id": f"watermark.{item.data_source}.{item.dataset}",
-                    "category": "data_watermark",
-                    "dimension": item.dimension,
-                    "data_source": item.data_source,
-                    "dataset": item.dataset,
-                    "as_of_date": as_of_date,
-                    "window": 0,
-                    "metric_id": "latest_trade_date",
-                    "source": "DataCatalog.load_dataset(end_date=as_of_date)",
-                    "status": status,
-                    "note": note,
-                },
-                value_text=latest_text,
-                sample_size=sample_size,
-            )
-        )
-    return rows
-
-
-def _static_dataset_sample_size(catalog: MarketDataCatalog, dataset: str) -> int:
-    try:
-        return catalog.load_dataset(dataset).height
-    except Exception:
-        return 0
-
-
-def _latest_dataset_date(
-    catalog: MarketDataCatalog,
-    item: DatasetConfig,
-    as_of_date: date,
-) -> date | None:
-    date_column = item.date_column or "trade_date"
-    if hasattr(catalog, "latest_trade_dates"):
-        latest_dates = catalog.latest_trade_dates(item.dataset, n=1)
-        if latest_dates and latest_dates[0] <= as_of_date:
-            return latest_dates[0]
-    lookback_days = max(item.max_lag_days * 2, 14)
-    start_date = as_of_date - timedelta(days=lookback_days)
-    try:
-        frame = catalog.load_dataset(
-            item.dataset,
-            start_date=start_date,
-            end_date=as_of_date,
-            columns=[date_column],
-        )
-    except TypeError:
-        try:
-            frame = catalog.load_dataset(
-                item.dataset,
-                start_date=start_date,
-                end_date=as_of_date,
-            )
-        except TypeError:
-            try:
-                frame = catalog.load_dataset(item.dataset)
-            except Exception:
-                return None
-        except Exception:
-            return None
-    except Exception:
-        return None
-    if frame.is_empty() or date_column not in frame.columns:
-        return None
-    dates = [
-        value
-        for value in date_values(frame[date_column].drop_nulls().to_list())
-        if value <= as_of_date
-    ]
-    return max(dates) if dates else None
-
-
 def _metric_rows(
     dimensions: Iterable[DimensionConfig],
     as_of_date: date,
     expected_trade_date: date,
     *,
     storage_dir: Path | str | None,
+    market_daily: pl.DataFrame | None,
+    dataset_cache: DatasetFrameCache | None,
+    metric_contexts: dict[int, MetricContext] | None,
 ) -> list[dict[str, Any]]:
     rows: list[dict[str, Any]] = []
     store = FeatureStore(mart_dir=Path(storage_dir) / "mart" if storage_dir else None)
-    market_daily = store.get_market_daily(end_date=as_of_date)
+    if market_daily is None:
+        market_daily = store.get_market_daily(end_date=as_of_date)
+    else:
+        market_daily = market_daily.filter(pl.col("trade_date") <= as_of_date)
 
     from stock_data.catalog import DataCatalog
 
     catalog = DataCatalog(data_source="tushare", storage_dir=storage_dir)
     engine = MetricEngine()
-    contexts: dict[int, MetricContext] = {}
+    contexts = metric_contexts if metric_contexts is not None else {}
     for dimension in dimensions:
         for metric in dimension.metrics:
             if not metric.enabled or metric.source != "metric_engine":
@@ -309,7 +227,12 @@ def _metric_rows(
                 rows.append(fact)
             else:
                 context = _metric_windows.context_for_metric(
-                    contexts, engine, catalog, as_of_date, metric.metric_id
+                    contexts,
+                    engine,
+                    catalog,
+                    as_of_date,
+                    metric.metric_id,
+                    dataset_cache=dataset_cache,
                 )
                 rows.append(_compute_metric_fact(engine, context, dimension.id, metric, as_of_date))
     return rows

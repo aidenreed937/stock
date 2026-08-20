@@ -57,6 +57,8 @@ def valuation_panel(
     cat: MarketDataCatalog,
     as_of_date: date,
     industry_to_l1: dict[str, str],
+    *,
+    classification_catalog: MarketDataCatalog | None = None,
 ) -> pl.DataFrame:
     """构建估值与 PB-ROE 残差特征面板。"""
     start_date = as_of_date - timedelta(days=365 * 5)
@@ -65,6 +67,25 @@ def valuation_panel(
         "sw_2021_fundamental",
         start_date=start_date,
         end_date=as_of_date,
+        columns=[
+            "symbol",
+            "trade_date",
+            "name",
+            "industry_name",
+            "pe_ttm.ew",
+            "pe_ttm.mcw",
+            "pe_ttm",
+            "pe",
+            "pe_ew",
+            "pb.ew",
+            "pb.mcw",
+            "pb",
+            "pb_ew",
+            "dyr.ew",
+            "dyr.mcw",
+            "dividend_yield",
+            "dv_ttm",
+        ],
     )
     if raw.is_empty() or not {"symbol", "trade_date"}.issubset(raw.columns):
         return pl.DataFrame()
@@ -95,7 +116,13 @@ def valuation_panel(
     if history.is_empty():
         return pl.DataFrame()
     latest = history.group_by("industry_code").tail(1)
-    pbroe_by_symbol = _pb_roe_by_l1_symbol(raw, as_of_date, cat, industry_to_l1)
+    pbroe_by_symbol = _pb_roe_by_l1_symbol(
+        raw,
+        as_of_date,
+        cat,
+        industry_to_l1,
+        classifier_catalog=classification_catalog,
+    )
     rows = []
     for row in latest.to_dicts():
         code = str(row["industry_code"])
@@ -237,9 +264,14 @@ def _pb_roe_by_symbol(
     raw: pl.DataFrame,
     as_of_date: date,
     catalog: MarketDataCatalog,
+    *,
+    classifier_catalog: MarketDataCatalog | None = None,
 ) -> dict[str, dict[str, Any]]:
     try:
-        result = IndustryPBROEAnalyzer(catalog=catalog).analyze_cross_section(
+        result = IndustryPBROEAnalyzer(
+            catalog=catalog,
+            classifier_catalog=classifier_catalog,
+        ).analyze_cross_section(
             target_date=as_of_date,
             val_df=raw,
         )
@@ -255,9 +287,16 @@ def _pb_roe_by_l1_symbol(
     as_of_date: date,
     catalog: MarketDataCatalog,
     industry_to_l1: dict[str, str],
+    *,
+    classifier_catalog: MarketDataCatalog | None = None,
 ) -> dict[str, dict[str, Any]]:
     mapped: dict[str, dict[str, Any]] = {}
-    for symbol, data in _pb_roe_by_symbol(raw, as_of_date, catalog).items():
+    for symbol, data in _pb_roe_by_symbol(
+        raw,
+        as_of_date,
+        catalog,
+        classifier_catalog=classifier_catalog,
+    ).items():
         l1_code = map_l1_code(symbol, industry_to_l1)
         if l1_code:
             mapped[l1_code] = data

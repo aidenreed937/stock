@@ -4,6 +4,7 @@ from datetime import date, timedelta
 
 from stock_analytics.metrics.context import MetricContext
 from stock_analytics.metrics.engine import MetricEngine
+from stock_analytics.pipelines.market_temperature.cache import DatasetFrameCache
 from stock_core.contracts import MarketDataCatalog
 
 _LOOKBACK_BY_DOMAIN = {
@@ -24,7 +25,11 @@ def metric_lookback_days(engine: MetricEngine, metric_id: str) -> int:
 
 
 def build_metric_context(
-    catalog: MarketDataCatalog, as_of_date: date, lookback_days: int
+    catalog: MarketDataCatalog,
+    as_of_date: date,
+    lookback_days: int,
+    *,
+    dataset_cache: DatasetFrameCache | None = None,
 ) -> MetricContext:
     """构造带领域历史窗口的指标上下文。"""
     return MetricContext(
@@ -32,6 +37,7 @@ def build_metric_context(
         target_date=as_of_date,
         start_date=as_of_date - timedelta(days=lookback_days),
         end_date=as_of_date,
+        dataset_cache=dataset_cache,
     )
 
 
@@ -41,9 +47,16 @@ def context_for_metric(
     catalog: MarketDataCatalog,
     as_of_date: date,
     metric_id: str,
+    *,
+    dataset_cache: DatasetFrameCache | None = None,
 ) -> MetricContext:
     """获取并复用指标所需的历史窗口上下文。"""
     lookback_days = metric_lookback_days(engine, metric_id)
     if lookback_days not in contexts:
-        contexts[lookback_days] = build_metric_context(catalog, as_of_date, lookback_days)
+        contexts[lookback_days] = build_metric_context(
+            catalog,
+            as_of_date,
+            lookback_days,
+            dataset_cache=dataset_cache,
+        )
     return contexts[lookback_days]

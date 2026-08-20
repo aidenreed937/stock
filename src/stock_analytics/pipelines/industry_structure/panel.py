@@ -29,6 +29,7 @@ from stock_analytics.pipelines.industry_structure.panel_sources import (
     load_industry_l1_maps,
     optional_text_expr,
 )
+from stock_analytics.pipelines.market_temperature.cache import CachedCatalog, DatasetFrameCache
 from stock_core.contracts import MarketDataCatalog
 
 if TYPE_CHECKING:
@@ -100,18 +101,32 @@ def build_industry_panel(
     as_of_date: date,
     trade_dates: tuple[date, ...],
     storage_dir: Path | str | None = None,
+    dataset_cache: DatasetFrameCache | None = None,
 ) -> pl.DataFrame:
     """构建每个申万一级行业一行的结构分析基础面板。"""
     from stock_data.catalog import DataCatalog
 
-    cat_ts = DataCatalog(data_source="tushare", storage_dir=storage_dir)
-    cat_lx = DataCatalog(data_source="lixinger", storage_dir=storage_dir)
+    base_cat_ts = DataCatalog(data_source="tushare", storage_dir=storage_dir)
+    base_cat_lx = DataCatalog(data_source="lixinger", storage_dir=storage_dir)
+    cat_ts = CachedCatalog(base_cat_ts, dataset_cache) if dataset_cache is not None else base_cat_ts
+    cat_lx = CachedCatalog(base_cat_lx, dataset_cache) if dataset_cache is not None else base_cat_lx
     start_date = _panel_start_date(config, as_of_date, trade_dates)
     raw_sw = load_dataset(
         cat_ts,
         "sw_daily",
         start_date=start_date,
         end_date=as_of_date,
+        columns=[
+            "symbol",
+            "trade_date",
+            "name",
+            "industry_name",
+            "index_name",
+            "close",
+            "amount",
+            "classification",
+            "industry_level",
+        ],
     )
     daily = _industry_daily_frame(raw_sw, config, cat_ts)
     market_panel = _market_panel(daily, config, as_of_date, cat_ts)
@@ -119,7 +134,12 @@ def build_industry_panel(
         return empty_industry_panel()
 
     _, industry_to_l1 = load_industry_l1_maps(cat_ts, config)
-    valuation = valuation_panel(cat_lx, as_of_date, industry_to_l1)
+    valuation = valuation_panel(
+        cat_lx,
+        as_of_date,
+        industry_to_l1,
+        classification_catalog=cat_ts,
+    )
     fundamentals = fundamental_panel(cat_lx, as_of_date, industry_to_l1)
     fast_fundamentals = fast_fundamental_panel(
         cat_ts,

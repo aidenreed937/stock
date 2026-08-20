@@ -7,6 +7,7 @@ import polars as pl
 from stock_analytics.metrics import MetricContext
 from stock_analytics.metrics.datasets import build_calendar_lookback_window
 from stock_analytics.metrics.datasets.loaders import load_metric_dataset
+from stock_analytics.pipelines.market_temperature.cache import DatasetFrameCache
 
 if TYPE_CHECKING:
     from stock_data.catalog import DataCatalog
@@ -47,3 +48,18 @@ def test_build_calendar_lookback_window_semantics() -> None:
     assert window.start_date == end_date - timedelta(days=7)
     assert window.end_date == end_date
     assert window.lookback_days == 7
+
+
+def test_shared_dataset_cache_does_not_retain_raw_frame_in_metric_context() -> None:
+    catalog = FakeCatalog(data_source="tushare")
+    context = MetricContext(
+        catalog=cast("DataCatalog", catalog),
+        dataset_cache=DatasetFrameCache(end_date=date(2026, 8, 14)),
+    )
+
+    first = load_metric_dataset(context, "stock_daily_bar", columns=["data_source"])
+    second = load_metric_dataset(context, "stock_daily_bar", columns=["data_source"])
+
+    assert first.equals(second)
+    assert catalog.calls == [("tushare", "stock_daily_bar")]
+    assert context.cache == {}

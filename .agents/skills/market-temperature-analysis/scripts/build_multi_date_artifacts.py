@@ -1,4 +1,4 @@
-"""按多个交易日并行生成市场分析产物，并在最后统一发布 latest。"""
+"""按多个交易日串行生成市场分析产物，并在最后统一发布 latest。"""
 
 from __future__ import annotations
 
@@ -7,13 +7,10 @@ import shlex
 import shutil
 import subprocess
 import sys
-from concurrent.futures import ThreadPoolExecutor, as_completed
 from datetime import date
 from pathlib import Path
 
 REPO_ROOT = Path(__file__).resolve().parents[4]
-MAX_WORKERS = 3
-REPORT_TARGETS = ("market-temperature", "industry-structure", "investor-brief")
 ARTIFACT_FILES: dict[str, tuple[str, ...]] = {
     "market_temperature": (
         "manifest.json",
@@ -58,7 +55,7 @@ class CommandError(RuntimeError):
 
 def _build_parser() -> argparse.ArgumentParser:
     parser = argparse.ArgumentParser(
-        description="按多个 A 股交易日并行生成三类分析产物",
+        description="按多个 A 股交易日串行生成三类分析产物，并复用一次 Mart 读取",
         formatter_class=argparse.ArgumentDefaultsHelpFormatter,
     )
     source = parser.add_mutually_exclusive_group(required=True)
@@ -82,10 +79,21 @@ def _build_parser() -> argparse.ArgumentParser:
         help="区间交易日的结束日期，需要与 --start 一起使用",
     )
     parser.add_argument(
-        "--workers",
-        type=int,
-        default=MAX_WORKERS,
-        help="并行日期数量；单个日期内的三个产物始终串行",
+        "--rebuild-mart",
+        action="store_true",
+        help="在批量报告前只重建一次全部领域 Mart；需要同时提供 --mart-start",
+    )
+    parser.add_argument(
+        "--mart-start",
+        type=_parse_date,
+        metavar="YYYY-MM-DD",
+        help="--rebuild-mart 使用的 Mart 起始日期",
+    )
+    parser.add_argument(
+        "--storage-dir",
+        type=Path,
+        default=None,
+        help="覆盖 Curated 数据目录",
     )
     parser.add_argument(
         "--publish-date",
@@ -125,14 +133,14 @@ def _resolve_dates(args: argparse.Namespace, parser: argparse.ArgumentParser) ->
         parser.error("使用区间模式时必须同时提供 --start 和 --end")
     if args.start > args.end:
         parser.error("--start 不能晚于 --end")
-    return _load_trade_dates(args.start, args.end), True
+    return _load_trade_dates(args.start, args.end, storage_dir=args.storage_dir), True
 
 
-def _load_trade_dates(start: date, end: date) -> list[date]:
+def _load_trade_dates(start: date, end: date, *, storage_dir: Path | None = None) -> list[date]:
     """从本地 Curated stock_daily_bar 解析指定自然日区间内的交易日。"""
     from stock_data.catalog import DataCatalog
 
-    catalog = DataCatalog("tushare", REPO_ROOT / "data" / "curated")
+    catalog = DataCatalog("tushare", storage_dir or REPO_ROOT / "data" / "curated")
     latest = catalog.latest_trade_dates(dataset="stock_daily_bar", n=1)
     if not latest:
         raise RuntimeError("本地 stock_daily_bar 没有可用交易日，无法解析批量日期")
@@ -143,10 +151,6 @@ def _load_trade_dates(start: date, end: date) -> list[date]:
     if not selected:
         raise RuntimeError(f"区间 {start.isoformat()} 至 {end.isoformat()} 没有本地交易日")
     return selected
-
-
-def _make_command(target: str, target_date: date) -> list[str]:
-    return ["make", target, f"DATE={target_date.isoformat()}", "NO_LATEST=1"]
 
 
 def _run_command(command: list[str], label: str) -> None:
@@ -162,30 +166,37 @@ def _run_command(command: list[str], label: str) -> None:
         raise CommandError(label, command, completed.returncode, output)
 
 
-def _build_one_date(target_date: date) -> None:
-    for target in REPORT_TARGETS:
-        _run_command(
-            _make_command(target, target_date),
-            f"{target} {target_date.isoformat()}",
-        )
+def _build_dates(
+    dates: list[date],
+    *,
+    storage_dir: Path | None,
+    rebuild_mart: bool,
+    mart_start: date | None,
+) -> None:
+    if rebuild_mart:
+        if mart_start is None:
+            raise ValueError("--rebuild-mart 必须同时提供 --mart-start")
+        command = [
+            "make",
+            "features-build",
+            "TARGET=all",
+            f"START={mart_start.isoformat()}",
+            f"END={dates[-1].isoformat()}",
+            "OVERWRITE=1",
+        ]
+        if storage_dir is not None:
+            command.append(f"STORAGE_DIR={storage_dir}")
+        _run_command(command, "一次性重建 Mart")
 
+    from stock_analytics.pipelines.multi_date import run_multi_date_artifacts
 
-def _build_dates(dates: list[date], workers: int) -> None:
-    failures: list[str] = []
-    with ThreadPoolExecutor(max_workers=workers) as executor:
-        future_dates = {executor.submit(_build_one_date, value): value for value in dates}
-        for future in as_completed(future_dates):
-            target_date = future_dates[future]
-            try:
-                future.result()
-            except Exception as exc:
-                failures.append(f"{target_date.isoformat()}: {exc}")
-            else:
-                print(f"已完成 {target_date.isoformat()} 的三类产物")
-
-    if failures:
-        failures.sort()
-        raise RuntimeError("以下日期生成失败:\n" + "\n\n".join(failures))
+    run_multi_date_artifacts(
+        dates,
+        storage_dir=storage_dir,
+        update_latest=False,
+    )
+    for target_date in dates:
+        print(f"已完成 {target_date.isoformat()} 的三类产物")
 
 
 def _consistency_commands(dates: list[date], range_mode: bool) -> list[list[str]]:
@@ -246,11 +257,23 @@ def _publish_latest(target_date: date) -> None:
 
 
 def _print_plan(dates: list[date], range_mode: bool, args: argparse.Namespace) -> None:
-    print(f"计划处理 {len(dates)} 个交易日，日期间最多并行 {args.workers} 个任务")
-    for target_date in dates:
-        print(f"[{target_date.isoformat()}] 三类产物按顺序执行")
-        for target in REPORT_TARGETS:
-            print(f"  $ {shlex.join(_make_command(target, target_date))}")
+    print(f"计划处理 {len(dates)} 个交易日，全部串行执行并共享一次 Mart 数据读取")
+    if args.rebuild_mart:
+        mart_start = args.mart_start.isoformat() if args.mart_start else "<必填>"
+        print(
+            "  $ "
+            + shlex.join(
+                [
+                    "make",
+                    "features-build",
+                    "TARGET=all",
+                    f"START={mart_start}",
+                    f"END={dates[-1].isoformat()}",
+                    "OVERWRITE=1",
+                ]
+            )
+        )
+    print("  串行调用 run_multi_date_artifacts(dates)，复用一次 Mart 与数据集缓存")
 
     for command in _consistency_commands(dates, range_mode):
         print(f"$ {shlex.join(command)}")
@@ -263,10 +286,12 @@ def _print_plan(dates: list[date], range_mode: bool, args: argparse.Namespace) -
 def main(argv: list[str] | None = None) -> int:
     parser = _build_parser()
     args = parser.parse_args(sys.argv[1:] if argv is None else argv)
-    if not 1 <= args.workers <= MAX_WORKERS:
-        parser.error(f"--workers 必须在 1 至 {MAX_WORKERS} 之间")
     if args.no_publish_latest and args.publish_date is not None:
         parser.error("--no-publish-latest 不能与 --publish-date 同时使用")
+    if args.rebuild_mart and args.mart_start is None:
+        parser.error("--rebuild-mart 必须同时提供 --mart-start")
+    if not args.rebuild_mart and args.mart_start is not None:
+        parser.error("--mart-start 只能与 --rebuild-mart 一起使用")
 
     try:
         dates, range_mode = _resolve_dates(args, parser)
@@ -281,7 +306,12 @@ def main(argv: list[str] | None = None) -> int:
         return 0
 
     try:
-        _build_dates(dates, args.workers)
+        _build_dates(
+            dates,
+            storage_dir=args.storage_dir,
+            rebuild_mart=args.rebuild_mart,
+            mart_start=args.mart_start,
+        )
         _run_consistency(dates, range_mode)
         if args.no_publish_latest:
             print("已跳过 latest 发布")
