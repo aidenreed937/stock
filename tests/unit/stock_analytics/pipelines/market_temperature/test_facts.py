@@ -12,6 +12,7 @@ from stock_analytics.pipelines.market_temperature.facts import (
     _latest_dataset_date,
     _parse_date_value,
     collect_facts,
+    resolve_external_cutoff_date,
 )
 from stock_data.catalog import DataCatalog
 from stock_reporting.interpretation.market_temperature.config import (
@@ -102,6 +103,20 @@ def test_latest_dataset_date_limits_historical_watermark_lookup_window() -> None
     assert catalog.end_date == date(2026, 6, 30)
 
 
+def test_resolve_external_cutoff_date_uses_previous_a_share_trade_date() -> None:
+    trade_dates = (
+        date(2026, 8, 14),
+        date(2026, 8, 17),
+        date(2026, 8, 18),
+        date(2026, 8, 19),
+    )
+
+    assert resolve_external_cutoff_date(date(2026, 8, 18), trade_dates) == date(2026, 8, 17)
+    assert resolve_external_cutoff_date(date(2026, 8, 19), trade_dates) == date(2026, 8, 18)
+    assert resolve_external_cutoff_date(date(2026, 8, 17), trade_dates) == date(2026, 8, 14)
+    assert resolve_external_cutoff_date(date(2026, 8, 13), trade_dates) is None
+
+
 def test_collect_facts_emits_one_short_term_fact_per_window(
     tmp_path: Path, monkeypatch: object
 ) -> None:
@@ -139,7 +154,15 @@ def test_collect_facts_emits_one_short_term_fact_per_window(
         start_date=trade_dates[0], end_date=trade_dates[-1], save=True
     )
 
-    monkeypatch.setattr(facts_module, "collect_derived_metric_rows", lambda **_: [])
+    captured: dict[str, object] = {}
+
+    def fake_collect_derived_metric_rows(**kwargs: object) -> list[dict[str, object]]:
+        captured.update(kwargs)
+        return []
+
+    monkeypatch.setattr(
+        facts_module, "collect_derived_metric_rows", fake_collect_derived_metric_rows
+    )
     config = MarketTemperatureConfig.from_mapping(
         {
             "main_window": 10,
@@ -165,3 +188,4 @@ def test_collect_facts_emits_one_short_term_fact_per_window(
     assert short_term.height == 2
     assert short_term["metric_id"].n_unique() == 2
     assert short_term["fact_id"].n_unique() == 2
+    assert captured["external_cutoff_date"] == trade_dates[-2]

@@ -54,7 +54,13 @@ FACT_SCHEMA: dict[str, Any] = {
     "note": pl.Utf8,
 }
 
-__all__ = ["_latest_dataset_date", "collect_facts", "empty_facts", "resolve_trade_window"]
+__all__ = [
+    "_latest_dataset_date",
+    "collect_facts",
+    "empty_facts",
+    "resolve_external_cutoff_date",
+    "resolve_trade_window",
+]
 
 
 def empty_facts() -> pl.DataFrame:
@@ -102,6 +108,14 @@ def resolve_trade_window(
     return as_of_date, window_dates
 
 
+def resolve_external_cutoff_date(
+    as_of_date: date,
+    trade_dates: tuple[date, ...],
+) -> date | None:
+    """返回外盘在该 A 股基准日可使用的最后一个交易日。"""
+    return max((value for value in trade_dates if value < as_of_date), default=None)
+
+
 def collect_facts(
     config: MarketTemperatureConfig,
     *,
@@ -112,6 +126,7 @@ def collect_facts(
     market_daily: pl.DataFrame | None = None,
     dataset_cache: DatasetFrameCache | None = None,
     metric_contexts: dict[int, MetricContext] | None = None,
+    external_cutoff_date: date | None = None,
 ) -> pl.DataFrame:
     """采集窗口、数据水位和可选指标事实。"""
     rows: list[dict[str, Any]] = []
@@ -129,6 +144,11 @@ def collect_facts(
         config.metric_values.enabled if collect_metric_values is None else collect_metric_values
     )
     if should_collect_metrics:
+        resolved_external_cutoff_date = (
+            resolve_external_cutoff_date(as_of_date, trade_dates)
+            if external_cutoff_date is None
+            else external_cutoff_date
+        )
         rows.extend(
             _metric_rows(
                 config.dimensions,
@@ -146,6 +166,7 @@ def collect_facts(
                 trade_dates=trade_dates,
                 storage_dir=storage_dir,
                 dataset_cache=dataset_cache,
+                external_cutoff_date=resolved_external_cutoff_date,
             )
         )
         rows.extend(

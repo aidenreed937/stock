@@ -475,6 +475,35 @@ def test_latest_trade_dates_parses_report_date_dataset(tmp_path: Path) -> None:
     assert catalog.latest_trade_dates("report_rc") == [date(2026, 8, 17)]
 
 
+def test_latest_trade_dates_scans_older_report_period_for_newer_announcement(
+    tmp_path: Path,
+) -> None:
+    """PIT 数据按报告期分区时，不能按目录月份提前终止公告日扫描。"""
+    latest_period = tmp_path / "tushare/market=CN/forecast/year=2026/month=09"
+    older_period = tmp_path / "tushare/market=CN/forecast/year=2026/month=06"
+    latest_period.mkdir(parents=True, exist_ok=True)
+    older_period.mkdir(parents=True, exist_ok=True)
+
+    pl.DataFrame(
+        {
+            "symbol": ["688235.SH"],
+            "ann_date": ["20260227"],
+            "end_date": ["20260930"],
+        }
+    ).write_parquet(latest_period / "data.parquet")
+    pl.DataFrame(
+        {
+            "symbol": ["688208.SH"],
+            "ann_date": ["20260818"],
+            "end_date": ["20260630"],
+        }
+    ).write_parquet(older_period / "data.parquet")
+
+    catalog = DataCatalog(data_source="tushare", storage_dir=tmp_path)
+
+    assert catalog.get_latest_trade_date("forecast") == date(2026, 8, 18)
+
+
 def test_latest_trade_dates_parses_publish_and_quarter_dates(tmp_path: Path) -> None:
     schedule_dir = tmp_path / "tushare/market=CN/cn_schedule"
     schedule_dir.mkdir(parents=True, exist_ok=True)

@@ -80,12 +80,20 @@ def collect_derived_metric_rows(
     trade_dates: tuple[date, ...],
     storage_dir: Path | str | None = None,
     dataset_cache: DatasetFrameCache | None = None,
+    external_cutoff_date: date | None = None,
 ) -> list[dict[str, Any]]:
     """采集不在 MetricEngine 内的基本面与宏观温度事实。"""
     rows: list[dict[str, Any]] = []
     rows.extend(_fundamental_rows(as_of_date, trade_dates, storage_dir, dataset_cache))
     rows.extend(_sentiment_rows(as_of_date, storage_dir, dataset_cache))
-    rows.extend(_macro_liquidity_rows(as_of_date, storage_dir, dataset_cache))
+    rows.extend(
+        _macro_liquidity_rows(
+            as_of_date,
+            storage_dir,
+            dataset_cache,
+            external_cutoff_date=external_cutoff_date,
+        )
+    )
     return rows
 
 
@@ -546,12 +554,19 @@ def _macro_liquidity_rows(
     as_of_date: date,
     storage_dir: Path | str | None,
     dataset_cache: DatasetFrameCache | None = None,
+    *,
+    external_cutoff_date: date | None = None,
 ) -> list[dict[str, Any]]:
     from stock_analytics.pipelines.market_temperature.derived_macro import (
         _macro_liquidity_rows as collect_macro_rows,
     )
 
-    return collect_macro_rows(as_of_date, storage_dir, dataset_cache)
+    return collect_macro_rows(
+        as_of_date,
+        storage_dir,
+        dataset_cache,
+        external_cutoff_date=external_cutoff_date,
+    )
 
 
 def _external_macro_rows(
@@ -560,12 +575,19 @@ def _external_macro_rows(
     as_of_date: date,
     *,
     dataset_cache: DatasetFrameCache | None = None,
+    external_cutoff_date: date | None = None,
 ) -> list[dict[str, Any]]:
     from stock_analytics.pipelines.market_temperature.derived_macro import (
         _external_macro_rows as collect_external_rows,
     )
 
-    return collect_external_rows(cat, fx_cat, as_of_date, dataset_cache=dataset_cache)
+    return collect_external_rows(
+        cat,
+        fx_cat,
+        as_of_date,
+        dataset_cache=dataset_cache,
+        external_cutoff_date=external_cutoff_date,
+    )
 
 
 def _us_macro_background_rows(
@@ -573,12 +595,18 @@ def _us_macro_background_rows(
     as_of_date: date,
     *,
     dataset_cache: DatasetFrameCache | None = None,
+    external_cutoff_date: date | None = None,
 ) -> list[dict[str, Any]]:
     from stock_analytics.pipelines.market_temperature.derived_macro import (
         _us_macro_background_rows as collect_us_rows,
     )
 
-    return collect_us_rows(cat, as_of_date, dataset_cache=dataset_cache)
+    return collect_us_rows(
+        cat,
+        as_of_date,
+        dataset_cache=dataset_cache,
+        external_cutoff_date=external_cutoff_date,
+    )
 
 
 def _return_percentile_metric_row(

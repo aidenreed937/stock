@@ -30,6 +30,8 @@ def _macro_liquidity_rows(
     as_of_date: date,
     storage_dir: Path | str | None,
     dataset_cache: DatasetFrameCache | None = None,
+    *,
+    external_cutoff_date: date | None = None,
 ) -> list[dict[str, Any]]:
     from stock_data.catalog import DataCatalog
 
@@ -91,8 +93,23 @@ def _macro_liquidity_rows(
             dataset_cache=dataset_cache,
         )
     )
-    rows.extend(_external_macro_rows(cat_yf, cat_av, as_of_date, dataset_cache=dataset_cache))
-    rows.extend(_us_macro_background_rows(cat_fred, as_of_date, dataset_cache=dataset_cache))
+    rows.extend(
+        _external_macro_rows(
+            cat_yf,
+            cat_av,
+            as_of_date,
+            dataset_cache=dataset_cache,
+            external_cutoff_date=external_cutoff_date,
+        )
+    )
+    rows.extend(
+        _us_macro_background_rows(
+            cat_fred,
+            as_of_date,
+            dataset_cache=dataset_cache,
+            external_cutoff_date=external_cutoff_date,
+        )
+    )
     return [*rows, *_external_pressure_rows(rows, as_of_date)]
 
 
@@ -188,26 +205,28 @@ def _external_macro_rows(
     as_of_date: date,
     *,
     dataset_cache: DatasetFrameCache | None = None,
+    external_cutoff_date: date | None = None,
 ) -> list[dict[str, Any]]:
+    external_end_date = external_cutoff_date or as_of_date
     macro_frame = _load_dataset(
         cat,
         "macro_indicators",
         columns=["symbol", "trade_date", "close", "value"],
-        end_date=as_of_date,
+        end_date=external_end_date,
         dataset_cache=dataset_cache,
     )
     fx_frame = _load_dataset(
         fx_cat,
         "macro_indicators",
         columns=["symbol", "trade_date", "close", "value"],
-        end_date=as_of_date,
+        end_date=external_end_date,
         dataset_cache=dataset_cache,
     )
     index_frame = _load_dataset(
         cat,
         "index_daily_bar",
         columns=["symbol", "trade_date", "close"],
-        end_date=as_of_date,
+        end_date=external_end_date,
         dataset_cache=dataset_cache,
     )
     if index_frame.is_empty():
@@ -299,12 +318,14 @@ def _us_macro_background_rows(
     as_of_date: date,
     *,
     dataset_cache: DatasetFrameCache | None = None,
+    external_cutoff_date: date | None = None,
 ) -> list[dict[str, Any]]:
+    external_end_date = external_cutoff_date or as_of_date
     frame = _load_dataset(
         cat,
         "macro_indicators",
         columns=["symbol", "trade_date", "value", "close"],
-        end_date=as_of_date,
+        end_date=external_end_date,
         dataset_cache=dataset_cache,
     )
     return [

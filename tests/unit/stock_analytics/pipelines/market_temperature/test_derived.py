@@ -36,8 +36,12 @@ class FakeCatalog:
 
     def __init__(self, datasets: dict[str, pl.DataFrame]) -> None:
         self.datasets = datasets
+        self.load_calls: list[tuple[str, date | None]] = []
 
-    def load_dataset(self, dataset: str) -> pl.DataFrame:
+    def load_dataset(self, dataset: str, **kwargs: object) -> pl.DataFrame:
+        raw_end_date = kwargs.get("end_date")
+        end_date = raw_end_date if isinstance(raw_end_date, date) else None
+        self.load_calls.append((dataset, end_date))
         return self.datasets.get(dataset, pl.DataFrame())
 
 
@@ -502,7 +506,13 @@ def test_external_macro_rows_use_index_daily_bar_for_us_index_returns() -> None:
         }
     )
 
-    rows = _external_macro_rows(yfinance_catalog, alphavantage_catalog, date(2026, 1, 25))
+    cutoff_date = date(2026, 1, 24)
+    rows = _external_macro_rows(
+        yfinance_catalog,
+        alphavantage_catalog,
+        date(2026, 1, 25),
+        external_cutoff_date=cutoff_date,
+    )
     rows_by_metric = {str(row["metric_id"]): row for row in rows}
 
     assert rows_by_metric["macro_sp500_20d_return_temperature"]["status"] == "ok"
@@ -511,6 +521,8 @@ def test_external_macro_rows_use_index_daily_bar_for_us_index_returns() -> None:
     assert rows_by_metric["macro_gold_20d_return_pressure"]["status"] == "ok"
     assert rows_by_metric["macro_oil_20d_return_pressure"]["status"] == "ok"
     assert rows_by_metric["macro_external_environment_temperature"]["sample_size"] == 2
+    assert {end_date for _, end_date in yfinance_catalog.load_calls} == {cutoff_date}
+    assert {end_date for _, end_date in alphavantage_catalog.load_calls} == {cutoff_date}
 
 
 def test_us_macro_background_rows_build_fred_observation_metrics() -> None:
@@ -578,7 +590,12 @@ def test_us_macro_background_rows_build_fred_observation_metrics() -> None:
     )
     catalog = FakeCatalog({"macro_indicators": frame})
 
-    rows = _us_macro_background_rows(catalog, date(2026, 2, 1))
+    cutoff_date = date(2026, 1, 31)
+    rows = _us_macro_background_rows(
+        catalog,
+        date(2026, 2, 1),
+        external_cutoff_date=cutoff_date,
+    )
     rows_by_metric = {str(row["metric_id"]): row for row in rows}
 
     expected = {
@@ -600,6 +617,7 @@ def test_us_macro_background_rows_build_fred_observation_metrics() -> None:
     assert rows_by_metric["macro_fred_gdp_yoy_temperature"]["sample_size"] == 1
     assert "月频背景观察" in rows_by_metric["macro_fred_cpi_yoy_temperature"]["note"]
     assert "latest_date=2026-01-01" in rows_by_metric["macro_fred_gdp_yoy_temperature"]["note"]
+    assert {end_date for _, end_date in catalog.load_calls} == {cutoff_date}
 
 
 def _month_dates(start: date, count: int) -> list[date]:

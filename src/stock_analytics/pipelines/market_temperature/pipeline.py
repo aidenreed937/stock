@@ -16,7 +16,11 @@ from stock_analytics.pipelines.market_temperature.artifacts import (
     write_artifacts,
 )
 from stock_analytics.pipelines.market_temperature.cache import DatasetFrameCache
-from stock_analytics.pipelines.market_temperature.facts import collect_facts, resolve_trade_window
+from stock_analytics.pipelines.market_temperature.facts import (
+    collect_facts,
+    resolve_external_cutoff_date,
+    resolve_trade_window,
+)
 from stock_analytics.pipelines.market_temperature.scoring import build_scores
 from stock_reporting.interpretation.market_temperature.config import (
     DEFAULT_CONFIG_PATH,
@@ -76,9 +80,15 @@ def run_market_temperature(
             raise ValueError("传入的市场温度交易日窗口为空")
         as_of_date = target_date or resolved_trade_dates[-1]
     paths = build_run_paths(as_of_date, config.artifact_root)
+    external_cutoff_date = resolve_external_cutoff_date(as_of_date, resolved_trade_dates)
     comparison = _load_comparison(config.artifact_root, comparison_date)
     manifest = _build_manifest(
-        config, as_of_date, resolved_trade_dates, paths, comparison=comparison
+        config,
+        as_of_date,
+        resolved_trade_dates,
+        paths,
+        external_cutoff_date=external_cutoff_date,
+        comparison=comparison,
     )
     facts = collect_facts(
         config,
@@ -89,6 +99,7 @@ def run_market_temperature(
         market_daily=market_daily,
         dataset_cache=dataset_cache,
         metric_contexts=metric_contexts,
+        external_cutoff_date=external_cutoff_date,
     )
     scores = build_scores(config, as_of_date=as_of_date, facts=facts)
     quality_report_json = build_quality_report(
@@ -158,6 +169,7 @@ def _build_manifest(
     trade_dates: tuple[date, ...],
     paths: MarketTemperatureRunPaths,
     *,
+    external_cutoff_date: date | None,
     comparison: dict[str, Any] | None = None,
 ) -> dict[str, Any]:
     run_id = paths.run_dir.name
@@ -170,6 +182,11 @@ def _build_manifest(
         "main_window": config.main_window,
         "short_windows": list(config.short_windows),
         "trade_dates": [value.isoformat() for value in trade_dates],
+        "source_cutoffs": {
+            "external_market": (
+                external_cutoff_date.isoformat() if external_cutoff_date is not None else None
+            )
+        },
         "artifact_root": str(paths.root),
         "files": {
             "manifest": paths.manifest.name,

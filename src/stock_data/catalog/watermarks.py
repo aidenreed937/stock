@@ -16,24 +16,6 @@ _DATE_COLUMN_ALIASES: dict[str, tuple[str, ...]] = {
 }
 
 
-def _extract_path_ym(path: Path) -> tuple[int, int] | None:
-    year_part = month_part = None
-    for part in path.parts:
-        if part.startswith("year="):
-            try:
-                year_part = int(part.removeprefix("year="))
-            except ValueError:
-                pass
-        elif part.startswith("month="):
-            try:
-                month_part = int(part.removeprefix("month="))
-            except ValueError:
-                pass
-    if year_part is not None:
-        return (year_part, month_part or 12)
-    return None
-
-
 def scan_latest_trade_dates(
     files: list[Path],
     n: int = 1,
@@ -44,13 +26,8 @@ def scan_latest_trade_dates(
     if not files:
         return []
     found: set[date] = set()
-    current_ym: tuple[int, int] | None = None
+    # 分区目录字段可能是报告期，而 date_column 可能是公告日；两者不保证单调。
     for path in reversed(files):
-        ym = _extract_path_ym(path)
-        if current_ym is None:
-            current_ym = ym
-        elif ym is not None and ym < current_ym and len(found) >= n:
-            break
         try:
             df_lazy = pl.scan_parquet(path)
             cols = df_lazy.collect_schema().names()

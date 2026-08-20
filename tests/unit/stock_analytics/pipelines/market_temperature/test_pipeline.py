@@ -58,6 +58,7 @@ market_temperature:
     assert "人工阅读版" in result.human_report_markdown
     assert "口径与质量报告" in result.quality_report_markdown
     assert "stock_daily_bar" in result.report_markdown
+    assert result.manifest["source_cutoffs"] == {"external_market": "2026-08-13"}
 
 
 def test_run_market_temperature_can_include_comparison_section(tmp_path: Path) -> None:
