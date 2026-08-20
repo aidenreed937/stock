@@ -72,6 +72,46 @@ def test_lixinger_pledge_contract_uses_last_data_date() -> None:
     assert meta.date_columns == ["last_data_date"]
 
 
+def test_lixinger_pledge_without_source_date_adds_nullable_date_column() -> None:
+    mock_client = MagicMock()
+    mock_client.query.return_value = pd.DataFrame(
+        {
+            "stockCode": ["002270"],
+            "ps": [0],
+            "ps_mc": [0],
+            "ps_shbt10sh_r": [0.0],
+            "ps_sc_r": [0.0],
+            "pc": [0],
+        }
+    )
+    fetcher = LixingerStockFetcher(client=mock_client)
+
+    frame = fetcher.fetch_daily_bars_df(
+        "002270", date(2026, 8, 15), date(2026, 8, 19), endpoint="pledge_info"
+    )
+
+    assert "last_data_date" in frame.columns
+    assert frame["last_data_date"].to_list() == [None]
+
+
+def test_lixinger_daily_macro_query_pads_exclusive_date_range() -> None:
+    mock_client = MagicMock()
+    mock_client.query.return_value = pd.DataFrame(
+        {
+            "date": ["2026-08-18"],
+            "areaCode": ["cn"],
+            "tcm_y10": [0.017],
+        }
+    )
+    fetcher = LixingerStockFetcher(client=mock_client)
+
+    fetcher.fetch_daily_bars_df("", date(2026, 8, 18), date(2026, 8, 19), endpoint="national_debt")
+
+    kwargs = mock_client.query.call_args.kwargs
+    assert kwargs["startDate"] == "2026-08-17"
+    assert kwargs["endDate"] == "2026-08-20"
+
+
 def test_lixinger_financial_contracts_exclude_probe_invalid_metrics() -> None:
     assert "q.fi.roe.t" not in LIXINGER_API_REGISTRY["cn/company/fs/non_financial"].default_metrics
     assert "q.bs.pcr.t" not in LIXINGER_API_REGISTRY["cn/company/fs/bank"].default_metrics

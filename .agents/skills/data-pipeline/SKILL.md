@@ -1,6 +1,6 @@
 ---
 name: data-pipeline
-description: 涵盖项目全部真实数据源（TuShare、理杏仁 LiXinger、Yahoo Finance yfinance、美联储 FRED、Alpha Vantage）的数据工程操作指南：新接口注册、历史数据回填 (Backfill)、每日增量采集 (Sync)、清洗转换、质量门禁与多维审计对账。
+description: 涵盖项目全部真实数据源（TuShare、理杏仁 LiXinger、Yahoo Finance yfinance、美联储 FRED、Alpha Vantage）的数据工程操作指南：新接口注册、历史数据回填 (Backfill)、基于水位/发布时间窗口/RAW 缓存的每日增量采集 (Sync)、清洗转换、质量门禁与多维审计对账。
 ---
 
 # 核心数据管道 (Data Pipeline) 工作流指南
@@ -26,7 +26,7 @@ flowchart LR
 | :--- | :--- | :--- | :--- |
 | **① 注册新接口** | 定义 API 元数据、单位倍率与任务路由 | [`src/stock_data/core/task_registry.py`](file:///Users/mac/workspace/personal/finance/stock/src/stock_data/core/task_registry.py) | [接口注册 5 步流水线](file:///Users/mac/workspace/personal/finance/stock/.agents/skills/data-pipeline/references/01_endpoint_registration.md) |
 | **② 历史全量回填** | 12 年 K 线/估值/宏观批量拉取与 2-Tier ETL | `make backfill START=... END=... SOURCE=...` | [5 大数据源回填手册](file:///Users/mac/workspace/personal/finance/stock/.agents/skills/data-pipeline/references/02_backfill_recipes.md) |
-| **③ 每日增量采集** | 盘后水位自动嗅探、波次保护与增量对账 | `make sync SOURCE=tushare` (或 `SOURCE=all`) | [增量同步与调度模板](file:///Users/mac/workspace/personal/finance/stock/.agents/skills/data-pipeline/references/03_sync_and_scheduling.md) |
+| **③ 每日增量采集** | 盘后水位自动嗅探、波次保护与增量对账 | `make sync SOURCE=tushare` / `make sync SOURCE=lixinger` / `make sync SOURCE=all`（跨源串行） | [增量同步与调度模板](file:///Users/mac/workspace/personal/finance/stock/.agents/skills/data-pipeline/references/03_sync_and_scheduling.md) |
 | **④ 清洗与标准化** | RAW 原始保真，Curated 统一金额/股本为标准单位 | `src/stock_data/pipeline/normalizer/unit_normalizer.py` | [单位与 Schema 规范](file:///Users/mac/workspace/personal/finance/stock/.agents/skills/data-pipeline/references/04_audit_ops_troubleshooting.md#②-单位口径与数值倍率原则) |
 | **⑤ 质量与门禁** | 运行时隔离区检查与数据源探针健康检测 | `make probe` / `make validate` | [质量门禁与隔离区机制](file:///Users/mac/workspace/personal/finance/stock/.agents/skills/data-pipeline/references/05_quality_and_quarantine.md) |
 | **⑥ 审计与对账** | RAW/Curated/隔离区与领域 Mart 的可解释对账、全库资产盘点 | `make master-audit` / `make audit TYPE=reconciliation` | [审计与对账 CLI 指南](file:///Users/mac/workspace/personal/finance/stock/.agents/skills/data-pipeline/references/04_audit_ops_troubleshooting.md#1-统一数据审计与对账-cli-audit-cli) |
@@ -55,7 +55,11 @@ make sync
 
 # 同步指定数据源最新缺口
 make sync SOURCE=tushare
+make sync SOURCE=lixinger
 make sync SOURCE=yfinance
+
+# LiXinger 强制绕过发布时间窗口、水位与 RAW 缓存刷新
+make sync SOURCE=lixinger FORCE=1
 
 # 资产审计与离线运维
 make master-audit
@@ -99,7 +103,31 @@ make sync SOURCE=alphavantage ENDPOINT=fx_daily WORKERS=1
 | yfinance | `fundamental_bundle`、`corporate_action_bundle`、`research_daily_bundle`、`research_event_bundle` |
 | FRED | `macro_monthly_bundle` |
 
-历史 bundle 名称仍可展开以兼容已有命令，但不作为新配置的推荐名称；bundle 不合并子任务的数据集、水位或失败状态。
+仍保留的历史 bundle 别名仅用于兼容其他数据源的已有命令，不作为新配置的推荐名称；LiXinger 的 `macro_bundle`、`index_bundle` 已移除。bundle 不合并子任务的数据集、水位或失败状态。
+
+### 增量同步判定与缓存语义
+
+`make sync SOURCE=<source>` 未指定 `ENDPOINT` 时，会从 `TaskRegistry` 展开该数据源全部已注册的公开原子任务；指定 bundle 时先展开并去重。展开后的每个原子任务独立维护 Curated 水位、增量区间和失败状态。
+
+同步计划按以下顺序判定：
+
+1. 根据任务注册的主日期字段读取落盘水位；日频任务通常从水位次日开始，月频/季频任务推进到下一业务期间。
+2. 检查任务的发布时间窗口。窗口未到时标记为 `SKIPPED`，属于安全跳过，不是同步失败，也不会发起上游请求。
+3. 水位已覆盖目标日时标记为 `UP_TO_DATE`，不执行 Fetcher，也不会产生 HTTP 请求。
+4. 待执行任务默认先检查 RAW 缓存；RAW 已覆盖目标日期和标的时复用缓存并跳过网络请求。
+5. `FORCE=1` 同时绕过发布时间窗口、水位判断和 RAW 缓存，才用于确认上游当前响应或强制刷新。
+
+`SOURCE=all` 当前只是在 CLI 中按数据源顺序循环执行；单个数据源内部仍可按配置使用线程池。需要跨数据源并行时，应启动多个独立的 `make sync SOURCE=...` 进程，不能把 `SOURCE=all` 视为跨源并行入口。
+
+### 日期字段与最新水位核对
+
+历史 RAW/Curated 兼容表可能使用 `date` 或 `Date`，Curated 加载时会归一为 `trade_date`。水位扫描会按任务注册表的 `date_columns` 同时兼容这些字段，因此摘要显示 `N/A` 时不能直接判定为没有数据；应使用 `DataCatalog.latest_trade_dates()` 或 `get_latest_trade_date()`，并结合任务频率判断。事件型、静态型任务本身也不一定存在统一的日度 `trade_date`。
+
+### LiXinger 增量同步边界
+
+* `national_debt`、`interest_rates`、`non-ferrous-metals` 和 `crude-oil` 的日期范围接口存在边界开区间差异，Fetcher 会将请求前后各扩展一天，再在本地裁剪到计划区间；不要仅因边界日缺失而重复发起无界 `FORCE=1` 请求。
+* `pledge_info` 对无质押数据的标的可能不返回 `last_data_date`。此类响应会保留可空日期字段并作为有效的无数据结果，不应因此判定任务失败。
+* `FORCE=1` 只能绕过本地缓存，不能让上游产生新数据。强制刷新成功但 `pledge_info` 的源端 `last_data_date` 仍较旧时，应记录为源端发布滞后，分别核对 RAW/Curated 的实际日期和上游响应。
 
 ---
 

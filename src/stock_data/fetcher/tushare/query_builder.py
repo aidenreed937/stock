@@ -82,6 +82,11 @@ def _build_period_query(
             query_kwargs["start_date"] = start_date.strftime("%Y%m%d")
             query_kwargs["end_date"] = end_date.strftime("%Y%m%d")
         return True
+    if query_mode == "period":
+        if start_date != end_date:
+            raise ValueError("TuShare period 接口必须按单个报告期请求")
+        query_kwargs["period"] = start_date.strftime("%Y%m%d")
+        return True
     if query_mode == "ann_date":
         if start_date == end_date:
             query_kwargs["ann_date"] = start_date.strftime("%Y%m%d")
@@ -114,6 +119,16 @@ def build_tushare_query(
     query_kwargs: dict[str, Any] = dict(extra_kwargs)
     index_code_endpoints = {"index_weight", "index_classify", "index_member"}
     symbol_param = "index_code" if endpoint in index_code_endpoints else "ts_code"
+
+    if meta.query_mode == "period":
+        if start_date != end_date:
+            raise ValueError("TuShare period 接口必须按单个报告期请求")
+        for key in ("ts_code", "start_date", "end_date", "trade_date", "ann_date", "report_date"):
+            query_kwargs.pop(key, None)
+        query_kwargs["period"] = end_str
+        if meta.request_fields:
+            query_kwargs.setdefault("fields", meta.request_fields)
+        return endpoint, query_kwargs
 
     if endpoint == "trade_cal":
         query_kwargs.setdefault("exchange", "")

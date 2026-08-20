@@ -9,6 +9,12 @@ import polars as pl
 
 from stock_data.storage.compat import StorageCompat
 
+_DATE_COLUMN_ALIASES: dict[str, tuple[str, ...]] = {
+    "date": ("date", "trade_date"),
+    "Date": ("Date", "trade_date"),
+    "asOfDate": ("asOfDate", "as_of_date"),
+}
+
 
 def _extract_path_ym(path: Path) -> tuple[int, int] | None:
     year_part = month_part = None
@@ -51,7 +57,7 @@ def scan_latest_trade_dates(
             if symbol and "symbol" in cols:
                 df_lazy = df_lazy.filter(pl.col("symbol") == symbol)
             date_candidates = (
-                (date_column,)
+                _DATE_COLUMN_ALIASES.get(date_column, (date_column,))
                 if date_column
                 else (
                     "trade_date",

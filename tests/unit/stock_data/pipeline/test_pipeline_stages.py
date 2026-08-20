@@ -37,6 +37,44 @@ def test_fetcher_stage_clip_quarterly_dates(tmp_path: Path) -> None:
     assert clipped["quarter"].to_list() == ["2024Q1", "2024Q2"]
 
 
+def test_fetcher_stage_clip_financial_statement_by_report_period() -> None:
+    stage = FetcherStage(MagicMock(), MagicMock(), data_source="tushare")
+    df = pl.DataFrame(
+        {
+            "ts_code": ["600519.SH", "600519.SH"],
+            "ann_date": ["20260425", "20260725"],
+            "end_date": ["20260331", "20260630"],
+            "revenue": [10.0, 20.0],
+        }
+    )
+
+    clipped = stage.clip_date_range(
+        df, start_date=date(2026, 3, 31), end_date=date(2026, 3, 31), endpoint="balancesheet"
+    )
+
+    assert len(clipped) == 1
+    assert clipped["end_date"].to_list() == ["20260331"]
+
+
+def test_fetcher_stage_keeps_announcement_date_for_pit_quarterly_task() -> None:
+    stage = FetcherStage(MagicMock(), MagicMock(), data_source="tushare")
+    df = pl.DataFrame(
+        {
+            "ts_code": ["600519.SH", "600519.SH"],
+            "ann_date": ["20260425", "20260725"],
+            "end_date": ["20260331", "20260630"],
+            "p_change_min": [1.0, 2.0],
+        }
+    )
+
+    clipped = stage.clip_date_range(
+        df, start_date=date(2026, 4, 1), end_date=date(2026, 6, 30), endpoint="forecast"
+    )
+
+    assert len(clipped) == 1
+    assert clipped["ann_date"].to_list() == ["20260425"]
+
+
 def test_fetcher_stage_clip_daily_dates(tmp_path: Path) -> None:
     fetcher = MagicMock()
     raw_store = MagicMock()

@@ -1,3 +1,4 @@
+import threading
 import time
 from typing import Any
 
@@ -52,6 +53,7 @@ class TuShareClient:
 
         self.rate_limiter = RateLimiter(max_requests=self.rate_limit_per_min)
         self._pro_api: Any = None
+        self._pro_lock = threading.Lock()
 
     @property
     def pro(self) -> Any:
@@ -61,17 +63,19 @@ class TuShareClient:
             DataFetchError: 未配置 Token 时抛出。
         """
         if self._pro_api is None:
-            if not self.token:
-                raise DataFetchError(
-                    "未配置 TuShare API Token！请在 .env 文件中设置 TUSHARE_TOKEN=your_token"
-                )
-            self._pro_api = ts.pro_api(token=self.token)
-            if self.url:
-                self._pro_api._DataApi__http_url = self.url
-            logger.debug(
-                f"TuShare Pro API 初始化成功 [server: {self.url or 'default'}, "
-                f"rate_limit: {self.rate_limit_per_min}/min, workers: {self.max_workers}]"
-            )
+            with self._pro_lock:
+                if self._pro_api is None:
+                    if not self.token:
+                        raise DataFetchError(
+                            "未配置 TuShare API Token！请在 .env 文件中设置 TUSHARE_TOKEN=your_token"
+                        )
+                    self._pro_api = ts.pro_api(token=self.token)
+                    if self.url:
+                        self._pro_api._DataApi__http_url = self.url
+                    logger.debug(
+                        f"TuShare Pro API 初始化成功 [server: {self.url or 'default'}, "
+                        f"rate_limit: {self.rate_limit_per_min}/min, workers: {self.max_workers}]"
+                    )
         return self._pro_api
 
     def query(self, api_name: str, *, auto_paginate: bool = True, **kwargs: Any) -> pd.DataFrame:

@@ -12,7 +12,7 @@ from stock_core.contracts import (
 )
 from stock_core.exceptions import DataValidationError
 from stock_core.utils.logger import logger
-from stock_data.core.task_registry import _provider_registry, is_task_partitioned, resolve_task
+from stock_data.core.task_registry import _provider_registry, resolve_task
 from stock_data.fetcher.base import BaseDataFetcher
 from stock_data.governance.quality.margin_coverage import is_margin_complete, margin_coverage_issues
 from stock_data.governance.quality.margin_quality import (
@@ -21,6 +21,7 @@ from stock_data.governance.quality.margin_quality import (
 )
 from stock_data.governance.quality.quarantine import QuarantineStore
 from stock_data.pipeline.cleaner.base import BaseDataCleaner
+from stock_data.pipeline.date_clipper import clip_endpoint_date_range
 from stock_data.pipeline.normalizer.bar_normalizer import (
     infer_metadata_expressions,
     normalize_stock_daily_bar_curated_schema,
@@ -70,6 +71,7 @@ class FetcherStage:
         endpoint_name: str,
         use_raw_cache: bool = True,
         force_refresh: bool = False,
+        max_workers: int = 1,
     ) -> pl.DataFrame:
         raw_df: pl.DataFrame | None = None
         batch_df: pl.DataFrame | None = None
@@ -90,13 +92,26 @@ class FetcherStage:
 
         if raw_df is None:
             try:
+                fetch_kwargs: dict[str, Any] = {
+                    "endpoint": api_name,
+                    "endpoint_name": endpoint_name,
+                }
+                if max_workers > 1:
+                    fetch_kwargs["max_workers"] = max_workers
                 raw_df = self.fetcher.fetch_daily_bars_df(
-                    symbol, start_date, end_date, endpoint=api_name, endpoint_name=endpoint_name
+                    symbol, start_date, end_date, **fetch_kwargs
                 )
             except TypeError:
-                raw_df = self.fetcher.fetch_daily_bars_df(
-                    symbol, start_date, end_date, endpoint=api_name
-                )
+                fetch_kwargs.pop("endpoint_name", None)
+                try:
+                    raw_df = self.fetcher.fetch_daily_bars_df(
+                        symbol, start_date, end_date, **fetch_kwargs
+                    )
+                except TypeError:
+                    fetch_kwargs.pop("max_workers", None)
+                    raw_df = self.fetcher.fetch_daily_bars_df(
+                        symbol, start_date, end_date, **fetch_kwargs
+                    )
             if raw_df.is_empty():
                 logger.warning(f"数据源未返回数据 [{symbol}]")
                 return raw_df
@@ -156,71 +171,8 @@ class FetcherStage:
     def clip_date_range(
         self, frame: pl.DataFrame, start_date: date, end_date: date, endpoint: str
     ) -> pl.DataFrame:
-        """按接口业务日期裁剪超出请求范围的记录，豁免免分区/全量/宏观任务。"""
-        try:
-            task = resolve_task(self.data_source, endpoint)
-            if not is_task_partitioned(self.data_source, task.dataset) or task.frequency in (
-                "static",
-                "event",
-            ):
-                return frame
-        except Exception:
-            pass
-
-        date_col = next(
-            (
-                c
-                for c in (
-                    "trade_date",
-                    "date",
-                    "report_date",
-                    "ann_date",
-                    "end_date",
-                    "month",
-                    "quarter",
-                )
-                if c in frame.columns
-            ),
-            None,
-        )
-        if not date_col or frame.is_empty():
-            return frame
-        if date_col == "quarter":
-            start_val = start_date.year * 4 + ((start_date.month - 1) // 3 + 1)
-            end_val = end_date.year * 4 + ((end_date.month - 1) // 3 + 1)
-            q_str = pl.col(date_col).cast(pl.Utf8, strict=False).str.to_uppercase()
-            yr_expr = q_str.str.extract(r"(\d{4})").cast(pl.Int32, strict=False)
-            q_expr = q_str.str.extract(r"Q(\d)").cast(pl.Int32, strict=False)
-            q_val = yr_expr * 4 + q_expr
-            clipped = frame.filter(q_val.is_between(start_val, end_val))
-        elif date_col == "month":
-            start_val = start_date.year * 100 + start_date.month
-            end_val = end_date.year * 100 + end_date.month
-            norm_expr = (
-                pl.col(date_col)
-                .cast(pl.Utf8, strict=False)
-                .str.replace_all("-", "")
-                .str.slice(0, 6)
-                .cast(pl.Int32, strict=False)
-            )
-            clipped = frame.filter(norm_expr.is_between(start_val, end_val))
-        else:
-            start_val = int(start_date.strftime("%Y%m%d"))
-            end_val = int(end_date.strftime("%Y%m%d"))
-            norm_expr = (
-                pl.col(date_col)
-                .cast(pl.Utf8, strict=False)
-                .str.replace_all("-", "")
-                .str.slice(0, 8)
-                .cast(pl.Int32, strict=False)
-            )
-            clipped = frame.filter(norm_expr.is_between(start_val, end_val))
-        if len(clipped) != len(frame):
-            logger.warning(
-                f"接口 [{endpoint}] 丢弃源端请求范围外记录 {len(frame) - len(clipped)} 行 "
-                f"(请求范围 {start_date} ~ {end_date}, 日期列 {date_col})"
-            )
-        return clipped
+        """按接口业务日期裁剪超出请求范围的记录。"""
+        return clip_endpoint_date_range(frame, start_date, end_date, endpoint, self.data_source)
 
     def validate_endpoint_frame(
         self, frame: pl.DataFrame, start_date: date, end_date: date, endpoint: str

@@ -155,12 +155,13 @@ def _run_sync_task(task: SyncTaskItem, force_refresh: bool) -> SyncExecutionResu
     t0 = time.perf_counter()
     try:
         pipeline = create_pipeline(data_source=task.data_source, endpoint=task.endpoint)
+        refresh = force_refresh or task.refresh_raw_cache
         df = pipeline.sync_daily_bars(
             symbol=task.symbol,
             start_date=task.start_date,
             end_date=task.end_date,
-            use_raw_cache=not force_refresh,
-            force_refresh=force_refresh,
+            use_raw_cache=not refresh,
+            force_refresh=refresh,
         )
         dur = round(time.perf_counter() - t0, 2)
         row_count = len(df) if df is not None and not df.is_empty() else 0

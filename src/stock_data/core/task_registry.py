@@ -3,6 +3,7 @@
 from dataclasses import dataclass, field
 from typing import Any, cast
 
+from stock_data.core import task_registry_helpers as _registry_helpers
 from stock_data.core.public_tasks import (
     expand_public_task_targets as _expand_public_task_targets,
 )
@@ -34,7 +35,7 @@ class TaskSpec:
     frequency: str = "daily"
     quality_profile: str = "generic"
     partitioned: bool = True
-    fetch_mode: str = "per_day"  # "per_day" | "per_symbol"
+    fetch_mode: str = "per_day"  # "per_day" | "per_symbol" | "per_period"
     is_single_sync: bool = False
     required_pool: str | None = None
     primary_keys: tuple[str, ...] = ()
@@ -50,7 +51,6 @@ class TaskSpec:
     request_fields: str | None = None
 
 
-# 向后兼容保留的集合别名（内部已统一由 TaskSpec 属性驱动）
 PER_SYMBOL_DATASETS: frozenset[str] = frozenset(
     {
         "index_daily",
@@ -61,12 +61,8 @@ PER_SYMBOL_DATASETS: frozenset[str] = frozenset(
         "fund_daily",
         "fund_adj",
         "etf_share_size",
-        "income",
-        "fina_indicator",
         "forecast",
         "express",
-        "balancesheet",
-        "cashflow",
         "margin_detail",
         "hk_hold",
     }
@@ -563,16 +559,14 @@ def _derive_task_spec(provider_name: str, requested: str, meta: Any) -> TaskSpec
     qp = str(getattr(meta, "quality_profile", "generic"))
 
     # 1. 推导 fetch_mode 与 required_pool
+    required_pool: str | None = None
     if provider_name in ("fred", "yfinance"):
         fetch_mode = "per_symbol"
-        required_pool = None
+    elif provider_name == "tushare" and requested in _registry_helpers.PER_PERIOD_DATASETS:
+        fetch_mode = "per_period"
     elif group in ("financial_statements", "financial_indicator") or requested in (
-        "income",
-        "fina_indicator",
         "forecast",
         "express",
-        "balancesheet",
-        "cashflow",
         "margin_detail",
         "hk_hold",
     ):
@@ -591,10 +585,8 @@ def _derive_task_spec(provider_name: str, requested: str, meta: Any) -> TaskSpec
         "etf_share_size",
     ):
         fetch_mode = "per_symbol"
-        required_pool = None
     else:
         fetch_mode = getattr(meta, "fetch_mode", "per_day")
-        required_pool = None
 
     # 2. 推导 partitioned (是否采用 Hive 年月分桶)
     if (
@@ -648,6 +640,11 @@ def resolve_task(provider: str, task_name: str, symbol: str = "") -> TaskSpec:
     """解析公开任务名，并返回其唯一上游 API 路由及完整调度契约。"""
     provider_name = provider.lower()
     requested = task_name.strip()
+    if provider_name == "tushare" and _registry_helpers.is_tushare_internal_api(requested):
+        raise ValueError(
+            f"[{provider_name}/{task_name}] 是上游内部 API；请使用项目任务名"
+            f" [{requested.removesuffix('_vip')}]。"
+        )
     if requested in _DISABLED_TASKS:
         raise ValueError(f"项目任务 [{provider_name}/{task_name}] 已停用；请使用 stock_daily_bar。")
     if _resolve_bundle_or_alias(provider_name, requested) is not None:
@@ -741,7 +738,8 @@ def list_available_tasks(provider: str) -> list[str]:
     registry = _provider_registry(prov)
     for name in registry:
         if (
-            name not in _DISABLED_TASKS
+            not _registry_helpers.is_tushare_internal_api(name)
+            and name not in _DISABLED_TASKS
             and name not in alias_names
             and name not in tasks
             and "/" not in name

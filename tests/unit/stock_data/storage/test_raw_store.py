@@ -259,6 +259,30 @@ def test_raw_storage_uses_report_date_for_partition_and_range_cache(tmp_path: Pa
     assert set(loaded["report_date"].to_list()) == {"20260815", "20260817"}
 
 
+def test_raw_storage_financial_vip_uses_report_period_for_cache(tmp_path: Path) -> None:
+    store = RawDataStorage(base_dir=tmp_path)
+    key = DatasetKey(
+        provider="tushare",
+        dataset="income",
+        endpoint="income",
+        start_date=date(2026, 6, 30),
+        end_date=date(2026, 6, 30),
+    )
+    frame = pl.DataFrame(
+        {
+            "ts_code": ["000001.SZ"],
+            "ann_date": ["20260815"],
+            "end_date": ["20260630"],
+            "revenue": [100.0],
+        }
+    )
+
+    saved_path = store.save_dataset(key, frame)
+
+    assert "year=2026/month=06" in str(saved_path)
+    assert store.load_dataset(key) is not None
+
+
 def test_raw_storage_rejects_mixed_invalid_dates_without_partial_write(tmp_path: Path) -> None:
     store = RawDataStorage(base_dir=tmp_path)
     key = DatasetKey(

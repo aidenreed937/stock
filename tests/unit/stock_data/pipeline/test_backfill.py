@@ -10,7 +10,6 @@ from stock_cli.backfill import (
 )
 from stock_data.pipeline.backfill import (
     HistoricalBackfiller,
-    _default_symbols_for_endpoint,
 )
 
 
@@ -94,6 +93,31 @@ def test_backfill_per_symbol_without_symbol_does_not_use_endpoint_as_symbol() ->
         end_date=date(2026, 8, 1),
         use_raw_cache=True,
         force_refresh=False,
+    )
+
+
+def test_backfill_financial_statement_ignores_symbol_and_uses_report_period() -> None:
+    mock_pipeline = MagicMock()
+    mock_pipeline.sync_daily_bars.return_value = pl.DataFrame(
+        {"ts_code": ["000001.SZ"], "end_date": ["20260331"]}
+    )
+
+    with patch("stock_data.pipeline.backfill.create_pipeline", return_value=mock_pipeline):
+        backfiller = HistoricalBackfiller(
+            data_source="tushare",
+            endpoint="income",
+            symbol="000001.SZ",
+        )
+        summary = backfiller.backfill_range(date(2026, 1, 1), date(2026, 3, 31), max_workers=4)
+
+    assert summary["synced_days"] == 1
+    mock_pipeline.sync_daily_bars.assert_called_once_with(
+        symbol="",
+        start_date=date(2026, 1, 1),
+        end_date=date(2026, 3, 31),
+        use_raw_cache=True,
+        force_refresh=False,
+        max_workers=4,
     )
 
 
@@ -209,20 +233,23 @@ backfill:
         )
 
 
-def test_tushare_stock_endpoints_use_local_stock_basic_pool(monkeypatch) -> None:
-    data_cfg = MagicMock()
-    data_cfg.watchlists.tushare.indices = ["000001.SH"]
-    data_cfg.source_endpoint_supports = {}
-    monkeypatch.setattr(
-        "stock_data.pipeline.backfill._load_curated_symbol_pool",
-        lambda source, dataset: ["000001.SZ", "600519.SH"] if dataset == "stock_basic" else [],
+def test_tushare_financial_backfill_plans_one_all_market_period_task() -> None:
+    from stock_data.pipeline.planner import BackfillPlanner
+
+    data_cfg = SimpleNamespace(watchlists=SimpleNamespace(tushare=SimpleNamespace()))
+    tasks = BackfillPlanner.plan_tasks(
+        data_source="tushare",
+        endpoints=["income"],
+        symbol="000001.SZ",
+        start_date=date(2026, 1, 1),
+        end_date=date(2026, 6, 30),
+        start_specified=True,
+        data_cfg=data_cfg,
     )
 
-    symbols = _default_symbols_for_endpoint(
-        "tushare", "income", data_cfg, {"income", "index_daily"}
-    )
-
-    assert symbols == ["000001.SZ", "600519.SH"]
+    assert len(tasks) == 1
+    assert tasks[0].symbol == ""
+    assert tasks[0].fetch_mode == "per_period"
 
 
 def test_load_curated_symbol_pool_with_ts_code_column() -> None:

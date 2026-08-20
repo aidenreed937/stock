@@ -11,9 +11,17 @@ import polars as pl
 from stock_core.config.loader import load_data_config
 from stock_data.catalog import DataCatalog
 from stock_data.core.task_registry import _provider_registry, expand_task_targets, resolve_task
-from stock_data.pipeline.planner import _filter_supported_symbols, _should_expand_single_sync
+from stock_data.pipeline.planner import (
+    _filter_supported_symbols,
+    _load_curated_symbol_pool,
+    _should_expand_single_sync,
+)
 from stock_data.pipeline.scheduler import DataUpdateScheduler
-from stock_data.pipeline.sync_target import next_watermark_date, normalize_watermark_date
+from stock_data.pipeline.sync_target import (
+    next_report_period_end,
+    next_watermark_date,
+    normalize_watermark_date,
+)
 
 INDEX_ENDPOINTS = {
     "index_daily",
@@ -100,6 +108,8 @@ def sync_symbols_for_task(
 
     if data_source in {"yfinance", "alphavantage"} and task.dataset == "macro_indicators":
         return YFINANCE_MACRO_SYMBOLS if data_source == "yfinance" else ["CNH=X"]
+    if task.required_pool in {"stock_basic", "fund_basic"}:
+        return _load_curated_symbol_pool(data_source, task.required_pool)
     if watchlist is None:
         return []
     if data_source == "fred":
@@ -141,6 +151,11 @@ def watermark_date_column(
 
 def next_increment_start(watermark: date, data_source: str, endpoint: str, frequency: str) -> date:
     """按日期字段语义推进增量起点。"""
+    try:
+        if resolve_task(data_source, endpoint).fetch_mode == "per_period":
+            return next_report_period_end(watermark)
+    except Exception:
+        pass
     date_column = watermark_date_column(data_source, endpoint)
     if (
         date_column in {"month", "quarter"}
@@ -246,9 +261,13 @@ def symbol_watermarks(
         return result
     if frame.is_empty() or "symbol" not in frame.columns:
         return result
-    date_column = next(
-        (column for column in WATERMARK_DATE_COLUMNS if column in frame.columns), None
-    )
+    date_candidates: tuple[str, ...] = WATERMARK_DATE_COLUMNS
+    try:
+        task = resolve_task(data_source, dataset)
+        date_candidates = tuple(dict.fromkeys((*task.date_columns, *date_candidates)))
+    except Exception:
+        pass
+    date_column = next((column for column in date_candidates if column in frame.columns), None)
     if date_column is None:
         return result
     frame = frame.with_columns(

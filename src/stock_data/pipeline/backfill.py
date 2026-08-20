@@ -33,6 +33,27 @@ def _failed_item_count(item: Any) -> int:
     return 1
 
 
+def _sync_pipeline(
+    pipeline: Any,
+    symbol: str,
+    start_date: date,
+    end_date: date,
+    force_refresh: bool,
+    max_workers: int,
+) -> Any:
+    """调用 Pipeline，并仅在需要时向 Fetcher 传递并发参数。"""
+    kwargs: dict[str, Any] = {
+        "symbol": symbol,
+        "start_date": start_date,
+        "end_date": end_date,
+        "use_raw_cache": not force_refresh,
+        "force_refresh": force_refresh,
+    }
+    if max_workers > 1:
+        kwargs["max_workers"] = max_workers
+    return pipeline.sync_daily_bars(**kwargs)
+
+
 def _resolve_calendar_dates(
     fetcher: BaseDataFetcher, data_source: str, start_date: date, end_date: date
 ) -> list[date]:
@@ -217,7 +238,11 @@ class HistoricalBackfiller:
 
         # 1. 范围拉取模式 (月频/宏观/静态/按标的历史范围)
         if freq != "daily" or is_per_sym or task_spec.is_single_sync:
-            sym_code = self.symbol or ("" if is_per_sym else self.endpoint)
+            sym_code = (
+                ""
+                if task_spec.fetch_mode == "per_period"
+                else self.symbol or ("" if is_per_sym else self.endpoint)
+            )
             is_short_daily_symbol_range = (
                 not force_refresh
                 and self.symbol
@@ -237,12 +262,8 @@ class HistoricalBackfiller:
                     }
 
             try:
-                df = self.pipeline.sync_daily_bars(
-                    symbol=sym_code,
-                    start_date=start_date,
-                    end_date=end_date,
-                    use_raw_cache=not force_refresh,
-                    force_refresh=force_refresh,
+                df = _sync_pipeline(
+                    self.pipeline, sym_code, start_date, end_date, force_refresh, max_workers
                 )
                 count = len(df) if not df.is_empty() else 0
                 return {
@@ -278,12 +299,8 @@ class HistoricalBackfiller:
 
         def _sync_day(d: date) -> bool:
             try:
-                df = self.pipeline.sync_daily_bars(
-                    symbol=self.symbol or "",
-                    start_date=d,
-                    end_date=d,
-                    use_raw_cache=not force_refresh,
-                    force_refresh=force_refresh,
+                df = _sync_pipeline(
+                    self.pipeline, self.symbol or "", d, d, force_refresh, max_workers
                 )
                 if self.endpoint in (
                     "report_rc",

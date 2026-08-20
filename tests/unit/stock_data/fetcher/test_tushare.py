@@ -1,7 +1,8 @@
 """TuShare 数据采集模块单元测试。"""
 
 from datetime import date
-from unittest.mock import MagicMock, patch
+from threading import Barrier
+from unittest.mock import MagicMock, call, patch
 
 import pandas as pd
 import polars as pl
@@ -107,6 +108,137 @@ def test_low_frequency_tushare_query_uses_endpoint_parameters(
     )
 
     assert query_kwargs == expected
+
+
+@pytest.mark.parametrize("endpoint", ["income", "fina_indicator", "balancesheet", "cashflow"])
+def test_tushare_financial_statement_routes_to_vip_period_query(endpoint: str) -> None:
+    api_name, query_kwargs = build_tushare_query(
+        TUSHARE_API_REGISTRY[endpoint],
+        "000001.SZ",
+        date(2026, 6, 30),
+        date(2026, 6, 30),
+        {},
+    )
+
+    assert api_name == f"{endpoint}_vip"
+    assert query_kwargs == {"period": "20260630"}
+
+
+def test_tushare_financial_statement_period_query_rejects_date_range() -> None:
+    with pytest.raises(ValueError, match="单个报告期"):
+        build_tushare_query(
+            TUSHARE_API_REGISTRY["income"],
+            "000001.SZ",
+            date(2026, 1, 1),
+            date(2026, 6, 30),
+            {},
+        )
+
+
+def test_tushare_fetcher_financial_statement_uses_all_market_periods() -> None:
+    fetcher = TuShareDataFetcher(token="test_token")
+    fetcher.client._pro_api = MagicMock()
+    fetcher.client._pro_api.query.side_effect = [
+        pd.DataFrame(
+            {
+                "ts_code": ["000001.SZ"],
+                "ann_date": ["20260425"],
+                "end_date": ["20260331"],
+                "revenue": [100.0],
+            }
+        ),
+        pd.DataFrame(
+            {
+                "ts_code": ["000002.SZ"],
+                "ann_date": ["20260815"],
+                "end_date": ["20260630"],
+                "revenue": [200.0],
+            }
+        ),
+    ]
+
+    result = fetcher.fetch_daily_bars_df(
+        "000001.SZ",
+        date(2026, 1, 1),
+        date(2026, 6, 30),
+        endpoint="income",
+    )
+
+    assert len(result) == 2
+    assert fetcher.client._pro_api.query.call_args_list == [
+        call("income_vip", period="20260331"),
+        call("income_vip", period="20260630"),
+    ]
+
+
+def test_tushare_fetcher_financial_statement_queries_periods_concurrently() -> None:
+    fetcher = TuShareDataFetcher(token="test_token")
+    period_barrier = Barrier(2)
+    requested_periods: list[str] = []
+
+    def query(_api_name: str, *, period: str) -> pd.DataFrame:
+        requested_periods.append(period)
+        period_barrier.wait(timeout=2)
+        return pd.DataFrame(
+            {
+                "ts_code": ["000001.SZ"],
+                "ann_date": ["20260425"],
+                "end_date": [period],
+                "revenue": [100.0],
+            }
+        )
+
+    fetcher.client.query = MagicMock(side_effect=query)
+
+    result = fetcher.fetch_daily_bars_df(
+        "",
+        date(2026, 1, 1),
+        date(2026, 6, 30),
+        endpoint="income",
+        max_workers=2,
+    )
+
+    assert len(result) == 2
+    assert sorted(requested_periods) == ["20260331", "20260630"]
+
+
+def test_tushare_daily_single_date_does_not_use_quarterly_window() -> None:
+    _, query_kwargs = build_tushare_query(
+        TUSHARE_API_REGISTRY["daily"],
+        "000001.SZ",
+        date(2026, 3, 31),
+        date(2026, 3, 31),
+        {},
+    )
+
+    assert query_kwargs == {
+        "ts_code": "000001.SZ",
+        "start_date": "20260331",
+        "end_date": "20260331",
+    }
+
+
+def test_tushare_fetcher_quarterly_single_date_keeps_late_announcement() -> None:
+    fetcher = TuShareDataFetcher(token="test_token")
+    fetcher.client._pro_api = MagicMock()
+    fetcher.client._pro_api.query.return_value = pd.DataFrame(
+        {
+            "ts_code": ["000001.SZ"],
+            "ann_date": ["20260425"],
+            "end_date": ["20260331"],
+            "revenue": [100.0],
+        }
+    )
+
+    result = fetcher.fetch_daily_bars_df(
+        "000001.SZ",
+        date(2026, 3, 31),
+        date(2026, 3, 31),
+        endpoint="income",
+    )
+
+    assert not result.is_empty()
+    fetcher.client._pro_api.query.assert_called_once_with("income_vip", period="20260331")
 
 
 def test_tushare_factory_uses_bar_cleaner_for_bar_profiles() -> None:

@@ -10,6 +10,7 @@ from stock_core.exceptions import DataFetchError
 from stock_core.models.market import DailyBar
 from stock_core.utils.logger import logger
 from stock_data.core.task_registry import resolve_task
+from stock_data.fetcher.lixinger import query_helpers
 from stock_data.fetcher.lixinger.client import LixingerClient
 from stock_data.fetcher.lixinger.registry import LIXINGER_API_REGISTRY, EndpointMeta
 
@@ -277,8 +278,7 @@ class LixingerStockFetcher:
                 return pl.DataFrame()
             return pl.concat(chunks, how="diagonal_relaxed").unique()
 
-        start_str = start_date.strftime("%Y-%m-%d")
-        end_str = end_date.strftime("%Y-%m-%d")
+        start_str, end_str = query_helpers.query_date_strings(endpoint, start_date, end_date)
         raw_code = symbol.split(".")[0] if symbol else ""
 
         query_kwargs: dict[str, Any] = {}
@@ -319,7 +319,7 @@ class LixingerStockFetcher:
                     )
 
         query_kwargs.update(kwargs)
-        pandas_df = self.client.query(meta.api_name, **query_kwargs)
+        pandas_df = query_helpers.query_frame(self.client, meta.api_name, endpoint, query_kwargs)
         if pandas_df.empty:
             return pl.DataFrame()
 

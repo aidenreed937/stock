@@ -108,6 +108,7 @@ def build_sync_plan(
 
         for symbol in symbols:
             scheduled_endpoint = schedule_endpoint(data_source, endpoint, symbol)
+            is_period_task = task.fetch_mode == "per_period"
             sync_target = _resolve_sync_target_date(
                 data_source,
                 scheduled_endpoint,
@@ -124,7 +125,11 @@ def build_sync_plan(
                 data_source, scheduled_endpoint
             ).frequency
             period_watermark = (
-                normalize_watermark_date(watermark, frequency) if watermark is not None else None
+                watermark
+                if is_period_task
+                else normalize_watermark_date(watermark, frequency)
+                if watermark is not None
+                else None
             )
             if sync_target is None:
                 plan.append(
@@ -166,7 +171,15 @@ def build_sync_plan(
                     )
                 )
                 continue
-            if not force and period_watermark is not None and period_watermark >= sync_target:
+            current_period_refresh = (
+                is_period_task and period_watermark is not None and period_watermark == sync_target
+            )
+            if (
+                not force
+                and period_watermark is not None
+                and period_watermark >= sync_target
+                and not current_period_refresh
+            ):
                 plan.append(
                     SyncTaskItem(
                         data_source=data_source,
@@ -184,13 +197,16 @@ def build_sync_plan(
                 continue
 
             if period_watermark is not None:
-                start = (
-                    sync_target
-                    if frequency in REFRESH_WATERMARK_FREQUENCIES
-                    else next_increment_start(
-                        period_watermark, data_source, scheduled_endpoint, frequency
+                if is_period_task and period_watermark >= sync_target:
+                    start = sync_target
+                else:
+                    start = (
+                        sync_target
+                        if frequency in REFRESH_WATERMARK_FREQUENCIES
+                        else next_increment_start(
+                            period_watermark, data_source, scheduled_endpoint, frequency
+                        )
                     )
-                )
                 start = min(start, sync_target)
             else:
                 base_date = symbol_base_date(data_source, symbol, endpoint)
@@ -205,8 +221,13 @@ def build_sync_plan(
                     watermark=watermark,
                     status="PENDING",
                     is_ready=True,
-                    reason=f"待增量 ({start} ~ {sync_target})",
+                    reason=(
+                        f"待刷新报告期 ({start} ~ {sync_target})"
+                        if current_period_refresh
+                        else f"待增量 ({start} ~ {sync_target})"
+                    ),
                     symbol=symbol,
+                    refresh_raw_cache=current_period_refresh,
                 )
             )
     return plan

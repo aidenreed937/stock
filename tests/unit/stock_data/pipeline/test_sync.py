@@ -16,6 +16,7 @@ from stock_data.pipeline.sync import (
     _symbol_refresh_watermarks,
     _symbol_watermarks,
     _sync_symbols_for_task,
+    _watermark_date_column,
 )
 
 
@@ -62,6 +63,14 @@ def test_symbol_watermarks_support_report_and_statement_dates() -> None:
         "AAPL": date(2026, 6, 30),
         "MSFT": date(2026, 6, 30),
     }
+
+
+@pytest.mark.parametrize("endpoint", ["income", "fina_indicator", "balancesheet", "cashflow"])
+def test_tushare_statement_uses_report_period_without_symbol_watermark(
+    endpoint: str,
+) -> None:
+    assert _sync_symbols_for_task("tushare", endpoint) == [""]
+    assert _watermark_date_column("tushare", endpoint) == "end_date"
 
 
 def test_sniff_watermarks_scans_shared_dataset_once() -> None:
@@ -245,9 +254,10 @@ def test_default_sync_falls_back_to_ready_trading_day_for_history_gap() -> None:
         ),
         patch(
             "stock_data.pipeline.scheduler.DataUpdateScheduler.is_data_ready",
-            side_effect=lambda endpoint, target_date, current_datetime=None, data_source="tushare": (
-                target_date == previous
-            ),
+            side_effect=lambda endpoint,
+            target_date,
+            current_datetime=None,
+            data_source="tushare": (target_date == previous),
         ),
     ):
         plan = engine.build_sync_plan(
@@ -321,6 +331,52 @@ def test_monthly_date_watermark_is_compared_by_period() -> None:
         )
 
     assert plan[0].status == "UP_TO_DATE"
+
+
+@pytest.mark.parametrize("endpoint", ["income", "fina_indicator", "balancesheet", "cashflow"])
+def test_financial_statement_sync_uses_quarter_end_all_market_task(endpoint: str) -> None:
+    engine = DailySyncEngine(data_source="tushare")
+    with (
+        patch.object(engine, "sniff_watermarks", return_value={endpoint: date(2026, 3, 31)}),
+        patch(
+            "stock_data.pipeline.scheduler.DataUpdateScheduler.is_data_ready",
+            return_value=True,
+        ),
+    ):
+        plan = engine.build_sync_plan(
+            target_date=date(2026, 8, 20),
+            endpoints=[endpoint],
+            target_date_is_explicit=False,
+        )
+
+    assert len(plan) == 1
+    assert plan[0].symbol == ""
+    assert plan[0].status == "PENDING"
+    assert plan[0].start_date == date(2026, 6, 30)
+    assert plan[0].end_date == date(2026, 6, 30)
+
+
+def test_financial_statement_sync_refreshes_current_report_period() -> None:
+    engine = DailySyncEngine(data_source="tushare")
+    with (
+        patch.object(engine, "sniff_watermarks", return_value={"income": date(2026, 6, 30)}),
+        patch(
+            "stock_data.pipeline.scheduler.DataUpdateScheduler.is_data_ready",
+            return_value=True,
+        ),
+    ):
+        plan = engine.build_sync_plan(
+            target_date=date(2026, 8, 20),
+            endpoints=["income"],
+            target_date_is_explicit=False,
+        )
+
+    assert len(plan) == 1
+    assert plan[0].status == "PENDING"
+    assert plan[0].start_date == date(2026, 6, 30)
+    assert plan[0].end_date == date(2026, 6, 30)
+    assert "刷新报告期" in plan[0].reason
+    assert plan[0].refresh_raw_cache is True
 
 
 def test_execute_plan_success_and_error() -> None:
@@ -495,6 +551,11 @@ def test_sync_symbols_keeps_lixinger_batch_tasks_single() -> None:
             "600519.SH",
             "000001.SZ",
         ]
+
+
+@pytest.mark.parametrize("endpoint", ["income", "fina_indicator", "balancesheet", "cashflow"])
+def test_sync_symbols_keeps_tushare_statements_as_one_all_market_task(endpoint: str) -> None:
+    assert _sync_symbols_for_task("tushare", endpoint) == [""]
 
 
 def test_sync_symbols_filters_lixinger_unsupported_index() -> None:

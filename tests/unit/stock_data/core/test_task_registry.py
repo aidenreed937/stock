@@ -37,12 +37,8 @@ def test_is_task_partitioned_rules() -> None:
 
 
 def test_is_per_symbol_task_rules() -> None:
-    # 1. 验证按标的拉取模式 (指数、财报、两融明细等)
+    # 1. 验证按标的拉取模式 (指数、两融明细等)
     assert is_per_symbol_task("tushare", "index_daily")
-    assert is_per_symbol_task("tushare", "income")
-    assert is_per_symbol_task("tushare", "fina_indicator")
-    assert is_per_symbol_task("tushare", "balancesheet")
-    assert is_per_symbol_task("tushare", "cashflow")
     assert is_per_symbol_task("tushare", "margin_detail")
     assert is_per_symbol_task("fred", "CPIAUCSL")
     assert is_per_symbol_task("yfinance", "stock_daily_bar")
@@ -57,6 +53,15 @@ def test_is_per_symbol_task_rules() -> None:
     assert not is_per_symbol_task("tushare", "hk_hold")
 
 
+def test_tushare_financial_statements_use_vip_period_routes() -> None:
+    for statement in ("income", "fina_indicator", "balancesheet", "cashflow"):
+        task = resolve_task("tushare", statement)
+        assert task.api_name == f"{statement}_vip"
+        assert task.fetch_mode == "per_period"
+        assert task.required_pool is None
+        assert task.query_mode == "period"
+
+
 def test_list_available_tasks() -> None:
     tushare_tasks = list_available_tasks("tushare")
     assert "stock_daily_bar" in tushare_tasks
@@ -66,6 +71,7 @@ def test_list_available_tasks() -> None:
     assert "limit_list_d" in tushare_tasks
     assert "limit_list" not in tushare_tasks
     assert "income" in tushare_tasks
+    assert "income_vip" not in tushare_tasks
     assert "bak_daily" not in tushare_tasks
 
     lixinger_tasks = list_available_tasks("lixinger")
@@ -375,12 +381,14 @@ def test_tushare_index_daily_alias_is_not_a_second_public_task() -> None:
     assert expand_task_targets("tushare", ["index_daily", "index_daily_bar"]) == ["index_daily_bar"]
 
 
-def test_legacy_bundle_names_still_expand() -> None:
+def test_removed_lixinger_bundle_names_are_rejected() -> None:
     assert expand_task_targets("tushare", ["index_bundle"]) == [
         "index_daily_bar",
         "index_dailybasic",
     ]
-    assert expand_task_targets("lixinger", ["macro_bundle"])[-2:] == ["cn_m", "sf_month"]
+    for bundle_name in ("macro_bundle", "index_bundle"):
+        with pytest.raises(ValueError, match="未知任务包"):
+            resolve_bundle("lixinger", bundle_name)
 
 
 def test_resolve_task_rejects_bundle_name() -> None:

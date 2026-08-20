@@ -20,6 +20,7 @@ class SyncTaskItem:
     is_ready: bool
     reason: str = ""
     symbol: str = ""
+    refresh_raw_cache: bool = False
 
 
 @dataclass

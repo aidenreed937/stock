@@ -78,6 +78,18 @@ def _dataset_paths_for_key(storage: Any, key: DatasetKey) -> list[Path]:
     return paths
 
 
+def _date_column_for_key(key: DatasetKey, df: pl.DataFrame) -> str | None:
+    """按任务契约选择 RAW 的业务日期列，优先使用报告期而非公告日。"""
+    try:
+        from stock_data.core.task_registry import resolve_task
+
+        task = resolve_task(key.provider, key.endpoint)
+        candidates = (*task.date_columns, *RAW_DATE_COLUMNS)
+    except Exception:
+        candidates = RAW_DATE_COLUMNS
+    return first_existing_column(df, tuple(dict.fromkeys(candidates)))
+
+
 def _read_dataset_paths(paths: list[Path]) -> pl.DataFrame | None:
     with ExitStack() as stack:
         for path in sorted(paths, key=str):
@@ -191,7 +203,7 @@ class RawDataStorage:
         self, key: DatasetKey, df: pl.DataFrame, *, replace_existing: bool = False
     ) -> Path:
         """按数据集和月份幂等合并保存 RAW 归档数据。"""
-        date_col = first_existing_column(df, RAW_DATE_COLUMNS)
+        date_col = _date_column_for_key(key, df)
         if date_col and not df.is_empty() and date_col in RAW_RANGE_DATE_COLUMNS:
             # 按真实业务日期分桶，避免请求 end_date 造成历史快照串区。
             parsed = df.with_columns(parse_mixed_date(date_col).alias("_dt"))
@@ -303,7 +315,7 @@ class RawDataStorage:
             if df.is_empty():
                 return None
             symbol = key.instrument.symbol if key.instrument is not None else None
-            date_col = first_existing_column(df, RAW_RANGE_DATE_COLUMNS)
+            date_col = _date_column_for_key(key, df)
             if date_col:
                 values = normalize_raw_date_series(df.get_column(date_col)).str.slice(0, 8)
                 start = key.start_date.strftime("%Y%m%d")

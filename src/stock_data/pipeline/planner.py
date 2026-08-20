@@ -27,7 +27,7 @@ class BackfillTask:
     symbol: str
     start_date: date
     end_date: date
-    fetch_mode: str  # "per_symbol" | "per_day"
+    fetch_mode: str  # "per_symbol" | "per_day" | "per_period"
     is_single_sync: bool
 
 
@@ -233,8 +233,12 @@ class BackfillPlanner:
             is_per_sym = task_spec.fetch_mode == "per_symbol"
             is_single = task_spec.is_single_sync
 
-            targets = _resolve_target_symbols(
-                data_source, public_name, symbol, is_per_sym, is_single, data_cfg
+            targets = (
+                [""]
+                if task_spec.fetch_mode == "per_period"
+                else _resolve_target_symbols(
+                    data_source, public_name, symbol, is_per_sym, is_single, data_cfg
+                )
             )
             min_supported = cls._resolve_min_supported(data_source, public_name, data_cfg)
 

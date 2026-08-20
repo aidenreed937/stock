@@ -299,6 +299,24 @@ def test_catalog_standardized_methods(tmp_path) -> None:
     assert not basic_df.is_empty()
 
 
+def test_lixinger_latest_trade_date_falls_back_to_canonical_date_column(tmp_path: Path) -> None:
+    partition = tmp_path / "lixinger/market=CN/stock_daily_bar"
+    partition.mkdir(parents=True, exist_ok=True)
+    pl.DataFrame(
+        {
+            "symbol": ["600000.SH"],
+            "trade_date": [date(2026, 8, 18)],
+        }
+    ).write_parquet(partition / "data.parquet")
+
+    catalog = DataCatalog(data_source="lixinger", storage_dir=tmp_path)
+
+    assert catalog.get_latest_trade_date("stock_daily_bar") == date(2026, 8, 18)
+    summary = catalog.summary(data_source="lixinger")
+    row = summary.filter(pl.col("dataset") == "stock_daily_bar")
+    assert row["latest_date"][0] == "2026-08-18"
+
+
 def test_fred_catalog_reads_canonical_and_case_variant_legacy_directories_without_duplicates(
     tmp_path: Path,
 ) -> None:

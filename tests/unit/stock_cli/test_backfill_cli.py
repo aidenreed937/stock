@@ -257,7 +257,7 @@ def test_execute_planned_tasks_parallelizes_per_symbol_tasks_without_reordering(
     tasks = [
         BackfillTask(
             data_source="tushare",
-            endpoint="income",
+            endpoint="index_daily_bar",
             symbol=symbol,
             start_date=date(2026, 8, 10),
             end_date=date(2026, 8, 10),

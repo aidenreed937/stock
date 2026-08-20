@@ -4,9 +4,9 @@ data:
   default_source_mode: "tushare"           # 默认主数据源 (tushare / lixinger / yfinance / fred / alphavantage)
 
   rate_limits:
-    tushare_per_min: 120
+    tushare_per_min: 180
     yfinance_per_min: 40
-    lixinger_per_min: 30
+    lixinger_per_min: 60
     alpha_vantage_per_min: 5
 
   concurrency:
@@ -61,5 +61,5 @@ data:
     default_end_date: "today"
     default_symbol: "all"
     force_refresh: false
-    # TuShare 当前代理对同一 Token/IP 的并发请求有限制；财报 per_symbol 默认串行。
+    # TuShare 当前代理对同一 Token/IP 的并发请求有限制；财报按报告期全市场请求。
     max_workers: 4

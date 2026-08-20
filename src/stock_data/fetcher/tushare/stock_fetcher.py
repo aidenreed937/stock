@@ -10,6 +10,7 @@ from stock_core.utils.logger import logger
 from stock_data.core.constants import EXCHANGE_START_DATES
 from stock_data.fetcher.base import BaseDataFetcher
 from stock_data.fetcher.tushare.client import TuShareClient
+from stock_data.fetcher.tushare.financial_fetcher import fetch_report_periods
 from stock_data.fetcher.tushare.query_builder import (
     build_tushare_query,
     is_index_dailybasic_supported,
@@ -100,6 +101,7 @@ class TuShareStockFetcher(BaseDataFetcher):
         """抓取指定股票或全市场在给定日期范围内的行情/基本面原始数据。"""
         # endpoint_name 是流水线内部任务名，不是 TuShare 上游参数。
         extra_kwargs.pop("endpoint_name", None)
+        max_workers = int(extra_kwargs.pop("max_workers", 1) or 1)
         meta = TUSHARE_API_REGISTRY.get(
             endpoint, EndpointMeta(api_name=endpoint, description=endpoint)
         )
@@ -112,6 +114,11 @@ class TuShareStockFetcher(BaseDataFetcher):
 
         if endpoint == "index_classify" and "src" not in extra_kwargs:
             return self._fetch_all_industry_classifies(meta, symbol)
+
+        if meta.query_mode == "period":
+            return fetch_report_periods(
+                self.client, symbol, start_date, end_date, meta, extra_kwargs, max_workers
+            )
 
         is_real_symbol = bool(symbol and (symbol != endpoint))
         if (

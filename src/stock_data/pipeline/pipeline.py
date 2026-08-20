@@ -154,6 +154,7 @@ class MarketDataPipeline:
         end_date: date,
         use_raw_cache: bool = True,
         force_refresh: bool = False,
+        max_workers: int = 1,
     ) -> pl.DataFrame:
         """执行两层 ETL 流程同步指定标的数据。"""
         logger.info(f"开始 2-Tier ETL 管道同步 [{symbol}] (范围: {start_date} ~ {end_date})...")
@@ -182,6 +183,7 @@ class MarketDataPipeline:
             endpoint_name=self.endpoint,
             use_raw_cache=use_raw_cache,
             force_refresh=force_refresh,
+            max_workers=max_workers,
         )
         if raw_df.is_empty():
             return raw_df

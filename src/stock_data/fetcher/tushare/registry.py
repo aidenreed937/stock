@@ -24,6 +24,10 @@ TUSHARE_TASK_REGISTRY: dict[str, EndpointMeta] = {
     "stk_holdertrade": TUSHARE_API_REGISTRY["stk_holdertrade"],
     "repurchase": TUSHARE_API_REGISTRY["repurchase"],
     "block_trade": TUSHARE_API_REGISTRY["block_trade"],
+    "income": TUSHARE_API_REGISTRY["income"],
+    "fina_indicator": TUSHARE_API_REGISTRY["fina_indicator"],
+    "balancesheet": TUSHARE_API_REGISTRY["balancesheet"],
+    "cashflow": TUSHARE_API_REGISTRY["cashflow"],
 }
 
 # 对已注册但尚未逐项声明的接口，至少从自然键生成结构化基础契约

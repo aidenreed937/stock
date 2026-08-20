@@ -66,18 +66,20 @@ FINANCE_ENDPOINTS: dict[str, EndpointMeta] = {
         request_fields="ts_code,trade_date,price,vol,amount,buyer,seller",
     ),
     "income": EndpointMeta(
-        api_name="income",
+        api_name="income_vip",
         description="上市公司利润表",
         frequency="quarterly",
+        query_mode="period",
         group="financial_statements",
         primary_keys=["ts_code", "end_date"],
         date_columns=["end_date"],
         required_columns=["ts_code", "end_date"],
     ),
     "fina_indicator": EndpointMeta(
-        api_name="fina_indicator",
+        api_name="fina_indicator_vip",
         description="财务指标数据（ROE/毛利率等）",
         frequency="quarterly",
+        query_mode="period",
         group="financial_statements",
         primary_keys=["ts_code", "end_date"],
         date_columns=["end_date"],
@@ -236,21 +238,23 @@ FINANCE_ENDPOINTS: dict[str, EndpointMeta] = {
         required_columns=["ts_code", "ann_date", "end_date"],
     ),
     "balancesheet": EndpointMeta(
-        api_name="balancesheet",
+        api_name="balancesheet_vip",
         description="上市公司资产负债表 (PIT)",
         frequency="quarterly",
+        query_mode="period",
         group="financial_statements",
         primary_keys=["ts_code", "ann_date", "end_date"],
-        date_columns=["ann_date", "end_date"],
+        date_columns=["end_date", "ann_date"],
         required_columns=["ts_code", "ann_date", "end_date"],
     ),
     "cashflow": EndpointMeta(
-        api_name="cashflow",
+        api_name="cashflow_vip",
         description="上市公司现金流量表 (PIT)",
         frequency="quarterly",
+        query_mode="period",
         group="financial_statements",
         primary_keys=["ts_code", "ann_date", "end_date"],
-        date_columns=["ann_date", "end_date"],
+        date_columns=["end_date", "ann_date"],
         required_columns=["ts_code", "ann_date", "end_date"],
     ),
     "report_rc": EndpointMeta(
@@ -273,3 +277,15 @@ FINANCE_ENDPOINTS: dict[str, EndpointMeta] = {
         update_delay_days=1,
     ),
 }
+
+
+# 财务报表公开任务统一路由到 VIP 全市场接口；保留 API 名称别名供内部元数据查找。
+_VIP_FINANCIAL_STATEMENT_APIS = {
+    "income": "income_vip",
+    "fina_indicator": "fina_indicator_vip",
+    "balancesheet": "balancesheet_vip",
+    "cashflow": "cashflow_vip",
+}
+
+for _public_name, _vip_api_name in _VIP_FINANCIAL_STATEMENT_APIS.items():
+    FINANCE_ENDPOINTS[_vip_api_name] = FINANCE_ENDPOINTS[_public_name]

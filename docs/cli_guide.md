@@ -97,7 +97,7 @@ make sync SOURCE=lixinger ENDPOINT=market_bundle,macro_monthly_bundle
 uv run python -m stock_cli.sync --data-source lixinger --endpoint industry_bundle
 ```
 
-可用 LiXinger bundle：`market_bundle`、`industry_bundle`、`company_bundle`、`macro_daily_bundle`、`macro_monthly_bundle`。`index_fundamental` 任务只有一个原子接口，继续直接传入；历史名称 `macro_bundle`、`index_bundle` 仍兼容，但不再推荐使用。bundle 仅是调度输入，不合并数据集、水位或失败状态。
+可用 LiXinger bundle：`market_bundle`、`industry_bundle`、`company_bundle`、`macro_daily_bundle`、`macro_monthly_bundle`。`index_fundamental` 任务只有一个原子接口，继续直接传入；历史名称 `macro_bundle`、`index_bundle` 已移除。bundle 仅是调度输入，不合并数据集、水位或失败状态。
 
 其他数据源的推荐 bundle：
 

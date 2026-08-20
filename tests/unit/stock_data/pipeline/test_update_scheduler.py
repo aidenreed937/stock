@@ -5,7 +5,11 @@ import polars as pl
 
 from stock_data.core.settings import data_settings
 from stock_data.pipeline.scheduler import DataUpdateScheduler
-from stock_data.pipeline.sync_target import next_watermark_date, resolve_sync_target_date
+from stock_data.pipeline.sync_target import (
+    next_report_period_end,
+    next_watermark_date,
+    resolve_sync_target_date,
+)
 
 
 def test_default_monthly_sync_targets_previous_complete_period() -> None:
@@ -20,6 +24,21 @@ def test_default_quarterly_sync_targets_previous_complete_period() -> None:
     ) == date(2026, 4, 1)
 
 
+def test_tushare_financial_sync_targets_report_period_end_without_trading_day() -> None:
+    assert resolve_sync_target_date(
+        "tushare",
+        "income",
+        date(2026, 8, 20),
+        target_date_is_explicit=False,
+    ) == date(2026, 6, 30)
+    assert resolve_sync_target_date(
+        "tushare",
+        "income",
+        date(2026, 6, 30),
+        target_date_is_explicit=True,
+    ) == date(2026, 6, 30)
+
+
 def test_default_weekly_sync_targets_previous_complete_week() -> None:
     assert resolve_sync_target_date(
         "fred", "WALCL", date(2026, 8, 18), target_date_is_explicit=False
@@ -30,6 +49,7 @@ def test_next_watermark_date_respects_period_frequency() -> None:
     assert next_watermark_date(date(2026, 7, 1), "monthly") == date(2026, 8, 1)
     assert next_watermark_date(date(2026, 4, 1), "quarterly") == date(2026, 7, 1)
     assert next_watermark_date(date(2026, 8, 12), "weekly") == date(2026, 8, 19)
+    assert next_report_period_end(date(2026, 3, 31)) == date(2026, 6, 30)
 
 
 def test_tushare_daily_update_timing() -> None:
