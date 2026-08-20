@@ -222,6 +222,65 @@ def test_feature_store_domain_mart_rejects_duplicate_or_non_finite_rows(tmp_path
         )
 
 
+def test_feature_store_reads_new_daily_marts_by_date(tmp_path: Path) -> None:
+    store = FeatureStore(mart_dir=tmp_path / "mart")
+    day_1 = date(2026, 8, 1)
+    day_2 = date(2026, 8, 2)
+
+    store.save_industry_daily(
+        pl.DataFrame(
+            {
+                "trade_date": [day_1, day_2],
+                "industry_code": ["801001.SI", "801001.SI"],
+                "close": [100.0, 101.0],
+            }
+        ),
+        overwrite=True,
+    )
+    store.save_industry_panel_daily(
+        pl.DataFrame(
+            {
+                "as_of_date": [day_1, day_2],
+                "industry_code": ["801001.SI", "801001.SI"],
+                "industry_name": ["行业1", "行业1"],
+            }
+        ),
+        overwrite=True,
+    )
+    store.save_market_temperature_derived_facts(
+        pl.DataFrame(
+            {
+                "fact_id": ["metric.technical.return_20d"],
+                "category": ["metric_value"],
+                "dimension": ["technical"],
+                "data_source": ["mart"],
+                "dataset": ["market_daily"],
+                "as_of_date": [day_1],
+                "metric_date": [day_1],
+                "window": [0],
+                "metric_id": ["return_20d"],
+                "value_float": [1.0],
+                "value_text": ["1"],
+                "unit": ["raw"],
+                "sample_size": [10],
+                "source": ["test"],
+                "status": ["ok"],
+                "note": ["test"],
+            }
+        ),
+        overwrite=True,
+    )
+
+    assert store.industry_daily_path.exists()
+    assert store.industry_panel_daily_path.exists()
+    assert store.market_temperature_derived_facts_path.exists()
+    assert store.get_industry_daily(start_date=day_2)["trade_date"].to_list() == [day_2]
+    assert store.get_industry_panel_daily(start_date=day_2).height == 1
+    assert store.get_market_temperature_derived_facts(day_1)["metric_id"].to_list() == [
+        "return_20d"
+    ]
+
+
 def _feature_row(
     version: str, value: float | None, observation_date: date = date(2026, 8, 1)
 ) -> dict[str, object]:

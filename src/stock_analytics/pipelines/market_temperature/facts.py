@@ -9,32 +9,20 @@ from typing import TYPE_CHECKING, Any
 import polars as pl
 
 from stock_analytics.features.store import FeatureStore
-from stock_analytics.metrics.context import MetricContext
-from stock_analytics.metrics.engine import MetricEngine
 from stock_analytics.pipelines.market_temperature.fact_watermarks import (
     _latest_dataset_date,
     collect_dataset_rows as _dataset_rows,
 )
-from stock_analytics.pipelines.market_temperature.derived import collect_derived_metric_rows
 from stock_analytics.pipelines.market_temperature.cache import DatasetFrameCache
 from stock_analytics.pipelines.market_temperature.facts_mart import (
     date_values,
     parse_date_value as _parse_date_value,  # noqa: F401
-    try_get_market_daily_fact,
 )
-from stock_analytics.pipelines.market_temperature import metric_windows as _metric_windows
 from stock_analytics.pipelines.market_temperature.optional_facts import collect_optional_fact_rows
-from stock_analytics.pipelines.market_temperature.short_term import collect_short_term_rows
 from stock_core.contracts import MarketDataCatalog
 
 if TYPE_CHECKING:
-    from collections.abc import Iterable
-
-    from stock_reporting.interpretation.market_temperature.config import (
-        DimensionConfig,
-        MarketTemperatureConfig,
-        MetricInputConfig,
-    )
+    from stock_reporting.interpretation.market_temperature.config import MarketTemperatureConfig
 
 FACT_SCHEMA: dict[str, Any] = {
     "fact_id": pl.Utf8,
@@ -75,6 +63,7 @@ def resolve_trade_window(
     *,
     storage_dir: Path | str | None = None,
     catalog: MarketDataCatalog | None = None,
+    dataset_cache: DatasetFrameCache | None = None,
 ) -> tuple[date, tuple[date, ...]]:
     """解析最近 N 个已落盘交易日窗口。"""
     max_window = max((config.main_window, *config.short_windows), default=config.main_window)
@@ -85,6 +74,10 @@ def resolve_trade_window(
         from stock_data.catalog import DataCatalog
 
         active_catalog = DataCatalog(data_source="tushare", storage_dir=storage_dir)
+    if dataset_cache is not None:
+        from stock_analytics.pipelines.market_temperature.cache import CachedCatalog
+
+        active_catalog = CachedCatalog(active_catalog, dataset_cache)
     if target_date is None and hasattr(active_catalog, "latest_trade_dates"):
         dates = active_catalog.latest_trade_dates(dataset="stock_daily_bar", n=max_window)
     else:
@@ -129,7 +122,7 @@ def collect_facts(
     collect_metric_values: bool | None = None,
     market_daily: pl.DataFrame | None = None,
     dataset_cache: DatasetFrameCache | None = None,
-    metric_contexts: dict[int, MetricContext] | None = None,
+    metric_contexts: dict[int, Any] | None = None,
     external_cutoff_date: date | None = None,
 ) -> pl.DataFrame:
     """采集窗口、数据水位和可选指标事实。"""
@@ -148,43 +141,91 @@ def collect_facts(
         config.metric_values.enabled if collect_metric_values is None else collect_metric_values
     )
     if should_collect_metrics:
-        resolved_external_cutoff_date = (
-            resolve_external_cutoff_date(as_of_date, trade_dates)
-            if external_cutoff_date is None
-            else external_cutoff_date
-        )
-        rows.extend(
-            _metric_rows(
-                config.dimensions,
-                as_of_date,
-                trade_dates[-1],
-                storage_dir=storage_dir,
-                market_daily=market_daily,
-                dataset_cache=dataset_cache,
-                metric_contexts=metric_contexts,
-            )
-        )
-        rows.extend(
-            collect_derived_metric_rows(
-                as_of_date=as_of_date,
-                trade_dates=trade_dates,
-                storage_dir=storage_dir,
-                dataset_cache=dataset_cache,
-                external_cutoff_date=resolved_external_cutoff_date,
-            )
-        )
-        rows.extend(
-            collect_short_term_rows(
-                config.short_windows,
-                as_of_date,
-                storage_dir,
-                market_daily=market_daily,
-            )
-        )
+        del market_daily, dataset_cache, metric_contexts, external_cutoff_date
+        rows.extend(_load_materialized_metric_rows(config, as_of_date, storage_dir))
         rows.extend(collect_optional_fact_rows(config, as_of_date, storage_dir))
     return (
         pl.DataFrame(_normalize_metric_dates(rows), schema=FACT_SCHEMA) if rows else empty_facts()
     )
+
+
+def _load_materialized_metric_rows(
+    config: MarketTemperatureConfig,
+    as_of_date: date,
+    storage_dir: Path | str | None,
+) -> list[dict[str, Any]]:
+    """读取指定基准日的派生事实快照，不执行任何运行时重算。"""
+    store = FeatureStore(mart_dir=Path(storage_dir) / "mart" if storage_dir else None)
+    frame = store.get_market_temperature_derived_facts(as_of_date)
+    rows = frame.to_dicts() if not frame.is_empty() else []
+    existing = {
+        (str(row.get("dimension")), str(row.get("metric_id")))
+        for row in rows
+        if row.get("category") == "metric_value"
+    }
+    if not rows:
+        mart_note = "市场温度派生事实 Mart 缺失或不含该基准日"
+    else:
+        mart_note = "市场温度派生事实 Mart 未物化该指标"
+
+    for dimension in config.dimensions:
+        for metric in dimension.metrics:
+            if not metric.enabled or metric.source not in {"metric_engine", "derived"}:
+                continue
+            key = (dimension.id, metric.metric_id)
+            if key in existing:
+                continue
+            rows.append(
+                _materialized_unavailable_row(
+                    dimension.id,
+                    metric.metric_id,
+                    as_of_date,
+                    mart_note,
+                )
+            )
+            existing.add(key)
+
+    for window in config.short_windows:
+        metric_id = f"short_term_temperature_{window}d"
+        if ("short_term", metric_id) not in existing:
+            rows.append(
+                _materialized_unavailable_row(
+                    "short_term",
+                    metric_id,
+                    as_of_date,
+                    mart_note,
+                    window=window,
+                )
+            )
+    return rows
+
+
+def _materialized_unavailable_row(
+    dimension: str,
+    metric_id: str,
+    as_of_date: date,
+    note: str,
+    *,
+    window: int = 0,
+) -> dict[str, Any]:
+    return {
+        "fact_id": f"metric.{dimension}.{metric_id}",
+        "category": "metric_value",
+        "dimension": dimension,
+        "data_source": "mart",
+        "dataset": "market_temperature_derived_facts",
+        "as_of_date": as_of_date,
+        "metric_date": None,
+        "window": window,
+        "metric_id": metric_id,
+        "value_float": None,
+        "value_text": "",
+        "unit": "temperature",
+        "sample_size": 0,
+        "source": "FeatureStore.market_temperature_derived_facts",
+        "status": "unavailable",
+        "note": note,
+    }
 
 
 def _normalize_metric_dates(rows: list[dict[str, Any]]) -> list[dict[str, Any]]:
@@ -253,170 +294,6 @@ def _window_rows(
             )
         )
     return rows
-
-
-def _metric_rows(
-    dimensions: Iterable[DimensionConfig],
-    as_of_date: date,
-    expected_trade_date: date,
-    *,
-    storage_dir: Path | str | None,
-    market_daily: pl.DataFrame | None,
-    dataset_cache: DatasetFrameCache | None,
-    metric_contexts: dict[int, MetricContext] | None,
-) -> list[dict[str, Any]]:
-    rows: list[dict[str, Any]] = []
-    store = FeatureStore(mart_dir=Path(storage_dir) / "mart" if storage_dir else None)
-    if market_daily is None:
-        market_daily = store.get_market_daily(end_date=as_of_date)
-    else:
-        market_daily = market_daily.filter(pl.col("trade_date") <= as_of_date)
-
-    from stock_data.catalog import DataCatalog
-
-    catalog = DataCatalog(data_source="tushare", storage_dir=storage_dir)
-    engine = MetricEngine()
-    contexts = metric_contexts if metric_contexts is not None else {}
-    for dimension in dimensions:
-        for metric in dimension.metrics:
-            if not metric.enabled or metric.source != "metric_engine":
-                continue
-            fact = try_get_market_daily_fact(
-                market_daily, dimension.id, metric, as_of_date, expected_trade_date
-            )
-            if fact is not None:
-                rows.append(fact)
-            else:
-                context = _metric_windows.context_for_metric(
-                    contexts,
-                    engine,
-                    catalog,
-                    as_of_date,
-                    metric.metric_id,
-                    dataset_cache=dataset_cache,
-                )
-                rows.append(_compute_metric_fact(engine, context, dimension.id, metric, as_of_date))
-    return rows
-
-
-def _compute_metric_fact(
-    engine: MetricEngine,
-    context: MetricContext,
-    dimension: str,
-    metric: MetricInputConfig,
-    as_of_date: date,
-) -> dict[str, Any]:
-    try:
-        result = engine.compute([metric.metric_id], context=context)[0]
-        frame = result.frame
-        if frame.is_empty() or metric.metric_id not in frame.columns:
-            return _metric_fact(
-                metric,
-                dimension,
-                as_of_date,
-                "insufficient",
-                {"note": "指标无可用输出"},
-            )
-        latest_date = _latest_metric_date(frame, as_of_date)
-        if latest_date is None:
-            return _metric_fact(
-                metric,
-                dimension,
-                as_of_date,
-                "insufficient",
-                {"note": "指标无最新日期"},
-            )
-        latest_frame = frame.filter(pl.col("trade_date") == latest_date)
-        if latest_frame.is_empty():
-            return _metric_fact(
-                metric,
-                dimension,
-                as_of_date,
-                "insufficient",
-                {"note": "指标无最新日期"},
-            )
-        value = _aggregate_metric(latest_frame, metric.metric_id, metric.aggregation)
-        if value is None:
-            return _metric_fact(
-                metric,
-                dimension,
-                as_of_date,
-                "insufficient",
-                {"note": "指标值为空"},
-            )
-        return _metric_fact(
-            metric,
-            dimension,
-            as_of_date,
-            "ok",
-            {
-                "value_float": value,
-                "sample_size": latest_frame.height,
-                "note": f"metric_date={latest_date.isoformat()}; aggregation={metric.aggregation}",
-            },
-        )
-    except Exception as exc:
-        return _metric_fact(
-            metric,
-            dimension,
-            as_of_date,
-            "error",
-            {"note": f"{type(exc).__name__}: {exc}"},
-        )
-
-
-def _latest_metric_date(frame: pl.DataFrame, as_of_date: date) -> date | None:
-    if "trade_date" not in frame.columns:
-        return None
-    metric_columns = [column for column in frame.columns if column != "trade_date"]
-    if metric_columns:
-        frame = frame.filter(
-            pl.any_horizontal([pl.col(column).is_not_null() for column in metric_columns])
-        )
-    latest_dates = frame.filter(pl.col("trade_date") <= as_of_date)["trade_date"]
-    dates = date_values(latest_dates.drop_nulls().unique().to_list())
-    return max(dates) if dates else None
-
-
-def _aggregate_metric(frame: pl.DataFrame, metric_id: str, aggregation: str) -> float | None:
-    values = frame.select(pl.col(metric_id).cast(pl.Float64, strict=False)).drop_nulls()
-    if values.is_empty():
-        return None
-    if aggregation == "mean":
-        value = values.select(pl.col(metric_id).mean()).item()
-    elif aggregation == "median":
-        value = values.select(pl.col(metric_id).median()).item()
-    else:
-        value = values[metric_id][-1]
-    return float(value) if value is not None else None
-
-
-def _metric_fact(
-    metric: MetricInputConfig,
-    dimension: str,
-    as_of_date: date,
-    status: str,
-    values: dict[str, Any] | None = None,
-) -> dict[str, Any]:
-    extra = values or {}
-    return _fact_row(
-        {
-            "fact_id": f"metric.{dimension}.{metric.metric_id}",
-            "category": "metric_value",
-            "dimension": dimension,
-            "data_source": "metric_engine",
-            "dataset": "",
-            "as_of_date": as_of_date,
-            "window": 0,
-            "metric_id": metric.metric_id,
-            "source": "MetricEngine.compute",
-            "status": status,
-            "note": str(extra.get("note", "")),
-        },
-        value_float=extra.get("value_float"),
-        unit="raw",
-        sample_size=extra.get("sample_size"),
-    )
 
 
 def _fact_row(

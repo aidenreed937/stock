@@ -5,8 +5,6 @@ from pathlib import Path
 
 import polars as pl
 
-import stock_analytics.pipelines.market_temperature.facts as facts_module
-from stock_analytics.features.builders.market_daily import MarketDailyBuilder
 from stock_analytics.features.store import FeatureStore
 from stock_analytics.pipelines.market_temperature.facts import (
     FACT_SCHEMA,
@@ -16,7 +14,6 @@ from stock_analytics.pipelines.market_temperature.facts import (
     collect_facts,
     resolve_external_cutoff_date,
 )
-from stock_data.catalog import DataCatalog
 from stock_reporting.interpretation.market_temperature.config import (
     DatasetConfig,
     MarketTemperatureConfig,
@@ -144,50 +141,37 @@ def test_metric_facts_have_uniform_metric_date_column() -> None:
 
 
 def test_collect_facts_emits_one_short_term_fact_per_window(
-    tmp_path: Path, monkeypatch: object
+    tmp_path: Path,
 ) -> None:
     storage_dir = tmp_path / "curated"
     trade_dates = tuple(date(2026, 8, day) for day in range(1, 11))
-    partition = storage_dir / "tushare/market=CN/stock_daily_bar/year=2026/month=08"
-    partition.mkdir(parents=True)
-    rows = []
-    for index, trade_date in enumerate(trade_dates):
-        rows.extend(
+    store = FeatureStore(mart_dir=storage_dir / "mart")
+    store.save_market_temperature_derived_facts(
+        pl.DataFrame(
             [
                 {
-                    "symbol": "000001.SZ",
-                    "trade_date": trade_date,
-                    "close": 10.0 + index * 0.1,
-                    "amount": 100_000.0,
-                    "schema_version": "v2",
-                    "market": "CN",
-                },
-                {
-                    "symbol": "000002.SZ",
-                    "trade_date": trade_date,
-                    "close": 20.0 - index * 0.05,
-                    "amount": 200_000.0,
-                    "schema_version": "v2",
-                    "market": "CN",
-                },
-            ]
-        )
-    pl.DataFrame(rows).write_parquet(partition / "data.parquet")
-
-    catalog = DataCatalog(data_source="tushare", storage_dir=storage_dir)
-    store = FeatureStore(mart_dir=storage_dir / "mart")
-    MarketDailyBuilder(catalog=catalog, store=store).build(
-        start_date=trade_dates[0], end_date=trade_dates[-1], save=True
-    )
-
-    captured: dict[str, object] = {}
-
-    def fake_collect_derived_metric_rows(**kwargs: object) -> list[dict[str, object]]:
-        captured.update(kwargs)
-        return []
-
-    monkeypatch.setattr(
-        facts_module, "collect_derived_metric_rows", fake_collect_derived_metric_rows
+                    "fact_id": f"short_term_temperature_{window}d",
+                    "category": "metric_value",
+                    "dimension": "short_term",
+                    "data_source": "mart",
+                    "dataset": "market_daily",
+                    "as_of_date": trade_dates[-1],
+                    "metric_date": trade_dates[-1],
+                    "window": window,
+                    "metric_id": f"short_term_temperature_{window}d",
+                    "value_float": 50.0 + window,
+                    "value_text": "",
+                    "unit": "temperature",
+                    "sample_size": window,
+                    "source": "FeatureStore.market_daily",
+                    "status": "ok",
+                    "note": "预先物化短线事实",
+                }
+                for window in (5, 10)
+            ],
+            schema=FACT_SCHEMA,
+        ),
+        overwrite=True,
     )
     config = MarketTemperatureConfig.from_mapping(
         {
@@ -214,4 +198,3 @@ def test_collect_facts_emits_one_short_term_fact_per_window(
     assert short_term.height == 2
     assert short_term["metric_id"].n_unique() == 2
     assert short_term["fact_id"].n_unique() == 2
-    assert captured["external_cutoff_date"] == trade_dates[-2]

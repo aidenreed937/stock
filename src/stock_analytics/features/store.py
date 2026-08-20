@@ -50,11 +50,6 @@ class FeatureStore(DomainMartStoreMixin):
         """全市场日频宽表 Parquet 物理路径。"""
         return self.mart_dir / "market_daily.parquet"
 
-    @property
-    def industry_daily_path(self) -> Path:
-        """申万行业日频宽表 Parquet 物理路径。"""
-        return self.mart_dir / "industry_daily.parquet"
-
     def get_market_daily(
         self,
         *,

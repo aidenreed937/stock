@@ -17,6 +17,12 @@ DOMAIN_MART_RULES: dict[str, tuple[str, tuple[str, ...]]] = {
         "trade_date",
         ("trade_date", "underlying_symbol"),
     ),
+    "industry_daily": ("trade_date", ("trade_date", "industry_code")),
+    "industry_panel_daily": ("as_of_date", ("as_of_date", "industry_code")),
+    "market_temperature_derived_facts": (
+        "as_of_date",
+        ("as_of_date", "fact_id"),
+    ),
 }
 
 DOMAIN_INPUT_REQUIRED_COLUMNS: dict[str, tuple[str, ...]] = {

@@ -51,6 +51,7 @@ def resolve_trade_window(
     *,
     storage_dir: Path | str | None = None,
     catalog: MarketDataCatalog | None = None,
+    dataset_cache: DatasetFrameCache | None = None,
 ) -> tuple[date, tuple[date, ...]]:
     """解析最近 N 个已落盘申万行业交易日窗口。"""
     max_window = max(config.windows, default=config.main_window)
@@ -61,6 +62,10 @@ def resolve_trade_window(
         from stock_data.catalog import DataCatalog
 
         active_catalog = DataCatalog(data_source="tushare", storage_dir=storage_dir)
+    if dataset_cache is not None:
+        from stock_analytics.pipelines.market_temperature.cache import CachedCatalog
+
+        active_catalog = CachedCatalog(active_catalog, dataset_cache)
     if target_date is None and hasattr(active_catalog, "latest_trade_dates"):
         dates = active_catalog.latest_trade_dates(dataset="sw_daily", n=max_window)
     else:

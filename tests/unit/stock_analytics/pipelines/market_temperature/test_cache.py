@@ -12,6 +12,7 @@ class _Catalog:
 
     def __init__(self) -> None:
         self.calls: list[tuple[date | None, date | None, tuple[str, ...] | None]] = []
+        self.watermark_calls: list[tuple[str, int, str | None]] = []
         self.frame = pl.DataFrame(
             {
                 "trade_date": [date(2026, 8, 1), date(2026, 8, 2), date(2026, 8, 3)],
@@ -38,6 +39,17 @@ class _Catalog:
         if columns is not None:
             frame = frame.select([column for column in columns if column in frame.columns])
         return frame
+
+    def latest_trade_dates(
+        self,
+        dataset: str = "stock_daily_bar",
+        *,
+        n: int = 1,
+        date_column: str | None = None,
+        **_: object,
+    ) -> list[date]:
+        self.watermark_calls.append((dataset, n, date_column))
+        return [date(2026, 8, 3), date(2026, 8, 2), date(2026, 8, 1)][:n]
 
 
 def test_cache_reuses_batch_superset_and_slices_dates() -> None:
@@ -92,3 +104,25 @@ def test_cache_date_slice_never_exposes_batch_future() -> None:
     )
 
     assert result["trade_date"].to_list() == [date(2026, 8, 1), date(2026, 8, 2)]
+
+
+def test_cache_reuses_batch_watermark_scan() -> None:
+    catalog = _Catalog()
+    cache = DatasetFrameCache(end_date=date(2026, 8, 3))
+
+    assert cache.latest_trade_dates(catalog, "demo", n=3) == (
+        date(2026, 8, 3),
+        date(2026, 8, 2),
+        date(2026, 8, 1),
+    )
+    assert cache.latest_trade_dates(catalog, "demo", n=1) == (date(2026, 8, 3),)
+    assert catalog.watermark_calls == [("demo", 3, None)]
+
+
+def test_cache_remembers_missing_watermark() -> None:
+    catalog = _Catalog()
+    cache = DatasetFrameCache()
+
+    catalog.latest_trade_dates = lambda **_: []  # type: ignore[method-assign]
+    assert cache.latest_trade_dates(catalog, "missing") == ()
+    assert cache.latest_trade_dates(catalog, "missing") == ()

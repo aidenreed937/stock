@@ -4,7 +4,7 @@ from __future__ import annotations
 
 import tempfile
 from pathlib import Path
-from typing import TYPE_CHECKING
+from typing import TYPE_CHECKING, cast
 
 import polars as pl
 
@@ -16,8 +16,105 @@ if TYPE_CHECKING:
     from datetime import date
 
 
-class DomainMartStoreMixin:
-    """为 FeatureStore 提供领域 Mart 的读写能力。"""
+class AnalyticsMartStoreMixin:
+    """提供分析领域 Mart 的专用读写入口。"""
+
+    mart_dir: Path
+
+    @property
+    def industry_daily_path(self) -> Path:
+        """申万行业日频宽表 Parquet 物理路径。"""
+        return _domain_store(self).domain_mart_path("industry_daily")
+
+    @property
+    def industry_panel_daily_path(self) -> Path:
+        """申万行业结构面板日频 Mart 物理路径。"""
+        return _domain_store(self).domain_mart_path("industry_panel_daily")
+
+    @property
+    def market_temperature_derived_facts_path(self) -> Path:
+        """市场温度计派生事实 Mart 物理路径。"""
+        return _domain_store(self).domain_mart_path("market_temperature_derived_facts")
+
+    def get_industry_daily(
+        self,
+        *,
+        start_date: date | None = None,
+        end_date: date | None = None,
+        columns: Sequence[str] | None = None,
+    ) -> pl.DataFrame:
+        """读取行业日频事实 Mart。"""
+        return _domain_store(self).get_domain_mart(
+            "industry_daily",
+            date_column="trade_date",
+            start_date=start_date,
+            end_date=end_date,
+            columns=columns,
+        )
+
+    def save_industry_daily(self, df: pl.DataFrame, *, overwrite: bool = False) -> None:
+        """保存行业日频事实 Mart。"""
+        _domain_store(self).save_domain_mart(
+            "industry_daily",
+            df,
+            keys=["trade_date", "industry_code"],
+            date_column="trade_date",
+            overwrite=overwrite,
+        )
+
+    def get_industry_panel_daily(
+        self,
+        *,
+        start_date: date | None = None,
+        end_date: date | None = None,
+        columns: Sequence[str] | None = None,
+    ) -> pl.DataFrame:
+        """读取行业结构面板日频 Mart。"""
+        return _domain_store(self).get_domain_mart(
+            "industry_panel_daily",
+            date_column="as_of_date",
+            start_date=start_date,
+            end_date=end_date,
+            columns=columns,
+        )
+
+    def save_industry_panel_daily(self, df: pl.DataFrame, *, overwrite: bool = False) -> None:
+        """保存行业结构面板日频 Mart。"""
+        _domain_store(self).save_domain_mart(
+            "industry_panel_daily",
+            df,
+            keys=["as_of_date", "industry_code"],
+            date_column="as_of_date",
+            overwrite=overwrite,
+        )
+
+    def get_market_temperature_derived_facts(self, as_of_date: date) -> pl.DataFrame:
+        """读取指定基准日的市场温度派生事实快照。"""
+        return _domain_store(self).get_domain_mart(
+            "market_temperature_derived_facts",
+            date_column="as_of_date",
+            start_date=as_of_date,
+            end_date=as_of_date,
+        )
+
+    def save_market_temperature_derived_facts(
+        self,
+        df: pl.DataFrame,
+        *,
+        overwrite: bool = False,
+    ) -> None:
+        """保存市场温度计派生事实快照。"""
+        _domain_store(self).save_domain_mart(
+            "market_temperature_derived_facts",
+            df,
+            keys=["as_of_date", "fact_id"],
+            date_column="as_of_date",
+            overwrite=overwrite,
+        )
+
+
+class DomainMartStoreMixin(AnalyticsMartStoreMixin):
+    """为 FeatureStore 提供通用领域 Mart 的读写能力。"""
 
     mart_dir: Path
 
@@ -103,6 +200,11 @@ class DomainMartStoreMixin:
         finally:
             if tmp_path.exists():
                 tmp_path.unlink(missing_ok=True)
+
+
+def _domain_store(value: object) -> DomainMartStoreMixin:
+    """将分析 Mart 入口绑定到同一对象上的通用领域存储实现。"""
+    return cast("DomainMartStoreMixin", value)
 
 
 def _validate_domain_mart_frame(

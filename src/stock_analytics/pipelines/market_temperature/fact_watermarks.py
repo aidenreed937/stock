@@ -103,7 +103,17 @@ def _latest_dataset_date(
 ) -> date | None:
     date_column = item.date_column or "trade_date"
     if hasattr(catalog, "latest_trade_dates"):
-        latest_dates = catalog.latest_trade_dates(item.dataset, n=1)
+        if date_column == "trade_date":
+            latest_dates = catalog.latest_trade_dates(item.dataset, n=1)
+        else:
+            try:
+                latest_dates = catalog.latest_trade_dates(
+                    item.dataset,
+                    n=1,
+                    date_column=date_column,
+                )
+            except TypeError:
+                latest_dates = ()
         if latest_dates and latest_dates[0] <= as_of_date:
             return latest_dates[0]
     lookback_days = max(item.max_lag_days * 2, 14)

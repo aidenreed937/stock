@@ -24,7 +24,14 @@ def _build_parser() -> argparse.ArgumentParser:
     build_parser = subparsers.add_parser("build", help="构建并物化市场/行业日频特征宽表")
     build_parser.add_argument(
         "--target",
-        choices=["market_daily", "domain_marts", "all"],
+        choices=[
+            "market_daily",
+            "industry_daily",
+            "industry_panel_daily",
+            "derived_facts",
+            "domain_marts",
+            "all",
+        ],
         default="market_daily",
         help="待构建的目标宽表或领域 Mart",
     )
@@ -106,6 +113,31 @@ def main() -> None:
                 output_count += count
                 logger.info(f"领域 Mart [{name}] 构建完成: {count} 行")
             logger.info(f"领域 Mart 全部构建完成: {output_count} 行")
+        elif args.target in ("industry_daily", "industry_panel_daily", "derived_facts"):
+            domain_builder = DomainMartBuilder(catalog=catalog, store=store)
+            if args.target == "industry_daily":
+                result = domain_builder.build_industry_daily(
+                    start_date=start_date,
+                    end_date=end_date,
+                    overwrite=args.overwrite,
+                )
+                logger.info(f"领域 Mart [industry_daily] 构建完成: {result.height} 行")
+            elif args.target == "industry_panel_daily":
+                result = domain_builder.build_industry_panel_daily(
+                    start_date=start_date,
+                    end_date=end_date,
+                    overwrite=args.overwrite,
+                )
+                logger.info(f"领域 Mart [industry_panel_daily] 构建完成: {result.height} 行")
+            else:
+                result = domain_builder.build_market_temperature_derived_facts(
+                    start_date=start_date,
+                    end_date=end_date,
+                    overwrite=args.overwrite,
+                )
+                logger.info(
+                    f"领域 Mart [market_temperature_derived_facts] 构建完成: {result.height} 行"
+                )
 
 
 def _parse_date(value: str | None) -> date | None:

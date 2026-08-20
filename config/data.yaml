@@ -5,14 +5,14 @@ data:
 
   rate_limits:
     tushare_per_min: 180
-    yfinance_per_min: 40
+    yfinance_per_min: 20
     lixinger_per_min: 60
     alpha_vantage_per_min: 5
 
   concurrency:
     tushare_max_workers: 4
     lixinger_max_workers: 2
-    yfinance_max_workers: 4
+    yfinance_max_workers: 2
     alphavantage_max_workers: 1
     default_max_workers: 4
 

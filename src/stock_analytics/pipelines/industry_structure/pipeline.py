@@ -14,7 +14,7 @@ from stock_analytics.pipelines.industry_structure.artifacts import (
     write_artifacts,
 )
 from stock_analytics.pipelines.industry_structure.facts import collect_facts, resolve_trade_window
-from stock_analytics.pipelines.industry_structure.panel import build_industry_panel
+from stock_analytics.pipelines.industry_structure.panel import load_industry_panel_daily
 from stock_analytics.pipelines.industry_structure.scoring import score_industry_panel
 from stock_analytics.pipelines.market_temperature.cache import DatasetFrameCache
 from stock_reporting.interpretation.industry_structure.config import (
@@ -63,6 +63,7 @@ def run_industry_structure(
             config,
             target_date,
             storage_dir=storage_dir,
+            dataset_cache=dataset_cache,
         )
     else:
         resolved_trade_dates = tuple(
@@ -73,13 +74,7 @@ def run_industry_structure(
         as_of_date = target_date or resolved_trade_dates[-1]
     paths = build_run_paths(as_of_date, config.artifact_root)
     manifest = _build_manifest(config, as_of_date, resolved_trade_dates, paths)
-    base_panel = build_industry_panel(
-        config,
-        as_of_date=as_of_date,
-        trade_dates=resolved_trade_dates,
-        storage_dir=storage_dir,
-        dataset_cache=dataset_cache,
-    )
+    base_panel = load_industry_panel_daily(as_of_date=as_of_date, storage_dir=storage_dir)
     industry_panel, scores = score_industry_panel(config, base_panel)
     facts = collect_facts(
         config,

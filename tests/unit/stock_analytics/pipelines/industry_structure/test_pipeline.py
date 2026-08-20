@@ -5,12 +5,14 @@ from pathlib import Path
 
 import polars as pl
 
+from stock_analytics.features.store import FeatureStore
 from stock_analytics.pipelines.industry_structure.pipeline import run_industry_structure
 
 
 def test_run_industry_structure_writes_minimal_artifacts(tmp_path: Path) -> None:
     storage_dir = tmp_path / "curated"
     _write_sw_daily(storage_dir)
+    _write_industry_panel_mart(storage_dir, date(2026, 8, 14))
     config_path = tmp_path / "industry_structure.yaml"
     output_root = tmp_path / "analytics" / "industry_structure"
     config_path.write_text(
@@ -84,3 +86,25 @@ def _write_sw_daily(storage_dir: Path) -> None:
                 }
             )
     pl.DataFrame(rows).write_parquet(partition / "data.parquet")
+
+
+def _write_industry_panel_mart(storage_dir: Path, as_of_date: date) -> None:
+    store = FeatureStore(mart_dir=storage_dir / "mart")
+    store.save_industry_panel_daily(
+        pl.DataFrame(
+            {
+                "as_of_date": [as_of_date] * 12,
+                "industry_code": [f"801{index:03d}.SI" for index in range(1, 13)],
+                "industry_name": [f"行业{index}" for index in range(1, 13)],
+                "market_data_date": [as_of_date] * 12,
+                "return_20d": [float(index) for index in range(1, 13)],
+                "return_60d": [float(index) for index in range(1, 13)],
+                "relative_return_20d": [float(index) for index in range(1, 13)],
+                "ma_bias_20d": [float(index) for index in range(1, 13)],
+                "amount_yi": [10.0] * 12,
+                "tcr": [8.0] * 12,
+                "tcr_percentile": [50.0] * 12,
+            }
+        ),
+        overwrite=True,
+    )

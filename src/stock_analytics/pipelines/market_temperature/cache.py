@@ -38,6 +38,9 @@ class DatasetFrameCache:
     _entries: dict[tuple[str, str, tuple[str, ...] | None], _DatasetEntry] = field(
         default_factory=dict
     )
+    _watermarks: dict[tuple[str, str, str | None, str | None], tuple[date, ...]] = field(
+        default_factory=dict
+    )
 
     @property
     def dataset_count(self) -> int:
@@ -79,6 +82,37 @@ class DatasetFrameCache:
             self._entries[entry_key] = entry
 
         return self._select(entry, start_date=start_date, end_date=end_date, columns=columns)
+
+    def latest_trade_dates(
+        self,
+        catalog: MarketDataCatalog,
+        dataset: str,
+        *,
+        market: str | None = None,
+        n: int = 1,
+        date_column: str | None = None,
+    ) -> Sequence[date]:
+        """缓存批次内的水位扫描结果。
+
+        水位查询只返回日期序列，本身没有必要在同一批次反复扫描 Parquet
+        分区。请求更大的 ``n`` 时只扩展该缓存项，后续历史日期查询复用已有结果。
+        """
+        if n <= 0:
+            return ()
+        source = str(getattr(catalog, "data_source", ""))
+        key = (source, dataset, market, date_column)
+        cached = self._watermarks.get(key)
+        if cached is None or (cached and len(cached) < n):
+            latest = _catalog_latest_trade_dates(
+                catalog,
+                dataset,
+                market=market,
+                n=n,
+                date_column=date_column,
+            )
+            cached = tuple(latest)
+            self._watermarks[key] = cached
+        return cached[:n]
 
     def _find_covering_entry(
         self,
@@ -184,7 +218,7 @@ class DatasetFrameCache:
 
 @dataclass(slots=True)
 class CachedCatalog:
-    """给已有 DataCatalog 增加批次级 load_dataset 缓存。"""
+    """给已有 DataCatalog 增加批次级数据帧与水位缓存。"""
 
     catalog: MarketDataCatalog
     cache: DatasetFrameCache
@@ -259,9 +293,10 @@ class CachedCatalog:
         n: int = 1,
         date_column: str | None = None,
     ) -> Sequence[date]:
-        """转发交易日水位查询。"""
-        return self.catalog.latest_trade_dates(
-            dataset=dataset,
+        """读取批次缓存中的交易日水位。"""
+        return self.cache.latest_trade_dates(
+            self.catalog,
+            dataset,
             market=market,
             n=n,
             date_column=date_column,
@@ -301,6 +336,29 @@ def _max_date(left: date | None, right: date | None) -> date | None:
     if right is None:
         return left
     return max(left, right)
+
+
+def _catalog_latest_trade_dates(
+    catalog: MarketDataCatalog,
+    dataset: str,
+    *,
+    market: str | None,
+    n: int,
+    date_column: str | None,
+) -> Sequence[date]:
+    """兼容旧测试目录与完整 DataCatalog 的水位接口。"""
+    try:
+        return catalog.latest_trade_dates(
+            dataset=dataset,
+            market=market,
+            n=n,
+            date_column=date_column,
+        )
+    except TypeError:
+        try:
+            return catalog.latest_trade_dates(dataset=dataset, market=market, n=n)
+        except TypeError:
+            return catalog.latest_trade_dates(dataset=dataset, n=n)
 
 
 __all__ = ["CachedCatalog", "DatasetFrameCache"]

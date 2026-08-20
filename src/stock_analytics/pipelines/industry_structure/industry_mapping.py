@@ -88,6 +88,47 @@ def load_stock_industry_map(
     )
 
 
+def prepare_stock_industry_members(
+    catalog: MarketDataCatalog,
+    index_to_l1: dict[str, str],
+) -> pl.DataFrame:
+    """一次归一成分变更记录，供批次内多个基准日复用。"""
+    raw = _load_dataset(
+        catalog,
+        "index_member",
+        columns=["index_code", "con_code", "in_date", "out_date"],
+    )
+    if raw.is_empty() or not {"index_code", "con_code"}.issubset(raw.columns):
+        return pl.DataFrame(schema={"stock_key": pl.Utf8, "in_date": pl.Date, "out_date": pl.Date})
+    return raw.select(
+        pl.col("con_code").cast(pl.String).str.slice(0, 6).alias("stock_key"),
+        pl.col("index_code")
+        .cast(pl.String)
+        .map_elements(lambda value: map_l1_code(value, index_to_l1), return_dtype=pl.Utf8)
+        .alias("industry_code"),
+        _date_column_expr(raw, "in_date", "in_date"),
+        _date_column_expr(raw, "out_date", "out_date"),
+    ).drop_nulls(subset=["stock_key", "industry_code"])
+
+
+def stock_industry_map_from_prepared_members(
+    members: pl.DataFrame,
+    as_of_date: date,
+) -> pl.DataFrame:
+    """从已归一成分变更记录切出指定基准日映射。"""
+    if members.is_empty():
+        return pl.DataFrame(schema={"stock_key": pl.Utf8, "industry_code": pl.Utf8})
+    return (
+        members.filter(
+            ((pl.col("in_date").is_null()) | (pl.col("in_date") <= as_of_date))
+            & ((pl.col("out_date").is_null()) | (pl.col("out_date") > as_of_date))
+        )
+        .sort(["stock_key", "industry_code"])
+        .unique(subset=["stock_key"], keep="first", maintain_order=True)
+        .select("stock_key", "industry_code")
+    )
+
+
 def _is_current_industry_date(catalog: MarketDataCatalog, as_of_date: date) -> bool:
     """仅在申万行情最新日允许使用无日期的静态成分补充。"""
     try:

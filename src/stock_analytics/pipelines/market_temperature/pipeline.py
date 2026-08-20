@@ -71,6 +71,7 @@ def run_market_temperature(
             config,
             target_date,
             storage_dir=storage_dir,
+            dataset_cache=dataset_cache,
         )
     else:
         resolved_trade_dates = tuple(

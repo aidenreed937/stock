@@ -255,6 +255,44 @@ def test_quality_gate_checks_domain_mart_date_keys_and_finite_values(tmp_path: P
     assert not gate.assert_domain_mart_quality(gate._active_parquet_files())
 
 
+def test_quality_gate_checks_analysis_mart_keys(tmp_path: Path) -> None:
+    mart_dir = tmp_path / "mart"
+    mart_dir.mkdir(parents=True)
+    pl.DataFrame(
+        {
+            "trade_date": [date(2026, 8, 1)],
+            "industry_code": ["801001.SI"],
+            "close": [100.0],
+        }
+    ).write_parquet(mart_dir / "industry_daily.parquet")
+    pl.DataFrame(
+        {
+            "as_of_date": [date(2026, 8, 1)],
+            "industry_code": ["801001.SI"],
+            "return_20d": [1.0],
+        }
+    ).write_parquet(mart_dir / "industry_panel_daily.parquet")
+    pl.DataFrame(
+        {
+            "as_of_date": [date(2026, 8, 1)],
+            "fact_id": ["metric.technical.return_20d"],
+            "value_float": [1.0],
+        }
+    ).write_parquet(mart_dir / "market_temperature_derived_facts.parquet")
+
+    gate = QualityGate(tmp_path)
+    assert gate.assert_domain_mart_quality(gate._active_parquet_files())
+
+    pl.DataFrame(
+        {
+            "as_of_date": [date(2026, 8, 1), date(2026, 8, 1)],
+            "fact_id": ["duplicate", "duplicate"],
+            "value_float": [1.0, 2.0],
+        }
+    ).write_parquet(mart_dir / "market_temperature_derived_facts.parquet")
+    assert not gate.assert_domain_mart_quality(gate._active_parquet_files())
+
+
 def test_quality_gate_checks_domain_input_contracts(tmp_path: Path) -> None:
     target_dir = tmp_path / "tushare" / "market=CN" / "block_trade"
     target_dir.mkdir(parents=True)

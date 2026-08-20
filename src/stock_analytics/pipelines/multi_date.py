@@ -8,21 +8,17 @@ from pathlib import Path
 from typing import TYPE_CHECKING
 
 from stock_analytics.features.store import FeatureStore
-from stock_analytics.metrics.context import MetricContext
-from stock_analytics.metrics.engine import MetricEngine
 from stock_analytics.pipelines.industry_structure import run_industry_structure
 from stock_analytics.pipelines.investor_brief import run_investor_brief
 from stock_analytics.pipelines.market_temperature import run_market_temperature
 from stock_analytics.pipelines.market_temperature.cache import DatasetFrameCache
 from stock_analytics.pipelines.market_temperature.facts_mart import MARKET_DAILY_FACT_COLUMNS
-from stock_analytics.pipelines.market_temperature.metric_windows import metric_lookback_days
 from stock_data.catalog import DataCatalog
-from stock_reporting.interpretation.market_temperature.config import (
-    load_market_temperature_config,
-)
 
 if TYPE_CHECKING:
     from collections.abc import Sequence
+
+    from stock_analytics.metrics.context import MetricContext
 
 
 @dataclass(frozen=True, slots=True)
@@ -53,12 +49,14 @@ def run_multi_date_artifacts(
 
     storage_path = Path(storage_dir) if storage_dir is not None else None
     max_date = unique_dates[-1]
+    dataset_cache = DatasetFrameCache(end_date=max_date)
     market_dates = _load_trade_dates(
         "stock_daily_bar",
         unique_dates[0],
         max_date,
         storage_path,
         extra_window=20,
+        dataset_cache=dataset_cache,
     )
     industry_dates = _load_trade_dates(
         "sw_daily",
@@ -66,6 +64,7 @@ def run_multi_date_artifacts(
         max_date,
         storage_path,
         extra_window=120,
+        dataset_cache=dataset_cache,
     )
     mart_dir = storage_path / "mart" if storage_path is not None else None
     mart_start = unique_dates[0] - timedelta(days=1250 * 4)
@@ -74,7 +73,6 @@ def run_multi_date_artifacts(
         end_date=max_date,
         columns=MARKET_DAILY_FACT_COLUMNS,
     )
-    dataset_cache = DatasetFrameCache(end_date=max_date)
     metric_contexts = _build_metric_contexts(
         unique_dates,
         storage_path,
@@ -126,10 +124,15 @@ def _load_trade_dates(
     storage_dir: Path | None,
     *,
     extra_window: int,
+    dataset_cache: DatasetFrameCache | None = None,
 ) -> tuple[date, ...]:
     catalog = DataCatalog(data_source="tushare", storage_dir=storage_dir)
+    if dataset_cache is not None:
+        from stock_analytics.pipelines.market_temperature.cache import CachedCatalog
+
+        catalog = CachedCatalog(catalog, dataset_cache)  # type: ignore[assignment]
     scan_start = start_date - timedelta(days=extra_window * 4)
-    count = max((end_date - scan_start).days + 5, extra_window)
+    count = max((end_date - scan_start).days + 1, extra_window)
     values = catalog.latest_trade_dates(dataset=dataset, n=count)
     return tuple(sorted(value for value in values if scan_start <= value <= end_date))
 
@@ -146,32 +149,9 @@ def _build_metric_contexts(
     storage_dir: Path | None,
     dataset_cache: DatasetFrameCache,
 ) -> dict[int, MetricContext]:
-    """为批次预建按历史窗口复用的 MetricContext。"""
-    config = load_market_temperature_config()
-    engine = MetricEngine()
-    metric_ids = {
-        metric.metric_id
-        for dimension in config.dimensions
-        for metric in dimension.metrics
-        if metric.enabled and metric.source == "metric_engine"
-    }
-    if not metric_ids:
-        return {}
-    catalog = DataCatalog(data_source="tushare", storage_dir=storage_dir)
-    contexts: dict[int, MetricContext] = {}
-    for metric_id in sorted(metric_ids):
-        lookback = metric_lookback_days(engine, metric_id)
-        contexts.setdefault(
-            lookback,
-            MetricContext(
-                catalog=catalog,
-                target_date=target_dates[-1],
-                start_date=target_dates[0] - timedelta(days=lookback),
-                end_date=target_dates[-1],
-                dataset_cache=dataset_cache,
-            ),
-        )
-    return contexts
+    """保留旧调用契约；报告阶段不再预建 MetricEngine 上下文。"""
+    del target_dates, storage_dir, dataset_cache
+    return {}
 
 
 __all__ = ["MultiDateArtifactSummary", "run_multi_date_artifacts"]

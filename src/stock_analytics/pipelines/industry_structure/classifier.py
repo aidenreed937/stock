@@ -24,6 +24,7 @@ class IndustryClassifier:
 
             self.catalog = DataCatalog(data_source="tushare")
         self._cached_classify_df: pl.DataFrame | None = None
+        self._cached_name_maps: dict[str | None, dict[str, str]] = {}
 
     def _load_classify_df(self) -> pl.DataFrame:
         """安全加载 index_classify 元数据表。"""
@@ -51,6 +52,9 @@ class IndustryClassifier:
 
     def get_name_map(self, src: str | None = "SW2021") -> dict[str, str]:
         """动态构建行业代码（包含 801xxx.SI 与 6 位数字代码）到中文名称映射字典。"""
+        if src in self._cached_name_maps:
+            return self._cached_name_maps[src]
+
         mapping: dict[str, str] = {}
         df = self._load_classify_df()
         if not df.is_empty():
@@ -66,6 +70,7 @@ class IndustryClassifier:
                         mapping[val] = name
                         if "." in val:
                             mapping[val.split(".")[0]] = name
+        self._cached_name_maps[src] = mapping
         return mapping
 
     def resolve_name(self, code_or_name: str, src: str | None = "SW2021") -> str:

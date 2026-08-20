@@ -63,14 +63,20 @@ def load_dataset(
         return pl.DataFrame()
 
 
-def load_financial_statement_history(cat: MarketDataCatalog, as_of_date: date) -> pl.DataFrame:
+def load_financial_statement_history(
+    cat: MarketDataCatalog,
+    as_of_date: date,
+    *,
+    start_date: date | None = None,
+) -> pl.DataFrame:
     """加载非金融与三大金融行业的历史财务数据。"""
+    effective_start = start_date or (as_of_date - timedelta(days=365 * 6))
     frames: list[pl.DataFrame] = []
     for dataset in _FS_DATASETS:
         raw = load_dataset(
             cat,
             dataset,
-            start_date=as_of_date - timedelta(days=365 * 6),
+            start_date=effective_start,
             end_date=as_of_date,
             columns=[
                 "symbol",

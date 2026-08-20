@@ -5,6 +5,10 @@ from datetime import date, timedelta
 import polars as pl
 import pytest
 
+from stock_analytics.pipelines.industry_structure.industry_mapping import (
+    prepare_stock_industry_members,
+    stock_industry_map_from_prepared_members,
+)
 from stock_analytics.pipelines.industry_structure.panel_sources import (
     _stock_industry_map_from_index_member,
     load_benchmark_return_20d,
@@ -67,6 +71,31 @@ def test_index_member_date_filter_uses_date_semantics() -> None:
     )
 
     assert set(result["stock_key"].to_list()) == {"000001", "000004"}
+
+
+def test_prepared_index_members_reuse_normalized_dates() -> None:
+    catalog = _MemoryCatalog(
+        {
+            "index_member": pl.DataFrame(
+                {
+                    "index_code": ["801001.SI"] * 3,
+                    "con_code": ["000001.SZ", "000002.SZ", "000003.SZ"],
+                    "in_date": [date(2020, 1, 1), date(2024, 11, 1), date(2020, 1, 1)],
+                    "out_date": [date(2024, 11, 1), None, date(2024, 10, 30)],
+                }
+            )
+        }
+    )
+
+    members = prepare_stock_industry_members(catalog, {"801001.SI": "801001.SI"})
+
+    assert catalog.symbol_requests == [None]
+    assert stock_industry_map_from_prepared_members(members, date(2024, 10, 31))[
+        "stock_key"
+    ].to_list() == ["000001"]
+    assert stock_industry_map_from_prepared_members(members, date(2024, 11, 2))[
+        "stock_key"
+    ].to_list() == ["000002"]
 
 
 def test_benchmark_return_resolves_csi_suffix() -> None:
