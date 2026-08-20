@@ -67,6 +67,48 @@ def test_run_master_audit_detects_year_gaps(tmp_path: Path) -> None:
     assert "2015..2025" in warning
 
 
+def test_run_master_audit_uses_record_years_for_cross_year_files(tmp_path: Path) -> None:
+    first_file = tmp_path / "yfinance" / "market=GLOBAL" / "macro_indicators"
+    first_file.mkdir(parents=True, exist_ok=True)
+    pl.DataFrame(
+        {
+            "symbol": ["^TNX"] * 12,
+            "trade_date": [f"{year}-01-01" for year in range(2014, 2026)],
+            "close": [1.0] * 12,
+        }
+    ).write_parquet(first_file / "data.parquet")
+
+    second_file = tmp_path / "yfinance" / "market=US" / "macro_indicators"
+    second_file.mkdir(parents=True, exist_ok=True)
+    pl.DataFrame({"symbol": ["^GSPC"], "trade_date": ["2026-01-01"], "close": [1.0]}).write_parquet(
+        second_file / "data.parquet"
+    )
+
+    summary = run_master_audit(str(tmp_path))
+
+    assert summary.filter(pl.col("dataset") == "macro_indicators")[
+        "year_gap_warning"
+    ].to_list() == [None]
+
+
+def test_run_master_audit_uses_report_year_not_partition_year(tmp_path: Path) -> None:
+    first_file = tmp_path / "tushare" / "market=CN" / "balancesheet" / "year=1992" / "month=12"
+    first_file.mkdir(parents=True, exist_ok=True)
+    pl.DataFrame(
+        {"symbol": ["000001.SZ"], "ann_date": ["1993-04-01"], "end_date": ["1992-12-31"]}
+    ).write_parquet(first_file / "data.parquet")
+
+    second_file = tmp_path / "tushare" / "market=CN" / "balancesheet" / "year=1994" / "month=04"
+    second_file.mkdir(parents=True, exist_ok=True)
+    pl.DataFrame(
+        {"symbol": ["000001.SZ"], "ann_date": ["1994-04-16"], "end_date": ["1993-12-31"]}
+    ).write_parquet(second_file / "data.parquet")
+
+    summary = run_master_audit(str(tmp_path))
+
+    assert summary["year_gap_warning"].to_list() == [None]
+
+
 def test_main(capsys) -> None:
     with patch("stock_data.governance.audit.master_audit.run_master_audit") as mock_audit:
         mock_audit.return_value = pl.DataFrame(

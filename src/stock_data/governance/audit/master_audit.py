@@ -86,6 +86,7 @@ def run_master_audit(base_dir: str | Path | None = None) -> pl.DataFrame:
                     year_val = int(part.removeprefix("year="))
                 except ValueError:
                     pass
+        partition_year = year_val
         try:
             # 采用 Lazy API (scan_parquet) 极大地降低内存并只计算需要的列
             df_lazy = pl.scan_parquet(f)
@@ -134,6 +135,15 @@ def run_master_audit(base_dir: str | Path | None = None) -> pl.DataFrame:
                     .max()
                     .alias("max_date")
                 )
+                exprs.append(
+                    pl.col(date_col)
+                    .drop_nulls()
+                    .cast(pl.Utf8, strict=False)
+                    .str.slice(0, 4)
+                    .unique()
+                    .implode()
+                    .alias("data_years")
+                )
             else:
                 exprs.append(pl.lit(None).alias("min_date"))
                 exprs.append(pl.lit(None).alias("max_date"))
@@ -143,6 +153,20 @@ def run_master_audit(base_dir: str | Path | None = None) -> pl.DataFrame:
 
             min_val = res["min_date"].item() if "min_date" in res.columns else None
             max_val = res["max_date"].item() if "max_date" in res.columns else None
+            raw_data_years = res["data_years"].item() if "data_years" in res.columns else []
+            if raw_data_years is None:
+                raw_data_years = []
+            if isinstance(raw_data_years, pl.Series):
+                raw_data_years = raw_data_years.to_list()
+            elif not isinstance(raw_data_years, list):
+                raw_data_years = [raw_data_years]
+            data_years = sorted(
+                {
+                    int(value)
+                    for value in raw_data_years
+                    if value is not None and str(value).isdigit()
+                }
+            )
 
             # 从 min_date/max_date 兜底推断 year
             if year_val is None and min_val:
@@ -150,6 +174,8 @@ def run_master_audit(base_dir: str | Path | None = None) -> pl.DataFrame:
                     year_val = int(str(min_val)[:4])
                 except Exception:
                     pass
+            if not data_years and year_val is not None:
+                data_years = [year_val]
 
             records.append(
                 {
@@ -157,11 +183,13 @@ def run_master_audit(base_dir: str | Path | None = None) -> pl.DataFrame:
                     "dataset": dataset,
                     "path": str(f),
                     "year": year_val,
+                    "partition_year": partition_year,
                     "rows": res["rows"].item(),
                     "symbols_count": res["symbols_count"].item(),
                     "min_date": str(min_val)[:10] if min_val is not None else "N/A",
                     "max_date": str(max_val)[:10] if max_val is not None else "N/A",
                     "audit_errors": 0,
+                    "data_years": data_years,
                 }
             )
         except Exception as e:
@@ -172,11 +200,13 @@ def run_master_audit(base_dir: str | Path | None = None) -> pl.DataFrame:
                     "dataset": dataset,
                     "path": str(f),
                     "year": year_val,
+                    "partition_year": partition_year,
                     "rows": 0,
                     "symbols_count": 0,
                     "min_date": "N/A",
                     "max_date": "N/A",
                     "audit_errors": 1,
+                    "data_years": [year_val] if year_val is not None else [],
                 }
             )
 
@@ -192,7 +222,12 @@ def run_master_audit(base_dir: str | Path | None = None) -> pl.DataFrame:
             pl.col("rows").sum().alias("精炼落盘总记录数"),
             pl.col("min_date").filter(pl.col("min_date") != "N/A").min().alias("最早交易日"),
             pl.col("max_date").filter(pl.col("max_date") != "N/A").max().alias("最新交易日"),
-            pl.col("year").drop_nulls().unique().alias("years"),
+            pl.col("partition_year").drop_nulls().unique().alias("partition_years"),
+            pl.col("data_years")
+            .explode(empty_as_null=True)
+            .drop_nulls()
+            .unique()
+            .alias("data_years"),
             pl.col("audit_errors").sum().alias("审计错误数"),
         )
         .with_columns(
@@ -202,11 +237,16 @@ def run_master_audit(base_dir: str | Path | None = None) -> pl.DataFrame:
         .sort(["source", "dataset"])
     )
 
-    year_warnings = [
-        _format_year_gaps(row.get("years", []))
-        for row in grouped.select(["years"]).iter_rows(named=True)
-    ]
-    return grouped.with_columns(pl.Series("year_gap_warning", year_warnings)).drop("years")
+    year_warnings = []
+    for row in grouped.select(["分区数", "partition_years", "data_years"]).iter_rows(named=True):
+        has_partition_years = bool(row.get("partition_years"))
+        should_check_data_years = has_partition_years or row.get("分区数", 0) > 1
+        years = row.get("data_years", []) if should_check_data_years else []
+        year_warnings.append(_format_year_gaps(years))
+
+    return grouped.with_columns(pl.Series("year_gap_warning", year_warnings)).drop(
+        ["partition_years", "data_years"]
+    )
 
 
 def print_master_audit_summary(summary: pl.DataFrame) -> None:
