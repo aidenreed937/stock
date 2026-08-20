@@ -84,6 +84,49 @@ def test_margin_growth_uses_row_aligned_20_period_shift() -> None:
     assert fact["value_float"] == pytest.approx(121.0 / 101.0 - 1.0)
 
 
+def test_margin_growth_60d_uses_long_window() -> None:
+    start = date(2026, 1, 1)
+    dates = [start + timedelta(days=index) for index in range(62)]
+    balances = [100.0 + index for index in range(62)]
+    frame = pl.DataFrame({"trade_date": dates, "margin_balance": balances})
+
+    fact = try_get_market_daily_fact(
+        frame,
+        "fund_flow",
+        MetricInputConfig("margin_balance_growth_60d"),
+        dates[-1],
+        expected_trade_date=dates[-1],
+    )
+
+    assert fact is not None
+    assert fact["value_float"] == pytest.approx(161.0 / 101.0 - 1.0)
+
+
+def test_main_money_cumulative_share_uses_latest_20_valid_days() -> None:
+    start = date(2026, 1, 1)
+    dates = [start + timedelta(days=index) for index in range(21)]
+    frame = pl.DataFrame(
+        {
+            "trade_date": dates,
+            "total_turnover": [100.0] * 21,
+            "main_net_inflow": [1.0] * 20 + [5.0],
+        }
+    )
+
+    fact = try_get_market_daily_fact(
+        frame,
+        "fund_flow",
+        MetricInputConfig("main_money_net_inflow_share_20d_cum"),
+        dates[-1],
+        expected_trade_date=dates[-1],
+    )
+
+    assert fact is not None
+    assert fact["value_float"] == pytest.approx(24.0 / 2000.0)
+    assert "window_start=2026-01-02" in fact["note"]
+    assert "window_end=2026-01-21" in fact["note"]
+
+
 def test_new_high_share_maps_to_mart_wide_column() -> None:
     target = date(2026, 8, 17)
     frame = pl.DataFrame({"trade_date": [target], "new_high_252d_ratio": [0.08]})

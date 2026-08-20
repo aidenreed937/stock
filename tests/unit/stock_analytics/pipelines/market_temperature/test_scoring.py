@@ -445,6 +445,139 @@ def test_build_scores_reports_data_freshness() -> None:
     assert top["stale_metrics"][0]["dimension"] == "fundamental"
 
 
+def test_build_scores_separates_sentiment_subgroups() -> None:
+    facts = pl.DataFrame(
+        [
+            _metric_fact("sentiment", "advance_share", 0.08),
+            _metric_fact("sentiment", "limit_event_temperature", 20.0),
+            _metric_fact("sentiment", "turnover_rate_percentile_1250d", 90.0),
+            _metric_fact("sentiment", "investor_account_temperature", 90.0),
+        ],
+        schema=FACT_SCHEMA,
+    )
+    config = MarketTemperatureConfig(
+        schema_version=1,
+        title="test",
+        artifact_root="data/analytics/market_temperature",
+        main_window=20,
+        short_windows=(),
+        dimensions=(
+            DimensionConfig(
+                id="sentiment",
+                name="情绪面",
+                weight=1.0,
+                metrics=(
+                    MetricInputConfig("advance_share", weight=0.25),
+                    MetricInputConfig("limit_event_temperature", weight=0.25),
+                    MetricInputConfig(
+                        "turnover_rate_percentile_1250d", weight=0.40, subgroup="activity"
+                    ),
+                    MetricInputConfig(
+                        "investor_account_temperature",
+                        source="derived",
+                        weight=0.10,
+                        subgroup="slow",
+                    ),
+                ),
+            ),
+        ),
+        datasets=(),
+    )
+
+    sentiment = build_scores(config, as_of_date=date(2026, 8, 14), facts=facts)["dimensions"][0]
+
+    assert sentiment["temperature"] == pytest.approx(14.0)
+    assert sentiment["temperature_source"] == "daily"
+    assert sentiment["subgroups"] == {"activity": 90.0, "slow": 90.0}
+
+
+def test_build_scores_falls_back_to_activity_subgroup_when_daily_is_missing() -> None:
+    facts = pl.DataFrame(
+        [_metric_fact("sentiment", "turnover_rate_percentile_1250d", 90.0)],
+        schema=FACT_SCHEMA,
+    )
+    config = MarketTemperatureConfig(
+        schema_version=1,
+        title="test",
+        artifact_root="data/analytics/market_temperature",
+        main_window=20,
+        short_windows=(),
+        dimensions=(
+            DimensionConfig(
+                id="sentiment",
+                name="情绪面",
+                weight=1.0,
+                metrics=(
+                    MetricInputConfig("advance_share", weight=0.5),
+                    MetricInputConfig(
+                        "turnover_rate_percentile_1250d", weight=0.5, subgroup="activity"
+                    ),
+                ),
+            ),
+        ),
+        datasets=(),
+    )
+
+    sentiment = build_scores(config, as_of_date=date(2026, 8, 14), facts=facts)["dimensions"][0]
+
+    assert sentiment["temperature"] == pytest.approx(90.0)
+    assert sentiment["temperature_source"] == "activity"
+    assert "主温度已降级为活跃水位口径" in sentiment["reason"]
+
+
+def test_build_scores_builds_structured_comparison_drivers() -> None:
+    facts = pl.DataFrame(
+        [
+            _metric_fact("technical", "return_20d", 0.02),
+            _metric_fact("fund_flow", "fund_flow_temperature", 40.0),
+        ],
+        schema=FACT_SCHEMA,
+    )
+    config = MarketTemperatureConfig(
+        schema_version=1,
+        title="test",
+        artifact_root="data/analytics/market_temperature",
+        main_window=20,
+        short_windows=(),
+        dimensions=(
+            DimensionConfig(
+                id="technical",
+                name="技术面",
+                weight=0.6,
+                metrics=(MetricInputConfig("return_20d", weight=1.0),),
+            ),
+            DimensionConfig(
+                id="fund_flow",
+                name="资金面",
+                weight=0.4,
+                metrics=(MetricInputConfig("fund_flow_temperature", weight=1.0),),
+            ),
+        ),
+        datasets=(),
+    )
+
+    scores = build_scores(
+        config,
+        as_of_date=date(2026, 8, 14),
+        facts=facts,
+        previous_scores={
+            "as_of_date": "2026-08-13",
+            "composite": {"temperature": 40.0},
+            "dimensions": [
+                {"dimension_id": "technical", "temperature": 40.0},
+                {"dimension_id": "fund_flow", "temperature": 50.0},
+            ],
+        },
+    )
+
+    drivers = scores["drivers"]
+    assert drivers["status"] == "ok"
+    assert drivers["comparison_as_of"] == "2026-08-13"
+    assert drivers["composite_delta"] == pytest.approx(12.0)
+    assert drivers["top_contributors"][0]["dimension_id"] == "technical"
+    assert drivers["top_contributors"][0]["direction"] == "warming"
+
+
 def _metric_fact(
     dimension: str,
     metric_id: str,

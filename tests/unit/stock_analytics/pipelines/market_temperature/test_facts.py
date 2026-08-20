@@ -9,7 +9,9 @@ import stock_analytics.pipelines.market_temperature.facts as facts_module
 from stock_analytics.features.builders.market_daily import MarketDailyBuilder
 from stock_analytics.features.store import FeatureStore
 from stock_analytics.pipelines.market_temperature.facts import (
+    FACT_SCHEMA,
     _latest_dataset_date,
+    _normalize_metric_dates,
     _parse_date_value,
     collect_facts,
     resolve_external_cutoff_date,
@@ -115,6 +117,30 @@ def test_resolve_external_cutoff_date_uses_previous_a_share_trade_date() -> None
     assert resolve_external_cutoff_date(date(2026, 8, 19), trade_dates) == date(2026, 8, 18)
     assert resolve_external_cutoff_date(date(2026, 8, 17), trade_dates) == date(2026, 8, 14)
     assert resolve_external_cutoff_date(date(2026, 8, 13), trade_dates) == date(2026, 8, 12)
+
+
+def test_metric_facts_have_uniform_metric_date_column() -> None:
+    rows = _normalize_metric_dates(
+        [
+            {
+                "category": "metric_value",
+                "note": "source=mart.market_daily; metric_date=2026-08-13",
+            },
+            {
+                "category": "metric_value",
+                "note": "ann_window=2026-08-01..2026-08-14",
+            },
+            {"category": "data_watermark", "note": "metric_date=2026-08-13"},
+        ]
+    )
+    frame = pl.DataFrame(rows, schema=FACT_SCHEMA)
+
+    assert frame["metric_date"].dtype == pl.Date
+    assert frame["metric_date"].to_list() == [
+        date(2026, 8, 13),
+        date(2026, 8, 14),
+        None,
+    ]
 
 
 def test_collect_facts_emits_one_short_term_fact_per_window(

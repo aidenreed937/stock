@@ -29,9 +29,18 @@ def fact_temperature(row: dict[str, Any], direction: str) -> float | None:
         "new_low_share_252d",
     }:
         temperature = numeric * 100.0
-    elif metric_id in {"return_20d", "ma_bias_20d", "margin_balance_growth_20d"}:
+    elif metric_id in {
+        "return_20d",
+        "ma_bias_20d",
+        "margin_balance_growth_20d",
+        "margin_balance_growth_60d",
+    }:
         temperature = 50.0 + numeric * 500.0
-    elif metric_id in {"main_money_net_inflow_share", "super_large_net_inflow_share"}:
+    elif metric_id in {
+        "main_money_net_inflow_share",
+        "main_money_net_inflow_share_20d_cum",
+        "super_large_net_inflow_share",
+    }:
         temperature = 50.0 + numeric * 1000.0
     else:
         return None

@@ -3,6 +3,7 @@
 from __future__ import annotations
 
 import argparse
+import importlib
 import json
 import math
 import shutil
@@ -12,14 +13,15 @@ from dataclasses import dataclass
 from datetime import datetime
 from itertools import pairwise
 from pathlib import Path
-from typing import Any
+from typing import Any, cast
 
 import polars as pl
 
 try:
-    from scripts.report_consistency import ConsistencyValidator
+    _report_consistency = importlib.import_module("scripts.report_consistency")
 except ModuleNotFoundError:  # pragma: no cover - 支持直接按文件路径执行
-    from report_consistency import ConsistencyValidator
+    _report_consistency = importlib.import_module("report_consistency")
+_ConsistencyValidator = _report_consistency.ConsistencyValidator
 
 
 DIMENSION_KEYS: tuple[str, ...] = (
@@ -32,7 +34,9 @@ DIMENSION_KEYS: tuple[str, ...] = (
 )
 FACT_KEYS: tuple[str, ...] = (
     "main_money_net_inflow_share",
+    "main_money_net_inflow_share_20d_cum",
     "margin_balance_growth_20d",
+    "margin_balance_growth_60d",
     "market_amount_percentile_1250d",
     "turnover_rate_percentile_1250d",
     "advance_share",
@@ -73,7 +77,7 @@ def main(argv: list[str] | None = None) -> int:
         return 1
 
     if not args.skip_consistency:
-        consistency = ConsistencyValidator(analytics_root).validate_dates(dates)
+        consistency = _ConsistencyValidator(analytics_root).validate_dates(dates)
         if consistency.status != "passed":
             print("report_consistency 未通过，停止生成跨周期复盘")
             for issue in consistency.errors[:20]:
@@ -106,7 +110,7 @@ def _parse_args(argv: list[str]) -> argparse.Namespace:
 
 
 def _resolve_dates(args: argparse.Namespace, analytics_root: Path) -> list[str]:
-    dates = ConsistencyValidator(analytics_root).available_dates(args.start, args.end)
+    dates = _ConsistencyValidator(analytics_root).available_dates(args.start, args.end)
     return [value for value in dates if args.start <= value <= args.end]
 
 
@@ -167,6 +171,15 @@ def _load_market_row(dirs: ArtifactDirs, as_of_date: str) -> dict[str, Any]:
         "lagging_industries": _names(brief.get("lagging_industries", [])),
     }
     row.update({key: dimensions.get(key) for key in DIMENSION_KEYS})
+    sentiment_row: dict[str, Any] = next(
+        (item for item in scores.get("dimensions", []) if item.get("dimension_id") == "sentiment"),
+        {},
+    )
+    subgroups = sentiment_row.get("subgroups", {})
+    if isinstance(subgroups, dict):
+        row["sentiment_activity"] = subgroups.get("activity")
+        row["sentiment_slow"] = subgroups.get("slow")
+    row["sentiment_temperature_source"] = sentiment_row.get("temperature_source")
     row.update({key: fact_values.get(key) for key in FACT_KEYS})
     return row
 
@@ -295,6 +308,8 @@ METRIC_KEY_NAMES: dict[str, str] = {
     "return_20d": "20日收益率",
     "advance_share": "上涨家数占比",
     "main_money_net_inflow_share": "主力净流入占比",
+    "main_money_net_inflow_share_20d_cum": "主力净流入20日累计占比",
+    "margin_balance_growth_60d": "两融余额60日变化",
 }
 
 
@@ -307,6 +322,8 @@ def _format_signal_value(key: str, value: float) -> str:
         "above_ma60_share",
         "advance_share",
         "main_money_net_inflow_share",
+        "main_money_net_inflow_share_20d_cum",
+        "margin_balance_growth_60d",
         "return_20d",
     }:
         if key in {"margin_balance_growth_20d", "return_20d", "main_money_net_inflow_share"}:
@@ -689,7 +706,7 @@ def _write_artifacts(
 
 
 def _read_json(path: Path) -> dict[str, Any]:
-    return json.loads(path.read_text(encoding="utf-8"))
+    return cast("dict[str, Any]", json.loads(path.read_text(encoding="utf-8")))
 
 
 def _names(rows: list[dict[str, Any]]) -> list[str]:

@@ -101,7 +101,12 @@ def run_market_temperature(
         metric_contexts=metric_contexts,
         external_cutoff_date=external_cutoff_date,
     )
-    scores = build_scores(config, as_of_date=as_of_date, facts=facts)
+    scores = build_scores(
+        config,
+        as_of_date=as_of_date,
+        facts=facts,
+        previous_scores=comparison.get("previous_scores") if comparison else None,
+    )
     quality_report_json = build_quality_report(
         title=config.title,
         manifest=manifest,
@@ -112,6 +117,7 @@ def run_market_temperature(
         main_window=config.main_window,
         short_windows=config.short_windows,
         period_note="六维主温度按最近已落盘 A 股交易日取窗口；短线窗口只作节奏观察。",
+        score_dimensions=scores.get("dimensions", []),
     )
     from stock_reporting.core.quality import render_quality_report_markdown
     from stock_reporting.templates.market_temperature import (

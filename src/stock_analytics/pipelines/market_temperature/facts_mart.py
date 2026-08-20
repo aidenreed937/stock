@@ -29,8 +29,17 @@ _MARKET_DAILY_COLUMN_MAP: dict[str, str] = {
     "market_turnover_rate": "market_turnover_rate",
     "main_money_net_inflow_share": "main_net_inflow_ratio",
 }
+_MONEYFLOW_CUM_WINDOW = 20
 MARKET_DAILY_FACT_COLUMNS: tuple[str, ...] = tuple(
-    dict.fromkeys(("trade_date", *_MARKET_DAILY_COLUMN_MAP.values()))
+    dict.fromkeys(
+        (
+            "trade_date",
+            "total_turnover",
+            "main_net_inflow",
+            "margin_balance",
+            *_MARKET_DAILY_COLUMN_MAP.values(),
+        )
+    )
 )
 
 
@@ -68,9 +77,36 @@ def _latest_rule_value(filtered: pl.DataFrame, expr: pl.Expr) -> tuple[float, da
 def _calc_zscore_or_growth(filtered: pl.DataFrame, metric_id: str) -> tuple[float, date] | None:
     if metric_id == "margin_buy_share_zscore_60d" and "margin_buy_ratio" in filtered.columns:
         return _latest_rule_value(filtered, rolling_zscore("margin_buy_ratio", 60))
-    if metric_id == "margin_balance_growth_20d" and "margin_balance" in filtered.columns:
-        return _latest_rule_value(filtered, growth("margin_balance", 20))
+    if metric_id in {"margin_balance_growth_20d", "margin_balance_growth_60d"}:
+        window = 20 if metric_id.endswith("20d") else 60
+        if "margin_balance" in filtered.columns:
+            return _latest_rule_value(filtered, growth("margin_balance", window))
     return None
+
+
+def _calc_moneyflow_cumulative_share(
+    filtered: pl.DataFrame,
+) -> tuple[float, date, date, date] | None:
+    required = {"trade_date", "total_turnover", "main_net_inflow"}
+    if not required.issubset(filtered.columns):
+        return None
+    window = (
+        filtered.select("trade_date", "total_turnover", "main_net_inflow")
+        .drop_nulls()
+        .tail(_MONEYFLOW_CUM_WINDOW)
+    )
+    if window.height < _MONEYFLOW_CUM_WINDOW:
+        return None
+    total_turnover = float(window["total_turnover"].sum())
+    if total_turnover <= 0:
+        return None
+    main_net_inflow = float(window["main_net_inflow"].sum())
+    return (
+        main_net_inflow / total_turnover,
+        window["trade_date"][-1],
+        window["trade_date"][0],
+        window["trade_date"][-1],
+    )
 
 
 def _compute_rolling_fact_value(
@@ -91,7 +127,11 @@ def _mart_fact(
     value: float,
     metric_date: date,
     sample_size: int,
+    note_suffix: str = "",
 ) -> dict[str, Any]:
+    note = f"source=mart.market_daily; metric_date={metric_date.isoformat()}"
+    if note_suffix:
+        note = f"{note}; {note_suffix}"
     return {
         "fact_id": f"metric.{dimension}.{metric_id}",
         "category": "metric_value",
@@ -107,7 +147,7 @@ def _mart_fact(
         "sample_size": sample_size,
         "source": "FeatureStore.market_daily",
         "status": "ok",
-        "note": f"source=mart.market_daily; metric_date={metric_date.isoformat()}",
+        "note": note,
     }
 
 
@@ -126,18 +166,28 @@ def try_get_market_daily_fact(
     if filtered.is_empty():
         return None
 
-    rolling_result = _compute_rolling_fact_value(filtered, metric.metric_id)
-    if rolling_result is not None:
-        value, metric_date = rolling_result
+    note_suffix = ""
+    if metric.metric_id == "main_money_net_inflow_share_20d_cum":
+        cumulative_result = _calc_moneyflow_cumulative_share(filtered)
+        if cumulative_result is None:
+            return None
+        value, metric_date, window_start, window_end = cumulative_result
+        note_suffix = (
+            f"window_start={window_start.isoformat()}; window_end={window_end.isoformat()}"
+        )
     else:
-        col_name = _MARKET_DAILY_COLUMN_MAP.get(metric.metric_id)
-        if not col_name or col_name not in filtered.columns:
-            return None
-        latest_row = filtered.filter(pl.col(col_name).is_not_null()).tail(1)
-        if latest_row.is_empty():
-            return None
-        value = float(latest_row[col_name][0])
-        metric_date = latest_row["trade_date"][0]
+        rolling_result = _compute_rolling_fact_value(filtered, metric.metric_id)
+        if rolling_result is not None:
+            value, metric_date = rolling_result
+        else:
+            col_name = _MARKET_DAILY_COLUMN_MAP.get(metric.metric_id)
+            if not col_name or col_name not in filtered.columns:
+                return None
+            latest_row = filtered.filter(pl.col(col_name).is_not_null()).tail(1)
+            if latest_row.is_empty():
+                return None
+            value = float(latest_row[col_name][0])
+            metric_date = latest_row["trade_date"][0]
 
     if expected_trade_date is not None and metric_date != expected_trade_date:
         return None
@@ -148,6 +198,7 @@ def try_get_market_daily_fact(
         value=float(value),
         metric_date=metric_date,
         sample_size=filtered.height,
+        note_suffix=note_suffix,
     )
 
 

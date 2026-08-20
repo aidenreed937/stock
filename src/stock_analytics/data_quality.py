@@ -7,6 +7,8 @@ from dataclasses import dataclass
 from datetime import date, timedelta
 from typing import TYPE_CHECKING, Any
 
+from stock_analytics.data_quality_scores import score_quality_issues
+
 if TYPE_CHECKING:
     import polars as pl
 
@@ -71,6 +73,7 @@ def build_quality_report(
     short_windows: tuple[int, ...] = (),
     medium_windows: tuple[int, ...] = (),
     period_note: str = "",
+    score_dimensions: list[dict[str, Any]] | None = None,
 ) -> dict[str, Any]:
     """基于配置、manifest 和 facts 构造机器可读质量报告。"""
     as_of_date = _parse_iso_date(str(manifest["as_of_date"]))
@@ -90,6 +93,7 @@ def build_quality_report(
         specs=specs,
         main_window=main_window,
     )
+    issues.extend(score_quality_issues(score_dimensions or []))
     status = _overall_status(issues)
     return {
         "schema_version": 1,

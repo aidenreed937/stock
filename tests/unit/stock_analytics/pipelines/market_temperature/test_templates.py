@@ -8,6 +8,7 @@ import polars as pl
 from stock_analytics.pipelines.market_temperature.facts import FACT_SCHEMA
 from stock_reporting.interpretation.market_temperature.config import MarketTemperatureConfig
 from stock_reporting.templates.market_temperature import (
+    build_report_json,
     render_human_report_markdown,
     render_report_markdown,
 )
@@ -402,6 +403,103 @@ def test_human_report_can_render_cross_period_driver_change() -> None:
     assert "| 综合温度 | 64.41 | 62.96 | -1.45 | 总分接近" in report
     assert "| 资金面 | 81.87 | 47.64 | -34.23 | 明显降温" in report
     assert "| 技术面 | 22.81 | 67.39 | +44.58 | 明显升温" in report
+
+
+def test_human_report_renders_sentiment_subgroups_and_divergence() -> None:
+    config = MarketTemperatureConfig(
+        schema_version=1,
+        title="测试温度计",
+        artifact_root=Path("data/analytics/market_temperature"),
+        main_window=20,
+        short_windows=(),
+        dimensions=(),
+        datasets=(),
+    )
+    scores = {
+        "composite": {"temperature": 35.0, "status": "ready"},
+        "systemic_risk": {"level": "中等", "message": "测试"},
+        "dimensions": [
+            {
+                **_dimension("sentiment", "情绪面", 15.0),
+                "temperature_source": "daily",
+                "subgroups": {"activity": 90.0, "slow": 88.0},
+            }
+        ],
+    }
+
+    report = render_human_report_markdown(
+        config=config,
+        manifest={"as_of_date": "2026-08-14", "trade_dates": [], "main_window": 20},
+        scores=scores,
+        facts=pl.DataFrame(schema=FACT_SCHEMA),
+    )
+
+    assert "动能 15.00 / 活跃水位 90.00 / 慢情绪 88.00" in report
+    assert "高换手低位动能，呈现派发/退潮特征" in report
+
+
+def test_cross_period_change_prefers_structured_drivers() -> None:
+    config = MarketTemperatureConfig(
+        schema_version=1,
+        title="测试温度计",
+        artifact_root=Path("data/analytics/market_temperature"),
+        main_window=20,
+        short_windows=(),
+        dimensions=(),
+        datasets=(),
+    )
+    report = render_human_report_markdown(
+        config=config,
+        manifest={"as_of_date": "2026-08-14", "trade_dates": [], "main_window": 20},
+        scores={
+            "composite": {"temperature": 62.0, "status": "ready"},
+            "systemic_risk": {"level": "中等", "message": "测试"},
+            "dimensions": [],
+            "drivers": {
+                "status": "ok",
+                "comparison_as_of": "2026-08-13",
+                "composite_delta": 2.0,
+                "summary": "综合温度上升主要由技术面(+5.0)迁移驱动",
+                "top_contributors": [
+                    {
+                        "dimension_id": "technical",
+                        "name": "技术面",
+                        "delta": 5.0,
+                        "weighted_delta": 0.75,
+                        "direction": "warming",
+                    }
+                ],
+            },
+        },
+        facts=pl.DataFrame(schema=FACT_SCHEMA),
+        comparison={
+            "previous_manifest": {"as_of_date": "2026-08-13"},
+            "previous_scores": {"composite": {"temperature": 60.0}, "dimensions": []},
+        },
+    )
+
+    assert "结构化摘要: 综合温度上升主要由技术面(+5.0)迁移驱动" in report
+    assert "| 技术面 | +5.00 | +0.75 | 升温 |" in report
+
+
+def test_report_json_exposes_metric_dates_in_fact_summary() -> None:
+    config = MarketTemperatureConfig(
+        schema_version=1,
+        title="测试温度计",
+        artifact_root=Path("data/analytics/market_temperature"),
+        main_window=20,
+        short_windows=(),
+        dimensions=(),
+        datasets=(),
+    )
+    facts = pl.DataFrame(
+        [_fact(category="metric_value", metric_id="main_money_net_inflow_share_20d_cum")],
+        schema=FACT_SCHEMA,
+    ).with_columns(pl.lit(date(2026, 8, 13)).alias("metric_date"))
+
+    report = build_report_json(config=config, manifest={}, scores={}, facts=facts)
+
+    assert report["fact_summary"]["metric_values"][0]["metric_date"] == "2026-08-13"
 
 
 def _dimension(dimension_id: str, name: str, temperature: float) -> dict[str, object]:

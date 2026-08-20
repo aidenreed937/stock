@@ -70,10 +70,12 @@ def test_default_registry_contains_dimensionless_margin_metrics() -> None:
         "margin_buy_share",
         "margin_penetration",
         "margin_balance_growth_20d",
+        "margin_balance_growth_60d",
         "margin_buy_share_zscore_60d",
         "margin_penetration_percentile_1250d",
         "leverage_sentiment_score",
         "main_money_net_inflow_share",
+        "main_money_net_inflow_share_20d_cum",
         "super_large_net_inflow_share",
         "main_money_net_inflow_share_zscore_60d",
         "northbound_net_inflow",
@@ -165,6 +167,32 @@ def test_engine_computes_moneyflow_and_northbound_market_metrics() -> None:
     )
     assert results[2].frame["northbound_net_inflow"].to_list() == pytest.approx([100.0, 200.0])
     assert results[3].frame["northbound_net_inflow_share"].to_list() == pytest.approx([0.5, 0.4])
+
+
+def test_engine_computes_main_money_20d_cumulative_share() -> None:
+    dates = [date(2026, 1, 1) + timedelta(days=index) for index in range(20)]
+    catalog = FakeCatalog(
+        {
+            "stock_daily_bar": pl.DataFrame({"trade_date": dates, "amount": [100.0] * 20}),
+            "moneyflow": pl.DataFrame(
+                {
+                    "trade_date": dates,
+                    "net_mf_amount": [1.0] * 19 + [5.0],
+                    "buy_elg_amount": [8.0] * 20,
+                    "sell_elg_amount": [3.0] * 20,
+                }
+            ),
+        }
+    )
+
+    result = MetricEngine().compute(
+        ["main_money_net_inflow_share_20d_cum"],
+        context=MetricContext(catalog=cast("object", catalog)),
+    )[0]
+
+    assert result.frame["main_money_net_inflow_share_20d_cum"].tail(1).item() == pytest.approx(
+        24.0 / 2000.0
+    )
 
 
 def test_market_flow_rolling_metrics_use_declared_windows() -> None:

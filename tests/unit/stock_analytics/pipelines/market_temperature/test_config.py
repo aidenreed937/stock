@@ -31,6 +31,7 @@ market_temperature:
         - metric_id: fs_profit_growth_temperature
           source: derived
           weight: 0.25
+          subgroup: slow
   datasets:
     - data_source: tushare
       dataset: stock_daily_bar
@@ -73,6 +74,7 @@ market_temperature:
     assert config.dimensions[0].metrics[0].source == "metric_engine"
     assert config.dimensions[0].metrics[1].source == "derived"
     assert config.dimensions[0].metrics[1].weight == 0.25
+    assert config.dimensions[0].metrics[1].subgroup == "slow"
     assert config.datasets[0].dataset == "stock_daily_bar"
     assert config.datasets[0].max_lag_days == 1
     assert config.datasets[0].cadence == "trading_daily"

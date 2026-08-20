@@ -1,5 +1,11 @@
 import polars as pl
 
+from stock_analytics.metrics.calculators.flow_extensions import (
+    FLOW_EXTENSION_SPECS,
+    MARGIN_GROWTH_LONG_WINDOW,
+    MARGIN_GROWTH_WINDOW,
+    add_cumulative_moneyflow_share,
+)
 from stock_analytics.metrics.context import MetricContext
 from stock_analytics.metrics.datasets.loaders import load_metric_dataset
 from stock_analytics.metrics.datasets.windows import (
@@ -18,7 +24,6 @@ from stock_analytics.primitives.rules import growth, rolling_percentile, rolling
 
 _TRADING_DAYS_5Y = 1250
 _FLOW_ZSCORE_WINDOW = 60
-_MARGIN_GROWTH_WINDOW = 20
 
 
 def _load_daily_inputs(context: MetricContext) -> tuple[pl.DataFrame, pl.DataFrame, pl.DataFrame]:
@@ -181,7 +186,10 @@ def _base_frame(context: MetricContext) -> pl.DataFrame:
             .otherwise(None)
             .alias("margin_penetration"),
         )
-        .with_columns(growth("margin_balance", _MARGIN_GROWTH_WINDOW))
+        .with_columns(
+            growth("margin_balance", MARGIN_GROWTH_WINDOW),
+            growth("margin_balance", MARGIN_GROWTH_LONG_WINDOW),
+        )
         .sort("trade_date")
     )
 
@@ -209,6 +217,7 @@ def _market_flow_frame(context: MetricContext) -> pl.DataFrame:
             "circ_mv",
         ),
     )
+    frame = add_cumulative_moneyflow_share(frame)
     return (
         frame.with_columns(
             share("market_amount", "circ_mv", "market_turnover_rate") * 100.0,
@@ -345,15 +354,6 @@ METRIC_SPECS: tuple[MetricSpec, ...] = (
         output_columns=("trade_date", "margin_penetration"),
     ),
     MetricSpec(
-        metric_id="margin_balance_growth_20d",
-        name="两融余额20日增长率",
-        domain=MetricDomain.FLOW,
-        entity_type=EntityType.MARKET,
-        windows=(_MARGIN_GROWTH_WINDOW,),
-        required_datasets=("margin",),
-        output_columns=("trade_date", "margin_balance_growth_20d"),
-    ),
-    MetricSpec(
         metric_id="margin_buy_share_zscore_60d",
         name="融资买入占比60日Z分数",
         domain=MetricDomain.FLOW,
@@ -376,7 +376,7 @@ METRIC_SPECS: tuple[MetricSpec, ...] = (
         name="杠杆资金情绪指数",
         domain=MetricDomain.FLOW,
         entity_type=EntityType.MARKET,
-        windows=(_MARGIN_GROWTH_WINDOW, _FLOW_ZSCORE_WINDOW),
+        windows=(MARGIN_GROWTH_WINDOW, _FLOW_ZSCORE_WINDOW),
         required_datasets=("margin", "stock_daily_bar", "daily_basic"),
         output_columns=("trade_date", "leverage_sentiment_score"),
     ),
@@ -441,14 +441,18 @@ METRIC_SPECS: tuple[MetricSpec, ...] = (
     ),
 )
 
+METRIC_SPECS += FLOW_EXTENSION_SPECS
+
 CALCULATORS: dict[str, MetricCalculator] = {
     "margin_buy_share": calculate_margin_buy_share,
     "margin_penetration": calculate_margin_penetration,
     "margin_balance_growth_20d": calculate_margin_balance_growth,
+    "margin_balance_growth_60d": calculate_margin_balance_growth,
     "margin_buy_share_zscore_60d": calculate_margin_buy_share_zscore,
     "margin_penetration_percentile_1250d": calculate_margin_penetration_percentile,
     "leverage_sentiment_score": calculate_leverage_sentiment,
     "main_money_net_inflow_share": calculate_main_money_net_inflow_share,
+    "main_money_net_inflow_share_20d_cum": calculate_main_money_net_inflow_share,
     "super_large_net_inflow_share": calculate_super_large_net_inflow_share,
     "main_money_net_inflow_share_zscore_60d": calculate_main_money_net_inflow_share_zscore,
     "northbound_net_inflow": calculate_northbound_net_inflow,

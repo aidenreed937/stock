@@ -148,4 +148,5 @@ def _as_mapping(value: Any, name: str) -> Mapping[str, Any]:
 def _as_sequence(value: Any, name: str) -> Sequence[Any]:
     if isinstance(value, str) or not isinstance(value, Sequence):
         raise TypeError(f"{name} 必须是列表")
-    return cast("Sequence[Any]", value)
+    sequence_value: Sequence[Any] = value
+    return sequence_value

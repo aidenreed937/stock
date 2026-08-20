@@ -10,9 +10,12 @@ from stock_analytics.pipelines.market_temperature.external_risk_scoring import b
 from stock_analytics.pipelines.market_temperature.freshness import (
     composite_freshness,
     dimension_freshness,
-    is_stale_metric,
 )
-from stock_analytics.pipelines.market_temperature.metric_temperature import fact_temperature
+from stock_analytics.pipelines.market_temperature.score_components import (
+    build_drivers,
+    dimension_temperature,
+    subgroup_temperatures,
+)
 
 if TYPE_CHECKING:
     from datetime import date
@@ -28,6 +31,7 @@ def build_scores(
     *,
     as_of_date: date,
     facts: pl.DataFrame,
+    previous_scores: dict[str, Any] | None = None,
 ) -> dict[str, Any]:
     """基于事实表生成评分 JSON 结构。
 
@@ -42,6 +46,7 @@ def build_scores(
         for item in config.dimensions
     ]
     composite_temperature = _composite_temperature(dimensions)
+    drivers = build_drivers(dimensions, composite_temperature, previous_scores)
     composite_status = (
         "ready" if all(item["temperature"] is not None for item in dimensions) else "partial"
     )
@@ -61,6 +66,7 @@ def build_scores(
         },
         "systemic_risk": systemic_risk,
         "external_risk": external_risk,
+        "drivers": drivers,
         "data_freshness": composite_freshness(dimensions),
         "dimensions": dimensions,
         "short_term": [_short_term_score(facts, window) for window in config.short_windows],
@@ -106,7 +112,16 @@ def _dimension_score(
     metric_count = _count_metric_facts(facts, dimension_id, scored_metric_ids)
     ok_metric_count = _count_metric_facts(facts, dimension_id, scored_metric_ids, status="ok")
     data_issue_count = _count_data_issues(config, facts, dimension_id)
-    temperature = _dimension_temperature(item, facts)
+    temperature = dimension_temperature(item, facts)
+    subgroups = subgroup_temperatures(item, facts)
+    temperature_source = "daily" if temperature is not None else None
+    if temperature is None:
+        for subgroup in ("activity", "slow"):
+            fallback_temperature = subgroups[subgroup]
+            if fallback_temperature is not None:
+                temperature = fallback_temperature
+                temperature_source = subgroup
+                break
     status = "ready" if temperature is not None and data_issue_count == 0 else "pending"
     if metric_count == 0 and configured_metric_count:
         reason = "已配置指标，但本次未采集指标事实"
@@ -120,6 +135,9 @@ def _dimension_score(
         reason = "部分指标样本不足，已按可用温度子项合成"
     else:
         reason = "指标事实已温度化"
+    if temperature_source in {"activity", "slow"}:
+        source_label = {"activity": "活跃水位", "slow": "慢情绪"}[temperature_source]
+        reason = f"主温度已降级为{source_label}口径；{reason}"
     return {
         "dimension_id": dimension_id,
         "name": item.name,
@@ -130,45 +148,19 @@ def _dimension_score(
         "metric_count": metric_count,
         "ok_metric_count": ok_metric_count,
         "data_issue_count": data_issue_count,
+        "temperature_source": temperature_source,
+        "subgroups": subgroups,
         "data_freshness": dimension_freshness(facts, dimension_id, scored_metric_ids, item),
         "reason": reason,
     }
 
 
 def _scored_metric_ids(item: DimensionConfig) -> set[str]:
-    return {metric.metric_id for metric in item.metrics if metric.enabled and metric.weight > 0}
-
-
-def _dimension_temperature(item: DimensionConfig, facts: pl.DataFrame) -> float | None:
-    if facts.is_empty():
-        return None
-    metric_rules = {
-        metric.metric_id: (metric.direction, metric.weight)
+    return {
+        metric.metric_id
         for metric in item.metrics
-        if metric.enabled
+        if metric.enabled and metric.weight > 0 and metric.subgroup in {"", "daily"}
     }
-    frame = facts.filter(
-        (pl.col("dimension") == item.id)
-        & (pl.col("category") == "metric_value")
-        & (pl.col("status") == "ok")
-    )
-    weighted_sum = 0.0
-    weight_sum = 0.0
-    for row in frame.to_dicts():
-        metric_id = str(row["metric_id"])
-        direction, weight = metric_rules.get(metric_id, ("positive", 1.0))
-        if weight <= 0:
-            continue
-        if is_stale_metric(row, item):
-            weight *= item.stale_weight_scale
-        temperature = fact_temperature(row, direction)
-        if temperature is None:
-            continue
-        weighted_sum += temperature * weight
-        weight_sum += weight
-    if weight_sum == 0:
-        return None
-    return round(weighted_sum / weight_sum, 2)
 
 
 def _composite_temperature(dimensions: list[dict[str, Any]]) -> float | None:

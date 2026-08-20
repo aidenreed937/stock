@@ -172,3 +172,48 @@ def test_quality_report_flags_in_score_dataset_staleness() -> None:
     assert len(stale_issues) == 1
     assert "进入评分" in stale_issues[0]["message"]
     assert report["status"] == "passed_with_warnings"
+
+
+def test_quality_report_marks_dimension_temperature_fallback() -> None:
+    facts = pl.DataFrame(
+        {
+            "fact_id": ["window_20d"],
+            "category": ["analysis_window"],
+            "dimension": ["meta"],
+            "data_source": ["tushare"],
+            "dataset": ["stock_daily_bar"],
+            "as_of_date": [date(2026, 8, 14)],
+            "window": [20],
+            "metric_id": ["window_20d"],
+            "value_float": [None],
+            "value_text": ["2026-07-20..2026-08-14"],
+            "unit": [""],
+            "sample_size": [20],
+            "source": ["test"],
+            "status": ["ok"],
+            "note": [""],
+        }
+    )
+
+    report = build_quality_report(
+        title="测试报告",
+        manifest={"as_of_date": "2026-08-14"},
+        facts=facts,
+        datasets=(),
+        primary_data_source="tushare",
+        primary_dataset="stock_daily_bar",
+        main_window=20,
+        score_dimensions=[
+            {
+                "dimension_id": "sentiment",
+                "name": "情绪面",
+                "temperature_source": "activity",
+            }
+        ],
+    )
+
+    fallback_issues = [
+        item for item in report["issues"] if item["id"] == "dimension_temperature_fallback"
+    ]
+    assert len(fallback_issues) == 1
+    assert report["status"] == "passed_with_warnings"

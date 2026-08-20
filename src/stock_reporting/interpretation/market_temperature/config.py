@@ -27,10 +27,14 @@ class MetricInputConfig:
     weight: float = 1.0
     enabled: bool = True
     source: str = "metric_engine"
+    subgroup: str = ""
 
     @classmethod
     def from_mapping(cls, data: Mapping[str, Any]) -> Self:
         """从 YAML 字典构造指标配置。"""
+        subgroup = str(data.get("subgroup", ""))
+        if subgroup not in {"", "daily", "activity", "slow"}:
+            raise ValueError(f"不支持的指标 subgroup: {subgroup}")
         return cls(
             metric_id=str(data["metric_id"]),
             aggregation=str(data.get("aggregation", "latest")),
@@ -38,6 +42,7 @@ class MetricInputConfig:
             weight=float(data.get("weight", 1.0)),
             enabled=bool(data.get("enabled", True)),
             source=str(data.get("source", "metric_engine")),
+            subgroup=subgroup,
         )
 
 

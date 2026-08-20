@@ -164,6 +164,19 @@ def evaluate_key_divergences(
             f"新增投资者温度 {_temperature_text(investor_temperature)}，"
             f"情绪面 {_temperature_text(sentiment)}；慢变量高温尚未等同于当日全面过热。"
         )
+    sentiment_item = _dimension_item(dimensions, "sentiment")
+    subgroup_values = sentiment_item.get("subgroups", {}) if sentiment_item else {}
+    activity_temperature = _as_float(subgroup_values.get("activity"))
+    if (
+        sentiment is not None
+        and activity_temperature is not None
+        and activity_temperature - sentiment >= 25
+    ):
+        lines.append(
+            "- 活跃水位与动能背离: "
+            f"活跃水位 {_temperature_text(activity_temperature)}，"
+            f"动能 {_temperature_text(sentiment)}；高换手低位动能，呈现派发/退潮特征。"
+        )
     if valuation is not None and macro is not None and valuation >= 80 and macro >= 60:
         lines.append(
             "- 估值约束与流动性支撑并存: "
@@ -291,6 +304,13 @@ def _dimension_temperature(dimensions: list[dict[str, Any]], dimension_id: str) 
     for item in dimensions:
         if str(item.get("dimension_id")) == dimension_id:
             return _as_float(item.get("temperature"))
+    return None
+
+
+def _dimension_item(dimensions: list[dict[str, Any]], dimension_id: str) -> dict[str, Any] | None:
+    for item in dimensions:
+        if str(item.get("dimension_id")) == dimension_id:
+            return item
     return None
 
 

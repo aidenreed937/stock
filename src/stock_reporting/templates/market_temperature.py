@@ -46,9 +46,6 @@ from stock_reporting.interpretation.market_temperature.interpretation import (
     get_cross_period_comment as _cross_period_comment,
 )
 from stock_reporting.interpretation.market_temperature.interpretation import (
-    get_dimension_comment as _dimension_comment,
-)
-from stock_reporting.interpretation.market_temperature.interpretation import (
     get_systemic_risk_level as _systemic_risk_level,
 )
 from stock_reporting.interpretation.market_temperature.interpretation import (
@@ -58,6 +55,24 @@ from stock_reporting.templates.availability import (
     domain_observation_lines as _domain_observation_lines,
 )
 from stock_reporting.templates.external_risk import external_risk_lines as _external_risk_section
+from stock_reporting.templates.market_temperature_details import (
+    dimension_interpretation_comment as _dimension_interpretation_comment,
+)
+from stock_reporting.templates.market_temperature_details import (
+    format_fact_metric_value as _format_fact_metric_value,
+)
+from stock_reporting.templates.market_temperature_details import (
+    score_composite_temperature as _score_composite_temperature,
+)
+from stock_reporting.templates.market_temperature_details import (
+    structured_drivers_section as _structured_drivers_section,
+)
+from stock_reporting.templates.market_temperature_details import (
+    subgroup_text as _subgroup_text,
+)
+from stock_reporting.templates.market_temperature_details import (
+    summarize_facts,
+)
 
 _PREFERRED_METRICS = {
     "valuation": ("valuation_temperature", "pe_percentile_10y", "pb_percentile_10y"),
@@ -65,6 +80,7 @@ _PREFERRED_METRICS = {
         "margin_penetration_percentile_1250d",
         "margin_balance_growth_20d",
         "main_money_net_inflow_share",
+        "main_money_net_inflow_share_20d_cum",
     ),
     "sentiment": (
         "turnover_rate_percentile_1250d",
@@ -168,14 +184,14 @@ def render_human_report_markdown(
 
     dim_interpretations = []
     for item in dimensions:
-        dimension_id = str(item["dimension_id"])
         item_temperature = item["temperature"]
         dim_interpretations.append(
             {
                 "name": item["name"],
                 "temperature": _temperature_text(item_temperature),
                 "band": _temperature_band(item_temperature),
-                "comment": _dimension_comment(dimension_id, item_temperature),
+                "comment": _dimension_interpretation_comment(item),
+                "subgroups": _subgroup_text(item),
             }
         )
 
@@ -211,10 +227,6 @@ def render_human_report_markdown(
     return ReportRenderer.get_instance().render(
         "temperature/market_temperature_human.md.j2", context
     )
-
-
-def summarize_facts(facts: pl.DataFrame) -> dict[str, Any]:
-    return _input_validation.summarize_facts(facts, _input_validation.MARKET_FACT_COLUMNS)
 
 
 def _facts_sections(facts: pl.DataFrame) -> list[str]:
@@ -292,6 +304,14 @@ def _cross_period_change_section(
     if not previous_scores:
         return []
 
+    drivers = current_scores.get("drivers")
+    if isinstance(drivers, dict) and drivers.get("status") == "ok":
+        return _structured_drivers_section(
+            drivers=drivers,
+            previous_manifest=previous_manifest,
+            current_manifest=current_manifest,
+        )
+
     previous_date = (
         str(previous_manifest.get("as_of_date")) if isinstance(previous_manifest, dict) else "前期"
     )
@@ -362,13 +382,6 @@ def _dimension_rows_by_id(scores: dict[str, Any]) -> dict[str, dict[str, Any]]:
     }
 
 
-def _score_composite_temperature(scores: dict[str, Any]) -> float | None:
-    composite = scores.get("composite", {})
-    if not isinstance(composite, dict):
-        return None
-    return _as_float(composite.get("temperature"))
-
-
 def _delta_text(value: float | None) -> str:
     return "不可判定" if value is None else f"{value:+.2f}"
 
@@ -416,47 +429,6 @@ def _human_quality_brief(facts: pl.DataFrame) -> list[str]:
             "月频/季频数据只代表最新状态或底座。"
         )
     return lines
-
-
-def _format_fact_metric_value(metric_id: str, value_float: float | None) -> str:
-    if value_float is None:
-        return "-"
-    if metric_id in {
-        "margin_balance_growth_20d",
-        "main_money_net_inflow_share",
-        "advance_share",
-        "above_ma20_share",
-        "above_ma60_share",
-        "return_20d",
-    }:
-        if metric_id in {"margin_balance_growth_20d", "main_money_net_inflow_share", "return_20d"}:
-            return f"{value_float * 100:+.2f}%"
-        return f"{value_float * 100:.2f}%"
-
-    if metric_id in {
-        "fs_profit_growth_temperature",
-        "forecast_positive_temperature",
-        "report_revision_temperature",
-    }:
-        return f"{value_float:.2f}%"
-
-    sem = _metric_band_semantic(metric_id, value_float)
-    return f"{value_float:.2f} ({sem})" if sem else f"{value_float:.2f}"
-
-
-def _metric_band_semantic(metric_id: str, value: float) -> str:
-    if "pressure" in metric_id:
-        bands = ((80.0, "高压力"), (60.0, "中高压力"), (40.0, "中性"), (20.0, "低压力"))
-        default_label = "压力极低"
-    elif "percentile" in metric_id or "temperature" in metric_id or metric_id == "rsi_14d":
-        bands = ((85.0, "极高"), (70.0, "偏高"), (40.0, "中性"), (20.0, "偏低"))
-        default_label = "极低"
-    else:
-        return ""
-    for threshold, label in bands:
-        if value >= threshold:
-            return label
-    return default_label
 
 
 def _clean_fact_note(note: str) -> str:

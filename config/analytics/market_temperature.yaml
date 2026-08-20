@@ -111,10 +111,18 @@ market_temperature:
           aggregation: latest
           direction: positive
           weight: 0.20
+        - metric_id: margin_balance_growth_60d
+          aggregation: latest
+          direction: positive
+          weight: 0.00
         - metric_id: main_money_net_inflow_share
           aggregation: latest
           direction: positive
-          weight: 0.20
+          weight: 0.10
+        - metric_id: main_money_net_inflow_share_20d_cum
+          aggregation: latest
+          direction: positive
+          weight: 0.10
         - metric_id: market_amount_percentile_1250d
           aggregation: latest
           direction: positive
@@ -129,10 +137,12 @@ market_temperature:
           aggregation: latest
           direction: positive
           weight: 0.40
+          subgroup: activity
         - metric_id: market_turnover_rate
           aggregation: latest
           direction: positive
           weight: 0.00
+          subgroup: activity
         - metric_id: advance_share
           aggregation: latest
           direction: positive
@@ -145,6 +155,7 @@ market_temperature:
           source: derived
           direction: positive
           weight: 0.10
+          subgroup: slow
         - metric_id: limit_up_count_temperature
           source: derived
           direction: positive
@@ -165,34 +176,42 @@ market_temperature:
           source: derived
           direction: positive
           weight: 0.00
+          subgroup: activity
         - metric_id: option_put_call_volume_ratio_temperature
           source: derived
           direction: positive
           weight: 0.00
+          subgroup: activity
         - metric_id: option_put_call_oi_ratio_temperature
           source: derived
           direction: positive
           weight: 0.00
+          subgroup: activity
         - metric_id: option_amount_temperature
           source: derived
           direction: positive
           weight: 0.00
+          subgroup: activity
         - metric_id: option_open_interest_temperature
           source: derived
           direction: positive
           weight: 0.00
+          subgroup: activity
         - metric_id: option_near_month_amount_share_temperature
           source: derived
           direction: positive
           weight: 0.00
+          subgroup: activity
         - metric_id: settlement_iv_proxy_temperature
           source: derived
           direction: positive
           weight: 0.00
+          subgroup: activity
         - metric_id: settlement_iv_proxy_skew_temperature
           source: derived
           direction: positive
           weight: 0.00
+          subgroup: activity
 
     - id: technical
       name: "技术面"

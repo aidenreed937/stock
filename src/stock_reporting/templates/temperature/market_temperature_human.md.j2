@@ -12,10 +12,10 @@
 
 ## 六维解读
 
-| 维度 | 温度 | 分档 | 解读 |
-|---|---:|---|---|
+| 维度 | 温度 | 分档 | 子口径 | 解读 |
+|---|---:|---|---|---|
 {% for dim in dimension_interpretations %}
-| {{ dim.name }} | {{ dim.temperature }} | {{ dim.band }} | {{ dim.comment }} |
+| {{ dim.name }} | {{ dim.temperature }} | {{ dim.band }} | {{ dim.subgroups }} | {{ dim.comment }} |
 {% endfor %}
 
 ## 关键背离

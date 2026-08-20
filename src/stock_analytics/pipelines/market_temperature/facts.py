@@ -43,6 +43,7 @@ FACT_SCHEMA: dict[str, Any] = {
     "data_source": pl.Utf8,
     "dataset": pl.Utf8,
     "as_of_date": pl.Date,
+    "metric_date": pl.Date,
     "window": pl.Int64,
     "metric_id": pl.Utf8,
     "value_float": pl.Float64,
@@ -181,7 +182,43 @@ def collect_facts(
             )
         )
         rows.extend(collect_optional_fact_rows(config, as_of_date, storage_dir))
-    return pl.DataFrame(rows, schema=FACT_SCHEMA) if rows else empty_facts()
+    return (
+        pl.DataFrame(_normalize_metric_dates(rows), schema=FACT_SCHEMA) if rows else empty_facts()
+    )
+
+
+def _normalize_metric_dates(rows: list[dict[str, Any]]) -> list[dict[str, Any]]:
+    """为指标事实补齐统一的 metric_date 列，保留旧 note 兼容解析。"""
+    normalized: list[dict[str, Any]] = []
+    for row in rows:
+        item = dict(row)
+        if item.get("category") == "metric_value":
+            item["metric_date"] = _metric_date_from_row(item)
+        else:
+            item["metric_date"] = None
+        normalized.append(item)
+    return normalized
+
+
+def _metric_date_from_row(row: dict[str, Any]) -> date | None:
+    for key in ("metric_date", "latest_evaluation_date"):
+        parsed = _parse_date_value(row.get(key))
+        if parsed is not None:
+            return parsed
+    note = str(row.get("note") or "")
+    for prefix in ("metric_date=", "latest_date=", "report_date="):
+        marker = f"{prefix}"
+        if marker in note:
+            value = note.split(marker, 1)[1].split(";", 1)[0].strip()
+            parsed = _parse_date_value(value)
+            if parsed is not None:
+                return parsed
+    if "ann_window=" in note:
+        value = note.split("ann_window=", 1)[1].split(";", 1)[0].split("..")[-1].strip()
+        parsed = _parse_date_value(value)
+        if parsed is not None:
+            return parsed
+    return None
 
 
 def _window_rows(
