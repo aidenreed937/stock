@@ -28,6 +28,17 @@ make backfill-accept ENDPOINT=stock_daily_bar SOURCE=tushare START=YYYY-MM-DD EN
 
 对账不能把“Curated 行数少于 RAW”直接判定为丢失：合法主键去重、质量规则隔离和领域 Mart 聚合都会改变行数。应同时检查 Quarantine 和审计明细；只有无法归因到上述机制的缺口，才记为未解释数据丢失。
 
+### 近期审计口径补充
+
+- `make master-audit` 会从每个有效 Parquet 的实际日期列提取 `data_years`；仅对存在时间分区或包含多个分区的数据集检查跨年断档，输出 `year_gap_warning`。单文件静态/低频表不因年份不连续而自动报错。
+- `make audit TYPE=factor DATE=YYYY-MM-DD` 包含两类独立覆盖检查：`adj_factor` 以截至目标日已上市股票为理论全集，`sw_daily` 以动态申万一级行业代码为理论全集，并额外展示行业层级/未映射状态。
+- `make audit TYPE=valuation` 的 `daily_basic` 对齐率以同日 `stock_daily_bar` 个股集合为分母；`make audit TYPE=reconciliation` 则按任务注册主键和实际清洗规则比较 RAW/Curated，不能用单一行数比例替代。
+- `sw_daily` 的分布审计先经过 `sw_daily_scope` 限定 `SW2021/L1`；跨层级或低覆盖交易日不能混入金额、成交量和市值的日中位数阶跃判断。
+
+季度财报回填还要注意：`income`、`fina_indicator`、`balancesheet`、`cashflow` 的业务日期是
+`end_date` 报告期末，不能用公告日 `ann_date` 裁剪；当前报告期可能需要刷新，RAW 缓存命中不代表
+报告期已经完成修订。
+
 ---
 
 ## 2. 离线治理与探针工具 (Data Ops)

@@ -13,6 +13,10 @@ description: 用本地 Curated 黄金表和现有 analytics/metrics 体系生成
 
 观测日期规则：显式传入 `DATE` 时以 `DATE` 为准；未传 `DATE` 的市场温度和行业结构分别取各自主数据集的最新交易日；未传 `DATE` 的投资者简报扫描两类上游 `runs/as_of=*`，取共同的最新观测日期，再读取该日期下最新一次运行。`latest/` 只是最近一次成功发布的副本，不能替代 `as_of_date` 判断。
 
+市场温度管线还会把外盘事实截断到 A 股基准日前一个已落盘交易日，并在 manifest 的
+`source_cutoffs.external_market` 留痕；这是防止隔夜数据前视的固定口径，不要手工把外盘日期推进到
+当前 A 股收盘日。
+
 需要理解 `metrics` 与 `market_temperature` 的职责边界、数据流和扩展落点时，读取 `references/architecture.md`。需要系统性理解综合温度金融物理机制、五档操作时钟、快慢背离诊断、一票否决规则与跨周期实战口诀时，读取 `references/composite-temperature-interpretation.md`。需要分析申万2021行业轮动、行业强弱、景气-估值矩阵时，读取 `references/industry-structure.md`。需要具体字段、打分方向、metrics 源码位置和输出模板时，读取 `references/scoring.md`。需要做多日期联合分析、资金运动规律、重要信号日或跨周期验证时，读取 `references/cross-cycle-study.md` 和 `references/signal-days.md`。需要面向普通投资者解释“能不能参与/参与什么方向/如何控风险”时，读取 `references/investor-interpretation.md`。需要验证产物是否可追溯、无编造和无串线时，读取 `references/report-consistency.md`。
 
 ## 已落地产物链路
@@ -44,7 +48,13 @@ UV_CACHE_DIR=.uv_cache UV_PYTHON_INSTALL_DIR=.uv_python uv run python -m stock_c
 - `report.md` / `report.json`：面向阅读和机器消费的报告（Markdown 由 `stock_reporting` 经 Jinja2 模板渲染）；
 - `human_report.md`：面向人工阅读的结论版报告；
 - `quality_report.md` / `quality_report.json`：口径、窗口、水位、滞后和质量约束报告；
+- `manifest.json`：除运行窗口和文件清单外，记录外盘 `source_cutoffs` 及可选对比运行；
 - `latest/`：最近一次成功发布运行的同名文件副本；仅作展示，不作为观测日期判断依据。
+
+`facts.parquet` 的 `metric_value` 行统一有 `metric_date` 列；旧事实仍可能在 `note` 中保留
+`metric_date=`，读取方应优先使用标准列。`scores.json` 顶层还包含配置驱动的 `external_risk`
+（外盘背景压力、单日冲击和待 A 股确认状态）以及机器可消费的 `drivers`（跨期综合温度变化和
+按维度权重计算的边际贡献）。外盘观察项默认不改写六维综合分。
 
 ### 多交易日批量/串行生成约束
 
@@ -79,7 +89,7 @@ UV_CACHE_DIR=.uv_cache UV_PYTHON_INSTALL_DIR=.uv_python \
 
 需要解释两个基准日的驱动差异时，使用 `COMPARE_DATE` / `--compare-date`。它读取对比日期最近一次已落盘的 `manifest.json` 和 `scores.json`，只在人读版报告中加入“跨期驱动变化”表；不会重算或改写前期产物。
 
-当前代码已实现“配置（`config/analytics/`） / 事实（`facts.parquet`） / 评分结构（`scores.json`） / 模板渲染（`src/stock_reporting/`） / 质量报告 / 产物写入”解耦。`scores.json` 已接入六维温度合成和系统性风险摘要：MetricEngine 指标和 DataCatalog/Mart 派生指标先在 `facts.parquet` 落为事实，再按 `config/analytics/market_temperature.yaml` 中的方向与权重温度化。权重为 0 的指标只作事实展示，不参与维度分。系统性风险只基于六维温度之间的共振和背离，不使用新闻、政策或模型记忆。`quality_report.md/json` 只基于 manifest、facts 和 YAML 数据配置生成，不重算指标。所有 Markdown 报告均通过 `stock_reporting.engine.ReportRenderer` 统一经 Jinja2 模板（`.md.j2`）渲染输出。
+当前代码已实现“配置（`config/analytics/`） / 事实（`facts.parquet`） / 评分结构（`scores.json`） / 模板渲染（`src/stock_reporting/`） / 质量报告 / 产物写入”解耦。`scores.json` 已接入六维温度合成、系统性风险、外盘风险和跨期驱动摘要：MetricEngine 指标和 DataCatalog/Mart 派生指标先在 `facts.parquet` 落为事实，再按 `config/analytics/market_temperature.yaml` 中的方向与权重温度化。权重为 0 的指标只作事实展示，不参与维度分。情绪面可拆成 `daily` 主动能、`activity` 活跃水位和 `slow` 慢情绪子组；主组无可用事实时，评分代码才按 `activity`、`slow` 顺序降级。`drivers` 以维度温度差乘维度权重计算 Top 3 边际贡献，便于跨期脚本复用。系统性风险只基于六维温度之间的共振和背离，不使用新闻、政策或模型记忆。`quality_report.md/json` 只基于 manifest、facts 和 YAML 数据配置生成，不重算指标。所有 Markdown 报告均通过 `stock_reporting.engine.ReportRenderer` 统一经 Jinja2 模板（`.md.j2`）渲染输出。
 
 申万行业结构分析使用独立产物管线：
 
@@ -103,7 +113,8 @@ UV_CACHE_DIR=.uv_cache UV_PYTHON_INSTALL_DIR=.uv_python uv run python -m stock_c
 
 默认配置在 `config/analytics/investor_brief.yaml`。产物写入 `data/analytics/investor_brief/`，包括 `manifest.json`、`brief_report.md/json` 和 `latest/` 副本。简报只回答两个问题：系统风险是否允许参与，以及短期可观察的行业方向；行业方向默认剔除高拥挤和景气承压标签，拥挤行业和落后方向单独列示。
 
-跨周期复盘使用只读产物脚本，先校验一致性，再抽取阶段变化、重要信号日、行业频率和 TCR 迁移：
+跨周期复盘使用只读产物脚本，先校验一致性，再抽取阶段变化、重要信号日、行业频率、TCR 迁移、
+资金 20 日累计占比和情绪面子组变化：
 
 ```bash
 make report-consistency START=YYYY-MM-DD END=YYYY-MM-DD
@@ -126,12 +137,12 @@ make market-cycle-review START=YYYY-MM-DD END=YYYY-MM-DD
 5. 若核心行情或估值缺失，先说明数据缺口，不要硬算综合温度。
 6. 用 `MetricEngine` 和温度计派生事实按 YAML 中 `weight > 0` 的指标合成六维分数；当前入分清单为：
    - 估值：`valuation_temperature`（由 PE/PB/ERP/股息率的 **10Y 分位** 等权合成）；`pe_percentile_10y`、`pb_percentile_10y`、`equity_risk_premium_percentile_10y` 是可解释的辅助事实，`dividend_yield_percentile_10y` 是综合温度的内部组件，不是独立 YAML 入分项；相关 5Y 分位只作历史兼容，raw `equity_risk_premium` 仍作为事实展示，不直接参与温度评分。
-   - 资金：`margin_buy_share_zscore_60d`, `margin_penetration_percentile_1250d`, `margin_balance_growth_20d`, `main_money_net_inflow_share`。
+   - 资金：`margin_buy_share_zscore_60d`, `margin_penetration_percentile_1250d`, `margin_balance_growth_20d`, `margin_balance_growth_60d`, `main_money_net_inflow_share`, `main_money_net_inflow_share_20d_cum`。
    - 情绪：`turnover_rate_percentile_1250d`, `advance_share`, `limit_event_temperature`, `investor_account_temperature`。
    - 技术：`return_20d`, `rsi_14d`, `ma_bias_20d`, `above_ma20_share`, `above_ma60_share`, `new_high_share_252d`, `new_low_share_252d`。
    - 基本面：`fs_revenue_growth_temperature`, `fs_profit_growth_temperature`, `fs_roe_temperature`, `forecast_positive_temperature`, `report_revision_temperature`；六维基本面没有 `express` 子项。
    - 宏观流动性：`macro_bond_yield_10y_temperature`, `macro_shibor_on_temperature`, `macro_real_rate_temperature`, `macro_m2_yoy_temperature`, `macro_m1_m2_gap_temperature`, `macro_social_finance_stock_temperature`, `macro_external_environment_temperature`。
-7. 用 `DataCatalog` 派生事实补足 YAML 已配置的基本面指标：`forecast_positive_temperature` 和 `report_revision_temperature`；`express` 只属于独立的申万行业结构模块，不得写入六维基本面分。
+7. 用 `DataCatalog` 派生事实补足 YAML 已配置的基本面指标：`forecast_positive_temperature` 和 `report_revision_temperature`；`express` 只属于独立的申万行业结构模块，不得写入六维基本面分。资金 20 日累计占比使用同一窗口累计主力净流入 / 累计成交额；报告中同时披露其 `metric_date` 和窗口起止。
 8. 需要择时或短线节奏判断时，按 `references/scoring.md` 计算 5 日/10 日短线温度，作为附加输出，不并入主综合温度权重。
 9. 需要行业交叉校验时，读取同一基准日的 `data/analytics/industry_structure/` 标准产物；行业结构分独立计算，不并入六维综合温度。
 10. 对指标做 0-100 温度归一。分数越高表示越热、越拥挤、越偏进攻；反向指标用 `100 - 分位温度` 或负向 Z-score 转换，利率类低位对应更高流动性温度。
@@ -173,13 +184,14 @@ make market-cycle-review START=YYYY-MM-DD END=YYYY-MM-DD
 
 ## 口径提醒
 
-`moneyflow` 常晚于行情一个交易日，资金结论要写清最新资金日期。`moneyflow_hsgt.north_money` 在当前库里按资金金额使用，除非已验证字段语义，否则不要表述为严格“北向净买入”。
+`moneyflow` 常晚于行情一个交易日，资金结论要写清最新资金日期和 `metric_date`。单日主力净流入只描述脉冲，20 日累计占比才用于趋势确认；`moneyflow_hsgt.north_money` 在当前库里按资金金额使用，除非已验证字段语义，否则不要表述为严格“北向净买入”。
 
 申万行业财报多为季频，最近 20 日分析中只能作为基本面底座，不要写成 20 日内发生的财报变化。行业结构报告若 `fundamental_status` 为 `stale_blended` 或 `official_stale`，要明确这是“正式财报滞后，快速预告/快报/研报确认项权重提高”的降级状态。`forecast`、`express` 和 `report_rc` 可反映最近 20 日公告/研报预期变化，但必须披露有效样本数。
 
 宏观月频、季频数据使用最新可得值的历史分位，只代表当前状态，不代表最近 20 个交易日内发生了边际变化。
 
 外盘观察归入宏观流动性维度的“外部环境”子项，默认占宏观维度内部 40%，国内利率和货币信用占 60%。外部环境核心指标为标普500/纳斯达克 20 日收益、VIX 水平、美元指数 20 日变化、美债10年收益率、铜价 20 日收益；美股和铜正向映射，VIX、美元、美债反向映射。`CNH=X` 离岸人民币从 Alpha Vantage `macro_indicators` 读取，只作人民币汇率压力观察项，默认 `weight: 0`，不进入外部环境合成。黄金和原油方向不稳定，不进入外部环境正式分；它们进入“外部压力提示”，与 VIX、美股、美债、CPI、铜联动生成避险压力、通胀压力、需求压力和总体外部压力。外部压力项默认 `weight: 0`，分数越高表示压力越大，只作风险背景，不进入六维综合温度。铜等本地缺失项必须披露为数据缺口并对可用子项重归一，不允许用外部记忆补值。
+外盘观察归入宏观流动性维度的“外部环境”子项，默认占宏观维度内部 40%，国内利率和货币信用占 60%。外部环境核心指标为标普500/纳斯达克 20 日收益、VIX 水平、美元指数 20 日变化、美债10年收益率、铜价 20 日收益；美股和铜正向映射，VIX、美元、美债反向映射。`CNH=X` 离岸人民币从 Alpha Vantage `macro_indicators` 读取，只作人民币汇率压力观察项，默认 `weight: 0`，不进入外部环境合成。黄金和原油方向不稳定，不进入外部环境正式分；它们进入“外部压力提示”，与 VIX、美股、美债、CPI、铜联动生成避险压力、通胀压力、需求压力和总体外部压力。外部压力项默认 `weight: 0`，分数越高表示压力越大，只作风险背景，不进入六维综合温度。另有配置驱动的单日外盘冲击规则（标普/纳指/费城半导体单日下跌、VIX 或美债收益率单日上升）；触发后 `transmission_status` 只标记“等待下一交易日 A 股确认”，不能把隔夜冲击直接写成 A 股已传导。铜等本地缺失项必须披露为数据缺口并对可用子项重归一，不允许用外部记忆补值。
 
 FRED 美国宏观背景归入宏观流动性维度的观察项，默认 `weight: 0`，只落 facts 和报告展示，不参与 `macro_external_environment_temperature` 或综合温度。当前观察项包括 `T10Y2Y` 期限利差、`FEDFUNDS` 政策利率、`WALCL` 美联储资产负债表、`CPIAUCSL` 同比、`UNRATE`、`PAYEMS` 同比和 `GDP` 同比；政策利率、通胀和失业率使用反向历史分位，期限利差、资产负债表、非农同比和 GDP 同比使用正向历史分位。月频/季频项只能解释最新美国宏观背景，不要写成最近 20 个 A 股交易日内的边际变化。
 

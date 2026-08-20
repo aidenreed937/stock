@@ -28,14 +28,15 @@ make market-temperature DATE=YYYY-MM-DD
 | mart 事实 | `src/stock_analytics/pipelines/market_temperature/facts_mart.py` | 从 `market_daily.parquet` 提取已物化事实 |
 | 派生事实 | `src/stock_analytics/pipelines/market_temperature/derived.py` | 基本面、情绪、宏观派生温度 |
 | 温度转换 | `src/stock_analytics/pipelines/market_temperature/metric_temperature.py` | raw 事实 -> 0-100 温度 |
-| 六维评分 | `src/stock_analytics/pipelines/market_temperature/scoring.py` | 指标加权、维度加权和系统性风险摘要 |
+| 六维评分 | `src/stock_analytics/pipelines/market_temperature/scoring.py` | 指标加权、维度加权、子组降级、外盘风险和系统性风险摘要 |
+| 跨期组件 | `src/stock_analytics/pipelines/market_temperature/score_components.py` | 情绪子组温度与 `drivers` 边际贡献 |
 | 运行编排 | `src/stock_analytics/pipelines/market_temperature/pipeline.py` | 采集、评分、质量、报告和写盘 |
 | 质量 JSON | `src/stock_analytics/data_quality.py` | 基于 manifest、facts 和 YAML 质量约束检查 |
 | 质量 Markdown | `src/stock_reporting/core/quality.py` | 渲染质量报告 |
 | 报告渲染 | `src/stock_reporting/templates/market_temperature.py` | Jinja2 报告适配器 |
 | CLI | `src/stock_cli/market_temperature.py` | 命令行入口 |
 
-产物写入 `data/analytics/market_temperature/`，每次运行包含 `manifest.json`、`facts.parquet`、`scores.json`、`report.md`、`report.json`、`human_report.md` 和质量报告，并刷新 `latest/` 副本。
+产物写入 `data/analytics/market_temperature/`，每次运行包含 `manifest.json`、`facts.parquet`、`scores.json`、`report.md`、`report.json`、`human_report.md` 和质量报告，并刷新 `latest/` 副本。manifest 的 `source_cutoffs.external_market` 记录外盘事实可用的最后日期；`facts.parquet` 的指标事实统一有 `metric_date`。
 
 `facts.parquet` 是事实层唯一来源。报告模板不重新计算指标；`scores.json` 只根据 facts 和配置生成。
 
@@ -55,8 +56,8 @@ make market-temperature DATE=YYYY-MM-DD
 | 维度 | 权重 | 当前有效入分指标 |
 |---|---:|---|
 | 估值面 | 20% | `valuation_temperature`（唯一入分合成指标；PE/PB/ERP 分位只作辅助事实） |
-| 资金面 | 20% | `margin_buy_share_zscore_60d`、`margin_penetration_percentile_1250d`、`margin_balance_growth_20d`、`main_money_net_inflow_share`；`market_amount_percentile_1250d` 权重为 0，仅作历史兼容观察 |
-| 情绪面 | 15% | `turnover_rate_percentile_1250d`、`advance_share`、`limit_event_temperature`、`investor_account_temperature` |
+| 资金面 | 20% | `margin_buy_share_zscore_60d`、`margin_penetration_percentile_1250d`、`margin_balance_growth_20d`、`margin_balance_growth_60d`、`main_money_net_inflow_share`、`main_money_net_inflow_share_20d_cum`；`market_amount_percentile_1250d` 权重为 0，仅作历史兼容观察 |
+| 情绪面 | 15% | `daily` 主动能组的 `advance_share`、`limit_event_temperature`；`activity` 活跃水位和 `slow` 慢情绪子组单独展示，不与主组强行混合 |
 | 技术面 | 15% | `return_20d`、`rsi_14d`、`ma_bias_20d`、`above_ma20_share`、`above_ma60_share`、`new_high_share_252d`、`new_low_share_252d` |
 | 基本面 | 15% | `fs_revenue_growth_temperature`、`fs_profit_growth_temperature`、`fs_roe_temperature`、`forecast_positive_temperature`、`report_revision_temperature` |
 | 宏观流动性 | 15% | `macro_bond_yield_10y_temperature`、`macro_shibor_on_temperature`、`macro_real_rate_temperature`、`macro_m2_yoy_temperature`、`macro_m1_m2_gap_temperature`、`macro_social_finance_stock_temperature`、`macro_external_environment_temperature` |
@@ -84,21 +85,22 @@ YAML 子权重：
 | `margin_buy_share_zscore_60d` | 25% | 标准正态 CDF 映射 |
 | `margin_penetration_percentile_1250d` | 20% | 分位直接作为温度 |
 | `margin_balance_growth_20d` | 20% | `50 + value * 500` |
-| `main_money_net_inflow_share` | 20% | `50 + value * 1000` |
+| `main_money_net_inflow_share` | 10% | `50 + value * 1000` |
+| `main_money_net_inflow_share_20d_cum` | 10% | 20 个最新资金交易日累计净流入 / 累计成交额，再用 `50 + value * 1000` |
+| `margin_balance_growth_60d` | 0% | `50 + value * 500`，只作趋势观察 |
 | `market_amount_percentile_1250d` | 0% | 历史兼容字段；全市场自由流通换手率不再作为资金面第二个换手率分位入分 |
 
-`margin_buy_share` 和 `margin_penetration` 在 YAML 中权重为 0，只作事实展示。`moneyflow` 常晚于行情，资金结论必须写明资金事实日期；北向字段未经语义核验时只能称资金金额或活跃度观察。
+`margin_buy_share` 和 `margin_penetration` 在 YAML 中权重为 0，只作事实展示。`moneyflow` 常晚于行情，资金结论必须写明资金事实日期和 `metric_date`；20 日累计项的窗口起止日期在 fact note 中保留，不能将其解释成单日流量。北向字段未经语义核验时只能称资金金额或活跃度观察。
 
 ### 4.3 情绪面
 
-| 指标 | 子权重 | 温度规则 |
+| 指标/子组 | 子权重 | 温度规则 |
 |---|---:|---|
-| `turnover_rate_percentile_1250d` | 40% | 分位直接作为温度 |
-| `advance_share` | 25% | 占比乘 100 |
-| `limit_event_temperature` | 25% | `derived.py` 对可用涨跌停事件子项等权；已经是温度 |
-| `investor_account_temperature` | 10% | 月度新增投资者数历史分位；已经是温度 |
+| `daily` 主动能：`advance_share`、`limit_event_temperature` | 按 YAML | 占比乘 100；事件子项已经是温度 |
+| `activity` 活跃水位：`turnover_rate_percentile_1250d`、期权/IV 观察项 | 按 YAML | 分位或派生温度，只作子组观察 |
+| `slow` 慢情绪：`investor_account_temperature` | 按 YAML | 月度新增投资者数历史分位，只作子组观察 |
 
-`market_turnover_rate`、`market_amount_percentile_1250d` 及期权、涨跌停组件的其他明细指标在当前 YAML 中权重为 0；情绪面只保留 `turnover_rate_percentile_1250d` 这一套换手率分位入分。`market_amount_percentile_1250d` 虽保留历史字段名，实际计算的是全市场自由流通换手率的五年分位，不再直接对绝对成交额排序。它们可以展示或解释，但不改变主分。`limit_list_d` 中 `U`、`D`、`Z` 分别代表涨停、跌停和炸板；`stk_limit` 只是涨跌停价格，不是事件明细。
+`scoring.py` 默认只对 `daily` 子组计算情绪面主温度；若主组没有可用事实，才按 `activity`、`slow` 顺序回退，并在 dimension 的 `temperature_source`/`reason` 中标记降级。`market_turnover_rate`、`market_amount_percentile_1250d` 及期权、涨跌停组件的其他明细指标在当前 YAML 中多数为 0 权重；它们可以展示或解释，但不改变主分。`market_amount_percentile_1250d` 虽保留历史字段名，实际计算的是全市场自由流通换手率的五年分位，不再直接对绝对成交额排序。`limit_list_d` 中 `U`、`D`、`Z` 分别代表涨停、跌停和炸板；`stk_limit` 只是涨跌停价格，不是事件明细。
 
 期权结算价 BS-IV 代理已以 `metric_value` 事实接入情绪面：`settlement_iv_proxy_temperature`（全市场 `settlement_iv_proxy_median` 历史反向分位）与 `settlement_iv_proxy_skew_temperature`（认沽-认购 IV 偏度历史反向分位）由 `derived.py` 的 `_settlement_iv_rows()` 生成，默认 `weight: 0`，不参与情绪面分；方向 `inverse` 语义为 IV/Skew 偏高代表恐慌避险需求，温度降低。该指标是结算价反解 Black-Scholes 波动率代理，非标准 VIX，升级权重后仍必须持续披露该口径限制。
 
@@ -159,7 +161,7 @@ YAML 子权重：
 | `rsi_14d` | 直接使用 RSI 数值 |
 | `advance_share`、`above_ma20_share`、`above_ma60_share`、新高/新低占比 | `value * 100` |
 | `return_20d`、`ma_bias_20d`、`margin_balance_growth_20d` | `50 + value * 500` |
-| `main_money_net_inflow_share` | `50 + value * 1000` |
+| `main_money_net_inflow_share`、`main_money_net_inflow_share_20d_cum` | `50 + value * 1000` |
 | 其他未覆盖 raw 指标 | 返回 `None`，不入分 |
 
 随后按 YAML 的 `direction` 处理：正向保持原值，`inverse` 使用 `100 - value`。所有结果通过 `clip_temperature()` 裁剪并四舍五入到 `[0, 100]`。因此“配置了权重”不等于“当前一定有有效分”：原始值若没有源码转换分支，仍会因 `None` 被排除。
@@ -187,6 +189,22 @@ YAML 子权重：
 ### 6.3 综合分
 
 六维综合温度是可用维度温度按 YAML 维度权重的加权均值。温度为 `None` 的维度不进入分母，剩余维度按可用维度权重重归一；全部维度不可用时综合温度为 `None`，状态为 `pending`。系统性风险摘要只读取六维温度及其共振关系，不是额外评分维度。
+
+### 6.4 外盘风险与跨期 drivers
+
+`build_scores()` 额外生成两个机器可消费结构：
+
+- `external_risk`：由 `config.external_risk` 的单日阈值规则生成外盘背景压力、外部环境温度、
+  `short_term_shock`/`no_shock`/`insufficient` 状态和 `transmission_status`。单日冲击只表示
+  隔夜观察，默认状态是 `pending_next_ashare_session`；它不等价于 A 股已经传导，也不自动改变
+  六维综合分。
+- `drivers`：有 `COMPARE_DATE` 时，对可比维度计算
+  `delta = current_temperature - previous_temperature`，再计算
+  `weighted_delta = delta * dimension_weight`，按绝对值取 Top 3 并给出 `warming`/`cooling`。
+  无对比时状态为 `no_comparison`，单侧缺失时为 `insufficient`。
+
+外盘事实默认以 `resolve_external_cutoff_date()` 选择目标 A 股交易日前一个已落盘交易日，
+manifest 必须保留该 cutoff；禁止以当前系统日期或目录修改时间替代它。
 
 ## 7. 短线温度和行业结构
 
@@ -218,6 +236,8 @@ UV_CACHE_DIR=.uv_cache UV_PYTHON_INSTALL_DIR=.uv_python uv run python -m stock_c
 - 估值 `valuation_temperature` 的实际结果行聚合口径；
 - 资金流、季频财报、月频宏观和慢情绪指标的最新日期；
 - 缺失指标是否触发了维度内重归一、缺失维度是否触发了综合分重归一。
+- 情绪面主温度的 `temperature_source` 及 `activity`/`slow` 子组值；若发生降级，说明降级原因。
+- 外盘 `source_cutoffs.external_market`、`external_risk.transmission_status` 和 `drivers.status`。
 
 ## 9. 执行检查清单
 
@@ -228,6 +248,9 @@ UV_CACHE_DIR=.uv_cache UV_PYTHON_INSTALL_DIR=.uv_python uv run python -m stock_c
 - [ ] 是否区分 raw ERP 展示值与十年分位辅助事实？
 - [ ] 是否核对 `valuation_temperature` 的实际指数结果行，而不是默认称为 `000985`？
 - [ ] 是否将 `express` 和行业结构 70%/30% 规则限制在行业结构模块？
+- [ ] 是否核对 `metric_date`、外盘 cutoff 和资金窗口，而不是只引用 `as_of_date`？
+- [ ] 是否区分情绪 `daily` 主温度与 `activity`/`slow` 观察子组？
+- [ ] 是否在跨周期复盘前先运行 `make report-consistency`？
 - [ ] 是否明确 5/10 日短线温度是附加输出，并区分 `ready` 与 `insufficient`？
 - [ ] 是否披露各数据源水位、滞后和有效样本？
 

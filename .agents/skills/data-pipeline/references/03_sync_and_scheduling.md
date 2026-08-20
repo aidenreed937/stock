@@ -59,6 +59,21 @@ LiXinger 不再注册历史别名 `macro_bundle` 和 `index_bundle`。宏观数�
 
 日频任务通常从 Curated 水位次日开始，月频/季频任务推进到下一业务期间。历史兼容表的 `date`/`Date` 会在 Curated 加载时归一为 `trade_date`，水位扫描按任务注册的 `date_columns` 兼容这些别名；看到摘要 `N/A` 时，应使用 `DataCatalog.latest_trade_dates()` 或 `get_latest_trade_date()` 复核，不能仅凭摘要判定缺数。事件型、静态型任务不保证有统一日度水位。
 
+### 季度财报与全市场股票池
+
+TuShare `income`、`fina_indicator`、`balancesheet`、`cashflow` 属于
+`fetch_mode=per_period` 的报告期任务。`financial_statement_bundle` 展开后仍逐个原子任务维护
+水位与失败状态：
+
+- 目标日期解析为目标日前最近已完成季度末，不能按交易日逐日推进；
+- 报告期水位等于当前目标期末时，计划仍可标记为“待刷新报告期”，同步会刷新 RAW，吸收后续重述；
+- 这些任务自动读取 Curated `stock_basic` 股票池，禁止退化成核心 `watchlist`；
+- 公开 CLI 只传 `income` 等项目任务名，不传 `income_vip` 等底层内部 API 名；
+- 回填/同步返回后由业务日期裁剪器按 `end_date` 季度裁剪，验收按源端注册复合主键检查重复和缺口。
+
+若财报水位不动但希望确认源端修订，应查看计划中的 `refresh_raw_cache`/报告期刷新状态以及 RAW
+写入时间，不要盲目把日频 `FORCE=1` 规则套到财报任务上。
+
 ## 4. LiXinger 特殊边界
 
 * `national_debt`、`interest_rates`、`non-ferrous-metals` 和 `crude-oil` 的日期范围接口存在边界开区间差异，Fetcher 会将请求范围前后各扩展一天，再在本地裁剪。

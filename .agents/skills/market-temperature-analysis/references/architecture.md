@@ -103,6 +103,11 @@ DataCatalog + industry pipeline
 
 `facts.parquet` 保存原始指标值或派生温度、日期/窗口、水位、样本量和状态。MetricEngine 事实通常是 `unit=raw`，`derived.py` 输出的派生指标通常已经是 `unit=temperature`。`scoring.py` 只消费 facts 和配置。
 
+`facts.py` 会为 `metric_value` 事实统一填充 `metric_date`，旧来源仍可在 `note` 中保留日期文本；
+`pipeline.py` 同时将外盘事实截断日期写入 manifest 的 `source_cutoffs.external_market`。外盘
+单日冲击、背景压力和 A 股传导状态由 `external_risk_scoring.py` 根据 YAML 生成，属于解释/风控
+观察，不是第七个评分维度。
+
 质量报告由 `build_quality_report()` 基于 manifest、facts 和 YAML 数据集配置生成；它不重算指标。`required` 与 `max_lag_days` 参与质量判定，`cadence` 与 `quality_tier` 只用于披露。
 
 ## 依赖方向
@@ -135,4 +140,8 @@ DataCatalog + industry pipeline
 - 权重为 0 的指标可以采集和展示，但不得进入维度分；
 - 缺失事实标为 `insufficient` 或 `unavailable`，不得静默填补；
 - 缺失指标在维度内重归一，缺失维度在综合分中重归一；
+- 情绪面指标可以用 `subgroup` 划分 `daily`、`activity`、`slow`；主温度默认只用 `daily`，
+  主组缺失时才按 `activity`、`slow` 降级，并在输出中标记 `temperature_source`；
+- 有对比运行时，`score_components.build_drivers()` 以维度权重计算跨期边际贡献，报告和复盘
+  复用 `scores.json` 的 `drivers`，不得各自重新计算一套变化口径；
 - 基本面、宏观月频或季频数据只能作为最新状态底座，不写成最近 20 个交易日内发生的变化。

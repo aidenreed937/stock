@@ -66,6 +66,7 @@ make master-audit
 make audit TYPE=reconciliation
 make audit TYPE=valuation
 make audit TYPE=factor
+make audit TYPE=factor DATE=YYYY-MM-DD
 make probe
 make backfill-accept ENDPOINT=stock_daily_bar SOURCE=tushare START=YYYY-MM-DD END=YYYY-MM-DD
 make features-build TARGET=domain_marts START=YYYY-MM-DD END=YYYY-MM-DD
@@ -105,6 +106,40 @@ make sync SOURCE=alphavantage ENDPOINT=fx_daily WORKERS=1
 
 仍保留的历史 bundle 别名仅用于兼容其他数据源的已有命令，不作为新配置的推荐名称；LiXinger 的 `macro_bundle`、`index_bundle` 已移除。bundle 不合并子任务的数据集、水位或失败状态。
 
+### 财报全市场任务的报告期语义
+
+TuShare 的 `income`、`fina_indicator`、`balancesheet`、`cashflow` 是项目任务名，统一通过
+`financial_statement_bundle` 调度；底层 `*_vip` 只是上游内部 API 名，禁止直接作为 CLI
+`ENDPOINT`。这些任务在 `TaskRegistry` 中是 `fetch_mode=per_period`，不是逐交易日请求：
+
+1. 同步目标是目标日前最近一个已完成的自然季度末，水位推进到下一个报告期末；
+2. 当前报告期水位等于目标期末时仍允许刷新，以吸收后续披露修订，并绕过该任务的 RAW
+   缓存复用；
+3. 财报按全市场 `stock_basic` 股票池批量请求，`SYMBOL=watchlist` 不应被误当成财报全市场池；
+4. Fetcher 返回后由 `src/stock_data/pipeline/date_clipper.py` 按 `end_date` 所属季度裁剪，
+   不能用 `ann_date` 把披露日误当成报告期；
+5. RAW/Curated 验收仍按任务注册的复合主键（通常包含 `symbol`、`ann_date`、`end_date`）
+   处理，重述记录不能因为同一报告期而被错误去重。
+
+因此，财报同步结果应同时查看报告期水位、RAW 刷新状态和 `make backfill-accept` 的主键/缺口
+检查，不能只看交易日最新水位。
+
+### 申万 `sw_daily` 的分层与身份字段
+
+`sw_daily` 标准化会补充 `classification=SW2021`、`industry_level` 和
+`classification_status`。未映射行业记录保留在 Curated，供审计归因；分布审计、行业面板和
+覆盖率结论默认筛选 `SW2021/L1`，不能把一级、二级、三级行业混合计算。修改或回填后建议按
+以下顺序核验：
+
+```bash
+make backfill START=YYYY-MM-DD END=YYYY-MM-DD SOURCE=tushare ENDPOINT=sw_daily
+make audit TYPE=factor DATE=YYYY-MM-DD
+make audit TYPE=all DATE=YYYY-MM-DD
+```
+
+`factor` 审计中的 `adj_factor` 以截至目标日已上市股票为理论全集，`sw_daily` 以动态申万一级
+行业基准为理论全集；缺失、未映射和跨层级记录要分别解释，不得用总行数代替覆盖率。
+
 ### 增量同步判定与缓存语义
 
 `make sync SOURCE=<source>` 未指定 `ENDPOINT` 时，会从 `TaskRegistry` 展开该数据源全部已注册的公开原子任务；指定 bundle 时先展开并去重。展开后的每个原子任务独立维护 Curated 水位、增量区间和失败状态。
@@ -136,7 +171,7 @@ make sync SOURCE=alphavantage ENDPOINT=fx_daily WORKERS=1
 1. **统一自选池单一信任源**：
    标的代码与上市基准日集中于 [`config/universe/watchlist.yaml`](file:///Users/mac/workspace/personal/finance/stock/config/universe/watchlist.yaml)，回填传入 `SYMBOL=watchlist` 时自动路由并按 `base_date` 截断。
 2. **零配置任务自发现 (`TaskRegistry`)**：
-   任务技术属性集中于 [`src/stock_data/core/task_registry.py`](file:///Users/mac/workspace/personal/finance/stock/src/stock_data/core/task_registry.py)；CLI 的 `ENDPOINT` 一律使用项目任务名（如 `index_daily_bar`），不要直接使用上游底层 API 名。
+   任务技术属性集中于 [`src/stock_data/core/task_registry.py`](file:///Users/mac/workspace/personal/finance/stock/src/stock_data/core/task_registry.py)；CLI 的 `ENDPOINT` 一律使用项目任务名（如 `index_daily_bar`），不要直接使用上游底层 API 名。财报 `income` / `fina_indicator` / `balancesheet` / `cashflow` 及其 `financial_statement_bundle` 也遵循此规则；`*_vip` 仅是内部路由名。
 3. **显式单位标准化原则**：
    * RAW 原始保真，不乘倍率；
    * Curated 层统一为标准单位（金额/市值统一为**元**，成交量统一为**股/份**）；
@@ -157,6 +192,8 @@ make sync SOURCE=alphavantage ENDPOINT=fx_daily WORKERS=1
    `DataRuntimeContext` 为一次运行统一注入 `data_root`、`raw_root`、`curated_root` 和 `cache_root`。Fetcher、DataCatalog、FeatureStore 与领域 Mart 构建器应复用该上下文，禁止为 RAW、Curated、Cache 各自拼接一套路径。
 8. **领域 Mart 质量闭环**：
    领域 Mart 由 `make features-build TARGET=domain_marts` 构建，随后由 `make validate` 检查日期类型、主键唯一性、非有限数值和领域输入契约；`make audit TYPE=all` 再完成资产与来源审计。输入缺失时不得用默认值伪造 Mart 数据。
+9. **按业务日期裁剪而不是按字段名猜测**：
+   `clip_endpoint_date_range()` 先读取任务注册的 `fetch_mode`、`frequency` 和分区契约；静态/事件/非分区任务不强行裁剪，季度财报以 `end_date` 的季度裁剪，其余任务再按 `trade_date`、`date`、`month` 等注册/兼容字段处理。发现范围外记录时保留告警并在验收中归因。
 
 ---
 

@@ -106,6 +106,15 @@ uv run python -m stock_cli.sync --data-source lixinger --endpoint industry_bundl
 - yfinance：`fundamental_bundle`、`corporate_action_bundle`、`research_daily_bundle`、`research_event_bundle`。
 - FRED：`macro_monthly_bundle`。日频、季频和周频目前各只有一个序列，继续使用原子任务；聚合任务 `macro_indicators` 仅保留显式调用，避免重复请求。
 
+TuShare 财报使用 `financial_statement_bundle`，展开为 `income`、`fina_indicator`、`balancesheet`、
+`cashflow` 四个报告期任务。它们按目标日前最近已完成季度末调度，并以全市场 `stock_basic` 为
+股票池；当前报告期可能刷新以吸收重述。CLI 传项目任务名，不传上游内部的 `*_vip` 名称：
+
+```bash
+make sync SOURCE=tushare ENDPOINT=financial_statement_bundle
+make backfill START=YYYY-MM-DD END=YYYY-MM-DD SOURCE=tushare ENDPOINT=financial_statement_bundle
+```
+
 Alpha Vantage 增量同步只有 `fx_daily` 一个任务。同步 CLI 默认读取 `config/data.yaml` 中的数据源并发配置；当前 Alpha Vantage 配置为单并发，直接执行即可：
 
 ```bash
@@ -124,6 +133,15 @@ make scan DATE=2026-08-14 FORMAT=markdown
 
 # 或直接运行 Python 模块
 uv run python -m stock_cli.market_temperature --date 2026-08-14 --format markdown
+```
+
+需要解释两个基准日的温度变化时，传入 `COMPARE_DATE`；它会把前一运行的评分交给
+`scores.json.drivers`，不改写历史产物。跨交易日复盘必须先运行一致性校验：
+
+```bash
+make market-temperature DATE=2026-08-14 COMPARE_DATE=2026-08-13
+make report-consistency START=2026-08-01 END=2026-08-14
+make market-cycle-review START=2026-08-01 END=2026-08-14
 ```
 
 ---
@@ -152,6 +170,10 @@ make market-aggregate CONFIG=config/analytics/market_aggregate.yaml OUTPUT_ROOT=
 
 每次运行生成 `manifest.json`、`snapshot.json`、`facts.parquet`、`report.md`、`report.json`、`human_report.md`、`quality_report.md/json`，并按配置刷新 `latest/`。
 
+若配置启用短期趋势，还会生成 `trend.parquet`：当前腾讯盘中快照与前 4 个完整交易日的本地
+`stock_daily_bar` / `daily_basic` 聚合对比。涨跌占比和涨跌幅分布可以做结构比较，但成交额和
+流通市值换手率会显式标记“盘中 vs 完整日不可比”，不能直接外推全天值。
+
 ---
 
 ## 5. 全库物理存储主审计 CLI (Master Audit CLI)
@@ -165,6 +187,14 @@ make audit TYPE=master DOMAIN=valuation FREQ=daily
 
 # 或直接运行 Python 模块
 uv run python -m stock_cli.audit --type master
+```
+
+专项审计示例：
+
+```bash
+make audit TYPE=factor DATE=2026-08-14       # adj_factor 与申万一级行业覆盖
+make audit TYPE=valuation DATE=2026-08-14    # daily_basic 与行情个股对齐
+make backfill-accept ENDPOINT=income SOURCE=tushare START=YYYY-MM-DD END=YYYY-MM-DD
 ```
 
 ---

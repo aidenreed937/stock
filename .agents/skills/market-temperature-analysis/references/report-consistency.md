@@ -22,6 +22,8 @@ make report-consistency START=YYYY-MM-DD END=YYYY-MM-DD OUTPUT=data/analytics/re
 - 候选行业是否误包含高拥挤或景气承压标签。
 - 风险行业是否有拥挤依据。
 - 报告是否出现无源叙事短语。
+- 市场温度 manifest 的 `source_cutoffs.external_market` 是否存在且与事实使用日期一致。
+- `scores.json` 与报告中的 `external_risk`、`drivers`、情绪子组和资金 20 日累计事实是否串线。
 
 ## 使用要求
 
@@ -30,6 +32,9 @@ make report-consistency START=YYYY-MM-DD END=YYYY-MM-DD OUTPUT=data/analytics/re
 产物选择以 `manifest.json` 的 `as_of_date` 为准，不以目录修改时间或 `latest/` 名称推断观测日期。无 `DATE` 运行投资者简报时，系统会在市场温度和行业结构的 `runs/as_of=*` 中选择共同的最新观测日期，再读取该日期下最新运行。
 
 批量生成多个交易日时，任务按日期串行执行并统一不刷新 `latest/`，避免日期任务覆盖共享目录；简报必须按 `DATE` 绑定同日的市场温度和行业结构运行。全部日期完成后再执行区间校验，并由单个收口任务发布选定日期的 `latest/`。同一交易日不要重复启动同一类产物，当前 `run_id` 只有秒级时间精度，可能发生目录冲突。
+
+一致性校验通过不代表指标质量自动合格；仍需阅读各运行目录的 `quality_report.md/json`，特别是
+资金 `metric_date` 滞后、外盘 cutoff、行业 `trend_diagnostics` 和情绪主温度降级状态。
 
 可直接使用 skill 内快捷脚本执行上述流程：
 

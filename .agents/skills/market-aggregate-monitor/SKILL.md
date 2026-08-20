@@ -69,6 +69,24 @@ latest/
 
 `RECORD=1` 时才将一行聚合快照追加到 `data/raw/realtime/market_aggregate/tencent/`（按日期/小时分区）；该 RAW 留档不写入 Curated，也不是逐标的历史资产。覆盖率分母是本地 `stock_basic` 过滤出的沪深在市股票数；质量阈值默认是覆盖率 `0.95`，低于阈值必须按质量异常处理。
 
+### 短期趋势与盘中可比性
+
+当前管线会在实时聚合摘要之外生成短期趋势：
+
+- 当前行来自腾讯盘中 `MarketAggregateSnapshot`；历史行从本地 `stock_daily_bar` 聚合涨跌/成交额，
+  并从 `daily_basic` 补充总市值、流通市值和流通市值换手率；默认取前 4 个完整交易日，配置位于
+  `market_aggregate.trend`；
+- 趋势状态为 `available`、`partial` 或 `unavailable`，历史不足或未提供本地 `DataCatalog` 时
+  只降级趋势，不伪造当前快照；
+- 结果写入运行目录的 `trend.parquet`，报告 JSON/Markdown 同时展示 `history_average`、
+  `current_vs_history_average` 和 `latest_vs_previous`；
+- 上涨/下跌占比、强势家数、涨跌幅中位数和成交额加权涨跌幅可用于结构方向比较；盘中快照与完整
+  日线之间的成交额、流通市值换手率明确标记为
+  `not_comparable_intraday_vs_full_day`，不能据此直接推断全天成交额或换手率。
+
+因此，趋势段落应先说明当前快照的 `quote_date`、历史日期和 `freshness`，再解释方向；若
+`coverage_ratio` 不达标或快照来自缓存，趋势只能作为部分覆盖观察。
+
 ## 修改和验证工作流
 
 1. 先确认需求是运行、改 YAML、改模板还是改抓取/聚合逻辑，并保持全市场摘要范围不变。
