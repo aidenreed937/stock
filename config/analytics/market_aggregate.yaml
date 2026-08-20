@@ -28,6 +28,11 @@ market_aggregate:
   raw:
     flush_interval_seconds: 60.0
 
+  trend:
+    history_days: 4
+    bars_dataset: "stock_daily_bar"
+    market_value_dataset: "daily_basic"
+
   report:
     template: "aggregate/market_aggregate.md.j2"
     human_template: "aggregate/market_aggregate_human.md.j2"
@@ -71,6 +76,7 @@ market_aggregate:
 
     limitations:
       - "本报告是全市场聚合摘要，不包含逐标的实时明细。"
+      - "短期趋势将今日盘中实时快照与前 4 个完整交易日的本地日线聚合并列，成交额需考虑盘中时点差异。"
       - "强势上涨/下跌阈值仅表示涨跌幅达到配置阈值，不等同于涨跌停统计。"
       - "本通道不计算全市场 MA20/MA60 比例、行业轮动或涨跌停事件。"
       - "覆盖率低于质量阈值或使用缓存时，应结合 status 与 freshness 谨慎解读。"

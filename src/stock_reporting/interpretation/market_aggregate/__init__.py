@@ -10,6 +10,7 @@ from stock_reporting.interpretation.market_aggregate.config import (
     MarketAggregateRawConfig,
     MarketAggregateReportConfig,
     MarketAggregateThresholdConfig,
+    MarketAggregateTrendConfig,
     MarketAggregateUniverseConfig,
     load_market_aggregate_config,
 )
@@ -24,6 +25,7 @@ __all__ = [
     "MarketAggregateRawConfig",
     "MarketAggregateReportConfig",
     "MarketAggregateThresholdConfig",
+    "MarketAggregateTrendConfig",
     "MarketAggregateUniverseConfig",
     "load_market_aggregate_config",
 ]

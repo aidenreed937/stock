@@ -3,9 +3,11 @@
 from __future__ import annotations
 
 from collections import OrderedDict
+from datetime import datetime
 from typing import TYPE_CHECKING, Any, cast
 
 from stock_reporting.engine.renderer import ReportRenderer
+from stock_reporting.templates.market_aggregate_trend import render_trend_section
 
 if TYPE_CHECKING:
     from stock_reporting.interpretation.market_aggregate.config import MarketAggregateConfig
@@ -19,6 +21,7 @@ def build_report_json(
     freshness: str,
     age_seconds: float,
     quality_report: dict[str, Any],
+    trend: dict[str, Any] | None = None,
 ) -> dict[str, Any]:
     """构造机器可读聚合报告。"""
     metric_sections = build_metric_sections(config, snapshot)
@@ -32,6 +35,7 @@ def build_report_json(
         "age_seconds": age_seconds,
         "metric_sections": metric_sections,
         "quality": quality_report,
+        "trend": trend or {},
     }
 
 
@@ -141,6 +145,7 @@ def render_report_markdown(
     freshness: str,
     age_seconds: float,
     quality_report: dict[str, Any],
+    trend: dict[str, Any] | None = None,
 ) -> str:
     """按配置模板渲染机器/审计版 Markdown 报告。"""
     return ReportRenderer.get_instance().render(
@@ -152,6 +157,7 @@ def render_report_markdown(
             freshness=freshness,
             age_seconds=age_seconds,
             quality_report=quality_report,
+            trend=trend,
         ),
     )
 
@@ -164,6 +170,7 @@ def render_human_report_markdown(
     freshness: str,
     age_seconds: float,
     quality_report: dict[str, Any],
+    trend: dict[str, Any] | None = None,
 ) -> str:
     """按配置模板渲染人工阅读版 Markdown 报告。"""
     context = _context(
@@ -173,6 +180,7 @@ def render_human_report_markdown(
         freshness=freshness,
         age_seconds=age_seconds,
         quality_report=quality_report,
+        trend=trend,
     )
     context["headline"] = _headline(snapshot, freshness)
     context["reading_notes"] = _reading_notes(snapshot, freshness)
@@ -241,10 +249,12 @@ def _context(
     freshness: str,
     age_seconds: float,
     quality_report: dict[str, Any],
+    trend: dict[str, Any] | None = None,
 ) -> dict[str, Any]:
     return {
         "title": config.title,
         "manifest": manifest,
+        "received_at": _format_received_at(manifest.get("received_at")),
         "snapshot": snapshot,
         "status": snapshot.status,
         "freshness": freshness,
@@ -257,7 +267,14 @@ def _context(
         "show_header": False,
         "limitations": list(config.report.limitations),
         "quality_report": quality_report,
+        "trend_section": render_trend_section(trend),
     }
+
+
+def _format_received_at(value: Any) -> str:
+    if value is None:
+        return "-"
+    return datetime.fromisoformat(str(value)).strftime("%Y-%m-%d %H:%M:%S")
 
 
 def _snapshot_payload(snapshot: Any) -> dict[str, Any]:

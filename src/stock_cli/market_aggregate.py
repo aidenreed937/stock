@@ -22,9 +22,9 @@ def _build_parser() -> argparse.ArgumentParser:
     parser.add_argument("--interval", type=float, default=None, help="覆盖配置中的抓取间隔（秒）")
     parser.add_argument(
         "--format",
-        choices=("table", "markdown"),
+        choices=("table", "markdown", "human"),
         default="table",
-        help="终端输出格式；报告产物始终按 YAML 模板生成",
+        help="终端输出格式；human 为面向人工阅读版",
     )
     parser.add_argument("--config", default=str(DEFAULT_CONFIG_PATH), help="聚合监控 YAML 配置路径")
     parser.add_argument("--output-root", default=None, help="覆盖 analytics 产物根目录")
@@ -69,7 +69,13 @@ def main() -> None:
                 batch_size=args.batch_size,
                 strong_move_pct=args.strong_move_pct,
             )
-            output = result.table_markdown if args.format == "table" else result.report_markdown
+            output = (
+                result.table_markdown
+                if args.format == "table"
+                else result.human_report_markdown
+                if args.format == "human"
+                else result.report_markdown
+            )
             sys.stdout.write(f"\n{output}\n")
             sys.stdout.flush()
             if not args.watch:

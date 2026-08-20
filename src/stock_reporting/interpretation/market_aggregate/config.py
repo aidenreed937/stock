@@ -104,6 +104,25 @@ class MarketAggregateRawConfig:
 
 
 @dataclass(frozen=True, slots=True)
+class MarketAggregateTrendConfig:
+    """短期趋势历史对比配置。"""
+
+    history_days: int = 4
+    bars_dataset: str = "stock_daily_bar"
+    market_value_dataset: str = "daily_basic"
+
+    @classmethod
+    def from_mapping(cls, data: Mapping[str, Any] | None) -> Self:
+        """从 YAML 映射构造短期趋势配置。"""
+        data = data or {}
+        return cls(
+            history_days=max(1, int(data.get("history_days", 4))),
+            bars_dataset=str(data.get("bars_dataset", "stock_daily_bar")),
+            market_value_dataset=str(data.get("market_value_dataset", "daily_basic")),
+        )
+
+
+@dataclass(frozen=True, slots=True)
 class MarketAggregateMetricConfig:
     """报告中的单个聚合指标显示配置。"""
 
@@ -182,6 +201,7 @@ class MarketAggregateConfig:
     thresholds: MarketAggregateThresholdConfig
     quality: MarketAggregateQualityConfig
     raw: MarketAggregateRawConfig
+    trend: MarketAggregateTrendConfig
     report: MarketAggregateReportConfig
 
     @classmethod
@@ -210,6 +230,9 @@ class MarketAggregateConfig:
                 _optional_mapping(data.get("quality"), "quality")
             ),
             raw=MarketAggregateRawConfig.from_mapping(_optional_mapping(data.get("raw"), "raw")),
+            trend=MarketAggregateTrendConfig.from_mapping(
+                _optional_mapping(data.get("trend"), "trend")
+            ),
             report=MarketAggregateReportConfig.from_mapping(
                 _optional_mapping(data.get("report"), "report")
             ),

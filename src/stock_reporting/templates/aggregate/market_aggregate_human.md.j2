@@ -1,7 +1,7 @@
 # {{ title }}人工阅读版
 
 - 基准日期: {{ manifest.quote_date }}
-- 接收时间: {{ manifest.received_at }}
+- 接收时间: {{ received_at }}
 - 覆盖: {{ coverage_text }}
 - 状态: {{ status }}
 - 新鲜度: {{ freshness }}（{{ "%.1f"|format(age_seconds) }} 秒）
@@ -18,6 +18,7 @@
 {% set rows = section.rows %}
 {% include table_template %}
 {% endfor %}
+{{ trend_section }}
 ## 阅读提示
 
 {% for note in reading_notes %}- {{ note }}

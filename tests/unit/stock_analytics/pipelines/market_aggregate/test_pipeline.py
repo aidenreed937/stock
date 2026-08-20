@@ -26,6 +26,43 @@ class _Fetcher(BaseMarketAggregateFetcher):
         return self.snapshot
 
 
+class _TrendCatalog:
+    def load_dataset(self, dataset: str, **_: object) -> pl.DataFrame:
+        dates = [
+            datetime(2026, 8, 14).date(),
+            datetime(2026, 8, 17).date(),
+            datetime(2026, 8, 18).date(),
+            datetime(2026, 8, 19).date(),
+        ]
+        if dataset == "stock_daily_bar":
+            return pl.DataFrame(
+                [
+                    {
+                        "trade_date": trade_date,
+                        "symbol": symbol,
+                        "close": 10.0,
+                        "pre_close": 10.0,
+                        "pct_chg": 1.0 if symbol == "000001.SZ" else -1.0,
+                        "amount": 100.0,
+                    }
+                    for trade_date in dates
+                    for symbol in ("000001.SZ", "600000.SH")
+                ]
+            )
+        return pl.DataFrame(
+            [
+                {
+                    "trade_date": trade_date,
+                    "symbol": symbol,
+                    "circ_mv": 1_000.0,
+                    "total_mv": 1_200.0,
+                }
+                for trade_date in dates
+                for symbol in ("000001.SZ", "600000.SH")
+            ]
+        )
+
+
 def _snapshot(
     received_at: datetime,
     *,
@@ -77,6 +114,7 @@ def test_pipeline_renders_configured_reports_and_latest_artifacts(tmp_path: Path
     assert result.manifest["status"] == "valid"
     assert result.quality_report_json["status"] == "passed"
     assert "A 股全市场实时聚合监控" in result.report_markdown
+    assert "接收时间: 2026-08-19 10:00:00" in result.report_markdown
     assert "市场广度" in result.report_markdown
     assert "成交额前 5% 集中度" in result.human_report_markdown
     assert "上涨扩散占优" in result.human_report_markdown
@@ -85,6 +123,7 @@ def test_pipeline_renders_configured_reports_and_latest_artifacts(tmp_path: Path
         result.paths.manifest,
         result.paths.snapshot,
         result.paths.facts,
+        result.paths.trend,
         result.paths.report_md,
         result.paths.report_json,
         result.paths.human_report_md,
@@ -107,6 +146,27 @@ def test_pipeline_marks_partial_snapshot_below_coverage_threshold(tmp_path: Path
     assert result.quality_report_json["status"] == "failed"
     assert result.quality_report_json["summary"]["error_count"] == 1
     assert "低于质量阈值" in result.quality_report_markdown
+
+
+def test_pipeline_renders_short_term_trend_for_human_report(tmp_path: Path) -> None:
+    received_at = datetime(2026, 8, 20, 10, 0, tzinfo=_SHANGHAI_TZ)
+    result = run_market_aggregate(
+        output_root=tmp_path,
+        fetcher=_Fetcher(_snapshot(received_at)),
+        catalog=_TrendCatalog(),
+        now=received_at,
+    )
+
+    assert result.short_term_trend["status"] == "available"
+    assert "最近 5 个交易日短期趋势" in result.human_report_markdown
+    assert "今日为腾讯实时快照" in result.human_report_markdown
+    assert result.report_json["trend"]["history_dates"] == [
+        "2026-08-14",
+        "2026-08-17",
+        "2026-08-18",
+        "2026-08-19",
+    ]
+    assert result.paths.trend.exists()
 
 
 def test_load_market_symbols_uses_local_stock_basic_and_excludes_non_sh_sz(monkeypatch) -> None:

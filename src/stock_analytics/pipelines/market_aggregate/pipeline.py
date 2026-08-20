@@ -16,8 +16,13 @@ from stock_analytics.pipelines.market_aggregate.artifacts import (
     build_run_paths,
     write_artifacts,
 )
+from stock_analytics.pipelines.market_aggregate.trend import (
+    build_short_term_trend,
+    build_trend_facts,
+)
 from stock_analytics.realtime.cache import MarketAggregateCache
 from stock_analytics.realtime.market_aggregate_monitor import MarketAggregateMonitor
+from stock_core.contracts import MarketDataCatalog
 from stock_core.exceptions import DataFetchError
 from stock_data.catalog import DataCatalog
 from stock_data.fetcher.realtime.base import normalize_local_symbol
@@ -62,6 +67,7 @@ class MarketAggregateRunResult:
     report_json: dict[str, Any]
     quality_report_markdown: str
     quality_report_json: dict[str, Any]
+    short_term_trend: dict[str, Any]
 
 
 def run_market_aggregate(
@@ -74,6 +80,7 @@ def run_market_aggregate(
     batch_size: int | None = None,
     strong_move_pct: float | None = None,
     fetcher: BaseMarketAggregateFetcher | None = None,
+    catalog: MarketDataCatalog | None = None,
     now: datetime | None = None,
 ) -> MarketAggregateRunResult:
     """执行一次配置驱动的全市场聚合抓取、报告渲染和产物写入。"""
@@ -82,8 +89,10 @@ def run_market_aggregate(
         batch_size=batch_size,
         strong_move_pct=strong_move_pct,
     )
+    catalog_for_history = catalog
     if fetcher is None:
-        symbols = _load_market_symbols(config.universe.dataset)
+        catalog_for_history = catalog or DataCatalog(data_source="tushare")
+        symbols = _load_market_symbols(config.universe.dataset, catalog=catalog_for_history)
         actual_fetcher: BaseMarketAggregateFetcher = TencentMarketAggregateFetcher(
             symbols=symbols,
             batch_size=config.fetch.batch_size,
@@ -110,6 +119,15 @@ def run_market_aggregate(
     snapshot_payload = snapshot.model_dump(mode="json")
     snapshot_payload["quote_date"] = snapshot.quote_date.isoformat()
     facts = pl.DataFrame([snapshot_payload])
+    short_term_trend = build_short_term_trend(
+        catalog_for_history,
+        snapshot,
+        prior_trade_days=config.trend.history_days,
+        strong_move_threshold_pct=config.thresholds.strong_move_pct,
+        bars_dataset=config.trend.bars_dataset,
+        market_value_dataset=config.trend.market_value_dataset,
+    )
+    trend_facts = build_trend_facts(short_term_trend)
     quality_report_json = build_quality_report(
         config=config,
         manifest=manifest,
@@ -124,6 +142,7 @@ def run_market_aggregate(
         freshness=cached.freshness.value,
         age_seconds=cached.age_seconds,
         quality_report=quality_report_json,
+        trend=short_term_trend,
     )
     report_markdown = render_report_markdown(
         config=config,
@@ -132,6 +151,7 @@ def run_market_aggregate(
         freshness=cached.freshness.value,
         age_seconds=cached.age_seconds,
         quality_report=quality_report_json,
+        trend=short_term_trend,
     )
     table_markdown = render_table_markdown(
         config=config,
@@ -148,6 +168,7 @@ def run_market_aggregate(
         freshness=cached.freshness.value,
         age_seconds=cached.age_seconds,
         quality_report=quality_report_json,
+        trend=short_term_trend,
     )
     quality_report_markdown = render_quality_report_markdown(
         config=config,
@@ -159,6 +180,7 @@ def run_market_aggregate(
             manifest=manifest,
             snapshot=snapshot_payload,
             facts=facts,
+            trend=trend_facts,
             report_markdown=report_markdown,
             report_json=report_json,
             human_report_markdown=human_report_markdown,
@@ -181,6 +203,7 @@ def run_market_aggregate(
         report_json=report_json,
         quality_report_markdown=quality_report_markdown,
         quality_report_json=quality_report_json,
+        short_term_trend=short_term_trend,
     )
 
 
@@ -207,10 +230,14 @@ def _build_recorder(
     )
 
 
-def _load_market_symbols(dataset: str) -> tuple[str, ...]:
+def _load_market_symbols(
+    dataset: str,
+    *,
+    catalog: MarketDataCatalog | None = None,
+) -> tuple[str, ...]:
     """从本地 stock_basic 读取在市沪深股票，不用观察池替代全市场。"""
     try:
-        frame = DataCatalog(data_source="tushare").load_dataset(dataset)
+        frame = (catalog or DataCatalog(data_source="tushare")).load_dataset(dataset)
     except (OSError, TypeError, ValueError) as exc:
         raise DataFetchError(
             "腾讯全市场聚合需要本地 stock_basic，请先运行：make backfill ENDPOINT=stock_basic"
@@ -292,6 +319,7 @@ def _build_manifest(
             "manifest": paths.manifest.name,
             "snapshot": paths.snapshot.name,
             "facts": paths.facts.name,
+            "trend": paths.trend.name,
             "report_md": paths.report_md.name,
             "report_json": paths.report_json.name,
             "human_report_md": paths.human_report_md.name,

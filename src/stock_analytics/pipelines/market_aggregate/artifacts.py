@@ -25,6 +25,7 @@ class MarketAggregateRunPaths:
     manifest: Path
     snapshot: Path
     facts: Path
+    trend: Path
     report_md: Path
     report_json: Path
     human_report_md: Path
@@ -39,6 +40,7 @@ class MarketAggregateArtifactPayload:
     manifest: MappingLike
     snapshot: MappingLike
     facts: pl.DataFrame
+    trend: pl.DataFrame
     report_markdown: str
     report_json: MappingLike
     human_report_markdown: str
@@ -63,6 +65,7 @@ def build_run_paths(
         manifest=run_dir / "manifest.json",
         snapshot=run_dir / "snapshot.json",
         facts=run_dir / "facts.parquet",
+        trend=run_dir / "trend.parquet",
         report_md=run_dir / "report.md",
         report_json=run_dir / "report.json",
         human_report_md=run_dir / "human_report.md",
@@ -82,6 +85,7 @@ def write_artifacts(
     _write_json(paths.manifest, payload.manifest)
     _write_json(paths.snapshot, payload.snapshot)
     payload.facts.write_parquet(paths.facts)
+    payload.trend.write_parquet(paths.trend)
     paths.report_md.write_text(payload.report_markdown, encoding="utf-8")
     _write_json(paths.report_json, payload.report_json)
     paths.human_report_md.write_text(payload.human_report_markdown, encoding="utf-8")
@@ -98,6 +102,7 @@ def _copy_to_latest(paths: MarketAggregateRunPaths) -> None:
         paths.manifest,
         paths.snapshot,
         paths.facts,
+        paths.trend,
         paths.report_md,
         paths.report_json,
         paths.human_report_md,
