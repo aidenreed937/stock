@@ -25,6 +25,7 @@ def build_report_json(
         "top_excluded": _rows(tables.get("excluded"), limit=20),
         "top_warned": _rows(tables.get("warned"), limit=config.output.max_warn_rows),
         "top_passed": _rows(tables.get("passed"), limit=config.output.top_passed),
+        "top_scored": _rows(tables.get("scored"), limit=config.output.top_passed),
     }
 
 
@@ -36,6 +37,8 @@ def render_report_markdown(
     tables: dict[str, pl.DataFrame],
 ) -> str:
     """渲染面向人工阅读的排雷摘要。"""
+    scored = tables.get("scored")
+    has_scoring = scored is not None and not scored.is_empty()
     lines = [
         f"# {config.title}",
         "",
@@ -44,23 +47,47 @@ def render_report_markdown(
         f"- 硬性剔除: {summary['excluded_count']}",
         f"- 黄牌预警: {summary['warned_count']}",
         f"- 通过: {summary['passed_count']}",
-        "",
-        "## 硬性剔除清单（前 20 条）",
-        "",
-        *_table_lines(tables.get("excluded"), limit=20),
-        "",
-        "## 黄牌预警清单",
-        "",
-        *_table_lines(tables.get("warned"), limit=config.output.max_warn_rows),
-        "",
-        f"## 通过名单（前 {config.output.top_passed} 条）",
-        "",
-        *_table_lines(tables.get("passed"), limit=config.output.top_passed),
-        "",
-        "## 数据缺口与限制",
-        "",
-        *_gap_lines(summary),
     ]
+    if has_scoring:
+        lines.extend(
+            [
+                f"- 评分覆盖: {summary.get('scored_top_count', 0)} 只",
+                f"- 评分中位数: {summary.get('scored_median', '-')}",
+            ]
+        )
+    lines.extend(
+        [
+            "",
+            "## 硬性剔除清单（前 20 条）",
+            "",
+            *_table_lines(tables.get("excluded"), limit=20),
+            "",
+            "## 黄牌预警清单",
+            "",
+            *_table_lines(tables.get("warned"), limit=config.output.max_warn_rows),
+            "",
+            f"## 通过名单（前 {config.output.top_passed} 条）",
+            "",
+            *_table_lines(tables.get("passed"), limit=config.output.top_passed),
+        ]
+    )
+    if has_scoring and scored is not None:
+        lines.extend(
+            [
+                "",
+                f"## 评分排名前 {config.output.top_passed}（综合评分越高越优）",
+                "",
+                *_scored_table_lines(scored, limit=config.output.top_passed),
+            ]
+        )
+    lines.extend(
+        [
+            "",
+            "## 数据缺口与限制",
+            "",
+            *_gap_lines(summary),
+        ]
+    )
     return "\n".join(lines) + "\n"
 
 
@@ -108,6 +135,25 @@ def _table_lines(frame: pl.DataFrame | None, *, limit: int) -> list[str]:
         lines.append(
             f"| {row.get('symbol', '')} | {row.get('name') or '-'} | {row.get('level', '')} | "
             f"{','.join(str(item) for item in row.get('rule_ids') or []) or '-'} | {reasons or '-'} |"
+        )
+    return lines
+
+
+def _scored_table_lines(frame: pl.DataFrame, *, limit: int) -> list[str]:
+    if frame.is_empty():
+        return ["暂无记录。"]
+    rows = frame.head(limit).to_dicts()
+    lines = [
+        "| 排名 | 代码 | 名称 | 行业 | 综合评分 |",
+        "|---|---|---|---|---|",
+    ]
+    for row in rows:
+        score = row.get("composite_score")
+        score_text = f"{score:.1f}" if score is not None else "-"
+        industry = row.get("l2_name") or row.get("l1_name") or row.get("industry") or "-"
+        lines.append(
+            f"| {row.get('rank', '-')} | {row.get('symbol', '')} | {row.get('name') or '-'} | "
+            f"{industry} | {score_text} |"
         )
     return lines
 

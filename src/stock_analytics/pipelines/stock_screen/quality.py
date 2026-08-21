@@ -125,13 +125,17 @@ def latest_date(frame: pl.DataFrame, configured_column: str) -> date | None:
     """返回数据帧中指定日期列的最新日期。"""
     if frame.is_empty():
         return None
-    column = configured_column or next(
-        (
-            item
-            for item in ("trade_date", "ann_date", "end_date", "suspend_date")
-            if item in frame.columns
-        ),
-        "",
+    column = (
+        configured_column
+        if configured_column and configured_column in frame.columns
+        else next(
+            (
+                item
+                for item in ("trade_date", "ann_date", "end_date", "suspend_date")
+                if item in frame.columns
+            ),
+            "",
+        )
     )
     if not column:
         return None

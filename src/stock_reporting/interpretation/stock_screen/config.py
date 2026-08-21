@@ -85,6 +85,22 @@ class OutputConfig:
 
 
 @dataclass(frozen=True, slots=True)
+class ScoringConfig:
+    """二次评分配置。"""
+
+    enabled: bool = True
+    top_n: int = 100
+
+    @classmethod
+    def from_mapping(cls, data: Mapping[str, Any] | None) -> Self:
+        data = data or {}
+        return cls(
+            enabled=bool(data.get("enabled", True)),
+            top_n=int(data.get("top_n", 100)),
+        )
+
+
+@dataclass(frozen=True, slots=True)
 class StockScreenConfig:
     """个股排雷顶层配置。"""
 
@@ -96,6 +112,7 @@ class StockScreenConfig:
     hard_exclusion: tuple[RuleConfig, ...]
     yellow_warn: tuple[RuleConfig, ...]
     output: OutputConfig
+    scoring: ScoringConfig
     datasets: tuple[DatasetConfig, ...]
 
     @classmethod
@@ -121,6 +138,11 @@ class StockScreenConfig:
             output=OutputConfig.from_mapping(
                 _as_mapping(data.get("output"), "output")
                 if data.get("output") is not None
+                else None
+            ),
+            scoring=ScoringConfig.from_mapping(
+                _as_mapping(data.get("scoring"), "scoring")
+                if data.get("scoring") is not None
                 else None
             ),
             datasets=tuple(
@@ -169,6 +191,7 @@ __all__ = [
     "DatasetConfig",
     "OutputConfig",
     "RuleConfig",
+    "ScoringConfig",
     "StockScreenConfig",
     "load_stock_screen_config",
 ]

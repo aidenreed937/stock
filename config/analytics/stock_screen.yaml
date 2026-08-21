@@ -115,6 +115,10 @@ stock_screen:
     top_passed: 100
     max_warn_rows: 500
 
+  scoring:
+    enabled: true
+    top_n: 100
+
   datasets:
     - data_source: tushare
       dataset: stock_basic
@@ -188,6 +192,18 @@ stock_screen:
       cadence: event
       quality_tier: confirming
       note: "停牌事件辅助确认"
+    - data_source: tushare
+      dataset: index_member
+      static: true
+      cadence: event
+      quality_tier: core
+      note: "申万行业成分股归属（含进出期，按基准日过滤活跃成员）"
+    - data_source: tushare
+      dataset: index_classify
+      static: true
+      cadence: static
+      quality_tier: core
+      note: "申万行业分类代码与名称（L1/L2）"
     - data_source: tushare
       dataset: margin_detail
       enabled: false

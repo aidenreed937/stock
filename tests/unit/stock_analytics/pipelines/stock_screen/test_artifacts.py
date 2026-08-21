@@ -19,6 +19,7 @@ def test_write_artifacts_creates_run_and_latest_files(tmp_path) -> None:
         excluded=table.clear(),
         warned=table.clear(),
         passed=table,
+        scored=pl.DataFrame(),
         scores={"passed_count": 1},
         report_markdown="# report\n",
         report_json={"passed_count": 1},

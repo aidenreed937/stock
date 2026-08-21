@@ -23,6 +23,7 @@ class StockScreenRunPaths:
     excluded: Path
     warned: Path
     passed: Path
+    scored: Path
     scores: Path
     report_md: Path
     report_json: Path
@@ -38,6 +39,7 @@ class StockScreenArtifactPayload:
     excluded: pl.DataFrame
     warned: pl.DataFrame
     passed: pl.DataFrame
+    scored: pl.DataFrame
     scores: dict[str, Any]
     report_markdown: str
     report_json: dict[str, Any]
@@ -63,6 +65,7 @@ def build_run_paths(
         excluded=run_dir / "excluded.csv",
         warned=run_dir / "warned.csv",
         passed=run_dir / "passed.csv",
+        scored=run_dir / "scored.parquet",
         scores=run_dir / "scores.json",
         report_md=run_dir / "screen_report.md",
         report_json=run_dir / "screen_report.json",
@@ -83,6 +86,8 @@ def write_artifacts(
     _csv_frame(payload.excluded).write_csv(paths.excluded)
     _csv_frame(payload.warned).write_csv(paths.warned)
     _csv_frame(payload.passed).write_csv(paths.passed)
+    if not payload.scored.is_empty():
+        payload.scored.write_parquet(paths.scored)
     _write_json(paths.scores, payload.scores)
     paths.report_md.write_text(payload.report_markdown, encoding="utf-8")
     _write_json(paths.report_json, payload.report_json)
@@ -99,13 +104,15 @@ def _copy_to_latest(paths: StockScreenRunPaths) -> None:
         paths.excluded,
         paths.warned,
         paths.passed,
+        paths.scored,
         paths.scores,
         paths.report_md,
         paths.report_json,
         paths.quality_report_md,
         paths.quality_report_json,
     ):
-        shutil.copy2(source, paths.latest_dir / source.name)
+        if source.exists():
+            shutil.copy2(source, paths.latest_dir / source.name)
 
 
 def _write_json(path: Path, payload: dict[str, Any]) -> None:

@@ -22,6 +22,7 @@ from stock_analytics.pipelines.stock_screen.decision import (
 )
 from stock_analytics.pipelines.stock_screen.quality import build_manifest, build_quality_report
 from stock_analytics.pipelines.stock_screen.rules import RULE_EVALUATORS, evaluate_rule
+from stock_analytics.pipelines.stock_screen.scoring import compute_scores
 from stock_analytics.pipelines.stock_screen.sources import (
     StockScreenSources,
     load_stock_screen_sources,
@@ -138,7 +139,14 @@ def run_stock_screen(
         evaluations,
         as_of_date=as_of_date.isoformat(),
     )
+    scored = (
+        compute_scores(tables.get("passed", pl.DataFrame()), sources, as_of_date)
+        if config.scoring.enabled
+        else pl.DataFrame()
+    )
     artifact_tables = _limit_artifact_tables(tables, config)
+    if not scored.is_empty():
+        artifact_tables = {**artifact_tables, "scored": scored.head(config.scoring.top_n)}
     data_gaps = _deduplicate_gaps([*sources.data_gaps, *data_gaps])
     scores = summarize_decisions(
         tables,
@@ -146,6 +154,10 @@ def run_stock_screen(
         data_gaps=data_gaps,
         missing_gates=missing_gates,
     )
+    if not scored.is_empty():
+        scores["scored_top_count"] = scored.height
+        scores["scored_median"] = round(float(scored.get_column("composite_score").median()), 1)  # type: ignore[arg-type]
+        scores["scored_top_symbols"] = scored.head(10).get_column("symbol").to_list()
     paths = build_run_paths(as_of_date, config.artifact_root)
     manifest = build_manifest(config, as_of_date, paths, scores)
     quality_report_json = build_quality_report(config, as_of_date, sources, scores)
@@ -169,6 +181,7 @@ def run_stock_screen(
             excluded=artifact_tables["excluded"],
             warned=artifact_tables["warned"],
             passed=artifact_tables["passed"],
+            scored=scored,
             scores=scores,
             report_markdown=report_markdown,
             report_json=report_json,
