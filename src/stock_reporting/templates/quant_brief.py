@@ -42,6 +42,7 @@ def build_quant_brief_json(
         industry_panel,
         market_facts,
     )
+    position_policy = _build_position_policy(macro, risk_gates)
     data_quality_notes = evaluate_data_quality_notes(
         market_scores,
         industry_scores,
@@ -57,6 +58,7 @@ def build_quant_brief_json(
         "veto": veto,
         "sector": sector,
         "risk_gates": risk_gates,
+        "position_policy": position_policy,
         "data_quality_notes": data_quality_notes,
         "reading_notes": evaluate_reading_notes(macro, nature, veto, sector, risk_gates),
     }
@@ -70,6 +72,9 @@ def render_quant_brief_markdown(brief: dict[str, Any]) -> str:
     veto = brief.get("veto", {})
     sector = brief.get("sector", {})
     risk_gates = brief.get("risk_gates", {})
+    position_policy = brief.get("position_policy")
+    if not isinstance(position_policy, dict):
+        position_policy = _build_position_policy(macro, risk_gates)
     reading_notes = brief.get("reading_notes", {})
     context = {
         "title": brief.get("title", ""),
@@ -79,6 +84,7 @@ def render_quant_brief_markdown(brief: dict[str, Any]) -> str:
         "veto": veto,
         "sector": sector,
         "risk_gates": risk_gates,
+        "position_policy": position_policy,
         "risk_gate_rows": _format_risk_gates(risk_gates.get("gates", [])),
         "funding_health": _format_funding_health(nature.get("funding_health", {})),
         "macro_temperature_str": _value_text(macro.get("temperature")),
@@ -98,6 +104,7 @@ def render_quant_brief_markdown(brief: dict[str, Any]) -> str:
         ),
         "crowded_industries": _format_rows(veto.get("crowded_industries", [])),
         "priority_industries": _format_rows(sector.get("priority", [])),
+        "priority_excluded_industries": _format_rows(sector.get("priority_excluded", [])),
         "avoid_industries": _format_rows(sector.get("avoid", [])),
         "lagging_industries": _format_rows(sector.get("lagging", [])),
         "data_quality_notes": brief.get("data_quality_notes", []),
@@ -132,6 +139,28 @@ def _format_rows(rows: object) -> list[dict[str, str]]:
             }
         )
     return result
+
+
+def _build_position_policy(
+    macro: dict[str, Any],
+    risk_gates: dict[str, Any],
+) -> dict[str, Any]:
+    temperature_band = macro.get("equity_position_band")
+    risk_cap = risk_gates.get("max_position_band")
+    effective_band = risk_cap or temperature_band
+    if risk_cap:
+        status = "risk_capped"
+        reason = "风控闸门已生效，当前有效仓位服从防守上限。"
+    else:
+        status = "temperature_band"
+        reason = "未触发硬性总闸门，当前有效仓位按综合温度档位执行。"
+    return {
+        "temperature_band": temperature_band,
+        "risk_cap": risk_cap,
+        "effective_band": effective_band,
+        "status": status,
+        "reason": reason,
+    }
 
 
 def _format_risk_gates(gates: object) -> list[dict[str, str]]:

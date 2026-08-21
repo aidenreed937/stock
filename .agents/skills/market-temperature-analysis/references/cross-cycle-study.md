@@ -7,10 +7,13 @@
 ## 执行顺序
 
 1. 确认目标区间是交易日口径，不使用自然日补齐。
-2. 确认三类产物都存在：
+2. 确认四类产物都存在：
    - `data/analytics/market_temperature`
    - `data/analytics/industry_structure`
    - `data/analytics/investor_brief`
+   - `data/analytics/quant_brief`
+
+   历史旧日期可能没有 `quant_brief`；一致性校验会保留兼容性告警，不能把缺失日期当成量化简报已生成。
 3. 先运行一致性校验：
 
 ```bash
@@ -34,6 +37,7 @@ make market-cycle-review START=YYYY-MM-DD END=YYYY-MM-DD
 - 综合温度解决“风险环境是否允许参与”。
 - 行业结构解决“资金和价格往哪里运动”。
 - 投资者简报解决“普通投资者如何读成操作约束”。
+- `quant_brief` 解决“量化投研如何把基础仓位、风险上限、性质判断和行业筛选串成可追溯决策链”。
 - 20日扩散强而60日扩散弱时，只能称为短线修复，不能称为中期趋势确认。
 - 资金温度没有同步上升时，价格上涨要表述为“价格先行、资金待确认”。
 - `main_money_net_inflow_share` 是单日脉冲，`main_money_net_inflow_share_20d_cum` 才能用于

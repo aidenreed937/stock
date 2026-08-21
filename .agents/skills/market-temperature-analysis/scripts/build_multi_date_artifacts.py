@@ -1,4 +1,4 @@
-"""按多个交易日串行生成市场分析产物，并在最后统一发布 latest。"""
+"""按多个交易日串行生成四类市场分析产物，并在最后统一发布 latest。"""
 
 from __future__ import annotations
 
@@ -34,6 +34,7 @@ ARTIFACT_FILES: dict[str, tuple[str, ...]] = {
         "quality_report.json",
     ),
     "investor_brief": ("manifest.json", "brief_report.md", "brief_report.json"),
+    "quant_brief": ("manifest.json", "brief_report.md", "brief_report.json"),
 }
 
 
@@ -55,7 +56,7 @@ class CommandError(RuntimeError):
 
 def _build_parser() -> argparse.ArgumentParser:
     parser = argparse.ArgumentParser(
-        description="按多个 A 股交易日串行生成三类分析产物，并复用一次 Mart 读取",
+        description="按多个 A 股交易日串行生成四类分析产物，并复用一次 Mart 读取",
         formatter_class=argparse.ArgumentDefaultsHelpFormatter,
     )
     source = parser.add_mutually_exclusive_group(required=True)
@@ -196,7 +197,7 @@ def _build_dates(
         update_latest=False,
     )
     for target_date in dates:
-        print(f"已完成 {target_date.isoformat()} 的三类产物")
+        print(f"已完成 {target_date.isoformat()} 的四类产物")
 
 
 def _consistency_commands(dates: list[date], range_mode: bool) -> list[list[str]]:
@@ -237,7 +238,7 @@ def _latest_run_dir(artifact_root: Path, target_date: date) -> Path:
 
 
 def _publish_latest(target_date: date) -> None:
-    """将选定日期的完整运行目录文件复制到三个共享 latest 目录。"""
+    """将选定日期的完整运行目录文件复制到四个独立 latest 目录。"""
     sources: list[tuple[Path, Path]] = []
     analytics_root = REPO_ROOT / "data" / "analytics"
     for artifact, filenames in ARTIFACT_FILES.items():
@@ -253,7 +254,7 @@ def _publish_latest(target_date: date) -> None:
     for source, target in sources:
         target.parent.mkdir(parents=True, exist_ok=True)
         shutil.copy2(source, target)
-    print(f"已发布 {target_date.isoformat()} 到三个产物 latest")
+    print(f"已发布 {target_date.isoformat()} 到四个产物 latest")
 
 
 def _print_plan(dates: list[date], range_mode: bool, args: argparse.Namespace) -> None:

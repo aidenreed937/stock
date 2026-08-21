@@ -72,8 +72,8 @@ def write_artifacts(
 
 def _copy_to_latest(paths: QuantBriefRunPaths) -> None:
     paths.latest_dir.mkdir(parents=True, exist_ok=True)
-    shutil.copy2(paths.brief_md, paths.latest_dir / "quant_brief.md")
-    shutil.copy2(paths.brief_json, paths.latest_dir / "quant_brief.json")
+    for source in (paths.manifest, paths.brief_md, paths.brief_json):
+        shutil.copy2(source, paths.latest_dir / source.name)
 
 
 def _write_json(path: Path, payload: MappingLike) -> None:

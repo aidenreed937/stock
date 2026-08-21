@@ -17,8 +17,9 @@ A 视角 = **底层量化投研 / 金融工程 / 风控决策链**，是 B 视�
 3. **微观排雷区**（拥挤度 / 两融拐点 → 一票否决）
 4. **中观选方向**（行业轮动 → PB-ROE / TCR 矩阵）
 
-新产物命名为 **`quant_brief`**，运行历史保存在 `data/analytics/quant_brief`；最新报告与现有
-投资者简报并列落在 `data/analytics/investor_brief/latest/`，便于统一消费。
+新产物命名为 **`quant_brief`**，运行历史保存在 `data/analytics/quant_brief`；最新报告落在
+`data/analytics/quant_brief/latest/`，与普通投资者简报的 `data/analytics/investor_brief/latest/`
+并列，两个视角各自维护独立的最新副本。
 
 本方案的实现约束已经收敛为：`quant_brief` 是同一基准日市场温度和行业结构产物的只读解释层；
 新增指标只进入市场温度事实 Mart，不直接扩展 `market_daily` 宽表；所有阈值、边界和仓位区间由
@@ -165,37 +166,38 @@ A 视角一票否决和事实依据。
 
 每道闸门输出 `status / severity / facts_text / message / action`。`severity=local` 只影响候选行业，不计入 `risk_gates.hard_stop`；上游事实缺失则输出 `insufficient`，总状态为 `partial`，不以模型记忆补齐。
 
-## 6. 产物结构（镜像 investor_brief）
+## 6. 产物结构（独立 latest）
 
 ```
 data/analytics/quant_brief/
   runs/as_of=YYYY-MM-DD/run_*/manifest.json, brief_report.md, brief_report.json
-data/analytics/investor_brief/latest/
-  brief_report.md       # 原有投资者简报
-  quant_brief.md        # 最新量化投研简报
-  quant_brief.json
+  latest/
+    manifest.json
+    brief_report.md      # 最新量化投研简报
+    brief_report.json
 ```
 
 `brief_report.json` 顶层：`schema_version / title / manifest / macro / nature / veto / sector / risk_gates /
-data_quality_notes / reading_notes`。
+position_policy / data_quality_notes / reading_notes`。
 
 其中 `macro` 保存综合温度、五档区间、风险等级、仓位区间、策略动作和理由；`nature` 保存性质、
 维度温度、行业 20D/60D 扩散、`composite_delta` 及比较状态；`veto` 保存旗标、拥挤行业、两融
-说明、Top5 说明和缺失项；`sector` 保存优先、回避、落后方向，并保留行业面板来源字段。
+说明、Top5 说明和缺失项；`sector` 保存优先、结构领先但未入选、回避、落后方向，并保留行业面板来源字段；
+`position_policy` 明确基础温度仓位、风险上限和最终有效仓位。
 
 模板 `quant_brief.md.j2` 按四步分节 + "数据限制"节。
 
 ---
 
-## 7. 全链路落点（镜像 investor_brief）
+## 7. 全链路落点（独立产物链）
 
 | # | 文件 | 内容 |
 |---:|---|---|
-| 1 | `config/analytics/quant_brief.yaml` | `artifact_root: data/analytics/quant_brief` 保存运行历史，`latest_root: data/analytics/investor_brief` 共享最新目录 |
+| 1 | `config/analytics/quant_brief.yaml` | `artifact_root/latest_root: data/analytics/quant_brief`，运行历史与最新副本统一归档 |
 | 2 | `src/stock_reporting/interpretation/quant_brief/{config,interpretation,__init__}.py` | `QuantBriefConfig` + 四步逻辑 |
 | 3 | `src/stock_reporting/templates/quant_brief.py` | `build_quant_brief_json` / `render_quant_brief_markdown` |
 | 4 | `src/stock_reporting/templates/temperature/quant_brief.md.j2` | 报告模板 |
-| 5 | `src/stock_analytics/pipelines/quant_brief/{artifacts,pipeline,__init__}.py` | `run_quant_brief`（复用 investor_brief 读取/写入模式） |
+| 5 | `src/stock_analytics/pipelines/quant_brief/{artifacts,pipeline,__init__}.py` | `run_quant_brief`（独立写入 quant_brief latest，读取两个上游产物） |
 | 6 | `src/stock_cli/quant_brief.py` | CLI 入口 `-m stock_cli.quant_brief` |
 | 7 | `Makefile` | 新增 `quant-brief` 目标 + `scan` 追加 |
 | 8 | `src/stock_analytics/pipelines/__init__.py`、`src/stock_reporting/templates/__init__.py`、`src/stock_reporting/__init__.py` | 导出接线 |
@@ -221,8 +223,8 @@ data_quality_notes / reading_notes`。
 
 ## 9. 已确认的兼容策略
 
-- `multi_date` / `make scan` 将 `quant_brief` 设为**必产第四类产物**；运行历史独立保存，最新文件与
-  `investor_brief` 共享 `latest/` 目录。
+- `multi_date` / `make scan` 将 `quant_brief` 设为**必产第四类产物**；运行历史和最新文件均独立保存，
+  与 `investor_brief` 分别写入各自的 `latest/` 目录。
 - `report_consistency` 对新生成日期强制校验 quant 输入基准日、run_id 和事实链接；扫描历史日期时，
   若旧日期没有 quant 目录先输出 legacy compatibility warning，不把历史存量直接判为新链路硬错误。
 - 外盘风险仍只作宏观背景，不改变五档仓位；只有 `systemic_risk` 和配置驱动的本地事实能够改变仓位档位。

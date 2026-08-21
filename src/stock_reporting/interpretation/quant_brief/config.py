@@ -95,7 +95,7 @@ class QuantBriefConfig:
             schema_version=int(data.get("schema_version", 1)),
             title=str(data.get("title", "A 股量化投研简报")),
             artifact_root=Path(str(data.get("artifact_root", "data/analytics/quant_brief"))),
-            latest_root=Path(str(data.get("latest_root", "data/analytics/investor_brief"))),
+            latest_root=Path(str(data.get("latest_root", "data/analytics/quant_brief"))),
             market_temperature_root=Path(
                 str(data.get("market_temperature_root", "data/analytics/market_temperature"))
             ),
@@ -158,7 +158,8 @@ class QuantBriefConfig:
         """返回覆盖产物根目录后的配置。"""
         if artifact_root is None:
             return self
-        return replace(self, artifact_root=Path(artifact_root))
+        root = Path(artifact_root)
+        return replace(self, artifact_root=root, latest_root=root)
 
 
 def load_quant_brief_config(

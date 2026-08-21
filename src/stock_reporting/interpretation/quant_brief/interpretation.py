@@ -22,6 +22,7 @@ from stock_reporting.interpretation.quant_brief.helpers import (
     _gte,
     _mapping,
     _panel_rows,
+    _priority_excluded_rows,
     _sector_item,
     _temperature_band,
     _value_text,
@@ -206,9 +207,13 @@ def evaluate_nature(
         message += " 市场宽度未形成全面确认，需防范少数抱团掩护式上涨。"
     if comparison_status == "insufficient_comparison":
         message += " 综合温度缺少有效对比值，真牛市判定不能仅凭当前截面确认。"
+    nature_label = (
+        "资金-成交背离风险（硬闸门观察）" if nature_type == "distribution_risk" else nature_type
+    )
     return {
         "status": "ready" if not missing else "partial",
         "nature_type": nature_type,
+        "nature_label": nature_label,
         "message": message,
         "technical_temperature": technical,
         "fund_flow_temperature": fund_flow,
@@ -234,6 +239,7 @@ def evaluate_sector(
     rows = _panel_rows(industry_panel)
     priority: list[dict[str, Any]] = []
     avoid: list[dict[str, Any]] = []
+    valid_rows = [row for row in rows if row.get("status") == "ok"]
     for row in rows:
         if row.get("status") != "ok":
             continue
@@ -266,6 +272,8 @@ def evaluate_sector(
             avoid.append(_sector_item(row, source_group="avoid", reason=reason))
 
     priority.sort(key=lambda item: _as_float(item.get("structure_score")) or -1, reverse=True)
+    selected_priority = priority[: config.max_priority_industries]
+    priority_excluded = _priority_excluded_rows(valid_rows, selected_priority, config)
     avoid.sort(
         key=lambda item: (
             _as_float(item.get("crowding_temperature")) or -1,
@@ -273,14 +281,14 @@ def evaluate_sector(
         ),
         reverse=True,
     )
-    valid_rows = [row for row in rows if row.get("status") == "ok"]
     valid_rows.sort(key=lambda row: _as_float(row.get("structure_score")) or 101)
     lagging = [
         _sector_item(row, source_group="lagging", reason="结构分靠后，用于排查弱势暴露。")
         for row in valid_rows[: config.max_lagging_industries]
     ]
     return {
-        "priority": priority[: config.max_priority_industries],
+        "priority": selected_priority,
+        "priority_excluded": priority_excluded,
         "avoid": avoid[: config.max_avoid_industries],
         "lagging": lagging,
         "selection_rule": "优先方向要求结构分达标、不拥挤、不景气承压，并按配置要求检查资金确认。",

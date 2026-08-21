@@ -11,7 +11,7 @@ description: 用本地 Curated 黄金表和现有 analytics/metrics 体系生成
 
 默认分析周期为最近 20 个已落盘 A 股交易日，而不是最近 20 个自然日。先用 `DataCatalog.latest_trade_dates("stock_daily_bar", n=20)` 取得窗口，再以最新行情交易日作为主口径日期。5 日/10 日窗口只作为短线温度补充观察，不替代 20 日主温度。
 
-观测日期规则：显式传入 `DATE` 时以 `DATE` 为准；未传 `DATE` 的市场温度和行业结构分别取各自主数据集的最新交易日；未传 `DATE` 的投资者简报扫描两类上游 `runs/as_of=*`，取共同的最新观测日期，再读取该日期下最新一次运行。`latest/` 只是最近一次成功发布的副本，不能替代 `as_of_date` 判断。
+观测日期规则：显式传入 `DATE` 时以 `DATE` 为准；未传 `DATE` 的市场温度和行业结构分别取各自主数据集的最新交易日；未传 `DATE` 的投资者简报和量化投研简报都扫描两类上游 `runs/as_of=*`，取共同的最新观测日期，再读取该日期下最新一次运行。`latest/` 只是最近一次成功发布的副本，不能替代 `as_of_date` 判断。
 
 市场温度管线还会把外盘事实截断到 A 股基准日前一个已落盘交易日，并在 manifest 的
 `source_cutoffs.external_market` 留痕；这是防止隔夜数据前视的固定口径，不要手工把外盘日期推进到
@@ -62,7 +62,7 @@ UV_CACHE_DIR=.uv_cache UV_PYTHON_INSTALL_DIR=.uv_python uv run python -m stock_c
 
 - 批量生成阶段统一不刷新 `latest/`，不能让日期任务交错写共享目录；
 - Mart 在批量开始前最多重建一次；报告阶段只读取该次重建结果；
-- 投资者简报必须等待同一基准日的市场温度和行业结构产物完成后再生成，并显式传入 `DATE`；
+- 投资者简报和量化投研简报必须等待同一基准日的市场温度和行业结构产物完成后再生成，并显式传入 `DATE`；
 - 所有日期产物完成后，先执行区间 `report-consistency`；确认全部通过后，再由单个收口任务将选定的最新交易日发布到 `latest/`。
 
 仓库内提供批量快捷脚本
@@ -85,7 +85,7 @@ UV_CACHE_DIR=.uv_cache UV_PYTHON_INSTALL_DIR=.uv_python \
   --dates YYYY-MM-DD YYYY-MM-DD --dry-run
 ```
 
-脚本按日期串行执行市场温度、行业结构和投资者简报，并在进程内复用一次 Mart 与数据集缓存；生成完成后自动运行一致性校验，校验通过才发布 `latest/`，并再次校验 `latest/`。使用 `--no-publish-latest` 可只生成并校验运行目录，使用 `--dry-run` 可只查看计划。
+脚本按日期串行执行市场温度、行业结构、投资者简报和量化投研简报，并在进程内复用一次 Mart 与数据集缓存；生成完成后自动运行一致性校验，校验通过才发布四类产物的 `latest/`，并再次校验 `latest/`。使用 `--no-publish-latest` 可只生成并校验运行目录，使用 `--dry-run` 可只查看计划。
 
 需要解释两个基准日的驱动差异时，使用 `COMPARE_DATE` / `--compare-date`。它读取对比日期最近一次已落盘的 `manifest.json` 和 `scores.json`，只在人读版报告中加入“跨期驱动变化”表；不会重算或改写前期产物。
 
@@ -112,6 +112,22 @@ UV_CACHE_DIR=.uv_cache UV_PYTHON_INSTALL_DIR=.uv_python uv run python -m stock_c
 ```
 
 默认配置在 `config/analytics/investor_brief.yaml`。产物写入 `data/analytics/investor_brief/`，包括 `manifest.json`、`brief_report.md/json` 和 `latest/` 副本。简报只回答两个问题：系统风险是否允许参与，以及短期可观察的行业方向；行业方向默认剔除高拥挤和景气承压标签，拥挤行业和落后方向单独列示。
+
+量化投研简报是同一上游事实的 A 视角解释层，面向底层量化投研、风控闸门和行业筛选，不替代普通投资者简报，也不重新计算指标或引入新数据源。它同样只读取同一基准日的市场温度计与行业结构产物：
+
+```bash
+make quant-brief DATE=YYYY-MM-DD
+# 或
+UV_CACHE_DIR=.uv_cache UV_PYTHON_INSTALL_DIR=.uv_python uv run python -m stock_cli.quant_brief --date YYYY-MM-DD
+```
+
+默认配置在 `config/analytics/quant_brief.yaml`。产物独立写入 `data/analytics/quant_brief/`：
+
+- `runs/as_of=YYYY-MM-DD/run_*/manifest.json`、`brief_report.md`、`brief_report.json`：运行历史及其上游 `run_id` 链接；
+- `latest/manifest.json`、`brief_report.md`、`brief_report.json`：最近一次成功发布的量化投研简报；
+- `brief_report.json` 顶层包括 `macro`、`nature`、`veto`、`sector`、`risk_gates`、`position_policy`、`data_quality_notes` 和 `reading_notes`。
+
+解读仓位时必须区分：`macro.equity_position_band` 是综合温度给出的基础仓位，`risk_gates.max_position_band` 是风险闸门上限，`position_policy.effective_band` 才是当前有效仓位。`sector.priority_excluded` 用于解释结构领先但因资金未确认、拥挤或景气承压等原因未进入优先方向的行业。`nature.nature_type=distribution_risk` 在人读版中显示为“资金-成交背离风险（硬闸门观察）”，不改变资金硬闸门的实际阈值。
 
 跨周期复盘使用只读产物脚本，先校验一致性，再抽取阶段变化、重要信号日、行业频率、TCR 迁移、
 资金 20 日累计占比和情绪面子组变化：

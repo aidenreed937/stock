@@ -1,6 +1,7 @@
 # {{ title }}
 
 - 基准日期: {{ manifest.as_of_date }}
+- 产物生成时间: {{ manifest.generated_at }}
 - 市场温度输入: {{ manifest.inputs.market_temperature.run_id }}
 - 行业结构输入: {{ manifest.inputs.industry_structure.run_id }}
 - 定位: 底层量化投研与风控决策链；外盘仅作背景，不构成个性化投资建议。
@@ -11,6 +12,8 @@
 - 总结: {{ risk_gates.summary }}
 - 硬性总闸门: {{ "是" if risk_gates.hard_stop else "否" }}
 - 防守仓位上限: {{ risk_gates.max_position_band or "按宏观温度档位" }}
+- 当前有效仓位: {{ position_policy.effective_band or "不可判定" }}
+- 仓位执行依据: {{ position_policy.reason }}
 
 | 闸门 | 状态 | 关键事实 | 判断 | 风控动作 |
 |---|---|---|---|---|
@@ -25,7 +28,7 @@
 - 综合温度: {{ macro_temperature_str }} / 100
 - 温度档位: {{ macro.band_label }}
 - 系统风险: {{ macro.risk_level }}（{{ macro.risk_status }}）
-- 权益仓位区间: {{ macro.equity_position_band }}
+- 基础温度仓位: {{ position_policy.temperature_band or macro.equity_position_band }}
 - 基调: {{ macro.stance }}
 - 策略动作: {{ macro.tactic }}
 
@@ -35,7 +38,7 @@
 
 ## 2. 量价判性质
 
-- 性质: {{ nature.nature_type }}
+- 性质: {{ nature.nature_label or nature.nature_type }}
 - 技术面温度: {{ technical_temperature_str }}；资金面温度: {{ fund_flow_temperature_str }}
 - 行业扩散: 20日 {{ breadth_20d_str }}；60日 {{ breadth_60d_str }}
 - 综合温度变化: {{ composite_delta_str }}（比较状态: {{ nature.comparison_status }}）
@@ -84,6 +87,16 @@
 | {{ row.industry_name }} | {{ row.structure_score }} | {{ row.return_20d }} | {{ row.return_60d }} | {{ row.crowding_temperature }} | {{ row.fund_flow_score }} | {{ row.tags }} | {{ row.reason }} |
 {% else %}
 | - | - | - | - | - | - | - | 暂无同时满足结构、拥挤和资金确认条件的优先方向。 |
+{% endfor %}
+
+### 结构领先但未进入优先方向
+
+| 行业 | 结构分 | 20日收益 | 60日收益 | 资金分 | 原因 |
+|---|---:|---:|---:|---:|---|
+{% for row in priority_excluded_industries %}
+| {{ row.industry_name }} | {{ row.structure_score }} | {{ row.return_20d }} | {{ row.return_60d }} | {{ row.fund_flow_score }} | {{ row.reason }} |
+{% else %}
+| - | - | - | - | - | 结构领先候选均已通过当前优先规则。 |
 {% endfor %}
 
 ### 回避方向

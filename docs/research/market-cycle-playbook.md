@@ -10,10 +10,11 @@
 
 ## 标准流程
 
-1. 生成或确认三类产物：
+1. 生成或确认四类产物：
    - `data/analytics/market_temperature`
    - `data/analytics/industry_structure`
    - `data/analytics/investor_brief`
+   - `data/analytics/quant_brief`
 2. 跑一致性校验：
 
 ```bash
@@ -31,6 +32,7 @@ make market-cycle-review START=YYYY-MM-DD END=YYYY-MM-DD
    - 估值、资金、情绪、技术、基本面、宏观流动性；
    - 行业20日/60日扩散；
    - 候选行业、拥挤行业、落后行业；
+   - `quant_brief` 的基础温度仓位、风险上限、有效仓位和结构领先但未入选方向；
    - TCR成交占比迁移。
 
 ## 关键判断规则

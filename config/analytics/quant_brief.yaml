@@ -2,7 +2,7 @@ quant_brief:
   schema_version: 1
   title: "A 股量化投研简报"
   artifact_root: "data/analytics/quant_brief"
-  latest_root: "data/analytics/investor_brief"
+  latest_root: "data/analytics/quant_brief"
   market_temperature_root: "data/analytics/market_temperature"
   industry_structure_root: "data/analytics/industry_structure"
 

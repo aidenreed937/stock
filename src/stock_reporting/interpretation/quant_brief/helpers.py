@@ -172,6 +172,54 @@ def _fund_flow_confirmed(row: dict[str, Any]) -> bool:
     return flow_score is not None and flow_score >= 70 and inflow is not None and inflow > 0
 
 
+def _priority_excluded_rows(
+    rows: list[dict[str, Any]],
+    selected_priority: list[dict[str, Any]],
+    config: QuantBriefConfig,
+) -> list[dict[str, Any]]:
+    selected_keys = {
+        str(item.get("industry_code") or item.get("industry_name") or "")
+        for item in selected_priority
+    }
+    candidates = sorted(
+        (row for row in rows if _as_float(row.get("structure_score")) is not None),
+        key=lambda row: _as_float(row.get("structure_score")) or -1,
+        reverse=True,
+    )[: config.max_priority_industries]
+    excluded: list[dict[str, Any]] = []
+    for row in candidates:
+        row_key = str(row.get("industry_code") or row.get("industry_name") or "")
+        if row_key in selected_keys:
+            continue
+        failures = _priority_exclusion_reasons(row, config)
+        reason = "；".join(failures) if failures else "优先方向名额按结构分截断。"
+        item = _sector_item(row, source_group="priority_excluded", reason=reason)
+        item["selection_failures"] = failures or ["priority_slot"]
+        excluded.append(item)
+    return excluded
+
+
+def _priority_exclusion_reasons(
+    row: dict[str, Any],
+    config: QuantBriefConfig,
+) -> list[str]:
+    reasons: list[str] = []
+    crowding = _crowding_temperature(row)
+    tcr = _as_float(row.get("tcr"))
+    tags = str(row.get("tags") or "")
+    if crowding is not None and crowding >= config.crowding_temperature:
+        reasons.append(f"拥挤温度 {crowding:.2f} 超过优先线")
+    if tcr is not None and tcr >= config.industry_tcr_warning:
+        reasons.append(f"TCR {tcr:.2f}% 达到观察线")
+    if "拥挤风险" in tags:
+        reasons.append("标签含拥挤风险")
+    if "景气承压" in tags:
+        reasons.append("标签含景气承压")
+    if config.require_fund_flow_confirmation and not _fund_flow_confirmed(row):
+        reasons.append("资金未确认")
+    return reasons
+
+
 def _crowding_temperature(row: dict[str, Any]) -> float | None:
     value = _as_float(row.get("crowding_temperature"))
     return value if value is not None else _as_float(row.get("tcr_percentile"))

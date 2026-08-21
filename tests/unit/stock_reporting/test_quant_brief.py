@@ -10,6 +10,7 @@ from stock_reporting.interpretation.quant_brief.interpretation import (
     evaluate_macro,
     evaluate_nature,
     evaluate_risk_gates,
+    evaluate_sector,
     evaluate_veto,
 )
 from stock_reporting.templates.quant_brief import (
@@ -165,6 +166,100 @@ def test_render_quant_brief_contains_four_decision_sections() -> None:
     assert "## 4. 中观选方向" in markdown
     assert "主力资金与杠杆健康度" in markdown
     assert brief["veto"]["top5pct"]["value"] == 0.32
+    assert "结构领先但未进入优先方向" in markdown
+
+
+def test_quant_brief_exposes_effective_position_band_and_conservative_nature_label() -> None:
+    config = load_quant_brief_config()
+    brief = build_quant_brief_json(
+        config=config,
+        manifest={
+            "as_of_date": "2026-08-14",
+            "generated_at": "2026-08-14T18:00:00",
+            "inputs": {
+                "market_temperature": {"run_id": "run_market"},
+                "industry_structure": {"run_id": "run_industry"},
+            },
+        },
+        market_scores={
+            "composite": {"temperature": 45.0},
+            "systemic_risk": {"level": "低", "status": "normal"},
+            "drivers": {"status": "no_comparison"},
+            "dimensions": [
+                {"dimension_id": "technical", "temperature": 55.0},
+                {"dimension_id": "fund_flow", "temperature": 40.0},
+                {"dimension_id": "valuation", "temperature": 55.0},
+                {"dimension_id": "sentiment", "temperature": 50.0},
+            ],
+        },
+        industry_scores={
+            "structure_health": {
+                "positive_return_20d_count": 15,
+                "positive_return_60d_count": 8,
+                "scored_industry_count": 31,
+            },
+            "trend_diagnostics": {},
+        },
+        industry_panel=_clear_panel(),
+        market_facts=_facts(
+            [
+                ("main_large_order_net_inflow_share", -0.06),
+                ("market_amount_percentile_1250d", 95.0),
+            ]
+        ),
+    )
+
+    assert brief["position_policy"]["temperature_band"] == "40%-50%"
+    assert brief["position_policy"]["risk_cap"] == "0%-30%"
+    assert brief["position_policy"]["effective_band"] == "0%-30%"
+    assert brief["nature"]["nature_type"] == "distribution_risk"
+    assert brief["nature"]["nature_label"] == "资金-成交背离风险（硬闸门观察）"
+    legacy_brief = dict(brief)
+    legacy_brief.pop("position_policy")
+    assert "当前有效仓位: 0%-30%" in render_quant_brief_markdown(legacy_brief)
+
+
+def test_sector_explains_structure_leaders_filtered_by_fund_flow() -> None:
+    config = load_quant_brief_config()
+    result = evaluate_sector(
+        config,
+        pl.DataFrame(
+            [
+                {
+                    "industry_name": "煤炭",
+                    "industry_code": "801950",
+                    "status": "ok",
+                    "structure_score": 80.0,
+                    "structure_rank": 1,
+                    "fund_flow_score": 95.0,
+                    "money_net_inflow_share_20d": -0.01,
+                    "return_20d": 0.1,
+                    "return_60d": 0.2,
+                    "crowding_temperature": 40.0,
+                    "tcr": 3.0,
+                    "tags": "低估改善、相对占优",
+                },
+                {
+                    "industry_name": "银行",
+                    "industry_code": "801780",
+                    "status": "ok",
+                    "structure_score": 60.0,
+                    "structure_rank": 6,
+                    "fund_flow_score": 80.0,
+                    "money_net_inflow_share_20d": 0.02,
+                    "return_20d": 0.05,
+                    "return_60d": 0.08,
+                    "crowding_temperature": 40.0,
+                    "tcr": 3.0,
+                    "tags": "资金确认、相对占优",
+                },
+            ]
+        ),
+    )
+
+    assert [row["industry_name"] for row in result["priority"]] == ["银行"]
+    assert [row["industry_name"] for row in result["priority_excluded"]] == ["煤炭"]
+    assert "资金未确认" in result["priority_excluded"][0]["reason"]
 
 
 def test_systemic_valuation_red_flag_sets_defensive_position_cap() -> None:
