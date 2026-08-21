@@ -134,14 +134,20 @@ def test_tushare_margin_detail_timing() -> None:
     target_date = date(2026, 8, 12)
 
     with patch.object(DataUpdateScheduler, "_get_trading_days", return_value=(date(2026, 8, 13),)):
-        # 1. T 日 20:00 (T日晚间，要求下一个交易日 09:00) -> 尚未就绪
+        # 1. T 日 20:00 (T日晚间，要求下一个交易日 08:00) -> 尚未就绪
         dt_same_night = datetime(2026, 8, 12, 20, 0)
         assert not DataUpdateScheduler.is_data_ready(
             "margin_detail", target_date, dt_same_night, data_source="tushare"
         )
 
-        # 2. 下一个交易日 09:30 -> 已就绪
-        dt_next_morning = datetime(2026, 8, 13, 9, 30)
+        # 2. 下一个交易日 07:59 -> 尚未就绪
+        dt_before_update = datetime(2026, 8, 13, 7, 59)
+        assert not DataUpdateScheduler.is_data_ready(
+            "margin_detail", target_date, dt_before_update, data_source="tushare"
+        )
+
+        # 3. 下一个交易日 08:00 -> 已就绪
+        dt_next_morning = datetime(2026, 8, 13, 8, 0)
         assert DataUpdateScheduler.is_data_ready(
             "margin_detail", target_date, dt_next_morning, data_source="tushare"
         )
@@ -268,8 +274,39 @@ def test_get_endpoint_update_meta() -> None:
 
 def test_margin_endpoint_uses_trading_day_delay() -> None:
     meta = DataUpdateScheduler.get_endpoint_update_meta("tushare", "margin")
+    assert meta.update_time == "08:00"
     assert meta.update_delay_days == 1
     assert meta.delay_in_trading_days
+
+
+def test_northbound_update_windows() -> None:
+    flow_meta = DataUpdateScheduler.get_endpoint_update_meta("tushare", "moneyflow_hsgt")
+    top10_meta = DataUpdateScheduler.get_endpoint_update_meta("tushare", "hsgt_top10")
+    hold_meta = DataUpdateScheduler.get_endpoint_update_meta("tushare", "hk_hold")
+
+    assert flow_meta.update_time == "20:00"
+    assert top10_meta.update_time == "20:00"
+    assert hold_meta.update_time == "08:00"
+    assert hold_meta.update_delay_days == 1
+    assert hold_meta.delay_in_trading_days
+
+
+def test_hk_hold_t_plus_one_timing() -> None:
+    target_date = date(2026, 8, 20)
+
+    with patch.object(DataUpdateScheduler, "_get_trading_days", return_value=(date(2026, 8, 21),)):
+        assert not DataUpdateScheduler.is_data_ready(
+            "hk_hold",
+            target_date,
+            datetime(2026, 8, 21, 7, 59),
+            data_source="tushare",
+        )
+        assert DataUpdateScheduler.is_data_ready(
+            "hk_hold",
+            target_date,
+            datetime(2026, 8, 21, 8, 0),
+            data_source="tushare",
+        )
 
 
 def test_check_readiness_and_cli(capsys) -> None:

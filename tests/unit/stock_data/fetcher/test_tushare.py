@@ -405,6 +405,34 @@ def test_tushare_full_market_endpoint_uses_small_request_window() -> None:
     ]
 
 
+def test_tushare_hk_hold_splits_each_day_when_tail_date_is_empty() -> None:
+    fetcher = TuShareDataFetcher(token="test_token")
+    fetcher.client._pro_api = MagicMock()
+
+    def query(api_name: str, **kwargs: str) -> pd.DataFrame:
+        assert api_name == "hk_hold"
+        if kwargs["trade_date"] == "20260819":
+            return pd.DataFrame(
+                {
+                    "ts_code": ["600000.SH"],
+                    "trade_date": ["20260819"],
+                    "vol": [100.0],
+                }
+            )
+        return pd.DataFrame()
+
+    fetcher.client._pro_api.query.side_effect = query
+    result = fetcher.fetch_daily_bars_df(
+        "", date(2026, 8, 19), date(2026, 8, 20), endpoint="hk_hold"
+    )
+
+    assert result.get_column("trade_date").to_list() == ["20260819"]
+    assert [call.kwargs for call in fetcher.client._pro_api.query.call_args_list] == [
+        {"trade_date": "20260819"},
+        {"trade_date": "20260820"},
+    ]
+
+
 def test_tushare_limit_endpoints_query_by_trade_date() -> None:
     fetcher = TuShareDataFetcher(token="test_token")
     fetcher.client._pro_api = MagicMock()
