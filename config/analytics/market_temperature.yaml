@@ -171,7 +171,7 @@ market_temperature:
         - metric_id: investor_account_temperature
           source: derived
           direction: positive
-          weight: 0.10
+          weight: 0.00
           subgroup: slow
         - metric_id: limit_up_count_temperature
           source: derived
@@ -596,8 +596,8 @@ market_temperature:
       max_lag_days: 60
       cadence: monthly
       quality_tier: slow
-      in_score: true
-      note: "月度新增投资者账户，用于情绪面慢变量"
+      in_score: false
+      note: "月度新增投资者账户，仅作月度背景分析，不参与评分"
     - data_source: tushare
       dataset: shibor
       dimension: macro_liquidity

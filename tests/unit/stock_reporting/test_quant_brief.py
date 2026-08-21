@@ -98,6 +98,68 @@ def test_veto_keeps_top5_ratio_and_marks_margin_turning_point_insufficient() -> 
     assert any(flag["id"] == "margin_growth_negative" for flag in result["flags"])
 
 
+def test_veto_marks_margin_turning_point_persistent_negative_with_series() -> None:
+    config = load_quant_brief_config()
+    facts = _facts(
+        [
+            ("margin_balance_growth_20d", -0.01),
+            ("margin_balance_growth_60d", -0.02),
+        ]
+    )
+    series = _margin_series([1.0 - idx * 0.005 for idx in range(25)])
+
+    result = evaluate_veto(
+        config,
+        {},
+        {},
+        pl.DataFrame(),
+        facts,
+        margin_series=series,
+    )
+
+    margin = result["margin"]
+    assert margin["turning_point_status"] == "persistent_negative"
+    assert margin["turning_point"]["negative_days_5d"] == 5
+    assert margin["turning_point"]["consecutive_negative_days"] == 5
+
+
+def test_veto_marks_margin_turning_point_confirmed_up_with_series() -> None:
+    config = load_quant_brief_config()
+    facts = _facts(
+        [
+            ("margin_balance_growth_20d", -0.01),
+            ("margin_balance_growth_60d", -0.02),
+        ]
+    )
+    series = _margin_series([0.9] * 20 + [0.91, 0.92, 0.93, 0.94, 0.95, 0.96])
+
+    result = evaluate_veto(
+        config,
+        {},
+        {},
+        pl.DataFrame(),
+        facts,
+        margin_series=series,
+    )
+
+    margin = result["margin"]
+    assert margin["turning_point_status"] == "confirmed_turning"
+    assert margin["turning_point"]["consecutive_positive_days"] >= 3
+
+
+def _margin_series(values: list[float]) -> pl.DataFrame:
+    from datetime import date as _date
+    from datetime import timedelta
+
+    start = _date(2026, 7, 1)
+    return pl.DataFrame(
+        {
+            "trade_date": [start + timedelta(days=idx) for idx in range(len(values))],
+            "margin_balance": values,
+        }
+    )
+
+
 def test_render_quant_brief_contains_four_decision_sections() -> None:
     config = load_quant_brief_config()
     market_scores = {

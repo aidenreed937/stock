@@ -119,6 +119,67 @@ market_temperature:
     }
 
 
+def test_run_market_temperature_auto_uses_latest_previous_run_for_drivers(
+    tmp_path: Path,
+) -> None:
+    storage_dir = tmp_path / "curated"
+    _write_stock_daily_bar(storage_dir)
+    config_path = tmp_path / "market_temperature.yaml"
+    output_root = tmp_path / "analytics" / "market_temperature"
+    config_path.write_text(
+        f"""
+market_temperature:
+  schema_version: 1
+  title: "测试温度计"
+  artifact_root: "{output_root}"
+  main_window: 20
+  short_windows: [5, 10]
+  metric_values:
+    enabled: false
+  dimensions:
+    - id: technical
+      name: "技术面"
+      weight: 1.0
+      metrics: []
+  datasets:
+    - data_source: tushare
+      dataset: stock_daily_bar
+      dimension: technical
+      required: true
+""",
+        encoding="utf-8",
+    )
+    previous_run = output_root / "runs" / "as_of=2026-08-13" / "run_20260814T000000"
+    previous_run.mkdir(parents=True)
+    _write_json(
+        previous_run / "manifest.json",
+        {"as_of_date": "2026-08-13", "run_id": "run_20260814T000000"},
+    )
+    _write_json(
+        previous_run / "scores.json",
+        {
+            "as_of_date": "2026-08-13",
+            "composite": {"temperature": 52.0, "status": "ready"},
+            "dimensions": [{"dimension_id": "technical", "name": "技术面", "temperature": 22.81}],
+        },
+    )
+
+    result = run_market_temperature(
+        target_date=date(2026, 8, 14),
+        config_path=config_path,
+        collect_metric_values=False,
+        storage_dir=storage_dir,
+    )
+
+    drivers = result.scores["drivers"]
+    assert drivers["status"] in {"ok", "insufficient"}
+    assert drivers["comparison_as_of"] == "2026-08-13"
+    assert result.manifest["comparison"] == {
+        "previous_as_of_date": "2026-08-13",
+        "previous_run_id": "run_20260814T000000",
+    }
+
+
 def _write_stock_daily_bar(storage_dir: Path) -> None:
     partition = storage_dir / "tushare/market=CN/stock_daily_bar/year=2026/month=08"
     partition.mkdir(parents=True, exist_ok=True)

@@ -82,6 +82,7 @@ def run_market_temperature(
         as_of_date = target_date or resolved_trade_dates[-1]
     paths = build_run_paths(as_of_date, config.artifact_root)
     external_cutoff_date = resolve_external_cutoff_date(as_of_date, resolved_trade_dates)
+    comparison_date = comparison_date or _latest_previous_run_date(config.artifact_root, as_of_date)
     comparison = _load_comparison(config.artifact_root, comparison_date)
     manifest = _build_manifest(
         config,
@@ -231,6 +232,24 @@ def _load_comparison(
         "previous_manifest": _read_json(previous_run / "manifest.json"),
         "previous_scores": _read_json(previous_run / "scores.json"),
     }
+
+
+def _latest_previous_run_date(artifact_root: Path | str, as_of_date: date) -> date | None:
+    """返回早于基准日的最近已落盘市场温度观测日期。"""
+    run_root = Path(artifact_root) / "runs"
+    if not run_root.exists():
+        return None
+    previous: list[date] = []
+    for path in run_root.glob("as_of=*"):
+        if not path.is_dir() or not any(child.is_dir() for child in path.glob("run_*")):
+            continue
+        try:
+            candidate = date.fromisoformat(path.name.removeprefix("as_of="))
+        except ValueError:
+            continue
+        if candidate < as_of_date:
+            previous.append(candidate)
+    return max(previous) if previous else None
 
 
 def _read_json(path: Path) -> dict[str, Any]:

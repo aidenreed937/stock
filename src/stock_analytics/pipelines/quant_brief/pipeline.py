@@ -55,6 +55,7 @@ def run_quant_brief(
         config.artifact_root,
         latest_root=config.latest_root,
     )
+    margin_series = _load_margin_series(as_of_date)
     manifest = _build_manifest(config, as_of_date, paths, market=market, industry=industry)
 
     from stock_reporting.templates.quant_brief import (
@@ -69,6 +70,7 @@ def run_quant_brief(
         industry_scores=industry["scores"],
         industry_panel=industry["industry_panel"],
         market_facts=market["facts"],
+        margin_series=margin_series,
     )
     brief_markdown = render_quant_brief_markdown(brief_json)
     write_artifacts(
@@ -98,6 +100,40 @@ def _load_market_artifacts(config: QuantBriefConfig, target_date: date) -> dict[
         "scores": _read_json(artifact_dir / "scores.json"),
         "facts": pl.read_parquet(facts_path) if facts_path.exists() else pl.DataFrame(),
     }
+
+
+def _load_margin_series(as_of_date: date) -> pl.DataFrame | None:
+    """从本地 Curated margin 表读取两融日频序列，失败时返回 None。"""
+    try:
+        from datetime import timedelta
+
+        from stock_data.catalog import DataCatalog
+        from stock_data.core.runtime import DataRuntimeContext
+
+        runtime = DataRuntimeContext.from_root("data")
+        catalog = DataCatalog(runtime=runtime)
+        frame = catalog.load_dataset(
+            "margin",
+            start_date=as_of_date - timedelta(days=200),
+            end_date=as_of_date,
+        )
+        if frame.is_empty():
+            return None
+        balance_col = next(
+            (col for col in ("rzrqye", "margin_balance", "total_balance") if col in frame.columns),
+            None,
+        )
+        if balance_col is None:
+            return None
+        return (
+            frame.select("trade_date", balance_col)
+            .drop_nulls()
+            .group_by("trade_date")
+            .agg(pl.col(balance_col).sum().alias("margin_balance"))
+            .sort("trade_date")
+        )
+    except Exception:
+        return None
 
 
 def _load_industry_artifacts(config: QuantBriefConfig, target_date: date) -> dict[str, Any]:
@@ -161,13 +197,18 @@ def _build_manifest(
     market: dict[str, Any],
     industry: dict[str, Any],
 ) -> dict[str, Any]:
-    return {
+    drivers = market["scores"].get("drivers")
+    comparison = {}
+    if isinstance(drivers, dict) and drivers.get("status") == "ok":
+        comparison["previous_as_of_date"] = drivers.get("comparison_as_of")
+    manifest = {
         "schema_version": config.schema_version,
         "title": config.title,
         "run_id": paths.run_dir.name,
         "generated_at": datetime.now().isoformat(timespec="seconds"),
         "as_of_date": as_of_date.isoformat(),
         "artifact_root": str(paths.root),
+        "comparison": comparison or None,
         "inputs": {
             "market_temperature": _input_manifest(market),
             "industry_structure": _input_manifest(industry),
@@ -178,6 +219,7 @@ def _build_manifest(
             "brief_report_json": paths.brief_json.name,
         },
     }
+    return manifest
 
 
 def _input_manifest(payload: dict[str, Any]) -> dict[str, Any]:

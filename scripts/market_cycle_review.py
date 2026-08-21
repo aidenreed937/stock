@@ -184,9 +184,9 @@ def _load_market_row(dirs: ArtifactDirs, as_of_date: str) -> dict[str, Any]:
         "quant_nature": quant.get("nature", {}).get("nature_type"),
         "quant_veto_status": quant.get("veto", {}).get("status"),
         "quant_brief_available": bool(quant),
-        "quant_top5pct_share": quant.get("veto", {}).get("top5pct", {}).get(
-            "value", fact_values.get("amount_top_5pct_share")
-        ),
+        "quant_top5pct_share": quant.get("veto", {})
+        .get("top5pct", {})
+        .get("value", fact_values.get("amount_top_5pct_share")),
         "quant_priority_industries": _names(quant.get("sector", {}).get("priority", [])),
         "quant_avoid_industries": _names(quant.get("sector", {}).get("avoid", [])),
     }
@@ -251,9 +251,7 @@ def _build_payload(
             ),
             "veto_status_counts": dict(
                 Counter(
-                    row["quant_veto_status"]
-                    for row in market_rows
-                    if row.get("quant_veto_status")
+                    row["quant_veto_status"] for row in market_rows if row.get("quant_veto_status")
                 )
             ),
             "priority_counts": _list_counter(market_rows, "quant_priority_industries"),
@@ -735,10 +733,10 @@ def _quant_brief_lines(quant: dict[str, Any]) -> list[str]:
     veto = _format_counts(quant.get("veto_status_counts", {})) or "无"
     lines.extend(
         [
-        f"- 行情性质分布: {nature}。",
-        f"- 一票否决/排雷状态分布: {veto}。",
-        f"- 量化优先方向频率 Top: {_format_industries(quant.get('priority_counts', []), 8)}。",
-        f"- 量化回避方向频率 Top: {_format_industries(quant.get('avoid_counts', []), 8)}。",
+            f"- 行情性质分布: {nature}。",
+            f"- 一票否决/排雷状态分布: {veto}。",
+            f"- 量化优先方向频率 Top: {_format_industries(quant.get('priority_counts', []), 8)}。",
+            f"- 量化回避方向频率 Top: {_format_industries(quant.get('avoid_counts', []), 8)}。",
         ]
     )
     return lines

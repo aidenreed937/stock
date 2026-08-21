@@ -26,6 +26,7 @@ from stock_reporting.interpretation.quant_brief.helpers import (
     _sector_item,
     _temperature_band,
     _value_text,
+    margin_turning_note,
 )
 from stock_reporting.interpretation.quant_brief.risk_gates import (
     evaluate_breadth_gate as _evaluate_breadth_gate,
@@ -306,9 +307,10 @@ def evaluate_data_quality_notes(
         "Top5% 成交占比是最新成交日的横截面事实，不是20日均值，不能单独解释为趋势。",
         "行业 TCR 原值是成交额占比/百分点，拥挤判断使用其历史分位温度。",
         "主力资金使用 moneyflow 大单分类作为可观测代理，不等同于真实机构账户或 Level-2 机构席位。",
-        "两融20日/60日增速只代表当前可用事实；当前链路没有连续状态序列，不能严谨确认高位拐点。",
         "外盘风险只作宏观背景，不直接改变五档仓位档位。",
     ]
+    margin_status = veto.get("margin", {}).get("turning_point", {}).get("status")
+    notes.append(margin_turning_note(margin_status))
     missing = veto.get("missing")
     if isinstance(missing, list) and missing:
         notes.append(f"以下排雷事实缺失或样本不足: {'、'.join(str(item) for item in missing)}。")
@@ -371,6 +373,11 @@ def evaluate_reading_notes(
     if isinstance(funding, dict) and funding.get("flags"):
         inference.append(
             "资金与杠杆信号用于风险确认；当前事实不足以单独确认连续出货或严格去杠杆拐点。"
+        )
+    margin_status = veto.get("margin", {}).get("turning_point", {}).get("status")
+    if margin_status and margin_status != "insufficient_history":
+        inference.append(
+            f"两融连续状态判定为 {margin_status}：{veto['margin']['turning_point']['reason']}"
         )
     if isinstance(risk_gates, dict) and risk_gates.get("status") == "partial":
         inference.append("部分风控闸门资料不足，仓位结论应服从可验证事实，不用缺失数据补齐叙事。")

@@ -145,6 +145,8 @@ UV_CACHE_DIR=.uv_cache UV_PYTHON_INSTALL_DIR=.uv_python uv run python -m stock_c
 
 解读仓位时必须区分：`macro.equity_position_band` 是综合温度给出的基础仓位，`risk_gates.max_position_band` 是风险闸门上限，`position_policy.effective_band` 才是当前有效仓位。`sector.priority_excluded` 用于解释结构领先但因资金未确认、拥挤或景气承压等原因未进入优先方向的行业。`nature.nature_type=distribution_risk` 在人读版中显示为“资金-成交背离风险（硬闸门观察）”，不改变资金硬闸门的实际阈值。
 
+市场温度管线未显式传 `--compare-date` 时，会自动取最近历史已落盘 `as_of` 的 `scores.json` 计算 `drivers`（`composite_delta` 与 Top 3 边际贡献），保证跨期驱动始终可用；显式传入时以显式日期为准。quant_brief 生成时从本地 Curated `tushare.margin` 日频表加载两融余额序列，`veto.margin.turning_point` 输出 `persistent_negative` / `persistent_positive` / `confirmed_turning` / `mixed` / `insufficient_history` 连续状态，替代硬编码的 `insufficient_history`。两融拐点状态只作杠杆方向确认，不改变仓位档位；本地 margin 数据缺失时回退为 `insufficient_history`。
+
 跨周期复盘使用只读产物脚本，先校验一致性，再抽取阶段变化、重要信号日、行业频率、TCR 迁移、
 资金 20 日累计占比和情绪面子组变化：
 

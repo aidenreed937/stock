@@ -29,11 +29,22 @@ def build_quant_brief_json(
     industry_scores: dict[str, Any],
     industry_panel: pl.DataFrame,
     market_facts: pl.DataFrame | None = None,
+    margin_series: pl.DataFrame | None = None,
 ) -> dict[str, Any]:
-    """构造量化投研简报机器结构。"""
+    """构造量化投研简报机器结构。
+
+    ``margin_series`` 为可选的两融日频序列，用于两融拐点的连续状态判定。
+    """
     macro = evaluate_macro(config, market_scores)
     nature = evaluate_nature(config, market_scores, industry_scores, market_facts)
-    veto = evaluate_veto(config, market_scores, industry_scores, industry_panel, market_facts)
+    veto = evaluate_veto(
+        config,
+        market_scores,
+        industry_scores,
+        industry_panel,
+        market_facts,
+        margin_series=margin_series,
+    )
     sector = evaluate_sector(config, industry_panel)
     risk_gates = evaluate_risk_gates(
         config,

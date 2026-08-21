@@ -249,6 +249,17 @@ def _flag(flag_id: str, severity: str, message: str) -> dict[str, str]:
     return {"id": flag_id, "severity": severity, "message": message}
 
 
+def margin_turning_note(margin_status: object) -> str:
+    """根据两融拐点状态生成数据质量说明。"""
+    return {
+        "insufficient_history": "两融连续状态序列缺失，拐点判定降级为 insufficient_history。",
+        "mixed": "两融日频方向不连续，杠杆资金方向按 mixed 观察，不宣称拐点。",
+    }.get(
+        str(margin_status) if margin_status is not None else "",
+        "两融拐点判定基于本地 margin 日频序列的连续状态，只作杠杆方向确认。",
+    )
+
+
 def _mapping(value: object) -> dict[str, Any]:
     return value if isinstance(value, dict) else {}
 
