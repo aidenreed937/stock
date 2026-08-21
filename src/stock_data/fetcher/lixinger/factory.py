@@ -48,12 +48,13 @@ def create_lixinger_pipeline(
     else:
         meta = LIXINGER_API_REGISTRY.get(task.api_name)
         p_keys = meta.primary_keys if meta else None
+        nullable_p_keys = meta.nullable_primary_keys if meta else None
         cleaner_cls = (
             LixingerIndexFundamentalCleaner
             if task.dataset == "index_fundamental"
             else GenericCleaner
         )
-        cleaner = cleaner_cls(primary_keys=p_keys)
+        cleaner = cleaner_cls(primary_keys=p_keys, nullable_primary_keys=nullable_p_keys)
         normalizer = GenericNormalizer()
     return MarketDataPipeline(
         fetcher=active_fetcher,

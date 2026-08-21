@@ -63,16 +63,22 @@ _NOT_SUPPORTED_GATES = (
         "note": "本地 income/balancesheet 无审计意见字段，未接入外部财报数据。",
     },
     {
-        "rule_id": "regulatory_actions",
+        "rule_id": "regulatory_measures_and_inquiry",
         "scope": "all_market",
-        "status": "not_supported",
-        "note": "本地没有违规处罚、立案调查与重大诉讼数据集。",
+        "status": "registered_pending_backfill",
+        "note": "理杏仁监管措施与交易所问询接口已注册，待回填至 Curated 后接入排雷规则。",
     },
     {
         "rule_id": "lockup_release",
         "scope": "all_market",
+        "status": "registered_pending_backfill",
+        "note": "TuShare share_float 与理杏仁限售解禁汇总接口已注册，待回填至 Curated 后接入排雷规则。",
+    },
+    {
+        "rule_id": "litigation",
+        "scope": "all_market",
         "status": "not_supported",
-        "note": "本地没有 share_float 等限售解禁数据集。",
+        "note": "本地没有诉讼专用接口；不使用公告标题关键词冒充诉讼事实。",
     },
 )
 

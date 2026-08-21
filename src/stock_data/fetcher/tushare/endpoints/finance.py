@@ -65,6 +65,25 @@ FINANCE_ENDPOINTS: dict[str, EndpointMeta] = {
         max_rows_per_request=1000,
         request_fields="ts_code,trade_date,price,vol,amount,buyer,seller",
     ),
+    "share_float": EndpointMeta(
+        api_name="share_float",
+        description="限售股解禁明细",
+        frequency="event",
+        query_mode="float_date",
+        group="corporate_action",
+        primary_keys=["ts_code", "ann_date", "float_date", "holder_name", "share_type"],
+        date_columns=["float_date", "ann_date"],
+        required_columns=["ts_code", "ann_date", "float_date", "float_share", "float_ratio"],
+        units={
+            "float_share": "share",
+            "float_ratio": "percent",
+        },
+        request_window_days=31,
+        max_rows_per_request=6000,
+        request_fields=(
+            "ts_code,ann_date,float_date,float_share,float_ratio,holder_name,share_type"
+        ),
+    ),
     "income": EndpointMeta(
         api_name="income_vip",
         description="上市公司利润表",

@@ -4,6 +4,7 @@ from dataclasses import dataclass, field
 from typing import Any, cast
 
 from stock_data.core import task_registry_helpers as _registry_helpers
+from stock_data.core.lixinger_risk_tasks import build_lixinger_risk_tasks
 from stock_data.core.public_tasks import (
     expand_public_task_targets as _expand_public_task_targets,
 )
@@ -498,6 +499,7 @@ _CUSTOM_TASKS: dict[tuple[str, str], TaskSpec] = {
         is_single_sync=True,
     ),
 }
+_CUSTOM_TASKS.update(build_lixinger_risk_tasks(_make_spec))
 _ALIASES: dict[tuple[str, str], str] = {
     ("tushare", "daily"): "stock_daily_bar",
     ("tushare", "daily_bar"): "stock_daily_bar",

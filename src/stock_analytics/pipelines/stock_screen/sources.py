@@ -57,6 +57,37 @@ _DATASET_COLUMNS: dict[str, tuple[str, ...]] = {
     "hk_hold": ("symbol", "ts_code", "trade_date", "vol", "sharehold", "hold_vol", "ratio"),
     "limit_list_d": ("symbol", "ts_code", "trade_date", "limit", "limit_type", "pct_chg"),
     "suspend_d": ("symbol", "ts_code", "trade_date", "suspend_date", "suspend_type"),
+    "regulatory_measures": (
+        "symbol",
+        "stockCode",
+        "date",
+        "type",
+        "displayTypeText",
+        "linkText",
+        "linkUrl",
+        "linkType",
+        "referent",
+    ),
+    "exchange_inquiry": (
+        "symbol",
+        "stockCode",
+        "date",
+        "type",
+        "displayTypeText",
+        "linkText",
+        "linkUrl",
+        "linkType",
+    ),
+    "unlock_summary": (
+        "symbol",
+        "stockCode",
+        "last_data_date",
+        "srl_last",
+        "srl_cap_r_last",
+        "elr_s_y1",
+        "elr_s_cap_r_y1",
+        "elr_mc_y1",
+    ),
 }
 
 _EVENT_DATASETS = frozenset({"forecast", "stk_holdertrade", "hk_hold", "limit_list_d", "suspend_d"})

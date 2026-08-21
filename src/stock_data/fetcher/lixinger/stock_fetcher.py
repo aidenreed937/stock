@@ -11,8 +11,10 @@ from stock_core.models.market import DailyBar
 from stock_core.utils.logger import logger
 from stock_data.core.task_registry import resolve_task
 from stock_data.fetcher.lixinger import query_helpers
+from stock_data.fetcher.lixinger.bar_converter import fetch_daily_bars as _fetch_daily_bars
 from stock_data.fetcher.lixinger.client import LixingerClient
 from stock_data.fetcher.lixinger.registry import LIXINGER_API_REGISTRY, EndpointMeta
+from stock_data.fetcher.lixinger.risk_fetcher import fetch_risk_endpoint
 
 _INDUSTRY_TABLE_CACHE: Any = None
 
@@ -259,7 +261,11 @@ class LixingerStockFetcher:
         task_endpoint = str(kwargs.pop("endpoint_name", "") or "")
         requested_endpoint = task_endpoint or endpoint
         endpoint, meta = _resolve_endpoint_meta(endpoint)
-        if (end_date - start_date).days > 3200 and endpoint != "cn/industry/constituents/sw_2021":
+        if (
+            (end_date - start_date).days > 3200
+            and endpoint != "cn/industry/constituents/sw_2021"
+            and meta.frequency != "static"
+        ):
             chunks: list[pl.DataFrame] = []
             curr_start = start_date
             while curr_start <= end_date:
@@ -278,6 +284,12 @@ class LixingerStockFetcher:
                 return pl.DataFrame()
             return pl.concat(chunks, how="diagonal_relaxed").unique()
 
+        risk_frame = fetch_risk_endpoint(
+            self.client, endpoint, meta, symbol, start_date, end_date, kwargs
+        )
+        if risk_frame is not None:
+            return risk_frame
+
         start_str, end_str = query_helpers.query_date_strings(endpoint, start_date, end_date)
         raw_code = symbol.split(".")[0] if symbol else ""
 
@@ -285,6 +297,7 @@ class LixingerStockFetcher:
         query_kwargs.update(meta.default_params)
         if meta.default_metrics:
             query_kwargs["metricsList"] = meta.default_metrics
+        query_kwargs.update(kwargs)
 
         if "constituents" in endpoint:
             query_kwargs["date"] = start_str
@@ -318,8 +331,13 @@ class LixingerStockFetcher:
                         self.client, meta, endpoint, query_kwargs, level=industry_level
                     )
 
-        query_kwargs.update(kwargs)
-        pandas_df = query_helpers.query_frame(self.client, meta.api_name, endpoint, query_kwargs)
+        pandas_df = query_helpers.query_frame(
+            self.client,
+            meta.api_name,
+            endpoint,
+            query_kwargs,
+            stock_code=raw_code,
+        )
         if pandas_df.empty:
             return pl.DataFrame()
 
@@ -351,36 +369,7 @@ class LixingerStockFetcher:
 
     def fetch_daily_bars(self, symbol: str, start_date: date, end_date: date) -> list[DailyBar]:
         """抓取数据并转换为 DailyBar 模型列表。"""
-        df = self.fetch_daily_bars_df(
-            symbol, start_date, end_date, endpoint="cn/company/candlestick"
-        )
-        if df.is_empty():
-            return []
-
-        bars: list[DailyBar] = []
-        for row in df.iter_rows(named=True):
-            trade_date_val = row.get("date") or row.get("trade_date")
-            if isinstance(trade_date_val, str):
-                parsed_date = datetime.strptime(trade_date_val[:10], "%Y-%m-%d").date()
-            elif isinstance(trade_date_val, date):
-                parsed_date = trade_date_val
-            else:
-                parsed_date = date.today()
-
-            code_val = row.get("stockCode", symbol)
-            bars.append(
-                DailyBar(
-                    symbol=str(code_val),
-                    trade_date=parsed_date,
-                    open=float(row.get("open", row.get("cp", 0.0))),
-                    high=float(row.get("high", row.get("cp", 0.0))),
-                    low=float(row.get("low", row.get("cp", 0.0))),
-                    close=float(row.get("close", row.get("cp", 0.0))),
-                    volume=float(row.get("volume", 0.0)),
-                    amount=float(row.get("amount", 0.0)),
-                )
-            )
-        return bars
+        return _fetch_daily_bars(self, symbol, start_date, end_date)
 
     def fetch_trade_cal(self, start_date: date, end_date: date) -> list[date]:
         """获取指定日期范围内的有效交易日列表。"""

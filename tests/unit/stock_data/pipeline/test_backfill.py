@@ -268,6 +268,21 @@ def test_load_curated_symbol_pool_with_ts_code_column() -> None:
         assert symbols == ["000001.SZ", "600519.SH"]
 
 
+def test_lixinger_required_stock_pool_reads_tushare_stock_basic() -> None:
+    from stock_data.pipeline.planner import _load_curated_symbol_pool
+
+    mock_store = MagicMock()
+    mock_store.query_dataset.return_value = pl.DataFrame({"ts_code": ["000001.SZ"]})
+
+    with patch(
+        "stock_data.storage.duckdb_store.DuckDBMarketStore", return_value=mock_store
+    ) as store_cls:
+        symbols = _load_curated_symbol_pool("lixinger", "stock_basic")
+
+    assert symbols == ["000001.SZ"]
+    store_cls.assert_called_once_with(data_source="tushare")
+
+
 def test_planner_watchlist_on_per_day_endpoint_preserves_full_market() -> None:
     from stock_data.pipeline.planner import BackfillPlanner
 

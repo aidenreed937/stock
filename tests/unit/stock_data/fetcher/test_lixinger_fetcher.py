@@ -72,6 +72,46 @@ def test_lixinger_pledge_contract_uses_last_data_date() -> None:
     assert meta.date_columns == ["last_data_date"]
 
 
+@pytest.mark.parametrize(
+    "api_name",
+    [
+        "cn/company/measures",
+        "cn/company/inquiry",
+    ],
+)
+def test_lixinger_risk_event_contracts(api_name: str) -> None:
+    meta = LIXINGER_API_REGISTRY[api_name]
+
+    assert meta.primary_keys == ["stockCode", "date", "type", "linkUrl"]
+    assert meta.required_columns == ["stockCode", "date", "type"]
+    assert meta.date_columns == ["date"]
+    assert meta.frequency == "event"
+    assert meta.nullable_primary_keys == ["linkUrl"]
+
+
+@pytest.mark.parametrize("endpoint", ["regulatory_measures", "exchange_inquiry"])
+def test_lixinger_risk_event_response_fills_requested_stock_code(endpoint: str) -> None:
+    mock_client = MagicMock()
+    mock_client.query.return_value = pd.DataFrame(
+        {
+            "date": ["2026-08-19"],
+            "type": ["sw"],
+            "linkUrl": [None],
+        }
+    )
+    fetcher = LixingerStockFetcher(client=mock_client)
+
+    frame = fetcher.fetch_daily_bars_df(
+        "600519",
+        date(2026, 8, 1),
+        date(2026, 8, 20),
+        endpoint=endpoint,
+    )
+
+    assert frame["stockCode"].to_list() == ["600519"]
+    assert mock_client.query.call_args.kwargs["stockCode"] == "600519"
+
+
 def test_lixinger_pledge_without_source_date_adds_nullable_date_column() -> None:
     mock_client = MagicMock()
     mock_client.query.return_value = pd.DataFrame(
@@ -92,6 +132,52 @@ def test_lixinger_pledge_without_source_date_adds_nullable_date_column() -> None
 
     assert "last_data_date" in frame.columns
     assert frame["last_data_date"].to_list() == [None]
+
+
+def test_lixinger_unlock_summary_batches_stock_codes_and_fills_missing_date() -> None:
+    mock_client = MagicMock()
+    codes = [f"{index:06d}" for index in range(101)]
+    mock_client.query.side_effect = [
+        pd.DataFrame({"stockCode": codes[:100], "srl_last": [1.0] * 100}),
+        pd.DataFrame({"stockCode": codes[100:], "srl_last": [2.0]}),
+    ]
+    fetcher = LixingerStockFetcher(client=mock_client)
+
+    frame = fetcher.fetch_daily_bars_df(
+        "unlock_summary",
+        date(2026, 8, 1),
+        date(2026, 8, 20),
+        endpoint="unlock_summary",
+        stockCodes=codes,
+    )
+
+    assert len(frame) == 101
+    assert "last_data_date" in frame.columns
+    assert all(len(call.kwargs["stockCodes"]) <= 100 for call in mock_client.query.call_args_list)
+    assert len(mock_client.query.call_args_list) == 2
+
+
+def test_lixinger_unlock_summary_paginates_until_empty_page() -> None:
+    mock_client = MagicMock()
+    mock_client.query.side_effect = [
+        pd.DataFrame({"stockCode": ["600519", "000001"]}),
+        pd.DataFrame(),
+    ]
+    fetcher = LixingerStockFetcher(client=mock_client)
+
+    frame = fetcher.fetch_daily_bars_df(
+        "unlock_summary",
+        date(2026, 8, 1),
+        date(2026, 8, 20),
+        endpoint="unlock_summary",
+        pageSize=2,
+    )
+
+    assert len(frame) == 2
+    assert mock_client.query.call_count == 2
+    assert mock_client.query.call_args_list[0].kwargs["pageIndex"] == 0
+    assert mock_client.query.call_args_list[1].kwargs["pageIndex"] == 1
+    assert "last_data_date" in frame.columns
 
 
 def test_lixinger_daily_macro_query_pads_exclusive_date_range() -> None:

@@ -48,7 +48,12 @@ _TASK_BUNDLE_TASKS: dict[str, dict[str, tuple[str, ...]]] = {
             "index_classify",
             "index_member",
         ),
-        "corporate_action_bundle": ("stk_holdertrade", "repurchase", "block_trade"),
+        "corporate_action_bundle": (
+            "stk_holdertrade",
+            "repurchase",
+            "block_trade",
+            "share_float",
+        ),
     },
     "lixinger": {
         "market_bundle": ("stock_daily_bar", "index_daily_bar"),
@@ -69,6 +74,7 @@ _TASK_BUNDLE_TASKS: dict[str, dict[str, tuple[str, ...]]] = {
             "fs_insurance",
             "pledge_info",
         ),
+        "company_risk_event_bundle": ("regulatory_measures", "exchange_inquiry"),
         "macro_daily_bundle": (
             "national_debt",
             "interest_rates",

@@ -77,6 +77,20 @@ def test_list_available_tasks() -> None:
     lixinger_tasks = list_available_tasks("lixinger")
     assert "sw_2021_fundamental" in lixinger_tasks
     assert "pledge_info" in lixinger_tasks
+    assert "regulatory_measures" in lixinger_tasks
+    assert "exchange_inquiry" in lixinger_tasks
+    assert "unlock_summary" in lixinger_tasks
+
+    regulatory = resolve_task("lixinger", "regulatory_measures")
+    assert regulatory.fetch_mode == "per_symbol"
+    assert regulatory.required_pool == "stock_basic"
+    assert regulatory.frequency == "event"
+    assert regulatory.primary_keys == ("stockCode", "date", "type", "linkUrl")
+
+    unlock = resolve_task("lixinger", "unlock_summary")
+    assert unlock.fetch_mode == "per_symbol"
+    assert unlock.frequency == "static"
+    assert unlock.primary_keys == ("stockCode",)
 
 
 def test_task_spec_properties() -> None:
@@ -131,6 +145,7 @@ def test_lixinger_task_bundles() -> None:
         "market_bundle",
         "industry_bundle",
         "company_bundle",
+        "company_risk_event_bundle",
         "macro_daily_bundle",
         "macro_monthly_bundle",
     ]
@@ -157,6 +172,10 @@ def test_lixinger_task_bundles() -> None:
         "cn_m",
         "sf_month",
     ]
+    assert resolve_bundle("lixinger", "company_risk_event_bundle").tasks == (
+        "regulatory_measures",
+        "exchange_inquiry",
+    )
 
 
 def test_tushare_task_bundles() -> None:
@@ -199,6 +218,7 @@ def test_tushare_task_bundles() -> None:
         "stk_holdertrade",
         "repurchase",
         "block_trade",
+        "share_float",
     )
 
     monthly = resolve_bundle("tushare", "macro_monthly_bundle")
@@ -328,7 +348,7 @@ def test_task_bundles_cover_registered_tasks_except_explicit_aggregate_routes() 
             "cb_basic",
             "cb_daily",
         },
-        "lixinger": {"index_fundamental"},
+        "lixinger": {"index_fundamental", "unlock_summary"},
         "yfinance": {
             "macro_indicators",
             "index_valuation",

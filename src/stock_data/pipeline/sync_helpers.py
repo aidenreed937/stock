@@ -38,6 +38,7 @@ WATERMARK_DATE_COLUMNS = (
     "trade_date",
     "report_date",
     "ann_date",
+    "float_date",
     "end_date",
     "publish_date",
     "date",

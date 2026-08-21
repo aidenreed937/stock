@@ -87,9 +87,9 @@ def _build_period_query(
             raise ValueError("TuShare period 接口必须按单个报告期请求")
         query_kwargs["period"] = start_date.strftime("%Y%m%d")
         return True
-    if query_mode == "ann_date":
+    if query_mode in {"ann_date", "float_date"}:
         if start_date == end_date:
-            query_kwargs["ann_date"] = start_date.strftime("%Y%m%d")
+            query_kwargs[query_mode] = start_date.strftime("%Y%m%d")
         else:
             query_kwargs["start_date"] = start_date.strftime("%Y%m%d")
             query_kwargs["end_date"] = end_date.strftime("%Y%m%d")
@@ -152,7 +152,7 @@ def build_tushare_query(
     elif meta.frequency == "event":
         if is_real_symbol:
             query_kwargs[symbol_param] = symbol
-        if meta.date_columns and meta.query_mode in {"ann_date", "trade_date"}:
+        if meta.date_columns and meta.query_mode in {"ann_date", "float_date", "trade_date"}:
             _build_period_query(meta, start_date, end_date, query_kwargs)
     elif is_real_symbol:
         query_kwargs[symbol_param] = symbol

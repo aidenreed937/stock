@@ -1,6 +1,8 @@
 from dataclasses import dataclass, field
 from typing import Any
 
+from stock_data.fetcher.lixinger.risk_registry import LIXINGER_RISK_ENDPOINT_SPECS
+
 
 @dataclass(frozen=True)
 class EndpointMeta:
@@ -11,6 +13,7 @@ class EndpointMeta:
     market: str = "CN"
     group: str = "market_data"
     primary_keys: list[str] = field(default_factory=list)
+    nullable_primary_keys: list[str] = field(default_factory=list)
     rate_limit_per_min: int = 30
     update_time: str = "18:00"
     update_delay_days: int = 0
@@ -363,6 +366,9 @@ LIXINGER_API_REGISTRY: dict[str, EndpointMeta] = {
         support_batch_prefetch=True,
     ),
 }
+
+for _api_name, _spec in LIXINGER_RISK_ENDPOINT_SPECS.items():
+    LIXINGER_API_REGISTRY[_api_name] = EndpointMeta(api_name=_api_name, **_spec)
 
 for _meta in {id(meta): meta for meta in LIXINGER_API_REGISTRY.values()}.values():
     if not _meta.required_columns:

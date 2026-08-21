@@ -1,6 +1,6 @@
 # 个股排雷 (Stock Screening/Vetting) 实现方案
 
-- 状态: 第一期已实现，待真实 Curated 数据验收
+- 状态: 第一期已实现；排雷风险接口已注册，待真实 Curated 回填验收
 - 创建日期: 2026-08-21
 - 关联产物（规划）: `data/analytics/stock_screen/`
 - 关联配置（规划）: `config/analytics/stock_screen.yaml`
@@ -69,8 +69,9 @@
 | 排雷点 | 原因 | 处理 |
 |---|---|---|
 | 审计意见（非标 / 持续经营存疑） | `income/balancesheet` 为 TuShare 顶栏数据，无审计意见字段；理杏仁私有财报未接入本排雷链路 | 产物 `missing_gates` 与质量报告如实披露 "not_supported" |
-| 违规处罚 / 立案调查 / 重大诉讼 | 本地无对应数据集 | 同上 |
-| 限售解禁明细 | 本地无 `share_float` 等解禁表（已实测确认缺失） | 同上 |
+| 监管措施 / 交易所问询 | 理杏仁接口已完成注册，尚未回填至排雷链路 Curated | 待回填验收后接入规则；不以公告标题关键词替代 |
+| 限售解禁明细 | TuShare `share_float`、理杏仁 `cn/company/hot/elr` 已完成注册，尚未回填至 Curated | 待回填验收后接入规则 |
+| 重大诉讼 | 本地没有诉讼专用接口文档或数据集 | 产物 `missing_gates` 与质量报告如实披露 `not_supported`，不以公告标题关键词冒充事实 |
 | **两融个股明细（marging_detail）全市场** | 本地仅落盘 watchlist 7 只 A 股的半年明细 | 规则降级为"仅自选池快照"观察项，不做全市场硬规则 |
 
 > 原则：**数据缺失不得导致误排雷**。财报类规则（连续亏损、商誉、净资产）在最近一期财报缺失时，降级为黄牌观察而非硬性剔除；质押/两融/解禁等覆盖不足的规则默认关闭，待数据补齐后再启用，并在 `manifest.data_gaps` 记录。
@@ -231,7 +232,8 @@ stock_screen:
     # 确认-事件型：stk_holdertrade (in_de DE/IN, begin_date/close_date), block_trade(第二期)
     # 确认-标的子集：hk_hold（北向标的约 981 只，scope=northbound）
     # 不足默认关闭：margin_detail（仅 watchlist）、lixinger/pledge_info（仅 6 只快照）
-    # 缺口 not_supported：审计意见、违规/诉讼、限售解禁、share_float
+    # 已注册待回填：监管措施、交易所问询、share_float、限售解禁汇总
+    # 缺口 not_supported：审计意见、重大诉讼（无诉讼专用接口）
 ```
 
 ### 3.3 规则引擎设计（`rules.py`）
@@ -282,7 +284,7 @@ data/analytics/stock_screen/
 
 1. **硬性剔除 8 条**全部落地（§2.1 表格 1-8，全部有全市场实测覆盖支撑）。
 2. 黄牌预警先落 5 条（全部有实测覆盖支撑）：业绩预告大亏、大股东减持、商誉占净资产观察、北向持仓骤降、连续跌停。
-3. **显式关闭 2 条**（实测覆盖不足，`enabled: false` 声明为数据缺口关闭，不阻塞运行）：两融个股明细（`margin_detail` 仅 watchlist 7 只）、股权质押（`pledge_info` 仅 6 只）。限售解禁等无对应数据集的排雷点以 `not_supported` 如实披露。
+3. **显式关闭 2 条**（实测覆盖不足，`enabled: false` 声明为数据缺口关闭，不阻塞运行）：两融个股明细（`margin_detail` 仅 watchlist 7 只）、股权质押（`pledge_info` 仅 6 只）。监管措施、交易所问询、TuShare `share_float` 与理杏仁限售解禁汇总已注册，待回填至 Curated 后再启用规则；诉讼因没有专用接口仍以 `not_supported` 如实披露。
 4. 单依赖管道跑通**全市场一个 as_of 日期**，产出 excluded/warned/passed + 质量报告。
 5. CLI（`-m stock_cli.stock_screen --as-of YYYY-MM-DD`）+ Makefile `screen-stocks` 目标。
 6. 报告模板：仅 Markdown + JSON 摘要，图表化留第二期。
@@ -295,7 +297,7 @@ data/analytics/stock_screen/
 - 与 `quant_brief` / `industry_structure` 联动：`passed.csv` 作为选股/轮动 pipeline 的标准输入。
 - `symbols=watchlist` 白名单快照模式。
 - 待数据补齐后启用关闭规则（两融/质押）。
-- 补充审计意见 / 违规处罚 / 限售解禁等外部数据源。
+- 补充审计意见 / 诉讼专用数据源，并在已注册风险接口完成 Curated 回填后启用对应规则。
 
 ### 3.6 关键实现注意（实测纠偏，实现时必须按真实字段）
 
@@ -306,7 +308,8 @@ data/analytics/stock_screen/
 | `stk_holdertrade.end_date` | 无 `end_date` 字段 | 改用 `begin_date`/`ann_date` |
 | `margin_detail` 全市场 | 仅 watchlist 7 只半年明细 | 规则默认关闭，绝不冒充全市场 |
 | `lixinger/pledge_info` 全市场 | 仅 6 只快照 | 规则默认关闭，待补齐 |
-| 限售解禁可查 | 本地无解禁表 | 如实披露 not_supported |
+| 限售解禁可查 | `share_float` 与理杏仁解禁汇总接口已注册，尚未完成 Curated 回填 | 回填验收前不启用规则 |
+| 诉讼可查 | 本地没有诉讼专用接口 | 如实披露 `not_supported`，禁止公告标题关键词替代 |
 
 ---
 

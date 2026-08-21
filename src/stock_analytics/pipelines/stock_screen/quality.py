@@ -86,12 +86,17 @@ def build_quality_report(
                 }
             )
     for gate in scores["missing_gates"]:
-        if gate.get("status") == "not_supported":
+        status = gate.get("status")
+        if status in {"not_supported", "registered_pending_backfill"}:
             issues.append(
                 {
                     "severity": "warning",
-                    "id": "rule_not_supported",
-                    "message": f"{gate['rule_id']}: {gate.get('note', '本地数据不支持')}",
+                    "id": (
+                        "rule_not_supported"
+                        if status == "not_supported"
+                        else "rule_pending_backfill"
+                    ),
+                    "message": f"{gate['rule_id']}: {gate.get('note', '本地数据尚未支持')}",
                 }
             )
     status = (

@@ -25,16 +25,46 @@ def query_date_strings(endpoint: str, start_date: date, end_date: date) -> tuple
 
 
 def ensure_pledge_date_column(endpoint: str, frame: Any) -> Any:
-    """为无质押数据的响应补齐可空日期列。"""
-    if endpoint == "cn/company/hot/ple" and "last_data_date" not in frame.columns:
+    """为无快照日期的响应补齐可空日期列。"""
+    if (
+        endpoint in {"cn/company/hot/ple", "cn/company/hot/elr"}
+        and "last_data_date" not in frame.columns
+    ):
         frame = frame.copy()
         frame["last_data_date"] = None
     return frame
 
 
-def query_frame(client: Any, api_name: str, endpoint: str, query_kwargs: dict[str, Any]) -> Any:
+def ensure_lixinger_stock_code(endpoint: str, frame: Any, stock_code: str) -> Any:
+    """为不回传 stockCode 的公司事件响应补齐请求标的。"""
+    if (
+        not stock_code
+        or frame.empty
+        or endpoint
+        not in {
+            "cn/company/measures",
+            "cn/company/inquiry",
+        }
+    ):
+        return frame
+    if "stockCode" not in frame.columns:
+        frame = frame.copy()
+        frame.insert(0, "stockCode", stock_code)
+    else:
+        frame["stockCode"] = frame["stockCode"].fillna(stock_code)
+    return frame
+
+
+def query_frame(
+    client: Any,
+    api_name: str,
+    endpoint: str,
+    query_kwargs: dict[str, Any],
+    stock_code: str = "",
+) -> Any:
     """执行理杏仁查询并补齐特殊响应字段。"""
     frame = client.query(api_name, **query_kwargs)
     if frame.empty:
         return frame
-    return ensure_pledge_date_column(endpoint, frame)
+    frame = ensure_pledge_date_column(endpoint, frame)
+    return ensure_lixinger_stock_code(endpoint, frame, stock_code)

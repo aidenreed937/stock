@@ -35,7 +35,10 @@ def _load_curated_symbol_pool(data_source: str, dataset: str) -> list[str]:
     """从本地基础信息数据集加载可用于按标的回填的标准代码。"""
     from stock_data.storage.duckdb_store import DuckDBMarketStore
 
-    frame = DuckDBMarketStore(data_source=data_source).query_dataset(dataset=dataset)
+    pool_source = (
+        "tushare" if data_source == "lixinger" and dataset == "stock_basic" else data_source
+    )
+    frame = DuckDBMarketStore(data_source=pool_source).query_dataset(dataset=dataset)
     if frame.is_empty():
         return []
     sym_col = next(
@@ -78,6 +81,8 @@ _LIXINGER_COMPANY_ENDPOINTS = {
     "fs_security",
     "fs_insurance",
     "pledge_info",
+    "regulatory_measures",
+    "exchange_inquiry",
 }
 _LIXINGER_BATCH_SINGLE_ENDPOINTS = {
     "index_fundamental",
@@ -93,6 +98,7 @@ _LIXINGER_BATCH_SINGLE_ENDPOINTS = {
     "non_ferrous_metals",
     "crude_oil",
     "investor_accounts",
+    "unlock_summary",
 }
 
 

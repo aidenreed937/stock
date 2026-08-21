@@ -36,6 +36,7 @@ _KNOWN_FLOAT_COLUMNS = frozenset(
         "adj_factor",
         "fd_share",
         "float_share",
+        "float_ratio",
         "free_share",
         "total_share",
         "n_shares",
@@ -89,6 +90,7 @@ _KNOWN_DATE_COLUMNS = frozenset(
     {
         "trade_date",
         "ann_date",
+        "float_date",
         "f_ann_date",
         "report_date",
         "end_date",
@@ -247,6 +249,15 @@ _DATASET_FLOAT_COLUMNS: dict[str, frozenset[str]] = {
     "shibor_lpr": frozenset({"1y", "5y"}),
     "opt_basic": frozenset({"per_unit", "exercise_price", "list_price", "min_price_chg"}),
     "fund_basic": frozenset({"exp_return"}),
+    "unlock_summary": frozenset(
+        {
+            "srl_last",
+            "srl_cap_r_last",
+            "elr_s_y1",
+            "elr_s_cap_r_y1",
+            "elr_mc_y1",
+        }
+    ),
 }
 
 _DATASET_OPTIONAL_COLUMNS: dict[str, frozenset[str]] = {

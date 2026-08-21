@@ -10,6 +10,7 @@ from stock_core.contracts import DatasetKey
 RAW_DATE_COLUMNS = (
     "trade_date",
     "ann_date",
+    "float_date",
     "report_date",
     "date",
     "end_date",
@@ -21,6 +22,7 @@ RAW_DATE_COLUMNS = (
 RAW_RANGE_DATE_COLUMNS = (
     "trade_date",
     "ann_date",
+    "float_date",
     "report_date",
     "date",
     "end_date",
@@ -53,6 +55,7 @@ RAW_DATE_CANDIDATE_COLUMNS = (
     "as_of_date",
     "asOfDate",
     "ann_date",
+    "float_date",
     "month",
     "quarter",
     "suspend_date",
@@ -76,6 +79,7 @@ RAW_PRIMARY_KEY_FALLBACK_COLUMNS = (
     "as_of_date",
     "asOfDate",
     "ann_date",
+    "float_date",
     "month",
     "quarter",
 )

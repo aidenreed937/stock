@@ -24,6 +24,7 @@ TUSHARE_TASK_REGISTRY: dict[str, EndpointMeta] = {
     "stk_holdertrade": TUSHARE_API_REGISTRY["stk_holdertrade"],
     "repurchase": TUSHARE_API_REGISTRY["repurchase"],
     "block_trade": TUSHARE_API_REGISTRY["block_trade"],
+    "share_float": TUSHARE_API_REGISTRY["share_float"],
     "income": TUSHARE_API_REGISTRY["income"],
     "fina_indicator": TUSHARE_API_REGISTRY["fina_indicator"],
     "balancesheet": TUSHARE_API_REGISTRY["balancesheet"],
@@ -300,6 +301,11 @@ _TUSHARE_PROFILES: dict[str, tuple[list[str], dict[str, str], str]] = {
     "block_trade": (
         ["ts_code", "trade_date", "price", "vol", "amount"],
         {"price": "CNY/share", "vol": "10k_share", "amount": "CNY10k"},
+        "corporate_action_event",
+    ),
+    "share_float": (
+        ["ts_code", "ann_date", "float_date", "float_share", "float_ratio"],
+        {"float_share": "share", "float_ratio": "percent"},
         "corporate_action_event",
     ),
     "stk_account": (

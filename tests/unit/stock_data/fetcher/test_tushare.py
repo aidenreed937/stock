@@ -44,6 +44,12 @@ def test_tushare_registry() -> None:
     block_trade = TUSHARE_API_REGISTRY["block_trade"]
     assert block_trade.nullable_primary_keys == ["buyer", "seller"]
 
+    share_float = TUSHARE_API_REGISTRY["share_float"]
+    assert share_float.query_mode == "float_date"
+    assert share_float.date_columns == ["float_date", "ann_date"]
+    assert share_float.max_rows_per_request == 6000
+    assert share_float.units == {"float_share": "share", "float_ratio": "percent"}
+
 
 def test_tushare_option_inputs_and_stopped_account_endpoint_are_registered() -> None:
     opt_basic = TUSHARE_API_REGISTRY["opt_basic"]
@@ -133,6 +139,23 @@ def test_tushare_financial_statement_period_query_rejects_date_range() -> None:
             date(2026, 6, 30),
             {},
         )
+
+
+def test_tushare_share_float_queries_by_unlock_date() -> None:
+    api_name, query_kwargs = build_tushare_query(
+        TUSHARE_API_REGISTRY["share_float"],
+        "600519.SH",
+        date(2026, 8, 20),
+        date(2026, 8, 20),
+        {},
+    )
+
+    assert api_name == "share_float"
+    assert query_kwargs == {
+        "ts_code": "600519.SH",
+        "float_date": "20260820",
+        "fields": "ts_code,ann_date,float_date,float_share,float_ratio,holder_name,share_type",
+    }
 
 
 def test_tushare_fetcher_financial_statement_uses_all_market_periods() -> None:

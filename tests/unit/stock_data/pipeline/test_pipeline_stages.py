@@ -192,6 +192,25 @@ def test_fetcher_stage_allows_nullable_block_trade_counterparty_keys() -> None:
     )
 
 
+def test_fetcher_stage_allows_nullable_lixinger_event_link() -> None:
+    stage = FetcherStage(MagicMock(), MagicMock(), data_source="lixinger")
+    frame = pl.DataFrame(
+        {
+            "stockCode": ["600519"],
+            "date": ["2026-08-19"],
+            "type": ["sw"],
+            "linkUrl": [None],
+        }
+    )
+
+    stage.validate_endpoint_frame(
+        frame,
+        start_date=date(2026, 8, 1),
+        end_date=date(2026, 8, 20),
+        endpoint="regulatory_measures",
+    )
+
+
 def test_fetcher_stage_validates_yfinance_history_contract() -> None:
     stage = FetcherStage(MagicMock(), MagicMock(), data_source="yfinance")
     frame = pl.DataFrame(

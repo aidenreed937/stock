@@ -89,6 +89,15 @@ stock_screen:
         item["rule_id"] == "audit_opinion" and item["status"] == "not_supported"
         for item in result.scores["missing_gates"]
     )
+    assert any(
+        item["rule_id"] == "regulatory_measures_and_inquiry"
+        and item["status"] == "registered_pending_backfill"
+        for item in result.scores["missing_gates"]
+    )
+    assert any(
+        item["rule_id"] == "litigation" and item["status"] == "not_supported"
+        for item in result.scores["missing_gates"]
+    )
 
 
 def test_run_stock_screen_caps_passed_artifact_but_keeps_full_count(tmp_path: Path) -> None:

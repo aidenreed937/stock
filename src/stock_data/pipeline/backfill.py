@@ -163,6 +163,7 @@ class HistoricalBackfiller:
         """自动在注册表中识别当前任务频次。"""
         registry_map = {
             "tushare": "stock_data.fetcher.tushare.registry",
+            "lixinger": "stock_data.fetcher.lixinger.registry",
             "yfinance": "stock_data.fetcher.yfinance.registry",
             "fred": "stock_data.fetcher.fred.registry",
         }
@@ -174,6 +175,7 @@ class HistoricalBackfiller:
                 mod = importlib.import_module(mod_path)
                 reg_dict = (
                     getattr(mod, "TUSHARE_API_REGISTRY", None)
+                    or getattr(mod, "LIXINGER_API_REGISTRY", None)
                     or getattr(mod, "YFINANCE_API_REGISTRY", None)
                     or getattr(mod, "FRED_API_REGISTRY", None)
                 )

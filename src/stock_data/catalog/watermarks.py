@@ -40,6 +40,7 @@ def scan_latest_trade_dates(
                     "trade_date",
                     "report_date",
                     "ann_date",
+                    "float_date",
                     "end_date",
                     "publish_date",
                     "date",
