@@ -5,6 +5,8 @@ from typing import Any
 
 import polars as pl
 
+from stock_core.config.loader import load_data_config
+from stock_core.exceptions import DataFetchError
 from stock_data.core.task_registry import resolve_task
 from stock_data.fetcher.lixinger import query_helpers
 from stock_data.fetcher.lixinger.client import LixingerClient
@@ -18,6 +20,19 @@ RISK_ENDPOINTS = frozenset(
         _UNLOCK_ENDPOINT,
     }
 )
+
+
+def _configured_lixinger_stock_codes() -> list[str]:
+    """返回解禁汇总默认使用的 LiXinger 观察池代码。"""
+    try:
+        data_cfg = load_data_config()
+        watchlist = getattr(data_cfg.watchlists, "lixinger", None)
+    except Exception:
+        return []
+    if watchlist is None:
+        return []
+    stocks = list(getattr(watchlist, "stocks", []) or [])
+    return stocks or list(getattr(watchlist, "all_symbols", []) or [])
 
 
 def _is_generic_symbol(raw_code: str, endpoint: str, meta: EndpointMeta) -> bool:
@@ -100,17 +115,28 @@ def fetch_risk_endpoint(
         if not _is_generic_symbol(raw_code, endpoint, meta) and not query_kwargs.get("stockCodes"):
             query_kwargs["stockCodes"] = [raw_code]
         symbols = list(query_kwargs.pop("stockCodes", []) or [])
+        if not symbols and not any(
+            key in query_kwargs for key in ("pageIndex", "pageSize", "sortName", "sortOrder")
+        ):
+            symbols = _configured_lixinger_stock_codes()
         if symbols:
             return _fetch_batch_unlock_summary(client, meta, symbols, query_kwargs)
+        if not any(
+            key in query_kwargs for key in ("pageIndex", "pageSize", "sortName", "sortOrder")
+        ):
+            raise DataFetchError(
+                "LiXinger 限售解禁汇总默认仅允许观察池；如需全市场分页，必须显式传入分页参数"
+            )
         return _fetch_paginated_unlock_summary(client, meta, query_kwargs)
 
     start_str, end_str = query_helpers.query_date_strings(endpoint, start_date, end_date)
     query_kwargs.update({"startDate": start_str, "endDate": end_str})
-    if not _is_generic_symbol(raw_code, endpoint, meta):
-        if meta.code_param_name == "stockCode":
-            query_kwargs["stockCode"] = raw_code
-        else:
-            query_kwargs["stockCodes"] = [raw_code]
+    if _is_generic_symbol(raw_code, endpoint, meta):
+        raise DataFetchError(f"LiXinger 风险接口 [{endpoint}] 必须显式传入股票代码")
+    if meta.code_param_name == "stockCode":
+        query_kwargs["stockCode"] = raw_code
+    else:
+        query_kwargs["stockCodes"] = [raw_code]
 
     frame = query_helpers.query_frame(
         client,

@@ -84,7 +84,7 @@ make backfill \
 ## 2. 增量同步工具 (Daily Sync CLI)
 
 ```bash
-# 默认同步指定数据源的全部公开原子任务
+# 默认同步指定数据源的常规公开原子任务；高消耗个股风险接口不包含在内
 make sync SOURCE=lixinger
 
 # 使用 TaskBundle 调度 LiXinger 行业相关任务
@@ -98,6 +98,19 @@ uv run python -m stock_cli.sync --data-source lixinger --endpoint industry_bundl
 ```
 
 可用 LiXinger bundle：`market_bundle`、`industry_bundle`、`company_bundle`、`macro_daily_bundle`、`macro_monthly_bundle`。`index_fundamental` 任务只有一个原子接口，继续直接传入；历史名称 `macro_bundle`、`index_bundle` 已移除。bundle 仅是调度输入，不合并数据集、水位或失败状态。
+
+监管措施、交易所问询和限售解禁风险接口属于高消耗任务，已注册但不进入默认
+`make sync SOURCE=lixinger`。显式指定时默认仅采集 LiXinger 观察池：
+
+```bash
+make sync SOURCE=lixinger ENDPOINT=regulatory_measures
+make sync SOURCE=lixinger ENDPOINT=exchange_inquiry
+make sync SOURCE=lixinger ENDPOINT=unlock_summary
+
+# 单只候选股按需回填历史
+make backfill SOURCE=lixinger ENDPOINT=regulatory_measures SYMBOL=600519 \
+  START=2024-01-01 END=2026-08-21
+```
 
 其他数据源的推荐 bundle：
 

@@ -283,6 +283,28 @@ def test_lixinger_required_stock_pool_reads_tushare_stock_basic() -> None:
     store_cls.assert_called_once_with(data_source="tushare")
 
 
+def test_lixinger_risk_backfill_defaults_to_watchlist() -> None:
+    from stock_data.pipeline.planner import BackfillPlanner
+
+    data_cfg = SimpleNamespace(
+        watchlists=SimpleNamespace(
+            lixinger=SimpleNamespace(stocks=["600519", "000001"], all_symbols=[])
+        )
+    )
+
+    tasks = BackfillPlanner.plan_tasks(
+        data_source="lixinger",
+        endpoints=["regulatory_measures"],
+        symbol=None,
+        start_date=date(2026, 8, 1),
+        end_date=date(2026, 8, 20),
+        start_specified=True,
+        data_cfg=data_cfg,
+    )
+
+    assert [task.symbol for task in tasks] == ["600519", "000001"]
+
+
 def test_planner_watchlist_on_per_day_endpoint_preserves_full_market() -> None:
     from stock_data.pipeline.planner import BackfillPlanner
 

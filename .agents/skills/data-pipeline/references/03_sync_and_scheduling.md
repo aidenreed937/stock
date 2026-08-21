@@ -37,15 +37,19 @@ make sync SOURCE=lixinger ENDPOINT=industry_bundle  # 申万 2021 成份、估�
 make sync SOURCE=lixinger ENDPOINT=company_bundle   # 公司基本面、财报与股权质押
 make sync SOURCE=lixinger ENDPOINT=macro_daily_bundle,macro_monthly_bundle  # 国债、利率、投资者与宏观序列
 make sync SOURCE=lixinger ENDPOINT=index_fundamental                     # 指数基本面估值（原子任务）
+# 个股风险接口按需执行，默认仅使用 LiXinger 观察池
+make sync SOURCE=lixinger ENDPOINT=regulatory_measures
+make sync SOURCE=lixinger ENDPOINT=exchange_inquiry
+make sync SOURCE=lixinger ENDPOINT=unlock_summary
 ```
 
-LiXinger 不再注册历史别名 `macro_bundle` 和 `index_bundle`。宏观数据使用 `macro_daily_bundle`、`macro_monthly_bundle`，指数基本面直接使用原子任务 `index_fundamental`，并维护独立水位和失败状态。
+LiXinger 不再注册历史别名 `macro_bundle` 和 `index_bundle`。宏观数据使用 `macro_daily_bundle`、`macro_monthly_bundle`，指数基本面直接使用原子任务 `index_fundamental`，并维护独立水位和失败状态。监管措施、交易所问询和限售解禁任务为显式任务，不进入未指定端点的默认同步；监管措施和问询函仅按观察池股票执行。
 
 ---
 
 ## 3. 水位、发布时间窗口与 RAW 缓存
 
-未指定 `ENDPOINT` 时，`make sync SOURCE=lixinger` 会从任务注册表展开全部公开原子任务；指定 bundle 时先展开并去重。每个原子任务独立计算 Curated 水位、增量区间和失败状态。
+未指定 `ENDPOINT` 时，`make sync SOURCE=lixinger` 会从任务注册表展开默认公开原子任务；高消耗风险任务虽已注册，但被标记为显式任务，不会自动展开。指定风险端点或 bundle 时才执行，并独立计算 Curated 水位、增量区间和失败状态。
 
 单任务的计划状态遵循以下语义：
 

@@ -93,6 +93,11 @@ make sync SOURCE=lixinger ENDPOINT=market_bundle,macro_monthly_bundle
 # 低频或单任务接口直接调用
 make sync SOURCE=lixinger ENDPOINT=index_fundamental
 make sync SOURCE=alphavantage ENDPOINT=fx_daily WORKERS=1
+
+# 个股风险接口按需执行，默认仅使用 LiXinger 观察池，不进入默认同步
+make sync SOURCE=lixinger ENDPOINT=regulatory_measures
+make sync SOURCE=lixinger ENDPOINT=exchange_inquiry
+make sync SOURCE=lixinger ENDPOINT=unlock_summary
 ```
 
 当前正式任务包：
@@ -142,7 +147,7 @@ make audit TYPE=all DATE=YYYY-MM-DD
 
 ### 增量同步判定与缓存语义
 
-`make sync SOURCE=<source>` 未指定 `ENDPOINT` 时，会从 `TaskRegistry` 展开该数据源全部已注册的公开原子任务；指定 bundle 时先展开并去重。展开后的每个原子任务独立维护 Curated 水位、增量区间和失败状态。
+`make sync SOURCE=<source>` 未指定 `ENDPOINT` 时，会从 `TaskRegistry` 展开该数据源默认公开原子任务；LiXinger 的监管措施、交易所问询和限售解禁属于显式风险任务，不会进入默认同步。显式指定风险端点或 bundle 时，监管措施和问询函仅按观察池股票执行；展开后的每个原子任务独立维护 Curated 水位、增量区间和失败状态。
 
 同步计划按以下顺序判定：
 

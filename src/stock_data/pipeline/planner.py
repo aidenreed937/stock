@@ -10,6 +10,7 @@ from typing import Any
 from stock_core.exceptions import DataFetchError
 from stock_core.utils.logger import logger
 from stock_data.core.constants import ENDPOINT_START_DATE_OVERRIDES
+from stock_data.core.lixinger_risk_tasks import LIXINGER_WATCHLIST_ONLY_TASK_NAMES
 from stock_data.core.task_registry import (
     expand_public_task_targets,
     list_available_tasks,
@@ -195,6 +196,12 @@ def _resolve_target_symbols(
         {public_name},
         is_watchlist_explicit=is_watchlist_explicit,
     )
+    if (
+        not targets
+        and data_source == "lixinger"
+        and public_name in LIXINGER_WATCHLIST_ONLY_TASK_NAMES
+    ):
+        return []
     return targets if targets else [""]
 
 

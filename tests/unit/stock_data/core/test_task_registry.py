@@ -39,7 +39,7 @@ def test_is_task_partitioned_rules() -> None:
 def test_is_per_symbol_task_rules() -> None:
     # 1. 验证按标的拉取模式 (指数、两融明细等)
     assert is_per_symbol_task("tushare", "index_daily")
-    assert is_per_symbol_task("tushare", "margin_detail")
+    assert not is_per_symbol_task("tushare", "margin_detail")
     assert is_per_symbol_task("fred", "CPIAUCSL")
     assert is_per_symbol_task("yfinance", "stock_daily_bar")
 
@@ -73,17 +73,19 @@ def test_list_available_tasks() -> None:
     assert "income" in tushare_tasks
     assert "income_vip" not in tushare_tasks
     assert "bak_daily" not in tushare_tasks
+    assert "pledge_detail" in tushare_tasks
+    assert "pledge_stat" in tushare_tasks
 
     lixinger_tasks = list_available_tasks("lixinger")
     assert "sw_2021_fundamental" in lixinger_tasks
     assert "pledge_info" in lixinger_tasks
-    assert "regulatory_measures" in lixinger_tasks
-    assert "exchange_inquiry" in lixinger_tasks
-    assert "unlock_summary" in lixinger_tasks
+    assert "regulatory_measures" not in lixinger_tasks
+    assert "exchange_inquiry" not in lixinger_tasks
+    assert "unlock_summary" not in lixinger_tasks
 
     regulatory = resolve_task("lixinger", "regulatory_measures")
     assert regulatory.fetch_mode == "per_symbol"
-    assert regulatory.required_pool == "stock_basic"
+    assert regulatory.required_pool is None
     assert regulatory.frequency == "event"
     assert regulatory.primary_keys == ("stockCode", "date", "type", "linkUrl")
 
@@ -189,6 +191,7 @@ def test_tushare_task_bundles() -> None:
         "macro_monthly_bundle",
         "metadata_bundle",
         "corporate_action_bundle",
+        "pledge_bundle",
     ]
 
     market = resolve_bundle("tushare", "daily_market_bundle")
@@ -348,7 +351,7 @@ def test_task_bundles_cover_registered_tasks_except_explicit_aggregate_routes() 
             "cb_basic",
             "cb_daily",
         },
-        "lixinger": {"index_fundamental", "unlock_summary"},
+        "lixinger": {"index_fundamental"},
         "yfinance": {
             "macro_indicators",
             "index_valuation",

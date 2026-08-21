@@ -112,6 +112,9 @@ class TuShareStockFetcher(BaseDataFetcher):
         if should_split_margin_exchanges(endpoint, extra_kwargs):
             return self._fetch_split_exchanges(symbol, start_date, end_date, endpoint)
 
+        if endpoint == "margin_detail" and not symbol and start_date != end_date:
+            return self._fetch_windowed(symbol, start_date, end_date, endpoint, meta, extra_kwargs)
+
         if endpoint == "index_classify" and "src" not in extra_kwargs:
             return self._fetch_all_industry_classifies(meta, symbol)
 

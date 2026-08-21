@@ -64,7 +64,6 @@ PER_SYMBOL_DATASETS: frozenset[str] = frozenset(
         "etf_share_size",
         "forecast",
         "express",
-        "margin_detail",
         "hk_hold",
     }
 )
@@ -526,7 +525,8 @@ _ALIASES: dict[tuple[str, str], str] = {
 }
 
 _DISABLED_TASKS = {"bak_daily", "stk_account"}
-_EXPLICIT_ONLY_TASKS = {("fred", "macro_indicators")}
+# 高消耗风险任务只在显式指定端点时执行，避免进入默认全源同步。
+_EXPLICIT_ONLY_TASKS = _registry_helpers.EXPLICIT_ONLY_TASKS
 
 
 def expand_task_targets(provider: str, endpoints: list[str] | None = None) -> list[str]:
@@ -566,10 +566,11 @@ def _derive_task_spec(provider_name: str, requested: str, meta: Any) -> TaskSpec
         fetch_mode = "per_symbol"
     elif provider_name == "tushare" and requested in _registry_helpers.PER_PERIOD_DATASETS:
         fetch_mode = "per_period"
+    elif requested == "margin_detail":
+        fetch_mode = "per_day"
     elif group in ("financial_statements", "financial_indicator") or requested in (
         "forecast",
         "express",
-        "margin_detail",
         "hk_hold",
     ):
         fetch_mode = "per_symbol"

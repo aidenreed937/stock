@@ -55,7 +55,7 @@ def create_lixinger_pipeline(
             else GenericCleaner
         )
         cleaner = cleaner_cls(primary_keys=p_keys, nullable_primary_keys=nullable_p_keys)
-        normalizer = GenericNormalizer()
+        normalizer = GenericNormalizer(date_columns=list(task.date_columns) or None)
     return MarketDataPipeline(
         fetcher=active_fetcher,
         cleaner=cleaner,

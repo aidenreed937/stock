@@ -50,6 +50,10 @@ def test_tushare_registry() -> None:
     assert share_float.max_rows_per_request == 6000
     assert share_float.units == {"float_share": "share", "float_ratio": "percent"}
 
+    assert TUSHARE_API_REGISTRY["pledge_detail"].max_rows_per_request == 1000
+    assert TUSHARE_API_REGISTRY["pledge_stat"].max_rows_per_request == 1000
+    assert TUSHARE_API_REGISTRY["pledge_stat"].query_mode == "end_date"
+
 
 def test_tushare_option_inputs_and_stopped_account_endpoint_are_registered() -> None:
     opt_basic = TUSHARE_API_REGISTRY["opt_basic"]

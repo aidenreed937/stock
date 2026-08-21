@@ -180,6 +180,76 @@ def test_lixinger_unlock_summary_paginates_until_empty_page() -> None:
     assert "last_data_date" in frame.columns
 
 
+def test_lixinger_unlock_summary_defaults_to_watchlist_codes(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    mock_client = MagicMock()
+    mock_client.query.return_value = pd.DataFrame(
+        {"stockCode": ["600519", "000001"], "srl_last": [1.0, 2.0]}
+    )
+    watchlist = SimpleNamespace(stocks=["600519", "000001"], all_symbols=[])
+    data_cfg = SimpleNamespace(watchlists=SimpleNamespace(lixinger=watchlist))
+    monkeypatch.setattr(
+        "stock_data.fetcher.lixinger.risk_fetcher.load_data_config", lambda: data_cfg
+    )
+    fetcher = LixingerStockFetcher(client=mock_client)
+
+    frame = fetcher.fetch_daily_bars_df(
+        "unlock_summary",
+        date(2026, 8, 1),
+        date(2026, 8, 20),
+        endpoint="unlock_summary",
+    )
+
+    assert len(frame) == 2
+    assert mock_client.query.call_args.kwargs["stockCodes"] == ["600519", "000001"]
+
+
+def test_lixinger_unlock_summary_without_watchlist_fails_closed(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    mock_client = MagicMock()
+    data_cfg = SimpleNamespace(watchlists=SimpleNamespace(lixinger=SimpleNamespace(stocks=[])))
+    monkeypatch.setattr(
+        "stock_data.fetcher.lixinger.risk_fetcher.load_data_config", lambda: data_cfg
+    )
+    fetcher = LixingerStockFetcher(client=mock_client)
+
+    with pytest.raises(DataFetchError, match="仅允许观察池"):
+        fetcher.fetch_daily_bars_df(
+            "unlock_summary",
+            date(2026, 8, 1),
+            date(2026, 8, 20),
+            endpoint="unlock_summary",
+        )
+
+    mock_client.query.assert_not_called()
+
+
+def test_lixinger_fetcher_does_not_forward_runtime_worker_argument() -> None:
+    mock_client = MagicMock()
+    mock_client.query.return_value = pd.DataFrame(
+        {"date": ["2026-08-19"], "type": ["sw"], "linkUrl": [None]}
+    )
+    fetcher = LixingerStockFetcher(client=mock_client)
+
+    fetcher.fetch_daily_bars_df(
+        "600519",
+        date(2026, 8, 1),
+        date(2026, 8, 20),
+        endpoint="regulatory_measures",
+        max_workers=2,
+    )
+
+    assert "max_workers" not in mock_client.query.call_args.kwargs
+
+
+def test_lixinger_pipeline_uses_registered_date_columns_for_normalization() -> None:
+    pipeline = create_lixinger_pipeline("unlock_summary", fetcher=MagicMock())
+
+    assert pipeline.normalizer.date_columns == ("last_data_date",)
+
+
 def test_lixinger_daily_macro_query_pads_exclusive_date_range() -> None:
     mock_client = MagicMock()
     mock_client.query.return_value = pd.DataFrame(

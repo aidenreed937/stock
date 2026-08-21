@@ -259,6 +259,7 @@ class LixingerStockFetcher:
     ) -> pl.DataFrame:
         """抓取指定股票或全市场在给定日期范围内的行情/估值数据。"""
         task_endpoint = str(kwargs.pop("endpoint_name", "") or "")
+        kwargs.pop("max_workers", None)
         requested_endpoint = task_endpoint or endpoint
         endpoint, meta = _resolve_endpoint_meta(endpoint)
         if (

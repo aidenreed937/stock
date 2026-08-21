@@ -3,6 +3,16 @@
 PER_PERIOD_DATASETS: frozenset[str] = frozenset(
     {"income", "fina_indicator", "balancesheet", "cashflow"}
 )
+EXPLICIT_ONLY_TASKS = frozenset(
+    {
+        ("fred", "macro_indicators"),
+        ("tushare", "pledge_detail"),
+        ("tushare", "pledge_stat"),
+        ("lixinger", "regulatory_measures"),
+        ("lixinger", "exchange_inquiry"),
+        ("lixinger", "unlock_summary"),
+    }
+)
 
 
 def is_tushare_internal_api(name: str) -> bool:

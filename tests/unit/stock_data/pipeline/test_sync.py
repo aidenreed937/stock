@@ -553,6 +553,21 @@ def test_sync_symbols_keeps_lixinger_batch_tasks_single() -> None:
         ]
 
 
+@pytest.mark.parametrize("endpoint", ["regulatory_measures", "exchange_inquiry"])
+def test_sync_symbols_limits_lixinger_risk_events_to_watchlist(endpoint: str) -> None:
+    class Watchlist:
+        stocks = ["600519", "000001"]
+
+    class Watchlists:
+        lixinger = Watchlist()
+
+    class DataCfg:
+        watchlists = Watchlists()
+
+    with patch("stock_data.pipeline.sync.load_data_config", return_value=DataCfg()):
+        assert _sync_symbols_for_task("lixinger", endpoint) == ["600519", "000001"]
+
+
 @pytest.mark.parametrize("endpoint", ["income", "fina_indicator", "balancesheet", "cashflow"])
 def test_sync_symbols_keeps_tushare_statements_as_one_all_market_task(endpoint: str) -> None:
     assert _sync_symbols_for_task("tushare", endpoint) == [""]

@@ -78,10 +78,54 @@ FINANCE_ENDPOINTS: dict[str, EndpointMeta] = {
             "float_share": "share",
             "float_ratio": "percent",
         },
-        request_window_days=31,
+        request_window_days=365,
         max_rows_per_request=6000,
         request_fields=(
             "ts_code,ann_date,float_date,float_share,float_ratio,holder_name,share_type"
+        ),
+    ),
+    "pledge_detail": EndpointMeta(
+        api_name="pledge_detail",
+        description="股票股权质押逐笔明细",
+        frequency="event",
+        query_mode="ann_date",
+        group="corporate_action",
+        primary_keys=["ts_code", "ann_date", "holder_name", "start_date"],
+        date_columns=["ann_date", "start_date", "end_date", "release_date"],
+        required_columns=["ts_code", "ann_date", "holder_name", "pledge_amount"],
+        units={
+            "pledge_amount": "10k_share",
+            "holding_amount": "10k_share",
+            "pledged_amount": "10k_share",
+            "p_total_ratio": "percent",
+            "h_total_ratio": "percent",
+        },
+        request_window_days=365,
+        max_rows_per_request=1000,
+        request_fields=(
+            "ts_code,ann_date,holder_name,pledge_amount,start_date,end_date,is_release,"
+            "release_date,pledgor,holding_amount,pledged_amount,p_total_ratio,h_total_ratio,is_buyback"
+        ),
+    ),
+    "pledge_stat": EndpointMeta(
+        api_name="pledge_stat",
+        description="股票股权质押统计",
+        frequency="event",
+        query_mode="end_date",
+        group="market_indicators",
+        primary_keys=["ts_code", "end_date"],
+        date_columns=["end_date"],
+        required_columns=["ts_code", "end_date", "pledge_ratio"],
+        units={
+            "unrest_pledge": "10k_share",
+            "rest_pledge": "10k_share",
+            "total_share": "share",
+            "pledge_ratio": "percent",
+        },
+        request_window_days=365,
+        max_rows_per_request=1000,
+        request_fields=(
+            "ts_code,end_date,pledge_count,unrest_pledge,rest_pledge,total_share,pledge_ratio"
         ),
     ),
     "income": EndpointMeta(
@@ -146,6 +190,8 @@ FINANCE_ENDPOINTS: dict[str, EndpointMeta] = {
         update_time="08:00",
         update_delay_days=1,
         delay_in_trading_days=True,
+        request_window_days=365,
+        max_rows_per_request=6000,
     ),
     "moneyflow_hsgt": EndpointMeta(
         api_name="moneyflow_hsgt",

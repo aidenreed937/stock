@@ -25,6 +25,8 @@ TUSHARE_TASK_REGISTRY: dict[str, EndpointMeta] = {
     "repurchase": TUSHARE_API_REGISTRY["repurchase"],
     "block_trade": TUSHARE_API_REGISTRY["block_trade"],
     "share_float": TUSHARE_API_REGISTRY["share_float"],
+    "pledge_detail": TUSHARE_API_REGISTRY["pledge_detail"],
+    "pledge_stat": TUSHARE_API_REGISTRY["pledge_stat"],
     "income": TUSHARE_API_REGISTRY["income"],
     "fina_indicator": TUSHARE_API_REGISTRY["fina_indicator"],
     "balancesheet": TUSHARE_API_REGISTRY["balancesheet"],

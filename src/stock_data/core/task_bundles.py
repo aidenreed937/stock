@@ -54,6 +54,7 @@ _TASK_BUNDLE_TASKS: dict[str, dict[str, tuple[str, ...]]] = {
             "block_trade",
             "share_float",
         ),
+        "pledge_bundle": ("pledge_detail", "pledge_stat"),
     },
     "lixinger": {
         "market_bundle": ("stock_daily_bar", "index_daily_bar"),

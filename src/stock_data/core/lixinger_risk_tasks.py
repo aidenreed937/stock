@@ -2,19 +2,20 @@
 
 from typing import Any
 
+LIXINGER_RISK_TASK_NAMES = frozenset({"regulatory_measures", "exchange_inquiry", "unlock_summary"})
+LIXINGER_WATCHLIST_ONLY_TASK_NAMES = frozenset({"regulatory_measures", "exchange_inquiry"})
+
 LIXINGER_RISK_TASK_SPECS: tuple[dict[str, object], ...] = (
     {
         "task": "regulatory_measures",
         "api": "cn/company/measures",
         "dataset": "regulatory_measures",
-        "required_pool": "stock_basic",
         "frequency": "event",
     },
     {
         "task": "exchange_inquiry",
         "api": "cn/company/inquiry",
         "dataset": "exchange_inquiry",
-        "required_pool": "stock_basic",
         "frequency": "event",
     },
     {

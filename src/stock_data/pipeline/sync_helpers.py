@@ -10,6 +10,7 @@ import polars as pl
 
 from stock_core.config.loader import load_data_config
 from stock_data.catalog import DataCatalog
+from stock_data.core.lixinger_risk_tasks import LIXINGER_WATCHLIST_ONLY_TASK_NAMES
 from stock_data.core.task_registry import _provider_registry, expand_task_targets, resolve_task
 from stock_data.pipeline.planner import (
     _filter_supported_symbols,
@@ -96,8 +97,12 @@ def sync_symbols_for_task(
     resolve_task_fn: Callable[..., Any] = resolve_task,
 ) -> list[str]:
     task = resolve_task_fn(data_source, endpoint)
-    if task.fetch_mode != "per_symbol" or (
-        task.is_single_sync and not _should_expand_single_sync(data_source, task.task_name)
+    watchlist_only_risk = (
+        data_source == "lixinger" and task.task_name in LIXINGER_WATCHLIST_ONLY_TASK_NAMES
+    )
+    if not watchlist_only_risk and (
+        task.fetch_mode != "per_symbol"
+        or (task.is_single_sync and not _should_expand_single_sync(data_source, task.task_name))
     ):
         return [""]
 
@@ -106,6 +111,12 @@ def sync_symbols_for_task(
         watchlist = getattr(data_cfg.watchlists, data_source, None)
     except Exception:
         watchlist = None
+
+    if watchlist_only_risk:
+        if watchlist is None:
+            return []
+        stocks = list(getattr(watchlist, "stocks", []) or [])
+        return stocks or list(getattr(watchlist, "all_symbols", []) or [])
 
     if data_source in {"yfinance", "alphavantage"} and task.dataset == "macro_indicators":
         return YFINANCE_MACRO_SYMBOLS if data_source == "yfinance" else ["CNH=X"]
