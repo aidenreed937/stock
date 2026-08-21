@@ -90,7 +90,7 @@ YAML 子权重：
 | `margin_balance_growth_60d` | 0% | `50 + value * 500`，只作趋势观察 |
 | `market_amount_percentile_1250d` | 0% | 历史兼容字段；全市场自由流通换手率不再作为资金面第二个换手率分位入分 |
 
-`margin_buy_share` 和 `margin_penetration` 在 YAML 中权重为 0，只作事实展示。`moneyflow` 常晚于行情，资金结论必须写明资金事实日期和 `metric_date`；20 日累计项的窗口起止日期在 fact note 中保留，不能将其解释成单日流量。北向字段未经语义核验时只能称资金金额或活跃度观察。
+`margin_buy_share` 和 `margin_penetration` 在 YAML 中权重为 0，只作事实展示。`moneyflow` 没有可据权威资料固定的最大滞后天数，资金结论必须写明资金事实日期和 `metric_date`，以实际入库水位为准；20 日累计项的窗口起止日期在 fact note 中保留，不能将其解释成单日流量。北向字段未经语义核验时只能称资金金额或活跃度观察。
 
 ### 4.3 情绪面
 

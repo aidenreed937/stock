@@ -79,7 +79,7 @@ UV_CACHE_DIR=.uv_cache UV_PYTHON_INSTALL_DIR=.uv_python uv run python -m stock_c
 - `资金确认` 表示 `fund_flow_score >= 70` 且 `money_net_inflow_share_20d > 0`；
 - `资金流出压力` 表示 `fund_flow_score <= 30` 且 `money_net_inflow_share_20d < 0`。
 
-资金流数据通常晚于行情一日，报告必须披露 `moneyflow_date` 和数据水位；若 `moneyflow`、行业映射或个股成交额缺失，只展示缺失，不把缺失当作 0 流入。
+资金流数据的固定可用时滞没有权威上限，报告必须披露 `moneyflow_date` 和数据水位，并以实际入库日期为准；若 `moneyflow`、行业映射或个股成交额缺失，只展示缺失，不把缺失当作 0 流入。
 
 TCR 定义：
 

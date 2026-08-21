@@ -70,10 +70,9 @@ industry_structure:
     - data_source: tushare
       dataset: moneyflow
       required: false
-      max_lag_days: 2
       cadence: trading_daily
       quality_tier: confirming
-      note: "个股资金流，按申万成分聚合为行业资金确认观察项，不进入结构总分"
+      note: "个股资金流可用时点可能晚于行情；按实际 moneyflow_date 聚合为行业资金确认观察项，不进入结构总分"
     - data_source: tushare
       dataset: forecast
       required: false

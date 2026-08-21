@@ -467,10 +467,9 @@ market_temperature:
       dataset: moneyflow
       dimension: fund_flow
       required: false
-      max_lag_days: 2
       cadence: trading_daily
       quality_tier: confirming
-      note: "个股资金流，通常晚于行情一个交易日"
+      note: "个股资金流可用时点可能晚于行情，以实际入库水位为准"
     - data_source: tushare
       dataset: moneyflow_hsgt
       dimension: fund_flow

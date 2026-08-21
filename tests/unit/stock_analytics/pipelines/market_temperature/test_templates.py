@@ -175,7 +175,7 @@ def test_human_report_surfaces_quality_divergence_and_followups() -> None:
                 dataset="moneyflow",
                 value_text="2026-08-13",
                 status="ok",
-                note="个股资金流，通常晚于行情一个交易日",
+                note="个股资金流可用时点可能晚于行情，以实际入库水位为准",
             ),
             _fact(
                 category="data_watermark",

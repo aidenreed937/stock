@@ -58,7 +58,7 @@ def test_quality_report_flags_hard_and_soft_issues() -> None:
             dimension="fund_flow",
             required=False,
             date_column="",
-            max_lag_days=2,
+            max_lag_days=0,
             static=False,
             cadence="trading_daily",
             quality_tier="confirming",

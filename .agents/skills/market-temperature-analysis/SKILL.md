@@ -217,7 +217,7 @@ make market-cycle-review START=YYYY-MM-DD END=YYYY-MM-DD
 
 ## 口径提醒
 
-`moneyflow` 常晚于行情一个交易日，资金结论要写清最新资金日期和 `metric_date`。单日主力净流入只描述脉冲，20 日累计占比才用于趋势确认；`moneyflow_hsgt.north_money` 在当前库里按资金金额使用，除非已验证字段语义，否则不要表述为严格“北向净买入”。
+`moneyflow` 的固定可用时滞没有权威上限，资金结论要写清最新资金日期和 `metric_date`，以实际入库水位为准。单日主力净流入只描述脉冲，20 日累计占比才用于趋势确认；`moneyflow_hsgt.north_money` 在当前库里按资金金额使用，除非已验证字段语义，否则不要表述为严格“北向净买入”。
 
 申万行业财报多为季频，最近 20 日分析中只能作为基本面底座，不要写成 20 日内发生的财报变化。行业结构报告若 `fundamental_status` 为 `stale_blended` 或 `official_stale`，要明确这是“正式财报滞后，快速预告/快报/研报确认项权重提高”的降级状态。`forecast`、`express` 和 `report_rc` 可反映最近 20 日公告/研报预期变化，但必须披露有效样本数。
 
