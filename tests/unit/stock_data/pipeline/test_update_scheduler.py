@@ -66,6 +66,24 @@ def test_lixinger_latest_trading_date_uses_tushare_calendar() -> None:
     get_trading_days.assert_called_once_with(date(2026, 7, 21), date(2026, 8, 21), "tushare")
 
 
+def test_yfinance_calendar_excludes_nyse_holiday() -> None:
+    assert DataUpdateScheduler.get_trading_days(
+        date(2024, 1, 1), date(2024, 1, 2), data_source="yfinance"
+    ) == (date(2024, 1, 2),)
+
+
+def test_yfinance_default_sync_targets_latest_ready_session() -> None:
+    target = resolve_sync_target_date(
+        "yfinance",
+        "stock_daily_bar",
+        date(2026, 8, 21),
+        target_date_is_explicit=False,
+        current_datetime=datetime(2026, 8, 21, 10, 26),
+    )
+
+    assert target == date(2026, 8, 20)
+
+
 def test_lixinger_default_sync_targets_latest_published_trading_day() -> None:
     current_datetime = datetime(2026, 8, 21, 10, 26)
     with (

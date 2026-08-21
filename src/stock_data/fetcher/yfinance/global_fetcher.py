@@ -90,14 +90,12 @@ class YFinanceDataFetcher(BaseDataFetcher):
         self.client = client
 
     def fetch_trade_cal(self, start_date: date, end_date: date) -> list[date]:
-        """获取交易日历（过滤周末）。"""
-        cur = start_date
-        open_dates: list[date] = []
-        while cur <= end_date:
-            if cur.weekday() < 5:
-                open_dates.append(cur)
-            cur += timedelta(days=1)
-        return open_dates
+        """获取 XNYS 美股交易日历。"""
+        from stock_data.pipeline.scheduler import DataUpdateScheduler
+
+        return list(
+            DataUpdateScheduler.get_trading_days(start_date, end_date, data_source="yfinance")
+        )
 
     def fetch_daily_bars(self, symbol: str, start_date: date, end_date: date) -> list[DailyBar]:
         """抓取指定标的代码的 K 线数据，转化为标准 DailyBar 模型。"""

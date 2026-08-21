@@ -163,6 +163,13 @@ class DataUpdateScheduler:
     @lru_cache(maxsize=128)
     def _get_trading_days(start_date: date, end_date: date, data_source: str) -> tuple[date, ...]:
         """读取本地交易日历，缺失时尝试上游；不做工作日猜测。"""
+        if data_source == "yfinance":
+            import exchange_calendars as xcals
+
+            sessions = xcals.get_calendar("XNYS").sessions_in_range(
+                start_date.isoformat(), end_date.isoformat()
+            )
+            return tuple(session.date() for session in sessions)
         if data_source == "alphavantage":
             from stock_data.fetcher.alphavantage.global_fetcher import AlphaVantageDataFetcher
 

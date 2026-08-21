@@ -476,9 +476,9 @@ def test_yfinance_macro_registry_declares_global_hg_f_route() -> None:
 def test_yfinance_fetcher_trade_cal() -> None:
     client = YFinanceClient()
     fetcher = YFinanceDataFetcher(client=client)
-    dates = fetcher.fetch_trade_cal(date(2024, 1, 5), date(2024, 1, 8))
-    # 2024-01-05 (Fri), 2024-01-08 (Mon)
-    assert dates == [date(2024, 1, 5), date(2024, 1, 8)]
+    dates = fetcher.fetch_trade_cal(date(2024, 1, 1), date(2024, 1, 2))
+    # 2024-01-01 是 NYSE 元旦休市，2024-01-02 正常开市。
+    assert dates == [date(2024, 1, 2)]
 
 
 def test_yfinance_fetcher_index_valuations() -> None:
