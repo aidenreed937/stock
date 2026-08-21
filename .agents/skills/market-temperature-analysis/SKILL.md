@@ -9,7 +9,7 @@ description: 用本地 Curated 黄金表和现有 analytics/metrics 体系生成
 
 只使用本地 Curated 黄金表和项目内已有分析器输出。不要用模型记忆补点位、政策、新闻或宏观结论；本地没有稳定数据表支撑的维度必须标为不可量化或仅作外部背景。
 
-默认分析周期为最近 20 个已落盘 A 股交易日，而不是最近 20 个自然日。先用 `DataCatalog.latest_trade_dates("stock_daily_bar", n=20)` 取得窗口，再以最新行情交易日作为主口径日期。5 日/10 日窗口只作为短线温度补充观察，不替代 20 日主温度。
+默认分析周期为最近 20 个已落盘 A 股交易日，而不是最近 20 个自然日。先用 `DataCatalog.latest_trade_dates("stock_daily_bar", n=20)` 取得窗口，再以最新行情交易日作为主口径日期。5 日/10 日窗口只作为短线温度补充观察，不替代 20 日主温度。用户明确要求“最近 N 日”时，N 指交易日，使用批量脚本的 `--last-n N`，不要按自然日倒推。
 
 观测日期规则：显式传入 `DATE` 时以 `DATE` 为准；未传 `DATE` 的市场温度和行业结构分别取各自主数据集的最新交易日；未传 `DATE` 的投资者简报和量化投研简报都扫描两类上游 `runs/as_of=*`，取共同的最新观测日期，再读取该日期下最新一次运行。`latest/` 只是最近一次成功发布的副本，不能替代 `as_of_date` 判断。
 
@@ -19,20 +19,31 @@ description: 用本地 Curated 黄金表和现有 analytics/metrics 体系生成
 
 需要理解 `metrics` 与 `market_temperature` 的职责边界、数据流和扩展落点时，读取 `references/architecture.md`。需要系统性理解综合温度金融物理机制、五档操作时钟、快慢背离诊断、一票否决规则与跨周期实战口诀时，读取 `references/composite-temperature-interpretation.md`。需要分析申万2021行业轮动、行业强弱、景气-估值矩阵时，读取 `references/industry-structure.md`。需要具体字段、打分方向、metrics 源码位置和输出模板时，读取 `references/scoring.md`。需要做多日期联合分析、资金运动规律、重要信号日或跨周期验证时，读取 `references/cross-cycle-study.md` 和 `references/signal-days.md`。需要面向普通投资者解释“能不能参与/参与什么方向/如何控风险”时，读取 `references/investor-interpretation.md`。需要验证产物是否可追溯、无编造和无串线时，读取 `references/report-consistency.md`。
 
+## 标准执行入口与安全边界
+
+按以下顺序执行，不要手工拼装 facts 或直接复制 `latest/`：
+
+1. 先用 `DataCatalog` 查询 `stock_daily_bar` 最新交易日；若用户指定日期，确认该日期已落盘，否则报告缺口并停止。
+2. 普通单日生成直接运行 `make scan DATE=YYYY-MM-DD`；只要市场温度计则运行 `make market-temperature DATE=YYYY-MM-DD`。
+3. 需要“最近 N 个交易日”或多日历史产物时，只运行下方批量脚本；脚本会先完成所有日期，再统一校验和发布 `latest/`。
+4. 需要刷新 Mart 时使用脚本的 `--refresh-mart`，它只走增量构建，不传 `OVERWRITE=1`；构建后必须确认 `market_daily` 历史起点未变化。
+5. 禁止把 `TARGET=all ... OVERWRITE=1` 作为日常刷新方式。`OVERWRITE=1` 是有意重建并替换 Mart 的破坏性操作，只能在明确的历史重建/数据修复任务中单独执行，并在执行前记录原始历史起点和备份策略。
+6. 批量命令运行时必须看到子命令实时输出；若命令失败、被中断或一致性校验失败，不发布 `latest/`，不把部分产物当作完成。
+
 ## 已落地产物链路
 
 优先使用仓库内标准产物管线，而不是每次手工拼装 facts：
 
 ```bash
 # 0. 特征集市宽表构建与加速 (物化全市场股票日频聚合指标至 data/curated/mart/)
-make features-build [TARGET=market_daily] [OVERWRITE=1] [START=YYYY-MM-DD] [END=YYYY-MM-DD]
-make features-build TARGET=domain_marts [START=YYYY-MM-DD] [END=YYYY-MM-DD]
-make features-build TARGET=all [START=YYYY-MM-DD] [END=YYYY-MM-DD]
+# 日常增量刷新：不带 OVERWRITE=1，保留既有历史
+make features-build TARGET=all START=YYYY-MM-DD END=YYYY-MM-DD
+make features-build TARGET=market_daily START=YYYY-MM-DD END=YYYY-MM-DD
 
 # 领域 Mart 输入缺失时只生成稳定空 Schema/不可用观察事实，不伪造数据；
 # TARGET=all 会先构建 market_daily，再构建领域 Mart。
 
-# 1. 市场温度计产物管线
+# 1. 单日市场温度计产物管线
 make market-temperature DATE=YYYY-MM-DD
 make market-temperature DATE=YYYY-MM-DD COMPARE_DATE=YYYY-MM-DD
 # 或
@@ -74,10 +85,15 @@ UV_CACHE_DIR=.uv_cache UV_PYTHON_INSTALL_DIR=.uv_python \
   uv run python .agents/skills/market-temperature-analysis/scripts/build_multi_date_artifacts.py \
   --start YYYY-MM-DD --end YYYY-MM-DD
 
-# 如需在报告前重建一次全部 Mart：
+# 最近 N 个交易日：按日期串行生成，默认不刷新 Mart（仅在确认上游数据已更新时加 --refresh-mart）
 UV_CACHE_DIR=.uv_cache UV_PYTHON_INSTALL_DIR=.uv_python \
   uv run python .agents/skills/market-temperature-analysis/scripts/build_multi_date_artifacts.py \
-  --start YYYY-MM-DD --end YYYY-MM-DD --rebuild-mart --mart-start YYYY-MM-DD
+  --last-n N
+
+# 最近 N 个交易日并先增量刷新 Mart；不会覆盖/删除历史，不要加 OVERWRITE=1
+UV_CACHE_DIR=.uv_cache UV_PYTHON_INSTALL_DIR=.uv_python \
+  uv run python .agents/skills/market-temperature-analysis/scripts/build_multi_date_artifacts.py \
+  --last-n N --refresh-mart
 
 # 显式指定日期，适合非连续交易日；默认发布其中最新日期到 latest/
 UV_CACHE_DIR=.uv_cache UV_PYTHON_INSTALL_DIR=.uv_python \
@@ -85,7 +101,7 @@ UV_CACHE_DIR=.uv_cache UV_PYTHON_INSTALL_DIR=.uv_python \
   --dates YYYY-MM-DD YYYY-MM-DD --dry-run
 ```
 
-脚本按日期串行执行市场温度、行业结构、投资者简报和量化投研简报，并在进程内复用一次 Mart 与数据集缓存；生成完成后自动运行一致性校验，校验通过才发布四类产物的 `latest/`，并再次校验 `latest/`。使用 `--no-publish-latest` 可只生成并校验运行目录，使用 `--dry-run` 可只查看计划。
+脚本按日期串行执行市场温度、行业结构、投资者简报和量化投研简报，并在进程内复用一次 Mart 与数据集缓存；生成完成后自动运行一致性校验，校验通过才发布四类产物的 `latest/`，并再次校验 `latest/`。支持 `--start START --end END`、`--last-n N` 和 `--dates DATE...` 三种日期入口。使用 `--no-publish-latest` 可只生成并校验运行目录，使用 `--dry-run` 可只查看计划。批量脚本会实时转发子命令输出，避免长时间无反馈；若 `--refresh-mart` 后发现 `market_daily` 历史起点变晚，会拒绝继续生成。
 
 需要解释两个基准日的驱动差异时，使用 `COMPARE_DATE` / `--compare-date`。它读取对比日期最近一次已落盘的 `manifest.json` 和 `scores.json`，只在人读版报告中加入“跨期驱动变化”表；不会重算或改写前期产物。
 
@@ -141,29 +157,30 @@ make market-cycle-review START=YYYY-MM-DD END=YYYY-MM-DD
 
 ## 标准流程
 
-1. 若用户要重复执行或产出文件，先运行 `make market-temperature DATE=...` 生成标准产物；需要只验证水位时可加 `SKIP_METRICS=1`。
-2. 读取 `data-catalog` 技能，确认 `DataCatalog` 用法和数据口径。
-3. 先用 `codegraph_explore` 查看 `src/stock_analytics/metrics` 的当前实现，确认 `MetricEngine`、`BUILTIN_METRIC_SPECS`、`BUILTIN_CALCULATORS` 和各 `calculators/*.py` 里的实际计算口径。
-4. 查询关键数据集最新水位：
+1. 读取 `data-catalog` 技能，确认 `DataCatalog` 用法和数据口径。
+2. 先查询 `stock_daily_bar` 最新水位和目标日期；用户说“最新”时以该水位为准，不以系统日期或 `latest/` 目录名推断。
+3. 若用户要重复执行或产出文件，先按“标准执行入口与安全边界”选择单日或批量命令；不要先无条件重建 Mart。
+4. 先用 `codegraph_explore` 查看 `src/stock_analytics/metrics` 的当前实现，确认 `MetricEngine`、`BUILTIN_METRIC_SPECS`、`BUILTIN_CALCULATORS` 和各 `calculators/*.py` 里的实际计算口径。
+5. 查询关键数据集最新水位：
    - `tushare`: `stock_daily_bar`, `daily_basic`, `margin`, `moneyflow`, `moneyflow_hsgt`, `index_daily`, `sw_daily`, `stk_limit`, `limit_list_d`, `opt_basic`, `opt_daily`, `cb_basic`, `cb_daily`, `stk_holdertrade`, `repurchase`, `block_trade`, `forecast`, `report_rc`, `index_member`, `shibor`, `cn_cpi`
    - `lixinger`: `index_fundamental`, `national_debt`, `investor_accounts`, `cn_m`, `sf_month`, `sw_2021_fundamental`, `sw_2021_constituents`, 四类 `sw_2021_fs_*`
    - `yfinance`: `index_daily_bar`, `macro_indicators`
    - `alphavantage`: `macro_indicators`，用于 `CNH=X` / USD-CNH 外汇日线
    - `fred`: `macro_indicators`，仅在需要美国宏观背景时使用
-5. 若核心行情或估值缺失，先说明数据缺口，不要硬算综合温度。
-6. 用 `MetricEngine` 和温度计派生事实按 YAML 中 `weight > 0` 的指标合成六维分数；当前入分清单为：
+6. 若核心行情或估值缺失，先说明数据缺口，不要硬算综合温度。
+7. 用 `MetricEngine` 和温度计派生事实按 YAML 中 `weight > 0` 的指标合成六维分数；当前入分清单为：
    - 估值：`valuation_temperature`（由 PE/PB/ERP/股息率的 **10Y 分位** 等权合成）；`pe_percentile_10y`、`pb_percentile_10y`、`equity_risk_premium_percentile_10y` 是可解释的辅助事实，`dividend_yield_percentile_10y` 是综合温度的内部组件，不是独立 YAML 入分项；相关 5Y 分位只作历史兼容，raw `equity_risk_premium` 仍作为事实展示，不直接参与温度评分。
    - 资金：`margin_buy_share_zscore_60d`, `margin_penetration_percentile_1250d`, `margin_balance_growth_20d`, `margin_balance_growth_60d`, `main_money_net_inflow_share`, `main_money_net_inflow_share_20d_cum`。
    - 情绪：`turnover_rate_percentile_1250d`, `advance_share`, `limit_event_temperature`, `investor_account_temperature`。
    - 技术：`return_20d`, `rsi_14d`, `ma_bias_20d`, `above_ma20_share`, `above_ma60_share`, `new_high_share_252d`, `new_low_share_252d`。
    - 基本面：`fs_revenue_growth_temperature`, `fs_profit_growth_temperature`, `fs_roe_temperature`, `forecast_positive_temperature`, `report_revision_temperature`；六维基本面没有 `express` 子项。
    - 宏观流动性：`macro_bond_yield_10y_temperature`, `macro_shibor_on_temperature`, `macro_real_rate_temperature`, `macro_m2_yoy_temperature`, `macro_m1_m2_gap_temperature`, `macro_social_finance_stock_temperature`, `macro_external_environment_temperature`。
-7. 用 `DataCatalog` 派生事实补足 YAML 已配置的基本面指标：`forecast_positive_temperature` 和 `report_revision_temperature`；`express` 只属于独立的申万行业结构模块，不得写入六维基本面分。资金 20 日累计占比使用同一窗口累计主力净流入 / 累计成交额；报告中同时披露其 `metric_date` 和窗口起止。
-8. 需要择时或短线节奏判断时，按 `references/scoring.md` 计算 5 日/10 日短线温度，作为附加输出，不并入主综合温度权重。
-9. 需要行业交叉校验时，读取同一基准日的 `data/analytics/industry_structure/` 标准产物；行业结构分独立计算，不并入六维综合温度。
-10. 对指标做 0-100 温度归一。分数越高表示越热、越拥挤、越偏进攻；反向指标用 `100 - 分位温度` 或负向 Z-score 转换，利率类低位对应更高流动性温度。
-11. 输出前检查 `quality_report.md/json`：硬错误不得忽略；软警告必须在数据限制或口径说明里解释。
-12. 输出时先给综合温度、系统性风险和一句话判断，再列“解读顺序”说明各维度时效性，然后列六维表格；若计算了短线温度，放在主表之后作为节奏参考；最后写结构健康度、结构机会、风险和数据水位限制。
+8. 用 `DataCatalog` 派生事实补足 YAML 已配置的基本面指标：`forecast_positive_temperature` 和 `report_revision_temperature`；`express` 只属于独立的申万行业结构模块，不得写入六维基本面分。资金 20 日累计占比使用同一窗口累计主力净流入 / 累计成交额；报告中同时披露其 `metric_date` 和窗口起止。
+9. 需要择时或短线节奏判断时，按 `references/scoring.md` 计算 5 日/10 日短线温度，作为附加输出，不并入主综合温度权重。
+10. 需要行业交叉校验时，读取同一基准日的 `data/analytics/industry_structure/` 标准产物；行业结构分独立计算，不并入六维综合温度。
+11. 对指标做 0-100 温度归一。分数越高表示越热、越拥挤、越偏进攻；反向指标用 `100 - 分位温度` 或负向 Z-score 转换，利率类低位对应更高流动性温度。
+12. 输出前检查 `quality_report.md/json`：硬错误不得忽略；软警告必须在数据限制或口径说明里解释。批量任务还必须运行区间 `report-consistency`，通过后才发布 `latest/`。
+13. 输出时先给综合温度、系统性风险和一句话判断，再列“解读顺序”说明各维度时效性，然后列六维表格；若计算了短线温度，放在主表之后作为节奏参考；最后写结构健康度、结构机会、风险和数据水位限制。
 
 ## 六维定义
 

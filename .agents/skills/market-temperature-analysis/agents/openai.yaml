@@ -1,4 +1,4 @@
 interface:
   display_name: "市场温度计分析"
   short_description: "六维市场温度与申万行业结构分析"
-  default_prompt: "Use $market-temperature-analysis to analyze the latest 20 trading days, optional 5/10-day short-term temperature, and SW industry structure."
+  default_prompt: "Use $market-temperature-analysis to generate the latest 20-trading-day market temperature and SW industry artifacts; use safe incremental Mart refresh for multi-day requests."

@@ -48,9 +48,7 @@ class CommandError(RuntimeError):
         self.output = output
         detail = output[-6000:] if output else "(无命令输出)"
         super().__init__(
-            f"{label} 失败，退出码 {returncode}\n"
-            f"命令: {shlex.join(command)}\n"
-            f"输出尾部:\n{detail}"
+            f"{label} 失败，退出码 {returncode}\n命令: {shlex.join(command)}\n输出尾部:\n{detail}"
         )
 
 
@@ -73,6 +71,12 @@ def _build_parser() -> argparse.ArgumentParser:
         metavar="YYYY-MM-DD",
         help="从本地 stock_daily_bar 解析区间交易日的起始日期",
     )
+    source.add_argument(
+        "--last-n",
+        type=_positive_int,
+        metavar="N",
+        help="从本地 stock_daily_bar 选择最近 N 个交易日",
+    )
     parser.add_argument(
         "--end",
         type=_parse_date,
@@ -80,15 +84,15 @@ def _build_parser() -> argparse.ArgumentParser:
         help="区间交易日的结束日期，需要与 --start 一起使用",
     )
     parser.add_argument(
-        "--rebuild-mart",
+        "--refresh-mart",
         action="store_true",
-        help="在批量报告前只重建一次全部领域 Mart；需要同时提供 --mart-start",
+        help="在批量报告前按增量方式刷新全部领域 Mart；不会覆盖或删除历史数据",
     )
     parser.add_argument(
         "--mart-start",
         type=_parse_date,
         metavar="YYYY-MM-DD",
-        help="--rebuild-mart 使用的 Mart 起始日期",
+        help="--refresh-mart 的 Mart 起始日期，默认使用本次报告区间起始日",
     )
     parser.add_argument(
         "--storage-dir",
@@ -122,13 +126,30 @@ def _parse_date(value: str) -> date:
         raise argparse.ArgumentTypeError(f"日期格式错误，请使用 YYYY-MM-DD: {value}") from exc
 
 
-def _resolve_dates(args: argparse.Namespace, parser: argparse.ArgumentParser) -> tuple[list[date], bool]:
+def _positive_int(value: str) -> int:
+    try:
+        parsed = int(value)
+    except ValueError as exc:
+        raise argparse.ArgumentTypeError(f"数量必须是正整数: {value}") from exc
+    if parsed <= 0:
+        raise argparse.ArgumentTypeError(f"数量必须是正整数: {value}")
+    return parsed
+
+
+def _resolve_dates(
+    args: argparse.Namespace, parser: argparse.ArgumentParser
+) -> tuple[list[date], bool]:
     if args.dates is not None:
         if args.end is not None:
             parser.error("--end 只能与 --start 一起使用，不能和 --dates 同时使用")
         if len(set(args.dates)) != len(args.dates):
             parser.error("--dates 中不能重复指定同一交易日")
         return sorted(args.dates), False
+
+    if args.last_n is not None:
+        if args.end is not None:
+            parser.error("--end 只能与 --start 一起使用，不能和 --last-n 同时使用")
+        return _load_recent_trade_dates(args.last_n, storage_dir=args.storage_dir), True
 
     if args.start is None or args.end is None:
         parser.error("使用区间模式时必须同时提供 --start 和 --end")
@@ -154,40 +175,71 @@ def _load_trade_dates(start: date, end: date, *, storage_dir: Path | None = None
     return selected
 
 
+def _load_recent_trade_dates(n: int, *, storage_dir: Path | None = None) -> list[date]:
+    """从本地 Curated stock_daily_bar 选择最近 N 个交易日。"""
+    from stock_data.catalog import DataCatalog
+
+    catalog = DataCatalog("tushare", storage_dir or REPO_ROOT / "data" / "curated")
+    available = sorted(catalog.latest_trade_dates(dataset="stock_daily_bar", n=n))
+    if len(available) < n:
+        raise RuntimeError(
+            f"本地 stock_daily_bar 只有 {len(available)} 个交易日，少于要求的 {n} 个"
+        )
+    return available
+
+
 def _run_command(command: list[str], label: str) -> None:
+    print(f"[{label}] {shlex.join(command)}", flush=True)
     completed = subprocess.run(  # noqa: S603 - command is a fixed make argument list
-        command,
-        cwd=REPO_ROOT,
-        capture_output=True,
-        text=True,
-        check=False,
+        command, cwd=REPO_ROOT, text=True, check=False
     )
     if completed.returncode != 0:
-        output = "\n".join(part for part in (completed.stdout, completed.stderr) if part)
-        raise CommandError(label, command, completed.returncode, output)
+        raise CommandError(label, command, completed.returncode, "命令输出已直接打印")
+
+
+def _market_daily_min_date(storage_dir: Path | None) -> date | None:
+    """读取 market_daily 历史最早日期，用于增量刷新后的防截短校验。"""
+    from stock_analytics.features.store import FeatureStore
+
+    mart_dir = storage_dir / "mart" if storage_dir is not None else None
+    frame = FeatureStore(mart_dir=mart_dir).get_market_daily(columns=["trade_date"])
+    if frame.is_empty() or "trade_date" not in frame.columns:
+        return None
+    value = frame["trade_date"].drop_nulls().min()
+    return value if isinstance(value, date) else None
 
 
 def _build_dates(
     dates: list[date],
     *,
     storage_dir: Path | None,
-    rebuild_mart: bool,
+    refresh_mart: bool,
     mart_start: date | None,
 ) -> None:
-    if rebuild_mart:
-        if mart_start is None:
-            raise ValueError("--rebuild-mart 必须同时提供 --mart-start")
+    if refresh_mart:
+        previous_min_date = _market_daily_min_date(storage_dir)
+        effective_mart_start = mart_start or dates[0]
         command = [
             "make",
             "features-build",
             "TARGET=all",
-            f"START={mart_start.isoformat()}",
+            f"START={effective_mart_start.isoformat()}",
             f"END={dates[-1].isoformat()}",
-            "OVERWRITE=1",
         ]
         if storage_dir is not None:
             command.append(f"STORAGE_DIR={storage_dir}")
-        _run_command(command, "一次性重建 Mart")
+        _run_command(command, "增量刷新 Mart")
+        current_min_date = _market_daily_min_date(storage_dir)
+        if previous_min_date is not None and (
+            current_min_date is None or current_min_date > previous_min_date
+        ):
+            raise RuntimeError(
+                "增量刷新后 market_daily 历史范围被截短，"
+                f"刷新前={previous_min_date.isoformat()}，刷新后={current_min_date}；"
+                "已拒绝继续生成产物，请检查 Mart 构建参数"
+            )
+        if previous_min_date is not None:
+            print(f"已校验 market_daily 历史起点未变化: {previous_min_date.isoformat()}")
 
     from stock_analytics.pipelines.multi_date import run_multi_date_artifacts
 
@@ -211,8 +263,7 @@ def _consistency_commands(dates: list[date], range_mode: bool) -> list[list[str]
             ]
         ]
     return [
-        ["make", "report-consistency", f"DATE={target_date.isoformat()}"]
-        for target_date in dates
+        ["make", "report-consistency", f"DATE={target_date.isoformat()}"] for target_date in dates
     ]
 
 
@@ -259,8 +310,8 @@ def _publish_latest(target_date: date) -> None:
 
 def _print_plan(dates: list[date], range_mode: bool, args: argparse.Namespace) -> None:
     print(f"计划处理 {len(dates)} 个交易日，全部串行执行并共享一次 Mart 数据读取")
-    if args.rebuild_mart:
-        mart_start = args.mart_start.isoformat() if args.mart_start else "<必填>"
+    if args.refresh_mart:
+        mart_start = args.mart_start.isoformat() if args.mart_start else dates[0].isoformat()
         print(
             "  $ "
             + shlex.join(
@@ -270,7 +321,6 @@ def _print_plan(dates: list[date], range_mode: bool, args: argparse.Namespace) -
                     "TARGET=all",
                     f"START={mart_start}",
                     f"END={dates[-1].isoformat()}",
-                    "OVERWRITE=1",
                 ]
             )
         )
@@ -289,10 +339,8 @@ def main(argv: list[str] | None = None) -> int:
     args = parser.parse_args(sys.argv[1:] if argv is None else argv)
     if args.no_publish_latest and args.publish_date is not None:
         parser.error("--no-publish-latest 不能与 --publish-date 同时使用")
-    if args.rebuild_mart and args.mart_start is None:
-        parser.error("--rebuild-mart 必须同时提供 --mart-start")
-    if not args.rebuild_mart and args.mart_start is not None:
-        parser.error("--mart-start 只能与 --rebuild-mart 一起使用")
+    if not args.refresh_mart and args.mart_start is not None:
+        parser.error("--mart-start 只能与 --refresh-mart 一起使用")
 
     try:
         dates, range_mode = _resolve_dates(args, parser)
@@ -310,7 +358,7 @@ def main(argv: list[str] | None = None) -> int:
         _build_dates(
             dates,
             storage_dir=args.storage_dir,
-            rebuild_mart=args.rebuild_mart,
+            refresh_mart=args.refresh_mart,
             mart_start=args.mart_start,
         )
         _run_consistency(dates, range_mode)

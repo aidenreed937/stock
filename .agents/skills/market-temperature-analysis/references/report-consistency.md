@@ -37,10 +37,12 @@ make report-consistency START=YYYY-MM-DD END=YYYY-MM-DD OUTPUT=data/analytics/re
 一致性校验通过不代表指标质量自动合格；仍需阅读各运行目录的 `quality_report.md/json`，特别是
 资金 `metric_date` 滞后、外盘 cutoff、行业 `trend_diagnostics` 和情绪主温度降级状态。
 
-可直接使用 skill 内快捷脚本执行上述流程：
+可直接使用 skill 内快捷脚本执行上述流程。日常刷新优先使用 `--last-n N` 或日期区间；如需同步新数据，使用 `--refresh-mart` 增量刷新。不要使用 `OVERWRITE=1`，除非任务明确要求重建并已准备备份/恢复方案：
 
 ```bash
 UV_CACHE_DIR=.uv_cache UV_PYTHON_INSTALL_DIR=.uv_python \
   uv run python .agents/skills/market-temperature-analysis/scripts/build_multi_date_artifacts.py \
-  --start YYYY-MM-DD --end YYYY-MM-DD
+  --last-n N --refresh-mart
 ```
+
+脚本会在增量刷新前后检查 `market_daily` 的历史起点；历史范围被截短时立即停止，不生成或发布后续产物。
