@@ -99,6 +99,8 @@ _DATASET_COLUMNS: dict[str, tuple[str, ...]] = {
     ),
     "index_member": ("index_code", "con_code", "in_date", "out_date"),
     "index_classify": ("index_code", "industry_name", "level", "src", "is_pub"),
+    "index_daily_bar": ("symbol", "trade_date", "close"),
+    "cashflow": ("symbol", "ts_code", "ann_date", "end_date", "n_cashflow_act"),
 }
 
 _EVENT_DATASETS = frozenset({"forecast", "stk_holdertrade", "hk_hold", "limit_list_d", "suspend_d"})

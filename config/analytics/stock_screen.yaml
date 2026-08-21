@@ -205,6 +205,19 @@ stock_screen:
       quality_tier: core
       note: "申万行业分类代码与名称（L1/L2）"
     - data_source: tushare
+      dataset: index_daily_bar
+      max_lag_days: 0
+      cadence: trading_daily
+      quality_tier: confirming
+      note: "沪深300 基准K线（动量相对强弱基准）"
+    - data_source: tushare
+      dataset: cashflow
+      max_lag_days: 120
+      date_column: ann_date
+      cadence: quarterly
+      quality_tier: confirming
+      note: "现金流量表（经营现金流/净利润 含金量）"
+    - data_source: tushare
       dataset: margin_detail
       enabled: false
       cadence: trading_daily

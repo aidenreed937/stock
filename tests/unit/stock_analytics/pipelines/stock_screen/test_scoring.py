@@ -137,6 +137,61 @@ def test_percentile_small_l2_falls_back_to_l1() -> None:
     assert max(tiny_group) - min(tiny_group) > 0
 
 
+def test_compute_scores_includes_ocf_ratio_factor() -> None:
+    frames = {
+        "daily_basic": _daily(),
+        "cashflow": pl.DataFrame(
+            {
+                "symbol": ["000001.SZ", "000002.SZ", "000003.SZ", "000004.SZ", "000005.SZ"],
+                "ann_date": [date(2026, 4, 30)] * 5,
+                "n_cashflow_act": [100.0, 200.0, 300.0, 400.0, 500.0],
+            }
+        ),
+        "income": pl.DataFrame(
+            {
+                "symbol": ["000001.SZ", "000002.SZ", "000003.SZ", "000004.SZ", "000005.SZ"],
+                "ann_date": [date(2026, 4, 30)] * 5,
+                "n_income": [50.0, 100.0, 150.0, 200.0, 250.0],
+            }
+        ),
+    }
+    scored = compute_scores(_passed(), _sources(frames), date(2026, 8, 20))
+    assert "score_ocf_ratio" in scored.columns
+    assert scored.get_column("score_ocf_ratio").null_count() == 0
+    assert scored.get_column("dim_quality").is_not_null().all()
+
+
+def test_momentum_subtracts_benchmark_for_relative_strength() -> None:
+    frames = {
+        "stock_daily_bar": _bars(closes={f"{i:06d}.SZ": (i * 2.0 + 1.0) for i in range(1, 6)}),
+        "index_daily_bar": _bars(closes={"000300.SH": 100.0}),
+    }
+    from stock_analytics.pipelines.stock_screen.factors import _momentum
+
+    passed = _passed()
+    symbols = passed.select("symbol")
+    result = _momentum(_sources(frames), date(2026, 8, 20), symbols)
+    assert result.height == 5
+    assert {"rel_return_20d", "rel_return_60d"}.issubset(result.columns)
+    rel_20 = result.get_column("rel_return_20d")
+    assert rel_20.is_not_null().all()
+    assert abs(float(rel_20.max()) - float(rel_20.min())) > 1  # 相对基准后仍有区分度
+
+
+def _bars(*, closes: dict[str, float]) -> pl.DataFrame:
+    rows = []
+    for symbol, close in closes.items():
+        for day in range(80):
+            rows.append(
+                {
+                    "symbol": symbol,
+                    "trade_date": date(2026, 5, 1) + __import__("datetime").timedelta(days=day),
+                    "close": close + day,
+                }
+            )
+    return pl.DataFrame(rows)
+
+
 def _daily() -> pl.DataFrame:
     return pl.DataFrame(
         {

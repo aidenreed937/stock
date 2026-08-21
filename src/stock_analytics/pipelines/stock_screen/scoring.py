@@ -7,10 +7,8 @@ from typing import Any
 
 import polars as pl
 
-from stock_analytics.pipelines.stock_screen.sources import (
-    StockScreenSources,
-    build_industry_map,
-)
+from stock_analytics.pipelines.stock_screen.factors import build_factor_table
+from stock_analytics.pipelines.stock_screen.sources import StockScreenSources
 
 MIN_INDUSTRY_SIZE = 30
 _PCT_DEFAULT = 50.0
@@ -18,42 +16,35 @@ _PCT_DEFAULT = 50.0
 _SCORE_DIMENSIONS: list[dict[str, Any]] = [
     {
         "name": "quality",
-        "weight": 0.35,
+        "weight": 0.40,
         "factors": [
-            {"column": "roe", "inverse": False, "label": "ROE"},
-            {"column": "netprofit_growth", "inverse": False, "label": "净利润增速"},
-            {"column": "goodwill_ratio", "inverse": True, "label": "商誉占比"},
+            {"column": "roe", "inverse": False, "label": "ROE", "weight": 0.375},
+            {"column": "netprofit_growth", "inverse": False, "label": "净利润增速", "weight": 0.25},
+            {"column": "ocf_ratio", "inverse": False, "label": "经营现金流/净利润", "weight": 0.25},
+            {"column": "goodwill_ratio", "inverse": True, "label": "商誉/净资产", "weight": 0.125},
         ],
     },
     {
         "name": "value",
-        "weight": 0.25,
+        "weight": 0.30,
         "factors": [
-            {"column": "pe", "inverse": True, "label": "PE"},
-            {"column": "pb", "inverse": True, "label": "PB"},
+            {"column": "pe", "inverse": True, "label": "PE", "weight": 0.5},
+            {"column": "pb", "inverse": True, "label": "PB", "weight": 0.5},
         ],
     },
     {
         "name": "momentum",
         "weight": 0.20,
         "factors": [
-            {"column": "return_20d", "inverse": False, "label": "20日涨幅"},
-            {"column": "return_60d", "inverse": False, "label": "60日涨幅"},
-        ],
-    },
-    {
-        "name": "liquidity",
-        "weight": 0.15,
-        "factors": [
-            {"column": "avg_amount", "inverse": False, "label": "日均成交额"},
-            {"column": "turnover_rate", "inverse": False, "label": "换手率"},
+            {"column": "rel_return_20d", "inverse": False, "label": "20日相对强弱", "weight": 0.4},
+            {"column": "rel_return_60d", "inverse": False, "label": "60日相对强弱", "weight": 0.6},
         ],
     },
     {
         "name": "size",
-        "weight": 0.05,
+        "weight": 0.10,
         "factors": [
-            {"column": "total_mv", "inverse": False, "label": "总市值"},
+            {"column": "total_mv", "inverse": False, "label": "总市值", "weight": 1.0},
         ],
     },
 ]
@@ -68,7 +59,7 @@ def compute_scores(
     if passed.is_empty():
         return pl.DataFrame(schema=_output_schema())
 
-    factors = _build_factor_table(passed, sources, as_of_date)
+    factors = build_factor_table(passed, sources, as_of_date)
     scored = _compute_percentile_scores(factors)
     scored = _compute_composite(scored)
     scored = scored.sort("composite_score", descending=True).with_columns(
@@ -86,166 +77,6 @@ def _align_columns(scored: pl.DataFrame) -> pl.DataFrame:
         else:
             expressions.append(pl.lit(None, dtype=dtype).alias(column))
     return scored.select(expressions)
-
-
-def _build_factor_table(
-    passed: pl.DataFrame,
-    sources: StockScreenSources,
-    as_of_date: date,
-) -> pl.DataFrame:
-    """从 sources 中提取因子值，宽表拼接。"""
-    symbols = passed.select("symbol")
-
-    daily = _latest_daily(sources, as_of_date, symbols)
-    mom = _momentum(sources, as_of_date, symbols)
-    fin = _latest_financial(sources, symbols)
-    roe = _compute_roe(sources, symbols)
-    goodwill = _goodwill_ratio(sources, symbols)
-
-    result = passed.select("symbol", "name", "industry")
-    for table in (daily, mom, fin, roe, goodwill):
-        if not table.is_empty():
-            result = result.join(table, on="symbol", how="left")
-
-    industry_map = build_industry_map(sources, as_of_date)
-    if not industry_map.is_empty():
-        result = result.join(
-            industry_map.select("symbol", "l2_name", "l1_name"),
-            on="symbol",
-            how="left",
-        )
-    return result
-
-
-def _latest_daily(
-    sources: StockScreenSources, as_of_date: date, symbols: pl.DataFrame
-) -> pl.DataFrame:
-    """取基准日当天的估值与市值数据。"""
-    frame = sources.get("daily_basic")
-    if frame.is_empty() or "trade_date" not in frame.columns:
-        return pl.DataFrame()
-    available = {"pe", "pb", "total_mv", "turnover_rate"} & set(frame.columns)
-    if not available:
-        return pl.DataFrame()
-    select_exprs = [pl.col("symbol")]
-    select_exprs += [pl.col(c).cast(pl.Float64, strict=False) for c in sorted(available)]
-    result = (
-        frame.filter(pl.col("trade_date") == pl.lit(as_of_date))
-        .join(symbols, on="symbol", how="inner")
-        .select(*select_exprs)
-    )
-    return result.with_columns(pl.col("symbol").cast(pl.String))
-
-
-def _momentum(sources: StockScreenSources, as_of_date: date, symbols: pl.DataFrame) -> pl.DataFrame:
-    """从 stock_daily_bar 计算 20 日和 60 日涨跌幅。"""
-    frame = sources.get("stock_daily_bar")
-    if frame.is_empty() or "trade_date" not in frame.columns:
-        return pl.DataFrame()
-    clipped = frame.filter(pl.col("trade_date") <= pl.lit(as_of_date)).join(
-        symbols, on="symbol", how="inner"
-    )
-    if clipped.is_empty():
-        return pl.DataFrame()
-
-    sorted_bars = clipped.sort("trade_date", descending=True)
-    latest = sorted_bars.group_by("symbol", maintain_order=True).agg(pl.col("close").first())
-
-    prev_20 = sorted_bars.group_by("symbol", maintain_order=True).agg(
-        pl.col("close").slice(19, 1).first()
-    )
-    prev_60 = sorted_bars.group_by("symbol", maintain_order=True).agg(
-        pl.col("close").slice(59, 1).first()
-    )
-
-    result = latest.select("symbol", pl.col("close").alias("close_now"))
-    if not prev_20.is_empty():
-        result = result.join(
-            prev_20.select("symbol", pl.col("close").alias("close_20d")),
-            on="symbol",
-            how="left",
-        )
-    if not prev_60.is_empty():
-        result = result.join(
-            prev_60.select("symbol", pl.col("close").alias("close_60d")),
-            on="symbol",
-            how="left",
-        )
-    result = result.select(
-        "symbol",
-        ((pl.col("close_now") / pl.col("close_20d") - 1) * 100).alias("return_20d"),
-        ((pl.col("close_now") / pl.col("close_60d") - 1) * 100).alias("return_60d"),
-    )
-    return result.with_columns(pl.col("symbol").cast(pl.String))
-
-
-def _latest_financial(sources: StockScreenSources, symbols: pl.DataFrame) -> pl.DataFrame:
-    """取最新财务指标（净利润增速）。"""
-    frame = sources.get("fina_indicator")
-    if frame.is_empty() or "ann_date" not in frame.columns:
-        return pl.DataFrame()
-    result = (
-        frame.sort("ann_date", descending=True)
-        .unique(subset=["symbol"], keep="first")
-        .join(symbols, on="symbol", how="inner")
-        .select(
-            "symbol",
-            pl.col("netprofit_yoy").cast(pl.Float64, strict=False).alias("netprofit_growth"),
-        )
-    )
-    return result.with_columns(pl.col("symbol").cast(pl.String))
-
-
-def _compute_roe(sources: StockScreenSources, symbols: pl.DataFrame) -> pl.DataFrame:
-    """计算 ROE = n_income / total_hldr_eqy_exc_min_int。"""
-    income = sources.get("income")
-    equity = sources.get("balancesheet")
-    if income.is_empty() or equity.is_empty():
-        return pl.DataFrame()
-
-    latest_income = (
-        income.sort("ann_date", descending=True)
-        .unique(subset=["symbol"], keep="first")
-        .join(symbols, on="symbol", how="inner")
-        .select("symbol", pl.col("n_income").cast(pl.Float64, strict=False))
-    )
-    latest_equity = (
-        equity.sort("ann_date", descending=True)
-        .unique(subset=["symbol"], keep="first")
-        .join(symbols, on="symbol", how="inner")
-        .select("symbol", pl.col("total_hldr_eqy_exc_min_int").cast(pl.Float64, strict=False))
-    )
-    result = latest_income.join(latest_equity, on="symbol", how="left").select(
-        "symbol",
-        (
-            pl.col("n_income") / pl.col("total_hldr_eqy_exc_min_int").abs().clip(1e-8, None) * 100
-        ).alias("roe"),
-    )
-    return result.with_columns(pl.col("symbol").cast(pl.String))
-
-
-def _goodwill_ratio(sources: StockScreenSources, symbols: pl.DataFrame) -> pl.DataFrame:
-    """计算商誉占比 = goodwill / total_hldr_eqy_exc_min_int。"""
-    frame = sources.get("balancesheet")
-    if frame.is_empty() or "ann_date" not in frame.columns:
-        return pl.DataFrame()
-    result = (
-        frame.sort("ann_date", descending=True)
-        .unique(subset=["symbol"], keep="first")
-        .join(symbols, on="symbol", how="inner")
-        .select(
-            "symbol",
-            (
-                pl.col("goodwill").cast(pl.Float64, strict=False)
-                / pl.col("total_hldr_eqy_exc_min_int")
-                .cast(pl.Float64, strict=False)
-                .abs()
-                .clip(1e-8, None)
-                * 100
-            ).alias("goodwill_ratio"),
-        )
-    )
-    return result.with_columns(pl.col("symbol").cast(pl.String))
 
 
 def _compute_percentile_scores(factors: pl.DataFrame) -> pl.DataFrame:
@@ -267,14 +98,17 @@ def _compute_percentile_scores(factors: pl.DataFrame) -> pl.DataFrame:
             work = work.with_columns(series)
 
     for dim in _SCORE_DIMENSIONS:
-        cols = [
-            f"score_{f['column']}" for f in dim["factors"] if f"score_{f['column']}" in work.columns
+        present = [f for f in dim["factors"] if f"score_{f['column']}" in work.columns]
+        if not present:
+            continue
+        total_weight = sum(float(f.get("weight", 1.0)) for f in present)
+        exprs: list[pl.Expr] = [
+            pl.col(f"score_{f['column']}").fill_null(50.0)
+            * (float(f.get("weight", 1.0)) / total_weight)
+            for f in present
         ]
-        if cols:
-            factor_weight = 1.0 / len(cols)
-            exprs: list[pl.Expr] = [pl.col(c).fill_null(50.0) * factor_weight for c in cols]
-            expr = pl.sum_horizontal(*exprs)
-            work = work.with_columns(expr.alias(f"dim_{dim['name']}"))
+        expr = pl.sum_horizontal(*exprs)
+        work = work.with_columns(expr.alias(f"dim_{dim['name']}"))
 
     return work
 
@@ -329,22 +163,6 @@ def _compute_composite(scored: pl.DataFrame) -> pl.DataFrame:
 
     expr = sum(pl.col(c).fill_null(50.0) * (weight_map[c] / total_weight) for c in available)
     return scored.with_columns(expr.alias("composite_score"))
-
-
-def _percentile_rank(frame: pl.DataFrame, column: str, inverse: bool = False) -> pl.Expr:
-    """计算百分位排名（0-100）。"""
-    valid = frame.filter(pl.col(column).is_not_null() & pl.col(column).is_finite())
-    if valid.is_empty():
-        return pl.lit(50.0)
-    count = valid.height
-    if count <= 1:
-        return pl.lit(50.0)
-
-    if inverse:
-        expr = (1 - (pl.col(column).rank("min") - 1) / (count - 1)) * 100
-    else:
-        expr = (pl.col(column).rank("min") - 1) / (count - 1) * 100
-    return expr
 
 
 def _output_schema() -> dict[str, Any]:
