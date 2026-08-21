@@ -105,7 +105,7 @@ class DataUpdateScheduler:
         """返回目标日前（或含目标日）的最近有效交易日。"""
         end_date = target_date - timedelta(days=1) if strictly_before else target_date
         start_date = end_date - timedelta(days=31)
-        trading_days = cls._get_trading_days(start_date, end_date, data_source)
+        trading_days = cls.get_trading_days(start_date, end_date, data_source)
         candidates = [value for value in trading_days if value <= end_date]
         return max(candidates) if candidates else None
 

@@ -52,6 +52,50 @@ def test_next_watermark_date_respects_period_frequency() -> None:
     assert next_report_period_end(date(2026, 3, 31)) == date(2026, 6, 30)
 
 
+def test_lixinger_latest_trading_date_uses_tushare_calendar() -> None:
+    with patch.object(
+        DataUpdateScheduler,
+        "_get_trading_days",
+        return_value=(date(2026, 8, 19), date(2026, 8, 20)),
+    ) as get_trading_days:
+        latest = DataUpdateScheduler.get_latest_trading_date(
+            date(2026, 8, 21), data_source="lixinger"
+        )
+
+    assert latest == date(2026, 8, 20)
+    get_trading_days.assert_called_once_with(date(2026, 7, 21), date(2026, 8, 21), "tushare")
+
+
+def test_lixinger_default_sync_targets_latest_published_trading_day() -> None:
+    current_datetime = datetime(2026, 8, 21, 10, 26)
+    with (
+        patch.object(
+            DataUpdateScheduler,
+            "_get_trading_days",
+            return_value=(date(2026, 8, 19), date(2026, 8, 20)),
+        ),
+        patch.object(DataUpdateScheduler, "is_data_ready", return_value=True),
+    ):
+        target = resolve_sync_target_date(
+            "lixinger",
+            "stock_daily_bar",
+            date(2026, 8, 21),
+            target_date_is_explicit=False,
+            current_datetime=current_datetime,
+        )
+
+    assert target == date(2026, 8, 20)
+
+
+def test_explicit_lixinger_sync_keeps_requested_date() -> None:
+    assert resolve_sync_target_date(
+        "lixinger",
+        "stock_daily_bar",
+        date(2026, 8, 21),
+        target_date_is_explicit=True,
+    ) == date(2026, 8, 21)
+
+
 def test_tushare_daily_update_timing() -> None:
     target_date = date(2026, 8, 12)
 
