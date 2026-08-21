@@ -1,0 +1,34 @@
+"""个股排雷产物测试。"""
+
+from datetime import date
+
+import polars as pl
+
+from stock_analytics.pipelines.stock_screen.artifacts import (
+    StockScreenArtifactPayload,
+    build_run_paths,
+    write_artifacts,
+)
+
+
+def test_write_artifacts_creates_run_and_latest_files(tmp_path) -> None:
+    paths = build_run_paths(date(2026, 8, 20), tmp_path / "stock_screen", run_id="run_test")
+    table = pl.DataFrame({"symbol": ["000001.SZ"], "level": ["passed"]})
+    payload = StockScreenArtifactPayload(
+        manifest={"as_of_date": "2026-08-20"},
+        excluded=table.clear(),
+        warned=table.clear(),
+        passed=table,
+        scores={"passed_count": 1},
+        report_markdown="# report\n",
+        report_json={"passed_count": 1},
+        quality_report_markdown="# quality\n",
+        quality_report_json={"status": "passed"},
+    )
+
+    write_artifacts(paths, payload)
+
+    assert paths.run_dir.is_dir()
+    assert paths.passed.exists()
+    assert (paths.latest_dir / "passed.csv").exists()
+    assert (paths.latest_dir / "quality_report.json").exists()

@@ -25,6 +25,10 @@ from stock_analytics.pipelines.quant_brief.pipeline import (
     QuantBriefRunResult,
     run_quant_brief,
 )
+from stock_analytics.pipelines.stock_screen.pipeline import (
+    StockScreenRunResult,
+    run_stock_screen,
+)
 
 __all__ = [
     "IndustryStructureRunResult",
@@ -32,9 +36,11 @@ __all__ = [
     "MarketAggregateRunResult",
     "MarketTemperatureRunResult",
     "QuantBriefRunResult",
+    "StockScreenRunResult",
     "run_industry_structure",
     "run_investor_brief",
     "run_market_aggregate",
     "run_market_temperature",
     "run_quant_brief",
+    "run_stock_screen",
 ]

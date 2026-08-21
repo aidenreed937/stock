@@ -1,6 +1,6 @@
 # 个股排雷 (Stock Screening/Vetting) 实现方案
 
-- 状态: 已确认设计，待实现
+- 状态: 第一期已实现，待真实 Curated 数据验收
 - 创建日期: 2026-08-21
 - 关联产物（规划）: `data/analytics/stock_screen/`
 - 关联配置（规划）: `config/analytics/stock_screen.yaml`
