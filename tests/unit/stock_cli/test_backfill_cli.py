@@ -274,6 +274,116 @@ def test_execute_planned_tasks_parallelizes_per_symbol_tasks_without_reordering(
     assert [summary["symbol"] for summary in summaries] == ["000001.SZ", "000002.SZ"]
 
 
+def test_execute_planned_tasks_commits_each_chunk_and_reopens_batch() -> None:
+    class BatchTarget:
+        def __init__(self) -> None:
+            self.enabled = 0
+            self.committed = 0
+
+        def enable_batch_mode(self) -> None:
+            self.enabled += 1
+
+        def commit(self) -> None:
+            self.committed += 1
+
+    store = BatchTarget()
+    raw_store = BatchTarget()
+
+    class Pipeline:
+        def __init__(self) -> None:
+            self.store = store
+            self.raw_store = raw_store
+
+    class Backfiller:
+        def __init__(self, **_kwargs: object) -> None:
+            self.pipeline = Pipeline()
+
+        def backfill_range(
+            self,
+            start_date: date,
+            end_date: date,
+            *,
+            force_refresh: bool = False,
+            max_workers: int = 1,
+        ) -> dict[str, int]:
+            return {
+                "total_days": (end_date - start_date).days + 1,
+                "open_days": 1,
+                "synced_days": 1,
+                "skipped_days": 0,
+                "failed_days": 0,
+            }
+
+    tasks = [
+        BackfillTask(
+            data_source="tushare",
+            endpoint="share_float",
+            symbol="",
+            start_date=date(2018, 1, 1),
+            end_date=date(2018, 12, 31),
+            fetch_mode="per_day",
+            is_single_sync=False,
+            is_chunked=True,
+            chunk_index=1,
+            chunk_count=2,
+        ),
+        BackfillTask(
+            data_source="tushare",
+            endpoint="share_float",
+            symbol="",
+            start_date=date(2019, 1, 1),
+            end_date=date(2019, 12, 31),
+            fetch_mode="per_day",
+            is_single_sync=False,
+            is_chunked=True,
+            chunk_index=2,
+            chunk_count=2,
+        ),
+    ]
+
+    with patch("stock_data.pipeline.backfill.HistoricalBackfiller", Backfiller):
+        summaries = _execute_planned_tasks(tasks, force_refresh=True, workers=1)
+
+    assert len(summaries) == 2
+    assert store.enabled == 2
+    assert raw_store.enabled == 2
+    assert store.committed == 2
+    assert raw_store.committed == 2
+
+
+def test_execute_planned_tasks_skips_existing_chunk_without_creating_backfiller() -> None:
+    task = BackfillTask(
+        data_source="tushare",
+        endpoint="share_float",
+        symbol="",
+        start_date=date(2018, 1, 1),
+        end_date=date(2018, 12, 31),
+        fetch_mode="per_day",
+        is_single_sync=False,
+        is_chunked=True,
+        skip_existing=True,
+    )
+
+    with patch("stock_data.pipeline.backfill.HistoricalBackfiller") as backfiller_cls:
+        summaries = _execute_planned_tasks([task], force_refresh=False, workers=1)
+
+    backfiller_cls.assert_not_called()
+    assert summaries == [
+        {
+            "total_days": 365,
+            "open_days": 0,
+            "synced_days": 0,
+            "skipped_days": 1,
+            "failed_days": 0,
+            "status": "SKIPPED",
+            "skip_reason": "curated_partition_exists",
+            "data_source": "tushare",
+            "endpoint": "share_float",
+            "symbol": "全市场",
+        }
+    ]
+
+
 def test_backfill_cli_universe_resolution() -> None:
     with (
         patch(

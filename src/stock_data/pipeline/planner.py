@@ -17,6 +17,8 @@ from stock_data.core.task_registry import (
     resolve_public_task,
     resolve_task,
 )
+from stock_data.pipeline.planner_chunks import has_curated_range as _has_curated_range
+from stock_data.pipeline.planner_chunks import split_date_range_by_year as _split_date_range_by_year
 
 
 @dataclass(frozen=True)
@@ -30,6 +32,10 @@ class BackfillTask:
     end_date: date
     fetch_mode: str  # "per_symbol" | "per_day" | "per_period"
     is_single_sync: bool
+    is_chunked: bool = False
+    chunk_index: int = 1
+    chunk_count: int = 1
+    skip_existing: bool = False
 
 
 def _load_curated_symbol_pool(data_source: str, dataset: str) -> list[str]:
@@ -229,6 +235,7 @@ class BackfillPlanner:
         end_date: date,
         start_specified: bool,
         data_cfg: Any,
+        force_refresh: bool = False,
     ) -> list[BackfillTask]:
         """根据输入参数解析并生成原子回填任务列表。"""
         if not endpoints:
@@ -280,17 +287,41 @@ class BackfillPlanner:
                     )
                     continue
 
-                tasks.append(
-                    BackfillTask(
-                        data_source=data_source,
-                        endpoint=public_name,
-                        symbol=sym,
-                        start_date=task_start,
-                        end_date=end_date,
-                        fetch_mode="per_symbol" if is_per_sym else task_spec.fetch_mode,
-                        is_single_sync=is_single,
-                    )
+                should_chunk_by_year = (
+                    not sym
+                    and not is_per_sym
+                    and not is_single
+                    and task_spec.partitioned
+                    and task_start.year < end_date.year
                 )
+                chunks = (
+                    _split_date_range_by_year(task_start, end_date)
+                    if should_chunk_by_year
+                    else [(task_start, end_date)]
+                )
+                chunk_count = len(chunks)
+                for chunk_index, (chunk_start, chunk_end) in enumerate(chunks, 1):
+                    tasks.append(
+                        BackfillTask(
+                            data_source=data_source,
+                            endpoint=public_name,
+                            symbol=sym,
+                            start_date=chunk_start,
+                            end_date=chunk_end,
+                            fetch_mode="per_symbol" if is_per_sym else task_spec.fetch_mode,
+                            is_single_sync=is_single,
+                            is_chunked=should_chunk_by_year,
+                            chunk_index=chunk_index if should_chunk_by_year else 1,
+                            chunk_count=chunk_count if should_chunk_by_year else 1,
+                            skip_existing=(
+                                should_chunk_by_year
+                                and not force_refresh
+                                and _has_curated_range(
+                                    data_source, public_name, chunk_start, chunk_end
+                                )
+                            ),
+                        )
+                    )
         return tasks
 
     @staticmethod

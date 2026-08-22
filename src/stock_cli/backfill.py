@@ -12,6 +12,7 @@ from typing import Any
 
 import yaml
 
+from stock_cli import backfill_batches as _backfill_batches
 from stock_core.config.loader import load_data_config
 from stock_core.utils.logger import logger
 from stock_data.core.task_registry import is_per_symbol_task
@@ -85,7 +86,7 @@ def _format_summary_table(summaries: list[dict[str, Any]]) -> None:
 def _execute_planned_tasks(
     tasks: list[BackfillTask], *, force_refresh: bool, workers: int
 ) -> list[dict[str, Any]]:
-    """以攒批事务模式驱动执行规划任务，按标的任务支持波内并发。"""
+    """以攒批事务模式驱动执行规划任务，按年度分块即时提交并支持波内并发。"""
     import stock_data.pipeline.backfill as backfill_module
 
     batch_contexts: dict[tuple[str, str], dict[str, Any]] = {}
@@ -94,6 +95,13 @@ def _execute_planned_tasks(
     summaries_by_index: dict[int, dict[str, Any]] = {}
     try:
         for idx, task in enumerate(tasks, 1):
+            if task.skip_existing and not force_refresh:
+                summaries_by_index[idx] = _skipped_task_summary(task)
+                logger.info(
+                    f"===> [{idx}/{len(tasks)}] 跳过已存在分块 [{task.data_source}/{task.endpoint}] "
+                    f"区间: [{task.start_date} ~ {task.end_date}]"
+                )
+                continue
             context_key = (task.data_source, task.endpoint)
             batch_context = batch_contexts.get(context_key)
             if batch_context is None:
@@ -110,6 +118,7 @@ def _execute_planned_tasks(
             batch_context = batch_contexts[context_key]
             data_source, endpoint = context_key
             can_parallel = workers > 1 and is_per_symbol_task(data_source, endpoint)
+            can_parallel = can_parallel and not any(task.is_chunked for _, task in grouped_tasks)
             if can_parallel and len(grouped_tasks) > 1:
                 group_workers = min(workers, 8)
                 logger.info(
@@ -138,19 +147,25 @@ def _execute_planned_tasks(
                         summaries_by_index[futures[future]] = future.result()
             else:
                 for idx, task in grouped_tasks:
+                    backfiller = backfillers_by_index[idx] or _create_backfiller(
+                        backfill_module,
+                        task,
+                        pipeline=batch_context["pipeline"],
+                        fetcher=batch_context["fetcher"],
+                    )
+                    if not batch_context["batch_open"]:
+                        batch_context["batch_targets"] = _enable_pipeline_batch_mode(backfiller)
+                        batch_context["batch_open"] = True
+                        batch_context["pending_commit"] = True
                     summaries_by_index[idx] = _execute_one_task(
-                        backfillers_by_index[idx]
-                        or _create_backfiller(
-                            backfill_module,
-                            task,
-                            pipeline=batch_context["pipeline"],
-                            fetcher=batch_context["fetcher"],
-                        ),
+                        backfiller,
                         task,
                         task_position=(idx, len(tasks)),
                         force_refresh=force_refresh,
                         workers=workers,
                     )
+                    if task.is_chunked:
+                        _commit_completed_chunk(batch_context, task)
     finally:
         _commit_batch_contexts(batch_contexts)
     return [summaries_by_index[idx] for idx in range(1, len(tasks) + 1)]
@@ -175,13 +190,12 @@ def _create_backfiller(
     return backfill_module.HistoricalBackfiller(**kwargs)
 
 
-def _create_batch_context(backfiller: Any) -> dict[str, Any]:
-    return {
-        "pipeline": getattr(backfiller, "pipeline", None),
-        "fetcher": getattr(backfiller, "fetcher", None),
-        "batch_targets": _enable_pipeline_batch_mode(backfiller),
-        "task_count": 1,
-    }
+def _create_batch_context(backfiller: Any, enable_batch: bool = True) -> dict[str, Any]:
+    return _backfill_batches.create_batch_context(backfiller, enable_batch=enable_batch)
+
+
+def _skipped_task_summary(task: BackfillTask) -> dict[str, Any]:
+    return _backfill_batches.skipped_task_summary(task)
 
 
 def _execute_one_task(
@@ -210,35 +224,21 @@ def _execute_one_task(
     return summary_data
 
 
+def _commit_batch_targets(targets: list[Any]) -> None:
+    """保留旧模块的批次提交私有入口。"""
+    _backfill_batches.commit_batch_targets(targets)
+
+
 def _commit_batch_contexts(batch_contexts: dict[tuple[str, str], dict[str, Any]]) -> None:
-    for (data_source, endpoint), batch_context in batch_contexts.items():
-        logger.info(
-            f"提交任务组 [{data_source}/{endpoint}] 攒批数据，"
-            f"共 {batch_context['task_count']} 个任务"
-        )
-        _commit_batch_targets(batch_context["batch_targets"])
+    _backfill_batches.commit_batch_contexts(batch_contexts)
+
+
+def _commit_completed_chunk(batch_context: dict[str, Any], task: BackfillTask) -> None:
+    _backfill_batches.commit_completed_chunk(batch_context, task)
 
 
 def _enable_pipeline_batch_mode(backfiller: Any) -> list[Any]:
-    pipeline = getattr(backfiller, "pipeline", None)
-    targets = [
-        getattr(pipeline, "store", None),
-        getattr(pipeline, "raw_store", None),
-    ]
-    enabled_targets: list[Any] = []
-    for target in targets:
-        enable_batch_mode = getattr(target, "enable_batch_mode", None)
-        if callable(enable_batch_mode):
-            enable_batch_mode()
-            enabled_targets.append(target)
-    return enabled_targets
-
-
-def _commit_batch_targets(targets: list[Any]) -> None:
-    for target in targets:
-        commit = getattr(target, "commit", None)
-        if callable(commit):
-            commit()
+    return _backfill_batches.enable_pipeline_batch_mode(backfiller)
 
 
 def _resolve_universe_symbols(universe_name: str | None) -> str | None:
@@ -331,6 +331,7 @@ def main() -> None:
         end_date=end_d,
         start_specified=start_specified,
         data_cfg=data_cfg,
+        force_refresh=force_refresh,
     )
 
     if not tasks:
