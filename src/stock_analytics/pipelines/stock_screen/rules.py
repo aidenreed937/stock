@@ -9,6 +9,7 @@ from typing import Any
 
 import polars as pl
 
+from stock_analytics.pipelines.stock_screen.margin_rules import evaluate_margin_stress
 from stock_analytics.pipelines.stock_screen.rule_helpers import (
     RuleEvaluator,
 )
@@ -353,6 +354,7 @@ RULE_EVALUATORS: dict[str, RuleEvaluator] = {
     "goodwill_observe": evaluate_goodwill_observe,
     "northbound_drawdown": evaluate_northbound_drawdown,
     "consecutive_limit_down": evaluate_consecutive_limit_down,
+    "margin_stress": evaluate_margin_stress,
 }
 
 
@@ -365,6 +367,7 @@ __all__ = [
     "evaluate_goodwill_overhang",
     "evaluate_holder_selloff",
     "evaluate_illiquid_float",
+    "evaluate_margin_stress",
     "evaluate_negative_equity",
     "evaluate_northbound_drawdown",
     "evaluate_penny_stock_face_value",

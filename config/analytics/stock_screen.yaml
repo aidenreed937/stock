@@ -92,12 +92,12 @@ stock_screen:
           min_consecutive_count: 2
         note: "limit_list_d 连续跌停"
       - id: margin_stress
-        enabled: false
+        enabled: true
         scope: all_market
         params:
           window_days: 20
           drop_threshold: -0.30
-        note: "margin_detail 当前仅覆盖 watchlist，无法执行全市场排雷"
+        note: "margin_detail 全市场 4400+ 标的，评估融资融券余额 20 日骤降 > 30%"
       - id: pledge_overhang
         enabled: false
         scope: all_market
@@ -219,10 +219,10 @@ stock_screen:
       note: "现金流量表（经营现金流/净利润 含金量）"
     - data_source: tushare
       dataset: margin_detail
-      enabled: false
+      enabled: true
       cadence: trading_daily
-      quality_tier: optional
-      note: "仅 watchlist，规则关闭"
+      quality_tier: confirming
+      note: "全市场两融余额，覆盖 4400+ 标的用于 margin_stress 预警"
     - data_source: lixinger
       dataset: pledge_info
       enabled: false

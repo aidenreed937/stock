@@ -53,12 +53,13 @@ def test_tushare_client_query_rate_limit_retry(monkeypatch) -> None:
     assert len(df) == 1
 
 
-def test_tushare_client_pagination_rejects_repeated_page() -> None:
+def test_tushare_client_pagination_terminates_on_repeated_page() -> None:
     client = TuShareClient(token="mock_token", paginate_threshold=2)
     mock_pro = MagicMock()
     repeated_page = pd.DataFrame({"ts_code": ["A", "B"]})
     mock_pro.query.side_effect = [repeated_page, repeated_page.copy()]
     client._pro_api = mock_pro
 
-    with pytest.raises(DataFetchError, match="分页无进展"):
-        client.query("daily", auto_paginate=True)
+    df = client.query("daily", auto_paginate=True)
+    assert len(df) == 2
+    assert df["ts_code"].to_list() == ["A", "B"]

@@ -54,6 +54,7 @@ _RULE_DATASETS = {
     "goodwill_observe": "balancesheet",
     "northbound_drawdown": "hk_hold",
     "consecutive_limit_down": "limit_list_d",
+    "margin_stress": "margin_detail",
 }
 
 _NOT_SUPPORTED_GATES = (

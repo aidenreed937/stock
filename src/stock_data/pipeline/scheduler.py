@@ -53,6 +53,30 @@ def _resolve_update_values(task: Any, meta: Any) -> tuple[str, int, bool, str]:
     return update_time, delay_days, delay_in_trading_days, frequency
 
 
+@lru_cache(maxsize=1)
+def _load_cached_tushare_trading_days() -> tuple[date, ...]:
+    """一次性加载并缓存本地 TuShare 全部开市交易日。"""
+    try:
+        from stock_data.catalog import DataCatalog
+
+        frame = DataCatalog(data_source="tushare").load_dataset("trade_cal")
+        date_column = "cal_date" if "cal_date" in frame.columns else "trade_date"
+        if not frame.is_empty() and date_column in frame.columns:
+            if "is_open" in frame.columns:
+                frame = frame.filter(pl.col("is_open").cast(pl.Int8, strict=False) == 1)
+            frame = frame.with_columns(parse_mixed_date(date_column).alias("_calendar_date"))
+            calendar_dates = [
+                value
+                for value in frame.get_column("_calendar_date").drop_nulls().to_list()
+                if isinstance(value, date)
+            ]
+            if calendar_dates:
+                return tuple(sorted(set(calendar_dates)))
+    except Exception as exc:
+        logger.debug("读取本地 TuShare 交易日历失败: %s", exc)
+    return ()
+
+
 class DataUpdateScheduler:
     """数据更新时间窗口调度拦截与就绪诊断工具。"""
 
@@ -177,33 +201,13 @@ class DataUpdateScheduler:
         if data_source != "tushare":
             return ()
 
-        try:
-            from stock_data.catalog import DataCatalog
+        all_days = _load_cached_tushare_trading_days()
+        if all_days and all_days[0] <= start_date and all_days[-1] >= end_date:
+            import bisect
 
-            frame = DataCatalog(data_source="tushare").load_dataset("trade_cal")
-            date_column = "cal_date" if "cal_date" in frame.columns else "trade_date"
-            if not frame.is_empty() and date_column in frame.columns:
-                frame = frame.with_columns(parse_mixed_date(date_column).alias("_calendar_date"))
-                calendar_dates: list[date] = [
-                    value
-                    for value in frame.get_column("_calendar_date").drop_nulls().to_list()
-                    if isinstance(value, date)
-                ]
-                if not calendar_dates:
-                    raise ValueError("本地交易日历没有可解析日期")
-                local_min = min(calendar_dates)
-                local_max = max(calendar_dates)
-                if local_min <= start_date and local_max >= end_date:
-                    if "is_open" in frame.columns:
-                        frame = frame.filter(pl.col("is_open").cast(pl.Int8, strict=False) == 1)
-                    local_dates = {
-                        value
-                        for value in frame.get_column("_calendar_date").drop_nulls().to_list()
-                        if isinstance(value, date) and start_date <= value <= end_date
-                    }
-                    return tuple(sorted(local_dates))
-        except Exception as exc:
-            logger.debug("读取本地 TuShare 交易日历失败: %s", exc)
+            left = bisect.bisect_left(all_days, start_date)
+            right = bisect.bisect_right(all_days, end_date)
+            return all_days[left:right]
 
         try:
             from stock_data.fetcher.tushare.facade import TuShareDataFetcher

@@ -36,6 +36,13 @@ def build_decision_tables(
         for result in evaluation.frame.to_dicts()
         if result.get("status") == "fail"
     }
+    hard_missing = {
+        str(result.get("symbol") or "")
+        for evaluation in evaluation_list
+        if evaluation.category == "hard_exclusion"
+        for result in evaluation.frame.to_dicts()
+        if result.get("status") == "not_evaluated"
+    }
     base_rows = _universe_rows(universe)
     by_symbol: dict[str, dict[str, Any]] = {
         row["symbol"]: {
@@ -86,6 +93,9 @@ def build_decision_tables(
             )
         elif row["warn_count"]:
             level = "warned"
+        elif row["symbol"] in hard_missing:
+            level = "warned"
+            row["reasons"].append("核心排雷规则数据缺失未评估，降级观察")
         else:
             level = "passed"
         row["level"] = level

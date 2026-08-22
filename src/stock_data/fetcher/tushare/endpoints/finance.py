@@ -78,7 +78,7 @@ FINANCE_ENDPOINTS: dict[str, EndpointMeta] = {
             "float_share": "share",
             "float_ratio": "percent",
         },
-        request_window_days=365,
+        request_window_days=30,
         max_rows_per_request=6000,
         request_fields=(
             "ts_code,ann_date,float_date,float_share,float_ratio,holder_name,share_type"

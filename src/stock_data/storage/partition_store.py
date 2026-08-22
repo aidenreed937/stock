@@ -17,6 +17,7 @@ from stock_data.governance.quality.margin_coverage import (
     margin_coverage_issues,
 )
 from stock_data.storage.compat import StorageCompat
+from stock_data.storage.partition_paths import matching_curated_paths
 from stock_data.storage.partition_writer import ParquetPartitionWriter, validate_frame_source
 
 
@@ -239,16 +240,10 @@ class ParquetPartitionStore:
     def has_curated(self, endpoint: str, target_date: date, symbol: str | None = None) -> bool:
         data_source = self.require_data_source()
         target_dataset = self._dataset_name(endpoint)
-        year_month_path = f"year={target_date.year:04d}/month={target_date.month:02d}"
         direct_path = self.get_parquet_path(target_dataset, target_date)
-        if direct_path.exists() and not StorageCompat.is_artifact_path(direct_path):
-            matching_files = [direct_path]
-        else:
-            matching_files = [
-                p
-                for p in self.storage_dir.glob(f"**/{target_dataset}/{year_month_path}/*.parquet")
-                if not StorageCompat.is_artifact_path(p)
-            ]
+        matching_files = matching_curated_paths(
+            self.storage_dir, data_source, target_dataset, target_date, direct_path
+        )
         if not matching_files:
             return False
 

@@ -7,6 +7,7 @@ ENDPOINT_START_DATE_OVERRIDES: Final[dict[str, str]] = {
     "moneyflow_hsgt": "2014-11-17",
     "hsgt_top10": "2014-11-17",
     "margin": "2010-03-31",
+    "margin_detail": "2010-03-31",
     "fund_daily": "1998-04-07",
     "sw_daily": "2014-01-02",
 }

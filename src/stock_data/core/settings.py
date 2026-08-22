@@ -2,6 +2,7 @@
 
 from __future__ import annotations
 
+import os
 from functools import lru_cache
 from pathlib import Path
 from typing import TYPE_CHECKING, Literal
@@ -76,6 +77,23 @@ def _resolve_default_data_root() -> Path:
     return local_root
 
 
+def _read_env_no_proxy() -> list[str]:
+    """从 .env 文件显式读取 NO_PROXY 配置列表。"""
+    env_file = Path(".env")
+    if not env_file.exists():
+        return []
+    try:
+        items: list[str] = []
+        for line in env_file.read_text(encoding="utf-8").splitlines():
+            line = line.strip()
+            if line.startswith("NO_PROXY=") or line.startswith("no_proxy="):
+                val = line.split("=", 1)[1].strip().strip("\"'")
+                items.extend([x.strip() for x in val.split(",") if x.strip()])
+        return items
+    except OSError:
+        return []
+
+
 class DataSettings(BaseSettings):
     """数据管道专用的环境变量与密钥配置。"""
 
@@ -117,6 +135,7 @@ class DataSettings(BaseSettings):
     akshare_proxy: str = ""
     yfinance_proxy: str = ""
     yfinance_proxy_pool_file: Path = Path("data/proxy")
+    no_proxy: str = ""
 
     # 默认数据源模式
     data_source_mode: Literal["tushare", "yfinance", "lixinger", "fred", "alphavantage"] = "tushare"
@@ -124,7 +143,22 @@ class DataSettings(BaseSettings):
 
     @model_validator(mode="after")
     def resolve_storage_paths(self) -> DataSettings:
-        """将新旧目录配置收敛为同一组运行时路径。"""
+        """将新旧目录配置收敛为同一组运行时路径，并同步代理排除白名单。"""
+        current_no_proxy = os.environ.get("NO_PROXY", "") or os.environ.get("no_proxy", "")
+        parts = [p.strip() for p in current_no_proxy.split(",") if p.strip()]
+        for p in _read_env_no_proxy():
+            if p not in parts:
+                parts.append(p)
+        if self.no_proxy:
+            for p in self.no_proxy.split(","):
+                p_s = p.strip()
+                if p_s and p_s not in parts:
+                    parts.append(p_s)
+        if parts:
+            merged = ",".join(parts)
+            os.environ["NO_PROXY"] = merged
+            os.environ["no_proxy"] = merged
+
         fields_set = self.model_fields_set
         if self.data_root is not None:
             root = self.data_root

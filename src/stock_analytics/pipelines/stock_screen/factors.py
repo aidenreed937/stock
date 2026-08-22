@@ -164,25 +164,15 @@ def _latest_financial(sources: StockScreenSources, symbols: pl.DataFrame) -> pl.
 
 
 def _compute_roe(sources: StockScreenSources, symbols: pl.DataFrame) -> pl.DataFrame:
-    """计算 ROE = n_income / total_hldr_eqy_exc_min_int。"""
+    """计算 ROE = n_income / total_hldr_eqy_exc_min_int，分子分母对齐同一报告期。"""
     income = sources.get("income")
     equity = sources.get("balancesheet")
     if income.is_empty() or equity.is_empty():
         return pl.DataFrame()
-
-    latest_income = (
-        income.sort("ann_date", descending=True)
-        .unique(subset=["symbol"], keep="first")
-        .join(symbols, on="symbol", how="inner")
-        .select("symbol", pl.col("n_income").cast(pl.Float64, strict=False))
-    )
-    latest_equity = (
-        equity.sort("ann_date", descending=True)
-        .unique(subset=["symbol"], keep="first")
-        .join(symbols, on="symbol", how="inner")
-        .select("symbol", pl.col("total_hldr_eqy_exc_min_int").cast(pl.Float64, strict=False))
-    )
-    result = latest_income.join(latest_equity, on="symbol", how="left").select(
+    aligned = _aligned_latest(income, "n_income", equity, "total_hldr_eqy_exc_min_int", symbols)
+    if aligned.is_empty():
+        return pl.DataFrame()
+    result = aligned.select(
         "symbol",
         (
             pl.col("n_income") / pl.col("total_hldr_eqy_exc_min_int").abs().clip(1e-8, None) * 100
@@ -192,34 +182,63 @@ def _compute_roe(sources: StockScreenSources, symbols: pl.DataFrame) -> pl.DataF
 
 
 def _compute_ocf_ratio(sources: StockScreenSources, symbols: pl.DataFrame) -> pl.DataFrame:
-    """计算净利润含金量 = 经营现金流 / 净利润。"""
+    """计算净利润含金量 = 经营现金流 / 净利润，分子分母对齐同一报告期。"""
     cashflow = sources.get("cashflow")
     income = sources.get("income")
     if cashflow.is_empty() or income.is_empty():
         return pl.DataFrame()
     if "n_cashflow_act" not in cashflow.columns or "ann_date" not in cashflow.columns:
         return pl.DataFrame()
-
-    latest_cashflow = (
-        cashflow.sort("ann_date", descending=True)
-        .unique(subset=["symbol"], keep="first")
-        .join(symbols, on="symbol", how="inner")
-        .select(
-            "symbol",
-            pl.col("n_cashflow_act").cast(pl.Float64, strict=False).alias("n_cashflow_act"),
-        )
-    )
-    latest_income = (
-        income.sort("ann_date", descending=True)
-        .unique(subset=["symbol"], keep="first")
-        .join(symbols, on="symbol", how="inner")
-        .select("symbol", pl.col("n_income").cast(pl.Float64, strict=False))
-    )
-    result = latest_cashflow.join(latest_income, on="symbol", how="left").select(
+    aligned = _aligned_latest(cashflow, "n_cashflow_act", income, "n_income", symbols)
+    if aligned.is_empty():
+        return pl.DataFrame()
+    result = aligned.select(
         "symbol",
         (pl.col("n_cashflow_act") / pl.col("n_income").abs().clip(1e-8, None)).alias("ocf_ratio"),
     )
     return result.with_columns(pl.col("symbol").cast(pl.String))
+
+
+def _aligned_latest(
+    frame_a: pl.DataFrame,
+    column_a: str,
+    frame_b: pl.DataFrame,
+    column_b: str,
+    symbols: pl.DataFrame,
+) -> pl.DataFrame:
+    """取 A/B 两表按 end_date 对齐后的共同最新报告期行。
+
+    对每张表按 ann_date 最新披露取每 (symbol, end_date) 一行，
+    inner join 仅保留两表都存在的报告期，再按 end_date 降序取每个
+    symbol 的最新共同报告期，保证分子分母口径一致。
+    """
+    if "end_date" not in frame_a.columns or "end_date" not in frame_b.columns:
+        return pl.DataFrame()
+    latest_a = (
+        frame_a.sort("ann_date", descending=True)
+        .unique(subset=["symbol", "end_date"], keep="first")
+        .join(symbols, on="symbol", how="inner")
+        .select(
+            "symbol",
+            "end_date",
+            pl.col(column_a).cast(pl.Float64, strict=False).alias(column_a),
+        )
+    )
+    latest_b = (
+        frame_b.sort("ann_date", descending=True)
+        .unique(subset=["symbol", "end_date"], keep="first")
+        .join(symbols, on="symbol", how="inner")
+        .select(
+            "symbol",
+            "end_date",
+            pl.col(column_b).cast(pl.Float64, strict=False).alias(column_b),
+        )
+    )
+    return (
+        latest_a.join(latest_b, on=["symbol", "end_date"], how="inner")
+        .sort("end_date", descending=True)
+        .unique(subset=["symbol"], keep="first")
+    )
 
 
 def _goodwill_ratio(sources: StockScreenSources, symbols: pl.DataFrame) -> pl.DataFrame:

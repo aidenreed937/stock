@@ -144,6 +144,7 @@ def test_compute_scores_includes_ocf_ratio_factor() -> None:
             {
                 "symbol": ["000001.SZ", "000002.SZ", "000003.SZ", "000004.SZ", "000005.SZ"],
                 "ann_date": [date(2026, 4, 30)] * 5,
+                "end_date": [date(2026, 3, 31)] * 5,
                 "n_cashflow_act": [100.0, 200.0, 300.0, 400.0, 500.0],
             }
         ),
@@ -151,6 +152,7 @@ def test_compute_scores_includes_ocf_ratio_factor() -> None:
             {
                 "symbol": ["000001.SZ", "000002.SZ", "000003.SZ", "000004.SZ", "000005.SZ"],
                 "ann_date": [date(2026, 4, 30)] * 5,
+                "end_date": [date(2026, 3, 31)] * 5,
                 "n_income": [50.0, 100.0, 150.0, 200.0, 250.0],
             }
         ),
@@ -159,6 +161,60 @@ def test_compute_scores_includes_ocf_ratio_factor() -> None:
     assert "score_ocf_ratio" in scored.columns
     assert scored.get_column("score_ocf_ratio").null_count() == 0
     assert scored.get_column("dim_quality").is_not_null().all()
+
+
+def test_roe_aligns_numerator_and_denominator_on_shared_period() -> None:
+    from stock_analytics.pipelines.stock_screen.factors import _compute_roe
+
+    income = pl.DataFrame(
+        {
+            "symbol": ["000651.SZ", "000651.SZ"],
+            "ann_date": [date(2026, 4, 28), date(2026, 4, 28)],
+            "end_date": [date(2026, 3, 31), date(2025, 12, 31)],
+            "n_income": [150.0, 500.0],
+        }
+    )
+    balancesheet = pl.DataFrame(
+        {
+            "symbol": ["000651.SZ"],
+            "ann_date": [date(2026, 4, 28)],
+            "end_date": [date(2025, 12, 31)],
+            "total_hldr_eqy_exc_min_int": [1000.0],
+        }
+    )
+    sources = _sources({"income": income, "balancesheet": balancesheet})
+    symbols = pl.DataFrame({"symbol": ["000651.SZ"]})
+
+    result = _compute_roe(sources, symbols)
+
+    assert result["roe"].to_list() == [50.0]
+
+
+def test_ocf_ratio_aligns_on_shared_period() -> None:
+    from stock_analytics.pipelines.stock_screen.factors import _compute_ocf_ratio
+
+    cashflow = pl.DataFrame(
+        {
+            "symbol": ["000002.SZ", "000002.SZ"],
+            "ann_date": [date(2026, 4, 30), date(2026, 4, 30)],
+            "end_date": [date(2026, 3, 31), date(2025, 12, 31)],
+            "n_cashflow_act": [100.0, 300.0],
+        }
+    )
+    income = pl.DataFrame(
+        {
+            "symbol": ["000002.SZ"],
+            "ann_date": [date(2026, 4, 30)],
+            "end_date": [date(2025, 12, 31)],
+            "n_income": [60.0],
+        }
+    )
+    sources = _sources({"cashflow": cashflow, "income": income})
+    symbols = pl.DataFrame({"symbol": ["000002.SZ"]})
+
+    result = _compute_ocf_ratio(sources, symbols)
+
+    assert result["ocf_ratio"].to_list() == [5.0]
 
 
 def test_momentum_subtracts_benchmark_for_relative_strength() -> None:
