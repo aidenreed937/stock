@@ -51,8 +51,10 @@ UV_CACHE_DIR=.uv_cache UV_PYTHON_INSTALL_DIR=.uv_python uv run python -m stock_c
 UV_CACHE_DIR=.uv_cache UV_PYTHON_INSTALL_DIR=.uv_python uv run python -m stock_cli.market_temperature --date YYYY-MM-DD --compare-date YYYY-MM-DD
 
 # 2. 每日盘后全景复盘与配置研报自动落盘管线 (基于 stock_reporting Jinja2 模板引擎)
-make daily-review $(if $(DATE),DATE=YYYY-MM-DD)
+make daily-review [DATE=YYYY-MM-DD]
 # 产物自动归档落盘至 output/reports/daily/{YYYY-MM-DD}_全景量化复盘报告.md
+# 注意：make daily-review 是一步直达原子流水线，已内置六维温度、31行业与自选池多线程并发扫描，无需前置单独调取子命令。
+# 交付建议：屏幕输出 3 句话核心定调与核心异动（< 200 字），完整大表引导用户查阅已生成的研报文件。
 ```
 
 默认配置在 `config/analytics/market_temperature.yaml`。产物写入 `data/analytics/market_temperature/`：

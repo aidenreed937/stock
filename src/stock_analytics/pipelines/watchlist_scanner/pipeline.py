@@ -2,6 +2,7 @@
 
 from __future__ import annotations
 
+from concurrent.futures import ThreadPoolExecutor
 from datetime import date
 from pathlib import Path
 
@@ -34,67 +35,91 @@ def _load_watchlist_stock_symbols(config_path: Path | str | None = None) -> list
         return ["600519.SH", "000001.SZ", "300750.SZ"]
 
 
+def _diagnose_single_symbol(
+    sym: str,
+    target_date: date | None,
+    storage_dir: Path | str | None,
+) -> WatchlistItemSummary | None:
+    """单个标的诊断并生成 Summary 快照。"""
+    try:
+        diag = run_stock_diagnostics(
+            symbol=sym,
+            target_date=target_date,
+            storage_dir=storage_dir,
+        )
+
+        tags: list[str] = []
+        if (
+            diag.valuation.pe_percentile_5y is not None
+            and diag.valuation.pe_percentile_5y <= 15.0
+            and not diag.valuation.value_trap_warning
+        ):
+            tags.append("极低估值")
+
+        if (
+            diag.valuation.dividend_spread_10y is not None
+            and diag.valuation.dividend_spread_10y >= 2.0
+        ):
+            tags.append("高股息利差")
+
+        if diag.valuation.value_trap_warning:
+            tags.append("⚠️价值陷阱")
+
+        if "多头" in diag.technicals.trend_description:
+            tags.append("多头排列")
+
+        return WatchlistItemSummary(
+            symbol=diag.symbol,
+            name=diag.name,
+            industry=diag.industry,
+            close=diag.technicals.close,
+            pct_chg=diag.technicals.pct_chg,
+            pe_ttm=diag.valuation.pe_ttm,
+            pe_percentile_5y=diag.valuation.pe_percentile_5y,
+            pb=diag.valuation.pb,
+            dv_ttm=diag.valuation.dv_ttm,
+            dividend_spread_10y=diag.valuation.dividend_spread_10y,
+            roe=diag.financials.roe,
+            trend_description=diag.technicals.trend_description,
+            value_trap_warning=diag.valuation.value_trap_warning,
+            screen_status=diag.screen.status,
+            tags=tags,
+        )
+    except Exception as exc:
+        logger.warning(f"扫描自选标的 {sym} 失败: {exc}")
+        return None
+
+
 def run_watchlist_scanner(
     target_date: date | None = None,
     config_path: Path | str | None = None,
     storage_dir: Path | str | None = None,
     symbols: list[str] | None = None,
 ) -> WatchlistScanResult:
-    """执行自选池全量扫描并生成多维特征排序雷达。"""
+    """执行自选池全量扫描并生成多维特征排序雷达 (多线程并发加速)。"""
+    if target_date is not None:
+        as_of_date_val = target_date.isoformat()
+    else:
+        from stock_data.catalog import DataCatalog
+
+        cat = DataCatalog("tushare", storage_dir=storage_dir)
+        dates = cat.latest_trade_dates("stock_daily_bar", n=1)
+        as_of_date_val = dates[0].isoformat() if dates else date.today().isoformat()
+
     target_symbols = symbols or _load_watchlist_stock_symbols(config_path)
     summaries: list[WatchlistItemSummary] = []
-    as_of_date_val = str(target_date or date.today().isoformat())
 
-    for sym in target_symbols:
-        try:
-            diag = run_stock_diagnostics(
-                symbol=sym,
-                target_date=target_date,
-                storage_dir=storage_dir,
-            )
-            as_of_date_val = diag.as_of_date
-
-            tags: list[str] = []
-            if (
-                diag.valuation.pe_percentile_5y is not None
-                and diag.valuation.pe_percentile_5y <= 15.0
-                and not diag.valuation.value_trap_warning
-            ):
-                tags.append("极低估值")
-
-            if (
-                diag.valuation.dividend_spread_10y is not None
-                and diag.valuation.dividend_spread_10y >= 2.0
-            ):
-                tags.append("高股息利差")
-
-            if diag.valuation.value_trap_warning:
-                tags.append("⚠️价值陷阱")
-
-            if "多头" in diag.technicals.trend_description:
-                tags.append("多头排列")
-
-            summaries.append(
-                WatchlistItemSummary(
-                    symbol=diag.symbol,
-                    name=diag.name,
-                    industry=diag.industry,
-                    close=diag.technicals.close,
-                    pct_chg=diag.technicals.pct_chg,
-                    pe_ttm=diag.valuation.pe_ttm,
-                    pe_percentile_5y=diag.valuation.pe_percentile_5y,
-                    pb=diag.valuation.pb,
-                    dv_ttm=diag.valuation.dv_ttm,
-                    dividend_spread_10y=diag.valuation.dividend_spread_10y,
-                    roe=diag.financials.roe,
-                    trend_description=diag.technicals.trend_description,
-                    value_trap_warning=diag.valuation.value_trap_warning,
-                    screen_status=diag.screen.status,
-                    tags=tags,
-                )
-            )
-        except Exception as exc:
-            logger.warning(f"扫描自选标的 {sym} 失败: {exc}")
+    # 多线程并发诊断
+    max_workers = min(len(target_symbols), 8) if target_symbols else 1
+    with ThreadPoolExecutor(max_workers=max_workers) as executor:
+        futures = [
+            executor.submit(_diagnose_single_symbol, sym, target_date, storage_dir)
+            for sym in target_symbols
+        ]
+        for fut in futures:
+            res = fut.result()
+            if res is not None:
+                summaries.append(res)
 
     # 分类聚类
     golden_pits = [
