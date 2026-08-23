@@ -1,0 +1,123 @@
+# 申万重点产业上下游传导链路与高频监测图谱 (Value Chain Map)
+
+industries:
+  食品饮料:
+    code: "801120.SI"
+    category: "消费"
+    upstream:
+      - "高粱/小麦/大麦等农产品"
+      - "包材 (玻璃瓶/纸箱/铝罐)"
+      - "白砂糖/食品添加剂"
+    downstream:
+      - "商超/便利店/电商平台"
+      - "餐饮与夜场消费"
+      - "商务宴请与送礼场景"
+    cost_sensitivity: "农产品与包材成本波动 -> 中游食品饮料毛利率受影响 (高端白酒抗通胀议价能力最强)"
+    demand_drivers: "居民可支配收入、餐饮消费景气度、商务活动活跃度"
+    high_frequency_indicators:
+      - name: "飞天茅台批价走势 (散瓶/原箱)"
+        source: "今日酒价 / 行业跟踪"
+      - name: "餐饮社零同比增速"
+        source: "国家统计局"
+      - name: "白酒中秋/春节旺季动销与渠道库存天数"
+        source: "券商渠道调研 / 行业协会"
+
+  白酒:
+    code: "801125.SI"
+    category: "消费"
+    upstream:
+      - "酿酒专用高粱/小麦"
+      - "高端玻璃与陶瓷包材"
+    downstream:
+      - "经销商/专卖店渠道"
+      - "政商务宴请与高净值人群自饮"
+    cost_sensitivity: "直接原料占比低，毛利率受产品结构升级主导 (高端吨价上行驱动利润)"
+    demand_drivers: "商务活动频率、房地产与基建投资活动、高端社交消费"
+    high_frequency_indicators:
+      - name: "飞天茅台/普五/国窖1573 核心单品批价"
+        source: "今日酒价"
+      - name: "经销商库存周转月数与倒挂比例"
+        source: "渠道跟踪"
+
+  电力设备:
+    code: "801730.SI"
+    category: "先进制造/新能源"
+    upstream:
+      - "电池级碳酸锂/氢氧化锂"
+      - "正负极材料、隔膜、电解液"
+      - "光伏多晶硅致密料、硅片"
+      - "铜、铝、特种钢材"
+    downstream:
+      - "新能源汽车 (动力电池)"
+      - "储能电站 (大储/工商业/户储)"
+      - "国家电网/南方电网 (特高压/配网)"
+      - "风电/光伏集中式与分布式电站"
+    cost_sensitivity: "上游碳酸锂/硅料价格暴跌 -> 动力电池及组件系统成本下降 -> 终端装机需求爆发，但中游材料环节面临去库存减值"
+    demand_drivers: "全球新能源车渗透率、大储与工商业储能装机量、新型电网资本开支"
+    high_frequency_indicators:
+      - name: "SMM 电池级碳酸锂现货价"
+        source: "上海有色网 (SMM)"
+      - name: "InfoLink 周度多晶硅与光伏组件均价"
+        source: "InfoLink Consulting"
+      - name: "乘联会新能源汽车月度批发/零售销量与渗透率"
+        source: "乘联会 (CPCA)"
+
+  电子:
+    code: "801080.SI"
+    category: "科技/TMT"
+    upstream:
+      - "硅片、光刻胶、电子特气、靶材"
+      - "半导体制造设备 (光刻机/刻蚀机/薄膜沉积)"
+    midstream:
+      - "晶圆代工 (Foundry)"
+      - "封装测试 (OSAT)"
+      - "PCB 印制电路板"
+    downstream:
+      - "智能手机/PC/可穿戴等消费电子"
+      - "AI 服务器与云计算数据中心"
+      - "智能座舱与自动驾驶域控制器"
+    cost_sensitivity: "代工产能利用率与硅片成本 -> 芯片设计毛利率"
+    demand_drivers: "全球半导体资本开支周期、AI 算力基建投资、消费电子换机周期"
+    high_frequency_indicators:
+      - name: "DRAM / NAND Flash 现货与合约价格指数"
+        source: "TrendForce 集邦咨询 / CFM 闪存市场"
+      - name: "台积电/中芯国际月度营收与产能利用率"
+        source: "企业月报 / 彭博"
+      - name: "全球与中国智能手机季度出货量"
+        source: "IDC / Canalys"
+
+  医药生物:
+    code: "801150.SI"
+    category: "大健康"
+    upstream:
+      - "中药材原料"
+      - "医药中间体/原料药 (API)"
+      - "生物耗材与科研试剂"
+    downstream:
+      - "公立医院与基层医疗机构"
+      - "连锁零售药房"
+      - "海外跨国药企 (CXO/License-out)"
+    cost_sensitivity: "医保集采降价压力 -> 倒逼向创新药/器械转型，中药材价格波动影响传统中药毛利"
+    demand_drivers: "人口老龄化、医保基金支出总额、创新药海外授权 (BD) 交易活跃度"
+    high_frequency_indicators:
+      - name: "NMPA 创新药审批与进入医保目录进展"
+        source: "国家医保局 / 国家药监局"
+      - name: "中国中药材价格指数"
+        source: "中药材天地网"
+
+  煤炭:
+    code: "801950.SI"
+    category: "周期/红利"
+    upstream:
+      - "煤炭采掘设备、矿井安全投资"
+    downstream:
+      - "火力发电厂 (动力煤)"
+      - "钢铁/焦化企业 (炼焦煤)"
+      - "煤化工企业"
+    cost_sensitivity: "开采成本刚性，利润对吨煤坑口/港口现货售价极其敏感"
+    demand_drivers: "火电发电量、钢铁产量、气温极端程度 (迎峰度夏/度冬)"
+    high_frequency_indicators:
+      - name: "秦皇岛港 Q5500 动力煤平仓价"
+        source: "秦皇岛煤炭网"
+      - name: "北方主要港口煤炭调入量与合计库存"
+        source: "行业高频追踪"
