@@ -1,6 +1,6 @@
-"""每日盘后全景量化复盘流水线自动化脚本。
+"""每日盘后全景量化复盘与配置研报 CLI 入口。
 
-基于 stock_reporting.engine.renderer.ReportRenderer 模板引擎渲染标准复盘研报。
+串联大盘六维温度、申万 31 行业主线与自选池雷达，基于 stock_reporting 模板引擎渲染标准复盘研报。
 """
 
 from __future__ import annotations
@@ -174,20 +174,22 @@ def generate_daily_review(
     with open(report_file, "w", encoding="utf-8") as f:
         f.write(report_content)
 
-    logger.info(f"每日全景量化复盘研报 (基于模板) 已生成并落盘至: {report_file}")
+    logger.info(f"每日全景量化复盘研报已生成并落盘至: {report_file}")
     return report_file
 
 
 def main() -> None:
     parser = argparse.ArgumentParser(
-        description="每日盘后全景量化复盘自动化脚本 (Jinja2 模板驱动)",
+        prog="stock_cli.daily_review",
+        description="每日盘后全景量化复盘 CLI 入口 (基于 stock_reporting Jinja2 模板引擎)",
     )
     parser.add_argument(
-        "--date",
+        "--as-of",
         "-d",
+        dest="as_of_date",
         type=lambda s: date.fromisoformat(s),
         default=None,
-        help="复盘基准日期 (YYYY-MM-DD)",
+        help="复盘基准日期 (YYYY-MM-DD，默认为最新交易日)",
     )
     parser.add_argument(
         "--output-dir",
@@ -200,7 +202,7 @@ def main() -> None:
 
     try:
         report_path = generate_daily_review(
-            target_date=args.date,
+            target_date=args.as_of_date,
             output_dir=args.output_dir,
         )
         sys.stdout.write(f"复盘研报生成成功: {report_path}\n")

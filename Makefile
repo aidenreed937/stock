@@ -172,7 +172,7 @@ scan-watchlist:
 	UV_CACHE_DIR=.uv_cache UV_PYTHON_INSTALL_DIR=.uv_python uv run python -m stock_cli.scan_watchlist $(if $(DATE),--as-of $(DATE)) $(if $(FORMAT),--format $(FORMAT)) $(if $(CONFIG),--config $(CONFIG)) $(if $(STORAGE_DIR),--storage-dir $(STORAGE_DIR)) $(if $(SAVE),--save)
 
 daily-review:
-	UV_CACHE_DIR=.uv_cache UV_PYTHON_INSTALL_DIR=.uv_python uv run python scripts/daily_market_review.py $(if $(DATE),--date $(DATE)) $(if $(OUTPUT),--output-dir $(OUTPUT))
+	UV_CACHE_DIR=.uv_cache UV_PYTHON_INSTALL_DIR=.uv_python uv run python -m stock_cli.daily_review $(if $(DATE),--as-of $(DATE)) $(if $(OUTPUT),--output-dir $(OUTPUT))
 
 thesis-review:
 	UV_CACHE_DIR=.uv_cache UV_PYTHON_INSTALL_DIR=.uv_python uv run python -m stock_cli.thesis_review --symbol $(SYMBOL) $(if $(THESIS_DATE),--thesis-date $(THESIS_DATE)) $(if $(DATE),--as-of $(DATE)) $(if $(FORMAT),--format $(FORMAT)) $(if $(STORAGE_DIR),--storage-dir $(STORAGE_DIR)) $(if $(NO_SAVE),--no-save)
