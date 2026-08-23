@@ -1,0 +1,38 @@
+{% import "macros/watermark.j2" as wm -%}
+# 投资假设跨周期验证与复盘自省报告: {{ thesis.name }} ({{ thesis.symbol }})
+
+> **初始假设基准日**: {{ thesis.created_date }} (距今 {{ days_elapsed }} 天)
+> **复盘核验基准日**: {{ as_of_date }} | **用户画像**: 稳健价值与估值配置型
+> **复盘综合定调**: **【{{ attribution.verdict }}】**
+
+---
+
+## 一、 区间走势与核心收益归因 (Attribution Analysis)
+
+- **初始买入基准价 ➔ 当前收盘价**: {{ thesis.base_price | decimal(2) }} ➔ {{ attribution.current_price | decimal(2) }} (区间涨跌幅: **{{ attribution.price_change_pct | decimal(2, signed=True) }}%**){% if attribution.is_stop_loss_triggered %} 🚨 **已触及 -15% 严格止损红线**{% endif %}
+- **核心收益驱动拆解**:
+  - **真实净利润增速**: {% if attribution.actual_growth is not none %}{{ attribution.actual_growth | decimal(2, signed=True) }}%{% else %}--{% endif %} (初始预期: {{ thesis.expected_growth | default(10.0) }}% ➔ 预期偏差: {% if attribution.growth_gap is not none %}{{ attribution.growth_gap | decimal(2, signed=True) }}%{% else %}--{% endif %})
+  - **估值乘数演变**: PE(TTM) {{ thesis.initial_pe_ttm | default('--') }} ➔ {{ attribution.current_pe_ttm | default('--') }} (估值变动: {% if attribution.pe_change_pct is not none %}{{ attribution.pe_change_pct | decimal(2, signed=True) }}%{% else %}--{% endif %})
+
+## 二、 初始假设逐项核验表 (Hypothesis Invalidation Table)
+
+| 核心假设维度 | 当时设定假设 | 当前实际走势 / 现状 | 假设核验结论 |
+| :--- | :--- | :--- | :---: |
+| **净利盈利增速** | 保持约 +{{ thesis.expected_growth | default(10.0) }}% 稳健增长 | 实际增速为 {% if attribution.actual_growth is not none %}{{ attribution.actual_growth | decimal(2, signed=True) }}%{% else %}--{% endif %} | {% if attribution.growth_gap is not none and attribution.growth_gap < 0 %}❌ 不及预期{% else %}✅ 符合预期{% endif %} |
+| **估值合理锚位** | PE 维持在 {{ thesis.expected_pe_anchor | default(thesis.initial_pe_ttm) }}x 附近 | 实际收缩至 {{ attribution.current_pe_ttm | default('--') }}x | {% if attribution.pe_change_pct is not none and attribution.pe_change_pct < -10.0 %}❌ 估值下移{% else %}✅ 估值平稳{% endif %} |
+| **价值陷阱防线** | 净利润正增长，非失速低估 | 当前状态: {% if attribution.is_value_trap %}⚠️ 净利失速/预警{% else %}正常{% endif %} | {% if attribution.is_value_trap %}❌ 触发预警{% else %}✅ 安全{% endif %} |
+| **严格止损纪律** | 最大回撤容忍 {{ thesis.stop_loss_pct }}% | 实际区间收益率 {{ attribution.price_change_pct | decimal(2, signed=True) }}% | {% if attribution.is_stop_loss_triggered %}🚨 触发止损{% else %}✅ 安全{% endif %} |
+
+## 三、 投资认知自省与偏差反思 (Reflection)
+{% if attribution.reflection_notes %}
+{% for note in attribution.reflection_notes %}
+- **{{ note }}**
+{% endfor %}
+{% else %}
+- 当前各项核心假设与真实市场走势基本吻合，未出现明显认知偏差。
+{% endif %}
+
+## 四、 后续操作决断与风控指引 (Action Plan)
+{% for action in attribution.action_guidance %}
+1. **{{ action }}**
+{% endfor %}

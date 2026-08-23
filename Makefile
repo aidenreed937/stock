@@ -161,3 +161,18 @@ report-consistency:
 
 market-cycle-review:
 	UV_CACHE_DIR=.uv_cache UV_PYTHON_INSTALL_DIR=.uv_python uv run python scripts/market_cycle_review.py --start $(START) --end $(END) $(if $(ANALYTICS_ROOT),--analytics-root $(ANALYTICS_ROOT)) $(if $(OUTPUT_ROOT),--output-root $(OUTPUT_ROOT)) $(if $(NO_LATEST),--no-latest) $(if $(SKIP_CONSISTENCY),--skip-consistency)
+
+diagnose:
+	UV_CACHE_DIR=.uv_cache UV_PYTHON_INSTALL_DIR=.uv_python uv run python -m stock_cli.diagnose --symbol $(SYMBOL) $(if $(DATE),--as-of $(DATE)) $(if $(FORMAT),--format $(FORMAT)) $(if $(STORAGE_DIR),--storage-dir $(STORAGE_DIR))
+
+industry-diagnose:
+	UV_CACHE_DIR=.uv_cache UV_PYTHON_INSTALL_DIR=.uv_python uv run python -m stock_cli.industry_diagnose --industry $(INDUSTRY) $(if $(DATE),--as-of $(DATE)) $(if $(FORMAT),--format $(FORMAT)) $(if $(STORAGE_DIR),--storage-dir $(STORAGE_DIR))
+
+scan-watchlist:
+	UV_CACHE_DIR=.uv_cache UV_PYTHON_INSTALL_DIR=.uv_python uv run python -m stock_cli.scan_watchlist $(if $(DATE),--as-of $(DATE)) $(if $(FORMAT),--format $(FORMAT)) $(if $(CONFIG),--config $(CONFIG)) $(if $(STORAGE_DIR),--storage-dir $(STORAGE_DIR)) $(if $(SAVE),--save)
+
+daily-review:
+	UV_CACHE_DIR=.uv_cache UV_PYTHON_INSTALL_DIR=.uv_python uv run python scripts/daily_market_review.py $(if $(DATE),--date $(DATE)) $(if $(OUTPUT),--output-dir $(OUTPUT))
+
+thesis-review:
+	UV_CACHE_DIR=.uv_cache UV_PYTHON_INSTALL_DIR=.uv_python uv run python -m stock_cli.thesis_review --symbol $(SYMBOL) $(if $(THESIS_DATE),--thesis-date $(THESIS_DATE)) $(if $(DATE),--as-of $(DATE)) $(if $(FORMAT),--format $(FORMAT)) $(if $(STORAGE_DIR),--storage-dir $(STORAGE_DIR)) $(if $(NO_SAVE),--no-save)
