@@ -13,17 +13,29 @@
 {% endif %}
 - **组合仓位中枢指引**: {{ position_advice }}
 
+{% if macro_decoupling %}
+### 🌐 全球宏观与外盘时序解耦联动看板 (Macro Provenance & Proxies)
+- **盘后回顾归因基准 (T-1 隔夜事实)**: `{{ macro_decoupling.review_cutoff }}` *(解释 {{ as_of_date }} 白天 A 股走势，严格防前视偏差)*
+- **次日开盘前瞻基准 (T 最新夜盘)**: `{{ macro_decoupling.forecast_cutoff }}` *(用于推演下一个交易日开盘情绪与板块映射)*
+- **海外离岸核心代理标的**:
+{% for p in macro_decoupling.proxies %}
+  - **`{{ p.code }}` ({{ p.name }})**: {{ p.role }}
+{% endfor %}
+{% endif %}
+
 ## 二、 申万 31 行业强弱与轮动主线 (Sector Allocation)
 {% if top_industries %}
 - **今日综合结构占优主线 Top 5**:
 {% for ind in top_industries %}
   - **{{ ind.name }}** (综合评分: {{ ind.score }}){% if ind.tags %} [{{ ind.tags }}]{% endif %}
+
 {% endfor %}
 {% endif %}
 {% if low_val_industries %}
 - **低估值改善潜力板块 Top 5**:
 {% for ind in low_val_industries %}
   - **{{ ind.name }}** (综合评分: {{ ind.score }}){% if ind.tags %} [{{ ind.tags }}]{% endif %}
+
 {% endfor %}
 {% endif %}
 

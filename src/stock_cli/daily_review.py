@@ -58,6 +58,36 @@ def _load_temperature_data() -> tuple[float | None, str | None, dict[str, float]
         return None, None, {}
 
 
+def _load_macro_decoupling_info(as_of_date: str) -> dict[str, Any]:
+    """读取外盘时序解耦元数据与前瞻状态。"""
+    manifest_path = Path(f"data/analytics/market_temperature/runs/as_of={as_of_date}")
+    review_cutoff = "2026-08-20"
+    if manifest_path.exists():
+        for run_d in sorted(manifest_path.glob("run_*"), reverse=True):
+            mf = run_d / "manifest.json"
+            if mf.exists():
+                try:
+                    with open(mf, encoding="utf-8") as f:
+                        m_data = json.load(f)
+                    review_cutoff = str(
+                        m_data.get("source_cutoffs", {}).get("external_market", review_cutoff)
+                    )
+                    break
+                except Exception:
+                    pass
+
+    return {
+        "review_cutoff": review_cutoff,
+        "forecast_cutoff": as_of_date,
+        "proxies": [
+            {"code": "FXI", "name": "富时中国 50 ETF", "role": "离岸中资大盘核心期权锚"},
+            {"code": "ASHR", "name": "沪深 300 离岸 ETF", "role": "直接映射 A 股核心蓝筹定价"},
+            {"code": "USD/CNH", "name": "离岸人民币汇率", "role": "反映外资跨境流动性与汇率偏好"},
+            {"code": "^VIX", "name": "标普恐慌指数", "role": "全球宏观流动性与避险情绪风向标"},
+        ],
+    }
+
+
 def _load_industry_structure_data() -> tuple[list[dict[str, str]], list[dict[str, str]]]:
     ind_path = Path("data/analytics/industry_structure/latest/scores.json")
     if not ind_path.exists():
@@ -147,6 +177,8 @@ def generate_daily_review(
             }
         )
 
+    macro_decoupling = _load_macro_decoupling_info(as_of)
+
     context = {
         "as_of_date": as_of,
         "temperature_score": f"{temp_score:.2f}" if temp_score is not None else None,
@@ -154,6 +186,7 @@ def generate_daily_review(
         "dimension_items": dims,
         "dimension_summary": dim_summary,
         "position_advice": pos_advice,
+        "macro_decoupling": macro_decoupling,
         "top_industries": top_ind,
         "low_val_industries": low_ind,
         "total_scanned": scan_res.total_scanned,
