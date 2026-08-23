@@ -24,7 +24,7 @@ description: 用本地 Curated 黄金表和现有 analytics/metrics 体系生成
 按以下顺序执行，不要手工拼装 facts 或直接复制 `latest/`：
 
 1. 先用 `DataCatalog` 查询 `stock_daily_bar` 最新交易日；若用户指定日期，确认该日期已落盘，否则报告缺口并停止。
-2. 普通单日生成直接运行 `make scan DATE=YYYY-MM-DD`；只要市场温度计则运行 `make market-temperature DATE=YYYY-MM-DD`。
+2. 普通单日生成直接运行 `make scan DATE=YYYY-MM-DD`；只要市场温度计则运行 `make market-temperature DATE=YYYY-MM-DD`；若需一键生成包含大盘温度、31 行业主线与自选池量化雷达的每日盘后复盘报告并自动落盘，直接运行 `make daily-review [DATE=YYYY-MM-DD]`。
 3. 需要“最近 N 个交易日”或多日历史产物时，只运行下方批量脚本；脚本会先完成所有日期，再统一校验和发布 `latest/`。
 4. 需要刷新 Mart 时使用脚本的 `--refresh-mart`，它只走增量构建，不传 `OVERWRITE=1`；构建后必须确认 `market_daily` 历史起点未变化。
 5. 禁止把 `TARGET=all ... OVERWRITE=1` 作为日常刷新方式。`OVERWRITE=1` 是有意重建并替换 Mart 的破坏性操作，只能在明确的历史重建/数据修复任务中单独执行，并在执行前记录原始历史起点和备份策略。
@@ -49,6 +49,10 @@ make market-temperature DATE=YYYY-MM-DD COMPARE_DATE=YYYY-MM-DD
 # 或
 UV_CACHE_DIR=.uv_cache UV_PYTHON_INSTALL_DIR=.uv_python uv run python -m stock_cli.market_temperature --date YYYY-MM-DD
 UV_CACHE_DIR=.uv_cache UV_PYTHON_INSTALL_DIR=.uv_python uv run python -m stock_cli.market_temperature --date YYYY-MM-DD --compare-date YYYY-MM-DD
+
+# 2. 每日盘后全景复盘与配置研报自动落盘管线 (基于 stock_reporting Jinja2 模板引擎)
+make daily-review $(if $(DATE),DATE=YYYY-MM-DD)
+# 产物自动归档落盘至 output/reports/daily/{YYYY-MM-DD}_全景量化复盘报告.md
 ```
 
 默认配置在 `config/analytics/market_temperature.yaml`。产物写入 `data/analytics/market_temperature/`：

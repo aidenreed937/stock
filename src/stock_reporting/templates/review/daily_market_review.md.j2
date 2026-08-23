@@ -1,0 +1,45 @@
+{% import "macros/watermark.j2" as wm -%}
+# 每日全景量化复盘与配置研报 ({{ as_of_date }})
+
+> **基准日期**: {{ as_of_date }} | **用户画像**: 稳健价值与估值配置型
+> **数据来源**: 本地 2-Tier 黄金表自动化聚合生成
+
+---
+
+## 一、 宏观大盘与六维市场温度 (Macro Temperature)
+- **综合市场温度**: **{{ temperature_score | default('--') }} 分** (【{{ temperature_band | default('中性平衡') }}】)
+{% if dimension_items %}
+- **六维分项明细**: {{ dimension_summary }}
+{% endif %}
+- **组合仓位中枢指引**: {{ position_advice }}
+
+## 二、 申万 31 行业强弱与轮动主线 (Sector Allocation)
+{% if top_industries %}
+- **今日综合结构占优主线 Top 5**:
+{% for ind in top_industries %}
+  - **{{ ind.name }}** (综合评分: {{ ind.score }}){% if ind.tags %} [{{ ind.tags }}]{% endif %}
+{% endfor %}
+{% endif %}
+{% if low_val_industries %}
+- **低估值改善潜力板块 Top 5**:
+{% for ind in low_val_industries %}
+  - **{{ ind.name }}** (综合评分: {{ ind.score }}){% if ind.tags %} [{{ ind.tags }}]{% endif %}
+{% endfor %}
+{% endif %}
+
+## 三、 核心观察池量化全景雷达 (Watchlist Radar)
+- **总扫描标的**: {{ total_scanned }} 只
+- **极低估值黄金坑 (PE 5Y ≤ 15%)**: {{ golden_pit_count }} 只
+- **高股息利差安全垫 (利差 ≥ +2.0%)**: {{ high_dividend_count }} 只
+- **价值陷阱风险预警**: {{ value_trap_count }} 只
+
+| 标的代码 | 标的名称 | 所属行业 | 最新价格 (涨跌) | PE (5Y分位) | PB | 股息率 (超额利差) | ROE | 均线状态 | 风险/特色标签 |
+| :--- | :--- | :--- | :--- | :--- | :--- | :--- | :--- | :--- | :--- |
+{% for item in items %}
+| {{ item.symbol }} | {{ item.name }} | {{ item.industry }} | {{ item.close | decimal(2) }} ({{ item.pct_chg | decimal(2, signed=True) }}%) | {{ item.pe_display }} | {{ item.pb_display }} | {{ item.dividend_display }} | {{ item.roe_display }} | {{ item.trend_status }} | {{ item.tag_display }} |
+{% endfor %}
+
+## 四、 稳健价值型投资决策与操作指引 (Action Plan)
+1. **高安全垫标的配置建议**: 优先关注股息利差安全垫丰厚（超额国债利差 > 2.0%）且无价值陷阱预警的标的，可采取逢低分批建仓策略（首仓 ≤5%）；
+2. **防价值陷阱防线**: 严禁仅凭历史低分位在左侧盲目加仓成长失速标的，必须等待下一季财报净利增速降幅收窄或放量站上 MA60 确认；
+3. **回撤纪律**: 组合严格执行 15% 最大回撤容忍度红线，单标的破位坚决止损。
