@@ -11,6 +11,8 @@ from stock_core.utils.logger import logger
 from stock_data.core.settings import data_settings
 from stock_data.fetcher.rate_limiter import RateLimiter
 
+_RATE_LIMIT_KEYWORDS = ("ip超限", "频率", "最多", "速度过快", "超限", "频繁", "每分钟")
+
 
 class TuShareClient:
     """TuShare 官方 Pro API 底层客户端封装。
@@ -27,16 +29,6 @@ class TuShareClient:
         max_limit_threshold: int = 6000,
         paginate_threshold: int = 2000,
     ) -> None:
-        """初始化 TuShare 客户端。
-
-        Args:
-            token: TuShare API Token。若为 None，则从 data_settings.tushare_token 中读取。
-            url: TuShare API 服务器地址。若为 None，则从 data_settings.tushare_url 中读取。
-            rate_limit_per_min: 每分钟最大请求次数限制。若为 None，则从 data_cfg 读取。
-            max_workers: 并发采集 Worker 线程数。若为 None，则从 data_cfg 读取。
-            max_limit_threshold: 警告单次返回达到服务器截断上限的阈值条数 (默认 6000)。
-            paginate_threshold: 触发自动分页的条数阈值 (默认 2000)。
-        """
         data_cfg = load_data_config()
         self.token = token if token is not None else data_settings.tushare_token
         self.url = url if url is not None else data_settings.tushare_url
@@ -57,11 +49,6 @@ class TuShareClient:
 
     @property
     def pro(self) -> Any:
-        """延迟初始化并返回 TuShare Pro API 实例。
-
-        Raises:
-            DataFetchError: 未配置 Token 时抛出。
-        """
         if self._pro_api is None:
             with self._pro_lock:
                 if self._pro_api is None:
@@ -81,7 +68,7 @@ class TuShareClient:
 
     def _raw_query(self, api_name: str, **kwargs: Any) -> pd.DataFrame:
         """执行单次底层 TuShare 请求，包含网络超时、频控与连接异常自动重试。"""
-        max_retries = 3
+        max_retries = 5
         for attempt in range(1, max_retries + 1):
             self.rate_limiter.acquire()
             try:
@@ -89,46 +76,34 @@ class TuShareClient:
                     f"TuShare 请求 (尝试 {attempt}/{max_retries}): api_name={api_name}, kwargs={kwargs}"
                 )
                 try:
-                    df: pd.DataFrame = self.pro.query(api_name, **kwargs)
+                    df = self.pro.query(api_name, **kwargs)
                 except Exception as req_e:
                     err_msg = str(req_e)
-                    if "ip超限" in err_msg or "频率" in err_msg or "最多" in err_msg:
-                        if attempt < max_retries:
-                            sleep_sec = attempt * 3.0
-                            logger.warning(
-                                f"TuShare 触发服务端频控拦截 [{err_msg}]，静默等待 {sleep_sec} 秒后进行第 {attempt + 1} 次自动重试..."
-                            )
-                            time.sleep(sleep_sec)
-                            continue
-                        raise
                     if "SSL" in err_msg or "SSLEOFError" in err_msg:
                         logger.warning(
                             f"TuShare HTTPS 请求异常 [{req_e}]，降级使用 HTTP 协议重试 [{api_name}]..."
                         )
                         current_url = getattr(self.pro, "_DataApi__http_url", "")
                         if current_url.startswith("https://"):
-                            http_url = "http://" + current_url[8:]
-                            self.pro._DataApi__http_url = http_url
+                            self.pro._DataApi__http_url = "http://" + current_url[8:]
                             df = self.pro.query(api_name, **kwargs)
                         else:
                             raise
                     else:
                         raise
-
                 return df if df is not None else pd.DataFrame()
             except Exception as e:
                 err_msg = str(e)
-                if attempt < max_retries and any(
-                    kw in err_msg
-                    for kw in (
-                        "timed out",
-                        "Timeout",
-                        "Connection",
-                        "ip超限",
-                        "频率",
-                        "最多",
-                        "RemoteDisconnected",
-                    )
+                if any(kw in err_msg for kw in _RATE_LIMIT_KEYWORDS):
+                    if attempt < max_retries:
+                        sleep_sec = max(15.0, attempt * 10.0)
+                        logger.warning(
+                            f"TuShare 触发服务端频控拦截 [{err_msg}]，静默等待 {sleep_sec} 秒后进行第 {attempt + 1} 次重试..."
+                        )
+                        time.sleep(sleep_sec)
+                        continue
+                elif attempt < max_retries and not (
+                    "token" in err_msg.lower() and ("无效" in err_msg or "不存在" in err_msg)
                 ):
                     sleep_sec = attempt * 2.0
                     logger.warning(
@@ -138,6 +113,7 @@ class TuShareClient:
                     continue
                 logger.error(f"TuShare API 请求失败 [{api_name}]: {e}")
                 raise DataFetchError(f"TuShare 接口 [{api_name}] 请求失败: {e}") from e
+        return pd.DataFrame()
         return pd.DataFrame()
 
     def query(self, api_name: str, *, auto_paginate: bool = True, **kwargs: Any) -> pd.DataFrame:

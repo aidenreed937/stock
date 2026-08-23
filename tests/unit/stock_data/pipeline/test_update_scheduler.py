@@ -1,8 +1,6 @@
 from datetime import date, datetime
 from unittest.mock import MagicMock, patch
 
-import polars as pl
-
 from stock_data.core.settings import data_settings
 from stock_data.pipeline.scheduler import DataUpdateScheduler
 from stock_data.pipeline.sync_target import (
@@ -187,17 +185,16 @@ def test_tushare_margin_fails_closed_without_trading_calendar() -> None:
 
 
 def test_stale_local_trade_calendar_falls_back_to_source() -> None:
-    local_catalog = MagicMock()
-    local_catalog.load_dataset.return_value = pl.DataFrame(
-        {"cal_date": ["20260813"], "is_open": [1]}
-    )
     source_fetcher = MagicMock()
     source_fetcher.fetch_trade_cal.return_value = [date(2026, 8, 14)]
 
     DataUpdateScheduler._get_trading_days.cache_clear()
     try:
         with (
-            patch("stock_data.catalog.DataCatalog", return_value=local_catalog),
+            patch(
+                "stock_data.pipeline.scheduler._load_cached_tushare_trading_days",
+                return_value=(),
+            ),
             patch(
                 "stock_data.fetcher.tushare.facade.TuShareDataFetcher",
                 return_value=source_fetcher,
