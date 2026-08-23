@@ -11,7 +11,7 @@
   - `stock_cli/`：顶层用户交互与命令行入口；
   - `stock/`：向后兼容门面包。
 - `tests/unit/`：与 6 大顶级源码包 1:1 镜像对应的模块化单元测试目录。
-- `config/`：策略、风险和标的池 YAML 配置（其中 `config/universe/watchlist.yaml` 为全系统唯一核心观察池）；`data/`：本地 RAW/Curated 2-Tier 离线 Parquet 数据与缓存，不提交敏感信息或临时产物。
+- `config/`：策略、风险、标的池与智能体画像 YAML 配置（`config/universe/watchlist.yaml` 为唯一核心观察池；`config/agent/user_persona.yaml` 为唯一用户投资画像与风控底线；`config/agent/soul.md` 为投研专家人格底色与求真准则）；`data/`：本地 RAW/Curated 2-Tier 离线 Parquet 数据与缓存，不提交敏感信息或临时产物。
 - `docs/`：架构、CLI、数据存储和开发规范；`.agents/skills/data-pipeline/SKILL.md`：核心数据管道与回填实操指南；`.github/workflows/ci.yml`：CI 门禁。
 
 ## 环境与沙箱隔离

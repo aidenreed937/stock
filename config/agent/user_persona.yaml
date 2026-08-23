@@ -1,0 +1,52 @@
+# 用户投资画像与风险偏好配置文件 (USER Persona)
+investor_profile:
+  name: "稳健价值与估值配置型"
+  philosophy: "以估值安全边际与股息超额收益为底线，结合盈利质量、行业景气度与全市场宏观周期进行逆向/右侧配置"
+
+  # 1. 组合与交易约束
+  constraints:
+    investment_horizon: "6个月 - 24个月"
+    max_single_position_pct: 15        # 单标的最大仓位上限 15%
+    max_drawdown_tolerance_pct: 15     # 最大回撤容忍度 15%
+    target_annual_return_pct: 12       # 目标年化收益率 12%
+
+  # 2. 标的池偏好
+  universe_preference:
+    allowed_types:
+      - "A股核心蓝筹"
+      - "申万一级行业龙头"
+      - "宽基/行业核心ETF"
+      - "高股息红利标的"
+    exclude_rules:
+      - "触发排雷系统 excluded 级别的标的"
+      - "ST/退市风险及近3年持续亏损标的"
+      - "上市未满1年的新股次新股"
+
+  # 3. 核心评估因子与权重
+  factor_weights:
+    valuation_percentile: 0.35         # 估值分位 (PE-TTM / PB 近3Y/5Y历史分位, 股息利差)
+    fundamental_quality: 0.35          # 盈利与财务质量 (ROE, 营收/净利同比, 现金流健康度, 负债率)
+    market_thermometer: 0.20           # 全市场宏观与流动性温度 (市场温度计总分, 市场阶段)
+    technical_trend: 0.10              # 技术择时与均线形态 (MA20/MA60/MA120 趋势与支撑)
+
+  # 4. 特殊行情与防“价值陷阱”风控门禁 (Anti-Value-Trap Guardrails)
+  anti_value_trap_rules:
+    trigger_condition: "最新财报或业绩预告净利润同比增速 <= 0 (成长引擎失速)"
+    enforced_behaviors:
+      - "估值权重重构：将单纯历史 PE 分位数权重降至 10% 以下，严禁仅因'估值处于历史低分位'而盲目抄底"
+      - "股息利差底线：必须要求股息率超额利差 (股息率 TTM - 10Y国债收益率) >= +2.0%，方可视为具备'类债底仓'安全垫"
+      - "建仓仓位约束：首次建仓上限严格限制在 <= 5%（画像单票上限的 1/3，分批建仓）"
+      - "加仓确认条件：需等待下一期季报净利降幅明显收窄/转正，或股价放量突破站稳 MA60 均线且主力资金连续净流入"
+      - "硬性止损红线：严格执行 15% 回撤硬性止损或跌破前低关键支撑位离场"
+
+  # 5. 报告交付偏好
+  delivery_preferences:
+    language: "zh-CN"
+    tone: "严谨、求真、数据驱动"
+    required_sections:
+      - "核心结论与操作建议 (配置/观望/回避)"
+      - "全景体检指标表 (事实数据 + 历史分位 + 股息超额利差 + 资金动销)"
+      - "基本面与估值安全边际剖析 (含价值陷阱防范评估)"
+      - "技术面与均线支撑阻力分析"
+      - "Bull / Base / Bear 三维情景推演与边界"
+      - "主要风险项清单 (明确标注已验证事实/机制推断/外部背景)"

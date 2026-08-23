@@ -49,8 +49,10 @@ data/**/*
 *.sqlite
 *.sqlite3
 
-# Scratch files
+# Scratch and generated output
 scratch/
+output/
+.dsh/
 
 # Environment variables and local secrets
 .env
@@ -64,3 +66,6 @@ scratch/
 *.swo
 *.swp
 *.tmp
+
+
+.agents/browser-tmp
