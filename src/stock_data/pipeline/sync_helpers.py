@@ -120,6 +120,8 @@ def sync_symbols_for_task(
 
     if data_source in {"yfinance", "alphavantage"} and task.dataset == "macro_indicators":
         return YFINANCE_MACRO_SYMBOLS if data_source == "yfinance" else ["CNH=X"]
+    if data_source == "tushare" and task.task_name == "fund_share":
+        return list(getattr(watchlist, "funds", []) or []) if watchlist is not None else []
     if task.required_pool in {"stock_basic", "fund_basic"}:
         return _load_curated_symbol_pool(data_source, task.required_pool)
     if watchlist is None:

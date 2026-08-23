@@ -573,6 +573,25 @@ def test_sync_symbols_keeps_tushare_statements_as_one_all_market_task(endpoint: 
     assert _sync_symbols_for_task("tushare", endpoint) == [""]
 
 
+def test_sync_symbols_limits_tushare_fund_share_to_watchlist_funds() -> None:
+    class Watchlist:
+        funds = ["510300.SH", "588000.SH", "510050.SH"]
+
+    class Watchlists:
+        tushare = Watchlist()
+
+    class DataCfg:
+        watchlists = Watchlists()
+
+    with (
+        patch("stock_data.pipeline.sync.load_data_config", return_value=DataCfg()),
+        patch("stock_data.pipeline.sync_helpers._load_curated_symbol_pool") as load_pool,
+    ):
+        assert _sync_symbols_for_task("tushare", "fund_share") == Watchlist.funds
+
+    load_pool.assert_not_called()
+
+
 def test_sync_symbols_filters_lixinger_unsupported_index() -> None:
     class Watchlist:
         def __init__(self) -> None:
