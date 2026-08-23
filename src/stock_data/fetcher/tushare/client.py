@@ -116,12 +116,20 @@ class TuShareClient:
         return pd.DataFrame()
         return pd.DataFrame()
 
-    def query(self, api_name: str, *, auto_paginate: bool = True, **kwargs: Any) -> pd.DataFrame:
+    def query(
+        self,
+        api_name: str,
+        *,
+        auto_paginate: bool = True,
+        pagination_limit: int | None = None,
+        **kwargs: Any,
+    ) -> pd.DataFrame:
         """调用指定 TuShare 接口并返回 Pandas DataFrame (自动做滑动窗口限频、单页重试与截断防护)。
 
         Args:
             api_name: TuShare API 接口名（如 daily, fina_indicator）。
             auto_paginate: 是否自动执行 limit/offset 游标分页翻页。
+            pagination_limit: 端点单页上限；用于识别低于默认分页阈值的截断响应。
             **kwargs: 传给 API 的查询参数。
 
         Returns:
@@ -142,7 +150,8 @@ class TuShareClient:
             )
 
         # 如果启用自动分页翻页 (Cursor Pagination)
-        if auto_paginate and len(df) >= self.paginate_threshold:
+        pagination_threshold = pagination_limit or self.paginate_threshold
+        if auto_paginate and len(df) >= pagination_threshold:
             pages = [df]
             seen_signatures: set[tuple[int, Any, Any]] = {
                 (len(df), tuple(df.iloc[0].values), tuple(df.iloc[-1].values))

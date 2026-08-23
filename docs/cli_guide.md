@@ -114,10 +114,19 @@ make backfill SOURCE=lixinger ENDPOINT=regulatory_measures SYMBOL=600519 \
 
 其他数据源的推荐 bundle：
 
-- TuShare：`daily_market_bundle`、`fund_daily_bundle`、`hsgt_flow_bundle`、`financial_statement_bundle`、`pit_bundle`、`macro_daily_bundle`、`macro_monthly_bundle`、`metadata_bundle`。
+- TuShare：`daily_market_bundle`、`fund_daily_bundle`、`hsgt_flow_bundle`、`financial_statement_bundle`、`pit_bundle`、`macro_daily_bundle`、`macro_monthly_bundle`、`metadata_bundle`、`corporate_action_bundle`、`shareholder_event_bundle`、`research_daily_bundle`、`market_behavior_bundle`。
 - LiXinger：`market_bundle`、`industry_bundle`、`company_bundle`、`macro_daily_bundle`、`macro_monthly_bundle`；`index_fundamental` 继续作为原子任务。
 - yfinance：`fundamental_bundle`、`corporate_action_bundle`、`research_daily_bundle`、`research_event_bundle`。
 - FRED：`macro_monthly_bundle`。日频、季频和周频目前各只有一个序列，继续使用原子任务；聚合任务 `macro_indicators` 仅保留显式调用，避免重复请求。
+
+新注册的高消耗研究接口默认不进入 `make sync SOURCE=tushare`；需要时显式运行对应 bundle，或单独指定 `dc_concept_cons`：
+
+```bash
+make sync SOURCE=tushare ENDPOINT=shareholder_event_bundle
+make sync SOURCE=tushare ENDPOINT=research_daily_bundle
+make sync SOURCE=tushare ENDPOINT=market_behavior_bundle
+make sync SOURCE=tushare ENDPOINT=dc_concept_cons
+```
 
 TuShare 财报使用 `financial_statement_bundle`，展开为 `income`、`fina_indicator`、`balancesheet`、
 `cashflow` 四个报告期任务。它们按目标日前最近已完成季度末调度，并以全市场 `stock_basic` 为

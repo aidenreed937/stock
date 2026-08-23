@@ -7,7 +7,18 @@ from dataclasses import replace
 from typing import Any
 
 PARTITIONED_EVENT_TASKS: frozenset[str] = frozenset(
-    {"stk_holdertrade", "repurchase", "block_trade", "share_float", "margin_detail"}
+    {
+        "stk_holdertrade",
+        "repurchase",
+        "block_trade",
+        "share_float",
+        "margin_detail",
+        "stk_holdernumber",
+        "top10_floatholders",
+        "dividend",
+        "stk_managers",
+        "stk_surv",
+    }
 )
 
 

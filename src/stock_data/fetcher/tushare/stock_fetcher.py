@@ -9,6 +9,7 @@ from stock_core.models.market import DailyBar
 from stock_core.utils.logger import logger
 from stock_data.core.constants import EXCHANGE_START_DATES
 from stock_data.fetcher.base import BaseDataFetcher
+from stock_data.fetcher.tushare.calendar_fetcher import fetch_trade_cal_data
 from stock_data.fetcher.tushare.client import TuShareClient
 from stock_data.fetcher.tushare.financial_fetcher import fetch_report_periods
 from stock_data.fetcher.tushare.query_builder import (
@@ -18,6 +19,7 @@ from stock_data.fetcher.tushare.query_builder import (
     should_split_margin_exchanges,
 )
 from stock_data.fetcher.tushare.registry import TUSHARE_API_REGISTRY, EndpointMeta
+from stock_data.fetcher.tushare.research_fetcher import fetch_dividend_data
 
 
 class TuShareStockFetcher(BaseDataFetcher):
@@ -105,6 +107,10 @@ class TuShareStockFetcher(BaseDataFetcher):
         meta = TUSHARE_API_REGISTRY.get(
             endpoint, EndpointMeta(api_name=endpoint, description=endpoint)
         )
+        if endpoint == "dividend":
+            return fetch_dividend_data(
+                self.client, symbol, start_date, end_date, meta, extra_kwargs
+            )
         if not is_index_dailybasic_supported(endpoint, symbol):
             logger.info(f"TuShare index_dailybasic 不支持指数 [{symbol}]，自动跳过")
             return pl.DataFrame()
@@ -125,7 +131,7 @@ class TuShareStockFetcher(BaseDataFetcher):
 
         is_real_symbol = bool(symbol and (symbol != endpoint))
         if (
-            not is_real_symbol
+            (not is_real_symbol or getattr(meta, "per_symbol_windowed", False))
             and meta.frequency != "static"
             and endpoint != "trade_cal"
             and start_date != end_date
@@ -139,7 +145,19 @@ class TuShareStockFetcher(BaseDataFetcher):
         api_to_call, query_kwargs = build_tushare_query(
             meta, symbol, start_date, end_date, extra_kwargs
         )
-        pandas_df = self.client.query(api_to_call, **query_kwargs)
+        client_threshold = getattr(self.client, "paginate_threshold", 2000)
+        pagination_limit = (
+            meta.max_rows_per_request
+            if isinstance(client_threshold, int)
+            and meta.max_rows_per_request is not None
+            and meta.max_rows_per_request < client_threshold
+            else None
+        )
+        pandas_df = self.client.query(
+            api_to_call,
+            pagination_limit=pagination_limit,
+            **query_kwargs,
+        )
         return post_process_tushare_frame(pandas_df, meta, symbol)
 
     def fetch_daily_bars(self, symbol: str, start_date: date, end_date: date) -> list[DailyBar]:
@@ -175,46 +193,4 @@ class TuShareStockFetcher(BaseDataFetcher):
 
     def fetch_trade_cal(self, start_date: date, end_date: date) -> list[date]:
         """获取指定日期范围内的 A 股有效开市交易日列表（优先本地黄金表，未命中查询 API）。"""
-        try:
-            from stock_data.catalog import DataCatalog
-
-            cat = DataCatalog(data_source="tushare")
-            df = cat.load_dataset("trade_cal")
-            if not df.is_empty():
-                date_col = (
-                    "cal_date"
-                    if "cal_date" in df.columns
-                    else ("trade_date" if "trade_date" in df.columns else "")
-                )
-                if date_col:
-                    if "is_open" in df.columns:
-                        df = df.filter(pl.col("is_open").cast(pl.Int32, strict=False) == 1)
-                    raw_dates = df[date_col].to_list()
-                    dates = sorted(
-                        {
-                            d if isinstance(d, date) else date.fromisoformat(str(d))
-                            for d in raw_dates
-                            if d is not None
-                        }
-                    )
-                    if dates and dates[0] <= start_date and dates[-1] >= end_date:
-                        return [d for d in dates if start_date <= d <= end_date]
-        except Exception:
-            pass
-
-        pandas_df = self.client.query(
-            "trade_cal",
-            exchange="",
-            start_date=start_date.strftime("%Y%m%d"),
-            end_date=end_date.strftime("%Y%m%d"),
-            is_open="1",
-        )
-        if pandas_df.empty or "cal_date" not in pandas_df.columns:
-            return []
-        return sorted(
-            [
-                date(int(d[:4]), int(d[4:6]), int(d[6:8]))
-                for d in pandas_df["cal_date"].to_list()
-                if isinstance(d, str) and len(d) == 8
-            ]
-        )
+        return fetch_trade_cal_data(self.client, start_date, end_date)

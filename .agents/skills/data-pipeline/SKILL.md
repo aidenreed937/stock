@@ -104,10 +104,13 @@ make sync SOURCE=lixinger ENDPOINT=unlock_summary
 
 | 数据源 | 任务包 |
 | :--- | :--- |
-| TuShare | `daily_market_bundle`、`fund_daily_bundle`、`hsgt_flow_bundle`、`financial_statement_bundle`、`pit_bundle`、`macro_daily_bundle`、`macro_monthly_bundle`、`metadata_bundle` |
+| TuShare | `daily_market_bundle`、`fund_daily_bundle`、`hsgt_flow_bundle`、`financial_statement_bundle`、`pit_bundle`、`macro_daily_bundle`、`macro_monthly_bundle`、`metadata_bundle`、`corporate_action_bundle`、`shareholder_event_bundle`、`research_daily_bundle`、`market_behavior_bundle` |
 | LiXinger | `market_bundle`、`industry_bundle`、`company_bundle`、`macro_daily_bundle`、`macro_monthly_bundle` |
 | yfinance | `fundamental_bundle`、`corporate_action_bundle`、`research_daily_bundle`、`research_event_bundle` |
 | FRED | `macro_monthly_bundle` |
+
+TuShare 新增研究接口默认不进入无端点的全源同步；按需显式运行研究 bundle，题材成分接口使用原子任务
+`dc_concept_cons`，避免高权限、大体量数据在日常同步中被意外触发。
 
 仍保留的历史 bundle 别名仅用于兼容其他数据源的已有命令，不作为新配置的推荐名称；LiXinger 的 `macro_bundle`、`index_bundle` 已移除。bundle 不合并子任务的数据集、水位或失败状态。
 

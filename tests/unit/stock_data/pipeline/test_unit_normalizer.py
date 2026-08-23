@@ -129,6 +129,14 @@ def test_unit_normalizer_tushare_daily_basic() -> None:
     assert normalized["circ_mv"][0] == 4000000000.0
 
 
+def test_unit_normalizer_tushare_dividend_base_share() -> None:
+    raw_df = pl.DataFrame({"ts_code": ["600519.SH"], "base_share": [12345.0]})
+
+    normalized = UnitNormalizer("tushare", "dividend").normalize_units(raw_df)
+
+    assert normalized["base_share"][0] == 123450000.0
+
+
 def test_unit_normalizer_tushare_limit_endpoints_preserves_native_units() -> None:
     raw_df = pl.DataFrame(
         {

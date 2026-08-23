@@ -78,6 +78,10 @@ UNIT_CONVERSION_RULES: dict[str, dict[str, dict[str, tuple[str, float]]]] = {
             "weekly_hold": ("weekly_hold", 10000.0),
             "weekly_trade": ("weekly_trade", 10000.0),
         },
+        "dividend": {
+            # TuShare dividend 的 base_share 单位为万股。
+            "base_share": ("base_share", 10000.0),
+        },
     }
 }
 

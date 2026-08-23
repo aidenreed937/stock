@@ -52,26 +52,27 @@ def _build_period_query(
     start_date: date,
     end_date: date,
     query_kwargs: dict[str, Any],
+    query_mode: str | None = None,
 ) -> bool:
     """按端点元数据写入日期、月份或季度查询参数。"""
-    query_mode = meta.query_mode
-    if query_mode == "month":
+    active_query_mode = query_mode or meta.query_mode
+    if active_query_mode == "month":
         if start_date.month == end_date.month and start_date.year == end_date.year:
-            query_kwargs["m"] = _period_value(start_date, query_mode)
+            query_kwargs["m"] = _period_value(start_date, active_query_mode)
         else:
-            query_kwargs["start_m"] = _period_value(start_date, query_mode)
-            query_kwargs["end_m"] = _period_value(end_date, query_mode)
+            query_kwargs["start_m"] = _period_value(start_date, active_query_mode)
+            query_kwargs["end_m"] = _period_value(end_date, active_query_mode)
         return True
-    if query_mode == "quarter":
+    if active_query_mode == "quarter":
         start_period = (start_date.year, (start_date.month - 1) // 3)
         end_period = (end_date.year, (end_date.month - 1) // 3)
         if start_period == end_period:
-            query_kwargs["q"] = _period_value(start_date, query_mode)
+            query_kwargs["q"] = _period_value(start_date, active_query_mode)
         else:
-            query_kwargs["start_q"] = _period_value(start_date, query_mode)
-            query_kwargs["end_q"] = _period_value(end_date, query_mode)
+            query_kwargs["start_q"] = _period_value(start_date, active_query_mode)
+            query_kwargs["end_q"] = _period_value(end_date, active_query_mode)
         return True
-    if query_mode == "date":
+    if active_query_mode == "date":
         # 月频日期接口的统计期间以月初表示时，查询整月，避免只请求月初而漏掉月内发布日期。
         if meta.frequency == "monthly" and start_date.day == 1 and end_date.day == 1:
             query_kwargs["start_date"] = start_date.strftime("%Y%m%d")
@@ -82,29 +83,29 @@ def _build_period_query(
             query_kwargs["start_date"] = start_date.strftime("%Y%m%d")
             query_kwargs["end_date"] = end_date.strftime("%Y%m%d")
         return True
-    if query_mode == "end_date":
+    if active_query_mode == "end_date":
         query_kwargs["end_date"] = end_date.strftime("%Y%m%d")
         return True
-    if query_mode == "period":
+    if active_query_mode == "period":
         if start_date != end_date:
             raise ValueError("TuShare period 接口必须按单个报告期请求")
         query_kwargs["period"] = start_date.strftime("%Y%m%d")
         return True
-    if query_mode in {"ann_date", "float_date"}:
+    if active_query_mode in {"ann_date", "float_date"}:
         if start_date == end_date:
-            query_kwargs[query_mode] = start_date.strftime("%Y%m%d")
+            query_kwargs[active_query_mode] = start_date.strftime("%Y%m%d")
         else:
             query_kwargs["start_date"] = start_date.strftime("%Y%m%d")
             query_kwargs["end_date"] = end_date.strftime("%Y%m%d")
         return True
-    if query_mode == "trade_date":
+    if active_query_mode == "trade_date":
         if start_date == end_date:
             query_kwargs["trade_date"] = start_date.strftime("%Y%m%d")
         else:
             query_kwargs["start_date"] = start_date.strftime("%Y%m%d")
             query_kwargs["end_date"] = end_date.strftime("%Y%m%d")
         return True
-    raise ValueError(f"不支持的 TuShare query_mode: {query_mode}")
+    raise ValueError(f"不支持的 TuShare query_mode: {active_query_mode}")
 
 
 def build_tushare_query(
@@ -129,6 +130,16 @@ def build_tushare_query(
         for key in ("ts_code", "start_date", "end_date", "trade_date", "ann_date", "report_date"):
             query_kwargs.pop(key, None)
         query_kwargs["period"] = end_str
+        if meta.request_fields:
+            query_kwargs.setdefault("fields", meta.request_fields)
+        return endpoint, query_kwargs
+
+    if meta.query_mode == "symbol":
+        if is_real_symbol:
+            query_kwargs[symbol_param] = symbol
+        symbol_query_mode = getattr(meta, "symbol_query_mode", None)
+        if symbol_query_mode and start_date == end_date:
+            _build_period_query(meta, start_date, end_date, query_kwargs, symbol_query_mode)
         if meta.request_fields:
             query_kwargs.setdefault("fields", meta.request_fields)
         return endpoint, query_kwargs
@@ -164,7 +175,11 @@ def build_tushare_query(
             _build_period_query(meta, start_date, end_date, query_kwargs)
     elif is_real_symbol:
         query_kwargs[symbol_param] = symbol
-        query_kwargs["start_date"], query_kwargs["end_date"] = start_str, end_str
+        symbol_query_mode = getattr(meta, "symbol_query_mode", None)
+        if symbol_query_mode:
+            _build_period_query(meta, start_date, end_date, query_kwargs, symbol_query_mode)
+        else:
+            query_kwargs["start_date"], query_kwargs["end_date"] = start_str, end_str
     elif meta.query_mode != "trade_date" and meta.query_mode in {
         "date",
         "end_date",

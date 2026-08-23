@@ -118,6 +118,40 @@ def test_tushare_stock_fetcher_non_symbol_endpoint_does_not_inject_symbol() -> N
     assert "symbol" not in df.columns
 
 
+def test_tushare_stock_fetcher_windows_symbol_theme_constituents_by_day() -> None:
+    mock_client = MagicMock()
+    mock_client.query.side_effect = [
+        pd.DataFrame(
+            {
+                "ts_code": ["600519.SH"],
+                "trade_date": ["20260813"],
+                "theme_code": ["000001.DC"],
+            }
+        ),
+        pd.DataFrame(
+            {
+                "ts_code": ["600519.SH"],
+                "trade_date": ["20260814"],
+                "theme_code": ["000001.DC"],
+            }
+        ),
+    ]
+    fetcher = TuShareStockFetcher(client=mock_client)
+
+    df = fetcher.fetch_daily_bars_df(
+        "600519.SH",
+        date(2026, 8, 13),
+        date(2026, 8, 14),
+        endpoint="dc_concept_cons",
+    )
+
+    assert len(df) == 2
+    assert [call.kwargs["trade_date"] for call in mock_client.query.call_args_list] == [
+        "20260813",
+        "20260814",
+    ]
+
+
 def test_tushare_stock_fetcher_trade_cal_local_catalog(monkeypatch: Any) -> None:
     mock_df = pl.DataFrame(
         {

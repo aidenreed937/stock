@@ -11,7 +11,10 @@ class EndpointMeta:
     description: str
     market: str = "CN"
     frequency: str = "daily"  # daily, monthly, quarterly, event
-    query_mode: str = "trade_date"  # trade_date, ann_date, float_date, date, month, quarter, period
+    query_mode: str = (
+        "trade_date"  # trade_date, ann_date, float_date, symbol, date, month, quarter, period
+    )
+    symbol_query_mode: str | None = None
     group: str = "market_data"
     primary_keys: list[str] = field(default_factory=list)
     nullable_primary_keys: list[str] = field(default_factory=list)
@@ -24,6 +27,7 @@ class EndpointMeta:
     units: dict[str, str] = field(default_factory=dict)
     max_range_days: int | None = None
     request_window_days: int | None = None
+    per_symbol_windowed: bool = False
     pagination_required: bool = True
     max_rows_per_request: int | None = None
     quality_profile: str = "generic"

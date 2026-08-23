@@ -65,6 +65,13 @@ PER_SYMBOL_DATASETS: frozenset[str] = frozenset(
         "forecast",
         "express",
         "hk_hold",
+        *("cyq_perf", "cyq_chips"),
+        "stk_holdernumber",
+        "top10_floatholders",
+        "dividend",
+        "stk_managers",
+        "stk_surv",
+        "dc_concept_cons",
     }
 )
 
@@ -578,15 +585,7 @@ def _derive_task_spec(provider_name: str, requested: str, meta: Any) -> TaskSpec
     elif group == "fund_share" or requested == "fund_share":
         fetch_mode = "per_symbol"
         required_pool = "fund_basic"
-    elif requested in (
-        "index_daily",
-        "index_dailybasic",
-        "index_weight",
-        "global_index_daily",
-        "fund_daily",
-        "fund_adj",
-        "etf_share_size",
-    ):
+    elif requested in PER_SYMBOL_DATASETS:
         fetch_mode = "per_symbol"
     else:
         fetch_mode = getattr(meta, "fetch_mode", "per_day")
@@ -743,6 +742,7 @@ def list_available_tasks(provider: str) -> list[str]:
         if (
             not _registry_helpers.is_tushare_internal_api(name)
             and name not in _DISABLED_TASKS
+            and (prov, name) not in _EXPLICIT_ONLY_TASKS
             and name not in alias_names
             and name not in tasks
             and "/" not in name

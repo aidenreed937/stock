@@ -54,6 +54,30 @@ def test_tushare_registry() -> None:
     assert TUSHARE_API_REGISTRY["pledge_stat"].max_rows_per_request == 1000
     assert TUSHARE_API_REGISTRY["pledge_stat"].query_mode == "end_date"
 
+    for endpoint in (
+        "stk_holdernumber",
+        "top10_floatholders",
+        "dividend",
+        "cyq_perf",
+        "cyq_chips",
+        "top_list",
+        "top_inst",
+        "dc_concept",
+        "dc_concept_cons",
+        "stk_managers",
+        "stk_surv",
+    ):
+        assert endpoint in TUSHARE_API_REGISTRY
+
+    assert TUSHARE_API_REGISTRY["stk_holdernumber"].primary_keys == [
+        "ts_code",
+        "ann_date",
+        "end_date",
+    ]
+    assert TUSHARE_API_REGISTRY["dividend"].query_mode == "symbol"
+    assert TUSHARE_API_REGISTRY["cyq_chips"].max_rows_per_request == 6000
+    assert TUSHARE_API_REGISTRY["dc_concept"].request_window_days == 1
+
 
 def test_tushare_option_inputs_and_stopped_account_endpoint_are_registered() -> None:
     opt_basic = TUSHARE_API_REGISTRY["opt_basic"]
@@ -162,6 +186,89 @@ def test_tushare_share_float_queries_by_unlock_date() -> None:
     }
 
 
+@pytest.mark.parametrize(
+    ("endpoint", "expected_fields"),
+    [
+        ("stk_holdernumber", "ts_code,ann_date,end_date,holder_num"),
+        (
+            "top10_floatholders",
+            "ts_code,ann_date,end_date,holder_name,hold_amount,hold_ratio,"
+            "hold_float_ratio,hold_change,holder_type",
+        ),
+        (
+            "cyq_perf",
+            "ts_code,trade_date,his_low,his_high,cost_5pct,cost_15pct,cost_50pct,"
+            "cost_85pct,cost_95pct,weight_avg,winner_rate",
+        ),
+    ],
+)
+def test_tushare_symbol_research_query_uses_symbol_and_date_range(
+    endpoint: str, expected_fields: str
+) -> None:
+    api_name, query_kwargs = build_tushare_query(
+        TUSHARE_API_REGISTRY[endpoint],
+        "600519.SH",
+        date(2026, 1, 1),
+        date(2026, 8, 14),
+        {},
+    )
+
+    assert api_name == endpoint
+    assert query_kwargs == {
+        "ts_code": "600519.SH",
+        "start_date": "20260101",
+        "end_date": "20260814",
+        "fields": expected_fields,
+    }
+
+
+def test_tushare_dividend_query_only_uses_required_symbol_filter() -> None:
+    api_name, query_kwargs = build_tushare_query(
+        TUSHARE_API_REGISTRY["dividend"],
+        "600519.SH",
+        date(2026, 1, 1),
+        date(2026, 8, 14),
+        {},
+    )
+
+    assert api_name == "dividend"
+    assert query_kwargs["ts_code"] == "600519.SH"
+    assert "start_date" not in query_kwargs
+    assert "end_date" not in query_kwargs
+    assert query_kwargs["fields"].startswith("ts_code,end_date,ann_date,div_proc")
+
+
+def test_tushare_daily_research_query_uses_single_trade_date() -> None:
+    api_name, query_kwargs = build_tushare_query(
+        TUSHARE_API_REGISTRY["top_list"],
+        "top_list",
+        date(2026, 8, 14),
+        date(2026, 8, 14),
+        {},
+    )
+
+    assert api_name == "top_list"
+    assert query_kwargs["trade_date"] == "20260814"
+    assert "start_date" not in query_kwargs
+    assert "end_date" not in query_kwargs
+
+
+def test_tushare_theme_cons_query_uses_trade_date_for_symbol_filter() -> None:
+    api_name, query_kwargs = build_tushare_query(
+        TUSHARE_API_REGISTRY["dc_concept_cons"],
+        "600519.SH",
+        date(2026, 8, 14),
+        date(2026, 8, 14),
+        {},
+    )
+
+    assert api_name == "dc_concept_cons"
+    assert query_kwargs["ts_code"] == "600519.SH"
+    assert query_kwargs["trade_date"] == "20260814"
+    assert "start_date" not in query_kwargs
+    assert "end_date" not in query_kwargs
+
+
 def test_tushare_fetcher_financial_statement_uses_all_market_periods() -> None:
     fetcher = TuShareDataFetcher(token="test_token")
     fetcher.client._pro_api = MagicMock()
@@ -266,6 +373,89 @@ def test_tushare_fetcher_quarterly_single_date_keeps_late_announcement() -> None
 
     assert not result.is_empty()
     fetcher.client._pro_api.query.assert_called_once_with("income_vip", period="20260331")
+
+
+def test_tushare_dividend_short_range_queries_announcement_date() -> None:
+    fetcher = TuShareDataFetcher(token="test_token")
+    fetcher.client.query = MagicMock(
+        return_value=pd.DataFrame(
+            {
+                "ts_code": ["600519.SH"],
+                "ann_date": ["20260814"],
+                "end_date": ["20251231"],
+                "div_proc": ["实施"],
+            }
+        )
+    )
+
+    result = fetcher.fetch_daily_bars_df(
+        "600519.SH",
+        date(2026, 8, 14),
+        date(2026, 8, 14),
+        endpoint="dividend",
+    )
+
+    assert not result.is_empty()
+    assert fetcher.client.query.call_count == 2
+    query_kwargs = [item.kwargs for item in fetcher.client.query.call_args_list]
+    assert {kwargs["ts_code"] for kwargs in query_kwargs} == {"600519.SH"}
+    assert {kwargs["ann_date"] for kwargs in query_kwargs if "ann_date" in kwargs} == {"20260814"}
+    assert {kwargs["imp_ann_date"] for kwargs in query_kwargs if "imp_ann_date" in kwargs} == {
+        "20260814"
+    }
+    assert all("start_date" not in kwargs and "end_date" not in kwargs for kwargs in query_kwargs)
+
+
+def test_tushare_dividend_long_range_uses_one_full_history_query() -> None:
+    fetcher = TuShareDataFetcher(token="test_token")
+    fetcher.client.query = MagicMock(return_value=pd.DataFrame())
+
+    result = fetcher.fetch_daily_bars_df(
+        "600519.SH",
+        date(2014, 8, 1),
+        date(2026, 8, 14),
+        endpoint="dividend",
+    )
+
+    assert result.is_empty()
+    fetcher.client.query.assert_called_once()
+    kwargs = fetcher.client.query.call_args.kwargs
+    assert kwargs["ts_code"] == "600519.SH"
+    assert "ann_date" not in kwargs
+    assert "start_date" not in kwargs
+
+
+def test_tushare_stk_surv_uses_endpoint_page_limit_for_pagination() -> None:
+    fetcher = TuShareDataFetcher(token="test_token")
+    first_page = pd.DataFrame(
+        {
+            "ts_code": ["600519.SH"] * 400,
+            "surv_date": [f"202608{i:02d}" for i in range(1, 401)],
+            "rece_org": [f"org-{i}" for i in range(400)],
+            "fund_visitors": [f"visitor-{i}" for i in range(400)],
+        }
+    )
+    second_page = pd.DataFrame(
+        {
+            "ts_code": ["600519.SH"],
+            "surv_date": ["20260101"],
+            "rece_org": ["org-400"],
+            "fund_visitors": ["visitor-400"],
+        }
+    )
+    fetcher.client._pro_api = MagicMock()
+    fetcher.client._pro_api.query.side_effect = [first_page, second_page]
+
+    result = fetcher.fetch_daily_bars_df(
+        "600519.SH",
+        date(2026, 8, 14),
+        date(2026, 8, 14),
+        endpoint="stk_surv",
+    )
+
+    assert len(result) == 401
+    assert fetcher.client._pro_api.query.call_args_list[1].kwargs["limit"] == 400
+    assert fetcher.client._pro_api.query.call_args_list[1].kwargs["offset"] == 400
 
 
 def test_tushare_factory_uses_bar_cleaner_for_bar_profiles() -> None:

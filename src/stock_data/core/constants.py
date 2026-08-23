@@ -10,6 +10,10 @@ ENDPOINT_START_DATE_OVERRIDES: Final[dict[str, str]] = {
     "margin_detail": "2010-03-31",
     "fund_daily": "1998-04-07",
     "sw_daily": "2014-01-02",
+    "cyq_perf": "2018-01-01",
+    "cyq_chips": "2018-01-01",
+    "dc_concept": "2026-02-03",
+    "dc_concept_cons": "2026-02-03",
 }
 
 # 交易所特定业务上线首日表：精准拦截早于交易所上线时间的无用 API 请求

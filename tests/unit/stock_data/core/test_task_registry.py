@@ -52,6 +52,18 @@ def test_is_per_symbol_task_rules() -> None:
     assert not is_per_symbol_task("tushare", "limit_list_d")
     assert not is_per_symbol_task("tushare", "hk_hold")
 
+    for endpoint in (
+        "stk_holdernumber",
+        "top10_floatholders",
+        "dividend",
+        "cyq_perf",
+        "cyq_chips",
+        "stk_managers",
+        "stk_surv",
+        "dc_concept_cons",
+    ):
+        assert is_per_symbol_task("tushare", endpoint)
+
 
 def test_tushare_financial_statements_use_vip_period_routes() -> None:
     for statement in ("income", "fina_indicator", "balancesheet", "cashflow"):
@@ -73,8 +85,22 @@ def test_list_available_tasks() -> None:
     assert "income" in tushare_tasks
     assert "income_vip" not in tushare_tasks
     assert "bak_daily" not in tushare_tasks
-    assert "pledge_detail" in tushare_tasks
-    assert "pledge_stat" in tushare_tasks
+    assert "pledge_detail" not in tushare_tasks
+    for endpoint in (
+        "stk_holdernumber",
+        "top10_floatholders",
+        "dividend",
+        "cyq_perf",
+        "cyq_chips",
+        "top_list",
+        "top_inst",
+        "dc_concept",
+        "dc_concept_cons",
+        "stk_managers",
+        "stk_surv",
+    ):
+        assert endpoint not in tushare_tasks
+    assert "pledge_stat" not in tushare_tasks
 
     lixinger_tasks = list_available_tasks("lixinger")
     assert "sw_2021_fundamental" in lixinger_tasks
@@ -113,6 +139,31 @@ def test_task_spec_properties() -> None:
     assert limit_list.dataset == "limit_list_d"
     assert limit_list.quality_profile == "event"
     assert not limit_list.is_single_sync
+
+    dividend = resolve_task("tushare", "dividend")
+    assert dividend.fetch_mode == "per_symbol"
+    assert dividend.frequency == "event"
+    assert dividend.partitioned is True
+    assert dividend.is_single_sync is False
+    assert dividend.query_mode == "symbol"
+
+    top_list = resolve_task("tushare", "top_list")
+    assert top_list.fetch_mode == "per_day"
+    assert top_list.frequency == "daily"
+    assert top_list.request_window_days == 1
+
+    theme_cons = resolve_task("tushare", "dc_concept_cons")
+    assert theme_cons.fetch_mode == "per_symbol"
+    assert theme_cons.partitioned is True
+    assert theme_cons.request_window_days == 1
+
+
+def test_tushare_research_tasks_are_available_with_source_dates() -> None:
+    from stock_data.core.constants import ENDPOINT_START_DATE_OVERRIDES
+
+    assert ENDPOINT_START_DATE_OVERRIDES["cyq_perf"] == "2018-01-01"
+    assert ENDPOINT_START_DATE_OVERRIDES["cyq_chips"] == "2018-01-01"
+    assert ENDPOINT_START_DATE_OVERRIDES["dc_concept"] == "2026-02-03"
 
 
 def test_yfinance_macro_task_uses_macro_quality_profile() -> None:
@@ -191,6 +242,9 @@ def test_tushare_task_bundles() -> None:
         "macro_monthly_bundle",
         "metadata_bundle",
         "corporate_action_bundle",
+        "shareholder_event_bundle",
+        "research_daily_bundle",
+        "market_behavior_bundle",
         "pledge_bundle",
     ]
 
@@ -222,6 +276,22 @@ def test_tushare_task_bundles() -> None:
         "repurchase",
         "block_trade",
         "share_float",
+    )
+    assert resolve_bundle("tushare", "shareholder_event_bundle").tasks == (
+        "stk_holdernumber",
+        "top10_floatholders",
+        "dividend",
+        "stk_managers",
+        "stk_surv",
+    )
+    assert resolve_bundle("tushare", "research_daily_bundle").tasks == (
+        "cyq_perf",
+        "cyq_chips",
+    )
+    assert resolve_bundle("tushare", "market_behavior_bundle").tasks == (
+        "top_list",
+        "top_inst",
+        "dc_concept",
     )
 
     monthly = resolve_bundle("tushare", "macro_monthly_bundle")

@@ -2,6 +2,7 @@
 
 from stock_data.fetcher.tushare.endpoints.finance import FINANCE_ENDPOINTS
 from stock_data.fetcher.tushare.endpoints.market import MARKET_ENDPOINTS
+from stock_data.fetcher.tushare.endpoints.research import RESEARCH_ENDPOINTS, RESEARCH_PROFILES
 from stock_data.fetcher.tushare.registry_meta import EndpointMeta
 
 __all__ = ["TUSHARE_API_REGISTRY", "TUSHARE_TASK_REGISTRY", "EndpointMeta"]
@@ -10,6 +11,7 @@ __all__ = ["TUSHARE_API_REGISTRY", "TUSHARE_TASK_REGISTRY", "EndpointMeta"]
 TUSHARE_API_REGISTRY: dict[str, EndpointMeta] = {
     **MARKET_ENDPOINTS,
     **FINANCE_ENDPOINTS,
+    **RESEARCH_ENDPOINTS,
 }
 
 # 公开项目任务名与 TuShare API 名称分离；采集器只通过 api_name 发起请求。
@@ -27,6 +29,17 @@ TUSHARE_TASK_REGISTRY: dict[str, EndpointMeta] = {
     "share_float": TUSHARE_API_REGISTRY["share_float"],
     "pledge_detail": TUSHARE_API_REGISTRY["pledge_detail"],
     "pledge_stat": TUSHARE_API_REGISTRY["pledge_stat"],
+    "stk_holdernumber": TUSHARE_API_REGISTRY["stk_holdernumber"],
+    "top10_floatholders": TUSHARE_API_REGISTRY["top10_floatholders"],
+    "dividend": TUSHARE_API_REGISTRY["dividend"],
+    "cyq_perf": TUSHARE_API_REGISTRY["cyq_perf"],
+    "cyq_chips": TUSHARE_API_REGISTRY["cyq_chips"],
+    "top_list": TUSHARE_API_REGISTRY["top_list"],
+    "top_inst": TUSHARE_API_REGISTRY["top_inst"],
+    "dc_concept": TUSHARE_API_REGISTRY["dc_concept"],
+    "dc_concept_cons": TUSHARE_API_REGISTRY["dc_concept_cons"],
+    "stk_managers": TUSHARE_API_REGISTRY["stk_managers"],
+    "stk_surv": TUSHARE_API_REGISTRY["stk_surv"],
     "income": TUSHARE_API_REGISTRY["income"],
     "fina_indicator": TUSHARE_API_REGISTRY["fina_indicator"],
     "balancesheet": TUSHARE_API_REGISTRY["balancesheet"],
@@ -344,6 +357,7 @@ _TUSHARE_PROFILES: dict[str, tuple[list[str], dict[str, str], str]] = {
     "index_member": (["index_code", "con_code", "in_date"], {}, "constituent_weight"),
     "index_classify": (["index_code", "industry_name"], {}, "static"),
     "trade_cal": (["exchange", "cal_date", "is_open"], {}, "static"),
+    **RESEARCH_PROFILES,
 }
 
 for _endpoint, (_required, _units, _profile) in _TUSHARE_PROFILES.items():

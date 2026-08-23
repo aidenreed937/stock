@@ -39,6 +39,21 @@ def test_tushare_client_query_pagination() -> None:
     assert df["ts_code"].to_list() == ["A", "B", "C"]
 
 
+def test_tushare_client_query_paginates_with_endpoint_limit() -> None:
+    client = TuShareClient(token="mock_token")
+    mock_pro = MagicMock()
+    mock_pro.query.side_effect = [
+        pd.DataFrame({"ts_code": ["A", "B"]}),
+        pd.DataFrame({"ts_code": ["C"]}),
+    ]
+    client._pro_api = mock_pro
+
+    df = client.query("stk_surv", pagination_limit=2)
+
+    assert len(df) == 3
+    assert mock_pro.query.call_args_list[1].kwargs == {"limit": 2, "offset": 2}
+
+
 def test_tushare_client_query_rate_limit_retry(monkeypatch) -> None:
     client = TuShareClient(token="mock_token")
     mock_pro = MagicMock()
