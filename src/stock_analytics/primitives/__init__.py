@@ -59,6 +59,11 @@ from stock_analytics.primitives.neutralization import (
     cross_sectional_neutralize,
     cross_sectional_orthogonalize,
 )
+from stock_analytics.primitives.rotation import (
+    calculate_momentum_acceleration,
+    calculate_rps,
+    calculate_weighted_momentum,
+)
 from stock_analytics.primitives.valuation import (
     calculate_dividend_spread,
     calculate_equity_risk_premium,
@@ -97,9 +102,11 @@ __all__ = [
     "calculate_main_moneyflow_factors",
     "calculate_margin_factors",
     "calculate_momentum",
+    "calculate_momentum_acceleration",
     "calculate_parkinson_volatility",
     "calculate_realized_volatility",
     "calculate_rolling_percentile",
+    "calculate_rps",
     "calculate_rsi",
     "calculate_securitization_ratio",
     "calculate_shadow_ratio",
@@ -107,6 +114,7 @@ __all__ = [
     "calculate_sma",
     "calculate_turnover_factors",
     "calculate_volume_surprise",
+    "calculate_weighted_momentum",
     "calculate_yield_curve_slope",
     "cross_sectional_neutralize",
     "cross_sectional_ols",
