@@ -213,8 +213,8 @@ def _business_date_expr(column: str) -> pl.Expr:
         )
     if column == "quarter":
         text = pl.col(column).cast(pl.Utf8, strict=False)
-        year = text.str.extract(r"^(\\d{4})Q[1-4]$", 1).cast(pl.Int32, strict=False)
-        quarter = text.str.extract(r"^\\d{4}Q([1-4])$", 1).cast(pl.Int32, strict=False)
+        year = text.str.extract(r"^(\d{4})Q[1-4]$", 1).cast(pl.Int32, strict=False)
+        quarter = text.str.extract(r"^(\d{4})Q([1-4])$", 2).cast(pl.Int32, strict=False)
         return pl.date(year, (quarter - 1) * 3 + 1, 1)
     from stock_data.pipeline.cleaner.date_utils import parse_mixed_date
 
