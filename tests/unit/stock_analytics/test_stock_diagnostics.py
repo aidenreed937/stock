@@ -18,6 +18,8 @@ from stock_analytics.pipelines.stock_diagnostics import (
 )
 from stock_analytics.pipelines.stock_diagnostics.sources import (
     compute_percentile,
+    load_10y_treasury_yield,
+    load_screen_status,
     resolve_symbol_meta,
 )
 
@@ -34,6 +36,43 @@ def test_compute_percentile() -> None:
     assert p_max == 100.0
 
     assert compute_percentile(pl.Series("empty", []), 10.0) is None
+
+
+def test_missing_treasury_data_does_not_invent_a_rate(
+    monkeypatch: pytest.MonkeyPatch, tmp_path: Path
+) -> None:
+    class _MissingCatalog:
+        def __init__(self, *_args: object, **_kwargs: object) -> None:
+            pass
+
+        def load_dataset(self, dataset: str) -> pl.DataFrame:
+            raise RuntimeError(f"missing {dataset}")
+
+    from stock_analytics.pipelines.stock_diagnostics import sources
+
+    monkeypatch.setattr(sources, "DataCatalog", _MissingCatalog)
+
+    assert load_10y_treasury_yield(tmp_path) is None
+
+
+def test_corrupt_screen_snapshot_is_unscreened(
+    monkeypatch: pytest.MonkeyPatch, tmp_path: Path
+) -> None:
+    snapshot_dir = tmp_path / "data/analytics/stock_screen/latest"
+    snapshot_dir.mkdir(parents=True)
+    (snapshot_dir / "excluded.csv").write_text("symbol\n600519.SH\n", encoding="utf-8")
+    monkeypatch.chdir(tmp_path)
+    from stock_analytics.pipelines.stock_diagnostics import sources
+
+    def _raise_read_csv(_path: Path) -> pl.DataFrame:
+        raise RuntimeError("corrupt snapshot")
+
+    monkeypatch.setattr(sources.pl, "read_csv", _raise_read_csv)
+
+    result = load_screen_status("600519.SH")
+
+    assert result.status == "unscreened"
+    assert result.reasons == ["排雷快照读取失败: excluded.csv"]
 
 
 def test_resolve_symbol_meta_with_mock(monkeypatch: pytest.MonkeyPatch) -> None:
@@ -204,6 +243,7 @@ def test_run_stock_diagnostics_mock(monkeypatch: pytest.MonkeyPatch, tmp_path: P
     from stock_analytics.pipelines.stock_diagnostics import pipeline
 
     monkeypatch.setattr(pipeline, "DataCatalog", _MockDataCatalog)
+    monkeypatch.setattr(pipeline, "load_10y_treasury_yield", lambda _storage_dir: 1.68)
 
     result = run_stock_diagnostics("600519", target_date=date(2026, 8, 20))
     assert result.symbol == "600519.SH"

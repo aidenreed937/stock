@@ -79,7 +79,7 @@ def load_10y_treasury_yield(storage_dir: Path | str | None = None) -> float | No
                 return round(f_val * 100.0 if f_val < 0.2 else f_val, 2)
     except Exception as exc:
         logger.warning(f"读取国债收益率失败: {exc}")
-    return 1.68  # 稳健兜底默认基准利率
+    return None
 
 
 def load_capital_flow(
@@ -220,37 +220,46 @@ def load_screen_status(symbol: str) -> ScreenSnapshot:
 
     excluded_path = screen_dir / "excluded.csv"
     if excluded_path.exists():
-        try:
-            df = pl.read_csv(excluded_path)
-            if "symbol" in df.columns:
-                matched = df.filter(pl.col("symbol").str.contains(clean_sym))
-                if not matched.is_empty():
-                    reasons = matched["reasons"].to_list() if "reasons" in matched.columns else []
-                    return ScreenSnapshot(status="excluded", reasons=[str(r) for r in reasons])
-        except Exception:
-            pass
+        df = _read_screen_snapshot(excluded_path)
+        if df is None:
+            return _unscreened_snapshot(excluded_path)
+        if "symbol" in df.columns:
+            matched = df.filter(pl.col("symbol").str.contains(clean_sym))
+            if not matched.is_empty():
+                reasons = matched["reasons"].to_list() if "reasons" in matched.columns else []
+                return ScreenSnapshot(status="excluded", reasons=[str(r) for r in reasons])
 
     warned_path = screen_dir / "warned.csv"
     if warned_path.exists():
-        try:
-            df = pl.read_csv(warned_path)
-            if "symbol" in df.columns:
-                matched = df.filter(pl.col("symbol").str.contains(clean_sym))
-                if not matched.is_empty():
-                    reasons = matched["reasons"].to_list() if "reasons" in matched.columns else []
-                    return ScreenSnapshot(status="warned", reasons=[str(r) for r in reasons])
-        except Exception:
-            pass
+        df = _read_screen_snapshot(warned_path)
+        if df is None:
+            return _unscreened_snapshot(warned_path)
+        if "symbol" in df.columns:
+            matched = df.filter(pl.col("symbol").str.contains(clean_sym))
+            if not matched.is_empty():
+                reasons = matched["reasons"].to_list() if "reasons" in matched.columns else []
+                return ScreenSnapshot(status="warned", reasons=[str(r) for r in reasons])
 
     passed_path = screen_dir / "passed.csv"
     if passed_path.exists():
-        try:
-            df = pl.read_csv(passed_path)
-            if "symbol" in df.columns:
-                matched = df.filter(pl.col("symbol").str.contains(clean_sym))
-                if not matched.is_empty():
-                    return ScreenSnapshot(status="passed", reasons=[])
-        except Exception:
-            pass
+        df = _read_screen_snapshot(passed_path)
+        if df is None:
+            return _unscreened_snapshot(passed_path)
+        if "symbol" in df.columns:
+            matched = df.filter(pl.col("symbol").str.contains(clean_sym))
+            if not matched.is_empty():
+                return ScreenSnapshot(status="passed", reasons=[])
 
     return ScreenSnapshot(status="passed", reasons=[])
+
+
+def _read_screen_snapshot(path: Path) -> pl.DataFrame | None:
+    try:
+        return pl.read_csv(path)
+    except Exception as exc:
+        logger.warning(f"读取排雷快照失败 [{path}]: {exc}")
+        return None
+
+
+def _unscreened_snapshot(path: Path) -> ScreenSnapshot:
+    return ScreenSnapshot(status="unscreened", reasons=[f"排雷快照读取失败: {path.name}"])
