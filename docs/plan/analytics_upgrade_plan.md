@@ -216,26 +216,32 @@ y 因子被以下联合回归剥离残差：
 ## 模块五（P2）：统一 metrics/features 双轨调度架构
 
 > 目标：消除双轨心智负担，明确边界，提供统一入口；**不破坏既有实现**（纯新增门面 + 文档）。
+> 状态：✅ 已落地（Phase 5）。
 
-### 5a. 定位文档（`docs/architecture/` 新增一节）
-- **metrics**：多实体（MARKET/STOCK/INDUSTRY/…）时序指标体系 —— `MetricRegistry`(67 指标, 9 Domain) + `MetricEngine.compute` 批量调度 + `load_metric_dataset` 统一加载，产出 `MetricResult`。
-- **features**：个股截面特征库 —— `FeatureRegistry`/`FeatureSpec` 元数据 + `FactorEngine` 计算 + `FeatureStore` 物化宽表。
-- 两者不是同一层级的"重复实现"，而是**粒度/语义分工**：指标=时序状态，特征=截面暴露；`marts/market_temperature.py` 是既有整合示范（唯一同时使用 MetricEngine + FeatureStore 的构建入口）。
+### 5a. 定位文档
+- **metrics**：多实体（MARKET/STOCK/INDUSTRY/DERIVATIVES/…）时序指标体系 —— `MetricRegistry`(67 指标, 9 Domain) + `MetricEngine.compute` 批量调度 + `load_metric_dataset` 统一加载，产出 `MetricResult`。
+- **features**：个股截面特征库 —— `FeatureRegistry`/`FeatureSpec` 元数据 + `FactorEngine` 计算 + `FeatureStore` 物化宽表（29 个内置特征）。
+- 两者不是同一层级的"重复实现"，而是**粒度/语义分工**：指标=多实体时序状态，特征=截面暴露；`marts/market_temperature.py` 是既有整合示范（唯一同时使用 MetricEngine + FeatureStore 的构建入口）。
 
 ### 5b. 统一顶层门面 `src/stock_analytics/api.py`（新增，纯门面不改动现有模块）
 | 函数 | 说明 |
 | :--- | :--- |
-| `compute_metrics(metric_ids, context) -> dict[str, MetricResult]` | 封装 `MetricEngine` |
-| `compute_features(feature_ids, ...) -> pl.DataFrame` | 封装 `FactorEngine` / 特征构建 |
-| `list_metrics() / list_features()` | 统一目录（`MetricRegistry` / `FeatureRegistry`） |
-| `AnalyticsContext` | 统一 `target_date/start/end` 与缓存语义的轻量门面上下文 |
+| `compute_metrics(metric_ids, context, *, registry, calculators) -> tuple[MetricResult, ...]` | 封装 `MetricEngine.compute`，可注入自定义注册表/计算器 |
+| `compute_features(feature_ids, context, *, start_date, end_date) -> pl.DataFrame` | 从 `FeatureStore.market_daily` 物化宽表按列投影读取，**始终包含 trade_date** |
+| `list_metrics(domain=..., entity_type=...) -> tuple[MetricSpec, ...]` | 统一指标目录（`MetricRegistry.select`） |
+| `list_features(kind=..., entity_type=...) -> tuple[FeatureSpec, ...]` | 统一特征目录（`FeatureRegistry`） |
+| `AnalyticsContext` | 统一 `target_date/start/end` + 底层 `MetricContext`/`FeatureStore` 的轻量门面上下文 |
 
 - 新增模块对既有调用零影响；`stock_cli`/`marts` 仍可直连底层。
-- 边界约束沿用 `scripts/lint_analytics_boundaries.py`，`api.py` 只允许聚合下层，禁止被下层反向依赖。
+- 边界约束沿用 `scripts/lint_analytics_boundaries.py`：`api.py` 位于顶层（不受 `LAYER_FORBIDDEN` 限制），只聚合下层，不被下层反向依赖——边界检查已验证通过。
 
 ### 测试与验证
-- 单测：门面函数对既有注册表/引擎的薄封装转发正确、参数透传。
-- 回归：全量 `make check`（ruff/mypy/边界/类规模/覆盖率 ≥75%）不回归。
+- 单测：`tests/unit/stock_analytics/test_analytics_api.py`（10 用例）——门面转发正确（注入自定义注册表/计算器）、未知指标抛 KeyError、日期上下文解析、特征列投影/日期过滤/空 Mart fail-closed、统一目录筛选（domain/entity_type/kind）。
+- 真实数据冒烟（Ground Truth）：`list_metrics()` 返回 **67 个指标**（9 领域：PERFORMANCE 6 / BREADTH 7 / TREND 3 / VOLATILITY 3 / LIQUIDITY 6 / VALUATION 19 / FLOW 16 / MACRO 3 / DERIVATIVES 4）；`list_features()` 返回 **29 个特征**；`compute_metrics(['option_put_call_volume_ratio'], target_date=2026-08-21)` 返回 2727 行，最新值 0.920944（与 Phase 2 基线一致）。
+- 回归：全量门禁通过（ruff / mypy 416 文件 / 边界 / 类规模 / 覆盖率 82.08%）。
+
+### 提交
+- `feat(analytics): add unified metrics/features facade`（Phase 5）
 
 ---
 
@@ -247,7 +253,7 @@ y 因子被以下联合回归剥离残差：
 | Phase 2 | 模块二 联合中性化 + 对称正交化 | `feat(analytics): add joint industry-mv neutralization and symmetric orthogonalization` | ✅ 已落地 |
 | Phase 3 | 模块三 轮动动量（加权动量/加速度/RPS） | `feat(analytics): add weighted momentum, momentum acceleration and RPS` | ✅ 已落地 |
 | Phase 4 | 模块四 杜邦拆解与财报质量 | `feat(analytics): add dupont decomposition and earnings quality features` | ✅ 已落地 |
-| Phase 5 | 模块五 统一门面 + 架构文档 | `feat(analytics): add unified metrics/features facade` | 待实现 |
+| Phase 5 | 模块五 统一门面 + 架构文档 | `feat(analytics): add unified metrics/features facade` | ✅ 已落地 |
 
 每阶段独立通过局部 pytest（`--no-cov` 保持 importlib 模式）+ 全量门禁后再提交；全部完成后更新本计划状态为"已落地"并附真实数据验证基线。
 
