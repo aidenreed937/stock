@@ -155,7 +155,7 @@ investor-brief:
 	UV_CACHE_DIR=.uv_cache UV_PYTHON_INSTALL_DIR=.uv_python uv run python -m stock_cli.investor_brief $(if $(DATE),--date $(DATE)) $(if $(CONFIG),--config $(CONFIG)) $(if $(OUTPUT_ROOT),--output-root $(OUTPUT_ROOT)) $(if $(RUN_CLASS),--run-class $(RUN_CLASS)) $(if $(NO_LATEST),--no-latest)
 
 quant-brief:
-	UV_CACHE_DIR=.uv_cache UV_PYTHON_INSTALL_DIR=.uv_python uv run python -m stock_cli.quant_brief $(if $(DATE),--date $(DATE)) $(if $(CONFIG),--config $(CONFIG)) $(if $(OUTPUT_ROOT),--output-root $(OUTPUT_ROOT)) $(if $(RUN_CLASS),--run-class $(RUN_CLASS)) $(if $(NO_LATEST),--no-latest)
+	UV_CACHE_DIR=.uv_cache UV_PYTHON_INSTALL_DIR=.uv_python uv run python -m stock_cli.quant_brief $(if $(DATE),--date $(DATE)) $(if $(CONFIG),--config $(CONFIG)) $(if $(OUTPUT_ROOT),--output-root $(OUTPUT_ROOT)) $(if $(STORAGE_DIR),--storage-dir $(STORAGE_DIR)) $(if $(RUN_CLASS),--run-class $(RUN_CLASS)) $(if $(NO_LATEST),--no-latest)
 
 multi-date:
 	UV_CACHE_DIR=.uv_cache UV_PYTHON_INSTALL_DIR=.uv_python uv run python -m stock_cli.multi_date $(if $(DATES),--dates $(DATES),$(if $(LAST_N),--last-n $(LAST_N),$(if $(START),--start $(START)))) $(if $(END),--end $(END)) $(if $(REFRESH_MART),--refresh-mart) $(if $(MART_START),--mart-start $(MART_START)) $(if $(STORAGE_DIR),--storage-dir $(STORAGE_DIR)) $(if $(ANALYTICS_ROOT),--analytics-root $(ANALYTICS_ROOT)) $(if $(PUBLISH_DATE),--publish-date $(PUBLISH_DATE)) $(if $(RUN_CLASS),--run-class $(RUN_CLASS)) $(if $(SKIP_METRICS),--skip-metrics) $(if $(NO_PUBLISH_LATEST),--no-publish-latest) $(if $(DRY_RUN),--dry-run)

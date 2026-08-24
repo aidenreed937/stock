@@ -124,6 +124,7 @@ def run_multi_date_artifacts(
             target_date=target_date,
             market_run_id=market_result.paths.run_dir.name,
             industry_run_id=industry_result.paths.run_dir.name,
+            storage_dir=storage_path,
             output_root=analytics_path / "quant_brief" if analytics_path is not None else None,
             market_temperature_root=(
                 analytics_path / "market_temperature" if analytics_path is not None else None

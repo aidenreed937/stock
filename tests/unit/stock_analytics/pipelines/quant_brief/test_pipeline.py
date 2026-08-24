@@ -6,6 +6,7 @@ from pathlib import Path
 
 import polars as pl
 
+import stock_analytics.pipelines.quant_brief.pipeline as quant_pipeline
 from stock_analytics.pipelines.quant_brief import run_quant_brief
 from stock_analytics.pipelines.quant_brief.pipeline import _resolve_artifact_dir
 
@@ -15,6 +16,13 @@ def test_run_quant_brief_reads_upstream_artifacts_and_writes_four_step_report(
     monkeypatch,
 ) -> None:
     monkeypatch.chdir(tmp_path)
+    storage_dir = tmp_path / "main-data" / "curated"
+    margin_calls: list[Path | str | None] = []
+    monkeypatch.setattr(
+        quant_pipeline,
+        "_load_margin_series",
+        lambda _as_of_date, *, storage_dir=None: margin_calls.append(storage_dir) or None,
+    )
     as_of_date = date(2026, 8, 14)
     analytics_root = tmp_path / "data" / "analytics"
     market_run = analytics_root / "market_temperature" / "runs" / "as_of=2026-08-14" / "run_market"
@@ -127,6 +135,7 @@ def test_run_quant_brief_reads_upstream_artifacts_and_writes_four_step_report(
     result = run_quant_brief(
         target_date=as_of_date,
         output_root=analytics_root / "quant_brief",
+        storage_dir=storage_dir,
     )
 
     assert result.as_of_date == as_of_date
@@ -156,6 +165,38 @@ def test_run_quant_brief_reads_upstream_artifacts_and_writes_four_step_report(
     assert result.brief_json["veto"]["top5pct"]["value"] == 0.55
     assert result.brief_json["sector"]["priority"][0]["industry_name"] == "煤炭"
     assert "## 3. 微观排雷与一票否决" in result.brief_markdown
+    assert margin_calls == [storage_dir]
+
+
+def test_load_margin_series_uses_explicit_storage_dir(
+    monkeypatch,
+    tmp_path: Path,
+) -> None:
+    captured: dict[str, object] = {}
+
+    class _Catalog:
+        def __init__(self, **kwargs: object) -> None:
+            captured.update(kwargs)
+
+        def load_dataset(self, *_args: object, **_kwargs: object) -> pl.DataFrame:
+            return pl.DataFrame(
+                {
+                    "trade_date": [date(2026, 8, 13), date(2026, 8, 14)],
+                    "rzrqye": [10.0, 12.0],
+                }
+            )
+
+    monkeypatch.setattr("stock_data.catalog.DataCatalog", _Catalog)
+    storage_dir = tmp_path / "main-data" / "curated"
+
+    result = quant_pipeline._load_margin_series(
+        date(2026, 8, 14),
+        storage_dir=storage_dir,
+    )
+
+    assert captured == {"data_source": "tushare", "storage_dir": storage_dir}
+    assert result is not None
+    assert result["margin_balance"].to_list() == [10.0, 12.0]
 
 
 def test_run_quant_brief_passes_through_upstream_drivers_and_margin_series(

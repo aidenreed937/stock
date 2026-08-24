@@ -47,6 +47,11 @@ def _build_parser() -> argparse.ArgumentParser:
         help="覆盖产物根目录",
     )
     parser.add_argument(
+        "--storage-dir",
+        default=None,
+        help="Curated 数据根目录",
+    )
+    parser.add_argument(
         "--no-latest",
         dest="update_latest",
         action="store_false",
@@ -68,6 +73,7 @@ def main() -> None:
             run_class=args.run_class,
             config_path=Path(args.config_path),
             output_root=args.output_root,
+            storage_dir=args.storage_dir,
             update_latest=bool(args.update_latest),
         )
     except Exception as exc:

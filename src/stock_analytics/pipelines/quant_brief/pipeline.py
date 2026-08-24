@@ -43,6 +43,7 @@ def run_quant_brief(
     industry_run_id: str | None = None,
     config_path: Path | str = DEFAULT_CONFIG_PATH,
     output_root: Path | str | None = None,
+    storage_dir: Path | str | None = None,
     market_temperature_root: Path | str | None = None,
     industry_structure_root: Path | str | None = None,
     run_class: RunClass = "official",
@@ -68,7 +69,7 @@ def run_quant_brief(
         latest_root=config.latest_root,
         run_class=run_class,
     )
-    margin_series = _load_margin_series(as_of_date)
+    margin_series = _load_margin_series(as_of_date, storage_dir=storage_dir)
     manifest = _build_manifest(
         config,
         as_of_date,
@@ -135,16 +136,18 @@ def _load_market_artifacts(
     }
 
 
-def _load_margin_series(as_of_date: date) -> pl.DataFrame | None:
+def _load_margin_series(
+    as_of_date: date,
+    *,
+    storage_dir: Path | str | None = None,
+) -> pl.DataFrame | None:
     """从本地 Curated margin 表读取两融日频序列，失败时返回 None。"""
     try:
         from datetime import timedelta
 
         from stock_data.catalog import DataCatalog
-        from stock_data.core.runtime import DataRuntimeContext
 
-        runtime = DataRuntimeContext.from_root("data")
-        catalog = DataCatalog(runtime=runtime)
+        catalog = DataCatalog(data_source="tushare", storage_dir=storage_dir)
         frame = catalog.load_dataset(
             "margin",
             start_date=as_of_date - timedelta(days=200),
