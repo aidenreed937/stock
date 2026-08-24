@@ -8,9 +8,7 @@ import sys
 from datetime import date
 from pathlib import Path
 
-from stock_analytics.pipelines.industry_diagnostics.pipeline import (
-    run_industry_diagnostics,
-)
+from stock_analytics.pipelines.industry_diagnostics import run_industry_diagnostics
 from stock_core.utils.logger import logger
 
 

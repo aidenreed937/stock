@@ -8,8 +8,12 @@ from typing import TYPE_CHECKING
 
 import polars as pl
 
-from stock_analytics.features.store_ops import merge_incremental, safe_cast_date_col
-from stock_core.utils.logger import logger
+from stock_analytics.features.store_ops import (
+    merge_incremental,
+    read_parquet_file,
+    safe_cast_date_col,
+)
+from stock_core.exceptions import DataValidationError
 
 if TYPE_CHECKING:
     from collections.abc import Sequence
@@ -43,6 +47,13 @@ FEATURE_VALUE_SCHEMA = {
 }
 
 
+def _validate_feature_value_schema(df: pl.DataFrame) -> None:
+    """拒绝读取不完整的 Feature 长表，避免下游得到半截事实。"""
+    missing = [column for column in FEATURE_VALUE_SCHEMA if column not in df.columns]
+    if missing:
+        raise DataValidationError(f"feature_values 缺少必填列: {', '.join(missing)}")
+
+
 class FeatureValueStore:
     """按定义版本保存和查询通用 Feature 长表。"""
 
@@ -67,11 +78,8 @@ class FeatureValueStore:
         """读取长表并按特征、版本和观察日期过滤。"""
         if not self.path.exists():
             return pl.DataFrame(schema=FEATURE_VALUE_SCHEMA)
-        try:
-            df = pl.read_parquet(self.path)
-        except Exception as exc:
-            logger.error(f"FeatureValueStore 读取失败: {exc}")
-            return pl.DataFrame(schema=FEATURE_VALUE_SCHEMA)
+        df = read_parquet_file(self.path, context="FeatureValueStore")
+        _validate_feature_value_schema(df)
 
         df = safe_cast_date_col(df, "observation_date")
         if start_date is not None:
@@ -103,7 +111,8 @@ class FeatureValueStore:
         )
         save_df = safe_cast_date_col(save_df, "observation_date")
         if self.path.exists():
-            existing = pl.read_parquet(self.path)
+            existing = read_parquet_file(self.path, context="FeatureValueStore")
+            _validate_feature_value_schema(existing)
             existing = safe_cast_date_col(existing, "observation_date")
             if purge_outside is not None:
                 start, end = purge_outside

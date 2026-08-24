@@ -13,10 +13,13 @@ from stock_analytics.features.feature_values import FeatureValueStore
 from stock_analytics.features.store_ops import (
     merge_incremental,
     read_metadata,
+    read_parquet_file,
+    read_parquet_schema,
     safe_cast_date_col,
     validate_incremental_metadata,
     write_metadata,
 )
+from stock_core.exceptions import DataValidationError
 from stock_core.utils.logger import logger
 from stock_data.core.runtime import DataRuntimeContext
 from stock_data.core.settings import data_settings
@@ -65,18 +68,21 @@ class FeatureStore(DomainMartStoreMixin):
         if not path.exists():
             return pl.DataFrame()
 
-        try:
-            if columns is not None:
-                wanted = set(columns)
-                wanted.add("trade_date")
-                file_schema = pl.read_parquet_schema(path)
-                read_cols = [c for c in file_schema if c in wanted]
-                df = pl.read_parquet(path, columns=read_cols)
-            else:
-                df = pl.read_parquet(path)
-        except Exception as e:
-            logger.error(f"FeatureStore 读取 market_daily 失败: {e}")
-            return pl.DataFrame()
+        file_schema = read_parquet_schema(path, context="FeatureStore market_daily")
+        if "trade_date" not in file_schema:
+            raise DataValidationError("FeatureStore market_daily 缺少必需列: trade_date")
+
+        if columns is not None:
+            wanted = set(columns)
+            wanted.add("trade_date")
+            read_cols = [c for c in file_schema if c in wanted]
+            df = read_parquet_file(
+                path,
+                context="FeatureStore market_daily",
+                columns=read_cols,
+            )
+        else:
+            df = read_parquet_file(path, context="FeatureStore market_daily")
 
         if df.is_empty():
             return df
@@ -117,7 +123,7 @@ class FeatureStore(DomainMartStoreMixin):
 
         if target_path.exists() and not overwrite:
             validate_incremental_metadata(self.mart_dir, metadata)
-            existing = pl.read_parquet(target_path)
+            existing = read_parquet_file(target_path, context="FeatureStore market_daily")
             existing = safe_cast_date_col(existing, "trade_date")
             save_df = merge_incremental(existing, save_df, keys=["trade_date"])
 
@@ -148,12 +154,16 @@ class FeatureStore(DomainMartStoreMixin):
         path = self.market_daily_path
         if not path.exists():
             return None
-        try:
-            df = pl.read_parquet(path, columns=["trade_date"])
-            if df.is_empty():
-                return None
-            df = safe_cast_date_col(df, "trade_date")
-            dates = df["trade_date"].drop_nulls().to_list()
-            return max(dates) if dates else None
-        except Exception:
+        file_schema = read_parquet_schema(path, context="FeatureStore market_daily")
+        if "trade_date" not in file_schema:
+            raise DataValidationError("FeatureStore market_daily 缺少必需列: trade_date")
+        df = read_parquet_file(
+            path,
+            context="FeatureStore market_daily",
+            columns=["trade_date"],
+        )
+        if df.is_empty():
             return None
+        df = safe_cast_date_col(df, "trade_date")
+        dates = df["trade_date"].drop_nulls().to_list()
+        return max(dates) if dates else None

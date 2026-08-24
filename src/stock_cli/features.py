@@ -7,9 +7,8 @@ import sys
 from datetime import date
 from pathlib import Path
 
-from stock_analytics.features.builders.market_daily import MarketDailyBuilder
-from stock_analytics.features.store import FeatureStore
-from stock_analytics.marts.builder import DomainMartBuilder
+from stock_analytics.features import FeatureStore, MarketDailyBuilder
+from stock_analytics.marts import DomainMartBuilder
 from stock_core.utils.logger import logger
 from stock_data.catalog import DataCatalog
 

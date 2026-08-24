@@ -9,6 +9,7 @@ from typing import TYPE_CHECKING, Any
 
 import polars as pl
 
+from stock_core.exceptions import DataValidationError, StorageError
 from stock_core.utils.logger import logger
 
 if TYPE_CHECKING:
@@ -39,6 +40,35 @@ def safe_cast_date_col(df: pl.DataFrame, col_name: str = "trade_date") -> pl.Dat
     )
 
 
+def read_parquet_file(
+    path: Path,
+    *,
+    context: str,
+    columns: Sequence[str] | None = None,
+) -> pl.DataFrame:
+    """读取 Parquet；文件损坏或读取失败时保留存储错误语义。"""
+    try:
+        if columns is None:
+            return pl.read_parquet(path)
+        return pl.read_parquet(path, columns=list(columns))
+    except Exception as exc:
+        logger.error(f"{context} 读取失败 [{path}]: {exc}")
+        raise StorageError(f"{context} 读取失败 [{path}]: {exc}") from exc
+
+
+def read_parquet_schema(
+    path: Path,
+    *,
+    context: str,
+) -> dict[str, pl.DataType]:
+    """读取 Parquet Schema；文件损坏时转换为存储错误。"""
+    try:
+        return dict(pl.read_parquet_schema(path))
+    except Exception as exc:
+        logger.error(f"{context} 读取 Schema 失败 [{path}]: {exc}")
+        raise StorageError(f"{context} 读取 Schema 失败 [{path}]: {exc}") from exc
+
+
 def read_metadata(mart_dir: Path) -> dict[str, Any]:
     """读取 market_daily 构建元数据。"""
     path = metadata_path(mart_dir)
@@ -46,10 +76,17 @@ def read_metadata(mart_dir: Path) -> dict[str, Any]:
         return {}
     try:
         raw = json.loads(path.read_text(encoding="utf-8"))
-        return raw if isinstance(raw, dict) else {}
-    except (OSError, json.JSONDecodeError) as exc:
-        logger.warning(f"FeatureStore 读取 market_daily 元数据失败: {exc}")
-        return {}
+    except OSError as exc:
+        logger.error(f"FeatureStore 读取 market_daily 元数据失败 [{path}]: {exc}")
+        raise StorageError(f"FeatureStore 读取 market_daily 元数据失败 [{path}]: {exc}") from exc
+    except json.JSONDecodeError as exc:
+        logger.error(f"FeatureStore 解析 market_daily 元数据失败 [{path}]: {exc}")
+        raise DataValidationError(
+            f"FeatureStore market_daily 元数据不是有效 JSON [{path}]: {exc}"
+        ) from exc
+    if not isinstance(raw, dict):
+        raise DataValidationError(f"FeatureStore market_daily 元数据必须是 JSON 对象: {path}")
+    return raw
 
 
 def merge_incremental(

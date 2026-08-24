@@ -7,6 +7,7 @@ import polars as pl
 import pytest
 
 from stock_analytics.features.store import FeatureStore
+from stock_core.exceptions import DataValidationError, StorageError
 
 
 def test_feature_store_read_write_and_projection(tmp_path: Path) -> None:
@@ -40,6 +41,74 @@ def test_feature_store_read_write_and_projection(tmp_path: Path) -> None:
 
     # 4. 最新日期
     assert store.get_latest_market_daily_date() == date(2026, 8, 2)
+
+
+def test_feature_store_missing_market_daily_stays_empty(tmp_path: Path) -> None:
+    store = FeatureStore(mart_dir=tmp_path / "mart")
+
+    assert store.get_market_daily().is_empty()
+    assert store.get_latest_market_daily_date() is None
+
+
+def test_feature_store_corrupt_market_daily_raises_storage_error(tmp_path: Path) -> None:
+    store = FeatureStore(mart_dir=tmp_path / "mart")
+    store.market_daily_path.write_bytes(b"not a parquet file")
+
+    with pytest.raises(StorageError, match="market_daily"):
+        store.get_market_daily()
+    with pytest.raises(StorageError, match="market_daily"):
+        store.get_latest_market_daily_date()
+
+
+def test_feature_store_rejects_market_daily_schema_drift(tmp_path: Path) -> None:
+    store = FeatureStore(mart_dir=tmp_path / "mart")
+    pl.DataFrame({"value": [1.0]}).write_parquet(store.market_daily_path)
+
+    with pytest.raises(DataValidationError, match="trade_date"):
+        store.get_market_daily()
+
+
+def test_feature_store_corrupt_domain_mart_raises_storage_error(tmp_path: Path) -> None:
+    store = FeatureStore(mart_dir=tmp_path / "mart")
+    path = store.domain_mart_path("convertible_bond_daily")
+    path.write_bytes(b"not a parquet file")
+
+    with pytest.raises(StorageError, match="convertible_bond_daily"):
+        store.get_domain_mart("convertible_bond_daily", date_column="trade_date")
+
+
+def test_feature_store_rejects_domain_mart_date_schema_drift(tmp_path: Path) -> None:
+    store = FeatureStore(mart_dir=tmp_path / "mart")
+    path = store.domain_mart_path("convertible_bond_daily")
+    pl.DataFrame({"value": [1.0]}).write_parquet(path)
+
+    with pytest.raises(DataValidationError, match="trade_date"):
+        store.get_domain_mart("convertible_bond_daily", date_column="trade_date")
+
+
+def test_feature_values_corrupt_file_raises_storage_error(tmp_path: Path) -> None:
+    store = FeatureStore(mart_dir=tmp_path / "mart")
+    store.values.path.write_bytes(b"not a parquet file")
+
+    with pytest.raises(StorageError, match="FeatureValueStore"):
+        store.values.get()
+
+
+def test_feature_values_rejects_schema_drift(tmp_path: Path) -> None:
+    store = FeatureStore(mart_dir=tmp_path / "mart")
+    pl.DataFrame({"feature_id": ["advance_ratio"]}).write_parquet(store.values.path)
+
+    with pytest.raises(DataValidationError, match="feature_values"):
+        store.values.get()
+
+
+def test_feature_store_corrupt_metadata_raises_data_validation_error(tmp_path: Path) -> None:
+    store = FeatureStore(mart_dir=tmp_path / "mart")
+    metadata_path = store.mart_dir / "market_daily.metadata.json"
+    metadata_path.write_text("not json", encoding="utf-8")
+
+    with pytest.raises(DataValidationError, match="元数据"):
+        store.get_market_daily_metadata()
 
 
 def test_feature_store_merge_incremental(tmp_path: Path) -> None:

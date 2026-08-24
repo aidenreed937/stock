@@ -8,7 +8,13 @@ from typing import TYPE_CHECKING, cast
 
 import polars as pl
 
-from stock_analytics.features.store_ops import merge_incremental, safe_cast_date_col
+from stock_analytics.features.store_ops import (
+    merge_incremental,
+    read_parquet_file,
+    read_parquet_schema,
+    safe_cast_date_col,
+)
+from stock_core.exceptions import DataValidationError
 from stock_core.utils.logger import logger
 
 if TYPE_CHECKING:
@@ -135,20 +141,25 @@ class DomainMartStoreMixin(AnalyticsMartStoreMixin):
         path = self.domain_mart_path(mart_name)
         if not path.exists():
             return pl.DataFrame()
-        try:
-            if columns is None:
-                df = pl.read_parquet(path)
-            else:
-                wanted = set(columns)
-                if date_column:
-                    wanted.add(date_column)
-                schema = pl.read_parquet_schema(path)
-                df = pl.read_parquet(
-                    path, columns=[column for column in schema if column in wanted]
-                )
-        except Exception as exc:
-            logger.error(f"FeatureStore 读取领域 Mart 失败 [{mart_name}]: {exc}")
-            return pl.DataFrame()
+        schema = read_parquet_schema(
+            path,
+            context=f"FeatureStore 领域 Mart [{mart_name}]",
+        )
+        if date_column and date_column not in schema:
+            raise DataValidationError(
+                f"FeatureStore 领域 Mart [{mart_name}] 缺少日期列: {date_column}"
+            )
+        if columns is None:
+            df = read_parquet_file(path, context=f"FeatureStore 领域 Mart [{mart_name}]")
+        else:
+            wanted = set(columns)
+            if date_column:
+                wanted.add(date_column)
+            df = read_parquet_file(
+                path,
+                context=f"FeatureStore 领域 Mart [{mart_name}]",
+                columns=[column for column in schema if column in wanted],
+            )
 
         if date_column and date_column in df.columns:
             df = safe_cast_date_col(df, date_column)
@@ -178,7 +189,7 @@ class DomainMartStoreMixin(AnalyticsMartStoreMixin):
         save_df = safe_cast_date_col(df, date_column) if date_column else df
         path = self.domain_mart_path(mart_name)
         if path.exists() and not overwrite:
-            existing = pl.read_parquet(path)
+            existing = read_parquet_file(path, context=f"FeatureStore 领域 Mart [{mart_name}]")
             existing = safe_cast_date_col(existing, date_column) if date_column else existing
             save_df = merge_incremental(existing, save_df, keys=keys)
         _validate_domain_mart_frame(mart_name, save_df, keys=keys, date_column=date_column)

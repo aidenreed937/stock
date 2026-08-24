@@ -8,7 +8,7 @@ import sys
 from datetime import date
 from pathlib import Path
 
-from stock_analytics.pipelines.thesis_review.pipeline import run_thesis_review
+from stock_analytics.pipelines.thesis_review import run_thesis_review
 from stock_core.utils.logger import logger
 from stock_reporting.engine.renderer import ReportRenderer
 

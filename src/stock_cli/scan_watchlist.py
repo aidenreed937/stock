@@ -8,7 +8,7 @@ import sys
 from datetime import date
 from pathlib import Path
 
-from stock_analytics.pipelines.watchlist_scanner.pipeline import run_watchlist_scanner
+from stock_analytics.pipelines.watchlist_scanner import run_watchlist_scanner
 from stock_core.utils.logger import logger
 
 

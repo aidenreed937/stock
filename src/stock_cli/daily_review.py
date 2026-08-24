@@ -12,7 +12,7 @@ from datetime import date
 from pathlib import Path
 from typing import Any
 
-from stock_analytics.pipelines.watchlist_scanner.pipeline import run_watchlist_scanner
+from stock_analytics.pipelines.watchlist_scanner import run_watchlist_scanner
 from stock_core.utils.logger import logger
 from stock_reporting.engine.renderer import ReportRenderer
 

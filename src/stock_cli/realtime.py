@@ -12,7 +12,7 @@ from zoneinfo import ZoneInfo
 
 import polars as pl
 
-from stock_analytics.realtime.monitor import RealtimeMonitor
+from stock_analytics.realtime import RealtimeMonitor
 from stock_core.config.loader import load_watchlist_config
 from stock_core.exceptions import DataFetchError
 from stock_data.catalog import DataCatalog
