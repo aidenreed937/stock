@@ -49,6 +49,7 @@ lint:
 	uv run ruff check .
 	uv run mypy src
 	uv run python scripts/lint_class_size.py
+	uv run python scripts/lint_analytics_boundaries.py
 
 lint-rust:
 	cargo fmt --all -- --check
