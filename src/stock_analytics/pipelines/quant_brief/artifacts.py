@@ -7,6 +7,7 @@ from datetime import date
 from pathlib import Path
 from typing import Any
 
+from stock_analytics.pipelines.artifact_contracts import RunClass
 from stock_analytics.pipelines.artifact_store import ArtifactRunPaths, ArtifactStore
 
 MappingLike = dict[str, Any]
@@ -22,6 +23,7 @@ class QuantBriefRunPaths:
     manifest: Path
     brief_md: Path
     brief_json: Path
+    run_class: RunClass = "official"
 
 
 @dataclass(frozen=True, slots=True)
@@ -39,6 +41,7 @@ def build_run_paths(
     run_id: str | None = None,
     *,
     latest_root: Path | str | None = None,
+    run_class: RunClass = "official",
 ) -> QuantBriefRunPaths:
     """按基准日与 run_id 构造运行和共享 latest 产物路径。"""
     generic = ArtifactStore.build_run_paths(
@@ -46,11 +49,13 @@ def build_run_paths(
         artifact_root,
         run_id,
         latest_root=latest_root,
+        run_class=run_class,
     )
     return QuantBriefRunPaths(
         root=generic.root,
         run_dir=generic.run_dir,
         latest_dir=generic.latest_dir,
+        run_class=generic.run_class,
         manifest=generic.run_dir / "manifest.json",
         brief_md=generic.run_dir / "brief_report.md",
         brief_json=generic.run_dir / "brief_report.json",
@@ -69,6 +74,7 @@ def write_artifacts(
         paths.run_dir,
         paths.latest_dir,
         artifact_type="quant_brief",
+        run_class=paths.run_class,
     )
     with ArtifactStore(generic).transaction(update_latest=update_latest) as session:
         session.write_json("manifest.json", payload.manifest)

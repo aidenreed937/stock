@@ -10,6 +10,7 @@ from typing import Any
 
 import polars as pl
 
+from stock_analytics.pipelines.artifact_contracts import RunClass
 from stock_analytics.pipelines.manifest import build_manifest_base
 from stock_analytics.pipelines.quant_brief.artifacts import (
     QuantBriefArtifactPayload,
@@ -42,6 +43,7 @@ def run_quant_brief(
     industry_run_id: str | None = None,
     config_path: Path | str = DEFAULT_CONFIG_PATH,
     output_root: Path | str | None = None,
+    run_class: RunClass = "official",
     update_latest: bool = True,
 ) -> QuantBriefRunResult:
     """读取市场温度和行业结构产物，生成量化投研简报。"""
@@ -58,6 +60,7 @@ def run_quant_brief(
         as_of_date,
         config.artifact_root,
         latest_root=config.latest_root,
+        run_class=run_class,
     )
     margin_series = _load_margin_series(as_of_date)
     manifest = _build_manifest(
@@ -304,6 +307,7 @@ def _build_manifest(
         name: {
             "as_of_date": value.get("as_of_date"),
             "run_id": value.get("run_id"),
+            "run_class": value.get("run_class", "official"),
         }
         for name, value in inputs.items()
     }
@@ -336,6 +340,7 @@ def _input_manifest(payload: dict[str, Any]) -> dict[str, Any]:
     return {
         "as_of_date": manifest.get("as_of_date"),
         "run_id": manifest.get("run_id"),
+        "run_class": manifest.get("run_class", "official"),
         "artifact_dir": str(payload["artifact_dir"]),
     }
 

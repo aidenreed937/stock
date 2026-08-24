@@ -14,6 +14,9 @@ from tempfile import mkdtemp
 from typing import TYPE_CHECKING, Any, Literal
 from uuid import uuid4
 
+from stock_analytics.pipelines.artifact_contracts import RunClass, normalize_run_class
+from stock_analytics.pipelines.artifact_index import rebuild_run_index
+from stock_analytics.pipelines.artifact_integrity import build_artifact_integrity
 from stock_analytics.pipelines.artifact_validator import ArtifactValidator
 
 if TYPE_CHECKING:
@@ -31,6 +34,7 @@ class ArtifactRunPaths:
     run_dir: Path
     latest_dir: Path
     artifact_type: str | None = None
+    run_class: RunClass = "official"
 
 
 class ArtifactStore:
@@ -46,13 +50,21 @@ class ArtifactStore:
         run_id: str | None = None,
         *,
         latest_root: Path | str | None = None,
+        run_class: RunClass = "official",
     ) -> ArtifactRunPaths:
         """按业务日期和运行 ID 构造通用运行路径。"""
         root = Path(artifact_root)
-        actual_run_id = run_id or f"run_{datetime.now().strftime('%Y%m%dT%H%M%S')}"
+        actual_run_id = run_id or (
+            f"run_{datetime.now().astimezone().strftime('%Y%m%dT%H%M%S%f')}_{uuid4().hex[:8]}"
+        )
         run_dir = root / "runs" / f"as_of={as_of_date.isoformat()}" / actual_run_id
         latest_dir = (Path(latest_root) if latest_root is not None else root) / "latest"
-        return ArtifactRunPaths(root=root, run_dir=run_dir, latest_dir=latest_dir)
+        return ArtifactRunPaths(
+            root=root,
+            run_dir=run_dir,
+            latest_dir=latest_dir,
+            run_class=normalize_run_class(run_class),
+        )
 
     def transaction(self, *, update_latest: bool = True) -> ArtifactWriteSession:
         """创建临时写入事务，成功退出上下文后发布运行产物。"""
@@ -129,6 +141,11 @@ class ArtifactWriteSession(AbstractContextManager["ArtifactWriteSession"]):
             raise RuntimeError("Artifact 写入事务尚未开始")
         if self._manifest_payload is not None:
             self._manifest_payload["artifact_files"] = list(dict.fromkeys(self._written_names))
+            self._manifest_payload["run_class"] = self.paths.run_class
+            self._manifest_payload["artifact_integrity"] = build_artifact_integrity(
+                self._staging_dir,
+                self._written_names,
+            )
             (self._staging_dir / "manifest.json").write_text(
                 json.dumps(
                     self._manifest_payload,
@@ -142,6 +159,8 @@ class ArtifactWriteSession(AbstractContextManager["ArtifactWriteSession"]):
             self._staging_dir,
             check_path=False,
             expected_artifact_type=self.paths.artifact_type,
+            expected_run_class=self.paths.run_class,
+            require_integrity=True,
         )
         os.replace(self._staging_dir, self.paths.run_dir)
         self._staging_dir = None
@@ -149,7 +168,10 @@ class ArtifactWriteSession(AbstractContextManager["ArtifactWriteSession"]):
             _ARTIFACT_VALIDATOR.validate_or_raise(
                 self.paths.run_dir,
                 expected_artifact_type=self.paths.artifact_type,
+                expected_run_class=self.paths.run_class,
+                require_integrity=True,
             )
+            rebuild_run_index(self.paths.root)
             if not self.update_latest:
                 return
             self._publish_latest()
@@ -162,6 +184,12 @@ class ArtifactWriteSession(AbstractContextManager["ArtifactWriteSession"]):
                 raise RuntimeError(
                     f"latest 发布失败且运行目录回滚失败: {self.paths.run_dir}"
                 ) from rollback_error
+            try:
+                rebuild_run_index(self.paths.root)
+            except Exception as index_error:
+                raise RuntimeError(
+                    f"运行目录回滚后索引恢复失败: {self.paths.root}"
+                ) from index_error
             raise
 
     def _publish_latest(self) -> None:
@@ -180,6 +208,8 @@ class ArtifactWriteSession(AbstractContextManager["ArtifactWriteSession"]):
                 staging_latest,
                 source_dir=self.paths.run_dir,
                 expected_artifact_type=self.paths.artifact_type,
+                expected_run_class=self.paths.run_class,
+                require_integrity=True,
             )
 
             if latest_dir.exists() or latest_dir.is_symlink():

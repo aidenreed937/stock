@@ -10,6 +10,7 @@ from zoneinfo import ZoneInfo
 
 import polars as pl
 
+from stock_analytics.pipelines.artifact_contracts import RunClass
 from stock_analytics.pipelines.market_aggregate.artifacts import (
     MarketAggregateArtifactPayload,
     MarketAggregateRunPaths,
@@ -79,6 +80,7 @@ def run_market_aggregate(
     *,
     config_path: Path | str = DEFAULT_CONFIG_PATH,
     output_root: Path | str | None = None,
+    run_class: RunClass = "official",
     update_latest: bool = True,
     record_raw: bool = False,
     raw_root: Path | str | None = None,
@@ -136,7 +138,7 @@ def run_market_aggregate(
         cached = monitor.run(now=now)
         snapshot = cached.snapshot
         industry_snapshot = empty_industry_snapshot(snapshot)
-    paths = build_run_paths(snapshot.quote_date, config.artifact_root)
+    paths = build_run_paths(snapshot.quote_date, config.artifact_root, run_class=run_class)
     manifest = build_market_aggregate_manifest(
         config,
         paths,

@@ -9,6 +9,7 @@ from pathlib import Path
 from typing import TYPE_CHECKING, Any
 
 from stock_analytics.data_quality import build_quality_report
+from stock_analytics.pipelines.artifact_contracts import RunClass
 from stock_analytics.pipelines.manifest import build_manifest_base, build_watermark_index
 from stock_analytics.pipelines.market_temperature.artifacts import (
     MarketTemperatureArtifactPayload,
@@ -55,6 +56,7 @@ def run_market_temperature(
     comparison_date: date | None = None,
     config_path: Path | str = DEFAULT_CONFIG_PATH,
     output_root: Path | str | None = None,
+    run_class: RunClass = "official",
     update_latest: bool = True,
     collect_metric_values: bool | None = None,
     storage_dir: Path | str | None = None,
@@ -78,7 +80,7 @@ def run_market_temperature(
         if not resolved_trade_dates:
             raise ValueError("传入的市场温度交易日窗口为空")
         as_of_date = target_date or resolved_trade_dates[-1]
-    paths = build_run_paths(as_of_date, config.artifact_root)
+    paths = build_run_paths(as_of_date, config.artifact_root, run_class=run_class)
     external_cutoff_date = resolve_external_cutoff_date(as_of_date, resolved_trade_dates)
     comparison_date = comparison_date or _latest_previous_run_date(config.artifact_root, as_of_date)
     comparison = _load_comparison(config.artifact_root, comparison_date)

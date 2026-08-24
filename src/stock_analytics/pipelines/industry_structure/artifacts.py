@@ -7,6 +7,7 @@ from datetime import date
 from pathlib import Path
 from typing import TYPE_CHECKING, Any
 
+from stock_analytics.pipelines.artifact_contracts import RunClass
 from stock_analytics.pipelines.artifact_store import ArtifactRunPaths, ArtifactStore
 
 if TYPE_CHECKING:
@@ -31,6 +32,7 @@ class IndustryStructureRunPaths:
     human_report_md: Path
     quality_report_md: Path
     quality_report_json: Path
+    run_class: RunClass = "official"
 
 
 @dataclass(frozen=True, slots=True)
@@ -52,13 +54,21 @@ def build_run_paths(
     as_of_date: date,
     artifact_root: Path | str,
     run_id: str | None = None,
+    *,
+    run_class: RunClass = "official",
 ) -> IndustryStructureRunPaths:
     """按 as_of 日期与 run_id 构造产物路径。"""
-    generic = ArtifactStore.build_run_paths(as_of_date, artifact_root, run_id)
+    generic = ArtifactStore.build_run_paths(
+        as_of_date,
+        artifact_root,
+        run_id,
+        run_class=run_class,
+    )
     return IndustryStructureRunPaths(
         root=generic.root,
         run_dir=generic.run_dir,
         latest_dir=generic.latest_dir,
+        run_class=generic.run_class,
         manifest=generic.run_dir / "manifest.json",
         facts=generic.run_dir / "facts.parquet",
         industry_panel=generic.run_dir / "industry_panel.parquet",
@@ -83,6 +93,7 @@ def write_artifacts(
         paths.run_dir,
         paths.latest_dir,
         artifact_type="industry_structure",
+        run_class=paths.run_class,
     )
     with ArtifactStore(generic).transaction(update_latest=update_latest) as session:
         session.write_json("manifest.json", payload.manifest)

@@ -7,6 +7,7 @@ from datetime import date
 from typing import TYPE_CHECKING, Any
 
 from stock_analytics.data_quality import build_quality_report
+from stock_analytics.pipelines.artifact_contracts import RunClass
 from stock_analytics.pipelines.industry_structure.artifacts import (
     IndustryStructureArtifactPayload,
     IndustryStructureRunPaths,
@@ -52,6 +53,7 @@ def run_industry_structure(
     target_date: date | None = None,
     config_path: Path | str = DEFAULT_CONFIG_PATH,
     output_root: Path | str | None = None,
+    run_class: RunClass = "official",
     update_latest: bool = True,
     storage_dir: Path | str | None = None,
     dataset_cache: DatasetFrameCache | None = None,
@@ -73,7 +75,7 @@ def run_industry_structure(
         if not resolved_trade_dates:
             raise ValueError("传入的行业结构交易日窗口为空")
         as_of_date = target_date or resolved_trade_dates[-1]
-    paths = build_run_paths(as_of_date, config.artifact_root)
+    paths = build_run_paths(as_of_date, config.artifact_root, run_class=run_class)
     manifest = _build_manifest(
         config,
         as_of_date,

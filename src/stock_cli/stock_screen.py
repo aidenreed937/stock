@@ -43,6 +43,12 @@ def _build_parser() -> argparse.ArgumentParser:
         help="Curated 数据根目录；不传则使用项目运行时默认目录",
     )
     parser.add_argument(
+        "--run-class",
+        choices=("official", "backfill", "experiment"),
+        default="official",
+        help="产物运行分类",
+    )
+    parser.add_argument(
         "--symbols",
         default=None,
         help="逗号分隔的标的代码；不传则处理全市场",
@@ -69,6 +75,7 @@ def main() -> None:
             target_date=target_date,
             config_path=Path(args.config_path),
             output_root=args.output_root,
+            run_class=args.run_class,
             storage_dir=args.storage_dir,
             update_latest=bool(args.update_latest),
             symbols=symbols,

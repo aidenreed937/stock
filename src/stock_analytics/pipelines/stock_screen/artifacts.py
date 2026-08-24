@@ -9,6 +9,7 @@ from typing import Any
 
 import polars as pl
 
+from stock_analytics.pipelines.artifact_contracts import RunClass
 from stock_analytics.pipelines.artifact_store import ArtifactRunPaths, ArtifactStore
 
 
@@ -29,6 +30,7 @@ class StockScreenRunPaths:
     report_json: Path
     quality_report_md: Path
     quality_report_json: Path
+    run_class: RunClass = "official"
 
 
 @dataclass(frozen=True, slots=True)
@@ -51,13 +53,21 @@ def build_run_paths(
     as_of_date: date,
     artifact_root: Path | str,
     run_id: str | None = None,
+    *,
+    run_class: RunClass = "official",
 ) -> StockScreenRunPaths:
     """按基准日与运行 ID 构造产物路径。"""
-    generic = ArtifactStore.build_run_paths(as_of_date, artifact_root, run_id)
+    generic = ArtifactStore.build_run_paths(
+        as_of_date,
+        artifact_root,
+        run_id,
+        run_class=run_class,
+    )
     return StockScreenRunPaths(
         root=generic.root,
         run_dir=generic.run_dir,
         latest_dir=generic.latest_dir,
+        run_class=generic.run_class,
         manifest=generic.run_dir / "manifest.json",
         excluded=generic.run_dir / "excluded.csv",
         warned=generic.run_dir / "warned.csv",
@@ -83,6 +93,7 @@ def write_artifacts(
         paths.run_dir,
         paths.latest_dir,
         artifact_type="stock_screen",
+        run_class=paths.run_class,
     )
     with ArtifactStore(generic).transaction(update_latest=update_latest) as session:
         session.write_json("manifest.json", payload.manifest)

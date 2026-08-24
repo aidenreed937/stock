@@ -28,6 +28,12 @@ def _build_parser() -> argparse.ArgumentParser:
     )
     parser.add_argument("--config", default=str(DEFAULT_CONFIG_PATH), help="聚合监控 YAML 配置路径")
     parser.add_argument("--output-root", default=None, help="覆盖 analytics 产物根目录")
+    parser.add_argument(
+        "--run-class",
+        choices=("official", "backfill", "experiment"),
+        default="official",
+        help="产物运行分类",
+    )
     parser.add_argument("--no-latest", action="store_true", help="不刷新产物根目录下的 latest")
     parser.add_argument("--record", action="store_true", help="将一行聚合快照留档到 RAW")
     parser.add_argument("--raw-root", default=None, help="聚合快照 RAW 留档根目录")
@@ -68,6 +74,7 @@ def main() -> None:
             result = run_market_aggregate(
                 config_path=Path(args.config),
                 output_root=args.output_root,
+                run_class=args.run_class,
                 update_latest=not args.no_latest,
                 record_raw=args.record,
                 raw_root=args.raw_root,

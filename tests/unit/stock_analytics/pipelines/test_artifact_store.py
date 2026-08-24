@@ -8,12 +8,13 @@ import polars as pl
 import pytest
 
 import stock_analytics.pipelines.artifact_store as artifact_store_module
+from stock_analytics.pipelines.artifact_index import INDEX_FILENAME
 from stock_analytics.pipelines.artifact_store import (
     ArtifactRunPaths,
     ArtifactStore,
     ArtifactWriteSession,
 )
-from stock_analytics.pipelines.artifact_validator import ArtifactValidationError
+from stock_analytics.pipelines.artifact_validator import ArtifactValidationError, ArtifactValidator
 
 
 def _manifest(paths: ArtifactRunPaths) -> dict[str, str]:
@@ -49,8 +50,14 @@ def test_transaction_publishes_run_and_latest_atomically(tmp_path: Path) -> None
     facts = paths.run_dir / "facts.parquet"
     assert json.loads(manifest.read_text(encoding="utf-8"))["as_of_date"] == "2026-08-24"
     assert facts.exists()
+    persisted = json.loads(manifest.read_text(encoding="utf-8"))
+    assert persisted["run_class"] == "official"
+    assert persisted["artifact_integrity"]["facts.parquet"]["bytes"] == facts.stat().st_size
+    assert len(persisted["artifact_integrity"]["facts.parquet"]["sha256"]) == 64
     assert paths.latest_dir.joinpath("manifest.json").exists()
     assert paths.latest_dir.joinpath("facts.parquet").exists()
+    index = json.loads((tmp_path / INDEX_FILENAME).read_text(encoding="utf-8"))
+    assert index["runs"][0]["run_id"] == "run_test"
     assert list(paths.run_dir.parent.glob(".run_test.*")) == []
 
 
@@ -82,6 +89,35 @@ def test_transaction_can_skip_latest_publication(tmp_path: Path) -> None:
 
     assert paths.run_dir.joinpath("manifest.json").exists()
     assert not paths.latest_dir.exists()
+
+
+def test_default_run_ids_are_unique_at_subsecond_concurrency(tmp_path: Path) -> None:
+    first = ArtifactStore.build_run_paths(date(2026, 8, 24), tmp_path)
+    second = ArtifactStore.build_run_paths(date(2026, 8, 24), tmp_path)
+
+    assert first.run_dir != second.run_dir
+    assert first.run_dir.name.startswith("run_")
+
+
+def test_run_class_is_persisted_and_integrity_detects_tampering(tmp_path: Path) -> None:
+    paths = ArtifactStore.build_run_paths(
+        date(2026, 8, 24),
+        tmp_path,
+        run_id="run_experiment",
+        run_class="experiment",
+    )
+    with ArtifactStore(paths).transaction() as session:
+        session.write_json("manifest.json", _manifest(paths))
+        session.write_text("report.md", "original")
+
+    manifest = json.loads(paths.run_dir.joinpath("manifest.json").read_text(encoding="utf-8"))
+    assert manifest["run_class"] == "experiment"
+    paths.run_dir.joinpath("report.md").write_text("tampered", encoding="utf-8")
+
+    result = ArtifactValidator().validate(paths.run_dir)
+
+    assert not result.valid
+    assert any(issue.code == "artifact_integrity_mismatch" for issue in result.issues)
 
 
 def test_latest_restore_failure_preserves_backup_and_rolls_back_run(

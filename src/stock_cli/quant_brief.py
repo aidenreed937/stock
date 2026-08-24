@@ -27,6 +27,12 @@ def _build_parser() -> argparse.ArgumentParser:
     parser.add_argument("--market-run-id", default=None, help="固定市场温度计上游 run_id")
     parser.add_argument("--industry-run-id", default=None, help="固定行业结构上游 run_id")
     parser.add_argument(
+        "--run-class",
+        choices=("official", "backfill", "experiment"),
+        default="official",
+        help="产物运行分类",
+    )
+    parser.add_argument(
         "-c",
         "--config",
         dest="config_path",
@@ -59,6 +65,7 @@ def main() -> None:
             target_date=target_date,
             market_run_id=args.market_run_id,
             industry_run_id=args.industry_run_id,
+            run_class=args.run_class,
             config_path=Path(args.config_path),
             output_root=args.output_root,
             update_latest=bool(args.update_latest),

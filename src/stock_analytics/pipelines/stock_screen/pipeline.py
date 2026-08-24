@@ -9,6 +9,7 @@ from typing import Any
 
 import polars as pl
 
+from stock_analytics.pipelines.artifact_contracts import RunClass
 from stock_analytics.pipelines.stock_screen.artifacts import (
     StockScreenArtifactPayload,
     StockScreenRunPaths,
@@ -106,6 +107,7 @@ def run_stock_screen(
     target_date: date | None = None,
     config_path: Path | str = DEFAULT_CONFIG_PATH,
     output_root: Path | str | None = None,
+    run_class: RunClass = "official",
     update_latest: bool = True,
     storage_dir: Path | str | None = None,
     symbols: list[str] | None = None,
@@ -159,7 +161,7 @@ def run_stock_screen(
         scores["scored_top_count"] = scored.height
         scores["scored_median"] = round(float(scored.get_column("composite_score").median()), 1)  # type: ignore[arg-type]
         scores["scored_top_symbols"] = scored.head(10).get_column("symbol").to_list()
-    paths = build_run_paths(as_of_date, config.artifact_root)
+    paths = build_run_paths(as_of_date, config.artifact_root, run_class=run_class)
     manifest = build_manifest(config, as_of_date, paths, scores, config_path=config_path)
     quality_report_json = build_quality_report(config, as_of_date, sources, scores)
     watermarks = {

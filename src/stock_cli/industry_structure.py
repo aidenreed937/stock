@@ -39,6 +39,12 @@ def _build_parser() -> argparse.ArgumentParser:
         help="覆盖产物根目录",
     )
     parser.add_argument(
+        "--run-class",
+        choices=("official", "backfill", "experiment"),
+        default="official",
+        help="产物运行分类",
+    )
+    parser.add_argument(
         "--no-latest",
         dest="update_latest",
         action="store_false",
@@ -57,6 +63,7 @@ def main() -> None:
             target_date=target_date,
             config_path=Path(args.config_path),
             output_root=args.output_root,
+            run_class=args.run_class,
             update_latest=bool(args.update_latest),
         )
     except Exception as exc:

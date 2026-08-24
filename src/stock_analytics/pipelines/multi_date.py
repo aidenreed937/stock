@@ -8,6 +8,7 @@ from pathlib import Path
 from typing import TYPE_CHECKING
 
 from stock_analytics.features.store import FeatureStore
+from stock_analytics.pipelines.artifact_contracts import RunClass
 from stock_analytics.pipelines.industry_structure import run_industry_structure
 from stock_analytics.pipelines.investor_brief import run_investor_brief
 from stock_analytics.pipelines.market_temperature import run_market_temperature
@@ -36,6 +37,7 @@ def run_multi_date_artifacts(
     *,
     storage_dir: Path | str | None = None,
     update_latest: bool = False,
+    run_class: RunClass = "official",
     collect_metric_values: bool | None = None,
 ) -> tuple[MultiDateArtifactSummary, ...]:
     """串行生成多日期四类产物，并共享 Mart 与数据集读取缓存。
@@ -81,6 +83,7 @@ def run_multi_date_artifacts(
         market_result = run_market_temperature(
             target_date=target_date,
             storage_dir=storage_path,
+            run_class=run_class,
             update_latest=update_latest,
             collect_metric_values=collect_metric_values,
             market_daily=market_daily,
@@ -90,6 +93,7 @@ def run_multi_date_artifacts(
         industry_result = run_industry_structure(
             target_date=target_date,
             storage_dir=storage_path,
+            run_class=run_class,
             update_latest=update_latest,
             dataset_cache=dataset_cache,
             trade_dates=industry_window,
@@ -98,12 +102,14 @@ def run_multi_date_artifacts(
             target_date=target_date,
             market_run_id=market_result.paths.run_dir.name,
             industry_run_id=industry_result.paths.run_dir.name,
+            run_class=run_class,
             update_latest=update_latest,
         )
         quant_result = run_quant_brief(
             target_date=target_date,
             market_run_id=market_result.paths.run_dir.name,
             industry_run_id=industry_result.paths.run_dir.name,
+            run_class=run_class,
             update_latest=update_latest,
         )
         summaries.append(

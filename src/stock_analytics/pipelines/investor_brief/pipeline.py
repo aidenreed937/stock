@@ -10,6 +10,7 @@ from typing import Any
 
 import polars as pl
 
+from stock_analytics.pipelines.artifact_contracts import RunClass
 from stock_analytics.pipelines.investor_brief.artifacts import (
     InvestorBriefArtifactPayload,
     InvestorBriefRunPaths,
@@ -42,6 +43,7 @@ def run_investor_brief(
     industry_run_id: str | None = None,
     config_path: Path | str = DEFAULT_CONFIG_PATH,
     output_root: Path | str | None = None,
+    run_class: RunClass = "official",
     update_latest: bool = True,
 ) -> InvestorBriefRunResult:
     """读取市场温度和行业结构产物，生成普通投资者简报。"""
@@ -58,7 +60,7 @@ def run_investor_brief(
     market = _load_market_artifacts(config, resolved_date, run_id=market_run_id)
     industry = _load_industry_artifacts(config, resolved_date, run_id=industry_run_id)
     as_of_date = _resolve_as_of_date(market["manifest"], industry["manifest"])
-    paths = build_run_paths(as_of_date, config.artifact_root)
+    paths = build_run_paths(as_of_date, config.artifact_root, run_class=run_class)
     manifest = _build_manifest(
         config,
         as_of_date,
@@ -267,6 +269,7 @@ def _build_manifest(
         name: {
             "as_of_date": value.get("as_of_date"),
             "run_id": value.get("run_id"),
+            "run_class": value.get("run_class", "official"),
         }
         for name, value in inputs.items()
     }
@@ -295,6 +298,7 @@ def _input_manifest(payload: dict[str, Any]) -> dict[str, Any]:
     return {
         "as_of_date": manifest.get("as_of_date"),
         "run_id": manifest.get("run_id"),
+        "run_class": manifest.get("run_class", "official"),
         "artifact_dir": str(artifact_dir),
     }
 

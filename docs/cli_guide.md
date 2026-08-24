@@ -194,6 +194,29 @@ make market-aggregate CONFIG=config/analytics/market_aggregate.yaml OUTPUT_ROOT=
 
 每次运行生成 `manifest.json`、`snapshot.json`、`facts.parquet`、`report.md`、`report.json`、`human_report.md`、`quality_report.md/json`，并按配置刷新 `latest/`。
 
+### 4.1 产物分类、索引与清理
+
+管线产物默认标记为 `official`，也可标记为 `backfill` 或 `experiment`：
+
+```bash
+make market-temperature DATE=2026-08-14 RUN_CLASS=experiment
+```
+
+每个产物根目录会维护 `run_index.json`。也可以手动重建：
+
+```bash
+make artifact-index ROOT=data/analytics/market_temperature
+```
+
+历史运行包清理默认只处理 `experiment`，且默认预览，不删除；执行删除必须显式传 `APPLY=1`。`latest/` 对应的运行包始终保护：
+
+```bash
+make cleanup-analytics ROOT=data/analytics/market_temperature \
+  OLDER_THAN_DAYS=30 RUN_CLASS=experiment
+make cleanup-analytics ROOT=data/analytics/market_temperature \
+  OLDER_THAN_DAYS=30 RUN_CLASS=experiment APPLY=1
+```
+
 若配置启用短期趋势，还会生成 `trend.parquet`：当前腾讯盘中快照与前 4 个完整交易日的本地
 `stock_daily_bar` / `daily_basic` 聚合对比。涨跌占比和涨跌幅分布可以做结构比较，但成交额和
 流通市值换手率会显式标记“盘中 vs 完整日不可比”，不能直接外推全天值。

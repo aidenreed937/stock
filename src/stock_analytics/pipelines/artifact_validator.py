@@ -7,6 +7,8 @@ from dataclasses import dataclass
 from pathlib import Path
 from typing import Any, Literal
 
+from stock_analytics.pipelines.artifact_contracts import RUN_CLASSES
+from stock_analytics.pipelines.artifact_integrity import check_artifact_integrity
 from stock_analytics.pipelines.artifact_validator_files import (
     ArtifactValidationIssue,
     actual_files,
@@ -57,15 +59,24 @@ class ArtifactValidator:
         *,
         check_path: bool = True,
         expected_artifact_type: str | None = None,
+        expected_run_class: str | None = None,
+        require_integrity: bool = False,
     ) -> ArtifactValidationResult:
         """校验一个已发布的运行目录。"""
         root = Path(artifact_dir)
         if root.name == "latest" and check_path:
-            return self.validate_latest(root, expected_artifact_type=expected_artifact_type)
+            return self.validate_latest(
+                root,
+                expected_artifact_type=expected_artifact_type,
+                expected_run_class=expected_run_class,
+                require_integrity=require_integrity,
+            )
         return self._validate_directory(
             root,
             check_path=check_path,
             expected_artifact_type=expected_artifact_type,
+            expected_run_class=expected_run_class,
+            require_integrity=require_integrity,
         )
 
     def validate_or_raise(
@@ -74,12 +85,16 @@ class ArtifactValidator:
         *,
         check_path: bool = True,
         expected_artifact_type: str | None = None,
+        expected_run_class: str | None = None,
+        require_integrity: bool = False,
     ) -> ArtifactValidationResult:
         """校验产物，失败时抛出异常。"""
         result = self.validate(
             artifact_dir,
             check_path=check_path,
             expected_artifact_type=expected_artifact_type,
+            expected_run_class=expected_run_class,
+            require_integrity=require_integrity,
         )
         if not result.valid:
             raise ArtifactValidationError(result)
@@ -91,6 +106,8 @@ class ArtifactValidator:
         *,
         source_dir: Path | str | None = None,
         expected_artifact_type: str | None = None,
+        expected_run_class: str | None = None,
+        require_integrity: bool = False,
     ) -> ArtifactValidationResult:
         """校验 latest 目录，并确认其对应的运行目录完整。"""
         root = Path(latest_dir)
@@ -98,6 +115,8 @@ class ArtifactValidator:
             root,
             check_path=False,
             expected_artifact_type=expected_artifact_type,
+            expected_run_class=expected_run_class,
+            require_integrity=require_integrity,
         )
         issues = list(result.issues)
         if result.manifest is not None:
@@ -111,6 +130,8 @@ class ArtifactValidator:
                     resolved_source_dir,
                     check_path=True,
                     expected_artifact_type=expected_artifact_type,
+                    expected_run_class=expected_run_class,
+                    require_integrity=require_integrity,
                 )
                 if not source_result.valid:
                     issues.append(
@@ -135,12 +156,16 @@ class ArtifactValidator:
         *,
         source_dir: Path | str | None = None,
         expected_artifact_type: str | None = None,
+        expected_run_class: str | None = None,
+        require_integrity: bool = False,
     ) -> ArtifactValidationResult:
         """校验 latest 及其源运行目录，失败时抛出异常。"""
         result = self.validate_latest(
             latest_dir,
             source_dir=source_dir,
             expected_artifact_type=expected_artifact_type,
+            expected_run_class=expected_run_class,
+            require_integrity=require_integrity,
         )
         if not result.valid:
             raise ArtifactValidationError(result)
@@ -152,6 +177,8 @@ class ArtifactValidator:
         *,
         check_path: bool,
         expected_artifact_type: str | None,
+        expected_run_class: str | None,
+        require_integrity: bool,
     ) -> ArtifactValidationResult:
         """校验一个目录本身的文件与 Manifest。"""
         issues: list[ArtifactValidationIssue] = []
@@ -171,6 +198,7 @@ class ArtifactValidator:
 
         if expected_artifact_type is not None:
             _check_artifact_type(manifest, expected_artifact_type, issues)
+        _check_run_class(manifest, expected_run_class, issues)
         declared_files = manifest_names(manifest, "artifact_files", issues, required=True)
         required_files = manifest_names(manifest, "files", issues, required=False)
         optional_files = manifest_names(manifest, "optional_files", issues, required=False)
@@ -182,6 +210,14 @@ class ArtifactValidator:
             set(declared_files or []),
             optional_files or [],
             issues,
+        )
+        check_artifact_integrity(
+            root,
+            actual,
+            declared_files,
+            manifest,
+            issues,
+            required=require_integrity,
         )
         if check_path:
             _check_run_path(root, manifest, issues)
@@ -228,6 +264,41 @@ def _check_artifact_type(
             "artifact_type",
         )
     )
+
+
+def _check_run_class(
+    manifest: Mapping[str, Any],
+    expected_run_class: str | None,
+    issues: list[ArtifactValidationIssue],
+) -> None:
+    actual_run_class = manifest.get("run_class")
+    if actual_run_class is None:
+        if expected_run_class is not None:
+            issues.append(
+                ArtifactValidationIssue(
+                    "manifest_run_class_missing",
+                    "Manifest 缺少字段: run_class",
+                    "run_class",
+                )
+            )
+        return
+    if actual_run_class not in RUN_CLASSES:
+        issues.append(
+            ArtifactValidationIssue(
+                "manifest_run_class_invalid",
+                f"Manifest run_class 必须是 {RUN_CLASSES} 之一: {actual_run_class!r}",
+                "run_class",
+            )
+        )
+        return
+    if expected_run_class is not None and actual_run_class != expected_run_class:
+        issues.append(
+            ArtifactValidationIssue(
+                "manifest_run_class_mismatch",
+                f"Manifest run_class={actual_run_class!r} 与期望值 {expected_run_class!r} 不一致",
+                "run_class",
+            )
+        )
 
 
 def _resolve_latest_source(
