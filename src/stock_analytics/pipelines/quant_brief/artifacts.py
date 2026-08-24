@@ -64,7 +64,12 @@ def write_artifacts(
     update_latest: bool = True,
 ) -> None:
     """写入一次运行的 manifest 和简报产物。"""
-    generic = ArtifactRunPaths(paths.root, paths.run_dir, paths.latest_dir)
+    generic = ArtifactRunPaths(
+        paths.root,
+        paths.run_dir,
+        paths.latest_dir,
+        artifact_type="quant_brief",
+    )
     with ArtifactStore(generic).transaction(update_latest=update_latest) as session:
         session.write_json("manifest.json", payload.manifest)
         session.write_text("brief_report.md", payload.brief_markdown)

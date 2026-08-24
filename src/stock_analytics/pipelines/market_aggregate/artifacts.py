@@ -81,7 +81,12 @@ def write_artifacts(
     update_latest: bool = True,
 ) -> None:
     """写入聚合快照、事实表、报告和质量产物。"""
-    generic = ArtifactRunPaths(paths.root, paths.run_dir, paths.latest_dir)
+    generic = ArtifactRunPaths(
+        paths.root,
+        paths.run_dir,
+        paths.latest_dir,
+        artifact_type="market_aggregate",
+    )
     with ArtifactStore(generic).transaction(update_latest=update_latest) as session:
         session.write_json("manifest.json", payload.manifest)
         session.write_json("snapshot.json", payload.snapshot)

@@ -78,7 +78,12 @@ def write_artifacts(
     update_latest: bool = True,
 ) -> None:
     """写入一次运行的 manifest、facts、scores 和报告产物。"""
-    generic = ArtifactRunPaths(paths.root, paths.run_dir, paths.latest_dir)
+    generic = ArtifactRunPaths(
+        paths.root,
+        paths.run_dir,
+        paths.latest_dir,
+        artifact_type="industry_structure",
+    )
     with ArtifactStore(generic).transaction(update_latest=update_latest) as session:
         session.write_json("manifest.json", payload.manifest)
         session.write_parquet("facts.parquet", payload.facts)

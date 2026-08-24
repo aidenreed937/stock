@@ -14,8 +14,13 @@ from tempfile import mkdtemp
 from typing import TYPE_CHECKING, Any, Literal
 from uuid import uuid4
 
+from stock_analytics.pipelines.artifact_validator import ArtifactValidator
+
 if TYPE_CHECKING:
     import polars as pl
+
+
+_ARTIFACT_VALIDATOR = ArtifactValidator()
 
 
 @dataclass(frozen=True, slots=True)
@@ -25,6 +30,7 @@ class ArtifactRunPaths:
     root: Path
     run_dir: Path
     latest_dir: Path
+    artifact_type: str | None = None
 
 
 class ArtifactStore:
@@ -132,11 +138,20 @@ class ArtifactWriteSession(AbstractContextManager["ArtifactWriteSession"]):
                 ),
                 encoding="utf-8",
             )
+        _ARTIFACT_VALIDATOR.validate_or_raise(
+            self._staging_dir,
+            check_path=False,
+            expected_artifact_type=self.paths.artifact_type,
+        )
         os.replace(self._staging_dir, self.paths.run_dir)
         self._staging_dir = None
-        if not self.update_latest:
-            return
         try:
+            _ARTIFACT_VALIDATOR.validate_or_raise(
+                self.paths.run_dir,
+                expected_artifact_type=self.paths.artifact_type,
+            )
+            if not self.update_latest:
+                return
             self._publish_latest()
         except Exception:
             try:
@@ -161,6 +176,11 @@ class ArtifactWriteSession(AbstractContextManager["ArtifactWriteSession"]):
                 target = staging_latest / name
                 target.parent.mkdir(parents=True, exist_ok=True)
                 shutil.copy2(self.paths.run_dir / name, target)
+            _ARTIFACT_VALIDATOR.validate_latest_or_raise(
+                staging_latest,
+                source_dir=self.paths.run_dir,
+                expected_artifact_type=self.paths.artifact_type,
+            )
 
             if latest_dir.exists() or latest_dir.is_symlink():
                 backup_latest = latest_dir.with_name(f".{latest_dir.name}.old-{uuid4().hex}")

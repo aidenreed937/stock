@@ -126,13 +126,16 @@ def test_validator_reports_manifest_path_mismatch(tmp_path: Path, field: str) ->
         fields={**fields, "artifact_root": str(artifact_root)},
     )
 
-    result = ArtifactValidator().validate(root)
+    result = ArtifactValidator().validate(
+        root,
+        expected_artifact_type="market_temperature" if field == "artifact_type" else None,
+    )
 
     assert not result.valid
-    assert any(
-        issue.code == "manifest_path_mismatch" and issue.filename == field
-        for issue in result.issues
+    expected_code = (
+        "manifest_artifact_type_mismatch" if field == "artifact_type" else "manifest_path_mismatch"
     )
+    assert any(issue.code == expected_code and issue.filename == field for issue in result.issues)
 
 
 def test_validator_accepts_latest_when_source_run_is_complete(tmp_path: Path) -> None:

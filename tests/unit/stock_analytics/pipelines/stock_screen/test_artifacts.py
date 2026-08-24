@@ -16,7 +16,11 @@ def test_write_artifacts_creates_run_and_latest_files(tmp_path) -> None:
     paths = build_run_paths(date(2026, 8, 20), tmp_path / "stock_screen", run_id="run_test")
     table = pl.DataFrame({"symbol": ["000001.SZ"], "level": ["passed"]})
     payload = StockScreenArtifactPayload(
-        manifest={"as_of_date": "2026-08-20"},
+        manifest={
+            "artifact_type": "stock_screen",
+            "as_of_date": "2026-08-20",
+            "run_id": "run_test",
+        },
         excluded=table.clear(),
         warned=table.clear(),
         passed=table,
@@ -42,7 +46,11 @@ def test_write_artifacts_persists_optional_scored_file(tmp_path) -> None:
     paths = build_run_paths(date(2026, 8, 20), tmp_path / "stock_screen", run_id="run_scored")
     table = pl.DataFrame({"symbol": ["000001.SZ"], "level": ["passed"]})
     payload = StockScreenArtifactPayload(
-        manifest={"as_of_date": "2026-08-20"},
+        manifest={
+            "artifact_type": "stock_screen",
+            "as_of_date": "2026-08-20",
+            "run_id": "run_scored",
+        },
         excluded=table.clear(),
         warned=table.clear(),
         passed=table,

@@ -78,7 +78,12 @@ def write_artifacts(
     update_latest: bool = True,
 ) -> None:
     """写入排雷清单、摘要和质量报告。"""
-    generic = ArtifactRunPaths(paths.root, paths.run_dir, paths.latest_dir)
+    generic = ArtifactRunPaths(
+        paths.root,
+        paths.run_dir,
+        paths.latest_dir,
+        artifact_type="stock_screen",
+    )
     with ArtifactStore(generic).transaction(update_latest=update_latest) as session:
         session.write_json("manifest.json", payload.manifest)
         session.write_csv("excluded.csv", _csv_frame(payload.excluded))

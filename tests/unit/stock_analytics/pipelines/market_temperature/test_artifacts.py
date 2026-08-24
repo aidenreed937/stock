@@ -37,7 +37,11 @@ def test_write_artifacts_updates_run_and_latest(tmp_path) -> None:
     write_artifacts(
         paths,
         MarketTemperatureArtifactPayload(
-            manifest={"as_of_date": "2026-08-14"},
+            manifest={
+                "artifact_type": "market_temperature",
+                "as_of_date": "2026-08-14",
+                "run_id": "run_test",
+            },
             facts=facts,
             scores={"composite": {"temperature": None}},
             report_markdown="# report\n",
