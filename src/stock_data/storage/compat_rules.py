@@ -163,6 +163,9 @@ _FINANCIAL_TEXT_COLUMNS = frozenset(
         "type",
         "summary",
         "change_reason",
+        "accountant",
+        "accountingFirm",
+        "auditOpinionType",
     }
 )
 
@@ -260,6 +263,10 @@ _DATASET_FLOAT_COLUMNS: dict[str, frozenset[str]] = {
     ),
 }
 
+_LIXINGER_FINANCIAL_STATEMENT_OPTIONAL_COLUMNS = frozenset(
+    {"accountant", "accountingFirm", "auditOpinionType"}
+)
+
 _DATASET_OPTIONAL_COLUMNS: dict[str, frozenset[str]] = {
     "sw_daily": frozenset(
         {
@@ -292,6 +299,14 @@ _DATASET_OPTIONAL_COLUMNS: dict[str, frozenset[str]] = {
             "update_flag",
         }
     ),
+    "fs_non_financial": _LIXINGER_FINANCIAL_STATEMENT_OPTIONAL_COLUMNS,
+    "fs_bank": _LIXINGER_FINANCIAL_STATEMENT_OPTIONAL_COLUMNS,
+    "fs_security": _LIXINGER_FINANCIAL_STATEMENT_OPTIONAL_COLUMNS,
+    "fs_insurance": _LIXINGER_FINANCIAL_STATEMENT_OPTIONAL_COLUMNS,
+    "sw_2021_fs_non_financial": _LIXINGER_FINANCIAL_STATEMENT_OPTIONAL_COLUMNS,
+    "sw_2021_fs_bank": _LIXINGER_FINANCIAL_STATEMENT_OPTIONAL_COLUMNS,
+    "sw_2021_fs_security": _LIXINGER_FINANCIAL_STATEMENT_OPTIONAL_COLUMNS,
+    "sw_2021_fs_insurance": _LIXINGER_FINANCIAL_STATEMENT_OPTIONAL_COLUMNS,
 }
 
 

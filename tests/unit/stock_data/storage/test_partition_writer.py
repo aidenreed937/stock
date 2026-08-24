@@ -7,6 +7,7 @@ from pathlib import Path
 from typing import Any
 
 import polars as pl
+import pytest
 
 from stock_data.storage.partition_writer import ParquetPartitionWriter
 
@@ -176,6 +177,60 @@ def test_partition_writer_aligns_sw_daily_classification_columns(tmp_path: Path)
         merged.filter(pl.col("trade_date") == date(2026, 8, 14))["classification"].item()
         == "SW2021"
     )
+
+
+@pytest.mark.parametrize(
+    "dataset_name",
+    [
+        "fs_non_financial",
+        "fs_bank",
+        "fs_security",
+        "fs_insurance",
+        "sw_2021_fs_non_financial",
+        "sw_2021_fs_bank",
+        "sw_2021_fs_security",
+        "sw_2021_fs_insurance",
+    ],
+)
+def test_partition_writer_aligns_lixinger_financial_optional_columns(
+    tmp_path: Path, dataset_name: str
+) -> None:
+    writer = ParquetPartitionWriter(data_source="lixinger")
+    path = tmp_path / "market=CN" / dataset_name / "data.parquet"
+    existing = pl.DataFrame(
+        {
+            "symbol": ["600519"],
+            "trade_date": [date(2026, 6, 30)],
+            "reportType": ["1"],
+            "accountant": ["审计机构"],
+            "accountingFirm": ["会计师事务所"],
+            "auditOpinionType": ["标准无保留意见"],
+            "data_source": ["lixinger"],
+            "schema_version": ["v2"],
+        }
+    )
+    incoming = pl.DataFrame(
+        {
+            "symbol": ["000001"],
+            "trade_date": [date(2026, 6, 30)],
+            "reportType": ["1"],
+            "data_source": ["lixinger"],
+            "schema_version": ["v2"],
+        }
+    )
+    path.parent.mkdir(parents=True)
+    existing.write_parquet(path)
+
+    merged = writer.merge_and_save_parquet(path, [incoming], source="lixinger")
+
+    old_row = merged.filter(pl.col("symbol") == "600519")
+    new_row = merged.filter(pl.col("symbol") == "000001")
+    assert old_row["accountant"].item() == "审计机构"
+    assert old_row["accountingFirm"].item() == "会计师事务所"
+    assert old_row["auditOpinionType"].item() == "标准无保留意见"
+    assert new_row["accountant"].item() is None
+    assert new_row["accountingFirm"].item() is None
+    assert new_row["auditOpinionType"].item() is None
 
 
 def test_partition_writer_aligns_empty_nested_struct_to_existing_schema(tmp_path: Path) -> None:
