@@ -2,12 +2,12 @@
 
 from __future__ import annotations
 
-import json
-import shutil
 from dataclasses import dataclass
-from datetime import date, datetime
+from datetime import date
 from pathlib import Path
 from typing import Any
+
+from stock_analytics.pipelines.artifact_store import ArtifactRunPaths, ArtifactStore
 
 MappingLike = dict[str, Any]
 
@@ -41,17 +41,19 @@ def build_run_paths(
     latest_root: Path | str | None = None,
 ) -> QuantBriefRunPaths:
     """按基准日与 run_id 构造运行和共享 latest 产物路径。"""
-    root = Path(artifact_root)
-    actual_run_id = run_id or f"run_{datetime.now().strftime('%Y%m%dT%H%M%S')}"
-    run_dir = root / "runs" / f"as_of={as_of_date.isoformat()}" / actual_run_id
-    latest_dir = (Path(latest_root) if latest_root is not None else root) / "latest"
+    generic = ArtifactStore.build_run_paths(
+        as_of_date,
+        artifact_root,
+        run_id,
+        latest_root=latest_root,
+    )
     return QuantBriefRunPaths(
-        root=root,
-        run_dir=run_dir,
-        latest_dir=latest_dir,
-        manifest=run_dir / "manifest.json",
-        brief_md=run_dir / "brief_report.md",
-        brief_json=run_dir / "brief_report.json",
+        root=generic.root,
+        run_dir=generic.run_dir,
+        latest_dir=generic.latest_dir,
+        manifest=generic.run_dir / "manifest.json",
+        brief_md=generic.run_dir / "brief_report.md",
+        brief_json=generic.run_dir / "brief_report.json",
     )
 
 
@@ -62,33 +64,11 @@ def write_artifacts(
     update_latest: bool = True,
 ) -> None:
     """写入一次运行的 manifest 和简报产物。"""
-    paths.run_dir.mkdir(parents=True, exist_ok=True)
-    _write_json(paths.manifest, payload.manifest)
-    paths.brief_md.write_text(payload.brief_markdown, encoding="utf-8")
-    _write_json(paths.brief_json, payload.brief_json)
-    if update_latest:
-        _copy_to_latest(paths)
-
-
-def _copy_to_latest(paths: QuantBriefRunPaths) -> None:
-    paths.latest_dir.mkdir(parents=True, exist_ok=True)
-    for source in (paths.manifest, paths.brief_md, paths.brief_json):
-        shutil.copy2(source, paths.latest_dir / source.name)
-
-
-def _write_json(path: Path, payload: MappingLike) -> None:
-    path.write_text(
-        json.dumps(payload, ensure_ascii=False, indent=2, default=_json_default),
-        encoding="utf-8",
-    )
-
-
-def _json_default(value: object) -> str:
-    if isinstance(value, date | datetime):
-        return value.isoformat()
-    if isinstance(value, Path):
-        return str(value)
-    return str(value)
+    generic = ArtifactRunPaths(paths.root, paths.run_dir, paths.latest_dir)
+    with ArtifactStore(generic).transaction(update_latest=update_latest) as session:
+        session.write_json("manifest.json", payload.manifest)
+        session.write_text("brief_report.md", payload.brief_markdown)
+        session.write_json("brief_report.json", payload.brief_json)
 
 
 __all__ = [
