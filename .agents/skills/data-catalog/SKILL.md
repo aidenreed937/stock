@@ -9,6 +9,8 @@ description: 本地落盘数据资产统一目录 (DataCatalog) 与极速查询�
 
 遵循**渐进式披露**原则，本入口聚合高频 Python 查询 API 与数据集快速路由索引；深入数据字典、分析范例与时滞避坑请查阅对应专题。
 
+领域职责与分析层落点以 [`docs/architecture/domain-responsibilities.md`](../../../docs/architecture/domain-responsibilities.md) 为准：`DataCatalog` 负责 Curated 黄金数据集查询，`FeatureStore` 负责 `market_daily`、Feature 长表和领域 Mart；本技能不改变上游采集边界，也不要求领域 Mart 直接请求远程 API。
+
 ---
 
 ## 1. 核心 Python API 极速速查 (SSOT)
@@ -47,7 +49,7 @@ df_basic = cat_ts.load_dataset(
 df_summary = DataCatalog().summary()
 ```
 
-运行时通过 `DataRuntimeContext` 统一注入 `data/raw`、`data/curated` 和 `data/cache`；下游读取 Curated 仍使用 `DataCatalog`。`market_daily` 与领域 Mart 不属于 DataCatalog 数据集目录，统一通过 `FeatureStore` 读取，例如 `FeatureStore().get_domain_mart("repurchase_daily")`。
+运行时通过 `DataRuntimeContext` 统一注入 `data/raw`、`data/curated` 和 `data/cache`；下游读取 Curated 仍使用 `DataCatalog`。`market_daily`、Feature 长表与领域 Mart 不属于 DataCatalog 数据集目录，统一通过 `stock_analytics.features` 的 `FeatureStore` 读取，例如 `FeatureStore().get_domain_mart("repurchase_daily")`。
 
 ---
 
@@ -64,7 +66,7 @@ df_summary = DataCatalog().summary()
 | **场内基金与 ETF** | `fund_daily`, `etf_share_size` | `tushare` | 26 只核心自选 ETF 历史日线与份额规模 |
 | **可转债与期权** | `cb_basic`, `cb_daily`, `opt_basic`, `opt_daily` | `tushare` | 可转债静态/日行情、期权合约静态/日行情 |
 | **公司行为事件** | `stk_holdertrade`, `repurchase`, `block_trade` | `tushare` | 增减持、回购与大宗交易事件明细 |
-| **领域 Mart** | `market_daily`、`convertible_bond_daily`、`insider_activity_daily`、`repurchase_daily`、`block_trade_daily`、`settlement_iv_proxy_daily` | `FeatureStore` | 聚合事实与观察项；不通过 `DataCatalog` 直接加载 |
+| **领域 Mart** | `market_daily`、`industry_daily`、`industry_panel_daily`、`market_temperature_derived_facts`、`convertible_bond_daily`、`insider_activity_daily`、`repurchase_daily`、`block_trade_daily`、`settlement_iv_proxy_daily` | `FeatureStore` | 市场、行业、温度、衍生品与公司行为聚合事实；不通过 `DataCatalog` 直接加载 |
 | **外盘与全球宏观** | `stock_daily_bar`, `index_daily_bar`, `macro_indicators` | `yfinance` / `fred` | 美股巨头、外盘指数、美债/黄金/原油/VIX、FED 宏观序列 |
 
 ---

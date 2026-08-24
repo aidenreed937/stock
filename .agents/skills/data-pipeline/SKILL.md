@@ -9,6 +9,8 @@ description: 涵盖项目全部真实数据源（TuShare、理杏仁 LiXinger、
 
 遵循**渐进式披露**原则，本入口聚合日常高频运维操作闭环，深度配置与排错请查阅对应专题。
 
+本 Skill 的职责止于 `stock_data` 的数据源、RAW/Curated、质量与审计；领域职责与分析层落点以 [`docs/architecture/domain-responsibilities.md`](../../../docs/architecture/domain-responsibilities.md) 为准。Domain Mart 的业务构建归 `stock_analytics.marts`，通过 `DataCatalog` / `FeatureStore` 消费本地事实，不直接请求新的上游 API。
+
 ---
 
 ## 1. 日常数据工程 6 步闭环速查表
@@ -201,7 +203,7 @@ make audit TYPE=all DATE=YYYY-MM-DD
 7. **统一运行时目录上下文**：
    `DataRuntimeContext` 为一次运行统一注入 `data_root`、`raw_root`、`curated_root` 和 `cache_root`。Fetcher、DataCatalog、FeatureStore 与领域 Mart 构建器应复用该上下文，禁止为 RAW、Curated、Cache 各自拼接一套路径。
 8. **领域 Mart 质量闭环**：
-   领域 Mart 由 `make features-build TARGET=domain_marts` 构建，随后由 `make validate` 检查日期类型、主键唯一性、非有限数值和领域输入契约；`make audit TYPE=all` 再完成资产与来源审计。输入缺失时不得用默认值伪造 Mart 数据。
+   领域 Mart 由 `stock_analytics.marts` 的 `DomainMartBuilder` 经 `make features-build TARGET=domain_marts` 构建，随后由 `make validate` 检查日期类型、主键唯一性、非有限数值和领域输入契约；`make audit TYPE=all` 再完成资产与来源审计。输入缺失时不得用默认值伪造 Mart 数据。
 9. **按业务日期裁剪而不是按字段名猜测**：
    `clip_endpoint_date_range()` 先读取任务注册的 `fetch_mode`、`frequency` 和分区契约；静态/事件/非分区任务不强行裁剪，季度财报以 `end_date` 的季度裁剪，其余任务再按 `trade_date`、`date`、`month` 等注册/兼容字段处理。发现范围外记录时保留告警并在验收中归因。
 

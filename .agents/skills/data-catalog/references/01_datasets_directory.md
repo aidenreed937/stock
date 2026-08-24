@@ -67,4 +67,4 @@
 | **`national_debt`** | 理杏仁 | 中债官方国债收益率序列 | `trade_date` | `tcm_y1`, `tcm_y2`, `tcm_y5`, `tcm_y10`, `tcm_y30` |
 | **`macro_indicators`** | AlphaVantage | USD/CNH 离岸人民币汇率 | `symbol`, `trade_date` | `open`, `high`, `low`, `close` |
 
-领域 Mart 统一落在 `data/curated/mart/`，由 `FeatureStore` 管理：`market_daily` 为市场日频宽表；`convertible_bond_daily`、`insider_activity_daily`、`repurchase_daily`、`block_trade_daily` 为事件/资产聚合；`settlement_iv_proxy_daily` 为期权结算价反解的波动率代理。领域 Mart 的缺失输入只产生空结果或不可用状态，不代表上游有数据。
+领域 Mart 统一落在 `data/curated/mart/`，由 `FeatureStore` 管理：`market_daily` 为市场日频宽表；`industry_daily`、`industry_panel_daily` 为申万行业日频事实与结构面板；`market_temperature_derived_facts` 为市场温度派生事实；`convertible_bond_daily`、`insider_activity_daily`、`repurchase_daily`、`block_trade_daily` 为事件/资产聚合；`settlement_iv_proxy_daily` 为期权结算价反解的波动率代理。领域 Mart 的缺失输入只产生空结果或不可用状态，不代表上游有数据。领域职责与构建入口见 [`docs/architecture/domain-responsibilities.md`](../../../docs/architecture/domain-responsibilities.md)。
