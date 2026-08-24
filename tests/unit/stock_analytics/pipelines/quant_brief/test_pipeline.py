@@ -7,6 +7,7 @@ from pathlib import Path
 import polars as pl
 
 from stock_analytics.pipelines.quant_brief import run_quant_brief
+from stock_analytics.pipelines.quant_brief.pipeline import _resolve_artifact_dir
 
 
 def test_run_quant_brief_reads_upstream_artifacts_and_writes_four_step_report(
@@ -259,6 +260,24 @@ def test_run_quant_brief_passes_through_upstream_drivers_and_margin_series(
     assert nature["comparison_as_of"] == "2026-08-13"
     assert nature["composite_delta"] == 3.0
     assert result.manifest["comparison"]["previous_as_of_date"] == "2026-08-13"
+
+
+def test_resolve_artifact_dir_uses_explicit_run_id(tmp_path: Path) -> None:
+    target_date = date(2026, 8, 14)
+    run_root = tmp_path / "market_temperature" / "runs" / f"as_of={target_date.isoformat()}"
+    first = run_root / "run_first"
+    second = run_root / "run_second"
+    first.mkdir(parents=True)
+    second.mkdir()
+
+    assert (
+        _resolve_artifact_dir(
+            tmp_path / "market_temperature",
+            target_date,
+            run_id="run_first",
+        )
+        == first
+    )
 
 
 def _write_json(path: Path, payload: dict[str, object]) -> None:

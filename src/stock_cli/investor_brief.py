@@ -24,6 +24,8 @@ def _build_parser() -> argparse.ArgumentParser:
         default=None,
         help="指定分析基准日期 (YYYY-MM-DD, 默认读取两个上游 latest 产物)",
     )
+    parser.add_argument("--market-run-id", default=None, help="固定市场温度计上游 run_id")
+    parser.add_argument("--industry-run-id", default=None, help="固定行业结构上游 run_id")
     parser.add_argument(
         "-c",
         "--config",
@@ -55,6 +57,8 @@ def main() -> None:
     try:
         result = run_investor_brief(
             target_date=target_date,
+            market_run_id=args.market_run_id,
+            industry_run_id=args.industry_run_id,
             config_path=Path(args.config_path),
             output_root=args.output_root,
             update_latest=bool(args.update_latest),

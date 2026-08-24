@@ -61,6 +61,8 @@ def test_run_multi_date_artifacts_serializes_and_shares_batch_state(
         assert isinstance(target, date)
         calls.append(("brief", target))
         assert kwargs["update_latest"] is False
+        assert kwargs["market_run_id"] == f"market-{target}"
+        assert kwargs["industry_run_id"] == f"industry-{target}"
         return SimpleNamespace(paths=SimpleNamespace(run_dir=tmp_path / f"brief-{target}"))
 
     def _quant_brief(**kwargs: object):
@@ -68,6 +70,8 @@ def test_run_multi_date_artifacts_serializes_and_shares_batch_state(
         assert isinstance(target, date)
         calls.append(("quant", target))
         assert kwargs["update_latest"] is False
+        assert kwargs["market_run_id"] == f"market-{target}"
+        assert kwargs["industry_run_id"] == f"industry-{target}"
         return SimpleNamespace(paths=SimpleNamespace(run_dir=tmp_path / f"quant-{target}"))
 
     shared_cache = None

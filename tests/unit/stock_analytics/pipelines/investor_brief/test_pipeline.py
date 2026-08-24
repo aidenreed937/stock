@@ -8,6 +8,7 @@ from datetime import date
 from typing import TYPE_CHECKING
 
 import polars as pl
+import pytest
 
 from stock_analytics.pipelines.investor_brief.pipeline import run_investor_brief
 from stock_reporting.templates.investor_brief import _data_quality_notes
@@ -167,6 +168,59 @@ investor_brief:
     assert result.manifest["inputs"]["industry_structure"]["artifact_dir"].endswith(
         f"as_of={latest_date.isoformat()}/run_industry"
     )
+
+
+def test_run_investor_brief_pins_explicit_upstream_run_ids(tmp_path: Path) -> None:
+    market_root = tmp_path / "market_temperature"
+    industry_root = tmp_path / "industry_structure"
+    output_root = tmp_path / "investor_brief"
+    target_date = date(2026, 8, 14)
+    _write_market_artifacts(market_root, target_date)
+    _write_industry_artifacts(industry_root, target_date)
+    for root, source_name in ((market_root, "run_market"), (industry_root, "run_industry")):
+        source = root / "runs" / f"as_of={target_date.isoformat()}" / source_name
+        selected_name = f"run_z_{source_name.removeprefix('run_')}"
+        selected = source.with_name(selected_name)
+        shutil.copytree(source, selected)
+        manifest_path = selected / "manifest.json"
+        manifest = json.loads(manifest_path.read_text(encoding="utf-8"))
+        manifest["run_id"] = selected_name
+        manifest["artifact_type"] = root.name
+        manifest_path.write_text(json.dumps(manifest), encoding="utf-8")
+    config_path = tmp_path / "investor_brief.yaml"
+    config_path.write_text(
+        f"""
+investor_brief:
+  schema_version: 1
+  title: "测试投资者简报"
+  artifact_root: "{output_root}"
+  market_temperature_root: "{market_root}"
+  industry_structure_root: "{industry_root}"
+""",
+        encoding="utf-8",
+    )
+
+    result = run_investor_brief(
+        target_date=target_date,
+        market_run_id="run_market",
+        industry_run_id="run_industry",
+        config_path=config_path,
+    )
+
+    assert result.manifest["parents"]["market_temperature"]["run_id"] == "run_market"
+    assert result.manifest["parents"]["industry_structure"]["run_id"] == "run_industry"
+
+
+def test_run_investor_brief_requires_both_upstream_run_ids(tmp_path: Path) -> None:
+    config_path = tmp_path / "investor_brief.yaml"
+    config_path.write_text("investor_brief: {}", encoding="utf-8")
+
+    with pytest.raises(ValueError, match="必须同时提供"):
+        run_investor_brief(
+            target_date=date(2026, 8, 14),
+            market_run_id="run_market",
+            config_path=config_path,
+        )
 
 
 def _write_market_artifacts(root: Path, target_date: date = date(2026, 8, 14)) -> None:

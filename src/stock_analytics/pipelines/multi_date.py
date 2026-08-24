@@ -96,10 +96,14 @@ def run_multi_date_artifacts(
         )
         brief_result = run_investor_brief(
             target_date=target_date,
+            market_run_id=market_result.paths.run_dir.name,
+            industry_run_id=industry_result.paths.run_dir.name,
             update_latest=update_latest,
         )
         quant_result = run_quant_brief(
             target_date=target_date,
+            market_run_id=market_result.paths.run_dir.name,
+            industry_run_id=industry_result.paths.run_dir.name,
             update_latest=update_latest,
         )
         summaries.append(
