@@ -14,6 +14,7 @@ from stock_analytics.pipelines.market_temperature.fact_watermarks import (
     collect_dataset_rows as _dataset_rows,
 )
 from stock_analytics.pipelines.market_temperature.cache import DatasetFrameCache
+from stock_analytics.pipelines.market_temperature.facts_schema import FACT_SCHEMA, empty_facts
 from stock_analytics.pipelines.market_temperature.facts_mart import (
     date_values,
     parse_date_value as _parse_date_value,  # noqa: F401
@@ -24,37 +25,15 @@ from stock_core.contracts import MarketDataCatalog
 if TYPE_CHECKING:
     from stock_reporting.interpretation.market_temperature.config import MarketTemperatureConfig
 
-FACT_SCHEMA: dict[str, Any] = {
-    "fact_id": pl.Utf8,
-    "category": pl.Utf8,
-    "dimension": pl.Utf8,
-    "data_source": pl.Utf8,
-    "dataset": pl.Utf8,
-    "as_of_date": pl.Date,
-    "metric_date": pl.Date,
-    "window": pl.Int64,
-    "metric_id": pl.Utf8,
-    "value_float": pl.Float64,
-    "value_text": pl.Utf8,
-    "unit": pl.Utf8,
-    "sample_size": pl.Int64,
-    "source": pl.Utf8,
-    "status": pl.Utf8,
-    "note": pl.Utf8,
-}
 
 __all__ = [
+    "FACT_SCHEMA",
     "_latest_dataset_date",
     "collect_facts",
     "empty_facts",
     "resolve_external_cutoff_date",
     "resolve_trade_window",
 ]
-
-
-def empty_facts() -> pl.DataFrame:
-    """返回稳定 schema 的空事实表。"""
-    return pl.DataFrame(schema=FACT_SCHEMA)
 
 
 def resolve_trade_window(
