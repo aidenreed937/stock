@@ -39,7 +39,11 @@ def test_run_multi_date_artifacts_serializes_and_shares_batch_state(
         calls.append(("market", target))
         assert kwargs["update_latest"] is False
         assert kwargs["market_daily"] is not None
+        nonlocal shared_cache
+        if shared_cache is None:
+            shared_cache = kwargs["dataset_cache"]
         assert kwargs["dataset_cache"] is shared_cache
+        assert "metric_contexts" not in kwargs
         assert max(kwargs["trade_dates"]) <= target  # type: ignore[arg-type]
         return SimpleNamespace(paths=SimpleNamespace(run_dir=tmp_path / f"market-{target}"))
 
@@ -68,16 +72,8 @@ def test_run_multi_date_artifacts_serializes_and_shares_batch_state(
 
     shared_cache = None
 
-    def _capture_contexts(target_dates, storage_dir, dataset_cache):
-        nonlocal shared_cache
-        shared_cache = dataset_cache
-        assert tuple(target_dates) == dates
-        assert storage_dir == tmp_path
-        return {}
-
     monkeypatch.setattr(multi_date, "DataCatalog", _Catalog)
     monkeypatch.setattr(multi_date, "FeatureStore", _Store)
-    monkeypatch.setattr(multi_date, "_build_metric_contexts", _capture_contexts)
     monkeypatch.setattr(multi_date, "run_market_temperature", _market_temperature)
     monkeypatch.setattr(multi_date, "run_industry_structure", _industry_structure)
     monkeypatch.setattr(multi_date, "run_investor_brief", _investor_brief)

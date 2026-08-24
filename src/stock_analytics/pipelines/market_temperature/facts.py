@@ -122,7 +122,6 @@ def collect_facts(
     collect_metric_values: bool | None = None,
     market_daily: pl.DataFrame | None = None,
     dataset_cache: DatasetFrameCache | None = None,
-    metric_contexts: dict[int, Any] | None = None,
     external_cutoff_date: date | None = None,
 ) -> pl.DataFrame:
     """采集窗口、数据水位和可选指标事实。"""
@@ -141,7 +140,7 @@ def collect_facts(
         config.metric_values.enabled if collect_metric_values is None else collect_metric_values
     )
     if should_collect_metrics:
-        del market_daily, dataset_cache, metric_contexts, external_cutoff_date
+        del market_daily, dataset_cache, external_cutoff_date
         rows.extend(_load_materialized_metric_rows(config, as_of_date, storage_dir))
         rows.extend(collect_optional_fact_rows(config, as_of_date, storage_dir))
     return (

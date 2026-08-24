@@ -63,3 +63,40 @@ def test_shared_dataset_cache_does_not_retain_raw_frame_in_metric_context() -> N
     assert first.equals(second)
     assert catalog.calls == [("tushare", "stock_daily_bar")]
     assert context.cache == {}
+
+
+def test_metric_context_reuses_cached_wider_projection() -> None:
+    catalog = FakeCatalog(data_source="tushare")
+    context = MetricContext(catalog=cast("DataCatalog", catalog))
+
+    wider = load_metric_dataset(context, "stock_daily_bar", columns=["data_source", "dataset"])
+    narrower = load_metric_dataset(context, "stock_daily_bar", columns=["data_source"])
+
+    assert wider.columns == ["data_source", "dataset"]
+    assert narrower.columns == ["data_source"]
+    assert catalog.calls == [("tushare", "stock_daily_bar")]
+
+
+def test_metric_context_keeps_different_date_windows_isolated() -> None:
+    catalog = FakeCatalog(data_source="tushare")
+    context = MetricContext(catalog=cast("DataCatalog", catalog))
+
+    first = load_metric_dataset(
+        context,
+        "stock_daily_bar",
+        start_date=date(2026, 8, 1),
+        end_date=date(2026, 8, 3),
+    )
+    second = load_metric_dataset(
+        context,
+        "stock_daily_bar",
+        start_date=date(2026, 8, 4),
+        end_date=date(2026, 8, 6),
+    )
+
+    assert first["data_source"].to_list() == ["tushare"]
+    assert second["data_source"].to_list() == ["tushare"]
+    assert catalog.calls == [
+        ("tushare", "stock_daily_bar"),
+        ("tushare", "stock_daily_bar"),
+    ]

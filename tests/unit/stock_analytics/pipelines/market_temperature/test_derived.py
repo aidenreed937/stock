@@ -17,6 +17,7 @@ from stock_analytics.pipelines.market_temperature.derived import (
     _investor_account_rows,
     _limit_event_daily_frame,
     _limit_event_rows,
+    _load_dataset,
     _option_rows,
     _percentile_temperature,
     _report_revision_rows,
@@ -82,6 +83,16 @@ class FakeCatalog:
         end_date = raw_end_date if isinstance(raw_end_date, date) else None
         self.load_calls.append((dataset, end_date))
         return self.datasets.get(dataset, pl.DataFrame())
+
+
+def test_derived_dataset_read_failure_degrades_to_empty_frame() -> None:
+    class _BrokenCatalog:
+        def load_dataset(self, dataset: str, **_: object) -> pl.DataFrame:
+            raise RuntimeError(f"broken {dataset}")
+
+    result = _load_dataset(_BrokenCatalog(), "stock_daily_bar")  # type: ignore[arg-type]
+
+    assert result.is_empty()
 
 
 def test_financial_statement_rows_mark_stale_days() -> None:

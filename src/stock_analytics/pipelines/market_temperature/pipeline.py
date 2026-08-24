@@ -31,8 +31,6 @@ from stock_reporting.interpretation.market_temperature.config import (
 if TYPE_CHECKING:
     import polars as pl
 
-    from stock_analytics.metrics.context import MetricContext
-
 
 @dataclass(frozen=True, slots=True)
 class MarketTemperatureRunResult:
@@ -62,7 +60,6 @@ def run_market_temperature(
     market_daily: pl.DataFrame | None = None,
     dataset_cache: DatasetFrameCache | None = None,
     trade_dates: tuple[date, ...] | None = None,
-    metric_contexts: dict[int, MetricContext] | None = None,
 ) -> MarketTemperatureRunResult:
     """运行市场温度计事实采集、评分结构生成与产物写入。"""
     config = load_market_temperature_config(config_path).with_artifact_root(output_root)
@@ -100,7 +97,6 @@ def run_market_temperature(
         collect_metric_values=collect_metric_values,
         market_daily=market_daily,
         dataset_cache=dataset_cache,
-        metric_contexts=metric_contexts,
         external_cutoff_date=external_cutoff_date,
     )
     scores = build_scores(

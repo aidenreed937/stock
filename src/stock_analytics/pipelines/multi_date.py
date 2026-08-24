@@ -19,8 +19,6 @@ from stock_data.catalog import DataCatalog
 if TYPE_CHECKING:
     from collections.abc import Sequence
 
-    from stock_analytics.metrics.context import MetricContext
-
 
 @dataclass(frozen=True, slots=True)
 class MultiDateArtifactSummary:
@@ -75,11 +73,6 @@ def run_multi_date_artifacts(
         end_date=max_date,
         columns=MARKET_DAILY_FACT_COLUMNS,
     )
-    metric_contexts = _build_metric_contexts(
-        unique_dates,
-        storage_path,
-        dataset_cache,
-    )
 
     summaries: list[MultiDateArtifactSummary] = []
     for target_date in unique_dates:
@@ -93,7 +86,6 @@ def run_multi_date_artifacts(
             market_daily=market_daily,
             dataset_cache=dataset_cache,
             trade_dates=market_window,
-            metric_contexts=metric_contexts,
         )
         industry_result = run_industry_structure(
             target_date=target_date,
@@ -149,16 +141,6 @@ def _window_until(values: Sequence[date], target_date: date, window: int) -> tup
     if not selected:
         raise ValueError(f"{target_date.isoformat()} 没有可用交易日窗口")
     return selected[-window:]
-
-
-def _build_metric_contexts(
-    target_dates: Sequence[date],
-    storage_dir: Path | None,
-    dataset_cache: DatasetFrameCache,
-) -> dict[int, MetricContext]:
-    """保留旧调用契约；报告阶段不再预建 MetricEngine 上下文。"""
-    del target_dates, storage_dir, dataset_cache
-    return {}
 
 
 __all__ = ["MultiDateArtifactSummary", "run_multi_date_artifacts"]

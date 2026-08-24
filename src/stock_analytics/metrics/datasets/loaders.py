@@ -7,7 +7,7 @@ from typing import TYPE_CHECKING
 from stock_analytics.catalog_compat import load_dataset_compat
 
 if TYPE_CHECKING:
-    from collections.abc import Sequence
+    from collections.abc import MutableMapping, Sequence
     from datetime import date
 
     import polars as pl
@@ -48,10 +48,10 @@ def load_metric_dataset(
 
     base_key = context.cache_key(actual_data_source, dataset, actual_start, actual_end)
     if base_key in context.cache:
-        cached = context.cache[base_key]
-        if columns is not None and not cached.is_empty():
-            selected = [c for c in columns if c in cached.columns]
-            return cached.select(selected)
+        return _project_cached_frame(context.cache[base_key], columns)
+
+    cached = _find_cached_projection(context.cache, base_key, columns)
+    if cached is not None:
         return cached
 
     cache_key = (
@@ -75,3 +75,27 @@ def load_metric_dataset(
             columns=columns,
         )
     return context.cache[cache_key]
+
+
+def _project_cached_frame(
+    frame: pl.DataFrame,
+    columns: Sequence[str] | None,
+) -> pl.DataFrame:
+    if columns is None or frame.is_empty():
+        return frame
+    return frame.select([column for column in columns if column in frame.columns])
+
+
+def _find_cached_projection(
+    cache: MutableMapping[str, pl.DataFrame],
+    base_key: str,
+    columns: Sequence[str] | None,
+) -> pl.DataFrame | None:
+    if columns is None:
+        return None
+    requested = set(columns)
+    prefix = f"{base_key}:"
+    for key, frame in cache.items():
+        if (key == base_key or key.startswith(prefix)) and requested.issubset(frame.columns):
+            return _project_cached_frame(frame, columns)
+    return None
