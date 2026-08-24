@@ -8,6 +8,26 @@ from typing import Any
 
 import polars as pl
 
+_DATE_CANDIDATES = (
+    "trade_date",
+    "report_date",
+    "ann_date",
+    "date",
+    "as_of_date",
+    "float_date",
+    "publish_date",
+    "surv_date",
+    "cal_date",
+    "Date",
+    "end_date",
+    "endDate",
+    "month",
+    "quarter",
+    "list_date",
+    "period",
+    "Start Date",
+)
+
 
 def build_baseline(root: str = "data", output: str | None = None) -> dict[str, Any]:
     """扫描 RAW/Curated Parquet，生成可比较的文件、Schema、日期和哈希清单。"""
@@ -25,18 +45,20 @@ def build_baseline(root: str = "data", output: str | None = None) -> dict[str, A
             item["rows"] = len(df)
             item["columns"] = df.columns
             date_col = next(
-                (
-                    c
-                    for c in ("trade_date", "date", "end_date", "month", "quarter")
-                    if c in df.columns
-                ),
+                (c for c in _DATE_CANDIDATES if c in df.columns),
                 None,
             )
             if date_col and not df.is_empty():
-                values = df[date_col].cast(pl.Utf8, strict=False)
-                item["date_column"] = date_col
-                item["min_date"] = values.min()
-                item["max_date"] = values.max()
+                raw_values = df[date_col].drop_nulls().cast(pl.Utf8, strict=False)
+                values = raw_values.filter(
+                    raw_values.str.contains(r"^\d{4}")
+                    & (raw_values.str.slice(0, 4) <= "2100")
+                    & (raw_values.str.slice(0, 4) >= "1900")
+                )
+                if not values.is_empty():
+                    item["date_column"] = date_col
+                    item["min_date"] = values.min()
+                    item["max_date"] = values.max()
         except Exception as exc:
             item["error"] = str(exc)
         files.append(item)

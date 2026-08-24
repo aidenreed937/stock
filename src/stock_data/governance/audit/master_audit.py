@@ -24,6 +24,27 @@ logger = logging.getLogger(__name__)
 _SYMBOL_COLUMNS = ("symbol", "ts_code", "stockCode", "ticker")
 
 
+_DATE_CANDIDATES = (
+    "trade_date",
+    "report_date",
+    "ann_date",
+    "date",
+    "as_of_date",
+    "float_date",
+    "publish_date",
+    "surv_date",
+    "cal_date",
+    "Date",
+    "end_date",
+    "endDate",
+    "month",
+    "quarter",
+    "list_date",
+    "period",
+    "Start Date",
+)
+
+
 def _parse_source_dataset(file_path: Path, base_dir: Path) -> tuple[str, str]:
     """从物理路径解析数据源和数据集名。"""
     rel_parts = file_path.relative_to(base_dir).parts
@@ -39,7 +60,9 @@ def _parse_source_dataset(file_path: Path, base_dir: Path) -> tuple[str, str]:
 
 def _format_year_gaps(years: list[Any]) -> str | None:
     """分析年份列表是否存在连续跨年断档。"""
-    valid_years = {int(y) for y in years if y is not None and str(y).isdigit()}
+    valid_years = {
+        int(y) for y in years if y is not None and str(y).isdigit() and 1900 <= int(y) <= 2100
+    }
     if len(valid_years) < 2:
         return None
     min_yr = min(valid_years)
@@ -95,21 +118,7 @@ def run_master_audit(base_dir: str | Path | None = None) -> pl.DataFrame:
 
             symbol_cols = [column for column in _SYMBOL_COLUMNS if column in columns]
             date_col = next(
-                (
-                    c
-                    for c in [
-                        "trade_date",
-                        "date",
-                        "as_of_date",
-                        "end_date",
-                        "month",
-                        "quarter",
-                        "report_date",
-                        "list_date",
-                        "Date",
-                    ]
-                    if c in columns
-                ),
+                (c for c in _DATE_CANDIDATES if c in columns),
                 None,
             )
 
@@ -124,29 +133,15 @@ def run_master_audit(base_dir: str | Path | None = None) -> pl.DataFrame:
                 exprs.append(pl.lit(0).alias("symbols_count"))
 
             if date_col:
-                exprs.append(
-                    pl.col(date_col)
-                    .drop_nulls()
-                    .cast(pl.Utf8, strict=False)
-                    .min()
-                    .alias("min_date")
+                col_expr = pl.col(date_col).drop_nulls().cast(pl.Utf8, strict=False)
+                valid_date_expr = col_expr.filter(
+                    col_expr.str.contains(r"^\d{4}")
+                    & (col_expr.str.slice(0, 4) <= "2100")
+                    & (col_expr.str.slice(0, 4) >= "1900")
                 )
-                exprs.append(
-                    pl.col(date_col)
-                    .drop_nulls()
-                    .cast(pl.Utf8, strict=False)
-                    .max()
-                    .alias("max_date")
-                )
-                exprs.append(
-                    pl.col(date_col)
-                    .drop_nulls()
-                    .cast(pl.Utf8, strict=False)
-                    .str.slice(0, 4)
-                    .unique()
-                    .implode()
-                    .alias("data_years")
-                )
+                exprs.append(valid_date_expr.min().alias("min_date"))
+                exprs.append(valid_date_expr.max().alias("max_date"))
+                exprs.append(valid_date_expr.str.slice(0, 4).unique().implode().alias("data_years"))
             else:
                 exprs.append(pl.lit(None).alias("min_date"))
                 exprs.append(pl.lit(None).alias("max_date"))

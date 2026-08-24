@@ -135,6 +135,47 @@ def test_run_master_audit_uses_report_year_not_partition_year(tmp_path: Path) ->
     assert summary["year_gap_warning"].to_list() == [None]
 
 
+def test_run_master_audit_report_rc_prioritizes_report_date(tmp_path: Path) -> None:
+    rc_dir = tmp_path / "tushare" / "market=CN" / "report_rc" / "year=2026" / "month=08"
+    rc_dir.mkdir(parents=True, exist_ok=True)
+    pl.DataFrame(
+        {
+            "symbol": ["000001.SZ", "600519.SH"],
+            "report_date": ["2026-08-01", "2026-08-21"],
+            "quarter": ["", "2026Q4"],
+        }
+    ).write_parquet(rc_dir / "data.parquet")
+
+    summary = run_master_audit(str(tmp_path))
+    assert not summary.is_empty()
+    rc_row = summary.filter(pl.col("dataset") == "report_rc")
+    assert rc_row["最早交易日"][0] == "2026-08-01"
+    assert rc_row["最新交易日"][0] == "2026-08-21"
+
+
+def test_run_master_audit_pledge_detail_prioritizes_ann_date_and_filters_sentinel(
+    tmp_path: Path,
+) -> None:
+    pledge_dir = tmp_path / "tushare" / "market=CN" / "pledge_detail"
+    pledge_dir.mkdir(parents=True, exist_ok=True)
+    pl.DataFrame(
+        {
+            "symbol": ["000002.SZ", "002984.SZ"],
+            "ann_date": ["2023-01-01", "2026-08-21"],
+            "start_date": ["2023-01-01", "2023-02-22"],
+            "end_date": ["2024-01-01", "9999-01-01"],
+            "release_date": [None, "2023-06-21"],
+            "is_release": ["0", "1"],
+        }
+    ).write_parquet(pledge_dir / "data.parquet")
+
+    summary = run_master_audit(str(tmp_path))
+    assert not summary.is_empty()
+    pledge_row = summary.filter(pl.col("dataset") == "pledge_detail")
+    assert pledge_row["最早交易日"][0] == "2023-01-01"
+    assert pledge_row["最新交易日"][0] == "2026-08-21"
+
+
 def test_main(capsys) -> None:
     with patch("stock_data.governance.audit.master_audit.run_master_audit") as mock_audit:
         mock_audit.return_value = pl.DataFrame(
