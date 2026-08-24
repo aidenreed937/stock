@@ -6,8 +6,8 @@ RESEARCH_ENDPOINTS: dict[str, EndpointMeta] = {
     "stk_holdernumber": EndpointMeta(
         api_name="stk_holdernumber",
         description="上市公司股东户数",
-        frequency="event",
-        query_mode="ann_date",
+        frequency="quarterly",
+        query_mode="period",
         group="shareholder_data",
         primary_keys=["ts_code", "ann_date", "end_date"],
         date_columns=["ann_date", "end_date"],

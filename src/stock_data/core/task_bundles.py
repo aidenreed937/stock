@@ -55,12 +55,11 @@ _TASK_BUNDLE_TASKS: dict[str, dict[str, tuple[str, ...]]] = {
             "share_float",
         ),
         "shareholder_event_bundle": (
-            "stk_holdernumber",
             "dividend",
             "stk_managers",
             "stk_surv",
         ),
-        "research_daily_bundle": ("cyq_perf", "cyq_chips"),
+        "research_daily_bundle": ("cyq_perf",),
         "market_behavior_bundle": ("top_list", "top_inst", "dc_concept"),
         "pledge_bundle": ("pledge_detail", "pledge_stat"),
     },

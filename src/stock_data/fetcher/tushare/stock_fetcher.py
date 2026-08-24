@@ -21,6 +21,7 @@ from stock_data.fetcher.tushare.query_builder import (
 from stock_data.fetcher.tushare.registry import TUSHARE_API_REGISTRY, EndpointMeta
 from stock_data.fetcher.tushare.research_fetcher import (
     fetch_dividend_data,
+    fetch_stk_holdernumber_data,
     fetch_top10_floatholders_data,
 )
 
@@ -116,6 +117,10 @@ class TuShareStockFetcher(BaseDataFetcher):
             )
         if endpoint == "top10_floatholders":
             return fetch_top10_floatholders_data(
+                self.client, symbol, start_date, end_date, meta, extra_kwargs, max_workers
+            )
+        if endpoint == "stk_holdernumber":
+            return fetch_stk_holdernumber_data(
                 self.client, symbol, start_date, end_date, meta, extra_kwargs, max_workers
             )
         if not is_index_dailybasic_supported(endpoint, symbol):

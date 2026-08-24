@@ -114,24 +114,24 @@ TuShare 新增研究接口默认不进入无端点的全源同步；按需显式
 
 仍保留的历史 bundle 别名仅用于兼容其他数据源的已有命令，不作为新配置的推荐名称；LiXinger 的 `macro_bundle`、`index_bundle` 已移除。bundle 不合并子任务的数据集、水位或失败状态。
 
-### 财报与前十大流通股东全市场任务的报告期语义
+### 财报、流通股东与股东户数全市场任务的报告期语义
 
 TuShare 的 `income`、`fina_indicator`、`balancesheet`、`cashflow` 是项目任务名，统一通过
 `financial_statement_bundle` 调度；底层 `*_vip` 只是上游内部 API 名，禁止直接作为 CLI
-`ENDPOINT`。这些任务及 `top10_floatholders`（上市公司前十大流通股东）在 `TaskRegistry` 中为 `fetch_mode=per_period`，不再按 5,500+ 个股逐个轮询：
+`ENDPOINT`。这些任务及 `top10_floatholders`（前十大流通股东）、`stk_holdernumber`（股东户数）在 `TaskRegistry` 中均为 `fetch_mode=per_period`，`cyq_perf`（每日筹码胜率与成本）为 `fetch_mode=per_day`，已全面解绑 5,500+ 个股逐个轮询：
 
-1. **历史回填**：`make backfill SOURCE=tushare ENDPOINT=top10_floatholders START=... END=...` 自动按区间内所有自然季度末报告期（`period`）批量并发拉取全市场数据；
-2. **日常增量同步**：`make sync DATE=YYYY-MM-DD ENDPOINT=top10_floatholders` 自动以当日公告日期（`ann_date`）单次拉取当天所有新披露公司，单次请求即可完成（耗时 < 1 秒）；
-3. 同步目标是目标日前最近一个已完成的自然季度末，水位推进到下一个报告期末；
-4. 当前报告期水位等于目标期末时仍允许刷新，以吸收后续披露修订，并绕过该任务的 RAW
+1. **历史回填**：`make backfill SOURCE=tushare ENDPOINT=top10_floatholders,stk_holdernumber START=... END=...` 自动按区间内所有自然季度末报告期（`period`）批量并发拉取全市场数据；
+2. **日常增量同步**：`make sync DATE=YYYY-MM-DD ENDPOINT=top10_floatholders,stk_holdernumber` 自动以当日公告日期（`ann_date`）单次拉取当天所有新披露公司，单次请求即可完成（耗时 < 1 秒）；
+3. **筹码截面同步**：`make sync DATE=YYYY-MM-DD ENDPOINT=cyq_perf` 按交易日单次 6,000 条请求直出全市场所有股票 50% 成本分位与获利盘比例；
+4. 同步目标是目标日前最近一个已完成的自然季度末，水位推进到下一个报告期末；
+5. 当前报告期水位等于目标期末时仍允许刷新，以吸收后续披露修订，并绕过该任务的 RAW
    缓存复用；
-5. 财报与流通股东按全市场 `stock_basic` 股票池批量请求，`SYMBOL=watchlist` 不应被误当成财报全市场池；
-6. Fetcher 返回后由 `src/stock_data/pipeline/date_clipper.py` 按 `end_date` 所属季度裁剪，
+6. 财报、流通股东与股东户数按全市场 `stock_basic` 股票池批量请求，`SYMBOL=watchlist` 不应被误当成全市场池；
+7. Fetcher 返回后由 `src/stock_data/pipeline/date_clipper.py` 按 `end_date` 所属季度裁剪，
    不能用 `ann_date` 把披露日误当成报告期；
-7. RAW/Curated 验收仍按任务注册的复合主键（通常包含 `symbol`、`ann_date`、`end_date`）
-   处理，重述记录不能因为同一报告期而被错误去重。
+8. RAW/Curated 验收仍按任务注册的复合主键处理，重述记录不能因为同一报告期而被错误去重。
 
-因此，财报与流通股东同步结果应同时查看报告期水位、RAW 刷新状态和 `make backfill-accept` 的主键/缺口
+因此，财报与股东类同步结果应同时查看报告期水位、RAW 刷新状态和 `make backfill-accept` 的主键/缺口
 检查，不能只看交易日最新水位。
 
 ### 申万 `sw_daily` 的分层与身份字段

@@ -1,7 +1,14 @@
 """任务注册表的轻量共享判定辅助函数。"""
 
 PER_PERIOD_DATASETS: frozenset[str] = frozenset(
-    {"income", "fina_indicator", "balancesheet", "cashflow", "top10_floatholders"}
+    {
+        "income",
+        "fina_indicator",
+        "balancesheet",
+        "cashflow",
+        "top10_floatholders",
+        "stk_holdernumber",
+    }
 )
 EXPLICIT_ONLY_TASKS = frozenset(
     {

@@ -77,6 +77,8 @@ def test_tushare_registry() -> None:
     assert TUSHARE_API_REGISTRY["dividend"].query_mode == "symbol"
     assert TUSHARE_API_REGISTRY["top10_floatholders"].query_mode == "period"
     assert TUSHARE_API_REGISTRY["top10_floatholders"].max_rows_per_request == 6000
+    assert TUSHARE_API_REGISTRY["stk_holdernumber"].query_mode == "period"
+    assert TUSHARE_API_REGISTRY["stk_holdernumber"].max_rows_per_request == 3000
     assert TUSHARE_API_REGISTRY["cyq_chips"].max_rows_per_request == 6000
     assert TUSHARE_API_REGISTRY["dc_concept"].request_window_days == 1
 
@@ -191,7 +193,6 @@ def test_tushare_share_float_queries_by_unlock_date() -> None:
 @pytest.mark.parametrize(
     ("endpoint", "expected_fields"),
     [
-        ("stk_holdernumber", "ts_code,ann_date,end_date,holder_num"),
         (
             "cyq_perf",
             "ts_code,trade_date,his_low,his_high,cost_5pct,cost_15pct,cost_50pct,"
@@ -797,6 +798,117 @@ def test_tushare_top10_floatholders_single_symbol_query() -> None:
         date(2026, 1, 1),
         date(2026, 6, 30),
         endpoint="top10_floatholders",
+    )
+
+    assert not result.is_empty()
+    fetcher.client.query.assert_called_once()
+    kwargs = fetcher.client.query.call_args.kwargs
+    assert kwargs.get("ts_code") == "600519.SH"
+    assert kwargs.get("start_date") == "20260101"
+    assert kwargs.get("end_date") == "20260630"
+
+
+def test_tushare_stk_holdernumber_daily_sync_uses_ann_date() -> None:
+    fetcher = TuShareDataFetcher(token="test_token")
+    fetcher.client.query = MagicMock(
+        return_value=pd.DataFrame(
+            {
+                "ts_code": ["600519.SH"],
+                "ann_date": ["20260824"],
+                "end_date": ["20260630"],
+                "holder_num": [150000],
+            }
+        )
+    )
+
+    result = fetcher.fetch_daily_bars_df(
+        "",
+        date(2026, 8, 24),
+        date(2026, 8, 24),
+        endpoint="stk_holdernumber",
+    )
+
+    assert not result.is_empty()
+    fetcher.client.query.assert_called_once()
+    kwargs = fetcher.client.query.call_args.kwargs
+    assert kwargs.get("ann_date") == "20260824"
+    assert "end_date" not in kwargs
+    assert "ts_code" not in kwargs
+    assert kwargs.get("pagination_limit") == 3000
+
+
+def test_tushare_stk_holdernumber_quarter_end_uses_end_date() -> None:
+    fetcher = TuShareDataFetcher(token="test_token")
+    fetcher.client.query = MagicMock(
+        return_value=pd.DataFrame(
+            {
+                "ts_code": ["600519.SH"],
+                "ann_date": ["20260715"],
+                "end_date": ["20260630"],
+                "holder_num": [150000],
+            }
+        )
+    )
+
+    result = fetcher.fetch_daily_bars_df(
+        "",
+        date(2026, 6, 30),
+        date(2026, 6, 30),
+        endpoint="stk_holdernumber",
+    )
+
+    assert not result.is_empty()
+    fetcher.client.query.assert_called_once()
+    kwargs = fetcher.client.query.call_args.kwargs
+    assert kwargs.get("end_date") == "20260630"
+    assert "ann_date" not in kwargs
+    assert "ts_code" not in kwargs
+
+
+def test_tushare_stk_holdernumber_multi_quarter_backfill() -> None:
+    fetcher = TuShareDataFetcher(token="test_token")
+    fetcher.client.query = MagicMock(
+        return_value=pd.DataFrame(
+            {
+                "ts_code": ["600519.SH"],
+                "ann_date": ["20260425"],
+                "end_date": ["20260331"],
+                "holder_num": [150000],
+            }
+        )
+    )
+
+    result = fetcher.fetch_daily_bars_df(
+        "",
+        date(2026, 1, 1),
+        date(2026, 6, 30),
+        endpoint="stk_holdernumber",
+    )
+
+    assert not result.is_empty()
+    assert fetcher.client.query.call_count == 2
+    periods_queried = [call.kwargs.get("end_date") for call in fetcher.client.query.call_args_list]
+    assert set(periods_queried) == {"20260331", "20260630"}
+
+
+def test_tushare_stk_holdernumber_single_symbol_query() -> None:
+    fetcher = TuShareDataFetcher(token="test_token")
+    fetcher.client.query = MagicMock(
+        return_value=pd.DataFrame(
+            {
+                "ts_code": ["600519.SH"],
+                "ann_date": ["20260824"],
+                "end_date": ["20260630"],
+                "holder_num": [150000],
+            }
+        )
+    )
+
+    result = fetcher.fetch_daily_bars_df(
+        "600519.SH",
+        date(2026, 1, 1),
+        date(2026, 6, 30),
+        endpoint="stk_holdernumber",
     )
 
     assert not result.is_empty()

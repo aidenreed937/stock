@@ -48,15 +48,14 @@ def test_is_per_symbol_task_rules() -> None:
     assert not is_per_symbol_task("tushare", "daily_basic")
     assert not is_per_symbol_task("tushare", "moneyflow")
     assert not is_per_symbol_task("tushare", "adj_factor")
-    assert not is_per_symbol_task("tushare", "stk_limit")
     assert not is_per_symbol_task("tushare", "limit_list_d")
     assert not is_per_symbol_task("tushare", "hk_hold")
     assert not is_per_symbol_task("tushare", "top10_floatholders")
+    assert not is_per_symbol_task("tushare", "stk_holdernumber")
+    assert not is_per_symbol_task("tushare", "cyq_perf")
 
     for endpoint in (
-        "stk_holdernumber",
         "dividend",
-        "cyq_perf",
         "cyq_chips",
         "stk_managers",
         "stk_surv",
@@ -77,6 +76,16 @@ def test_tushare_financial_statements_use_vip_period_routes() -> None:
     assert top10_task.api_name == "top10_floatholders"
     assert top10_task.fetch_mode == "per_period"
     assert top10_task.query_mode == "period"
+
+    holder_num_task = resolve_task("tushare", "stk_holdernumber")
+    assert holder_num_task.api_name == "stk_holdernumber"
+    assert holder_num_task.fetch_mode == "per_period"
+    assert holder_num_task.query_mode == "period"
+
+    cyq_perf_task = resolve_task("tushare", "cyq_perf")
+    assert cyq_perf_task.api_name == "cyq_perf"
+    assert cyq_perf_task.fetch_mode == "per_day"
+    assert cyq_perf_task.query_mode == "trade_date"
 
 
 def test_list_available_tasks() -> None:
@@ -283,15 +292,11 @@ def test_tushare_task_bundles() -> None:
         "share_float",
     )
     assert resolve_bundle("tushare", "shareholder_event_bundle").tasks == (
-        "stk_holdernumber",
         "dividend",
         "stk_managers",
         "stk_surv",
     )
-    assert resolve_bundle("tushare", "research_daily_bundle").tasks == (
-        "cyq_perf",
-        "cyq_chips",
-    )
+    assert resolve_bundle("tushare", "research_daily_bundle").tasks == ("cyq_perf",)
     assert resolve_bundle("tushare", "market_behavior_bundle").tasks == (
         "top_list",
         "top_inst",
