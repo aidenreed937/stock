@@ -26,6 +26,7 @@ class MetricDomain(StrEnum):
     VALUATION = "valuation"
     FLOW = "flow"
     MACRO = "macro"
+    DERIVATIVES = "derivatives"
 
 
 class MetricFrequency(StrEnum):

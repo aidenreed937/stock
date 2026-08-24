@@ -23,10 +23,19 @@ def load_metric_dataset(
     start_date: date | None = None,
     end_date: date | None = None,
     columns: Sequence[str] | None = None,
+    reference: bool = False,
 ) -> pl.DataFrame:
-    """通过 DataCatalog 加载指标依赖数据集，并在上下文内缓存。"""
-    actual_start = start_date or context.start_date
-    actual_end = end_date or context.resolve_end_date()
+    """通过 DataCatalog 加载指标依赖数据集，并在上下文内缓存。
+
+    ``reference=True`` 表示静态参照表（如 ``opt_basic`` 期权合约属性），
+    不随上下文日期窗口过滤，仅按需投影列。
+    """
+    if reference:
+        actual_start = start_date
+        actual_end = end_date
+    else:
+        actual_start = start_date or context.start_date
+        actual_end = end_date or context.resolve_end_date()
     actual_data_source = data_source or getattr(context.catalog, "data_source", "tushare")
 
     catalog = context.catalog
@@ -46,7 +55,12 @@ def load_metric_dataset(
             columns=columns,
         )
 
-    base_key = context.cache_key(actual_data_source, dataset, actual_start, actual_end)
+    base_key = context.cache_key(
+        actual_data_source,
+        dataset,
+        "reference" if reference else actual_start,
+        actual_end if not reference else None,
+    )
     if base_key in context.cache:
         return _project_cached_frame(context.cache[base_key], columns)
 

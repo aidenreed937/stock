@@ -32,6 +32,9 @@ def build_calendar_lookback_window(end_date: date, lookback_days: int) -> Metric
     )
 
 
+_STRING_KEY_COLUMNS = frozenset({"symbol", "industry_code", "industry_name", "underlying_symbol"})
+
+
 def empty_metric_frame(columns: tuple[str, ...]) -> pl.DataFrame:
     """构造指标空 Schema DataFrame。"""
     return pl.DataFrame(
@@ -39,7 +42,7 @@ def empty_metric_frame(columns: tuple[str, ...]) -> pl.DataFrame:
             column: pl.Date
             if column == "trade_date"
             else pl.String
-            if column == "symbol"
+            if column in _STRING_KEY_COLUMNS
             else pl.Float64
             for column in columns
         }

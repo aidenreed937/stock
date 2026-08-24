@@ -2,7 +2,9 @@
 
 from stock_analytics.metrics.calculators import (
     breadth,
+    derivatives,
     flow,
+    industry,
     liquidity,
     macro,
     performance,
@@ -21,6 +23,8 @@ BUILTIN_METRIC_SPECS: tuple[MetricSpec, ...] = (
     *valuation.METRIC_SPECS,
     *flow.METRIC_SPECS,
     *macro.METRIC_SPECS,
+    *industry.METRIC_SPECS,
+    *derivatives.METRIC_SPECS,
 )
 
 
@@ -45,6 +49,8 @@ BUILTIN_CALCULATORS: dict[str, MetricCalculator] = _merge_calculators(
     valuation.CALCULATORS,
     flow.CALCULATORS,
     macro.CALCULATORS,
+    industry.CALCULATORS,
+    derivatives.CALCULATORS,
 )
 
 __all__ = ["BUILTIN_CALCULATORS", "BUILTIN_METRIC_SPECS"]
