@@ -1,4 +1,4 @@
-.PHONY: help install lint lint-rust format test test-rust-plugins check run scan realtime market-aggregate market-temperature industry-structure investor-brief quant-brief screen-stocks report-consistency market-cycle-review artifact-index cleanup-analytics backfill baseline migrate-data migrate-curated cleanup-data backfill-accept repair-stock-daily-bar build-plugins
+.PHONY: help install lint lint-rust format test test-rust-plugins check run scan realtime market-aggregate market-temperature industry-structure investor-brief quant-brief multi-date screen-stocks report-consistency market-cycle-review artifact-index cleanup-analytics backfill baseline migrate-data migrate-curated cleanup-data backfill-accept repair-stock-daily-bar build-plugins
 
 export UV_CACHE_DIR ?= .uv_cache
 export UV_PYTHON_INSTALL_DIR ?= .uv_python
@@ -20,6 +20,7 @@ help:
 	@echo "  make market-aggregate - Run low-frequency A-share full-market aggregate monitor"
 	@echo "  make market-temperature - Generate market temperature artifacts under data/analytics"
 	@echo "  make industry-structure - Generate SW industry structure artifacts under data/analytics"
+	@echo "  make multi-date - Generate and publish four analytics artifacts for multiple trade dates"
 	@echo "  make screen-stocks - Generate stock screening artifacts under data/analytics"
 	@echo "  make report-consistency - Validate report consistency across analytics artifacts"
 	@echo "  make market-cycle-review - Generate cross-cycle market review from analytics artifacts"
@@ -155,6 +156,9 @@ investor-brief:
 
 quant-brief:
 	UV_CACHE_DIR=.uv_cache UV_PYTHON_INSTALL_DIR=.uv_python uv run python -m stock_cli.quant_brief $(if $(DATE),--date $(DATE)) $(if $(CONFIG),--config $(CONFIG)) $(if $(OUTPUT_ROOT),--output-root $(OUTPUT_ROOT)) $(if $(RUN_CLASS),--run-class $(RUN_CLASS)) $(if $(NO_LATEST),--no-latest)
+
+multi-date:
+	UV_CACHE_DIR=.uv_cache UV_PYTHON_INSTALL_DIR=.uv_python uv run python -m stock_cli.multi_date $(if $(DATES),--dates $(DATES),$(if $(LAST_N),--last-n $(LAST_N),$(if $(START),--start $(START)))) $(if $(END),--end $(END)) $(if $(REFRESH_MART),--refresh-mart) $(if $(MART_START),--mart-start $(MART_START)) $(if $(STORAGE_DIR),--storage-dir $(STORAGE_DIR)) $(if $(ANALYTICS_ROOT),--analytics-root $(ANALYTICS_ROOT)) $(if $(PUBLISH_DATE),--publish-date $(PUBLISH_DATE)) $(if $(RUN_CLASS),--run-class $(RUN_CLASS)) $(if $(SKIP_METRICS),--skip-metrics) $(if $(NO_PUBLISH_LATEST),--no-publish-latest) $(if $(DRY_RUN),--dry-run)
 
 screen-stocks:
 	UV_CACHE_DIR=.uv_cache UV_PYTHON_INSTALL_DIR=.uv_python uv run python -m stock_cli.stock_screen $(if $(DATE),--as-of $(DATE)) $(if $(CONFIG),--config $(CONFIG)) $(if $(OUTPUT_ROOT),--output-root $(OUTPUT_ROOT)) $(if $(RUN_CLASS),--run-class $(RUN_CLASS)) $(if $(STORAGE_DIR),--storage-dir $(STORAGE_DIR)) $(if $(SYMBOLS),--symbols $(SYMBOLS)) $(if $(NO_LATEST),--no-latest)

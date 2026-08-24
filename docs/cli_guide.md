@@ -152,11 +152,11 @@ make sync SOURCE=alphavantage ENDPOINT=fx_daily WORKERS=1
 一键生成宏观、中观、微观六维市场温度计与申万行业结构报告：
 
 ```bash
-# 通过 Makefile 快捷执行 (支持 DATE, FORMAT, OUTPUT)
-make scan DATE=2026-08-14 FORMAT=markdown
+# 通过 Makefile 快捷执行
+make scan DATE=2026-08-14
 
 # 或直接运行 Python 模块
-uv run python -m stock_cli.market_temperature --date 2026-08-14 --format markdown
+uv run python -m stock_cli.market_temperature --date 2026-08-14
 ```
 
 需要解释两个基准日的温度变化时，传入 `COMPARE_DATE`；它会把前一运行的评分交给
@@ -167,6 +167,26 @@ make market-temperature DATE=2026-08-14 COMPARE_DATE=2026-08-13
 make report-consistency START=2026-08-01 END=2026-08-14
 make market-cycle-review START=2026-08-01 END=2026-08-14
 ```
+
+### 3.1 多日期分析产物 CLI
+
+多日期入口会按交易日串行生成市场温度、行业结构、投资者简报和量化投研简报，先完成一致性校验，再发布选定日期的 `latest`。批量过程不在 skill 目录内维护脚本：
+
+```bash
+# 最近 N 个交易日
+make multi-date LAST_N=20
+
+# 指定交易日区间
+make multi-date START=2026-08-01 END=2026-08-14
+
+# 显式指定非连续交易日并预览计划
+make multi-date DATES="2026-08-01 2026-08-14" DRY_RUN=1
+
+# 直接查看当前 CLI 参数
+uv run python -m stock_cli.multi_date --help
+```
+
+需要增量刷新 Mart 时追加 `REFRESH_MART=1`；实验或回填运行使用 `RUN_CLASS=experiment` 或 `RUN_CLASS=backfill`。历史重建仍需显式使用特征构建 CLI 的覆盖参数，并提前确认备份和恢复方案。
 
 ---
 

@@ -87,9 +87,14 @@ class ConsistencyValidator:
         self._validate_date(expected_date, bundles)
         return self._result([expected_date])
 
-    def validate_dates(self, dates: list[str]) -> ValidationResult:
+    def validate_dates(
+        self,
+        dates: list[str],
+        *,
+        run_class: str | None = None,
+    ) -> ValidationResult:
         for as_of_date in dates:
-            bundles = self._load_bundles_for_date(as_of_date)
+            bundles = self._load_bundles_for_date(as_of_date, run_class=run_class)
             self._validate_date(as_of_date, bundles)
         return self._result(dates)
 
@@ -147,9 +152,17 @@ class ConsistencyValidator:
             for artifact in ARTIFACT_FILES
         }
 
-    def _load_bundles_for_date(self, as_of_date: str) -> dict[str, ArtifactBundle | None]:
+    def _load_bundles_for_date(
+        self,
+        as_of_date: str,
+        *,
+        run_class: str | None = None,
+    ) -> dict[str, ArtifactBundle | None]:
         return {
-            artifact: self._load_bundle(artifact, _latest_run_dir(root, as_of_date))
+            artifact: self._load_bundle(
+                artifact,
+                _latest_run_dir(root, as_of_date, run_class=run_class),
+            )
             for artifact in ARTIFACT_FILES
             for root in (self.analytics_root / artifact,)
         }
@@ -633,12 +646,26 @@ class ConsistencyValidator:
         return ValidationResult(status, checked_dates, self.errors, self.warnings)
 
 
-def _latest_run_dir(root: Path, as_of_date: str) -> Path | None:
+def _latest_run_dir(
+    root: Path,
+    as_of_date: str,
+    *,
+    run_class: str | None = None,
+) -> Path | None:
     run_root = root / "runs" / f"as_of={as_of_date}"
     if not run_root.exists():
         return None
     run_dirs = sorted(path for path in run_root.glob("run_*") if path.is_dir())
-    return run_dirs[-1] if run_dirs else None
+    if run_class is None:
+        return run_dirs[-1] if run_dirs else None
+    for run_dir in reversed(run_dirs):
+        manifest_path = run_dir / "manifest.json"
+        if not manifest_path.is_file():
+            continue
+        manifest = _read_json(manifest_path)
+        if manifest.get("run_class", "official") == run_class:
+            return run_dir
+    return None
 
 
 def _read_json(path: Path) -> dict[str, Any]:

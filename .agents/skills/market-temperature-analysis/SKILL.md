@@ -29,10 +29,10 @@ description: 使用仓库内的市场温度、行业结构和简报管线完成 
    - 只要市场温度：`make market-temperature DATE=YYYY-MM-DD`
    - 需要市场温度、行业结构和两类简报：`make scan DATE=YYYY-MM-DD`
    - 需要每日盘后组合报告：`make daily-review DATE=YYYY-MM-DD`
-   - 需要多日期产物：先运行仓库批量脚本的 `--help`，再按当前参数执行
+   - 需要多日期产物：使用 `make multi-date ...` 或 `python -m stock_cli.multi_date --help`
    - 需要跨周期复盘：先运行 `make report-consistency START=... END=...`，再运行 `make market-cycle-review START=... END=...`
 
-4. 多日期脚本位于 `.agents/skills/market-temperature-analysis/scripts/build_multi_date_artifacts.py`；直接运行时使用仓库规定的 `UV_CACHE_DIR` 和 `UV_PYTHON_INSTALL_DIR`，具体参数以 `--help` 为准。需要更新 Mart 时使用增量入口；只有明确进行历史重建或数据修复时，才使用覆盖式构建参数，并先确认备份和历史范围。
+4. 多日期入口负责串行生成四类运行目录、统一校验并最后发布选定日期的 `latest`；需要更新 Mart 时使用 `--refresh-mart` 增量入口。只有明确进行历史重建或数据修复时，才使用覆盖式构建参数，并先确认备份和历史范围。
 5. 不手工拼装 facts、不直接复制或编辑 `latest/`、不绕过管线写报告。运行失败、质量校验失败或上游日期不一致时，不把部分结果当作完成。
 6. 运行成功后核对命令输出的运行目录、观测日期、Manifest 和质量报告；批量任务还要确认区间一致性检查通过，再使用发布后的结果。
 7. 输出分析时区分：本地数据验证事实、由事实得到的机制判断、仍受数据时效或覆盖范围限制的内容。报告应注明观测日和关键数据缺口。

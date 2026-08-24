@@ -3,7 +3,7 @@
 from __future__ import annotations
 
 import json
-from dataclasses import dataclass
+from dataclasses import dataclass, replace
 from datetime import date
 from pathlib import Path
 from typing import Any
@@ -43,12 +43,18 @@ def run_quant_brief(
     industry_run_id: str | None = None,
     config_path: Path | str = DEFAULT_CONFIG_PATH,
     output_root: Path | str | None = None,
+    market_temperature_root: Path | str | None = None,
+    industry_structure_root: Path | str | None = None,
     run_class: RunClass = "official",
     update_latest: bool = True,
 ) -> QuantBriefRunResult:
     """读取市场温度和行业结构产物，生成量化投研简报。"""
     _validate_upstream_selection(target_date, market_run_id, industry_run_id)
     config = load_quant_brief_config(config_path).with_artifact_root(output_root)
+    if market_temperature_root is not None:
+        config = replace(config, market_temperature_root=Path(market_temperature_root))
+    if industry_structure_root is not None:
+        config = replace(config, industry_structure_root=Path(industry_structure_root))
     resolved_date = target_date or _resolve_latest_common_date(
         config.market_temperature_root,
         config.industry_structure_root,

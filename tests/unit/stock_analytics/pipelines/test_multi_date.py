@@ -39,6 +39,7 @@ def test_run_multi_date_artifacts_serializes_and_shares_batch_state(
         calls.append(("market", target))
         assert kwargs["update_latest"] is False
         assert kwargs["market_daily"] is not None
+        assert kwargs["output_root"] == analytics_root / "market_temperature"
         nonlocal shared_cache
         if shared_cache is None:
             shared_cache = kwargs["dataset_cache"]
@@ -53,6 +54,7 @@ def test_run_multi_date_artifacts_serializes_and_shares_batch_state(
         calls.append(("industry", target))
         assert kwargs["update_latest"] is False
         assert kwargs["dataset_cache"] is shared_cache
+        assert kwargs["output_root"] == analytics_root / "industry_structure"
         assert max(kwargs["trade_dates"]) <= target  # type: ignore[arg-type]
         return SimpleNamespace(paths=SimpleNamespace(run_dir=tmp_path / f"industry-{target}"))
 
@@ -63,6 +65,9 @@ def test_run_multi_date_artifacts_serializes_and_shares_batch_state(
         assert kwargs["update_latest"] is False
         assert kwargs["market_run_id"] == f"market-{target}"
         assert kwargs["industry_run_id"] == f"industry-{target}"
+        assert kwargs["output_root"] == analytics_root / "investor_brief"
+        assert kwargs["market_temperature_root"] == analytics_root / "market_temperature"
+        assert kwargs["industry_structure_root"] == analytics_root / "industry_structure"
         return SimpleNamespace(paths=SimpleNamespace(run_dir=tmp_path / f"brief-{target}"))
 
     def _quant_brief(**kwargs: object):
@@ -72,9 +77,13 @@ def test_run_multi_date_artifacts_serializes_and_shares_batch_state(
         assert kwargs["update_latest"] is False
         assert kwargs["market_run_id"] == f"market-{target}"
         assert kwargs["industry_run_id"] == f"industry-{target}"
+        assert kwargs["output_root"] == analytics_root / "quant_brief"
+        assert kwargs["market_temperature_root"] == analytics_root / "market_temperature"
+        assert kwargs["industry_structure_root"] == analytics_root / "industry_structure"
         return SimpleNamespace(paths=SimpleNamespace(run_dir=tmp_path / f"quant-{target}"))
 
     shared_cache = None
+    analytics_root = tmp_path / "analytics"
 
     monkeypatch.setattr(multi_date, "DataCatalog", _Catalog)
     monkeypatch.setattr(multi_date, "FeatureStore", _Store)
@@ -86,6 +95,7 @@ def test_run_multi_date_artifacts_serializes_and_shares_batch_state(
     summaries = multi_date.run_multi_date_artifacts(
         [dates[1], dates[0], dates[0]],
         storage_dir=tmp_path,
+        analytics_root=analytics_root,
         update_latest=False,
     )
 

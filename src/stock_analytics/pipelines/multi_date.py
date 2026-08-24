@@ -36,6 +36,7 @@ def run_multi_date_artifacts(
     dates: Sequence[date],
     *,
     storage_dir: Path | str | None = None,
+    analytics_root: Path | str | None = None,
     update_latest: bool = False,
     run_class: RunClass = "official",
     collect_metric_values: bool | None = None,
@@ -50,6 +51,7 @@ def run_multi_date_artifacts(
         raise ValueError("多日期产物生成至少需要一个日期")
 
     storage_path = Path(storage_dir) if storage_dir is not None else None
+    analytics_path = Path(analytics_root) if analytics_root is not None else None
     max_date = unique_dates[-1]
     dataset_cache = DatasetFrameCache(end_date=max_date)
     market_dates = _load_trade_dates(
@@ -83,6 +85,9 @@ def run_multi_date_artifacts(
         market_result = run_market_temperature(
             target_date=target_date,
             storage_dir=storage_path,
+            output_root=(
+                analytics_path / "market_temperature" if analytics_path is not None else None
+            ),
             run_class=run_class,
             update_latest=update_latest,
             collect_metric_values=collect_metric_values,
@@ -93,6 +98,9 @@ def run_multi_date_artifacts(
         industry_result = run_industry_structure(
             target_date=target_date,
             storage_dir=storage_path,
+            output_root=(
+                analytics_path / "industry_structure" if analytics_path is not None else None
+            ),
             run_class=run_class,
             update_latest=update_latest,
             dataset_cache=dataset_cache,
@@ -102,6 +110,13 @@ def run_multi_date_artifacts(
             target_date=target_date,
             market_run_id=market_result.paths.run_dir.name,
             industry_run_id=industry_result.paths.run_dir.name,
+            output_root=analytics_path / "investor_brief" if analytics_path is not None else None,
+            market_temperature_root=(
+                analytics_path / "market_temperature" if analytics_path is not None else None
+            ),
+            industry_structure_root=(
+                analytics_path / "industry_structure" if analytics_path is not None else None
+            ),
             run_class=run_class,
             update_latest=update_latest,
         )
@@ -109,6 +124,13 @@ def run_multi_date_artifacts(
             target_date=target_date,
             market_run_id=market_result.paths.run_dir.name,
             industry_run_id=industry_result.paths.run_dir.name,
+            output_root=analytics_path / "quant_brief" if analytics_path is not None else None,
+            market_temperature_root=(
+                analytics_path / "market_temperature" if analytics_path is not None else None
+            ),
+            industry_structure_root=(
+                analytics_path / "industry_structure" if analytics_path is not None else None
+            ),
             run_class=run_class,
             update_latest=update_latest,
         )

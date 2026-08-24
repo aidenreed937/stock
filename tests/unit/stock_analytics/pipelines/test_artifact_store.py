@@ -91,6 +91,31 @@ def test_transaction_can_skip_latest_publication(tmp_path: Path) -> None:
     assert not paths.latest_dir.exists()
 
 
+def test_publish_existing_validates_and_publishes_latest(tmp_path: Path) -> None:
+    paths = ArtifactStore.build_run_paths(date(2026, 8, 24), tmp_path, run_id="run_test")
+    with ArtifactStore(paths).transaction(update_latest=False) as session:
+        session.write_json("manifest.json", _manifest(paths))
+        session.write_text("report.md", "report")
+
+    ArtifactStore(paths).publish_existing()
+
+    assert paths.latest_dir.joinpath("manifest.json").exists()
+    assert paths.latest_dir.joinpath("report.md").read_text(encoding="utf-8") == "report"
+
+
+def test_publish_existing_rejects_tampered_run(tmp_path: Path) -> None:
+    paths = ArtifactStore.build_run_paths(date(2026, 8, 24), tmp_path, run_id="run_test")
+    with ArtifactStore(paths).transaction(update_latest=False) as session:
+        session.write_json("manifest.json", _manifest(paths))
+        session.write_text("report.md", "report")
+    paths.run_dir.joinpath("report.md").write_text("tampered", encoding="utf-8")
+
+    with pytest.raises(ArtifactValidationError):
+        ArtifactStore(paths).publish_existing()
+
+    assert not paths.latest_dir.exists()
+
+
 def test_default_run_ids_are_unique_at_subsecond_concurrency(tmp_path: Path) -> None:
     first = ArtifactStore.build_run_paths(date(2026, 8, 24), tmp_path)
     second = ArtifactStore.build_run_paths(date(2026, 8, 24), tmp_path)

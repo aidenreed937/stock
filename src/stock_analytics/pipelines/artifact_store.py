@@ -70,6 +70,19 @@ class ArtifactStore:
         """创建临时写入事务，成功退出上下文后发布运行产物。"""
         return ArtifactWriteSession(self.paths, update_latest=update_latest)
 
+    def publish_existing(self) -> None:
+        """校验并原子发布已存在运行目录的 latest 副本。"""
+        result = _ARTIFACT_VALIDATOR.validate_or_raise(
+            self.paths.run_dir,
+            expected_artifact_type=self.paths.artifact_type,
+            expected_run_class=self.paths.run_class,
+            require_integrity=True,
+        )
+        if result.manifest is None:
+            raise RuntimeError(f"运行产物缺少 Manifest: {self.paths.run_dir}")
+        artifact_files = _manifest_artifact_files(result.manifest)
+        _publish_latest(self.paths, artifact_files)
+
 
 class ArtifactWriteSession(AbstractContextManager["ArtifactWriteSession"]):
     """在临时目录写入并原子发布一组管线产物。"""
@@ -193,48 +206,70 @@ class ArtifactWriteSession(AbstractContextManager["ArtifactWriteSession"]):
             raise
 
     def _publish_latest(self) -> None:
-        latest_dir = self.paths.latest_dir
-        latest_dir.parent.mkdir(parents=True, exist_ok=True)
-        staging_latest = Path(mkdtemp(prefix=f".{latest_dir.name}.", dir=latest_dir.parent))
-        staging_latest_published = False
-        preserve_backup = False
-        backup_latest: Path | None = None
-        try:
-            for name in self._written_names:
-                target = staging_latest / name
-                target.parent.mkdir(parents=True, exist_ok=True)
-                shutil.copy2(self.paths.run_dir / name, target)
-            _ARTIFACT_VALIDATOR.validate_latest_or_raise(
-                staging_latest,
-                source_dir=self.paths.run_dir,
-                expected_artifact_type=self.paths.artifact_type,
-                expected_run_class=self.paths.run_class,
-                require_integrity=True,
-            )
+        _publish_latest(self.paths, self._written_names)
 
-            if latest_dir.exists() or latest_dir.is_symlink():
-                backup_latest = latest_dir.with_name(f".{latest_dir.name}.old-{uuid4().hex}")
-                os.replace(latest_dir, backup_latest)
-            try:
-                os.replace(staging_latest, latest_dir)
-                staging_latest_published = True
-            except Exception:
-                if backup_latest is None:
-                    raise
-                try:
-                    os.replace(backup_latest, latest_dir)
-                except Exception as restore_error:
-                    preserve_backup = True
-                    raise RuntimeError(
-                        f"latest 发布失败且旧版本恢复失败，备份保留在: {backup_latest}"
-                    ) from restore_error
-                backup_latest = None
+
+def _publish_latest(paths: ArtifactRunPaths, artifact_files: list[str]) -> None:
+    latest_dir = paths.latest_dir
+    normalized_files = _normalize_artifact_files(artifact_files)
+    latest_dir.parent.mkdir(parents=True, exist_ok=True)
+    staging_latest = Path(mkdtemp(prefix=f".{latest_dir.name}.", dir=latest_dir.parent))
+    staging_latest_published = False
+    preserve_backup = False
+    backup_latest: Path | None = None
+    try:
+        for name in normalized_files:
+            target = staging_latest / name
+            target.parent.mkdir(parents=True, exist_ok=True)
+            shutil.copy2(paths.run_dir / name, target)
+        _ARTIFACT_VALIDATOR.validate_latest_or_raise(
+            staging_latest,
+            source_dir=paths.run_dir,
+            expected_artifact_type=paths.artifact_type,
+            expected_run_class=paths.run_class,
+            require_integrity=True,
+        )
+
+        if latest_dir.exists() or latest_dir.is_symlink():
+            backup_latest = latest_dir.with_name(f".{latest_dir.name}.old-{uuid4().hex}")
+            os.replace(latest_dir, backup_latest)
+        try:
+            os.replace(staging_latest, latest_dir)
+            staging_latest_published = True
+        except Exception:
+            if backup_latest is None:
                 raise
-        finally:
-            if not staging_latest_published:
-                _remove_path(staging_latest)
-            if backup_latest is not None and not preserve_backup:
-                _remove_path(backup_latest)
+            try:
+                os.replace(backup_latest, latest_dir)
+            except Exception as restore_error:
+                preserve_backup = True
+                raise RuntimeError(
+                    f"latest 发布失败且旧版本恢复失败，备份保留在: {backup_latest}"
+                ) from restore_error
+            backup_latest = None
+            raise
+    finally:
+        if not staging_latest_published:
+            _remove_path(staging_latest)
+        if backup_latest is not None and not preserve_backup:
+            _remove_path(backup_latest)
+
+
+def _manifest_artifact_files(manifest: Mapping[str, Any]) -> list[str]:
+    raw_files = manifest.get("artifact_files")
+    if not isinstance(raw_files, list) or not all(isinstance(item, str) for item in raw_files):
+        raise ValueError("Manifest artifact_files 必须是字符串列表")
+    return _normalize_artifact_files(raw_files)
+
+
+def _normalize_artifact_files(names: list[str]) -> list[str]:
+    normalized: list[str] = []
+    for name in names:
+        relative = Path(name)
+        if relative.is_absolute() or ".." in relative.parts:
+            raise ValueError(f"Artifact 文件名必须是运行目录内的相对路径: {name}")
+        normalized.append(relative.as_posix())
+    return list(dict.fromkeys(normalized))
 
 
 def _remove_path(path: Path | None) -> None:

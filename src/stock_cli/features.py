@@ -64,6 +64,77 @@ def _build_parser() -> argparse.ArgumentParser:
     return parser
 
 
+def build_features(
+    *,
+    target: str,
+    start_date: date,
+    end_date: date | None = None,
+    overwrite: bool = False,
+    storage_dir: Path | None = None,
+) -> None:
+    """构建指定的 Analytics Mart。"""
+    catalog = DataCatalog(data_source="tushare", storage_dir=storage_dir)
+    store = FeatureStore(mart_dir=storage_dir / "mart" if storage_dir else None)
+
+    if target in ("market_daily", "all"):
+        market_builder = MarketDailyBuilder(catalog=catalog, store=store, storage_dir=storage_dir)
+        df = market_builder.build(
+            start_date=start_date,
+            end_date=end_date,
+            save=True,
+            overwrite=overwrite,
+        )
+        if df.is_empty():
+            raise RuntimeError("构建 market_daily 失败: 产出数据为空")
+        date_min = str(df["trade_date"].min())
+        date_max = str(df["trade_date"].max())
+        logger.info(
+            f"成功构建并物化 market_daily: {len(df)} 行 (时间跨度: {date_min} ~ {date_max})"
+        )
+
+    if target in ("domain_marts", "all"):
+        domain_builder = DomainMartBuilder(catalog=catalog, store=store)
+        results = domain_builder.build_all(
+            start_date=start_date,
+            end_date=end_date,
+            overwrite=overwrite,
+        )
+        output_count = 0
+        for name, result in results.items():
+            if isinstance(result, dict):
+                count = sum(frame.height for frame in result.values())
+            else:
+                count = result.height
+            output_count += count
+            logger.info(f"领域 Mart [{name}] 构建完成: {count} 行")
+        logger.info(f"领域 Mart 全部构建完成: {output_count} 行")
+    elif target in ("industry_daily", "industry_panel_daily", "derived_facts"):
+        domain_builder = DomainMartBuilder(catalog=catalog, store=store)
+        if target == "industry_daily":
+            result = domain_builder.build_industry_daily(
+                start_date=start_date,
+                end_date=end_date,
+                overwrite=overwrite,
+            )
+            logger.info(f"领域 Mart [industry_daily] 构建完成: {result.height} 行")
+        elif target == "industry_panel_daily":
+            result = domain_builder.build_industry_panel_daily(
+                start_date=start_date,
+                end_date=end_date,
+                overwrite=overwrite,
+            )
+            logger.info(f"领域 Mart [industry_panel_daily] 构建完成: {result.height} 行")
+        else:
+            result = domain_builder.build_market_temperature_derived_facts(
+                start_date=start_date,
+                end_date=end_date,
+                overwrite=overwrite,
+            )
+            logger.info(
+                f"领域 Mart [market_temperature_derived_facts] 构建完成: {result.height} 行"
+            )
+
+
 def main() -> None:
     """CLI 主入口。"""
     parser = _build_parser()
@@ -74,69 +145,17 @@ def main() -> None:
         end_date = _parse_date(args.end_date)
         storage_dir = Path(args.storage_dir) if args.storage_dir else None
 
-        catalog = DataCatalog(data_source="tushare", storage_dir=storage_dir)
-        store = FeatureStore(mart_dir=storage_dir / "mart" if storage_dir else None)
-
-        if args.target in ("market_daily", "all"):
-            market_builder = MarketDailyBuilder(
-                catalog=catalog, store=store, storage_dir=storage_dir
-            )
-            df = market_builder.build(
-                start_date=start_date,
-                end_date=end_date,
-                save=True,
-                overwrite=args.overwrite,
-            )
-            if df.is_empty():
-                logger.error("构建 market_daily 失败: 产出数据为空")
-                sys.exit(1)
-            date_min = str(df["trade_date"].min())
-            date_max = str(df["trade_date"].max())
-            logger.info(
-                f"成功构建并物化 market_daily: {len(df)} 行 (时间跨度: {date_min} ~ {date_max})"
-            )
-
-        if args.target in ("domain_marts", "all"):
-            domain_builder = DomainMartBuilder(catalog=catalog, store=store)
-            results = domain_builder.build_all(
+        try:
+            build_features(
+                target=args.target,
                 start_date=start_date,
                 end_date=end_date,
                 overwrite=args.overwrite,
+                storage_dir=storage_dir,
             )
-            output_count = 0
-            for name, result in results.items():
-                if isinstance(result, dict):
-                    count = sum(frame.height for frame in result.values())
-                else:
-                    count = result.height
-                output_count += count
-                logger.info(f"领域 Mart [{name}] 构建完成: {count} 行")
-            logger.info(f"领域 Mart 全部构建完成: {output_count} 行")
-        elif args.target in ("industry_daily", "industry_panel_daily", "derived_facts"):
-            domain_builder = DomainMartBuilder(catalog=catalog, store=store)
-            if args.target == "industry_daily":
-                result = domain_builder.build_industry_daily(
-                    start_date=start_date,
-                    end_date=end_date,
-                    overwrite=args.overwrite,
-                )
-                logger.info(f"领域 Mart [industry_daily] 构建完成: {result.height} 行")
-            elif args.target == "industry_panel_daily":
-                result = domain_builder.build_industry_panel_daily(
-                    start_date=start_date,
-                    end_date=end_date,
-                    overwrite=args.overwrite,
-                )
-                logger.info(f"领域 Mart [industry_panel_daily] 构建完成: {result.height} 行")
-            else:
-                result = domain_builder.build_market_temperature_derived_facts(
-                    start_date=start_date,
-                    end_date=end_date,
-                    overwrite=args.overwrite,
-                )
-                logger.info(
-                    f"领域 Mart [market_temperature_derived_facts] 构建完成: {result.height} 行"
-                )
+        except RuntimeError as exc:
+            logger.error(str(exc))
+            sys.exit(1)
 
 
 def _parse_date(value: str | None) -> date | None:

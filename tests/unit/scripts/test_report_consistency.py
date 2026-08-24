@@ -6,7 +6,7 @@ import json
 from typing import TYPE_CHECKING
 
 import polars as pl
-from scripts.report_consistency import ConsistencyValidator
+from scripts.report_consistency import ConsistencyValidator, _latest_run_dir
 
 if TYPE_CHECKING:
     from pathlib import Path
@@ -69,6 +69,27 @@ def test_report_consistency_fails_for_unsourced_brief_industry(tmp_path: Path) -
 
     assert result.status == "failed"
     assert any(issue.check == "brief_industry_source" for issue in result.errors)
+
+
+def test_report_consistency_selects_requested_run_class(tmp_path: Path) -> None:
+    root = tmp_path / "market_temperature"
+    date_root = root / "runs" / "as_of=2026-08-14"
+    official = date_root / "run_official"
+    experiment = date_root / "run_experiment"
+    official.mkdir(parents=True)
+    experiment.mkdir(parents=True)
+    _write_json(
+        official / "manifest.json",
+        {"as_of_date": "2026-08-14", "run_id": official.name, "run_class": "official"},
+    )
+    _write_json(
+        experiment / "manifest.json",
+        {"as_of_date": "2026-08-14", "run_id": experiment.name, "run_class": "experiment"},
+    )
+
+    selected = _latest_run_dir(root, "2026-08-14", run_class="experiment")
+
+    assert selected == experiment
 
 
 def _write_market(root: Path, as_of_date: str, run_id: str) -> None:
