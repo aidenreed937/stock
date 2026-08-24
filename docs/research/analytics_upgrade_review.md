@@ -2,7 +2,7 @@
 
 > 对应 Gemini 评审提出的 4 大方向 5 项优化，本次全部落地。
 > 关联计划文档：[`docs/plan/analytics_upgrade_plan.md`](../plan/analytics_upgrade_plan.md)。
-> 状态：全部 5 阶段已完成并提交（`20b1ac3` ~ `ac96f8b`），工作区干净，全量门禁通过（ruff / mypy 417 文件 / 边界 lint / 类规模 / 覆盖率 82.08%）。
+> 状态：全部 5 阶段已完成并提交（`20b1ac3` ~ `ac96f8b`）。本文是能力升级回顾和验证记录；当前领域职责与外部入口以 [`../architecture/domain-responsibilities.md`](../architecture/domain-responsibilities.md) 为准。
 
 ---
 

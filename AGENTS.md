@@ -71,6 +71,7 @@ make run                             # 运行主程序
 3. **数据源与指标细节**：由对应代码、配置和 Skill 维护，不在本文件重复列举。
 4. **Ground Truth First**：所有点位、估值和指标必须来自本地 Curated 或已校验的产物；本地缺失必须披露，不得用记忆补造。外部背景必须标注来源与时效。
 5. **信息分级**：报告区分已验证事实、机制推断和外部背景；公式或策略口径不确定时先查代码配置、权威依据和测试。
+6. **领域职责与调用入口**：稳定职责以 `docs/architecture/domain-responsibilities.md` 为准；Analytics 依赖方向和导入门禁以 `docs/architecture/analytics-boundaries.md` 为准。新需求先按职责地图确定落点：新数据源进入 `stock_data`，指标/特征通过 `stock_analytics.api`，领域 Mart 通过 `stock_analytics.marts`，业务流程通过 `stock_analytics.pipelines`。
 
 ## 编码、测试与提交规范
 

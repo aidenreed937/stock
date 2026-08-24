@@ -1,7 +1,7 @@
-# 量化分析引擎升级计划：因子检验、截面中性化/正交化、轮动动量、杜邦拆解与双轨统一
+# 量化分析引擎升级计划与验收记录：因子检验、截面中性化/正交化、轮动动量、杜邦拆解与双轨统一
 
 > 对应 Gemini 评审提出的 4 大方向 5 项优化（Gap1 中性化/正交化、Gap2 因子检验、Gap3 双轨统一、Gap4 轮动动量 + 杜邦）。
-> 状态：**Phase 1（模块一 因子检验）已落地**；模块二~五 待按分期实现。
+> 状态：**Phase 1～5 已全部落地**。本文保留实施过程、验证基线和后续候选项，当前职责边界以 [`../architecture/domain-responsibilities.md`](../architecture/domain-responsibilities.md) 为准。
 > 本计划全部可行性均已对照仓库源码与本地 Curated 真实数据验证（Ground Truth First），无外部检索依赖。
 
 ## 0. 现状核对（Gemini 评审 vs 源码事实）

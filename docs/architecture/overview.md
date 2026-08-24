@@ -1,6 +1,6 @@
 # 系统架构概览
 
-本页是架构入口索引。稳定的包边界和数据流见 [`../architecture.md`](../architecture.md)；Analytics 内部边界见 [`analytics-boundaries.md`](analytics-boundaries.md)；数据存储细节见 [`../data_architecture.md`](../data_architecture.md)。
+本页是架构入口索引。稳定的包边界和数据流见 [`../architecture.md`](../architecture.md)；领域职责见 [`domain-responsibilities.md`](domain-responsibilities.md)；Analytics 依赖和导入边界见 [`analytics-boundaries.md`](analytics-boundaries.md)；数据存储细节见 [`../data_architecture.md`](../data_architecture.md)。
 
 ## 分层关系
 
@@ -27,6 +27,8 @@ graph TD
 ```
 
 ## 各层职责
+
+顶级领域与业务域的唯一职责索引见 [`domain-responsibilities.md`](domain-responsibilities.md)。本页只保留系统级分层摘要，避免复制 Analytics 内部职责表。
 
 | 层 | 目录 | 负责内容 |
 | --- | --- | --- |

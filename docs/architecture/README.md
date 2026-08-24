@@ -12,7 +12,8 @@
 | **[2. 数据存储与分区架构](../data_architecture.md)** | RAW/Curated 存储分层、分区和 `DataCatalog` | `PartitionStore`, `RawDataStorage`, `DuckDBMarketStore`, `DataCatalog` |
 | **[3. 数据管道 Skill](../../.agents/skills/data-pipeline/SKILL.md)** | 回填、同步、质量与审计工作流 | `stock_cli.sync`, `stock_cli.backfill`, `stock_cli.audit` |
 | **[4. 系统架构概览](overview.md)** | 当前源码包、依赖方向与数据生命周期 | `src/stock_*` |
-| **[5. Analytics 分层边界](analytics-boundaries.md)** | primitives、metrics、features、marts、pipelines 的职责边界 | `src/stock_analytics/` |
+| **[5. 领域职责地图](domain-responsibilities.md)** | 顶级领域、Analytics 分层、业务域和外部调用入口 | `src/stock_*` |
+| **[6. Analytics 分层边界](analytics-boundaries.md)** | 依赖方向、公共导入和拆分门禁 | `src/stock_analytics/`, `scripts/lint_analytics_boundaries.py` |
 
 ---
 

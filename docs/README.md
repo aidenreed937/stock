@@ -6,6 +6,7 @@
 
 ### 1. 🏛️ 架构设计 (`docs/architecture/`)
 - [系统架构目录与总览 (Architecture Index)](architecture/README.md) — 当前源码包、依赖方向和数据流导航
+- [领域职责地图 (Domain Responsibilities)](architecture/domain-responsibilities.md) — 顶级领域、Analytics 分层、业务域和外部调用入口
 - [核心数据流水线 (Data Pipeline)](architecture/data_pipeline.md) — 数据从采集到 Curated 的 ETL 阶段与关键组件
 - [系统模块总览 (Overview)](architecture/overview.md) — 整体分层架构、数据生命周期与变更入口
 
@@ -19,8 +20,13 @@
 - [数据接口注册完整开发规范与 Checklist](guides/endpoint_registration_guide.md) — 新增数据源/端点的 5 步标准注册流程与防漏防错清单
 - [多品类市场数据摄取与调度规则手册 (Market Data Ingestion Rules)](guides/market_data_ingestion_rules.md) — 股票/指数/ETF/行业摄取范式、全市场截面与观察池范围抓取
 
-### 4. 🔬 投研框架与数据底座 (`docs/research/` & `docs/`)
+### 4. 🧭 实施计划 (`docs/plan/`)
+- [量化分析引擎升级计划与验收记录](plan/analytics_upgrade_plan.md) — 因子检验、中性化、轮动动量、财务质量与统一门面
+- [指标层优化计划](plan/metrics_optimization_plan.md) — 行业指标与衍生品指标进入 MetricEngine 的实施记录
+
+### 5. 🔬 投研框架与数据底座 (`docs/research/` & `docs/`)
 - [A股量化研究框架 (Research Framework)](research/a_share_quant_framework.md) — 宏观 β、行业轮动和多因子研究边界
+- [量化分析引擎升级回顾](research/analytics_upgrade_review.md) — 已完成阶段的能力、基线和后续方向
 - [量化系统数据底座与 PIT 设计规范 (Data Foundation Spec)](data_foundation_spec.md) — PIT 无未来函数财报切片、复权引擎分离与日历对齐
 
 ---

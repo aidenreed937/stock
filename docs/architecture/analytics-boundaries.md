@@ -1,27 +1,6 @@
 # Analytics 分层边界
 
-本文档定义 `stock_analytics` 的稳定入口、职责边界和依赖方向。代码实现可以继续演进，但新增模块必须遵守这些边界。
-
-## 分层职责
-
-| 层 | 负责内容 | 输入 | 输出与持久化 |
-| --- | --- | --- | --- |
-| `primitives` | 纯数学、技术指标和无状态规则算子 | DataFrame、标量或序列 | 纯计算结果，不读目录、不写文件 |
-| `metrics` | 按 `MetricSpec` 从 Curated 数据集计算通用指标 | `MetricContext`、`DataCatalog` | 指标结果或临时指标表，不负责 Mart 写入 |
-| `features` | 可复用特征的定义、版本、血缘和物化 | Curated 数据集、primitives | `FeatureStore` 宽表/长表及元数据 |
-| `marts` | 具有领域语义的聚合事实表 | Curated 数据集、FeatureStore | Domain Mart |
-| `pipelines` | 日期窗口、事实组合、评分和产物编排 | metrics、features、marts | 报告、manifest、scores 和运行产物 |
-| `reporting` | 报告模板和解释 | pipeline 产物 | Markdown/JSON 等展示结果 |
-
-### 选择落点的规则
-
-1. 只有公式、没有数据访问和业务状态的逻辑放入 `primitives`。
-2. 需要按规格读取数据、按窗口计算且不需要持久化的逻辑放入 `metrics`。
-3. 被多个管线复用，或需要定义版本、来源水位、输入指纹和增量物化的逻辑放入 `features`。
-4. 具有明确领域主键和稳定表结构的聚合事实放入 `marts`。
-5. 组合多个事实、应用业务评分或生成报告的逻辑放入 `pipelines`。
-
-如果同一公式同时被 `metrics` 和 `features` 使用，应先抽到 `primitives`，不要让两个上层模块互相依赖。
+本文只定义 `stock_analytics` 的依赖方向、公共导入和可机器检查的拆分规则。领域职责、业务域归属和新需求落点见 [`domain-responsibilities.md`](domain-responsibilities.md)。
 
 ## 依赖方向
 

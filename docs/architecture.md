@@ -71,9 +71,10 @@ stock_reporting Markdown/JSON 等报告视图
 - Mart/Feature 是可重建的派生层，不替代 Curated。
 - 分析产物以运行目录和 Manifest 为准；`latest` 只是成功运行的展示副本。
 
-## 3. Analytics 内部边界
+## 3. 领域职责与 Analytics 边界
 
-`stock_analytics` 的稳定职责边界见 [`architecture/analytics-boundaries.md`](architecture/analytics-boundaries.md)：
+顶级领域、业务域和外部调用入口见 [`architecture/domain-responsibilities.md`](architecture/domain-responsibilities.md)。
+其中 `stock_analytics` 的依赖方向和导入门禁见 [`architecture/analytics-boundaries.md`](architecture/analytics-boundaries.md)：
 
 - `primitives`：无状态纯计算，不读写物理目录；
 - `metrics`：按规格从数据集计算通用指标；
