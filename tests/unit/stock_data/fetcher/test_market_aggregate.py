@@ -163,3 +163,109 @@ def test_fetcher_requires_a_local_stock_universe() -> None:
 
     with pytest.raises(DataFetchError, match="stock_basic"):
         fetcher.fetch_aggregate()
+
+
+def test_fetcher_aggregates_industry_breadth_with_mapping() -> None:
+    quote_at = datetime(2026, 8, 19, 10, 0, 3, tzinfo=_SHANGHAI_TZ)
+    quotes = (
+        _quote("000001.SZ", 11.0, 10.0, 100.0, 1000.0, 500.0, quote_at=quote_at),
+        _quote("000002.SZ", 9.5, 10.0, 300.0, 2000.0, 1000.0, quote_at=quote_at),
+        _quote("000003.SZ", 10.0, 10.0, 50.0, 3000.0, 1500.0, quote_at=quote_at),
+        _quote("000004.SZ", 10.2, 10.0, 50.0, 4000.0, 2000.0, quote_at=quote_at),
+        _quote("000005.SZ", 5.0, 10.0, 20.0, 5000.0, 2500.0, quote_at=quote_at),
+    )
+    quote_fetcher = _QuoteFetcher([quotes])
+    received_at = datetime(2026, 8, 19, 10, 0, tzinfo=_SHANGHAI_TZ)
+    fetcher = TencentMarketAggregateFetcher(
+        symbols=["000001.SZ", "000002.SZ", "000003.SZ", "000004.SZ", "000005.SZ"],
+        quote_fetcher=quote_fetcher,
+        batch_size=10,
+        clock=lambda: received_at,
+    )
+    industry_map = {
+        "000001.SZ": "银行",
+        "000002.SZ": "银行",
+        "000003.SZ": "食品饮料",
+        "000004.SZ": "食品饮料",
+    }
+
+    snapshot, industry = fetcher.fetch_aggregate_with_industry(
+        industry_map,
+        min_members=2,
+    )
+
+    assert snapshot.source == "tencent"
+    assert snapshot.advance_count == 2
+    assert industry.status == "valid"
+    assert industry.mapped_count == 4
+    assert industry.raw_industry_count == 2
+    assert industry.industry_count == 2
+    rows = {row.industry: row for row in industry.rows}
+    bank = rows["银行"]
+    assert bank.member_count == 2
+    assert bank.advance_count == 1
+    assert bank.decline_count == 1
+    assert bank.advance_share == pytest.approx(0.5)
+    food = rows["食品饮料"]
+    assert food.member_count == 2
+    assert food.advance_count == 1
+    assert food.flat_count == 1
+    assert food.decline_count == 0
+    unknown = rows["__UNKNOWN__"]
+    assert unknown.member_count == 1
+    assert unknown.decline_count == 1
+
+
+def test_fetcher_industry_filters_small_industries_and_keeps_market_snapshot() -> None:
+    quote_at = datetime(2026, 8, 19, 10, 0, 3, tzinfo=_SHANGHAI_TZ)
+    quotes = (
+        _quote("000001.SZ", 11.0, 10.0, 100.0, 1000.0, 500.0, quote_at=quote_at),
+        _quote("000002.SZ", 9.5, 10.0, 300.0, 2000.0, 1000.0, quote_at=quote_at),
+        _quote("000003.SZ", 10.0, 10.0, 50.0, 3000.0, 1500.0, quote_at=quote_at),
+    )
+    quote_fetcher = _QuoteFetcher([quotes])
+    received_at = datetime(2026, 8, 19, 10, 0, tzinfo=_SHANGHAI_TZ)
+    fetcher = TencentMarketAggregateFetcher(
+        symbols=["000001.SZ", "000002.SZ", "000003.SZ"],
+        quote_fetcher=quote_fetcher,
+        batch_size=10,
+        clock=lambda: received_at,
+    )
+    industry_map = {"000001.SZ": "银行", "000002.SZ": "银行", "000003.SZ": "食品饮料"}
+
+    snapshot, industry = fetcher.fetch_aggregate_with_industry(
+        industry_map,
+        min_members=2,
+    )
+
+    # 全市场快照不受行业过滤影响（1 涨 1 跌 1 平）
+    assert snapshot.advance_count == 1
+    assert snapshot.decline_count == 1
+    assert snapshot.flat_count == 1
+    # 食品饮料只有 1 只，被 min_members=2 过滤
+    assert {row.industry for row in industry.rows} == {"银行"}
+    assert industry.industry_count == 1
+    assert industry.raw_industry_count == 2
+    assert industry.mapped_count == 3
+
+
+def test_fetcher_industry_with_empty_mapping_yields_empty_rows() -> None:
+    quote_at = datetime(2026, 8, 19, 10, 0, 3, tzinfo=_SHANGHAI_TZ)
+    quotes = (
+        _quote("000001.SZ", 11.0, 10.0, 100.0, 1000.0, 500.0, quote_at=quote_at),
+        _quote("000002.SZ", 9.5, 10.0, 300.0, 2000.0, 1000.0, quote_at=quote_at),
+    )
+    quote_fetcher = _QuoteFetcher([quotes])
+    received_at = datetime(2026, 8, 19, 10, 0, tzinfo=_SHANGHAI_TZ)
+    fetcher = TencentMarketAggregateFetcher(
+        symbols=["000001.SZ", "000002.SZ"],
+        quote_fetcher=quote_fetcher,
+        batch_size=10,
+        clock=lambda: received_at,
+    )
+
+    snapshot, industry = fetcher.fetch_aggregate_with_industry({})
+
+    assert snapshot.advance_count == 1
+    assert industry.mapped_count == 0
+    assert {row.industry for row in industry.rows} == {"__UNKNOWN__"}

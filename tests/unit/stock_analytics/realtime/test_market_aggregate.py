@@ -11,6 +11,7 @@ from stock_analytics.realtime.market_aggregate_monitor import MarketAggregateMon
 from stock_core.exceptions import DataFetchError
 from stock_data.fetcher.realtime.market_aggregate import (
     BaseMarketAggregateFetcher,
+    IndustryBreadthSnapshot,
     MarketAggregateSnapshot,
 )
 from stock_data.fetcher.realtime.market_aggregate_recorder import (
@@ -29,6 +30,29 @@ class _Fetcher(BaseMarketAggregateFetcher):
         if self.fail:
             raise DataFetchError("network down")
         return self.snapshot
+
+
+class _IndustryFetcher(_Fetcher):
+    def fetch_aggregate_with_industry(
+        self,
+        industry_map: dict[str, str],
+        *,
+        min_members: int = 3,
+    ) -> tuple[MarketAggregateSnapshot, IndustryBreadthSnapshot]:
+        if self.fail:
+            raise DataFetchError("industry network down")
+        return self.snapshot, IndustryBreadthSnapshot(
+            source=self.snapshot.source,
+            quote_date=self.snapshot.quote_date,
+            quote_at=self.snapshot.quote_at,
+            received_at=self.snapshot.received_at,
+            status=self.snapshot.status,
+            reported_count=self.snapshot.reported_count,
+            mapped_count=self.snapshot.reported_count,
+            industry_count=0,
+            raw_industry_count=0,
+            strong_move_threshold_pct=self.snapshot.strong_up_threshold_pct,
+        )
 
 
 def _snapshot(received_at: datetime) -> MarketAggregateSnapshot:
@@ -98,6 +122,24 @@ def test_monitor_falls_back_to_same_day_cached_snapshot() -> None:
     assert first.freshness == MarketAggregateFreshness.FRESH
     assert fallback.freshness == MarketAggregateFreshness.STALE
     assert fallback.snapshot.received_at == received_at
+
+
+def test_monitor_with_industry_falls_back_with_same_day_industry_snapshot() -> None:
+    received_at = datetime(2026, 8, 19, 10, 0)
+    fetcher = _IndustryFetcher(_snapshot(received_at))
+    monitor = MarketAggregateMonitor(fetcher)
+
+    first, first_industry = monitor.run_with_industry({}, now=received_at)
+    fetcher.fail = True
+    fallback, fallback_industry = monitor.run_with_industry(
+        {},
+        now=received_at + timedelta(seconds=61),
+    )
+
+    assert first.freshness == MarketAggregateFreshness.FRESH
+    assert fallback.freshness == MarketAggregateFreshness.STALE
+    assert fallback.snapshot.received_at == received_at
+    assert fallback_industry == first_industry
 
 
 def test_monitor_uses_snapshot_time_for_cross_midnight_cache_and_raw_partition(

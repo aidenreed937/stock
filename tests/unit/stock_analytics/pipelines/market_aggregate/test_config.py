@@ -23,6 +23,10 @@ def test_load_default_market_aggregate_config() -> None:
     assert config.trend.bars_dataset == "stock_daily_bar"
     assert config.report.metrics[0].metric_id == "coverage"
     assert config.report.metrics[-1].metric_id == "amount_top_5pct_share"
+    assert config.industry.enabled is True
+    assert config.industry.mapping_dataset == "stock_basic"
+    assert config.industry.min_members == 3
+    assert config.industry.top_n == 10
 
 
 def test_load_market_aggregate_config_from_yaml(tmp_path: Path) -> None:

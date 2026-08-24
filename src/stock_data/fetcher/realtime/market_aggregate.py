@@ -18,6 +18,12 @@ from stock_data.fetcher.realtime.base import (
     RealtimeQuote,
     normalize_local_symbol,
 )
+from stock_data.fetcher.realtime.market_aggregate_industry import (
+    IndustryBreadthRow,
+    IndustryBreadthSnapshot,
+    aggregate_industry_rows,
+    empty_industry_snapshot,
+)
 from stock_data.fetcher.realtime.tencent import TencentRealtimeFetcher
 
 MarketAggregateStatus = Literal["valid", "partial"]
@@ -84,6 +90,20 @@ class BaseMarketAggregateFetcher(ABC):
         """获取一次市场级聚合快照。"""
         raise NotImplementedError
 
+    def fetch_aggregate_with_industry(
+        self,
+        industry_map: Mapping[str, str],
+        *,
+        min_members: int = 3,
+    ) -> tuple[MarketAggregateSnapshot, IndustryBreadthSnapshot]:
+        """获取市场级聚合快照及其行业维度切片。
+
+        默认实现直接调用 ``fetch_aggregate`` 并返回空行业快照，供不支持的
+        数据源保持向后兼容；腾讯实现会复用同一次网络抓取同时计算两个快照。
+        """
+        snapshot = self.fetch_aggregate()
+        return snapshot, empty_industry_snapshot(snapshot)
+
 
 class TencentMarketAggregateFetcher(BaseMarketAggregateFetcher):
     """读取本地股票全集，并通过腾讯接口分批获取实时快照后聚合。"""
@@ -117,6 +137,20 @@ class TencentMarketAggregateFetcher(BaseMarketAggregateFetcher):
 
     def fetch_aggregate(self) -> MarketAggregateSnapshot:
         """分批抓取腾讯快照并在内存中聚合，不返回逐标的行情明细。"""
+        snapshot, _ = self.fetch_aggregate_with_industry({})
+        return snapshot
+
+    def fetch_aggregate_with_industry(
+        self,
+        industry_map: Mapping[str, str],
+        *,
+        min_members: int = 3,
+    ) -> tuple[MarketAggregateSnapshot, IndustryBreadthSnapshot]:
+        """同一次抓取同时计算全市场聚合与行业维度切片。
+
+        ``industry_map`` 为 ``{本地symbol: 行业名}`` 映射（来自本地
+        ``stock_basic.industry``）。当映射为空时行业快照为空但全市场快照不受影响。
+        """
         if not self.symbols:
             raise DataFetchError(
                 "腾讯全市场聚合需要本地 stock_basic 股票全集，请先运行："
@@ -134,14 +168,26 @@ class TencentMarketAggregateFetcher(BaseMarketAggregateFetcher):
 
         received_at = self.clock()
         quote_times = [quote.quote_at for quote in quotes if quote.quote_at is not None]
-        return _aggregate_rows(
-            [_quote_to_row(quote) for quote in quotes],
+        rows = [_quote_to_row(quote) for quote in quotes]
+        snapshot = _aggregate_rows(
+            rows,
             reported_count=len(self.symbols),
             received_at=received_at,
             quote_at=max(quote_times) if quote_times else None,
             source=self.source,
             strong_move_threshold_pct=self.strong_move_threshold_pct,
         )
+        industry_snapshot = aggregate_industry_rows(
+            rows,
+            industry_map=industry_map,
+            reported_count=len(self.symbols),
+            received_at=received_at,
+            quote_at=max(quote_times) if quote_times else None,
+            source=self.source,
+            strong_move_threshold_pct=self.strong_move_threshold_pct,
+            min_members=min_members,
+        )
+        return snapshot, industry_snapshot
 
     def _fetch_quotes(self) -> tuple[list[RealtimeQuote], list[DataFetchError]]:
         quotes: list[RealtimeQuote] = []
@@ -172,8 +218,9 @@ def _normalize_symbols(symbols: Sequence[str]) -> tuple[str, ...]:
     return tuple(normalized)
 
 
-def _quote_to_row(quote: RealtimeQuote) -> dict[str, float | None]:
+def _quote_to_row(quote: RealtimeQuote) -> dict[str, Any]:
     return {
+        "symbol": quote.symbol,
         "price": quote.price,
         "change": _quote_pct_change(quote),
         "amount": quote.amount,
@@ -317,6 +364,8 @@ def _top_amount_share(amounts: Sequence[float]) -> float | None:
 
 __all__ = [
     "BaseMarketAggregateFetcher",
+    "IndustryBreadthRow",
+    "IndustryBreadthSnapshot",
     "MarketAggregateFetcher",
     "MarketAggregateSnapshot",
     "MarketAggregateStatus",

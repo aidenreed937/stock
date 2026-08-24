@@ -2,11 +2,12 @@
 
 from __future__ import annotations
 
-from collections import OrderedDict
 from datetime import datetime
 from typing import TYPE_CHECKING, Any, cast
 
 from stock_reporting.engine.renderer import ReportRenderer
+from stock_reporting.templates.market_aggregate_industry import render_industry_section
+from stock_reporting.templates.market_aggregate_metrics import build_metric_sections
 from stock_reporting.templates.market_aggregate_trend import render_trend_section
 
 if TYPE_CHECKING:
@@ -22,6 +23,7 @@ def build_report_json(
     age_seconds: float,
     quality_report: dict[str, Any],
     trend: dict[str, Any] | None = None,
+    industry: Any | None = None,
 ) -> dict[str, Any]:
     """构造机器可读聚合报告。"""
     metric_sections = build_metric_sections(config, snapshot)
@@ -36,6 +38,7 @@ def build_report_json(
         "metric_sections": metric_sections,
         "quality": quality_report,
         "trend": trend or {},
+        "industry": _industry_payload(industry),
     }
 
 
@@ -146,6 +149,7 @@ def render_report_markdown(
     age_seconds: float,
     quality_report: dict[str, Any],
     trend: dict[str, Any] | None = None,
+    industry: Any | None = None,
 ) -> str:
     """按配置模板渲染机器/审计版 Markdown 报告。"""
     return ReportRenderer.get_instance().render(
@@ -158,6 +162,7 @@ def render_report_markdown(
             age_seconds=age_seconds,
             quality_report=quality_report,
             trend=trend,
+            industry=industry,
         ),
     )
 
@@ -171,6 +176,7 @@ def render_human_report_markdown(
     age_seconds: float,
     quality_report: dict[str, Any],
     trend: dict[str, Any] | None = None,
+    industry: Any | None = None,
 ) -> str:
     """按配置模板渲染人工阅读版 Markdown 报告。"""
     context = _context(
@@ -181,6 +187,7 @@ def render_human_report_markdown(
         age_seconds=age_seconds,
         quality_report=quality_report,
         trend=trend,
+        industry=industry,
     )
     context["headline"] = _headline(snapshot, freshness)
     context["reading_notes"] = _reading_notes(snapshot, freshness)
@@ -222,25 +229,6 @@ def render_quality_report_markdown(
     )
 
 
-def build_metric_sections(config: MarketAggregateConfig, snapshot: Any) -> list[dict[str, Any]]:
-    """按 YAML 中的顺序和分组构造指标行。"""
-    sections: OrderedDict[str, list[dict[str, Any]]] = OrderedDict()
-    for metric in config.report.metrics:
-        if not metric.enabled:
-            continue
-        value, available = _metric_value(metric.metric_id, snapshot)
-        sections.setdefault(metric.section, []).append(
-            {
-                "metric_id": metric.metric_id,
-                "label": metric.label,
-                "value": value,
-                "available": available,
-                "note": metric.note,
-            }
-        )
-    return [{"title": title, "rows": rows} for title, rows in sections.items()]
-
-
 def _context(
     *,
     config: MarketAggregateConfig,
@@ -250,6 +238,7 @@ def _context(
     age_seconds: float,
     quality_report: dict[str, Any],
     trend: dict[str, Any] | None = None,
+    industry: Any | None = None,
 ) -> dict[str, Any]:
     return {
         "title": config.title,
@@ -268,6 +257,10 @@ def _context(
         "limitations": list(config.report.limitations),
         "quality_report": quality_report,
         "trend_section": render_trend_section(trend),
+        "industry_section": render_industry_section(
+            industry,
+            top_n=config.industry.top_n,
+        ),
     }
 
 
@@ -283,58 +276,25 @@ def _snapshot_payload(snapshot: Any) -> dict[str, Any]:
     return payload
 
 
-def _metric_value(metric_id: str, snapshot: Any) -> tuple[str, bool]:
-    if metric_id == "coverage":
-        return (
-            f"{snapshot.returned_count}/{snapshot.reported_count} ({snapshot.coverage_ratio:.2%})",
-            True,
-        )
-    if metric_id == "breadth_counts":
-        return f"{snapshot.advance_count} / {snapshot.decline_count} / {snapshot.flat_count}", True
-    if metric_id == "breadth_shares":
-        return f"{_share(snapshot.advance_share)} / {_share(snapshot.decline_share)}", True
-    if metric_id == "advance_decline_ratio":
-        return _ratio(snapshot.advance_decline_ratio), snapshot.advance_decline_ratio is not None
-    if metric_id == "strong_move_counts":
-        return (
-            f"{snapshot.strong_up_count} / {snapshot.strong_down_count} "
-            f"（±{snapshot.strong_up_threshold_pct:.1f}%）",
-            True,
-        )
-    if metric_id == "change_distribution":
-        return (
-            f"{_pct(snapshot.pct_change_p25)} / {_pct(snapshot.median_pct_change)} "
-            f"/ {_pct(snapshot.pct_change_p75)}",
-            any(
-                value is not None
-                for value in (
-                    snapshot.pct_change_p25,
-                    snapshot.median_pct_change,
-                    snapshot.pct_change_p75,
-                )
-            ),
-        )
-    if metric_id == "weighted_pct_change":
-        return _pct(snapshot.weighted_pct_change), snapshot.weighted_pct_change is not None
-    if metric_id == "amount_total":
-        return _money(snapshot.amount_total_yuan), snapshot.amount_total_yuan is not None
-    if metric_id == "market_value":
-        return (
-            f"{_money(snapshot.total_market_value_yuan)} / "
-            f"{_money(snapshot.free_float_market_value_yuan)}",
-            any(
-                value is not None
-                for value in (
-                    snapshot.total_market_value_yuan,
-                    snapshot.free_float_market_value_yuan,
-                )
-            ),
-        )
-    if metric_id == "free_float_turnover":
-        return _pct(snapshot.free_float_turnover_pct), snapshot.free_float_turnover_pct is not None
-    if metric_id == "amount_top_5pct_share":
-        return _share(snapshot.amount_top_5pct_share), snapshot.amount_top_5pct_share is not None
-    return "-", False
+def _industry_payload(industry: Any | None) -> dict[str, Any]:
+    """将行业快照序列化为机器可读 JSON；空快照返回空结构。"""
+    if industry is None or not getattr(industry, "is_usable", False):
+        return {"status": "unavailable", "rows": []}
+    rows = [dict(row.model_dump(mode="json")) for row in getattr(industry, "rows", ())]
+    return {
+        "status": "available",
+        "source": industry.source,
+        "quote_date": industry.quote_date.isoformat(),
+        "mapped_count": industry.mapped_count,
+        "reported_count": industry.reported_count,
+        "coverage_ratio": (
+            industry.mapped_count / industry.reported_count if industry.reported_count else 0.0
+        ),
+        "industry_count": industry.industry_count,
+        "raw_industry_count": industry.raw_industry_count,
+        "strong_move_threshold_pct": industry.strong_move_threshold_pct,
+        "rows": rows,
+    }
 
 
 def _headline(snapshot: Any, freshness: str) -> str:
@@ -359,30 +319,6 @@ def _reading_notes(snapshot: Any, freshness: str) -> list[str]:
     if freshness == "fresh":
         notes.append("当前快照处于 fresh 状态，可作为本次盘中观察的即时截面。")
     return notes
-
-
-def _pct(value: float | None) -> str:
-    return "-" if value is None else f"{value:.2f}%"
-
-
-def _share(value: float | None) -> str:
-    return "-" if value is None else f"{value:.2%}"
-
-
-def _ratio(value: float | None) -> str:
-    return "-" if value is None else f"{value:.2f}"
-
-
-def _money(value: float | None) -> str:
-    if value is None:
-        return "-"
-    if value >= 1_000_000_000_000:
-        return f"{value / 1_000_000_000_000:.2f}万亿"
-    if value >= 100_000_000:
-        return f"{value / 100_000_000:.2f}亿"
-    if value >= 10_000:
-        return f"{value / 10_000:.2f}万"
-    return f"{value:.0f}元"
 
 
 __all__ = [

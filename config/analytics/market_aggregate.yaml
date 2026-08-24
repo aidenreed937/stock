@@ -33,6 +33,12 @@ market_aggregate:
     bars_dataset: "stock_daily_bar"
     market_value_dataset: "daily_basic"
 
+  industry:
+    enabled: true
+    mapping_dataset: "stock_basic"
+    min_members: 3
+    top_n: 10
+
   report:
     template: "aggregate/market_aggregate.md.j2"
     human_template: "aggregate/market_aggregate_human.md.j2"

@@ -8,6 +8,8 @@ from stock_data.fetcher.realtime.base import (
 )
 from stock_data.fetcher.realtime.market_aggregate import (
     BaseMarketAggregateFetcher,
+    IndustryBreadthRow,
+    IndustryBreadthSnapshot,
     MarketAggregateFetcher,
     MarketAggregateSnapshot,
     TencentMarketAggregateFetcher,
@@ -21,6 +23,8 @@ from stock_data.fetcher.realtime.tencent import TencentRealtimeFetcher
 __all__ = [
     "BaseMarketAggregateFetcher",
     "BaseRealtimeFetcher",
+    "IndustryBreadthRow",
+    "IndustryBreadthSnapshot",
     "MarketAggregateFetcher",
     "MarketAggregateSnapshot",
     "MarketAggregateSnapshotRecorder",

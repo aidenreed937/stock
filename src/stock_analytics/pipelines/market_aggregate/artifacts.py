@@ -26,6 +26,7 @@ class MarketAggregateRunPaths:
     snapshot: Path
     facts: Path
     trend: Path
+    industry_breadth: Path
     report_md: Path
     report_json: Path
     human_report_md: Path
@@ -41,11 +42,12 @@ class MarketAggregateArtifactPayload:
     snapshot: MappingLike
     facts: pl.DataFrame
     trend: pl.DataFrame
-    report_markdown: str
-    report_json: MappingLike
-    human_report_markdown: str
-    quality_report_markdown: str
-    quality_report_json: MappingLike
+    industry_breadth: pl.DataFrame | None = None
+    report_markdown: str = ""
+    report_json: MappingLike | None = None
+    human_report_markdown: str = ""
+    quality_report_markdown: str = ""
+    quality_report_json: MappingLike | None = None
 
 
 def build_run_paths(
@@ -66,6 +68,7 @@ def build_run_paths(
         snapshot=run_dir / "snapshot.json",
         facts=run_dir / "facts.parquet",
         trend=run_dir / "trend.parquet",
+        industry_breadth=run_dir / "industry_breadth.parquet",
         report_md=run_dir / "report.md",
         report_json=run_dir / "report.json",
         human_report_md=run_dir / "human_report.md",
@@ -86,19 +89,30 @@ def write_artifacts(
     _write_json(paths.snapshot, payload.snapshot)
     payload.facts.write_parquet(paths.facts)
     payload.trend.write_parquet(paths.trend)
+    if payload.industry_breadth is not None:
+        payload.industry_breadth.write_parquet(paths.industry_breadth)
     paths.report_md.write_text(payload.report_markdown, encoding="utf-8")
-    _write_json(paths.report_json, payload.report_json)
+    _write_json(paths.report_json, _require_mapping(payload.report_json, "report_json"))
     paths.human_report_md.write_text(payload.human_report_markdown, encoding="utf-8")
     paths.quality_report_md.write_text(payload.quality_report_markdown, encoding="utf-8")
-    _write_json(paths.quality_report_json, payload.quality_report_json)
+    _write_json(
+        paths.quality_report_json,
+        _require_mapping(payload.quality_report_json, "quality_report_json"),
+    )
 
     if update_latest:
         _copy_to_latest(paths)
 
 
+def _require_mapping(value: MappingLike | None, name: str) -> MappingLike:
+    if value is None:
+        raise ValueError(f"产物 {name} 缺失，无法写入")
+    return value
+
+
 def _copy_to_latest(paths: MarketAggregateRunPaths) -> None:
     paths.latest_dir.mkdir(parents=True, exist_ok=True)
-    for source in (
+    sources = [
         paths.manifest,
         paths.snapshot,
         paths.facts,
@@ -108,7 +122,10 @@ def _copy_to_latest(paths: MarketAggregateRunPaths) -> None:
         paths.human_report_md,
         paths.quality_report_md,
         paths.quality_report_json,
-    ):
+    ]
+    if paths.industry_breadth.exists():
+        sources.append(paths.industry_breadth)
+    for source in sources:
         shutil.copy2(source, paths.latest_dir / source.name)
 
 

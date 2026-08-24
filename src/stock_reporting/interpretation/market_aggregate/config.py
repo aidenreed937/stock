@@ -91,6 +91,27 @@ class MarketAggregateQualityConfig:
 
 
 @dataclass(frozen=True, slots=True)
+class MarketAggregateIndustryConfig:
+    """全市场聚合行业维度快照配置。"""
+
+    enabled: bool = False
+    mapping_dataset: str = "stock_basic"
+    min_members: int = 3
+    top_n: int = 10
+
+    @classmethod
+    def from_mapping(cls, data: Mapping[str, Any] | None) -> Self:
+        """从 YAML 映射构造行业维度配置。"""
+        data = data or {}
+        return cls(
+            enabled=bool(data.get("enabled", False)),
+            mapping_dataset=str(data.get("mapping_dataset", "stock_basic")),
+            min_members=max(1, int(data.get("min_members", 3))),
+            top_n=max(1, int(data.get("top_n", 10))),
+        )
+
+
+@dataclass(frozen=True, slots=True)
 class MarketAggregateRawConfig:
     """实时聚合 RAW 留档参数。"""
 
@@ -202,6 +223,7 @@ class MarketAggregateConfig:
     quality: MarketAggregateQualityConfig
     raw: MarketAggregateRawConfig
     trend: MarketAggregateTrendConfig
+    industry: MarketAggregateIndustryConfig
     report: MarketAggregateReportConfig
 
     @classmethod
@@ -232,6 +254,9 @@ class MarketAggregateConfig:
             raw=MarketAggregateRawConfig.from_mapping(_optional_mapping(data.get("raw"), "raw")),
             trend=MarketAggregateTrendConfig.from_mapping(
                 _optional_mapping(data.get("trend"), "trend")
+            ),
+            industry=MarketAggregateIndustryConfig.from_mapping(
+                _optional_mapping(data.get("industry"), "industry")
             ),
             report=MarketAggregateReportConfig.from_mapping(
                 _optional_mapping(data.get("report"), "report")
@@ -344,6 +369,7 @@ __all__ = [
     "MarketAggregateCacheConfig",
     "MarketAggregateConfig",
     "MarketAggregateFetchConfig",
+    "MarketAggregateIndustryConfig",
     "MarketAggregateMetricConfig",
     "MarketAggregateQualityConfig",
     "MarketAggregateRawConfig",

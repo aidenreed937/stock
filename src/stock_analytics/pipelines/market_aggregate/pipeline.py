@@ -16,6 +16,10 @@ from stock_analytics.pipelines.market_aggregate.artifacts import (
     build_run_paths,
     write_artifacts,
 )
+from stock_analytics.pipelines.market_aggregate.industry_support import (
+    empty_industry_snapshot,
+    industry_snapshot_to_frame,
+)
 from stock_analytics.pipelines.market_aggregate.trend import (
     build_short_term_trend,
     build_trend_facts,
@@ -79,6 +83,7 @@ def run_market_aggregate(
     raw_root: Path | str | None = None,
     batch_size: int | None = None,
     strong_move_pct: float | None = None,
+    skip_industry: bool = False,
     fetcher: BaseMarketAggregateFetcher | None = None,
     catalog: MarketDataCatalog | None = None,
     now: datetime | None = None,
@@ -90,9 +95,16 @@ def run_market_aggregate(
         strong_move_pct=strong_move_pct,
     )
     catalog_for_history = catalog
+    industry_map: dict[str, str] = {}
+    industry_enabled = config.industry.enabled and not skip_industry
     if fetcher is None:
         catalog_for_history = catalog or DataCatalog(data_source="tushare")
-        symbols = _load_market_symbols(config.universe.dataset, catalog=catalog_for_history)
+        symbols, industry_map = _load_market_symbols(
+            config.universe.dataset,
+            catalog=catalog_for_history,
+            with_industry=industry_enabled,
+            industry_dataset=config.industry.mapping_dataset,
+        )
         actual_fetcher: BaseMarketAggregateFetcher = TencentMarketAggregateFetcher(
             symbols=symbols,
             batch_size=config.fetch.batch_size,
@@ -112,13 +124,23 @@ def run_market_aggregate(
         ),
         recorder=recorder,
     )
-    cached = monitor.run(now=now)
-    snapshot = cached.snapshot
+    if industry_enabled:
+        cached, industry_snapshot = monitor.run_with_industry(
+            industry_map,
+            min_members=config.industry.min_members,
+            now=now,
+        )
+        snapshot = cached.snapshot
+    else:
+        cached = monitor.run(now=now)
+        snapshot = cached.snapshot
+        industry_snapshot = empty_industry_snapshot(snapshot)
     paths = build_run_paths(snapshot.quote_date, config.artifact_root)
     manifest = _build_manifest(config, paths, snapshot, cached.freshness.value, cached.age_seconds)
     snapshot_payload = snapshot.model_dump(mode="json")
     snapshot_payload["quote_date"] = snapshot.quote_date.isoformat()
     facts = pl.DataFrame([snapshot_payload])
+    industry_facts = industry_snapshot_to_frame(industry_snapshot)
     short_term_trend = build_short_term_trend(
         catalog_for_history,
         snapshot,
@@ -143,6 +165,7 @@ def run_market_aggregate(
         age_seconds=cached.age_seconds,
         quality_report=quality_report_json,
         trend=short_term_trend,
+        industry=industry_snapshot,
     )
     report_markdown = render_report_markdown(
         config=config,
@@ -152,6 +175,7 @@ def run_market_aggregate(
         age_seconds=cached.age_seconds,
         quality_report=quality_report_json,
         trend=short_term_trend,
+        industry=industry_snapshot,
     )
     table_markdown = render_table_markdown(
         config=config,
@@ -169,6 +193,7 @@ def run_market_aggregate(
         age_seconds=cached.age_seconds,
         quality_report=quality_report_json,
         trend=short_term_trend,
+        industry=industry_snapshot,
     )
     quality_report_markdown = render_quality_report_markdown(
         config=config,
@@ -181,6 +206,7 @@ def run_market_aggregate(
             snapshot=snapshot_payload,
             facts=facts,
             trend=trend_facts,
+            industry_breadth=industry_facts,
             report_markdown=report_markdown,
             report_json=report_json,
             human_report_markdown=human_report_markdown,
@@ -234,8 +260,14 @@ def _load_market_symbols(
     dataset: str,
     *,
     catalog: MarketDataCatalog | None = None,
-) -> tuple[str, ...]:
-    """从本地 stock_basic 读取在市沪深股票，不用观察池替代全市场。"""
+    with_industry: bool = False,
+    industry_dataset: str | None = None,
+) -> tuple[tuple[str, ...], dict[str, str]]:
+    """从本地 stock_basic 读取在市沪深股票，不用观察池替代全市场。
+
+    返回 ``(symbols, industry_map)``；``industry_map`` 为 ``{本地symbol: 行业名}``，
+    仅当 ``with_industry=True`` 时填充，供全市场聚合的行业维度切片使用。
+    """
     try:
         frame = (catalog or DataCatalog(data_source="tushare")).load_dataset(dataset)
     except (OSError, TypeError, ValueError) as exc:
@@ -252,8 +284,18 @@ def _load_market_symbols(
     if symbol_column not in frame.columns:
         raise DataFetchError("本地 stock_basic 缺少 symbol/ts_code 标识列")
 
+    mapping_frame = frame
+    if with_industry and industry_dataset and industry_dataset != dataset:
+        try:
+            mapping_frame = (catalog or DataCatalog(data_source="tushare")).load_dataset(
+                industry_dataset
+            )
+        except (OSError, TypeError, ValueError) as exc:
+            raise DataFetchError(f"腾讯全市场聚合需要本地 {industry_dataset} 行业映射数据") from exc
+
     symbols: list[str] = []
     seen: set[str] = set()
+    industry_map: dict[str, str] = {}
     for row in frame.iter_rows(named=True):
         list_status = row.get("list_status")
         if list_status is not None and str(list_status).upper() != "L":
@@ -273,10 +315,33 @@ def _load_market_symbols(
             continue
         symbols.append(symbol)
         seen.add(symbol)
+        if with_industry:
+            industry = row.get("industry")
+            if industry is not None and str(industry).strip():
+                industry_map[symbol] = str(industry).strip()
+
+    if with_industry and mapping_frame is not frame:
+        mapping_symbol_column = "symbol" if "symbol" in mapping_frame.columns else "ts_code"
+        if mapping_symbol_column in mapping_frame.columns:
+            for row in mapping_frame.iter_rows(named=True):
+                raw_symbol = row.get(mapping_symbol_column)
+                if raw_symbol is None:
+                    continue
+                raw_value = str(raw_symbol).strip()
+                exchange = _exchange_suffix(row.get("exchange"))
+                if "." not in raw_value and exchange:
+                    raw_value = f"{raw_value}.{exchange}"
+                try:
+                    symbol = normalize_local_symbol(raw_value)
+                except ValueError:
+                    continue
+                industry = row.get("industry")
+                if symbol in seen and industry is not None and str(industry).strip():
+                    industry_map[symbol] = str(industry).strip()
 
     if not symbols:
         raise DataFetchError("本地 stock_basic 没有可用于腾讯聚合的沪深在市股票")
-    return tuple(symbols)
+    return tuple(symbols), industry_map
 
 
 def _exchange_suffix(value: object) -> str | None:
@@ -320,6 +385,7 @@ def _build_manifest(
             "snapshot": paths.snapshot.name,
             "facts": paths.facts.name,
             "trend": paths.trend.name,
+            "industry_breadth": paths.industry_breadth.name,
             "report_md": paths.report_md.name,
             "report_json": paths.report_json.name,
             "human_report_md": paths.human_report_md.name,

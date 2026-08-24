@@ -45,6 +45,11 @@ def _build_parser() -> argparse.ArgumentParser:
         default=None,
         help="覆盖 YAML 中的强势上涨/下跌阈值（百分比）",
     )
+    parser.add_argument(
+        "--skip-industry",
+        action="store_true",
+        help="不生成行业维度切片（覆盖 YAML 中 industry.enabled）",
+    )
     return parser
 
 
@@ -68,6 +73,7 @@ def main() -> None:
                 raw_root=args.raw_root,
                 batch_size=args.batch_size,
                 strong_move_pct=args.strong_move_pct,
+                skip_industry=args.skip_industry,
             )
             output = (
                 result.table_markdown
