@@ -12,6 +12,17 @@ from stock_analytics.primitives.cross_sectional import (
     mad_winsorize,
     quantile_bucket,
 )
+from stock_analytics.primitives.factor_evaluation import (
+    add_forward_returns,
+    cumulative_ic,
+    ic_decay,
+    ic_summary,
+    rank_ic_series,
+)
+from stock_analytics.primitives.factor_quantile import (
+    quantile_forward_returns,
+    quantile_summary,
+)
 from stock_analytics.primitives.indicators import (
     DEFAULT_EMA_WINDOW,
     DEFAULT_MACD_FAST,
@@ -66,6 +77,7 @@ __all__ = [
     "DEFAULT_MACD_SLOW",
     "DEFAULT_RSI_WINDOW",
     "DEFAULT_SMA_WINDOW",
+    "add_forward_returns",
     "calculate_amihud_illiquidity",
     "calculate_atr",
     "calculate_bollinger_bandwidth",
@@ -94,6 +106,12 @@ __all__ = [
     "calculate_yield_curve_slope",
     "cross_sectional_ols",
     "cross_sectional_zscore",
+    "cumulative_ic",
+    "ic_decay",
+    "ic_summary",
     "mad_winsorize",
     "quantile_bucket",
+    "quantile_forward_returns",
+    "quantile_summary",
+    "rank_ic_series",
 ]
