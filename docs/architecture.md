@@ -84,6 +84,7 @@ graph TD
 ### 2.4 分析计算包 (`src/stock_analytics/`)
 - **Primitives (`primitives/`)**：移动平均线、RSI、MACD 向量化技术指标。
 - **Metrics & Pipelines (`metrics/`, `pipelines/`)**：六维市场温度计、分位数模型、宏观/中观/微观分析流水线。
+- **分层边界**：Feature、Metric、Mart 与 Pipeline 的职责和导入规则见 [`docs/architecture/analytics-boundaries.md`](architecture/analytics-boundaries.md)。
 
 ### 2.5 策略研发包 (`src/stock_strategy/`)
 - **Base & Context (`base.py`, `context.py`)**：策略生命周期抽象与只读数据上下文。
@@ -110,6 +111,6 @@ graph TD
 ## 4. 质量保障与硬约束
 
 - **编码标准**：通过 `.editorconfig` 约定缩进与换行，全局字符集使用 UTF-8。
-- **静态检查**：Ruff 拦截格式与代码规范，Mypy 在 `strict` 模式校验类型，`scripts/lint_class_size.py` 约束类与模块规模。
+- **静态检查**：Ruff 拦截格式与代码规范，Mypy 在 `strict` 模式校验类型，`scripts/lint_class_size.py` 约束类与模块规模，`scripts/lint_analytics_boundaries.py` 约束分析层导入方向。
 - **测试覆盖率**：Pytest 单元测试覆盖率必须保持在 75% 以上。
 - **自动化门禁**：通过 `make check` 实现全流程一键验证。
