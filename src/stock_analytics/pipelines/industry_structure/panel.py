@@ -2,13 +2,12 @@
 
 from __future__ import annotations
 
-from datetime import date, timedelta
+from datetime import date
 from pathlib import Path
-from typing import TYPE_CHECKING, Any
+from typing import TYPE_CHECKING
 
 import polars as pl
 
-from stock_analytics.pipelines.industry_structure.classifier import IndustryClassifier
 from stock_analytics.pipelines.industry_structure.panel_aggregations import (
     FastFundamentalContext,
     IndustryMoneyflowContext,
@@ -26,10 +25,19 @@ from stock_analytics.pipelines.industry_structure.panel_metrics import (
     fundamental_panel,
     valuation_panel,
 )
+from stock_analytics.pipelines.industry_structure.panel_normalization import (
+    _coalesce_industry_names,
+    _industry_daily_frame,
+    _panel_start_date,
+)
+from stock_analytics.pipelines.industry_structure.panel_schema import (
+    BASE_PANEL_SCHEMA,
+    empty_industry_panel,
+    select_base_panel_columns,
+)
 from stock_analytics.pipelines.industry_structure.panel_sources import (
     load_dataset,
     load_industry_l1_maps,
-    optional_text_expr,
 )
 from stock_analytics.pipelines.market_temperature.cache import CachedCatalog, DatasetFrameCache
 from stock_core.contracts import MarketDataCatalog
@@ -37,64 +45,12 @@ from stock_core.contracts import MarketDataCatalog
 if TYPE_CHECKING:
     from stock_reporting.interpretation.industry_structure.config import IndustryStructureConfig
 
-__all__ = ["_market_panel_batch"]
-
-BASE_PANEL_SCHEMA: dict[str, Any] = {
-    "as_of_date": pl.Date,
-    "industry_code": pl.Utf8,
-    "industry_name": pl.Utf8,
-    "market_data_date": pl.Date,
-    "valuation_date": pl.Date,
-    "fundamental_date": pl.Date,
-    "return_5d": pl.Float64,
-    "return_10d": pl.Float64,
-    "return_20d": pl.Float64,
-    "return_60d": pl.Float64,
-    "return_120d": pl.Float64,
-    "relative_return_20d": pl.Float64,
-    "ma_bias_20d": pl.Float64,
-    "amount_yi": pl.Float64,
-    "tcr": pl.Float64,
-    "tcr_percentile": pl.Float64,
-    "moneyflow_date": pl.Date,
-    "moneyflow_sample_size": pl.Int64,
-    "moneyflow_stock_count": pl.Int64,
-    "money_net_inflow_yi_20d": pl.Float64,
-    "money_net_inflow_share_20d": pl.Float64,
-    "large_money_net_inflow_share_20d": pl.Float64,
-    "money_net_inflow_share_5d": pl.Float64,
-    "pe_ttm": pl.Float64,
-    "pb": pl.Float64,
-    "dividend_yield": pl.Float64,
-    "pe_percentile_5y": pl.Float64,
-    "pb_percentile_5y": pl.Float64,
-    "pbroe_residual": pl.Float64,
-    "pbroe_undervalued": pl.Boolean,
-    "revenue_growth_ttm": pl.Float64,
-    "profit_growth_ttm": pl.Float64,
-    "roe_ttm": pl.Float64,
-    "revenue_growth_percentile": pl.Float64,
-    "profit_growth_percentile": pl.Float64,
-    "roe_percentile": pl.Float64,
-    "forecast_date": pl.Date,
-    "forecast_sample_size": pl.Int64,
-    "forecast_positive_share": pl.Float64,
-    "forecast_p_change_mid_median": pl.Float64,
-    "express_date": pl.Date,
-    "express_sample_size": pl.Int64,
-    "express_profit_growth_median": pl.Float64,
-    "express_roe_median": pl.Float64,
-    "report_rc_date": pl.Date,
-    "report_rc_sample_size": pl.Int64,
-    "report_rc_revision_ratio": pl.Float64,
-    "report_rc_up_count": pl.Int64,
-    "report_rc_down_count": pl.Int64,
-}
-
-
-def empty_industry_panel() -> pl.DataFrame:
-    """返回稳定 schema 的空行业面板。"""
-    return pl.DataFrame(schema=BASE_PANEL_SCHEMA)
+__all__ = [
+    "BASE_PANEL_SCHEMA",
+    "_industry_daily_frame",
+    "_market_panel_batch",
+    "empty_industry_panel",
+]
 
 
 def build_industry_panel(
@@ -173,7 +129,7 @@ def build_industry_panel(
     if not moneyflow.is_empty():
         panel = panel.join(moneyflow, on="industry_code", how="left")
     panel = _coalesce_industry_names(panel)
-    return _select_base_panel_columns(panel)
+    return select_base_panel_columns(panel)
 
 
 def build_industry_panel_from_daily(
@@ -247,7 +203,7 @@ def build_industry_panel_from_daily(
     )
     if not moneyflow.is_empty():
         panel = panel.join(moneyflow, on="industry_code", how="left")
-    return _select_base_panel_columns(_coalesce_industry_names(panel))
+    return select_base_panel_columns(_coalesce_industry_names(panel))
 
 
 def load_industry_panel_daily(
@@ -266,103 +222,4 @@ def load_industry_panel_daily(
     frame = store.get_industry_panel_daily(start_date=as_of_date, end_date=as_of_date)
     if frame.is_empty():
         return empty_industry_panel()
-    return _select_base_panel_columns(frame)
-
-
-def _panel_start_date(
-    config: IndustryStructureConfig,
-    as_of_date: date,
-    trade_dates: tuple[date, ...],
-) -> date:
-    if trade_dates:
-        return trade_dates[0] - timedelta(days=30)
-    return as_of_date - timedelta(days=max(config.windows, default=config.main_window) * 4)
-
-
-def _industry_daily_frame(
-    frame: pl.DataFrame,
-    config: IndustryStructureConfig,
-    catalog: MarketDataCatalog,
-) -> pl.DataFrame:
-    required = {"symbol", "trade_date", "close"}
-    if frame.is_empty() or not required.issubset(frame.columns):
-        return pl.DataFrame()
-    amount_expr = (
-        pl.col("amount").cast(pl.Float64, strict=False)
-        if "amount" in frame.columns
-        else pl.lit(None, dtype=pl.Float64)
-    )
-    has_explicit_scope = {"classification", "industry_level"}.issubset(frame.columns)
-    select_exprs = [
-        pl.col("symbol").cast(pl.String).alias("industry_code"),
-        "trade_date",
-        optional_text_expr(frame, ("name", "industry_name", "index_name"), "_sw_industry_name"),
-        pl.col("close").cast(pl.Float64, strict=False).alias("close"),
-        amount_expr.alias("amount"),
-    ]
-    if has_explicit_scope:
-        select_exprs.extend(
-            [
-                pl.col("classification").cast(pl.String, strict=False).alias("classification"),
-                pl.col("industry_level").cast(pl.String, strict=False).alias("industry_level"),
-            ]
-        )
-    base = frame.select(select_exprs).drop_nulls(subset=["industry_code", "trade_date", "close"])
-    base = base.filter(pl.col("close") > 0).sort(["industry_code", "trade_date"])
-    classifier = IndustryClassifier(catalog)
-    if has_explicit_scope:
-        base = base.filter(
-            (pl.col("classification") == config.classification) & (pl.col("industry_level") == "L1")
-        )
-    else:
-        l1_codes = list(classifier.get_l1_codes(config.classification))
-        if l1_codes:
-            l1_frame = base.filter(pl.col("industry_code").is_in(l1_codes))
-            if l1_frame["industry_code"].n_unique() >= 10:
-                base = l1_frame
-    name_map = classifier.get_name_map(config.classification)
-    return base.with_columns(
-        pl.struct(["industry_code", "_sw_industry_name"])
-        .map_elements(
-            lambda row: _resolve_industry_name(
-                str(row["industry_code"]),
-                name_map,
-                fallback=row.get("_sw_industry_name"),
-            ),
-            return_dtype=pl.Utf8,
-        )
-        .alias("industry_name")
-    ).drop("_sw_industry_name")
-
-
-def _resolve_industry_name(code: str, name_map: dict[str, str], *, fallback: object = None) -> str:
-    if code in name_map:
-        return name_map[code]
-    prefix = code.split(".")[0]
-    name = name_map.get(prefix)
-    if name:
-        return name
-    fallback_text = str(fallback).strip() if fallback is not None else ""
-    return fallback_text if fallback_text and fallback_text != "None" else code
-
-
-def _coalesce_industry_names(panel: pl.DataFrame) -> pl.DataFrame:
-    if "industry_name_from_valuation" not in panel.columns:
-        return panel
-    return panel.with_columns(
-        pl.coalesce(
-            pl.col("industry_name"),
-            pl.col("industry_name_from_valuation"),
-            pl.col("industry_code"),
-        ).alias("industry_name")
-    ).drop("industry_name_from_valuation")
-
-
-def _select_base_panel_columns(panel: pl.DataFrame) -> pl.DataFrame:
-    columns = []
-    for column, dtype in BASE_PANEL_SCHEMA.items():
-        if column in panel.columns:
-            columns.append(pl.col(column).cast(dtype, strict=False).alias(column))
-        else:
-            columns.append(pl.lit(None, dtype=dtype).alias(column))
-    return panel.select(columns)
+    return select_base_panel_columns(frame)
