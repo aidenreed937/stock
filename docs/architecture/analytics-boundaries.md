@@ -48,11 +48,16 @@ pipelines ───> metrics / features / marts / reporting
 外部消费者只从包级门面导入：
 
 ```python
+from stock_analytics.api import AnalyticsContext, compute_features, compute_metrics
 from stock_analytics.features import FeatureStore
 from stock_analytics.metrics import MetricEngine
 from stock_analytics.pipelines.market_temperature import run_market_temperature
 from stock_analytics.primitives import calculate_rsi
 ```
+
+其中 `stock_analytics.api` 是 metrics/features 的统一外部调用入口；
+`marts` 和 `pipelines` 仍分别通过各自的包级门面提供领域 Mart 构建与业务流程编排。
+外部消费者不应因此直接导入 `metrics`、`features` 或 `marts` 下的内部实现模块。
 
 `pipeline.py`、`facts.py`、`scoring.py`、`panel.py` 等实现文件可以保留兼容导出，但不作为新的外部依赖入口。拆分大文件时应优先保留这些兼容门面，再逐步迁移调用方。
 

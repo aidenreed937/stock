@@ -10,6 +10,7 @@ ROOT = Path(__file__).resolve().parents[1]
 SRC_ROOT = ROOT / "src"
 CONSUMER_ROOTS = (SRC_ROOT / "stock_cli", SRC_ROOT / "stock_strategy")
 PUBLIC_ROOTS = {
+    "stock_analytics.api",
     "stock_analytics.features",
     "stock_analytics.marts",
     "stock_analytics.metrics",
