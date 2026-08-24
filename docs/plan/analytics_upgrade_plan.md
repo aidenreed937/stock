@@ -150,14 +150,17 @@ y 因子被以下联合回归剥离残差：
 ## 模块三（P1）：ETF/行业轮动动量（加权动量 / 动量加速度 / RPS）
 
 > 目标：为 26 只核心 ETF 与申万 31 行业提供标准轮动特征。
+> 状态：✅ 已落地（Phase 3）。
 
-### 扩展 `src/stock_analytics/primitives/momentum.py`
+### 新文件 `src/stock_analytics/primitives/rotation.py`（≤400 行）
+
+> 实现位置调整：存量 `momentum.py` 不可膨胀（类规模门禁），故新建独立模块 `rotation.py`。
 
 | 函数 | 公式 / 说明 |
 | :--- | :--- |
-| `calculate_weighted_momentum(df, windows=(20,60,120), weights=(0.5,0.3,0.2), price_col="close")` | `score = Σ wᵢ·R_{wᵢ}`（R 为 N 日收益率），权重自动归一化，输出 `weighted_momentum` |
-| `calculate_momentum_acceleration(df, fast=20, slow=60, price_col="close")` | `accel = R_fast − R_slow`（短期斜率 vs 长期斜率，动量增强/衰减的二阶信息） |
-| `calculate_rps(df, window=60, price_col="close", group_col="trade_date")` | 每交易日截面内 N 日收益的百分位排名 `RPS = Rank_min(x)/Count × 100`（0~100，与 `quantile_bucket` 口径一致） |
+| `calculate_weighted_momentum(df, windows=(20,60,120), weights=(0.5,0.3,0.2), price_col="close")` | `score = Σ wᵢ·R_{wᵢ}`（R 为 N 日收益率百分数），权重自动归一化；长度不匹配/权重和≤0 raise ValueError；输出 `weighted_momentum` |
+| `calculate_momentum_acceleration(df, fast=20, slow=60, price_col="close")` | `accel = R_fast − R_slow`（短期斜率 vs 长期斜率，动量增强/衰减的二阶信息），输出 `momentum_acceleration_{fast}_{slow}` |
+| `calculate_rps(df, window=60, price_col="close", group_col="trade_date")` | 每交易日截面内 N 日收益的百分位排名 `RPS = Rank_min(x)/Count × 100`（0~100）；先物化收益列再排名（避免 polars 嵌套 window 语义失效） |
 
 - 适用数据：`fund_daily`（ETF，`symbol` 粒度）、`sw_daily`（行业，`industry_code` 粒度）；RPS 按 `group_col="trade_date"` 截面分组。
 
@@ -167,33 +170,46 @@ y 因子被以下联合回归剥离残差：
 - RPS 相对强弱：William O'Neil CANSLIM 体系中的 Relative Strength（RS/RPS 百分位）。
 
 ### 测试与验证
-- 单测：构造 3 标的价格序列验证加权得分、加速度符号、RPS 百分位数值。
-- 真实数据：`fund_daily` 26 ETF 计算 RPS 60 日排名与动量排序一致性冒烟；`sw_daily` 31 行业加权动量冒烟。
+- 单测：`tests/unit/stock_analytics/primitives/test_rotation.py`（18 用例）——加权动量数值/权重归一化/长度不匹配 raise、加速度数值与符号、RPS 最高=100/最低分位/并列 min-rank/多日期独立/缺失 null、symbol 分支、空帧/缺列 fail-closed。
+- 真实数据冒烟（本地 Curated 黄金表，2026-08-21 最新）：
+  - **26 只核心 ETF 60 日 RPS Top5**：港股创新药ETF 100 / 创新药ETF 96.2 / 银行ETF 92.3 / 红利ETF 88.5 / 标普500ETF 84.6；weighted_momentum Top5 = 港股创新药 15.78 / 创新药 10.71 / 标普500 7.46 / 纳指 6.04 / 红利 5.56（RPS 与加权动量强弱方向一致）；
+  - **申万 31 行业 60 日 RPS Top5**：医药生物 100 / 银行 96.8 / 煤炭 93.5 / 石油石化 90.3 / 非银金融 87.1；最弱 3：电力设备 3.2 / 国防军工 6.5 / 汽车 9.7；
+  - 数值自洽性：26 标的 RPS 步进 100/26≈3.85、31 行业步进 100/31≈3.23，与 `Rank_min/Count×100` 定义吻合。
+
+### 提交
+- `feat(analytics): add weighted momentum, momentum acceleration and RPS`（Phase 3）
 
 ---
 
 ## 模块四（P2）：杜邦拆解与财报质量特征
 
 > 目标：利用本地四张财报表（`income`/`balancesheet`/`cashflow`/`fina_indicator`）丰富基本面特征。
+> 状态：✅ 已落地（Phase 4）。
 
 ### 新文件 `src/stock_analytics/primitives/fundamental.py`（纯函数，输入标准化财报长表）
 
 | 函数 | 公式 / 说明 |
 | :--- | :--- |
-| `dupond_decomposition(df)` | `杜邦ROE = 销售净利率 × 总资产周转率 × 权益乘数` = `(n_income/revenue) × (revenue/total_assets) × (total_assets/total_hldr_eqy_exc_min_int)`；同时输出三因子列 |
-| `earnings_quality(df)` | `OCF/净利润`（盈利现金含量，`n_cashflow_act/n_income`）、`FCF`（直接用 `cashflow.free_cashflow`）；FCF 收益率需市值 join，由调用方注入 |
-| `growth_acceleration(df, metric_col)` | `ΔYoY = YoY_t − YoY_{t-1}`（营收/净利润同比增速的一阶差分） |
+| `dupond_decomposition(df, ...)` | `杜邦ROE = 销售净利率 × 总资产周转率 × 权益乘数` = `(n_income/revenue) × (revenue/total_assets) × (total_assets/total_hldr_eqy_exc_min_int)`；输出 `net_profit_margin`/`asset_turnover`/`equity_multiplier`/`roe_dupont`；分母 ≤0 → null（fail-closed） |
+| `earnings_quality(df, ...)` | `OCF/净利润`（盈利现金含量，`n_cashflow_act/n_income`）；净利润 ≤0 → null；FCF 收益率需市值 join 由调用方注入 |
+| `growth_acceleration(df, metric_col, *, level_col="level")` | `ΔYoY = YoY_t − YoY_{t-1}`（营收/净利润同比增速的一阶差分）；输入契约为「实体键 + level + 指标」对齐长表（level=1 最新、level=2 上一期，期次由调用方负责），level=2 缺失 → null |
 
-- **口径要点**：取 `report_type=1`（合并报表、累计口径），按 `end_date` 对齐、以 `f_ann_date` 为可用性时点（避免前视）；`fina_indicator` 的 `roe/netprofit_margin/assets_turn/assets_to_eqt/netprofit_yoy` 作为**交叉验证**（容差内一致），不作为唯一来源。
-- 归属 `primitives/` 保持纯函数；财报长表的组装（catalog 加载 + report_type 过滤 + end_date 对齐）由调用方/测试构造。
+- **口径要点**：取 `report_type=1`（合并报表、累计口径；注意 Curated 表中为字符串 `"1"`），按 `end_date` 对齐、以 `f_ann_date` 为可用性时点（避免前视）；`fina_indicator` 的 `roe` 作为**交叉验证**（相对差容差内一致），不作为唯一来源。
 
 ### 权威依据
 - 杜邦分解（DuPont Analysis）：ROE = 净利率 × 资产周转率 × 权益乘数（经典财务分析框架）；
-- 盈利现金含量（OCF/净利润）与 FCF 收益率：现金流质量与自由现金流收益率通行定义（Sloan 应计质量相关文献背景）。
+- 盈利现金含量（OCF/净利润）：Sloan (1996) 应计质量相关文献背景。
 
 ### 测试与验证
-- 单测：构造人工财报三表数据验证杜邦乘积恒等式与 ΔYoY 数值；缺失/空表 fail-closed。
-- 真实数据：对若干样本股计算杜邦 ROE 并与 `fina_indicator.roe` 交叉验证（容差内），结果入基线记录。
+- 单测：`tests/unit/stock_analytics/primitives/test_fundamental.py`（15 用例）——杜邦乘积恒等式、零/负分母 fail-closed、盈利质量数值、ΔYoY 与缺失、空表/缺列 fail-closed。
+- 真实数据交叉验证（`report_type=1` 合并报表、已披露最新一期，与 `fina_indicator.roe` 对比，相对差全部 ≪ 0.5）：
+  - **600519.SH 茅台** (2026-06-30)：净利率 0.5075 / 周转率 0.2935 / 乘数 1.2300 / **roe_dupont 0.1832** vs fina roe 17.95% → 相对差 2.0%（口径差异，如含少数股东权益/平均净资产，如实记录）
+  - **000858.SZ 五粮液** (2026-03-31)：**roe_dupont 0.0650** vs 6.50% → 相对差 0.015%
+  - **600036.SH 招行** (2026-03-31)：**roe_dupont 0.0297** vs 2.96% → 相对差 0.15%
+- 冒烟数据注意点：`fina_indicator` 用 `ann_date`（无 `f_ann_date`）；`report_type` 为字符串。
+
+### 提交
+- `feat(analytics): add dupont decomposition and earnings quality features`（Phase 4）
 
 ---
 
@@ -229,8 +245,8 @@ y 因子被以下联合回归剥离残差：
 | :---: | :--- | :--- | :---: |
 | Phase 1 | 模块一 因子检验体系（primitives + 单测 + 真实数据基线） | `feat(analytics): add rank IC / ICIR and quantile monotonicity factor evaluation` | ✅ 已落地 |
 | Phase 2 | 模块二 联合中性化 + 对称正交化 | `feat(analytics): add joint industry-mv neutralization and symmetric orthogonalization` | ✅ 已落地 |
-| Phase 3 | 模块三 轮动动量（加权动量/加速度/RPS） | `feat(analytics): add weighted momentum, momentum acceleration and RPS` | 待实现 |
-| Phase 4 | 模块四 杜邦拆解与财报质量 | `feat(analytics): add dupont decomposition and earnings quality features` | 待实现 |
+| Phase 3 | 模块三 轮动动量（加权动量/加速度/RPS） | `feat(analytics): add weighted momentum, momentum acceleration and RPS` | ✅ 已落地 |
+| Phase 4 | 模块四 杜邦拆解与财报质量 | `feat(analytics): add dupont decomposition and earnings quality features` | ✅ 已落地 |
 | Phase 5 | 模块五 统一门面 + 架构文档 | `feat(analytics): add unified metrics/features facade` | 待实现 |
 
 每阶段独立通过局部 pytest（`--no-cov` 保持 importlib 模式）+ 全量门禁后再提交；全部完成后更新本计划状态为"已落地"并附真实数据验证基线。

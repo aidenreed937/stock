@@ -23,6 +23,11 @@ from stock_analytics.primitives.factor_quantile import (
     quantile_forward_returns,
     quantile_summary,
 )
+from stock_analytics.primitives.fundamental import (
+    dupond_decomposition,
+    earnings_quality,
+    growth_acceleration,
+)
 from stock_analytics.primitives.indicators import (
     DEFAULT_EMA_WINDOW,
     DEFAULT_MACD_FAST,
@@ -121,6 +126,9 @@ __all__ = [
     "cross_sectional_orthogonalize",
     "cross_sectional_zscore",
     "cumulative_ic",
+    "dupond_decomposition",
+    "earnings_quality",
+    "growth_acceleration",
     "ic_decay",
     "ic_summary",
     "mad_winsorize",
