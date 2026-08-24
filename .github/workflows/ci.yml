@@ -9,6 +9,8 @@ on:
 jobs:
   lint-and-test:
     runs-on: ubuntu-latest
+    env:
+      PRE_COMMIT_HOME: ${{ github.workspace }}/.pre_commit_cache
     steps:
       - name: Checkout code
         uses: actions/checkout@v4

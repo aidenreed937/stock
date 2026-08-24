@@ -24,7 +24,7 @@
 ## 三、 异常处理规范
 
 1. **严禁静默吞隐异常**: 严禁写裸露的 `except: pass` 或捕获 `Exception` 后无任何日志记录。
-2. **领域异常层级**: 所有业务异常必须继承自基础类 `StockError` ([src/stock/exceptions.py](file:///Users/mac/workspace/personal/finance/stock/src/stock/exceptions.py))：
+2. **领域异常层级**: 所有业务异常必须继承自基础类 `StockError` ([src/stock_core/exceptions.py](../../src/stock_core/exceptions.py))：
    ```text
    StockError (基类)
    ├── DataError

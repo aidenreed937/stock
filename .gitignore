@@ -16,6 +16,7 @@ htmlcov/
 .uv-cache/
 .uv_cache/
 .uv_python/
+.pre_commit_cache/
 .venv/
 ENV/
 env/

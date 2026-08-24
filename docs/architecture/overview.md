@@ -1,37 +1,64 @@
-# 系统架构总览 (System Architecture Overview)
+# 系统架构概览
 
-本项目采用标准的**分层架构 (Layered Architecture)** 与 **依赖倒置原则 (DIP)**，确保数据源、计算引擎与策略逻辑之间解耦。
+本页是架构入口索引。稳定的包边界和数据流见 [`../architecture.md`](../architecture.md)；Analytics 内部边界见 [`analytics-boundaries.md`](analytics-boundaries.md)；数据存储细节见 [`../data_architecture.md`](../data_architecture.md)。
 
-## 一、 整体分层架构图
+## 分层关系
 
 ```mermaid
 graph TD
-    A["应用层 / CLI / API"] --> B["策略与风控层 Strategy and Risk"]
-    A --> C["分析与指标层 Analytics"]
-    B --> C
-    C --> D["数据模型与校验层 Models and Validation"]
-    B --> D
-    D --> E["数据接入与存储层 Data Engine and Storage"]
-    E --> F["DuckDB / Parquet 本地存储"]
-    E --> G["外部金融 API (AkShare/TuShare/etc.)"]
+    cli["stock_cli 应用编排"]
+    strategy["stock_strategy 研究策略"]
+    analytics["stock_analytics 分析与管线"]
+    reporting["stock_reporting 报告视图"]
+    data["stock_data 数据与存储"]
+    core["stock_core 基础契约"]
+
+    cli --> strategy
+    cli --> analytics
+    cli --> reporting
+    cli --> data
+    strategy --> analytics
+    analytics --> reporting
+    analytics --> data
+    analytics --> core
+    reporting --> core
+    data --> core
+    strategy --> core
 ```
 
----
+## 各层职责
 
-## 二、 核心分层说明与职责边界
+| 层 | 目录 | 负责内容 |
+| --- | --- | --- |
+| 基础契约 | `src/stock_core/` | Schema、领域模型、配置、常量和异常 |
+| 数据工程 | `src/stock_data/` | Fetcher、ETL、Curated 存储、质量与审计 |
+| 分析计算 | `src/stock_analytics/` | primitives、metrics、features、marts 和 pipelines |
+| 报告视图 | `src/stock_reporting/` | 解释规则、模板、Markdown/JSON 渲染 |
+| 策略研究 | `src/stock_strategy/` | 策略生命周期、上下文和结构化信号 |
+| 应用入口 | `src/stock_cli/` | 参数解析、任务编排和 CLI 输出 |
 
-| 架构层级 | 所在目录 | 职责描述 | 依赖约束 |
-| :--- | :--- | :--- | :--- |
-| **应用层 (Application)** | `src/stock/main.py`, `src/stock/cli/` | 组装各层组件，提供命令行交互或 API 接口 | 可依赖下层所有模块 |
-| **策略与风控层 (Strategy)** | `src/stock/strategy/` | 交易信号生成、回测逻辑、仓位管理与风控计算 | 仅依赖 Analytics, Models |
-| **分析与指标层 (Analytics)**| `src/stock/analytics/` | 技术指标 (SMA/EMA/RSI/MACD)、因子计算 (Polars 向量化) | 仅依赖 Models |
-| **模型与校验层 (Models)** | `src/stock/models/`, `src/stock/exceptions.py` | 统一数据结构定义、Pydantic 校验、领域异常定义 | 无依赖（核心基础） |
-| **数据与存储层 (Data)** | `src/stock/data/` | 外部 API 适配器 (Fetcher) + DuckDB/Parquet 本地缓存 (Storage) | 依赖 Models |
+`src/stock/` 仅提供向后兼容门面，不作为新功能的主要落点。
 
----
+## 数据生命周期
 
-## 三、 设计原则
+```text
+外部数据源
+  → stock_data Fetcher
+  → data/raw/        原始快照
+  → Cleaner/Normalizer/Quality Gate
+  → data/curated/    标准化事实
+  → Mart/Feature
+  → stock_analytics pipelines
+  → stock_reporting templates
+  → 运行产物 Manifest 与报告
+```
 
-1. **单向依赖原则**: 依赖关系严格由上至下流转，下层模块（如 `Models` 或 `Data`）绝不允许反向依赖上层模块（如 `Strategy` 或 `Application`）。
-2. **接口与实现分离**: 行情抓取器抽象为 `BaseDataFetcher` 接口，外部数据源实现作为插件式组件注入。
-3. **不可变数据传输**: 模块间批量行情数据传递统一使用不可变的 `Polars DataFrame`。
+下游统一通过项目数据接口读取 Curated；不要在业务代码中直接遍历 Parquet 物理目录。分析产物的具体文件和运行关系以当前 Manifest、Validator 和测试为准。
+
+## 变更入口
+
+- 新增数据源、回填、同步或审计能力：先看 `.agents/skills/data-pipeline/SKILL.md`；
+- 新增本地数据查询：先看 `.agents/skills/data-catalog/SKILL.md`；
+- 新增市场/行业/简报管线：先看 `.agents/skills/market-temperature-analysis/SKILL.md`；
+- 需要改变 Analytics 分层：先阅读 [`analytics-boundaries.md`](analytics-boundaries.md) 和相关测试；
+- CLI 参数和调用方式：以对应 `python -m stock_cli.<command> --help` 为准。

@@ -2,6 +2,7 @@
 
 export UV_CACHE_DIR ?= .uv_cache
 export UV_PYTHON_INSTALL_DIR ?= .uv_python
+export PRE_COMMIT_HOME ?= $(CURDIR)/.pre_commit_cache
 export POLARS_MAX_THREADS ?= 4
 
 help:
@@ -39,7 +40,7 @@ help:
 	@echo "  make backfill-fundamental - Backfill fundamentals from lixinger based on universe"
 
 build-plugins:
-	UV_CACHE_DIR=.uv_cache UV_PYTHON_INSTALL_DIR=.uv_python uv run maturin develop --release --manifest-path crates/stock_plugins/Cargo.toml
+	uv run maturin develop --release --manifest-path crates/stock_plugins/Cargo.toml
 
 test-rust-plugins:
 	cargo test --manifest-path crates/stock_plugins/Cargo.toml --no-default-features
@@ -71,35 +72,35 @@ run:
 	uv run python -m stock_cli.main
 
 realtime:
-	UV_CACHE_DIR=.uv_cache UV_PYTHON_INSTALL_DIR=.uv_python uv run python -m stock_cli.realtime $(if $(WATCH),--watch) $(if $(INTERVAL),--interval $(INTERVAL)) $(if $(FORMAT),--format $(FORMAT)) $(if $(RECORD),--record) $(if $(STORAGE_DIR),--storage-dir $(STORAGE_DIR)) $(if $(RAW_ROOT),--raw-root $(RAW_ROOT))
+	uv run python -m stock_cli.realtime $(if $(WATCH),--watch) $(if $(INTERVAL),--interval $(INTERVAL)) $(if $(FORMAT),--format $(FORMAT)) $(if $(RECORD),--record) $(if $(STORAGE_DIR),--storage-dir $(STORAGE_DIR)) $(if $(RAW_ROOT),--raw-root $(RAW_ROOT))
 
 market-aggregate:
-	UV_CACHE_DIR=.uv_cache UV_PYTHON_INSTALL_DIR=.uv_python uv run python -m stock_cli.market_aggregate $(if $(WATCH),--watch) $(if $(INTERVAL),--interval $(INTERVAL)) $(if $(FORMAT),--format $(FORMAT)) $(if $(CONFIG),--config $(CONFIG)) $(if $(OUTPUT_ROOT),--output-root $(OUTPUT_ROOT)) $(if $(RUN_CLASS),--run-class $(RUN_CLASS)) $(if $(NO_LATEST),--no-latest) $(if $(RECORD),--record) $(if $(RAW_ROOT),--raw-root $(RAW_ROOT)) $(if $(BATCH_SIZE),--batch-size $(BATCH_SIZE),$(if $(PAGE_SIZE),--batch-size $(PAGE_SIZE))) $(if $(STRONG_MOVE_PCT),--strong-move-pct $(STRONG_MOVE_PCT)) $(if $(SKIP_INDUSTRY),--skip-industry)
+	uv run python -m stock_cli.market_aggregate $(if $(WATCH),--watch) $(if $(INTERVAL),--interval $(INTERVAL)) $(if $(FORMAT),--format $(FORMAT)) $(if $(CONFIG),--config $(CONFIG)) $(if $(OUTPUT_ROOT),--output-root $(OUTPUT_ROOT)) $(if $(RUN_CLASS),--run-class $(RUN_CLASS)) $(if $(NO_LATEST),--no-latest) $(if $(RECORD),--record) $(if $(RAW_ROOT),--raw-root $(RAW_ROOT)) $(if $(BATCH_SIZE),--batch-size $(BATCH_SIZE),$(if $(PAGE_SIZE),--batch-size $(PAGE_SIZE))) $(if $(STRONG_MOVE_PCT),--strong-move-pct $(STRONG_MOVE_PCT)) $(if $(SKIP_INDUSTRY),--skip-industry)
 
 sync:
-	UV_CACHE_DIR=.uv_cache UV_PYTHON_INSTALL_DIR=.uv_python uv run python -m stock_cli.sync --source $(or $(SOURCE),$(DATA_SOURCE),tushare) $(if $(DATE),--date $(DATE)) $(if $(or $(ENDPOINT),$(ENDPOINTS)),--endpoints $(or $(ENDPOINT),$(ENDPOINTS))) $(if $(FORCE),--force) $(if $(NO_AUDIT),--no-audit) $(if $(WORKERS),--max-workers $(WORKERS))
+	uv run python -m stock_cli.sync --source $(or $(SOURCE),$(DATA_SOURCE),tushare) $(if $(DATE),--date $(DATE)) $(if $(or $(ENDPOINT),$(ENDPOINTS)),--endpoints $(or $(ENDPOINT),$(ENDPOINTS))) $(if $(FORCE),--force) $(if $(NO_AUDIT),--no-audit) $(if $(WORKERS),--max-workers $(WORKERS))
 
 backfill:
-	UV_CACHE_DIR=.uv_cache UV_PYTHON_INSTALL_DIR=.uv_python uv run python -m stock_cli.backfill $(if $(START),--start $(START)) $(if $(END),--end $(END)) --data-source $(or $(SOURCE),$(DATA_SOURCE),tushare) $(if $(ENDPOINT),--endpoint $(ENDPOINT)) $(if $(SYMBOL),--symbol $(SYMBOL)) $(if $(FORCE_REFRESH),--force-refresh) $(if $(WORKERS),--max-workers $(WORKERS))
+	uv run python -m stock_cli.backfill $(if $(START),--start $(START)) $(if $(END),--end $(END)) --data-source $(or $(SOURCE),$(DATA_SOURCE),tushare) $(if $(ENDPOINT),--endpoint $(ENDPOINT)) $(if $(SYMBOL),--symbol $(SYMBOL)) $(if $(FORCE_REFRESH),--force-refresh) $(if $(WORKERS),--max-workers $(WORKERS))
 
 
 baseline:
 	uv run python -m stock_data.governance.audit.baseline --root $(or $(ROOT),data) --output $(or $(OUTPUT),data/audit/baseline.json)
 
 migrate-data:
-	UV_CACHE_DIR=.uv_cache UV_PYTHON_INSTALL_DIR=.uv_python uv run python -m stock_data.governance.ops.migration --root $(or $(ROOT),data) $(if $(APPLY),--apply) $(if $(REPAIR_LINEAGE),--repair-lineage)
+	uv run python -m stock_data.governance.ops.migration --root $(or $(ROOT),data) $(if $(APPLY),--apply) $(if $(REPAIR_LINEAGE),--repair-lineage)
 
 migrate-curated:
-	UV_CACHE_DIR=.uv_cache UV_PYTHON_INSTALL_DIR=.uv_python uv run python scripts/migrate_curated_schema_v2.py --root $(or $(CURATED_ROOT),data/curated) $(if $(APPLY),--apply)
+	uv run python scripts/migrate_curated_schema_v2.py --root $(or $(CURATED_ROOT),data/curated) $(if $(APPLY),--apply)
 
 cleanup-data:
-	UV_CACHE_DIR=.uv_cache UV_PYTHON_INSTALL_DIR=.uv_python uv run python -m stock_data.governance.ops.cleanup_artifacts --root $(or $(ROOT),data) --older-than-days $(or $(OLDER_THAN_DAYS),7) $(if $(filter 1 true yes,$(APPLY)),--apply)
+	uv run python -m stock_data.governance.ops.cleanup_artifacts --root $(or $(ROOT),data) --older-than-days $(or $(OLDER_THAN_DAYS),7) $(if $(filter 1 true yes,$(APPLY)),--apply)
 
 backfill-accept:
-	UV_CACHE_DIR=.uv_cache UV_PYTHON_INSTALL_DIR=.uv_python uv run python -m stock_data.governance.audit.backfill_acceptance --root $(or $(ROOT),data/curated) --raw-root $(or $(RAW_ROOT),data/raw) --endpoint $(ENDPOINT) --data-source $(or $(SOURCE),$(DATA_SOURCE),tushare) $(if $(START),--start $(START)) $(if $(END),--end $(END))
+	uv run python -m stock_data.governance.audit.backfill_acceptance --root $(or $(ROOT),data/curated) --raw-root $(or $(RAW_ROOT),data/raw) --endpoint $(ENDPOINT) --data-source $(or $(SOURCE),$(DATA_SOURCE),tushare) $(if $(START),--start $(START)) $(if $(END),--end $(END))
 
 repair-stock-daily-bar:
-	UV_CACHE_DIR=.uv_cache UV_PYTHON_INSTALL_DIR=.uv_python uv run python -m stock_data.governance.ops.rebuild_stock_daily_bar \
+	uv run python -m stock_data.governance.ops.rebuild_stock_daily_bar \
 		$(if $(RAW_ROOT),--raw-root $(RAW_ROOT)) \
 		$(if $(CURATED_ROOT),--curated-root $(CURATED_ROOT)) \
 		$(if $(STOCK_BASIC),--stock-basic $(STOCK_BASIC)) \
@@ -112,11 +113,11 @@ probe:
 	uv run python -m stock_data.governance.ops.probe
 
 validate:
-	UV_CACHE_DIR=.uv_cache UV_PYTHON_INSTALL_DIR=.uv_python uv run python -m stock_data.governance.quality.gate
-	UV_CACHE_DIR=.uv_cache UV_PYTHON_INSTALL_DIR=.uv_python uv run python -m stock_data.governance.validator --endpoint $(or $(ENDPOINT),stock_daily_bar) --strict
+	uv run python -m stock_data.governance.quality.gate
+	uv run python -m stock_data.governance.validator --endpoint $(or $(ENDPOINT),stock_daily_bar) --strict
 
 audit:
-	UV_CACHE_DIR=.uv_cache UV_PYTHON_INSTALL_DIR=.uv_python uv run python -m stock_cli.audit --type $(or $(TYPE),master) --data-source $(or $(SOURCE),$(DATA_SOURCE),tushare) $(if $(DATE),--date $(DATE)) $(if $(START),--start $(START)) $(if $(END),--end $(END)) $(if $(DOMAIN),--domain $(DOMAIN)) $(if $(FREQ),--frequency $(FREQ))
+	uv run python -m stock_cli.audit --type $(or $(TYPE),master) --data-source $(or $(SOURCE),$(DATA_SOURCE),tushare) $(if $(DATE),--date $(DATE)) $(if $(START),--start $(START)) $(if $(END),--end $(END)) $(if $(DOMAIN),--domain $(DOMAIN)) $(if $(FREQ),--frequency $(FREQ))
 
 master-audit:
 	uv run python -m stock_cli.audit --type master
@@ -134,58 +135,58 @@ backfill-pledge:
 	uv run python -m stock_cli.backfill --start $(START) --end $(END) --data-source lixinger --endpoint pledge_info --universe $(or $(UNIVERSE),watchlist)
 
 monitor:
-	UV_CACHE_DIR=.uv_cache UV_PYTHON_INSTALL_DIR=.uv_python uv run python scripts/monitor_resources.py $(if $(WATCH),--watch) $(if $(INTERVAL),--interval $(INTERVAL))
+	uv run python scripts/monitor_resources.py $(if $(WATCH),--watch) $(if $(INTERVAL),--interval $(INTERVAL))
 
 scan:
-	UV_CACHE_DIR=.uv_cache UV_PYTHON_INSTALL_DIR=.uv_python uv run python -m stock_cli.market_temperature $(if $(DATE),--date $(DATE)) $(if $(RUN_CLASS),--run-class $(RUN_CLASS))
-	UV_CACHE_DIR=.uv_cache UV_PYTHON_INSTALL_DIR=.uv_python uv run python -m stock_cli.industry_structure $(if $(DATE),--date $(DATE)) $(if $(RUN_CLASS),--run-class $(RUN_CLASS))
-	UV_CACHE_DIR=.uv_cache UV_PYTHON_INSTALL_DIR=.uv_python uv run python -m stock_cli.investor_brief $(if $(DATE),--date $(DATE)) $(if $(RUN_CLASS),--run-class $(RUN_CLASS))
-	UV_CACHE_DIR=.uv_cache UV_PYTHON_INSTALL_DIR=.uv_python uv run python -m stock_cli.quant_brief $(if $(DATE),--date $(DATE)) $(if $(RUN_CLASS),--run-class $(RUN_CLASS))
+	uv run python -m stock_cli.market_temperature $(if $(DATE),--date $(DATE)) $(if $(RUN_CLASS),--run-class $(RUN_CLASS))
+	uv run python -m stock_cli.industry_structure $(if $(DATE),--date $(DATE)) $(if $(RUN_CLASS),--run-class $(RUN_CLASS))
+	uv run python -m stock_cli.investor_brief $(if $(DATE),--date $(DATE)) $(if $(RUN_CLASS),--run-class $(RUN_CLASS))
+	uv run python -m stock_cli.quant_brief $(if $(DATE),--date $(DATE)) $(if $(RUN_CLASS),--run-class $(RUN_CLASS))
 
 features-build:
-	UV_CACHE_DIR=.uv_cache UV_PYTHON_INSTALL_DIR=.uv_python uv run python -m stock_cli.features build $(if $(TARGET),--target $(TARGET)) $(if $(START),--start $(START)) $(if $(END),--end $(END)) $(if $(OVERWRITE),--overwrite) $(if $(STORAGE_DIR),--storage-dir $(STORAGE_DIR))
+	uv run python -m stock_cli.features build $(if $(TARGET),--target $(TARGET)) $(if $(START),--start $(START)) $(if $(END),--end $(END)) $(if $(OVERWRITE),--overwrite) $(if $(STORAGE_DIR),--storage-dir $(STORAGE_DIR))
 
 market-temperature:
-	UV_CACHE_DIR=.uv_cache UV_PYTHON_INSTALL_DIR=.uv_python uv run python -m stock_cli.market_temperature $(if $(DATE),--date $(DATE)) $(if $(COMPARE_DATE),--compare-date $(COMPARE_DATE)) $(if $(CONFIG),--config $(CONFIG)) $(if $(OUTPUT_ROOT),--output-root $(OUTPUT_ROOT)) $(if $(RUN_CLASS),--run-class $(RUN_CLASS)) $(if $(NO_LATEST),--no-latest) $(if $(SKIP_METRICS),--skip-metrics)
+	uv run python -m stock_cli.market_temperature $(if $(DATE),--date $(DATE)) $(if $(COMPARE_DATE),--compare-date $(COMPARE_DATE)) $(if $(CONFIG),--config $(CONFIG)) $(if $(OUTPUT_ROOT),--output-root $(OUTPUT_ROOT)) $(if $(RUN_CLASS),--run-class $(RUN_CLASS)) $(if $(NO_LATEST),--no-latest) $(if $(SKIP_METRICS),--skip-metrics)
 
 industry-structure:
-	UV_CACHE_DIR=.uv_cache UV_PYTHON_INSTALL_DIR=.uv_python uv run python -m stock_cli.industry_structure $(if $(DATE),--date $(DATE)) $(if $(CONFIG),--config $(CONFIG)) $(if $(OUTPUT_ROOT),--output-root $(OUTPUT_ROOT)) $(if $(RUN_CLASS),--run-class $(RUN_CLASS)) $(if $(NO_LATEST),--no-latest)
+	uv run python -m stock_cli.industry_structure $(if $(DATE),--date $(DATE)) $(if $(CONFIG),--config $(CONFIG)) $(if $(OUTPUT_ROOT),--output-root $(OUTPUT_ROOT)) $(if $(RUN_CLASS),--run-class $(RUN_CLASS)) $(if $(NO_LATEST),--no-latest)
 
 investor-brief:
-	UV_CACHE_DIR=.uv_cache UV_PYTHON_INSTALL_DIR=.uv_python uv run python -m stock_cli.investor_brief $(if $(DATE),--date $(DATE)) $(if $(CONFIG),--config $(CONFIG)) $(if $(OUTPUT_ROOT),--output-root $(OUTPUT_ROOT)) $(if $(RUN_CLASS),--run-class $(RUN_CLASS)) $(if $(NO_LATEST),--no-latest)
+	uv run python -m stock_cli.investor_brief $(if $(DATE),--date $(DATE)) $(if $(CONFIG),--config $(CONFIG)) $(if $(OUTPUT_ROOT),--output-root $(OUTPUT_ROOT)) $(if $(RUN_CLASS),--run-class $(RUN_CLASS)) $(if $(NO_LATEST),--no-latest)
 
 quant-brief:
-	UV_CACHE_DIR=.uv_cache UV_PYTHON_INSTALL_DIR=.uv_python uv run python -m stock_cli.quant_brief $(if $(DATE),--date $(DATE)) $(if $(CONFIG),--config $(CONFIG)) $(if $(OUTPUT_ROOT),--output-root $(OUTPUT_ROOT)) $(if $(STORAGE_DIR),--storage-dir $(STORAGE_DIR)) $(if $(RUN_CLASS),--run-class $(RUN_CLASS)) $(if $(NO_LATEST),--no-latest)
+	uv run python -m stock_cli.quant_brief $(if $(DATE),--date $(DATE)) $(if $(CONFIG),--config $(CONFIG)) $(if $(OUTPUT_ROOT),--output-root $(OUTPUT_ROOT)) $(if $(STORAGE_DIR),--storage-dir $(STORAGE_DIR)) $(if $(RUN_CLASS),--run-class $(RUN_CLASS)) $(if $(NO_LATEST),--no-latest)
 
 multi-date:
-	UV_CACHE_DIR=.uv_cache UV_PYTHON_INSTALL_DIR=.uv_python uv run python -m stock_cli.multi_date $(if $(DATES),--dates $(DATES),$(if $(LAST_N),--last-n $(LAST_N),$(if $(START),--start $(START)))) $(if $(END),--end $(END)) $(if $(REFRESH_MART),--refresh-mart) $(if $(MART_START),--mart-start $(MART_START)) $(if $(STORAGE_DIR),--storage-dir $(STORAGE_DIR)) $(if $(ANALYTICS_ROOT),--analytics-root $(ANALYTICS_ROOT)) $(if $(PUBLISH_DATE),--publish-date $(PUBLISH_DATE)) $(if $(RUN_CLASS),--run-class $(RUN_CLASS)) $(if $(SKIP_METRICS),--skip-metrics) $(if $(NO_PUBLISH_LATEST),--no-publish-latest) $(if $(DRY_RUN),--dry-run)
+	uv run python -m stock_cli.multi_date $(if $(DATES),--dates $(DATES),$(if $(LAST_N),--last-n $(LAST_N),$(if $(START),--start $(START)))) $(if $(END),--end $(END)) $(if $(REFRESH_MART),--refresh-mart) $(if $(MART_START),--mart-start $(MART_START)) $(if $(STORAGE_DIR),--storage-dir $(STORAGE_DIR)) $(if $(ANALYTICS_ROOT),--analytics-root $(ANALYTICS_ROOT)) $(if $(PUBLISH_DATE),--publish-date $(PUBLISH_DATE)) $(if $(RUN_CLASS),--run-class $(RUN_CLASS)) $(if $(SKIP_METRICS),--skip-metrics) $(if $(NO_PUBLISH_LATEST),--no-publish-latest) $(if $(DRY_RUN),--dry-run)
 
 screen-stocks:
-	UV_CACHE_DIR=.uv_cache UV_PYTHON_INSTALL_DIR=.uv_python uv run python -m stock_cli.stock_screen $(if $(DATE),--as-of $(DATE)) $(if $(CONFIG),--config $(CONFIG)) $(if $(OUTPUT_ROOT),--output-root $(OUTPUT_ROOT)) $(if $(RUN_CLASS),--run-class $(RUN_CLASS)) $(if $(STORAGE_DIR),--storage-dir $(STORAGE_DIR)) $(if $(SYMBOLS),--symbols $(SYMBOLS)) $(if $(NO_LATEST),--no-latest)
+	uv run python -m stock_cli.stock_screen $(if $(DATE),--as-of $(DATE)) $(if $(CONFIG),--config $(CONFIG)) $(if $(OUTPUT_ROOT),--output-root $(OUTPUT_ROOT)) $(if $(RUN_CLASS),--run-class $(RUN_CLASS)) $(if $(STORAGE_DIR),--storage-dir $(STORAGE_DIR)) $(if $(SYMBOLS),--symbols $(SYMBOLS)) $(if $(NO_LATEST),--no-latest)
 
 artifact-index:
-	UV_CACHE_DIR=.uv_cache UV_PYTHON_INSTALL_DIR=.uv_python uv run python -m stock_cli.artifact_ops index --root $(ROOT)
+	uv run python -m stock_cli.artifact_ops index --root $(ROOT)
 
 cleanup-analytics:
-	UV_CACHE_DIR=.uv_cache UV_PYTHON_INSTALL_DIR=.uv_python uv run python -m stock_cli.artifact_ops cleanup --root $(ROOT) $(if $(LATEST_ROOT),--latest-root $(LATEST_ROOT)) $(if $(OLDER_THAN_DAYS),--older-than-days $(OLDER_THAN_DAYS)) $(if $(RUN_CLASS),--run-class $(RUN_CLASS)) $(if $(NO_KEEP_LATEST),--no-keep-latest) $(if $(filter 1 true yes,$(APPLY)),--apply)
+	uv run python -m stock_cli.artifact_ops cleanup --root $(ROOT) $(if $(LATEST_ROOT),--latest-root $(LATEST_ROOT)) $(if $(OLDER_THAN_DAYS),--older-than-days $(OLDER_THAN_DAYS)) $(if $(RUN_CLASS),--run-class $(RUN_CLASS)) $(if $(NO_KEEP_LATEST),--no-keep-latest) $(if $(filter 1 true yes,$(APPLY)),--apply)
 
 report-consistency:
-	UV_CACHE_DIR=.uv_cache UV_PYTHON_INSTALL_DIR=.uv_python uv run python scripts/report_consistency.py $(if $(DATE),--date $(DATE)) $(if $(START),--start $(START)) $(if $(END),--end $(END)) $(if $(ANALYTICS_ROOT),--analytics-root $(ANALYTICS_ROOT)) $(if $(OUTPUT),--output $(OUTPUT))
+	uv run python scripts/report_consistency.py $(if $(DATE),--date $(DATE)) $(if $(START),--start $(START)) $(if $(END),--end $(END)) $(if $(ANALYTICS_ROOT),--analytics-root $(ANALYTICS_ROOT)) $(if $(OUTPUT),--output $(OUTPUT))
 
 market-cycle-review:
-	UV_CACHE_DIR=.uv_cache UV_PYTHON_INSTALL_DIR=.uv_python uv run python scripts/market_cycle_review.py --start $(START) --end $(END) $(if $(ANALYTICS_ROOT),--analytics-root $(ANALYTICS_ROOT)) $(if $(OUTPUT_ROOT),--output-root $(OUTPUT_ROOT)) $(if $(NO_LATEST),--no-latest) $(if $(SKIP_CONSISTENCY),--skip-consistency)
+	uv run python scripts/market_cycle_review.py --start $(START) --end $(END) $(if $(ANALYTICS_ROOT),--analytics-root $(ANALYTICS_ROOT)) $(if $(OUTPUT_ROOT),--output-root $(OUTPUT_ROOT)) $(if $(NO_LATEST),--no-latest) $(if $(SKIP_CONSISTENCY),--skip-consistency)
 
 diagnose:
-	UV_CACHE_DIR=.uv_cache UV_PYTHON_INSTALL_DIR=.uv_python uv run python -m stock_cli.diagnose --symbol $(SYMBOL) $(if $(DATE),--as-of $(DATE)) $(if $(FORMAT),--format $(FORMAT)) $(if $(STORAGE_DIR),--storage-dir $(STORAGE_DIR))
+	uv run python -m stock_cli.diagnose --symbol $(SYMBOL) $(if $(DATE),--as-of $(DATE)) $(if $(FORMAT),--format $(FORMAT)) $(if $(STORAGE_DIR),--storage-dir $(STORAGE_DIR))
 
 industry-diagnose:
-	UV_CACHE_DIR=.uv_cache UV_PYTHON_INSTALL_DIR=.uv_python uv run python -m stock_cli.industry_diagnose --industry $(INDUSTRY) $(if $(DATE),--as-of $(DATE)) $(if $(FORMAT),--format $(FORMAT)) $(if $(STORAGE_DIR),--storage-dir $(STORAGE_DIR))
+	uv run python -m stock_cli.industry_diagnose --industry $(INDUSTRY) $(if $(DATE),--as-of $(DATE)) $(if $(FORMAT),--format $(FORMAT)) $(if $(STORAGE_DIR),--storage-dir $(STORAGE_DIR))
 
 scan-watchlist:
-	UV_CACHE_DIR=.uv_cache UV_PYTHON_INSTALL_DIR=.uv_python uv run python -m stock_cli.scan_watchlist $(if $(DATE),--as-of $(DATE)) $(if $(FORMAT),--format $(FORMAT)) $(if $(CONFIG),--config $(CONFIG)) $(if $(STORAGE_DIR),--storage-dir $(STORAGE_DIR)) $(if $(SAVE),--save)
+	uv run python -m stock_cli.scan_watchlist $(if $(DATE),--as-of $(DATE)) $(if $(FORMAT),--format $(FORMAT)) $(if $(CONFIG),--config $(CONFIG)) $(if $(STORAGE_DIR),--storage-dir $(STORAGE_DIR)) $(if $(SAVE),--save)
 
 daily-review:
-	UV_CACHE_DIR=.uv_cache UV_PYTHON_INSTALL_DIR=.uv_python uv run python -m stock_cli.daily_review $(if $(DATE),--as-of $(DATE)) $(if $(OUTPUT),--output-dir $(OUTPUT))
+	uv run python -m stock_cli.daily_review $(if $(DATE),--as-of $(DATE)) $(if $(OUTPUT),--output-dir $(OUTPUT))
 
 thesis-review:
-	UV_CACHE_DIR=.uv_cache UV_PYTHON_INSTALL_DIR=.uv_python uv run python -m stock_cli.thesis_review --symbol $(SYMBOL) $(if $(THESIS_DATE),--thesis-date $(THESIS_DATE)) $(if $(DATE),--as-of $(DATE)) $(if $(FORMAT),--format $(FORMAT)) $(if $(STORAGE_DIR),--storage-dir $(STORAGE_DIR)) $(if $(NO_SAVE),--no-save)
+	uv run python -m stock_cli.thesis_review --symbol $(SYMBOL) $(if $(THESIS_DATE),--thesis-date $(THESIS_DATE)) $(if $(DATE),--as-of $(DATE)) $(if $(FORMAT),--format $(FORMAT)) $(if $(STORAGE_DIR),--storage-dir $(STORAGE_DIR)) $(if $(NO_SAVE),--no-save)

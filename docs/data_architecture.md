@@ -1,16 +1,16 @@
 # 金融数据仓库与多数据源采集存储架构指南
 
-本文档详细说明了金融股票分析系统中 **RAW + Curated 两层数据存储架构**、**时间分区归档规范**、**数据血统（Data Lineage）追踪** 及 **TuShare 多接口并发限频管理机制**。
+本文档详细说明金融股票分析系统的 RAW/Curated 数据存储、Mart 派生层、时间分区归档、数据血统追踪及多源采集限频机制。
 
 ---
 
 ## 1. 数据架构总体概览 (Architecture Overview)
 
-系统采用标准的 **Data Lakehouse 两层存储架构**，实现采集、清洗、存储与策略分析的完全解耦：
+系统采用 RAW/Curated 事实分层，并通过 Mart/Feature 和 Analytics 产物层实现采集、清洗、分析与报告解耦：
 
 ```text
                   ┌─────────────────────────────────────────┐
-                  │ 外部数据源 (TuShare / LiXinger / Yahoo Finance / FRED) │
+                  │ 外部数据源 (TuShare / LiXinger / yfinance / FRED / Alpha Vantage) │
                   └────────────────────┬────────────────────┘
                                        │ (1. Fetcher 接口拉取)
                                        ▼
@@ -33,7 +33,12 @@
                                        │ (4. 零拷贝分析对接)
                                        ▼
                   ┌─────────────────────────────────────────┐
-                  │ 4. Analytics 分析层 ➔ Strategy 策略层    │
+                  │ 4. Mart/Feature 派生层                  │
+                  └────────────────────┬────────────────────┘
+                                       │
+                                       ▼
+                  ┌─────────────────────────────────────────┐
+                  │ 5. Analytics 分析层 ➔ Strategy 研究层    │
                   └─────────────────────────────────────────┘
 ```
 
@@ -41,13 +46,15 @@
 
 ## 2. `data/` 目录结构与分层规范 (Directory Specification)
 
-项目根目录下的 `data/` 统一划分为 3 个核心主目录：
+项目根目录下的 `data/` 按事实、派生和展示职责分层：
 
 | 目录名称 | 分层定位 | 存储规范 / 路径结构 | 说明与核心作用 |
 | :--- | :--- | :--- | :--- |
 | **`data/raw/`** | **原始归档层**<br>(Raw Landing Zone) | `data/raw/{data_source}/market={market}/{dataset}/[year=YYYY/month=MM/]data.parquet` | 原汁原味保留 API 响应列与格式，按 `market={market}` 路径与 Curated 层 100% 镜像对称。<br>**主要作用：防重复请求、节省积分、支持本地离线重洗。** |
-| **`data/curated/`** | **精炼生产层**<br>(Curated Zone) | `data/curated/{data_source}/market={market}/{dataset}/[year=YYYY/month=MM/]data.parquet` | 遵循 [Schema v2 规范](file:///Users/mac/workspace/personal/finance/stock/docs/standards/schema_v2_spec.md)（统一列名、`pl.Date` 类型与 SI 元/股计量单位），按 `market={market}` 隔离并注入 `data_source`、`updated_at` 与 `schema_version="v2"` 血统。<br>**主要作用：供策略回测与分析引擎直接使用。** |
+| **`data/curated/`** | **精炼生产层**<br>(Curated Zone) | `data/curated/{data_source}/market={market}/{dataset}/[year=YYYY/month=MM/]data.parquet` | 遵循 [Schema v2 规范](standards/schema_v2_spec.md)（统一列名、`pl.Date` 类型与 SI 元/股计量单位），按 `market={market}` 隔离并注入 `data_source`、`updated_at` 与 `schema_version="v2"` 血统。<br>**主要作用：供策略研究与分析引擎直接使用。** |
 | **`data/cache/`** | **临时缓存层**<br>(Transient Zone) | `data/cache/*.parquet` | 存储运行过程中的密集型计算中间结果（如长周期特征矩阵），可随时安全清空。 |
+| **`data/curated/mart/`** | **领域派生层**<br>(Mart/Feature Zone) | `data/curated/mart/*.parquet` | 由 Curated 构建的可重建宽表、领域 Mart 和特征物化，不替代 Curated 事实。 |
+| **`data/analytics/`** | **分析产物层**<br>(Analytics Artifact Zone) | `data/analytics/<artifact>/runs/...` | 保存分析运行目录、Manifest、报告和 `latest` 展示副本；具体文件清单以 Manifest 为准。 |
 
 ---
 
@@ -68,11 +75,11 @@
 
 | 对比维度 | RAW 原始层 (`data/raw/`) | Curated 精炼层 (`data/curated/`) |
 | :--- | :--- | :--- |
-| **组织维度** | **按交易日维度** (Batch by Trade Date) | **按数据源 + 交易日维度** (Partitioned by Source and Trade Date) |
+| **组织维度** | **按采集批次维度** (Batch by Ingestion) | **按数据源 + 业务日期维度** (Partitioned by Source and Business Date) |
 | **单文件内容** | 包含单交易日 + 全市场 5000+ 股票的原始响应合集。 | 包含一个数据源、一个数据集和一个业务日期的标准化行情快照。 |
 | **Schema 列名** | API 原始异构列名（如 `ts_code`, `vol`）。 | 统一规范列名（`symbol`, `trade_date`, `open`, `high`, `low`, `close`, `volume`）。 |
 | **元数据追踪** | 无 | 注入 `data_source`（数据源）与 `updated_at`（入库时间戳）。 |
-| **适用场景** | 盘后批量增量采集、网络断网离线重洗。 | 策略回测、指标计算、高频量化分析。 |
+| **适用场景** | 盘后批量增量采集、网络断开时的离线重洗。 | 策略研究、指标计算和量化分析。 |
 
 ---
 
@@ -116,7 +123,7 @@ TUSHARE_MAX_WORKERS=4
 make check
 
 # 2. 手动初始化数据目录结构
-uv run python -c "from stock.config.settings import settings; settings.setup_directories()"
+uv run python -c "from stock_data.core.settings import data_settings; data_settings.setup_directories()"
 
 # 3. 运行历史数据回填任务
 make backfill START=2026-08-01 END=2026-08-12

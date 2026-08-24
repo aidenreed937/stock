@@ -122,7 +122,7 @@ make validate
 make master-audit
 make audit TYPE=all
 make features-build TARGET=all START=YYYY-MM-DD END=YYYY-MM-DD
-make scan DATE=YYYY-MM-DD FORMAT=markdown
+make scan DATE=YYYY-MM-DD
 ```
 
 领域 Mart 的输入数据集缺失时，构建器应保持稳定 Schema 并输出空结果；验收报告必须区分“上游无数据”“质量隔离”“合法主键去重”和“未解释丢失”。

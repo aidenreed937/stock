@@ -21,7 +21,7 @@ make backfill START=2026-08-01 END=2026-08-12
 uv run python -m stock_cli.backfill \
     --start 2026-08-01 \
     --end 2026-08-12 \
-    --data-source tushare \
+    --source tushare \
     --endpoint daily \
     --force-refresh
 ```
@@ -32,7 +32,7 @@ uv run python -m stock_cli.backfill \
 | :--- | :--- | :--- | :--- | :--- | :--- |
 | **开始日期** | `--start` | `str` | **是** | 无 | 回填起始日期 (格式 `YYYY-MM-DD`，如 `2026-01-01`) |
 | **结束日期** | `--end` | `str` | **是** | 无 | 回填结束日期 (格式 `YYYY-MM-DD`，如 `2026-08-12`) |
-| **数据源名称** | `--data-source` | `str` | 否 | `tushare` | 标识来源，决定 RAW 归档路径 (如 `tushare`, `akshare`) |
+| **数据源名称** | `--source` | `str` | 否 | `tushare` | 标识来源，决定 RAW 归档路径 |
 | **接口名称** | `--endpoint` | `str` | 否 | `daily` | API 接口标识 (如 `daily`, `daily_basic`, `income`) |
 | **强制覆盖** | `--force-refresh` | `flag` | 否 | `False` | 开启后绕过本地 RAW 离线缓存，重新从 API 请求并覆盖归档 |
 
@@ -56,7 +56,7 @@ uv run python -m stock_cli.backfill --start 2026-08-01 --end 2026-08-12 --endpoi
 #### 场景 4：单一 CLI 进程按顺序串行回填多个核心接口 (防超限、防超并发)
 ```bash
 uv run python -m stock_cli.backfill \
-    --data-source tushare \
+    --source tushare \
     --endpoint adj_factor,hk_hold,daily_basic \
     --start 2024-01-01 \
     --end 2026-08-12
@@ -94,7 +94,7 @@ make sync SOURCE=lixinger ENDPOINT=industry_bundle
 make sync SOURCE=lixinger ENDPOINT=market_bundle,macro_monthly_bundle
 
 # 或直接调用 Python 模块
-uv run python -m stock_cli.sync --data-source lixinger --endpoint industry_bundle
+uv run python -m stock_cli.sync --source lixinger --endpoint industry_bundle
 ```
 
 可用 LiXinger bundle：`market_bundle`、`industry_bundle`、`company_bundle`、`macro_daily_bundle`、`macro_monthly_bundle`。`index_fundamental` 任务只有一个原子接口，继续直接传入；历史名称 `macro_bundle`、`index_bundle` 已移除。bundle 仅是调度输入，不合并数据集、水位或失败状态。
@@ -275,7 +275,7 @@ make backfill-accept ENDPOINT=income SOURCE=tushare START=YYYY-MM-DD END=YYYY-MM
 make probe
 
 # 或直接运行 Python 模块
-uv run python -m stock_data.ops.probe
+uv run python -m stock_data.governance.ops.probe
 ```
 
 ---
@@ -292,7 +292,7 @@ make validate
 make validate ENDPOINT=daily_basic
 
 # 完整参数调用
-uv run python -m stock_data.validator --endpoint daily
+uv run python -m stock_data.governance.validator --endpoint stock_daily_bar
 ```
 
 ---

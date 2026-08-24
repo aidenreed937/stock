@@ -45,7 +45,7 @@ Schema v2 的单位契约遵循 **RAW 保真、Curated 标准单位、分析层�
 | **`total_mv` / `circ_mv` / `float_mv`** | `pl.Float64` | 市值指标，统一单位为 **“元”**（万元 $\times 10000$） |
 | **`turnover_rate`** | `pl.Float64` | 换手率，统一为百分比纯数值 |
 | **`schema_version`** | `pl.Utf8` | **强制标记为 `"v2"`** |
-| **`data_source`** | `pl.Utf8` | 数据源标识（`tushare`, `lixinger`, `yfinance`, `fred`） |
+| **`data_source`** | `pl.Utf8` | 数据源标识（`tushare`, `lixinger`, `yfinance`, `fred`, `alphavantage`） |
 | **`updated_at`** | **`pl.Datetime("us", "UTC")`** | 微秒精度 UTC 物理落盘时间戳 |
 | **`request_id`** | `pl.Utf8` | 20 位请求哈希指纹（支持离线溯源） |
 
@@ -83,11 +83,11 @@ flowchart LR
 ## 四、质量门禁与契约验证
 
 1. **契约校验器（`DatasetContract`）**：
-   - 路径：[`src/stock/core/contracts.py`](file:///Users/mac/workspace/personal/finance/stock/src/stock/core/contracts.py)
+   - 路径：[`src/stock_core/contracts.py`](../../src/stock_core/contracts.py)
    - 门禁规则：写入与加载时自动校验。若检测到 `schema_version == "v1"` 或 `trade_date` 非 `pl.Date`，系统立即以 **Fail-Closed** 机制抛出 `DataValidationError`。
 2. **分布异动审计（`distribution_audit`）**：
-   - 路径：[`src/stock/data/audit/distribution_audit.py`](file:///Users/mac/workspace/personal/finance/stock/src/stock/data/audit/distribution_audit.py)
+   - 路径：[`src/stock_data/governance/audit/distribution_audit.py`](../../src/stock_data/governance/audit/distribution_audit.py)
    - 校验价格非负性与日均值 $10\times$ 阶跃突变，监控单位转换与数据质量。
 3. **存量数据迁移与去重（`make migrate-data`）**：
-   - 路径：[`src/stock/data/ops/migration.py`](file:///Users/mac/workspace/personal/finance/stock/src/stock/data/ops/migration.py)
+   - 路径：[`src/stock_data/governance/ops/migration.py`](../../src/stock_data/governance/ops/migration.py)
    - 自动将存量历史文件中的列名、数值类型及 `schema_version` 批量迁移为 `v2` 标准。

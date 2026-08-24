@@ -8,7 +8,7 @@
 
 - **受约束的目标目录**: `src/` (核心业务逻辑) 和 `tests/` (自动化测试)
 - **硬性排除的目录**: `.venv/`, `venv/`, `data/`, `build/`, `dist/`, `notebooks/`, `*.egg-info`
-- **第三方包忽略机制**: 
+- **第三方包忽略机制**:
   - `mypy` 配置 `files = ["src"]` 并开启 `ignore_missing_imports = true`，避免外部第三方包缺少存根引发报错。
   - `ruff` 配置 `exclude` 列表与 `src = ["src", "tests"]`。
 
@@ -34,4 +34,4 @@
 
 1. **Mypy 严格模式**: 开启 `strict = true`，不支持任何隐式 `Any` 或遗漏函数类型提示。
 2. **测试门禁**: 配置 `pytest-cov --cov-fail-under=75`，任何单元测试覆盖率低于 75% 的提交均会被 CI/CD 中断。
-3. **Pre-commit 本地硬拦截**: 通过 `.pre-commit-config.yaml` 确保只有符合上述所有规则的代码才能成功执行 `git commit`。
+3. **Pre-commit 本地硬拦截**: 通过 `.pre-commit-config.yaml` 确保只有符合上述规则的代码才能成功执行 `git commit`；缓存通过 `PRE_COMMIT_HOME` 定位到项目内的 `.pre_commit_cache/`，避免沙箱访问 `~/.cache/pre-commit`。

@@ -21,7 +21,7 @@
 不同数据源的接口元数据在各自的 `fetcher` 目录下定义。
 
 ### TuShare
-- **文件路径**：[`src/stock/data/fetcher/tushare/endpoints/finance.py`](file:///Users/mac/workspace/personal/finance/stock/src/stock/data/fetcher/tushare/endpoints/finance.py) 或 [`market.py`](file:///Users/mac/workspace/personal/finance/stock/src/stock/data/fetcher/tushare/endpoints/market.py)
+- **文件路径**：[`src/stock_data/fetcher/tushare/endpoints/finance.py`](../../src/stock_data/fetcher/tushare/endpoints/finance.py) 或 [`market.py`](../../src/stock_data/fetcher/tushare/endpoints/market.py)
 - **规则**：
   - 实例化 `EndpointMeta`，明确 `primary_keys`、`date_columns` 和 `required_columns`。
   - ⚠️ **禁止项**：不要将 `fetch_mode` 作为参数传入 `EndpointMeta`（它属于任务调度层）。
@@ -39,13 +39,13 @@
 ```
 
 ### 理杏仁 (LiXinger)
-- **文件路径**：[`src/stock/data/fetcher/lixinger/registry.py`](file:///Users/mac/workspace/personal/finance/stock/src/stock/data/fetcher/lixinger/registry.py)
+- **文件路径**：[`src/stock_data/fetcher/lixinger/registry.py`](../../src/stock_data/fetcher/lixinger/registry.py)
 - **规则**：
   - 在 `LIXINGER_API_REGISTRY` 中注册完整 API 路径（如 `macro/national-debt`），并设置 `default_metrics` 与 `default_params`。
   - 在 `TaskRegistry` 中注册公开短 task，并通过 `TaskSpec.api_name` 映射到完整 API 路径；不要在 Provider registry 中重复添加短 key。
 
 ### Alpha Vantage
-- **文件路径**：[`src/stock/data/fetcher/alphavantage/registry.py`](file:///Users/mac/workspace/personal/finance/stock/src/stock/data/fetcher/alphavantage/registry.py)
+- **文件路径**：[`src/stock_data/fetcher/alphavantage/registry.py`](../../src/stock_data/fetcher/alphavantage/registry.py)
 - **规则**：
   - `fx_daily` 是项目公开任务名，`TaskSpec.api_name` 映射到上游 `FX_DAILY`；CLI 不直接使用上游函数名。
   - `CNH=X` 映射为 `from_symbol=USD`、`to_symbol=CNH`，使用 `outputsize=full` 拉取一次完整历史后按请求日期裁剪。
@@ -56,10 +56,10 @@
 
 ## 步骤 2：质量与单位 Profile 绑定
 
-- **文件路径**：[`src/stock/data/fetcher/tushare/registry.py`](file:///Users/mac/workspace/personal/finance/stock/src/stock/data/fetcher/tushare/registry.py)
+- **文件路径**：[`src/stock_data/fetcher/tushare/registry.py`](../../src/stock_data/fetcher/tushare/registry.py)
 - **规则**：
   - 在 `_TUSHARE_PROFILES` 字典中为新接口声明必需列、单位映射（如 `CNY100m`、`percent`、`point`）以及质检 Profile 类型（如 `bar`、`macro_monthly`、`macro_rate`、`financial_statement`）。
-  - 对存在源端非标准单位的数值字段，必须同时在 [`src/stock/data/normalizer/unit_normalizer.py`](file:///Users/mac/workspace/personal/finance/stock/src/stock/data/normalizer/unit_normalizer.py) 声明 RAW -> Curated 倍率规则；Provider registry 负责记录源单位语义，`UnitNormalizer` 负责执行倍率转换。
+  - 对存在源端非标准单位的数值字段，必须同时在 [`src/stock_data/pipeline/normalizer/unit_normalizer.py`](../../src/stock_data/pipeline/normalizer/unit_normalizer.py) 声明 RAW -> Curated 倍率规则；Provider registry 负责记录源单位语义，`UnitNormalizer` 负责执行倍率转换。
   - 单位处理遵循 **RAW 保真、Curated 标准单位、分析层无倍率**：RAW 只保留 API 原始响应；Curated 统一为元、股/份、强类型日期和标准 metadata；分析指标、因子、回测和扫描代码不得再按数据源字段补乘或补除倍率。
 
 ```python
@@ -86,7 +86,7 @@
 
 ## 步骤 3：任务路由与分区分流 (`TaskRegistry`)
 
-- **文件路径**：[`src/stock/data/task_registry.py`](file:///Users/mac/workspace/personal/finance/stock/src/stock/data/task_registry.py)
+- **文件路径**：[`src/stock_data/core/task_registry.py`](../../src/stock_data/core/task_registry.py)
 - **规则**：
   1. **公开项目任务名 (`task_name`)**：CLI、文档和调度器统一使用项目任务名，例如 `index_daily_bar`；不要把上游 API 名（如 TuShare `index_daily`）直接写进操作示例。
   2. **底层 API 路由 (`api_name`)**：在 `TaskSpec` 中显式记录项目任务到上游 API 的映射，确保 `index_daily_bar -> index_daily` 这类解耦关系清晰可测。
@@ -98,7 +98,7 @@
 
 ## 步骤 4：观察池与单次同步策略 (`BackfillPlanner`)
 
-- **文件路径**：[`src/stock/data/planner.py`](file:///Users/mac/workspace/personal/finance/stock/src/stock/data/planner.py)
+- **文件路径**：[`src/stock_data/pipeline/planner.py`](../../src/stock_data/pipeline/planner.py)
 - **规则**：
   1. **观察池路由**：确认 `_watchlist_symbols()` 能按数据源和资产类别解析正确标的池，例如 A 股股票、指数、基金、FRED 宏观序列或 yfinance 宏观资产。
   2. **单标的基准日**：需要按标的回填的任务必须能读取 `base_date` 并截断无效历史区间。

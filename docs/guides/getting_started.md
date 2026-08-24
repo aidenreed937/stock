@@ -12,6 +12,14 @@
 
 ## 二、 基础开发流 (Workflow)
 
+在沙箱或受限环境下，先将 uv 和 pre-commit 缓存放入项目内的忽略目录：
+
+```bash
+export UV_CACHE_DIR=.uv_cache
+export UV_PYTHON_INSTALL_DIR=.uv_python
+export PRE_COMMIT_HOME="$(pwd)/.pre_commit_cache"
+```
+
 ### 1. 同步环境与依赖
 
 使用 `uv` 一键拉取并构建隔离虚拟环境 `.venv`：
@@ -57,3 +65,5 @@ uv run pytest
   ```bash
   uv run pre-commit install
   ```
+
+直接执行 `git commit` 前也要保留 `PRE_COMMIT_HOME` 环境变量；否则 pre-commit 会回退到用户目录下的默认缓存路径。
