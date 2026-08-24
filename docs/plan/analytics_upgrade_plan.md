@@ -90,7 +90,9 @@
 
 > 目标：产出无行业/市值暴露的纯净 Alpha 因子，消除多因子共线性。
 
-### 2a. 联合中性化 `cross_sectional_neutralize`（扩展 `primitives/cross_sectional.py`）
+### 2a. 联合中性化 `cross_sectional_neutralize`（新文件 `primitives/neutralization.py`）
+
+> 实现位置调整：因类规模门禁（存量文件不可膨胀），新建独立模块 `primitives/neutralization.py`，而非扩展 `cross_sectional.py`。
 
 ```
 y 因子被以下联合回归剥离残差：
@@ -98,32 +100,50 @@ y 因子被以下联合回归剥离残差：
     Alpha = ε
 ```
 
-- **实现：Frisch-Waugh-Lovell 定理两步法（纯 Polars）**，与现有 `over()` 向量化风格一致、零新依赖：
-  1. 对每个协变量 `X_c` 与目标 `y` 分别做"行业组内去均值"（即对行业哑变量集取残差）；
-  2. 多协变量时对残差化的协变量彼此再 FWL 正交化；
-  3. 闭式解 `γ = Cov(x_res, y_res)/Var(x_res)`，`ε = y_res − Σ γ·x_res`。
-  该残差与"一次性多元最小二乘"**严格等价**（FWL 定理），按截面日期分组（`over(group_col)`）独立回归。
-- 输入：`target_col`、`covariates`（如 `ln_circ_mv`）、`industry_col`、`group_col="trade_date"`。
+- **实现：Frisch-Waugh-Lovell 定理两步法（纯 Polars `over()` 向量化）**，零新依赖：
+  1. 目标与各协变量分别对行业哑变量（group×industry 组内去均值）取残差；
+  2. 残差协变量彼此 Gram-Schmidt 正交化（记录转换系数矩阵 L）；
+  3. 目标残差对正交基回归得基系数 beta_i；
+  4. 倒序回代 `b_i = beta_i − Σ_{j>i} a_{ji}·b_j` 还原原始协变量空间系数（与一次性 OLS 系数一致）；
+  5. 输出残差 `ε = y_res − Σ beta_i·u_i` 与各协变量系数列。
+- 该残差与"一次性多元最小二乘"**严格等价**（FWL 定理），按截面日期分组独立回归。
+- 输入：`target_col`、`industry_col`、`covariates`（如 `ln_circ_mv`）、`group_col="trade_date"`，可选 `output_col`。
 - 行业映射由调用方提供（`index_member` 按 `in_date/out_date` 时点 join + `index_classify` 取 L1），primitives 只消费已映射列，保持纯函数。
 
-### 2b. 对称正交化 `cross_sectional_orthogonalize`（扩展 `primitives/cross_sectional.py`）
+### 2b. 对称正交化 `cross_sectional_orthogonalize`（同上模块）
 
 ```
 对每日期截面因子矩阵 X（已去均值，成对删除缺失）做 SVD 白化：
-    X = U·S·Vᵀ  →  Z = X·V·S⁻¹ = X·(XᵀX)^(-1/2)
+    X = U·S·Vᵀ  →  Z = U·Vᵀ = X·(XᵀX)^(-1/2)
     ZᵀZ = I（因子两两不相关且方差为 1，对称、无顺序依赖）
 ```
 
-- 实现：`group_by(group_col)` 后逐组 `scipy.linalg.svd`（`scipy` 已是直接依赖）；样本不足或奇异时输出 null（fail-closed）。
-- 可选变体：Gram-Schmidt 顺序正交化（保留第一因子原义），计划默认实现对称正交化。
+- 实现：按 `group_col` 逐组 `scipy.linalg.svd`（`scipy` 已是直接依赖）；样本不足（<因子数+1）或奇异（`S[-1] < 1e-10·S[0]`）时该截面输出 null（fail-closed）。
+- 采用 SVD 白化 `Z = U·Vᵀ`（Löwdin 对称正交化），无顺序依赖。
 
 ### 权威依据
 - FWL 定理（Frisch–Waugh–Lovell，1933/1963）保证两步残差化 = 联合回归残差。
 - 对称正交化即 Löwdin 正交化；SVD 白化（`X(XᵀX)^{-1/2}`）为量化多因子正交化通行做法（国泰君安/华泰金工多因子研报）。
 
 ### 测试与验证
-- 单测：构造带行业均值差 + 市值相关的人工因子，验证残差与行业哑变量、市值相关性趋近 0（容差内）；正交化后因子协方差矩阵 ≈ 单位阵。
-- 真实数据：`daily_basic` 的 `pe_ttm` 用 `index_member`(L1) + `ln(circ_mv)` 中性化，验证中性化前后与 `circ_mv` 的 Rank IC 变化。
+- 单测：`tests/unit/stock_analytics/primitives/test_neutralization.py`（13 用例）——构造带行业均值差 + 协变量相关的人工因子，与 numpy 一次性多元最小二乘对照（残差与系数误差 <1e-9）；正交化后协方差矩阵 ≈ 单位阵（<1e-9）；秩亏/样本不足/行业缺失 fail-closed；单协变量与多协变量全覆盖。
+- 真实数据：`scripts/validate_neutralization_baseline.py`（2025-08 ~ 2026-08，5209 股，257 交易日，L1 行业映射全覆盖）。
+
+#### Phase 2 真实数据基线（Ground Truth 记录）
+
+`pe_ttm` 用申万 L1 行业（32 个）+ `ln(circ_mv)` 联合中性化（`scripts/validate_neutralization_baseline.py`）：
+
+| 因子 | vs ln_circ_mv Rank IC (t) | vs fwd_ret_20d Rank IC (t) |
+| :--- | :---: | :---: |
+| pe_ttm（原始） | **-0.192 (t=-54.5)** | -0.052 (t=-4.08) |
+| pe_ttm_neutral（中性化后） | **+0.052 (t=+4.74)** | -0.002 (t=-0.53) |
+
+解读（机制推断，仅本区间样本）：
+- **市值暴露剥离成功**：中性化后与 ln_circ_mv 的 Rank IC 从 -0.192（强负，t=-54.5）降至 +0.052（微弱正），市值共线性被大幅消除；
+- **原始预测力主要来自市值暴露**：pe_ttm 的 20 日预测力（t=-4.08）在中性化后消失（t=-0.53），说明 A 股低估值因子的短期有效性高度耦合"低估值≈大市值"这一暴露——剥离后纯估值 Alpha 微弱。这正是联合中性化价值所在：识别因子暴露来源，避免把小市值风格误当 Alpha。
+
+### 提交
+- `feat(analytics): add joint industry-mv neutralization and symmetric orthogonalization`（Phase 2）
 
 ---
 
@@ -208,7 +228,7 @@ y 因子被以下联合回归剥离残差：
 | 阶段 | 内容 | 提交建议 | 状态 |
 | :---: | :--- | :--- | :---: |
 | Phase 1 | 模块一 因子检验体系（primitives + 单测 + 真实数据基线） | `feat(analytics): add rank IC / ICIR and quantile monotonicity factor evaluation` | ✅ 已落地 |
-| Phase 2 | 模块二 联合中性化 + 对称正交化 | `feat(analytics): add joint industry-mv neutralization and symmetric orthogonalization` | 待实现 |
+| Phase 2 | 模块二 联合中性化 + 对称正交化 | `feat(analytics): add joint industry-mv neutralization and symmetric orthogonalization` | ✅ 已落地 |
 | Phase 3 | 模块三 轮动动量（加权动量/加速度/RPS） | `feat(analytics): add weighted momentum, momentum acceleration and RPS` | 待实现 |
 | Phase 4 | 模块四 杜邦拆解与财报质量 | `feat(analytics): add dupont decomposition and earnings quality features` | 待实现 |
 | Phase 5 | 模块五 统一门面 + 架构文档 | `feat(analytics): add unified metrics/features facade` | 待实现 |

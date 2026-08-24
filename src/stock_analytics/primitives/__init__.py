@@ -55,6 +55,10 @@ from stock_analytics.primitives.moneyflow import (
     calculate_main_moneyflow_factors,
     calculate_margin_factors,
 )
+from stock_analytics.primitives.neutralization import (
+    cross_sectional_neutralize,
+    cross_sectional_orthogonalize,
+)
 from stock_analytics.primitives.valuation import (
     calculate_dividend_spread,
     calculate_equity_risk_premium,
@@ -104,7 +108,9 @@ __all__ = [
     "calculate_turnover_factors",
     "calculate_volume_surprise",
     "calculate_yield_curve_slope",
+    "cross_sectional_neutralize",
     "cross_sectional_ols",
+    "cross_sectional_orthogonalize",
     "cross_sectional_zscore",
     "cumulative_ic",
     "ic_decay",
