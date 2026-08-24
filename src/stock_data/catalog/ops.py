@@ -10,15 +10,29 @@ import polars as pl
 from stock_core.constants import BAR_DATASETS
 from stock_core.exceptions import DataValidationError, StorageError
 from stock_core.utils.logger import logger
+from stock_data.catalog.lazy_read import (
+    finalize_dataset_frame as _finalize_dataset_frame,
+)
+from stock_data.catalog.lazy_read import (
+    read_columns as _read_columns,
+)
+from stock_data.catalog.lazy_read import (
+    read_dataset_files_lazy as _read_dataset_files_lazy,
+)
+from stock_data.catalog.lazy_read import (
+    should_use_lazy_read as _should_use_lazy_read,
+)
 from stock_data.catalog.watermarks import (
     scan_latest_refresh_dates as _scan_latest_refresh_dates,
 )
 from stock_data.catalog.watermarks import (
     scan_latest_trade_dates as _scan_latest_trade_dates,
 )
-from stock_data.governance.quality.margin_coverage import filter_complete_margin_dates
 from stock_data.storage.compat import StorageCompat
-from stock_data.storage.read_compat import normalize_read_frame, validate_schema_version
+from stock_data.storage.read_compat import (
+    normalize_read_frame,
+    validate_schema_version,
+)
 
 
 def _dataset_date_columns(data_source: str, dataset: str) -> tuple[str, ...]:
@@ -42,28 +56,6 @@ def _dataset_date_columns(data_source: str, dataset: str) -> tuple[str, ...]:
         "quarter",
     )
     return tuple(dict.fromkeys((*task_columns, *fallback)))
-
-
-def _business_date_expr(column: str) -> pl.Expr:
-    if column == "month":
-        return (
-            pl.col(column)
-            .cast(pl.Utf8, strict=False)
-            .str.slice(0, 6)
-            .str.strptime(pl.Date, "%Y%m", strict=False)
-        )
-    if column == "quarter":
-        text = pl.col(column).cast(pl.Utf8, strict=False)
-        year = text.str.extract(r"^(\\d{4})Q[1-4]$", 1).cast(pl.Int32, strict=False)
-        quarter = text.str.extract(r"^\\d{4}Q([1-4])$", 1).cast(pl.Int32, strict=False)
-        return pl.date(year, (quarter - 1) * 3 + 1, 1)
-    from stock_data.pipeline.cleaner.date_utils import parse_mixed_date
-
-    return parse_mixed_date(column)
-
-
-_IDENTITY_ALIASES = ("ts_code", "stockCode", "code")
-_DATE_ALIASES = ("date",)
 
 
 def scan_latest_trade_dates(*args: Any, **kwargs: Any) -> list[date]:
@@ -94,43 +86,6 @@ def path_intersects_range(path: Path, start_ym: tuple[int, int], end_ym: tuple[i
     if month_part is None:
         return start_ym[0] <= year_part <= end_ym[0]
     return (start_ym[0], start_ym[1]) <= (year_part, month_part) <= (end_ym[0], end_ym[1])
-
-
-def normalize_identity_columns(df: pl.DataFrame) -> pl.DataFrame:
-    columns = set(df.columns)
-    result = df
-    for alias in _IDENTITY_ALIASES:
-        if alias not in columns:
-            continue
-        if "symbol" not in columns:
-            result = result.rename({alias: "symbol"})
-        else:
-            result = result.with_columns(
-                pl.coalesce(
-                    [
-                        pl.col("symbol").cast(pl.Utf8, strict=False),
-                        pl.col(alias).cast(pl.Utf8, strict=False),
-                    ]
-                ).alias("symbol")
-            ).drop(alias)
-        columns = set(result.columns)
-
-    for alias in _DATE_ALIASES:
-        if alias not in columns:
-            continue
-        if "trade_date" not in columns:
-            result = result.rename({alias: "trade_date"})
-        else:
-            result = result.with_columns(
-                pl.coalesce(
-                    [
-                        pl.col("trade_date").cast(pl.Utf8, strict=False),
-                        pl.col("date").cast(pl.Utf8, strict=False),
-                    ]
-                ).alias("trade_date")
-            ).drop(alias)
-        columns = set(result.columns)
-    return result
 
 
 def dataset_name(path: Path) -> str:
@@ -189,33 +144,29 @@ def read_dataset_files(
             return pl.DataFrame()
 
     date_candidates = _dataset_date_columns(data_source, dataset)
+    if _should_use_lazy_read(
+        candidate_files,
+        dataset,
+        start_date=start_date,
+        end_date=end_date,
+        symbols=symbols,
+        columns=columns,
+    ):
+        return _read_dataset_files_lazy(
+            candidate_files,
+            dataset,
+            data_source,
+            start_date,
+            end_date,
+            symbols,
+            columns,
+            date_candidates=date_candidates,
+        )
     frames: list[pl.DataFrame] = []
     for path in candidate_files:
         try:
             if columns is not None:
-                wanted = set(columns)
-                wanted.update(
-                    {
-                        "symbol",
-                        "ts_code",
-                        "stockCode",
-                        "code",
-                        "trade_date",
-                        "ann_date",
-                        "date",
-                        "report_date",
-                        "end_date",
-                        "publish_date",
-                        "schema_version",
-                        "market",
-                        "adjustment",
-                        "exchange",
-                        "exchange_id",
-                    }
-                )
-                wanted.update(date_candidates)
-                if dataset == "index_valuation":
-                    wanted.add("total_assets")
+                wanted = _read_columns(columns, date_candidates, dataset)
                 try:
                     file_schema = pl.read_parquet_schema(path)
                     read_cols = [c for c in file_schema if c in wanted]
@@ -238,28 +189,15 @@ def read_dataset_files(
         logger.error(f"DataCatalog 合并数据集 [{dataset}] 失败: {e}")
         raise StorageError(f"DataCatalog 合并数据集 [{dataset}] 失败: {e}") from e
 
-    if df.is_empty():
-        return df
-
-    df = normalize_identity_columns(df)
-    date_column = next((column for column in date_candidates if column in df.columns), None)
-    if date_column is not None and (start_date is not None or end_date is not None):
-        df = df.with_columns(_business_date_expr(date_column).alias("__catalog_date"))
-        if start_date is not None:
-            df = df.filter(pl.col("__catalog_date") >= start_date)
-        if end_date is not None:
-            df = df.filter(pl.col("__catalog_date") <= end_date)
-        df = df.drop("__catalog_date")
-
-    if symbols:
-        symbol_col = "symbol" if "symbol" in df.columns else None
-        if symbol_col is not None:
-            df = df.filter(pl.col(symbol_col).is_in(symbols))
-
-    if data_source == "tushare" and dataset == "margin":
-        df = filter_complete_margin_dates(df, start_date=start_date, end_date=end_date)
-
-    return df
+    return _finalize_dataset_frame(
+        df,
+        dataset,
+        data_source,
+        date_candidates=date_candidates,
+        start_date=start_date,
+        end_date=end_date,
+        symbols=symbols,
+    )
 
 
 def build_catalog_summary(

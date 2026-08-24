@@ -5,6 +5,7 @@ from pathlib import Path
 
 import polars as pl
 import pytest
+from polars.testing import assert_frame_equal
 
 from stock_core.exceptions import DataValidationError, StorageError
 from stock_data.catalog import DataCatalog, load_dataset_compat
@@ -141,6 +142,71 @@ def test_partition_pruning_only_reads_range(tmp_path: Path) -> None:
     assert not df.is_empty()
     assert df["trade_date"].min() >= date(2026, 8, 1)
     assert df["trade_date"].max() <= date(2026, 8, 31)
+
+
+def test_catalog_lazy_read_matches_eager_read_for_curated_partitions(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    """标准 Curated 分区的 Lazy 读取必须保持 eager 结果契约。"""
+    for month, rows in (
+        (7, [("AAA", date(2026, 7, 31), 10.0), ("BBB", date(2026, 7, 31), 20.0)]),
+        (8, [("AAA", date(2026, 8, 1), 11.0), ("BBB", date(2026, 8, 2), 21.0)]),
+    ):
+        partition = tmp_path / f"tushare/market=CN/daily_basic/year=2026/month={month:02d}"
+        partition.mkdir(parents=True, exist_ok=True)
+        pl.DataFrame(
+            {
+                "symbol": [row[0] for row in rows],
+                "trade_date": [row[1] for row in rows],
+                "pe": [row[2] for row in rows],
+                "schema_version": ["v2"] * len(rows),
+                "data_source": ["tushare"] * len(rows),
+            }
+        ).write_parquet(partition / "data.parquet")
+    pl.DataFrame(
+        {
+            "symbol": ["AAA"],
+            "trade_date": [date(2026, 8, 1)],
+            "pe": [99.0],
+            "schema_version": ["v2"],
+            "data_source": ["tushare"],
+        }
+    ).write_parquet(
+        tmp_path / "tushare/market=CN/daily_basic/year=2026/month=08/replacement.parquet"
+    )
+
+    catalog = DataCatalog(data_source="tushare", storage_dir=tmp_path)
+    import stock_data.catalog.ops as catalog_ops
+
+    should_use_lazy = catalog_ops._should_use_lazy_read
+    monkeypatch.setattr(catalog_ops, "_should_use_lazy_read", lambda *_args, **_kwargs: False)
+    eager = catalog.load_dataset(
+        "daily_basic",
+        start_date=date(2026, 8, 1),
+        end_date=date(2026, 8, 2),
+        symbols=["AAA"],
+        columns=["symbol", "trade_date", "pe"],
+    )
+    scan_calls: list[object] = []
+    original_scan = catalog_ops.pl.scan_parquet
+
+    def _counting_scan(*args: object, **kwargs: object):
+        scan_calls.append(args[0] if args else None)
+        return original_scan(*args, **kwargs)
+
+    monkeypatch.setattr(catalog_ops, "_should_use_lazy_read", should_use_lazy)
+    monkeypatch.setattr(catalog_ops.pl, "scan_parquet", _counting_scan)
+    lazy = catalog.load_dataset(
+        "daily_basic",
+        start_date=date(2026, 8, 1),
+        end_date=date(2026, 8, 2),
+        symbols=["AAA"],
+        columns=["symbol", "trade_date", "pe"],
+    )
+
+    assert_frame_equal(eager.sort(["trade_date", "symbol"]), lazy.sort(["trade_date", "symbol"]))
+    assert len(scan_calls) >= 2
+    assert lazy.to_dicts() == [{"symbol": "AAA", "trade_date": date(2026, 8, 1), "pe": 99.0}]
 
 
 def test_dedup_by_primary_key(tmp_path: Path) -> None:
