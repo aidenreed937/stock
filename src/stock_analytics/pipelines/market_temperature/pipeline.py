@@ -4,11 +4,12 @@ from __future__ import annotations
 
 import json
 from dataclasses import dataclass
-from datetime import date, datetime
+from datetime import date
 from pathlib import Path
 from typing import TYPE_CHECKING, Any
 
 from stock_analytics.data_quality import build_quality_report
+from stock_analytics.pipelines.manifest import build_manifest_base, build_watermark_index
 from stock_analytics.pipelines.market_temperature.artifacts import (
     MarketTemperatureArtifactPayload,
     MarketTemperatureRunPaths,
@@ -88,6 +89,7 @@ def run_market_temperature(
         paths,
         external_cutoff_date=external_cutoff_date,
         comparison=comparison,
+        config_path=config_path,
     )
     facts = collect_facts(
         config,
@@ -99,6 +101,9 @@ def run_market_temperature(
         dataset_cache=dataset_cache,
         external_cutoff_date=external_cutoff_date,
     )
+    watermarks = build_watermark_index(facts.to_dicts())
+    manifest["watermarks"] = watermarks
+    manifest["inputs"] = {"datasets": watermarks}
     scores = build_scores(
         config,
         as_of_date=as_of_date,
@@ -175,34 +180,49 @@ def _build_manifest(
     *,
     external_cutoff_date: date | None,
     comparison: dict[str, Any] | None = None,
+    config_path: Path | str | None = None,
 ) -> dict[str, Any]:
     run_id = paths.run_dir.name
-    manifest = {
-        "schema_version": config.schema_version,
-        "title": config.title,
-        "run_id": run_id,
-        "generated_at": datetime.now().isoformat(timespec="seconds"),
-        "as_of_date": as_of_date.isoformat(),
-        "main_window": config.main_window,
-        "short_windows": list(config.short_windows),
-        "trade_dates": [value.isoformat() for value in trade_dates],
-        "source_cutoffs": {
-            "external_market": (
-                external_cutoff_date.isoformat() if external_cutoff_date is not None else None
-            )
-        },
-        "artifact_root": str(paths.root),
-        "files": {
-            "manifest": paths.manifest.name,
-            "facts": paths.facts.name,
-            "scores": paths.scores.name,
-            "report_md": paths.report_md.name,
-            "report_json": paths.report_json.name,
-            "human_report_md": paths.human_report_md.name,
-            "quality_report_md": paths.quality_report_md.name,
-            "quality_report_json": paths.quality_report_json.name,
-        },
-    }
+    parents: dict[str, Any] = {}
+    if comparison:
+        previous_manifest = comparison.get("previous_manifest", {})
+        if isinstance(previous_manifest, dict):
+            parents["comparison"] = {
+                "as_of_date": previous_manifest.get("as_of_date"),
+                "run_id": previous_manifest.get("run_id"),
+            }
+    manifest = build_manifest_base(
+        artifact_type="market_temperature",
+        schema_version=config.schema_version,
+        title=config.title,
+        run_id=run_id,
+        as_of_date=as_of_date,
+        artifact_root=paths.root,
+        config_path=config_path,
+        parents=parents,
+    )
+    manifest.update(
+        {
+            "main_window": config.main_window,
+            "short_windows": list(config.short_windows),
+            "trade_dates": [value.isoformat() for value in trade_dates],
+            "source_cutoffs": {
+                "external_market": (
+                    external_cutoff_date.isoformat() if external_cutoff_date is not None else None
+                )
+            },
+            "files": {
+                "manifest": paths.manifest.name,
+                "facts": paths.facts.name,
+                "scores": paths.scores.name,
+                "report_md": paths.report_md.name,
+                "report_json": paths.report_json.name,
+                "human_report_md": paths.human_report_md.name,
+                "quality_report_md": paths.quality_report_md.name,
+                "quality_report_json": paths.quality_report_json.name,
+            },
+        }
+    )
     if comparison:
         previous_manifest = comparison.get("previous_manifest", {})
         if isinstance(previous_manifest, dict):

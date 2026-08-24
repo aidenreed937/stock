@@ -88,6 +88,15 @@ investor_brief:
         config_path=config_path,
     )
 
+    assert result.manifest["artifact_type"] == "investor_brief"
+    assert result.manifest["manifest_schema_version"] == 1
+    assert result.manifest["provenance"]["config_sha256"]
+    assert result.manifest["parents"]["market_temperature"]["run_id"] == "run_market"
+    assert set(result.manifest["artifact_files"]) == {
+        "manifest.json",
+        "brief_report.md",
+        "brief_report.json",
+    }
     assert result.paths.brief_md.exists()
     assert (output_root / "latest" / "brief_report.md").exists()
     assert "## 1. 能不能参与" in result.brief_markdown

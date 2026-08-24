@@ -3,7 +3,7 @@
 from __future__ import annotations
 
 from dataclasses import dataclass
-from datetime import date, datetime
+from datetime import date
 from typing import TYPE_CHECKING, Any
 
 from stock_analytics.data_quality import build_quality_report
@@ -16,6 +16,7 @@ from stock_analytics.pipelines.industry_structure.artifacts import (
 from stock_analytics.pipelines.industry_structure.facts import collect_facts, resolve_trade_window
 from stock_analytics.pipelines.industry_structure.panel import load_industry_panel_daily
 from stock_analytics.pipelines.industry_structure.scoring import score_industry_panel
+from stock_analytics.pipelines.manifest import build_manifest_base, build_watermark_index
 from stock_analytics.pipelines.market_temperature.cache import DatasetFrameCache
 from stock_reporting.interpretation.industry_structure.config import (
     DEFAULT_CONFIG_PATH,
@@ -73,7 +74,13 @@ def run_industry_structure(
             raise ValueError("传入的行业结构交易日窗口为空")
         as_of_date = target_date or resolved_trade_dates[-1]
     paths = build_run_paths(as_of_date, config.artifact_root)
-    manifest = _build_manifest(config, as_of_date, resolved_trade_dates, paths)
+    manifest = _build_manifest(
+        config,
+        as_of_date,
+        resolved_trade_dates,
+        paths,
+        config_path=config_path,
+    )
     base_panel = load_industry_panel_daily(as_of_date=as_of_date, storage_dir=storage_dir)
     industry_panel, scores = score_industry_panel(config, base_panel)
     facts = collect_facts(
@@ -84,6 +91,9 @@ def run_industry_structure(
         storage_dir=storage_dir,
         dataset_cache=dataset_cache,
     )
+    watermarks = build_watermark_index(facts.to_dicts())
+    manifest["watermarks"] = watermarks
+    manifest["inputs"] = {"datasets": watermarks}
     quality_report_json = build_quality_report(
         title=config.title,
         manifest=manifest,
@@ -160,29 +170,37 @@ def _build_manifest(
     as_of_date: date,
     trade_dates: tuple[date, ...],
     paths: IndustryStructureRunPaths,
+    *,
+    config_path: Path | str | None = None,
 ) -> dict[str, Any]:
-    return {
-        "schema_version": config.schema_version,
-        "title": config.title,
-        "run_id": paths.run_dir.name,
-        "generated_at": datetime.now().isoformat(timespec="seconds"),
-        "as_of_date": as_of_date.isoformat(),
-        "main_window": config.main_window,
-        "short_windows": list(config.short_windows),
-        "medium_windows": list(config.medium_windows),
-        "classification": config.classification,
-        "benchmark": config.benchmark,
-        "trade_dates": [value.isoformat() for value in trade_dates],
-        "artifact_root": str(paths.root),
-        "files": {
-            "manifest": paths.manifest.name,
-            "facts": paths.facts.name,
-            "industry_panel": paths.industry_panel.name,
-            "scores": paths.scores.name,
-            "report_md": paths.report_md.name,
-            "report_json": paths.report_json.name,
-            "human_report_md": paths.human_report_md.name,
-            "quality_report_md": paths.quality_report_md.name,
-            "quality_report_json": paths.quality_report_json.name,
-        },
-    }
+    manifest = build_manifest_base(
+        artifact_type="industry_structure",
+        schema_version=config.schema_version,
+        title=config.title,
+        run_id=paths.run_dir.name,
+        as_of_date=as_of_date,
+        artifact_root=paths.root,
+        config_path=config_path,
+    )
+    manifest.update(
+        {
+            "main_window": config.main_window,
+            "short_windows": list(config.short_windows),
+            "medium_windows": list(config.medium_windows),
+            "classification": config.classification,
+            "benchmark": config.benchmark,
+            "trade_dates": [value.isoformat() for value in trade_dates],
+            "files": {
+                "manifest": paths.manifest.name,
+                "facts": paths.facts.name,
+                "industry_panel": paths.industry_panel.name,
+                "scores": paths.scores.name,
+                "report_md": paths.report_md.name,
+                "report_json": paths.report_json.name,
+                "human_report_md": paths.human_report_md.name,
+                "quality_report_md": paths.quality_report_md.name,
+                "quality_report_json": paths.quality_report_json.name,
+            },
+        }
+    )
+    return manifest

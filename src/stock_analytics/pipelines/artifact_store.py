@@ -61,6 +61,7 @@ class ArtifactWriteSession(AbstractContextManager["ArtifactWriteSession"]):
         self.update_latest = update_latest
         self._staging_dir: Path | None = None
         self._written_names: list[str] = []
+        self._manifest_payload: dict[str, Any] | None = None
 
     def __enter__(self) -> ArtifactWriteSession:
         if self.paths.run_dir.exists():
@@ -87,7 +88,10 @@ class ArtifactWriteSession(AbstractContextManager["ArtifactWriteSession"]):
             json.dumps(payload, ensure_ascii=False, indent=2, default=_json_default),
             encoding="utf-8",
         )
-        self._written_names.append(Path(name).as_posix())
+        normalized = Path(name).as_posix()
+        self._written_names.append(normalized)
+        if normalized == "manifest.json":
+            self._manifest_payload = payload if isinstance(payload, dict) else dict(payload)
 
     def write_text(self, name: str, content: str) -> None:
         path = self._prepare_path(name)
@@ -117,6 +121,17 @@ class ArtifactWriteSession(AbstractContextManager["ArtifactWriteSession"]):
     def _publish(self) -> None:
         if self._staging_dir is None:
             raise RuntimeError("Artifact 写入事务尚未开始")
+        if self._manifest_payload is not None:
+            self._manifest_payload["artifact_files"] = list(dict.fromkeys(self._written_names))
+            (self._staging_dir / "manifest.json").write_text(
+                json.dumps(
+                    self._manifest_payload,
+                    ensure_ascii=False,
+                    indent=2,
+                    default=_json_default,
+                ),
+                encoding="utf-8",
+            )
         os.replace(self._staging_dir, self.paths.run_dir)
         self._staging_dir = None
         if not self.update_latest:

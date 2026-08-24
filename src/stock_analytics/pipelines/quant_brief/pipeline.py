@@ -4,12 +4,13 @@ from __future__ import annotations
 
 import json
 from dataclasses import dataclass
-from datetime import date, datetime
+from datetime import date
 from pathlib import Path
 from typing import Any
 
 import polars as pl
 
+from stock_analytics.pipelines.manifest import build_manifest_base
 from stock_analytics.pipelines.quant_brief.artifacts import (
     QuantBriefArtifactPayload,
     QuantBriefRunPaths,
@@ -56,7 +57,14 @@ def run_quant_brief(
         latest_root=config.latest_root,
     )
     margin_series = _load_margin_series(as_of_date)
-    manifest = _build_manifest(config, as_of_date, paths, market=market, industry=industry)
+    manifest = _build_manifest(
+        config,
+        as_of_date,
+        paths,
+        market=market,
+        industry=industry,
+        config_path=config_path,
+    )
 
     from stock_reporting.templates.quant_brief import (
         build_quant_brief_json,
@@ -196,29 +204,44 @@ def _build_manifest(
     *,
     market: dict[str, Any],
     industry: dict[str, Any],
+    config_path: Path | str | None = None,
 ) -> dict[str, Any]:
     drivers = market["scores"].get("drivers")
     comparison = {}
     if isinstance(drivers, dict) and drivers.get("status") == "ok":
         comparison["previous_as_of_date"] = drivers.get("comparison_as_of")
-    manifest = {
-        "schema_version": config.schema_version,
-        "title": config.title,
-        "run_id": paths.run_dir.name,
-        "generated_at": datetime.now().isoformat(timespec="seconds"),
-        "as_of_date": as_of_date.isoformat(),
-        "artifact_root": str(paths.root),
-        "comparison": comparison or None,
-        "inputs": {
-            "market_temperature": _input_manifest(market),
-            "industry_structure": _input_manifest(industry),
-        },
-        "files": {
-            "manifest": paths.manifest.name,
-            "brief_report_md": paths.brief_md.name,
-            "brief_report_json": paths.brief_json.name,
-        },
+    inputs = {
+        "market_temperature": _input_manifest(market),
+        "industry_structure": _input_manifest(industry),
     }
+    parents = {
+        name: {
+            "as_of_date": value.get("as_of_date"),
+            "run_id": value.get("run_id"),
+        }
+        for name, value in inputs.items()
+    }
+    manifest = build_manifest_base(
+        artifact_type="quant_brief",
+        schema_version=config.schema_version,
+        title=config.title,
+        run_id=paths.run_dir.name,
+        as_of_date=as_of_date,
+        artifact_root=paths.root,
+        config_path=config_path,
+        inputs=inputs,
+        parents=parents,
+    )
+    manifest.update(
+        {
+            "comparison": comparison or None,
+            "files": {
+                "manifest": paths.manifest.name,
+                "brief_report_md": paths.brief_md.name,
+                "brief_report_json": paths.brief_json.name,
+            },
+        }
+    )
     return manifest
 
 

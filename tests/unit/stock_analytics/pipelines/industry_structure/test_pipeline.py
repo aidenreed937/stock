@@ -46,6 +46,20 @@ industry_structure:
     )
 
     assert result.as_of_date == date(2026, 8, 14)
+    assert result.manifest["artifact_type"] == "industry_structure"
+    assert result.manifest["manifest_schema_version"] == 1
+    assert result.manifest["provenance"]["config_sha256"]
+    assert set(result.manifest["artifact_files"]) == {
+        "manifest.json",
+        "facts.parquet",
+        "industry_panel.parquet",
+        "scores.json",
+        "report.md",
+        "report.json",
+        "human_report.md",
+        "quality_report.md",
+        "quality_report.json",
+    }
     assert result.paths.report_md.exists()
     assert result.paths.human_report_md.exists()
     assert result.paths.quality_report_md.exists()

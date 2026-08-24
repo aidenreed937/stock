@@ -3,10 +3,12 @@
 from __future__ import annotations
 
 from datetime import date
+from pathlib import Path
 from typing import Any
 
 import polars as pl
 
+from stock_analytics.pipelines.manifest import build_manifest_base
 from stock_analytics.pipelines.stock_screen.artifacts import StockScreenRunPaths
 from stock_analytics.pipelines.stock_screen.sources import StockScreenSources
 from stock_reporting.interpretation.stock_screen.config import StockScreenConfig
@@ -17,30 +19,40 @@ def build_manifest(
     as_of_date: date,
     paths: StockScreenRunPaths,
     scores: dict[str, Any],
+    *,
+    config_path: Path | str | None = None,
 ) -> dict[str, Any]:
     """构造一次排雷运行的 manifest。"""
-    return {
-        "schema_version": config.schema_version,
-        "rule_version": scores["rule_version"],
-        "title": config.title,
-        "run_id": paths.run_dir.name,
-        "as_of_date": as_of_date.isoformat(),
-        "population_size": scores["population_size"],
-        "data_gaps": scores["data_gaps"],
-        "missing_gates": scores["missing_gates"],
-        "artifact_root": str(paths.root),
-        "files": {
-            "manifest": paths.manifest.name,
-            "excluded": paths.excluded.name,
-            "warned": paths.warned.name,
-            "passed": paths.passed.name,
-            "scores": paths.scores.name,
-            "screen_report": paths.report_md.name,
-            "screen_report_json": paths.report_json.name,
-            "quality_report": paths.quality_report_md.name,
-            "quality_report_json": paths.quality_report_json.name,
-        },
-    }
+    manifest = build_manifest_base(
+        artifact_type="stock_screen",
+        schema_version=config.schema_version,
+        title=config.title,
+        run_id=paths.run_dir.name,
+        as_of_date=as_of_date,
+        artifact_root=paths.root,
+        config_path=config_path,
+    )
+    manifest.update(
+        {
+            "rule_version": scores["rule_version"],
+            "population_size": scores["population_size"],
+            "data_gaps": scores["data_gaps"],
+            "missing_gates": scores["missing_gates"],
+            "files": {
+                "manifest": paths.manifest.name,
+                "excluded": paths.excluded.name,
+                "warned": paths.warned.name,
+                "passed": paths.passed.name,
+                "scores": paths.scores.name,
+                "screen_report": paths.report_md.name,
+                "screen_report_json": paths.report_json.name,
+                "quality_report": paths.quality_report_md.name,
+                "quality_report_json": paths.quality_report_json.name,
+            },
+            "optional_files": {"scored": paths.scored.name},
+        }
+    )
+    return manifest
 
 
 def build_quality_report(

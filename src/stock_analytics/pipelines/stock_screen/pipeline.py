@@ -160,8 +160,14 @@ def run_stock_screen(
         scores["scored_median"] = round(float(scored.get_column("composite_score").median()), 1)  # type: ignore[arg-type]
         scores["scored_top_symbols"] = scored.head(10).get_column("symbol").to_list()
     paths = build_run_paths(as_of_date, config.artifact_root)
-    manifest = build_manifest(config, as_of_date, paths, scores)
+    manifest = build_manifest(config, as_of_date, paths, scores, config_path=config_path)
     quality_report_json = build_quality_report(config, as_of_date, sources, scores)
+    watermarks = {
+        f"{item['data_source']}.{item['dataset']}": item
+        for item in quality_report_json["watermarks"]
+    }
+    manifest["watermarks"] = watermarks
+    manifest["inputs"] = {"datasets": watermarks}
     quality_report_markdown = render_quality_report_markdown(quality_report_json)
     report_json = build_report_json(
         config=config,

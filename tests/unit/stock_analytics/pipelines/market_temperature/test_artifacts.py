@@ -1,5 +1,6 @@
 """市场温度计产物写入测试。"""
 
+import json
 from datetime import date
 
 import polars as pl
@@ -58,3 +59,14 @@ def test_write_artifacts_updates_run_and_latest(tmp_path) -> None:
     assert (paths.latest_dir / "facts.parquet").exists()
     assert (paths.latest_dir / "human_report.md").exists()
     assert (paths.latest_dir / "quality_report.md").exists()
+    persisted_manifest = json.loads(paths.manifest.read_text(encoding="utf-8"))
+    assert set(persisted_manifest["artifact_files"]) == {
+        "manifest.json",
+        "facts.parquet",
+        "scores.json",
+        "report.md",
+        "report.json",
+        "human_report.md",
+        "quality_report.md",
+        "quality_report.json",
+    }

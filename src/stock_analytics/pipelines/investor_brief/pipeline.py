@@ -4,7 +4,7 @@ from __future__ import annotations
 
 import json
 from dataclasses import dataclass
-from datetime import date, datetime
+from datetime import date
 from typing import TYPE_CHECKING, Any
 
 import polars as pl
@@ -15,6 +15,7 @@ from stock_analytics.pipelines.investor_brief.artifacts import (
     build_run_paths,
     write_artifacts,
 )
+from stock_analytics.pipelines.manifest import build_manifest_base
 from stock_reporting.interpretation.investor_brief.config import (
     DEFAULT_CONFIG_PATH,
     InvestorBriefConfig,
@@ -57,7 +58,14 @@ def run_investor_brief(
     industry = _load_industry_artifacts(config, resolved_date)
     as_of_date = _resolve_as_of_date(market["manifest"], industry["manifest"])
     paths = build_run_paths(as_of_date, config.artifact_root)
-    manifest = _build_manifest(config, as_of_date, paths, market=market, industry=industry)
+    manifest = _build_manifest(
+        config,
+        as_of_date,
+        paths,
+        market=market,
+        industry=industry,
+        config_path=config_path,
+    )
 
     from stock_reporting.templates.investor_brief import build_brief_json, render_brief_markdown
 
@@ -171,24 +179,36 @@ def _build_manifest(
     *,
     market: dict[str, Any],
     industry: dict[str, Any],
+    config_path: Path | str | None = None,
 ) -> dict[str, Any]:
-    return {
-        "schema_version": config.schema_version,
-        "title": config.title,
-        "run_id": paths.run_dir.name,
-        "generated_at": datetime.now().isoformat(timespec="seconds"),
-        "as_of_date": as_of_date.isoformat(),
-        "artifact_root": str(paths.root),
-        "inputs": {
-            "market_temperature": _input_manifest(market),
-            "industry_structure": _input_manifest(industry),
-        },
-        "files": {
-            "manifest": paths.manifest.name,
-            "brief_report_md": paths.brief_md.name,
-            "brief_report_json": paths.brief_json.name,
-        },
+    inputs = {
+        "market_temperature": _input_manifest(market),
+        "industry_structure": _input_manifest(industry),
     }
+    parents = {
+        name: {
+            "as_of_date": value.get("as_of_date"),
+            "run_id": value.get("run_id"),
+        }
+        for name, value in inputs.items()
+    }
+    manifest = build_manifest_base(
+        artifact_type="investor_brief",
+        schema_version=config.schema_version,
+        title=config.title,
+        run_id=paths.run_dir.name,
+        as_of_date=as_of_date,
+        artifact_root=paths.root,
+        config_path=config_path,
+        inputs=inputs,
+        parents=parents,
+    )
+    manifest["files"] = {
+        "manifest": paths.manifest.name,
+        "brief_report_md": paths.brief_md.name,
+        "brief_report_json": paths.brief_json.name,
+    }
+    return manifest
 
 
 def _input_manifest(payload: dict[str, Any]) -> dict[str, Any]:

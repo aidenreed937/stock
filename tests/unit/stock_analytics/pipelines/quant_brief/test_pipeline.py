@@ -129,6 +129,15 @@ def test_run_quant_brief_reads_upstream_artifacts_and_writes_four_step_report(
     )
 
     assert result.as_of_date == as_of_date
+    assert result.manifest["artifact_type"] == "quant_brief"
+    assert result.manifest["manifest_schema_version"] == 1
+    assert result.manifest["provenance"]["config_sha256"]
+    assert result.manifest["parents"]["industry_structure"]["run_id"] == "run_industry"
+    assert set(result.manifest["artifact_files"]) == {
+        "manifest.json",
+        "brief_report.md",
+        "brief_report.json",
+    }
     assert result.paths.manifest.exists()
     assert result.paths.brief_md.exists()
     assert result.paths.brief_json.exists()

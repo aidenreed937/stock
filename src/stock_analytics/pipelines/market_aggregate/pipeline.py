@@ -20,6 +20,7 @@ from stock_analytics.pipelines.market_aggregate.industry_support import (
     empty_industry_snapshot,
     industry_snapshot_to_frame,
 )
+from stock_analytics.pipelines.market_aggregate.manifest import build_market_aggregate_manifest
 from stock_analytics.pipelines.market_aggregate.trend import (
     build_short_term_trend,
     build_trend_facts,
@@ -136,7 +137,14 @@ def run_market_aggregate(
         snapshot = cached.snapshot
         industry_snapshot = empty_industry_snapshot(snapshot)
     paths = build_run_paths(snapshot.quote_date, config.artifact_root)
-    manifest = _build_manifest(config, paths, snapshot, cached.freshness.value, cached.age_seconds)
+    manifest = build_market_aggregate_manifest(
+        config,
+        paths,
+        snapshot,
+        cached.freshness.value,
+        cached.age_seconds,
+        config_path=config_path,
+    )
     snapshot_payload = snapshot.model_dump(mode="json")
     snapshot_payload["quote_date"] = snapshot.quote_date.isoformat()
     facts = pl.DataFrame([snapshot_payload])
@@ -354,45 +362,6 @@ def _exchange_suffix(value: object) -> str | None:
         "XSHE": "SZ",
     }
     return mapping.get(str(value).strip().upper()) if value is not None else None
-
-
-def _build_manifest(
-    config: MarketAggregateConfig,
-    paths: MarketAggregateRunPaths,
-    snapshot: Any,
-    freshness: str,
-    age_seconds: float,
-) -> dict[str, Any]:
-    return {
-        "schema_version": config.schema_version,
-        "title": config.title,
-        "run_id": paths.run_dir.name,
-        "generated_at": datetime.now(_SHANGHAI_TZ).isoformat(timespec="seconds"),
-        "quote_date": snapshot.quote_date.isoformat(),
-        "quote_at": snapshot.quote_at.isoformat() if snapshot.quote_at else None,
-        "received_at": snapshot.received_at.isoformat(),
-        "source": snapshot.source,
-        "scope": snapshot.scope,
-        "status": snapshot.status,
-        "freshness": freshness,
-        "age_seconds": age_seconds,
-        "reported_count": snapshot.reported_count,
-        "returned_count": snapshot.returned_count,
-        "coverage_ratio": snapshot.coverage_ratio,
-        "artifact_root": str(paths.root),
-        "files": {
-            "manifest": paths.manifest.name,
-            "snapshot": paths.snapshot.name,
-            "facts": paths.facts.name,
-            "trend": paths.trend.name,
-            "industry_breadth": paths.industry_breadth.name,
-            "report_md": paths.report_md.name,
-            "report_json": paths.report_json.name,
-            "human_report_md": paths.human_report_md.name,
-            "quality_report_md": paths.quality_report_md.name,
-            "quality_report_json": paths.quality_report_json.name,
-        },
-    }
 
 
 __all__ = ["MarketAggregateRunResult", "run_market_aggregate"]

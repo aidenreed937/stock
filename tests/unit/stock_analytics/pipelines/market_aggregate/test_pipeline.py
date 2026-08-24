@@ -173,6 +173,21 @@ def test_pipeline_renders_configured_reports_and_latest_artifacts(tmp_path: Path
     )
 
     assert result.as_of_date.isoformat() == "2026-08-19"
+    assert result.manifest["artifact_type"] == "market_aggregate"
+    assert result.manifest["manifest_schema_version"] == 1
+    assert result.manifest["provenance"]["config_sha256"]
+    assert set(result.manifest["artifact_files"]) == {
+        "manifest.json",
+        "snapshot.json",
+        "facts.parquet",
+        "trend.parquet",
+        "industry_breadth.parquet",
+        "report.md",
+        "report.json",
+        "human_report.md",
+        "quality_report.md",
+        "quality_report.json",
+    }
     assert result.manifest["status"] == "valid"
     assert result.quality_report_json["status"] == "passed"
     assert "A 股全市场实时聚合监控" in result.report_markdown
