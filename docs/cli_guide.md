@@ -126,15 +126,16 @@ make sync SOURCE=tushare ENDPOINT=shareholder_event_bundle
 make sync SOURCE=tushare ENDPOINT=research_daily_bundle
 make sync SOURCE=tushare ENDPOINT=market_behavior_bundle
 make sync SOURCE=tushare ENDPOINT=dc_concept_cons
+make sync SOURCE=tushare ENDPOINT=top10_floatholders  # 单日秒级增量公告同步 (<1s)
 ```
 
 TuShare 财报使用 `financial_statement_bundle`，展开为 `income`、`fina_indicator`、`balancesheet`、
-`cashflow` 四个报告期任务。它们按目标日前最近已完成季度末调度，并以全市场 `stock_basic` 为
-股票池；当前报告期可能刷新以吸收重述。CLI 传项目任务名，不传上游内部的 `*_vip` 名称：
+`cashflow` 四个报告期任务。它们与 `top10_floatholders` 均属于全市场批量任务（`fetch_mode=per_period`），按目标日前最近已完成季度末调度，并以全市场 `stock_basic` 为股票池；当前报告期可能刷新以吸收重述。CLI 传项目任务名，不传上游内部的 `*_vip` 名称：
 
 ```bash
 make sync SOURCE=tushare ENDPOINT=financial_statement_bundle
 make backfill START=YYYY-MM-DD END=YYYY-MM-DD SOURCE=tushare ENDPOINT=financial_statement_bundle
+make backfill START=2020-01-01 END=2026-08-14 SOURCE=tushare ENDPOINT=top10_floatholders
 ```
 
 Alpha Vantage 增量同步只有 `fx_daily` 一个任务。同步 CLI 默认读取 `config/data.yaml` 中的数据源并发配置；当前 Alpha Vantage 配置为单并发，直接执行即可：

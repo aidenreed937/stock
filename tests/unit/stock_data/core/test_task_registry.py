@@ -51,10 +51,10 @@ def test_is_per_symbol_task_rules() -> None:
     assert not is_per_symbol_task("tushare", "stk_limit")
     assert not is_per_symbol_task("tushare", "limit_list_d")
     assert not is_per_symbol_task("tushare", "hk_hold")
+    assert not is_per_symbol_task("tushare", "top10_floatholders")
 
     for endpoint in (
         "stk_holdernumber",
-        "top10_floatholders",
         "dividend",
         "cyq_perf",
         "cyq_chips",
@@ -72,6 +72,11 @@ def test_tushare_financial_statements_use_vip_period_routes() -> None:
         assert task.fetch_mode == "per_period"
         assert task.required_pool is None
         assert task.query_mode == "period"
+
+    top10_task = resolve_task("tushare", "top10_floatholders")
+    assert top10_task.api_name == "top10_floatholders"
+    assert top10_task.fetch_mode == "per_period"
+    assert top10_task.query_mode == "period"
 
 
 def test_list_available_tasks() -> None:
@@ -279,7 +284,6 @@ def test_tushare_task_bundles() -> None:
     )
     assert resolve_bundle("tushare", "shareholder_event_bundle").tasks == (
         "stk_holdernumber",
-        "top10_floatholders",
         "dividend",
         "stk_managers",
         "stk_surv",

@@ -19,7 +19,10 @@ from stock_data.fetcher.tushare.query_builder import (
     should_split_margin_exchanges,
 )
 from stock_data.fetcher.tushare.registry import TUSHARE_API_REGISTRY, EndpointMeta
-from stock_data.fetcher.tushare.research_fetcher import fetch_dividend_data
+from stock_data.fetcher.tushare.research_fetcher import (
+    fetch_dividend_data,
+    fetch_top10_floatholders_data,
+)
 
 
 class TuShareStockFetcher(BaseDataFetcher):
@@ -110,6 +113,10 @@ class TuShareStockFetcher(BaseDataFetcher):
         if endpoint == "dividend":
             return fetch_dividend_data(
                 self.client, symbol, start_date, end_date, meta, extra_kwargs
+            )
+        if endpoint == "top10_floatholders":
+            return fetch_top10_floatholders_data(
+                self.client, symbol, start_date, end_date, meta, extra_kwargs, max_workers
             )
         if not is_index_dailybasic_supported(endpoint, symbol):
             logger.info(f"TuShare index_dailybasic 不支持指数 [{symbol}]，自动跳过")

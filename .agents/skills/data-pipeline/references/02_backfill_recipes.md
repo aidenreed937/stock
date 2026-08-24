@@ -36,6 +36,9 @@ make backfill START=YYYY-MM-DD END=YYYY-MM-DD SOURCE=tushare ENDPOINT=cb_basic,c
 
 # 8. 回填期权静态合约与日行情（用于 PCR/成交观察及结算价波动率代理）
 make backfill START=YYYY-MM-DD END=YYYY-MM-DD SOURCE=tushare ENDPOINT=opt_basic,opt_daily
+
+# 9. 回填全市场前十大流通股东 (按自然季度报告期自动批量并发调度)
+make backfill START=2020-01-01 END=2026-08-14 SOURCE=tushare ENDPOINT=top10_floatholders
 ```
 
 ---

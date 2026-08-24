@@ -67,7 +67,6 @@ PER_SYMBOL_DATASETS: frozenset[str] = frozenset(
         "hk_hold",
         *("cyq_perf", "cyq_chips"),
         "stk_holdernumber",
-        "top10_floatholders",
         "dividend",
         "stk_managers",
         "stk_surv",

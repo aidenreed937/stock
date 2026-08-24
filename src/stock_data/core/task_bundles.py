@@ -56,7 +56,6 @@ _TASK_BUNDLE_TASKS: dict[str, dict[str, tuple[str, ...]]] = {
         ),
         "shareholder_event_bundle": (
             "stk_holdernumber",
-            "top10_floatholders",
             "dividend",
             "stk_managers",
             "stk_surv",

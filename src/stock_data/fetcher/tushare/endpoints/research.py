@@ -19,13 +19,14 @@ RESEARCH_ENDPOINTS: dict[str, EndpointMeta] = {
     "top10_floatholders": EndpointMeta(
         api_name="top10_floatholders",
         description="上市公司前十大流通股东",
-        frequency="event",
-        query_mode="ann_date",
+        frequency="quarterly",
+        query_mode="period",
         group="shareholder_data",
         primary_keys=["ts_code", "ann_date", "end_date", "holder_name"],
         date_columns=["ann_date", "end_date"],
         required_columns=["ts_code", "ann_date", "end_date", "holder_name", "hold_amount"],
         update_time="18:00",
+        max_rows_per_request=6000,
         request_fields=(
             "ts_code,ann_date,end_date,holder_name,hold_amount,hold_ratio,"
             "hold_float_ratio,hold_change,holder_type"
