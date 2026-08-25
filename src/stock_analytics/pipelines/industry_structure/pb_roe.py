@@ -29,7 +29,12 @@ def _extract_pb_roe_cols(sub: pl.DataFrame) -> pl.DataFrame:
     if roe_col:
         roe_expr = pl.col(roe_col).cast(pl.Float64).alias("roe")
     elif "pb.ew" in sub.columns and "pe_ttm.ew" in sub.columns:
-        roe_expr = (pl.col("pb.ew") / pl.col("pe_ttm.ew") * 100.0).alias("roe")
+        roe_expr = (
+            pl.when(pl.col("pe_ttm.ew").is_finite() & (pl.col("pe_ttm.ew") > 0))
+            .then(pl.col("pb.ew") / pl.col("pe_ttm.ew") * 100.0)
+            .otherwise(None)
+            .alias("roe")
+        )
     else:
         roe_expr = pl.lit(8.0).alias("roe")
 

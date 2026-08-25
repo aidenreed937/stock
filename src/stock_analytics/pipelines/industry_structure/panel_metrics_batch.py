@@ -8,6 +8,7 @@ from typing import TYPE_CHECKING, Any
 import polars as pl
 
 from stock_analytics.pipelines.industry_structure.panel_metrics import (
+    _clean_valuation_metrics,
     as_float,
     collapse_industry_daily_values,
     historical_percentile,
@@ -203,6 +204,7 @@ def _valuation_base_frame(
             "dividend_yield",
         ),
     ).drop_nulls(subset=["industry_code", "trade_date"])
+    base = _clean_valuation_metrics(base)
     return collapse_industry_daily_values(base, ("pe_ttm", "pb", "dividend_yield"))
 
 

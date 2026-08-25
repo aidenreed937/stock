@@ -108,6 +108,7 @@ def valuation_panel(
             "dividend_yield",
         ),
     ).drop_nulls(subset=["industry_code", "trade_date"])
+    base = _clean_valuation_metrics(base)
     base = collapse_industry_daily_values(
         base,
         ("pe_ttm", "pb", "dividend_yield"),
@@ -222,6 +223,24 @@ def collapse_industry_daily_values(
         if column not in group_columns and column not in numeric_columns
     )
     return frame.group_by(["industry_code", "trade_date"]).agg(expressions)
+
+
+def _clean_valuation_metrics(frame: pl.DataFrame) -> pl.DataFrame:
+    """将不适合估值排序的数值转为空值。"""
+    return frame.with_columns(
+        pl.when(pl.col("pe_ttm").is_finite() & (pl.col("pe_ttm") > 0))
+        .then(pl.col("pe_ttm"))
+        .otherwise(None)
+        .alias("pe_ttm"),
+        pl.when(pl.col("pb").is_finite() & (pl.col("pb") > 0))
+        .then(pl.col("pb"))
+        .otherwise(None)
+        .alias("pb"),
+        pl.when(pl.col("dividend_yield").is_finite() & (pl.col("dividend_yield") >= 0))
+        .then(pl.col("dividend_yield"))
+        .otherwise(None)
+        .alias("dividend_yield"),
+    )
 
 
 def historical_percentile(values: list[object], current: float | None) -> float | None:
