@@ -92,22 +92,58 @@ def _file_sha256(path: Path) -> str | None:
 
 def _run_git(*args: str) -> str | None:
     git = shutil.which("git")
-    if git is None:
-        return None
+    if git is not None:
+        try:
+            import os
+
+            env = {
+                **os.environ,
+                "GIT_CONFIG_GLOBAL": "/dev/null",
+                "GIT_CONFIG_SYSTEM": "/dev/null",
+            }
+            result = subprocess.run(  # noqa: S603
+                [git, *args],
+                cwd=_PROJECT_ROOT,
+                capture_output=True,
+                check=False,
+                text=True,
+                timeout=2,
+                env=env,
+            )
+            if result.returncode == 0:
+                return result.stdout.strip()
+        except (OSError, subprocess.SubprocessError):
+            pass
+    if "rev-parse" in args and "HEAD" in args:
+        return _read_git_head_fallback()
+    return None
+
+
+def _read_git_head_fallback() -> str | None:
+    """直接从 .git/ 目录结构读取当前 HEAD commit SHA，供沙箱无 git 或全局 gitconfig 隔离时兜底。"""
     try:
-        result = subprocess.run(  # noqa: S603
-            [git, *args],
-            cwd=_PROJECT_ROOT,
-            capture_output=True,
-            check=False,
-            text=True,
-            timeout=2,
-        )
-    except (OSError, subprocess.SubprocessError):
+        git_dir = _PROJECT_ROOT / ".git"
+        if not git_dir.exists():
+            return None
+        head_path = git_dir / "HEAD"
+        if not head_path.exists():
+            return None
+        head_content = head_path.read_text(encoding="utf-8").strip()
+        if not head_content.startswith("ref: "):
+            return head_content if len(head_content) == 40 else None
+        ref_rel = head_content[5:].strip()
+        ref_path = git_dir / ref_rel
+        if ref_path.exists():
+            return ref_path.read_text(encoding="utf-8").strip()
+        packed_refs = git_dir / "packed-refs"
+        if packed_refs.exists():
+            for line in packed_refs.read_text(encoding="utf-8").splitlines():
+                parts = line.strip().split()
+                if len(parts) == 2 and parts[1] == ref_rel:
+                    return parts[0]
+    except OSError:
         return None
-    if result.returncode != 0:
-        return None
-    return result.stdout.strip()
+    return None
 
 
 __all__ = ["MANIFEST_SCHEMA_VERSION", "build_manifest_base", "build_watermark_index"]

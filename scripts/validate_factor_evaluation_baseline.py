@@ -49,7 +49,9 @@ def load_panel() -> pl.DataFrame:
 
 def main() -> None:
     panel = load_panel()
-    print(f"面板: {panel.height} 行, 日期 {panel['trade_date'].min()} ~ {panel['trade_date'].max()}")
+    print(
+        f"面板: {panel.height} 行, 日期 {panel['trade_date'].min()} ~ {panel['trade_date'].max()}"
+    )
     print(f"标的数: {panel['symbol'].n_unique()}")
 
     factors = ["pe_ttm", "turnover_rate", "mom_20d"]

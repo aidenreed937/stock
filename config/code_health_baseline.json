@@ -72,7 +72,7 @@
       "lines": 464
     },
     "src/stock_analytics/pipelines/market_cycle_review.py": {
-      "lines": 794
+      "lines": 820
     },
     "src/stock_analytics/pipelines/report_consistency.py": {
       "lines": 758

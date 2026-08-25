@@ -21,6 +21,7 @@ from stock_analytics.pipelines.stock_screen.decision import (
     build_decision_tables,
     summarize_decisions,
 )
+from stock_analytics.pipelines.stock_screen.inputs import build_universe, rule_input
 from stock_analytics.pipelines.stock_screen.quality import build_manifest, build_quality_report
 from stock_analytics.pipelines.stock_screen.rules import RULE_EVALUATORS, evaluate_rule
 from stock_analytics.pipelines.stock_screen.scoring import compute_scores
@@ -56,6 +57,13 @@ _RULE_DATASETS = {
     "northbound_drawdown": "hk_hold",
     "consecutive_limit_down": "limit_list_d",
     "margin_stress": "margin_detail",
+    "dedt_profit_loss": "fina_indicator",
+    "lockup_release": "share_float",
+    "pledge_overhang": "pledge_detail",
+    "high_leverage_insolvency": "fina_indicator",
+    "receivables_revenue_distortion": "balancesheet",
+    "block_trade_discount": "block_trade",
+    "consecutive_ocf_deficit": "cashflow",
 }
 
 _NOT_SUPPORTED_GATES = (
@@ -70,12 +78,6 @@ _NOT_SUPPORTED_GATES = (
         "scope": "all_market",
         "status": "registered_pending_backfill",
         "note": "理杏仁监管措施与交易所问询接口已注册，待回填至 Curated 后接入排雷规则。",
-    },
-    {
-        "rule_id": "lockup_release",
-        "scope": "all_market",
-        "status": "registered_pending_backfill",
-        "note": "TuShare share_float 与理杏仁限售解禁汇总接口已注册，待回填至 Curated 后接入排雷规则。",
     },
     {
         "rule_id": "litigation",
@@ -130,7 +132,7 @@ def run_stock_screen(
         storage_dir=storage_dir,
         catalogs=catalogs,
     )
-    universe = _build_universe(sources.get("stock_basic"), config.symbols, as_of_date)
+    universe = build_universe(sources.get("stock_basic"), config.symbols, as_of_date)
     evaluations, missing_gates, data_gaps = _evaluate_rules(
         config,
         sources,
@@ -230,13 +232,19 @@ def _evaluate_rules(
             if not rule.enabled:
                 missing_gates.append(_missing_rule(rule, "disabled"))
                 continue
-            input_frame = _rule_input(rule, sources, universe, as_of_date)
-            if input_frame.is_empty() and rule.rule_id not in {"st_marked", "too_new_listing"}:
+            input_frame = rule_input(rule, sources, universe, as_of_date, _RULE_DATASETS)
+            dataset_name = _RULE_DATASETS.get(rule.rule_id, "")
+            is_dataset_ok = sources.available.get(dataset_name, False)
+            if (
+                input_frame.is_empty()
+                and not is_dataset_ok
+                and rule.rule_id not in {"st_marked", "too_new_listing"}
+            ):
                 missing_gates.append(_missing_rule(rule, "data_unavailable"))
                 data_gaps.append(
                     {
                         "data_source": "tushare",
-                        "dataset": _RULE_DATASETS.get(rule.rule_id, "unknown"),
+                        "dataset": dataset_name or "unknown",
                         "status": "missing_for_rule",
                         "note": rule.note,
                     }
@@ -255,103 +263,6 @@ def _evaluate_rules(
                 continue
             evaluations.append(RuleEvaluation(rule=rule, category=category, frame=result))
     return evaluations, missing_gates, data_gaps
-
-
-def _rule_input(
-    rule: RuleConfig,
-    sources: StockScreenSources,
-    universe: pl.DataFrame,
-    as_of_date: date,
-) -> pl.DataFrame:
-    if rule.rule_id in {"st_marked", "too_new_listing"}:
-        return universe
-    if rule.rule_id == "suspended":
-        return _suspension_input(sources, as_of_date)
-    dataset = _RULE_DATASETS.get(rule.rule_id)
-    frame = sources.get(dataset or "")
-    if dataset in {"daily_basic", "stock_daily_bar"}:
-        return _at_as_of(frame, "trade_date", as_of_date)
-    return frame
-
-
-def _build_universe(
-    frame: pl.DataFrame,
-    symbols: tuple[str, ...],
-    as_of_date: date,
-) -> pl.DataFrame:
-    if frame.is_empty() or "symbol" not in frame.columns:
-        return pl.DataFrame(
-            schema={
-                "symbol": pl.String,
-                "name": pl.String,
-                "industry": pl.String,
-                "list_date": pl.Date,
-                "market": pl.String,
-            }
-        )
-    result = frame
-    if symbols:
-        result = result.filter(pl.col("symbol").is_in(list(symbols)))
-    if "list_status" in result.columns:
-        result = result.filter(
-            pl.col("list_status")
-            .cast(pl.String, strict=False)
-            .str.to_uppercase()
-            .is_in(["L", "上市"])
-        )
-    if "list_date" in result.columns:
-        result = result.filter(pl.col("list_date").is_null() | (pl.col("list_date") <= as_of_date))
-    if "delist_date" in result.columns:
-        result = result.filter(
-            pl.col("delist_date").is_null() | (pl.col("delist_date") > as_of_date)
-        )
-    if "industry" not in result.columns:
-        result = result.with_columns(
-            pl.col("industry_name").cast(pl.String, strict=False).alias("industry")
-            if "industry_name" in result.columns
-            else pl.lit(None, dtype=pl.String).alias("industry")
-        )
-    return result.unique(subset=["symbol"], keep="last")
-
-
-def _suspension_input(sources: StockScreenSources, as_of_date: date) -> pl.DataFrame:
-    frames: list[pl.DataFrame] = []
-    bars = sources.get("stock_daily_bar")
-    if not bars.is_empty():
-        frames.append(
-            bars.select([column for column in ("symbol", "trade_date") if column in bars.columns])
-        )
-    suspensions = sources.get("suspend_d")
-    if not suspensions.is_empty():
-        selected = suspensions
-        if "suspend_date" not in selected.columns and "trade_date" in selected.columns:
-            selected = selected.with_columns(pl.col("trade_date").alias("suspend_date"))
-        selected = selected.select(
-            [
-                column
-                for column in ("symbol", "trade_date", "suspend_date", "suspend_type")
-                if column in selected.columns
-            ]
-        )
-        frames.append(selected)
-    if not frames:
-        return pl.DataFrame()
-    combined = pl.concat(frames, how="diagonal_relaxed")
-    if "trade_date" in combined.columns:
-        combined = combined.filter(
-            pl.col("trade_date").is_null() | (pl.col("trade_date") <= as_of_date)
-        )
-    if "suspend_date" in combined.columns:
-        combined = combined.filter(
-            pl.col("suspend_date").is_null() | (pl.col("suspend_date") <= as_of_date)
-        )
-    return combined
-
-
-def _at_as_of(frame: pl.DataFrame, date_column: str, as_of_date: date) -> pl.DataFrame:
-    if frame.is_empty() or date_column not in frame.columns:
-        return pl.DataFrame()
-    return frame.filter(pl.col(date_column) == as_of_date)
 
 
 def _limit_artifact_tables(

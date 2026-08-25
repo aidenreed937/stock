@@ -85,6 +85,7 @@ def run_market_cycle_review(
     if not dates:
         raise FileNotFoundError(f"没有找到可复盘的日期: {start} ~ {end}")
 
+    consistency_status = "skipped" if skip_consistency else "passed"
     if not skip_consistency:
         consistency = ConsistencyValidator(analytics_path).validate_dates(dates)
         if consistency.status != "passed":
@@ -95,7 +96,12 @@ def run_market_cycle_review(
             raise RuntimeError(f"report_consistency 未通过，停止生成跨周期复盘: {details}")
 
     market_rows, panel_rows = _load_rows(analytics_path, dates)
-    payload = _build_payload(dates, market_rows, panel_rows)
+    payload = _build_payload(
+        dates,
+        market_rows,
+        panel_rows,
+        consistency_status=consistency_status,
+    )
     markdown = _render_markdown(payload)
     paths = _write_artifacts(Path(output_root), payload, markdown, update_latest=update_latest)
     return MarketCycleReviewRunResult(tuple(dates), payload, paths)
@@ -218,6 +224,8 @@ def _build_payload(
     dates: list[str],
     market_rows: list[dict[str, Any]],
     panel_rows: list[dict[str, Any]],
+    *,
+    consistency_status: str = "not_checked",
 ) -> dict[str, Any]:
     return {
         "schema_version": 1,
@@ -225,6 +233,7 @@ def _build_payload(
         "start_date": dates[0],
         "end_date": dates[-1],
         "date_count": len(dates),
+        "consistency": {"status": consistency_status},
         "market_summary": _market_summary(market_rows),
         "phase_summary": _phase_summary(market_rows),
         "signal_days": _signal_days(market_rows),
@@ -539,6 +548,7 @@ def _render_markdown(payload: dict[str, Any]) -> str:
         "",
         f"- 起止日期: {payload['start_date']} 至 {payload['end_date']}",
         f"- 交易日数: {payload['date_count']}",
+        f"- 一致性校验: {payload.get('consistency', {}).get('status', 'not_checked')}",
         "- 口径: 只读取已落盘市场温度、行业结构、投资者简报和量化投研简报产物；"
         "不使用新闻、政策或模型记忆。",
         "",

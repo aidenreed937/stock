@@ -68,6 +68,7 @@ def test_market_cycle_review_generates_payload_from_artifacts(tmp_path: Path) ->
     payload = json.loads((output_root / "latest" / "review.json").read_text(encoding="utf-8"))
     markdown = (output_root / "latest" / "review.md").read_text(encoding="utf-8")
     assert payload["date_count"] == 2
+    assert payload["consistency"]["status"] == "passed"
     assert payload["market_summary"]["series"]["composite"]["end"] == 62.96
     assert payload["industry_frequency"]["brief_candidate_counts"][0] == {
         "industry_name": "煤炭",
@@ -75,8 +76,45 @@ def test_market_cycle_review_generates_payload_from_artifacts(tmp_path: Path) ->
     }
     assert payload["quant_brief"]["missing_dates"] == ["2026-08-13", "2026-08-14"]
     assert "legacy compatibility warning" in markdown
+    assert "一致性校验: passed" in markdown
     assert "只读取已落盘市场温度、行业结构、投资者简报和量化投研简报产物" in markdown
     assert any("区间起点" in reason for reason in payload["signal_days"][0]["reasons"])
+
+
+def test_market_cycle_review_records_skipped_consistency(tmp_path: Path) -> None:
+    analytics_root = tmp_path / "analytics"
+    output_root = tmp_path / "market_cycle_review"
+    _write_day(
+        analytics_root,
+        {
+            "date": "2026-08-14",
+            "market_run": "run_market_1",
+            "industry_run": "run_industry_1",
+            "brief_run": "run_brief_1",
+            "composite": 62.96,
+            "fund_flow": 47.64,
+            "technical": 67.39,
+            "sentiment": 56.36,
+            "risk": "中等偏高",
+            "health": "修复中但偏脆弱",
+            "positive_20d": 30,
+            "positive_60d": 3,
+            "coal_tcr": 0.52,
+        },
+    )
+
+    run_market_cycle_review(
+        start="2026-08-14",
+        end="2026-08-14",
+        analytics_root=analytics_root,
+        output_root=output_root,
+        skip_consistency=True,
+    )
+
+    payload = json.loads((output_root / "latest" / "review.json").read_text(encoding="utf-8"))
+    markdown = (output_root / "latest" / "review.md").read_text(encoding="utf-8")
+    assert payload["consistency"]["status"] == "skipped"
+    assert "一致性校验: skipped" in markdown
 
 
 def test_market_cycle_review_aggregates_quant_nature_veto_and_sectors() -> None:

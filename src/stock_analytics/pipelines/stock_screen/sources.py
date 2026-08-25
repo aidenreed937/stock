@@ -11,6 +11,7 @@ from typing import Any
 import polars as pl
 
 from stock_analytics.catalog_compat import load_dataset_compat
+from stock_analytics.pipelines.stock_screen.industry_map import build_industry_map
 from stock_core.utils.logger import logger
 from stock_data.catalog import DataCatalog
 from stock_reporting.interpretation.stock_screen.config import StockScreenConfig
@@ -36,8 +37,26 @@ _DATASET_COLUMNS: dict[str, tuple[str, ...]] = {
         "circ_mv",
         "turnover_rate",
     ),
-    "income": ("symbol", "ts_code", "ann_date", "end_date", "n_income"),
-    "fina_indicator": ("symbol", "ts_code", "ann_date", "end_date", "netprofit_yoy", "roe"),
+    "income": (
+        "symbol",
+        "ts_code",
+        "ann_date",
+        "end_date",
+        "n_income",
+        "revenue",
+        "total_revenue",
+    ),
+    "fina_indicator": (
+        "symbol",
+        "ts_code",
+        "ann_date",
+        "end_date",
+        "netprofit_yoy",
+        "roe",
+        "profit_dedt",
+        "debt_to_assets",
+        "current_ratio",
+    ),
     "balancesheet": (
         "symbol",
         "ts_code",
@@ -45,6 +64,7 @@ _DATASET_COLUMNS: dict[str, tuple[str, ...]] = {
         "end_date",
         "total_hldr_eqy_exc_min_int",
         "goodwill",
+        "accounts_receiv",
     ),
     "forecast": (
         "symbol",
@@ -66,6 +86,33 @@ _DATASET_COLUMNS: dict[str, tuple[str, ...]] = {
     "hk_hold": ("symbol", "ts_code", "trade_date", "vol", "sharehold", "hold_vol", "ratio"),
     "limit_list_d": ("symbol", "ts_code", "trade_date", "limit", "limit_type", "pct_chg"),
     "suspend_d": ("symbol", "ts_code", "trade_date", "suspend_date", "suspend_type"),
+    "share_float": (
+        "symbol",
+        "ts_code",
+        "ann_date",
+        "float_date",
+        "float_share",
+        "float_ratio",
+        "holder_name",
+    ),
+    "pledge_detail": (
+        "symbol",
+        "ts_code",
+        "ann_date",
+        "pledge_amount",
+        "holding_amount",
+        "is_release",
+        "release_date",
+    ),
+    "block_trade": (
+        "symbol",
+        "ts_code",
+        "trade_date",
+        "price",
+        "amount",
+        "buyer",
+        "seller",
+    ),
     "regulatory_measures": (
         "symbol",
         "stockCode",
@@ -128,71 +175,6 @@ class StockScreenSources:
     def get(self, dataset: str) -> pl.DataFrame:
         """返回数据集；缺失时返回空数据帧。"""
         return self.frames.get(dataset, pl.DataFrame())
-
-
-def build_industry_map(
-    sources: StockScreenSources,
-    as_of_date: date,
-) -> pl.DataFrame:
-    """按基准日构建 申万 L1/L2 行业归属表。
-
-    以 index_member 的活跃成员（in_date<=as_of<out_date）为基准，
-    通过 index_classify 关联行业名，返回 symbol/l1_name/l2_name。
-    """
-    members = sources.get("index_member")
-    classify = sources.get("index_classify")
-    if members.is_empty() or classify.is_empty():
-        return pl.DataFrame()
-    required = {"index_code", "con_code", "in_date", "out_date"}
-    if not required.issubset(set(members.columns)):
-        return pl.DataFrame()
-    if "index_code" not in classify.columns or "industry_name" not in classify.columns:
-        return pl.DataFrame()
-
-    l1 = (
-        classify.filter(pl.col("level") == "L1")
-        .pipe(_prefer_sw2021)
-        .select("index_code", pl.col("industry_name").alias("l1_name"))
-    )
-    l2 = (
-        classify.filter(pl.col("level") == "L2")
-        .pipe(_prefer_sw2021)
-        .select("index_code", pl.col("industry_name").alias("l2_name"))
-    )
-    active = members.filter(
-        (pl.col("in_date") <= pl.lit(as_of_date))
-        & (pl.col("out_date").is_null() | (pl.col("out_date") > pl.lit(as_of_date)))
-    ).select("con_code", "index_code")
-
-    result = (
-        active.join(l2, on="index_code", how="inner")
-        .select("con_code", "l2_name")
-        .rename({"con_code": "symbol"})
-        .unique(subset=["symbol"], keep="first")
-    )
-    l1_map = (
-        active.join(l1, on="index_code", how="inner")
-        .select("con_code", "l1_name")
-        .rename({"con_code": "symbol"})
-        .filter(pl.col("l1_name").is_not_null())
-        .unique(subset=["symbol"], keep="first")
-    )
-    result = result.join(l1_map, on="symbol", how="left")
-    return result.with_columns(pl.col("symbol").cast(pl.String))
-
-
-def _prefer_sw2021(frame: pl.DataFrame) -> pl.DataFrame:
-    """同一 index_code 存在 SW2014/SW2021 两套记录时优先保留 SW2021。"""
-    if "src" not in frame.columns:
-        return frame.unique(subset=["index_code"], keep="first")
-    return (
-        frame.with_columns(
-            pl.when(pl.col("src") == "SW2021").then(0).otherwise(1).alias("_src_rank")
-        )
-        .sort("_src_rank")
-        .unique(subset=["index_code"], keep="first")
-        .drop("_src_rank")
-    )
 
 
 def resolve_as_of_date(
@@ -268,8 +250,19 @@ def load_stock_screen_sources(
         if not item.static:
             normalized = _clip_as_of(normalized, as_of_date)
         frames[item.dataset] = normalized
-        available[item.dataset] = not normalized.is_empty()
-        if normalized.is_empty() and not any(gap["dataset"] == item.dataset for gap in gaps):
+        is_available = not normalized.is_empty()
+        if (
+            not is_available
+            and config.symbols
+            and active_catalog is not None
+            and hasattr(active_catalog, "list_datasets")
+        ):
+            try:
+                is_available = item.dataset in active_catalog.list_datasets()
+            except Exception:
+                is_available = False
+        available[item.dataset] = is_available
+        if not is_available and not any(gap["dataset"] == item.dataset for gap in gaps):
             gaps.append(_gap(item.data_source, item.dataset, "missing", item.note))
 
     return StockScreenSources(frames=frames, available=available, data_gaps=tuple(gaps))
@@ -338,6 +331,8 @@ def _normalize_frame(frame: pl.DataFrame) -> pl.DataFrame:
         "suspend_date",
         "list_date",
         "delist_date",
+        "float_date",
+        "release_date",
     ):
         if column in normalized.columns:
             normalized = normalized.with_columns(_date_expr(column))

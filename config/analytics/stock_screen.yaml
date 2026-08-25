@@ -98,18 +98,51 @@ stock_screen:
           window_days: 20
           drop_threshold: -0.30
         note: "margin_detail 全市场 4400+ 标的，评估融资融券余额 20 日骤降 > 30%"
+      - id: dedt_profit_loss
+        enabled: true
+        scope: all_market
+        params:
+          loss_years: 2
+        note: "fina_indicator.profit_dedt 连续扣非亏损（主业空心化风险）"
+      - id: lockup_release
+        enabled: true
+        scope: all_market
+        params:
+          forward_days: 60
+          max_float_ratio: 10.0
+        note: "share_float 未来 60 天限售解禁比例 >= 10%"
       - id: pledge_overhang
-        enabled: false
+        enabled: true
         scope: all_market
         params:
-          max_pledge_ratio: 0.70
-        note: "lixinger/pledge_info 仅少量快照，数据不足"
+          max_pledge_ratio: 0.50
+        note: "pledge_detail 未解质押持股比例 >= 50%"
+      - id: high_leverage_insolvency
+        enabled: true
+        scope: all_market
+        params:
+          max_debt_to_assets: 85.0
+          min_current_ratio: 0.8
+        note: "fina_indicator.debt_to_assets 畸高且流动比率过低"
+      - id: receivables_revenue_distortion
+        enabled: true
+        scope: all_market
+        params:
+          max_receivables_ratio: 0.80
+        note: "balancesheet.accounts_receiv / income.revenue 应收账款占营收 >= 80%"
       - id: block_trade_discount
-        enabled: false
+        enabled: true
         scope: all_market
         params:
-          max_discount: -0.10
-        note: "block_trade 事件型，第二期接入"
+          window_days: 30
+          min_total_amount: 20000000.0
+        note: "block_trade 近 30 天大宗交易大额套现"
+      - id: consecutive_ocf_deficit
+        enabled: true
+        scope: all_market
+        params:
+          loss_years: 2
+        note: "cashflow.n_cashflow_act 经营现金流连续净流出"
 
   output:
     top_passed: 100
@@ -223,6 +256,27 @@ stock_screen:
       cadence: trading_daily
       quality_tier: confirming
       note: "全市场两融余额，覆盖 4400+ 标的用于 margin_stress 预警"
+    - data_source: tushare
+      dataset: share_float
+      enabled: true
+      date_column: ann_date
+      cadence: event
+      quality_tier: confirming
+      note: "限售解禁数据，用于 lockup_release 规则"
+    - data_source: tushare
+      dataset: pledge_detail
+      enabled: true
+      date_column: ann_date
+      cadence: event
+      quality_tier: confirming
+      note: "股权质押明细，用于 pledge_overhang 规则"
+    - data_source: tushare
+      dataset: block_trade
+      enabled: true
+      date_column: trade_date
+      cadence: event
+      quality_tier: confirming
+      note: "大宗交易数据，用于 block_trade_discount 规则"
     - data_source: lixinger
       dataset: pledge_info
       enabled: false

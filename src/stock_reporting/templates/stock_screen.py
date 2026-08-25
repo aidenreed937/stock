@@ -36,7 +36,7 @@ def render_report_markdown(
     summary: dict[str, Any],
     tables: dict[str, pl.DataFrame],
 ) -> str:
-    """渲染面向人工阅读的排雷摘要。"""
+    """渲染面向人工阅读的排雷摘要（优先展示评分排名前 100）。"""
     scored = tables.get("scored")
     has_scoring = scored is not None and not scored.is_empty()
     lines = [
@@ -44,9 +44,9 @@ def render_report_markdown(
         "",
         f"- 基准日期: {manifest['as_of_date']}",
         f"- 样本总数: {summary['population_size']}",
-        f"- 硬性剔除: {summary['excluded_count']}",
-        f"- 黄牌预警: {summary['warned_count']}",
-        f"- 通过: {summary['passed_count']}",
+        f"- 硬性剔除: {summary['excluded_count']} 只（详见 `excluded.csv`）",
+        f"- 黄牌预警: {summary['warned_count']} 只（详见 `warned.csv`）",
+        f"- 通过排雷: {summary['passed_count']} 只（详见 `passed.csv`）",
     ]
     if has_scoring:
         lines.extend(
@@ -55,33 +55,32 @@ def render_report_markdown(
                 f"- 评分中位数: {summary.get('scored_median', '-')}",
             ]
         )
-    lines.extend(
-        [
-            "",
-            "## 硬性剔除清单（前 20 条）",
-            "",
-            *_table_lines(tables.get("excluded"), limit=20),
-            "",
-            "## 黄牌预警清单",
-            "",
-            *_table_lines(tables.get("warned"), limit=config.output.max_warn_rows),
-            "",
-            f"## 通过名单（前 {config.output.top_passed} 条）",
-            "",
-            *_table_lines(tables.get("passed"), limit=config.output.top_passed),
-        ]
-    )
+
+    # 优先展示：评分排名前 100
     if has_scoring and scored is not None:
+        display_top = min(config.output.top_passed, scored.height)
         lines.extend(
             [
                 "",
-                f"## 评分排名前 {config.output.top_passed}（综合评分越高越优）",
+                f"## 评分排名前 {display_top}（综合评分越高越优）",
+                "",
+                "> 说明：综合评分 (100) = 质量 Quality (40%) + 估值 Value (30%) + 动量 Momentum (20%) + 规模 Size (10%)，在申万行业内分层百分位对齐。",
                 "",
                 *_scored_table_lines(scored, limit=config.output.top_passed),
             ]
         )
+
+    # 精简抽样展示排雷风险清单（前 10 条）
     lines.extend(
         [
+            "",
+            f"## 黄牌预警抽样（前 10 条，全量共 {summary['warned_count']} 条见 `warned.csv`）",
+            "",
+            *_table_lines(tables.get("warned"), limit=10),
+            "",
+            f"## 硬性剔除抽样（前 10 条，全量共 {summary['excluded_count']} 条见 `excluded.csv`）",
+            "",
+            *_table_lines(tables.get("excluded"), limit=10),
             "",
             "## 数据缺口与限制",
             "",
@@ -143,6 +142,29 @@ def _scored_table_lines(frame: pl.DataFrame, *, limit: int) -> list[str]:
     if frame.is_empty():
         return ["暂无记录。"]
     rows = frame.head(limit).to_dicts()
+    has_dims = all(f"dim_{k}" in frame.columns for k in ("quality", "value", "momentum", "size"))
+    if has_dims:
+        lines = [
+            "| 排名 | 代码 | 名称 | 申万行业 | 综合评分 | 质量分 | 估值分 | 动量分 | 规模分 |",
+            "|---|---|---|---|---|---|---|---|---|",
+        ]
+        for row in rows:
+            score = row.get("composite_score")
+            score_text = f"{score:.1f}" if score is not None else "-"
+            q = row.get("dim_quality")
+            v = row.get("dim_value")
+            m = row.get("dim_momentum")
+            s = row.get("dim_size")
+            industry = row.get("l2_name") or row.get("l1_name") or row.get("industry") or "-"
+            lines.append(
+                f"| {row.get('rank', '-')} | {row.get('symbol', '')} | {row.get('name') or '-'} | "
+                f"{industry} | {score_text} | "
+                f"{f'{q:.1f}' if q is not None else '-'} | "
+                f"{f'{v:.1f}' if v is not None else '-'} | "
+                f"{f'{m:.1f}' if m is not None else '-'} | "
+                f"{f'{s:.1f}' if s is not None else '-'} |"
+            )
+        return lines
     lines = [
         "| 排名 | 代码 | 名称 | 行业 | 综合评分 |",
         "|---|---|---|---|---|",

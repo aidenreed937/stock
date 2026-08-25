@@ -19,7 +19,9 @@
    make market-cycle-review START=YYYY-MM-DD END=YYYY-MM-DD
    ~~~
 
-4. 读取复盘产物及其引用的上游 Manifest；不要从 latest 或目录修改时间推断观测日。
+4. 读取 `review.json` 和 `review.md` 复盘产物及其引用的上游 Manifest；确认产物中的
+   `consistency.status` 为 `passed`。若显式使用 `SKIP_CONSISTENCY=1`，状态应为 `skipped`，
+   只能将结果作为未完成一致性校验的分析草稿使用；不要从 latest 或目录修改时间推断观测日。
 
 ## 解读顺序
 

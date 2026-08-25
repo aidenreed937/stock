@@ -58,7 +58,9 @@ def build_panel() -> pl.DataFrame:
 
 def main() -> None:
     panel = build_panel()
-    print(f"面板: {panel.height} 行, 标的 {panel['symbol'].n_unique()}, 日期 {panel['trade_date'].n_unique()}")
+    print(
+        f"面板: {panel.height} 行, 标的 {panel['symbol'].n_unique()}, 日期 {panel['trade_date'].n_unique()}"
+    )
     print(f"L1 行业覆盖: 映射成功 {panel['index_code'].is_not_null().sum()} / {panel.height}")
 
     # 前向收益 + 对数市值
