@@ -55,6 +55,7 @@ lint:
 	uv run mypy src
 	uv run python scripts/lint_class_size.py
 	uv run python scripts/lint_analytics_boundaries.py
+	uv run python scripts/lint_cli_boundaries.py
 
 lint-rust:
 	cargo fmt --all -- --check

@@ -4,6 +4,10 @@ from typing import TYPE_CHECKING, Any
 
 if TYPE_CHECKING:
     from stock_data.pipeline.backfill import HistoricalBackfiller
+    from stock_data.pipeline.backfill_runner import (
+        BackfillRequest,
+        run_backfill,
+    )
     from stock_data.pipeline.pipeline import MarketDataPipeline
     from stock_data.pipeline.planner import BackfillPlanner, BackfillTask
     from stock_data.pipeline.scheduler import DataUpdateScheduler
@@ -12,20 +16,27 @@ if TYPE_CHECKING:
         SyncExecutionResult,
         SyncTaskItem,
     )
+    from stock_data.pipeline.sync_runner import SyncSourceRun, run_sync
 
 __all__ = [
     "BackfillPlanner",
+    "BackfillRequest",
     "BackfillTask",
     "DailySyncEngine",
     "DataUpdateScheduler",
     "HistoricalBackfiller",
     "MarketDataPipeline",
     "SyncExecutionResult",
+    "SyncSourceRun",
     "SyncTaskItem",
+    "run_backfill",
+    "run_sync",
 ]
 
 _EXPORT_MAP: dict[str, tuple[str, str]] = {
     "HistoricalBackfiller": ("stock_data.pipeline.backfill", "HistoricalBackfiller"),
+    "BackfillRequest": ("stock_data.pipeline.backfill_runner", "BackfillRequest"),
+    "run_backfill": ("stock_data.pipeline.backfill_runner", "run_backfill"),
     "MarketDataPipeline": ("stock_data.pipeline.pipeline", "MarketDataPipeline"),
     "BackfillPlanner": ("stock_data.pipeline.planner", "BackfillPlanner"),
     "BackfillTask": ("stock_data.pipeline.planner", "BackfillTask"),
@@ -33,6 +44,8 @@ _EXPORT_MAP: dict[str, tuple[str, str]] = {
     "DailySyncEngine": ("stock_data.pipeline.sync", "DailySyncEngine"),
     "SyncExecutionResult": ("stock_data.pipeline.sync", "SyncExecutionResult"),
     "SyncTaskItem": ("stock_data.pipeline.sync", "SyncTaskItem"),
+    "SyncSourceRun": ("stock_data.pipeline.sync_runner", "SyncSourceRun"),
+    "run_sync": ("stock_data.pipeline.sync_runner", "run_sync"),
 }
 
 

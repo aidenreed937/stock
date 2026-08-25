@@ -1,4 +1,4 @@
-"""核心观察池腾讯实时快照监控 CLI。"""
+"""核心观察池腾讯实时快照监控 CLI 兼容入口。"""
 
 from __future__ import annotations
 
@@ -6,18 +6,13 @@ import argparse
 import sys
 import time
 from datetime import datetime
-from pathlib import Path
 from typing import Any
 from zoneinfo import ZoneInfo
 
 import polars as pl
 
-from stock_analytics.realtime import RealtimeMonitor
-from stock_core.config.loader import load_watchlist_config
+from stock_analytics.realtime import RealtimeSession, create_realtime_session
 from stock_core.exceptions import DataFetchError
-from stock_data.catalog import DataCatalog
-from stock_data.core.settings import data_settings
-from stock_data.fetcher.realtime import RealtimeSnapshotRecorder, TencentRealtimeFetcher
 
 _SHANGHAI_TZ = ZoneInfo("Asia/Shanghai")
 _DISPLAY_COLUMNS = (
@@ -40,64 +35,38 @@ def _build_parser() -> argparse.ArgumentParser:
     )
     parser.add_argument("--watch", action="store_true", help="持续监控，按间隔重复抓取")
     parser.add_argument("--interval", type=float, default=3.0, help="持续监控的抓取间隔（秒）")
-    parser.add_argument(
-        "--format",
-        choices=("table", "markdown"),
-        default="table",
-        help="输出格式",
-    )
+    parser.add_argument("--format", choices=("table", "markdown"), default="table", help="输出格式")
     parser.add_argument("--record", action="store_true", help="将快照批量留档到 RAW realtime 目录")
-    parser.add_argument(
-        "--storage-dir",
-        default=None,
-        help="Curated 数据根目录（目录下应包含 tushare/...）",
-    )
+    parser.add_argument("--storage-dir", default=None, help="Curated 数据根目录")
     parser.add_argument("--raw-root", default=None, help="实时快照 RAW 留档根目录")
     return parser
 
 
 def main() -> None:
-    """执行一次或持续执行实时观察池监控。"""
+    """解析参数并执行一次或持续执行实时观察池监控。"""
     args = _build_parser().parse_args()
-    watchlist = load_watchlist_config().tushare
-    symbols_by_dataset = {
-        "stock_daily_bar": tuple(watchlist.stocks),
-        "index_daily_bar": tuple(watchlist.indices),
-        "fund_daily": tuple(watchlist.funds),
-    }
-    symbols = tuple(symbol for group in symbols_by_dataset.values() for symbol in group)
-    if not symbols:
-        _fail("watchlist.yaml 未加载到 A 股核心观察池")
-
-    recorder = None
+    session: RealtimeSession | None = None
     try:
-        catalog = DataCatalog(data_source="tushare", storage_dir=args.storage_dir)
-        if args.record:
-            runtime = data_settings.runtime_context
-            raw_root = (
-                Path(args.raw_root) if args.raw_root else runtime.raw_root / "realtime" / "tencent"
-            )
-            recorder = RealtimeSnapshotRecorder(root=raw_root)
-        monitor = RealtimeMonitor(
-            TencentRealtimeFetcher(),
-            catalog,
-            recorder=recorder,
+        session = create_realtime_session(
+            storage_dir=args.storage_dir,
+            raw_root=args.raw_root,
+            record=args.record,
         )
         while True:
-            frame = monitor.run(symbols_by_dataset)
-            sys.stdout.write(_format_report(frame, len(symbols), args.format))
+            frame = session.run_once()
+            sys.stdout.write(_format_report(frame, session.configured_count, args.format))
             sys.stdout.flush()
             if not args.watch:
                 break
             time.sleep(max(0.1, args.interval))
     except KeyboardInterrupt:
-        if recorder is not None:
-            recorder.flush(now=datetime.now(_SHANGHAI_TZ))
+        if session is not None:
+            session.flush(now=datetime.now(_SHANGHAI_TZ))
         sys.stdout.write("\n已停止实时监控。\n")
-    except (DataFetchError, FileNotFoundError) as exc:
-        if recorder is not None:
-            recorder.flush(now=datetime.now(_SHANGHAI_TZ))
-        _fail(str(exc))
+    except (DataFetchError, FileNotFoundError) as error:
+        if session is not None:
+            session.flush(now=datetime.now(_SHANGHAI_TZ))
+        _fail(str(error))
 
 
 def _format_report(frame: pl.DataFrame, configured_count: int, output_format: str) -> str:

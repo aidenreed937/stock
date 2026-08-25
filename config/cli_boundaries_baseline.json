@@ -1,0 +1,20 @@
+{
+  "version": "1.0",
+  "commands": {
+    "src/stock_cli/artifact_ops.py": {
+      "max_lines": 70
+    },
+    "src/stock_cli/audit.py": {
+      "max_lines": 120
+    },
+    "src/stock_cli/backfill.py": {
+      "max_lines": 109
+    },
+    "src/stock_cli/realtime.py": {
+      "max_lines": 145
+    },
+    "src/stock_cli/sync.py": {
+      "max_lines": 92
+    }
+  }
+}

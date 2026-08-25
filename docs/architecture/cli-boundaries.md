@@ -36,5 +36,10 @@ stock_cli → 领域包级 Facade → 领域内部实现
 ## 当前迁移状态
 
 - 已完成：`daily_review` → `stock_analytics.pipelines.daily_review`。
-- 当前批次：`features` → `stock_analytics.pipelines.features`；`multi_date` 的日期解析、Mart 刷新、产物生成、一致性校验和 latest 发布 → `stock_analytics.pipelines.multi_date`。
-- 后续批次：`backfill`、`audit`、`sync`、`realtime` 和 `artifact_ops`。
+- 已完成：`features` → `stock_analytics.pipelines.features`；`multi_date` 的日期解析、Mart 刷新、产物生成、一致性校验和 latest 发布 → `stock_analytics.pipelines.multi_date`。
+- 已完成：`backfill` → `stock_data.pipeline.backfill_runner`；`audit` → `stock_data.governance.audit.facade`；`sync` → `stock_data.pipeline.sync_runner`。
+- 已完成：`realtime` → `stock_analytics.realtime.runner`；`artifact_ops` → `stock_analytics.pipelines.artifact_ops`。
+
+兼容入口仍保留在 `stock_cli`，但只承担参数解析、结果展示和退出码转换。后续新增数据工程、实时监控或产物运维能力，应先落到对应 Facade，再由 CLI 接入。
+
+`make lint` 中的 `scripts/lint_cli_boundaries.py` 会对上述五个入口执行行数 ratchet；若入口变长，必须把逻辑下沉到领域 Facade，而不是直接扩大 CLI 基线。

@@ -1,67 +1,52 @@
-"""历史数据全量与断点续传回填 CLI 入口模块。
+"""历史数据回填 CLI 兼容入口。"""
 
-负责接收用户命令行参数、加载配置、委托 BackfillPlanner 进行任务规划，并驱动 HistoricalBackfiller。
-"""
+from __future__ import annotations
 
 import argparse
 import sys
-from concurrent.futures import ThreadPoolExecutor, as_completed
-from datetime import date, datetime, timedelta
-from pathlib import Path
 from typing import Any
 
-import yaml
-
-from stock_cli import backfill_batches as _backfill_batches
 from stock_core.config.loader import load_data_config
 from stock_core.utils.logger import logger
-from stock_data.core.task_registry import is_per_symbol_task
-from stock_data.pipeline.planner import BackfillPlanner, BackfillTask
+from stock_data.pipeline.backfill_runner import (
+    BackfillRequest,
+    run_backfill,
+)
+from stock_data.pipeline.backfill_runner import (
+    execute_planned_tasks as _execute_planned_tasks,
+)
+from stock_data.pipeline.backfill_runner import (
+    parse_backfill_date as _parse_date,
+)
+from stock_data.pipeline.backfill_runner import (
+    resolve_universe_symbols as _resolve_universe_symbols,
+)
+
+__all__ = [
+    "_execute_planned_tasks",
+    "_parse_date",
+    "_resolve_universe_symbols",
+    "main",
+]
 
 
 def _build_argument_parser() -> argparse.ArgumentParser:
-    """构建回填 CLI 参数解析器。"""
     parser = argparse.ArgumentParser(description="A 股全市场历史数据回填与断点续传引擎")
-    parser.add_argument(
-        "--start", "--start-date", dest="start_date", help="起始日期 (YYYY-MM-DD 或 today-N)"
-    )
-    parser.add_argument(
-        "--end", "--end-date", dest="end_date", help="截止日期 (YYYY-MM-DD 或 today)"
-    )
+    parser.add_argument("--start", "--start-date", dest="start_date")
+    parser.add_argument("--end", "--end-date", dest="end_date")
     parser.add_argument(
         "--source",
         "--data-source",
         dest="data_source",
         help="数据源 (tushare/yfinance/fred/lixinger)",
     )
-    parser.add_argument("--endpoint", dest="endpoint", help="接口名称 (逗号分隔)")
-    parser.add_argument(
-        "--symbol", dest="symbol", help="股票/指数/基金代码 (逗号分隔或 'watchlist')"
-    )
-    parser.add_argument("--config", dest="config", help="回填 YAML 配置文件路径")
-    parser.add_argument("--universe", dest="universe", help="股票池配置名称")
-    parser.add_argument(
-        "--force-refresh", action="store_true", help="是否强制拉取并覆盖本地已有数据"
-    )
-    parser.add_argument("--max-workers", type=int, help="并发 Worker 数量")
+    parser.add_argument("--endpoint", help="接口名称 (逗号分隔)")
+    parser.add_argument("--symbol", help="股票/指数/基金代码 (逗号分隔或 'watchlist')")
+    parser.add_argument("--config", help="回填 YAML 配置文件路径")
+    parser.add_argument("--universe", help="股票池配置名称")
+    parser.add_argument("--force-refresh", action="store_true")
+    parser.add_argument("--max-workers", type=int)
     return parser
-
-
-def _parse_date(d_str: str | None) -> date | None:
-    """解析多样化日期格式字符串。"""
-    if not d_str:
-        return None
-    d_clean = d_str.strip().lower()
-    if d_clean == "today":
-        return date.today()
-    if "today-" in d_clean:
-        import re
-
-        m = re.search(r"today-(\d+)", d_clean)
-        if m:
-            return date.today() - timedelta(days=int(m.group(1)))
-    d_clean = d_clean.replace("-", "")
-    return datetime.strptime(d_clean, "%Y%m%d").date()
 
 
 def _format_summary_table(summaries: list[dict[str, Any]]) -> None:
@@ -73,282 +58,45 @@ def _format_summary_table(summaries: list[dict[str, Any]]) -> None:
         f"{'交易日':<8} | {'已同步':<8} | {'已跳过':<8} | {'失败':<6}"
     )
     logger.info("-" * 105)
-    for s in summaries:
+    for summary in summaries:
         logger.info(
-            f"{s.get('data_source', '')!s: <10} | {s.get('endpoint', '')!s: <22} | "
-            f"{s.get('symbol', '')!s: <14} | {s.get('total_days', 0): <8} | "
-            f"{s.get('open_days', 0): <8} | {s.get('synced_days', 0): <8} | "
-            f"{s.get('skipped_days', 0): <8} | {s.get('failed_days', 0): <6}"
+            f"{summary.get('data_source', '')!s: <10} | "
+            f"{summary.get('endpoint', '')!s: <22} | "
+            f"{summary.get('symbol', '')!s: <14} | "
+            f"{summary.get('total_days', 0): <8} | "
+            f"{summary.get('open_days', 0): <8} | "
+            f"{summary.get('synced_days', 0): <8} | "
+            f"{summary.get('skipped_days', 0): <8} | "
+            f"{summary.get('failed_days', 0): <6}"
         )
     logger.info("=" * 105)
 
 
-def _execute_planned_tasks(
-    tasks: list[BackfillTask], *, force_refresh: bool, workers: int
-) -> list[dict[str, Any]]:
-    """以攒批事务模式驱动执行规划任务，按年度分块即时提交并支持波内并发。"""
-    import stock_data.pipeline.backfill as backfill_module
-
-    batch_contexts: dict[tuple[str, str], dict[str, Any]] = {}
-    task_groups: dict[tuple[str, str], list[tuple[int, BackfillTask]]] = {}
-    backfillers_by_index: dict[int, Any] = {}
-    summaries_by_index: dict[int, dict[str, Any]] = {}
-    try:
-        for idx, task in enumerate(tasks, 1):
-            if task.skip_existing and not force_refresh:
-                summaries_by_index[idx] = _skipped_task_summary(task)
-                logger.info(
-                    f"===> [{idx}/{len(tasks)}] 跳过已存在分块 [{task.data_source}/{task.endpoint}] "
-                    f"区间: [{task.start_date} ~ {task.end_date}]"
-                )
-                continue
-            context_key = (task.data_source, task.endpoint)
-            batch_context = batch_contexts.get(context_key)
-            if batch_context is None:
-                backfiller = _create_backfiller(backfill_module, task)
-                batch_context = _create_batch_context(backfiller)
-                batch_contexts[context_key] = batch_context
-            else:
-                batch_context["task_count"] += 1
-                backfiller = None
-            backfillers_by_index[idx] = backfiller
-            task_groups.setdefault(context_key, []).append((idx, task))
-
-        for context_key, grouped_tasks in task_groups.items():
-            batch_context = batch_contexts[context_key]
-            data_source, endpoint = context_key
-            can_parallel = workers > 1 and is_per_symbol_task(data_source, endpoint)
-            can_parallel = can_parallel and not any(task.is_chunked for _, task in grouped_tasks)
-            if can_parallel and len(grouped_tasks) > 1:
-                group_workers = min(workers, 8)
-                logger.info(
-                    f"任务组 [{data_source}/{endpoint}] 启用波内并发，"
-                    f"Worker 数: {group_workers}，任务数: {len(grouped_tasks)}"
-                )
-                with ThreadPoolExecutor(max_workers=group_workers) as executor:
-                    futures = {
-                        executor.submit(
-                            _execute_one_task,
-                            backfillers_by_index[idx]
-                            or _create_backfiller(
-                                backfill_module,
-                                task,
-                                pipeline=batch_context["pipeline"],
-                                fetcher=batch_context["fetcher"],
-                            ),
-                            task,
-                            task_position=(idx, len(tasks)),
-                            force_refresh=force_refresh,
-                            workers=workers,
-                        ): idx
-                        for idx, task in grouped_tasks
-                    }
-                    for future in as_completed(futures):
-                        summaries_by_index[futures[future]] = future.result()
-            else:
-                for idx, task in grouped_tasks:
-                    backfiller = backfillers_by_index[idx] or _create_backfiller(
-                        backfill_module,
-                        task,
-                        pipeline=batch_context["pipeline"],
-                        fetcher=batch_context["fetcher"],
-                    )
-                    if not batch_context["batch_open"]:
-                        batch_context["batch_targets"] = _enable_pipeline_batch_mode(backfiller)
-                        batch_context["batch_open"] = True
-                        batch_context["pending_commit"] = True
-                    summaries_by_index[idx] = _execute_one_task(
-                        backfiller,
-                        task,
-                        task_position=(idx, len(tasks)),
-                        force_refresh=force_refresh,
-                        workers=workers,
-                    )
-                    if task.is_chunked:
-                        _commit_completed_chunk(batch_context, task)
-    finally:
-        _commit_batch_contexts(batch_contexts)
-    return [summaries_by_index[idx] for idx in range(1, len(tasks) + 1)]
-
-
-def _create_backfiller(
-    backfill_module: Any,
-    task: BackfillTask,
-    *,
-    pipeline: Any | None = None,
-    fetcher: Any | None = None,
-) -> Any:
-    kwargs: dict[str, Any] = {
-        "data_source": task.data_source,
-        "endpoint": task.endpoint,
-        "symbol": task.symbol,
-    }
-    if pipeline is not None:
-        kwargs["pipeline"] = pipeline
-    if fetcher is not None:
-        kwargs["fetcher"] = fetcher
-    return backfill_module.HistoricalBackfiller(**kwargs)
-
-
-def _create_batch_context(backfiller: Any, enable_batch: bool = True) -> dict[str, Any]:
-    return _backfill_batches.create_batch_context(backfiller, enable_batch=enable_batch)
-
-
-def _skipped_task_summary(task: BackfillTask) -> dict[str, Any]:
-    return _backfill_batches.skipped_task_summary(task)
-
-
-def _execute_one_task(
-    backfiller: Any,
-    task: BackfillTask,
-    *,
-    task_position: tuple[int, int],
-    force_refresh: bool,
-    workers: int,
-) -> dict[str, Any]:
-    task_index, total_tasks = task_position
-    logger.info(
-        f"===> [{task_index}/{total_tasks}] 执行任务 [{task.data_source}/{task.endpoint}] "
-        f"标的: [{task.symbol or '全市场'}] 区间: [{task.start_date} ~ {task.end_date}]"
-    )
-    summary = backfiller.backfill_range(
-        task.start_date,
-        task.end_date,
-        force_refresh=force_refresh,
-        max_workers=workers,
-    )
-    summary_data: dict[str, Any] = dict(summary) if isinstance(summary, dict) else {}
-    summary_data["data_source"] = task.data_source
-    summary_data["endpoint"] = task.endpoint
-    summary_data["symbol"] = task.symbol or "全市场"
-    return summary_data
-
-
-def _commit_batch_targets(targets: list[Any]) -> None:
-    """保留旧模块的批次提交私有入口。"""
-    _backfill_batches.commit_batch_targets(targets)
-
-
-def _commit_batch_contexts(batch_contexts: dict[tuple[str, str], dict[str, Any]]) -> None:
-    _backfill_batches.commit_batch_contexts(batch_contexts)
-
-
-def _commit_completed_chunk(batch_context: dict[str, Any], task: BackfillTask) -> None:
-    _backfill_batches.commit_completed_chunk(batch_context, task)
-
-
-def _enable_pipeline_batch_mode(backfiller: Any) -> list[Any]:
-    return _backfill_batches.enable_pipeline_batch_mode(backfiller)
-
-
-def _resolve_universe_symbols(universe_name: str | None) -> str | None:
-    """从 Universe 配置文件中解析标的列表。"""
-    if not universe_name:
-        return None
-    uni_path = Path(f"config/universe/{universe_name}.yaml")
-    if not uni_path.exists():
-        return None
-    try:
-        with uni_path.open("r", encoding="utf-8") as f:
-            uni_data = yaml.safe_load(f)
-            if isinstance(uni_data, dict):
-                u_def = uni_data.get("universe", {})
-                syms = u_def.get("symbols", []) if isinstance(u_def, dict) else []
-                if isinstance(syms, list) and syms:
-                    return ",".join(str(s) for s in syms)
-                if isinstance(u_def, dict) and any(
-                    key in u_def for key in ("a_shares", "global", "macro")
-                ):
-                    return "watchlist"
-    except Exception as err:
-        logger.warning(f"加载 Universe 股票池 [{universe_name}] 失败: {err}")
-    return None
-
-
 def main() -> None:
-    """CLI 主入口函数。"""
-    import stock_data.pipeline.backfill as backfill_module
-
-    parser = _build_argument_parser()
-    args = parser.parse_args()
-
-    yaml_config = (
-        backfill_module._load_backfill_yaml_config(args.config)
-        if args.config
-        else backfill_module._load_backfill_yaml_config()
+    """解析参数并调用历史回填 Facade。"""
+    args = _build_argument_parser().parse_args()
+    request = BackfillRequest(
+        data_source=args.data_source,
+        endpoint=args.endpoint,
+        symbol=args.symbol,
+        universe=args.universe,
+        start_date=_parse_date(args.start_date),
+        end_date=_parse_date(args.end_date),
+        config=args.config,
+        force_refresh=args.force_refresh,
+        max_workers=args.max_workers,
     )
-    data_cfg = load_data_config()
-
-    data_source = (
-        args.data_source
-        or yaml_config.get("data_source")
-        or yaml_config.get("default_data_source", "tushare")
-    )
-    symbol = (
-        args.symbol
-        or _resolve_universe_symbols(args.universe)
-        or yaml_config.get("symbol")
-        or yaml_config.get("default_symbol")
-    )
-    raw_endpoints = (
-        args.endpoint or yaml_config.get("endpoint") or yaml_config.get("default_endpoint")
-    )
-    endpoint_list = (
-        [ep.strip() for ep in raw_endpoints.split(",") if ep.strip()] if raw_endpoints else None
-    )
-    force_refresh = args.force_refresh or yaml_config.get("force_refresh", False)
-
-    start_specified = bool(
-        args.start_date or yaml_config.get("start_date") or yaml_config.get("default_start_date")
-    )
-    start_d = (
-        _parse_date(args.start_date)
-        or _parse_date(yaml_config.get("start_date"))
-        or _parse_date(yaml_config.get("default_start_date"))
-        or date(2024, 1, 1)
-    )
-    end_d = (
-        _parse_date(args.end_date)
-        or _parse_date(yaml_config.get("end_date"))
-        or _parse_date(yaml_config.get("default_end_date"))
-        or date.today()
-    )
-
-    workers = args.max_workers or yaml_config.get("max_workers")
-    if workers is None and data_cfg:
-        workers = getattr(
-            data_cfg.concurrency,
-            f"{data_source}_max_workers",
-            data_cfg.concurrency.default_max_workers,
-        )
-    workers = workers or 1
-
-    tasks = BackfillPlanner.plan_tasks(
-        data_source=data_source,
-        endpoints=endpoint_list,
-        symbol=symbol,
-        start_date=start_d,
-        end_date=end_d,
-        start_specified=start_specified,
-        data_cfg=data_cfg,
-        force_refresh=force_refresh,
-    )
-
-    if not tasks:
-        logger.warning(f"数据源 [{data_source}] 未规划出任何有效回填任务")
-        return
-
-    logger.info(f"[{data_source}] 回填任务规划完成，共生成 {len(tasks)} 个原子回填任务。")
-    summaries = _execute_planned_tasks(tasks, force_refresh=force_refresh, workers=workers)
+    summaries = run_backfill(request, data_cfg=load_data_config())
     _format_summary_table(summaries)
-
     failed_items = [
         item
         for item in summaries
-        if isinstance(val := item.get("failed_days"), int | float) and val > 0
+        if isinstance(value := item.get("failed_days"), int | float) and value > 0
     ]
     failed_days = sum(
-        int(val) for item in failed_items if isinstance(val := item.get("failed_days"), int | float)
+        int(value)
+        for item in failed_items
+        if isinstance(value := item.get("failed_days"), int | float)
     )
     if failed_days:
         logger.error(

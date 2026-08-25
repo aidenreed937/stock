@@ -1,16 +1,15 @@
-"""统一增量数据更新 CLI 入口 (stock_cli.sync)。"""
+"""统一增量数据更新 CLI 兼容入口。"""
 
 from __future__ import annotations
 
 import argparse
 import sys
 from datetime import date
-from typing import Any
 
 import polars as pl
 
 from stock_core.utils.logger import logger
-from stock_data.pipeline.sync import DailySyncEngine, SyncExecutionResult, SyncTaskItem
+from stock_data.pipeline.sync_runner import SyncSourceRun, run_sync
 
 
 def _positive_int(value: str) -> int:
@@ -25,132 +24,65 @@ def _build_parser() -> argparse.ArgumentParser:
     parser.add_argument(
         "-s",
         "--source",
-        dest="source",
-        type=str,
         default="tushare",
-        help="数据源标识 (tushare / yfinance / lixinger / fred / alphavantage / all, 默认 tushare)",
+        help="数据源标识 (tushare / yfinance / lixinger / fred / alphavantage / all)",
     )
-    parser.add_argument(
-        "-d",
-        "--date",
-        dest="date",
-        type=str,
-        default=None,
-        help="指定拟增量目标日期 (YYYY-MM-DD, 默认当日)",
-    )
-    parser.add_argument(
-        "-e",
-        "--endpoint",
-        "--endpoints",
-        dest="endpoints",
-        type=str,
-        default=None,
-        help="指定增量端点列表 (逗号分隔，默认全量)",
-    )
-    parser.add_argument(
-        "--force",
-        dest="force",
-        action="store_true",
-        help="强制覆盖刷新 (忽略发布窗口与已有落盘水位)",
-    )
-    parser.add_argument(
-        "--no-audit",
-        dest="no_audit",
-        action="store_true",
-        help="增量完成后跳过自动质量对账门禁",
-    )
-    parser.add_argument(
-        "-w",
-        "--max-workers",
-        dest="max_workers",
-        type=_positive_int,
-        default=None,
-        help="最大并发工作线程数 (默认按 config/data.yaml 的数据源配置)",
-    )
+    parser.add_argument("-d", "--date", help="指定拟增量目标日期 (YYYY-MM-DD, 默认当日)")
+    parser.add_argument("-e", "--endpoint", "--endpoints", dest="endpoints")
+    parser.add_argument("--force", action="store_true")
+    parser.add_argument("--no-audit", action="store_true")
+    parser.add_argument("-w", "--max-workers", type=_positive_int, default=None)
     return parser
 
 
-def _render_summary(
-    src: str,
-    plan: list[SyncTaskItem],
-    results: list[SyncExecutionResult],
-    audit_res: dict[str, Any] | None,
-) -> bool:
-    """打印指定数据源的增量规划、执行报告及对账门禁结果。"""
-    plan_rows = [
-        {
-            "数据源": p.data_source,
-            "任务端点": p.endpoint,
-            "标的": p.symbol or "全市场",
-            "当前水位": str(p.watermark) if p.watermark else "无数据",
-            "规划区间": f"{p.start_date} ~ {p.end_date}",
-            "状态/原因": p.reason or p.status,
-        }
-        for p in plan
-    ]
-    if plan_rows:
-        logger.info(f"[{src.upper()}] 增量同步规划与就绪状态已生成 ({len(plan_rows)} 项)")
-
-    exec_failed = any(p.status == "FAILED" for p in plan)
-    if results:
-        exec_rows = []
-        for r in results:
-            if r.status == "FAILED":
-                exec_failed = True
-            symbol = getattr(r, "symbol", "")
-            exec_rows.append(
-                {
-                    "任务端点": r.endpoint,
-                    "标的": symbol or "全市场",
-                    "同步区间": f"{r.start_date} ~ {r.end_date}",
-                    "落盘记录数": r.records,
-                    "耗时(秒)": r.duration_s,
-                    "执行状态": r.status,
-                    "原因": r.error or "",
-                }
-            )
-        df_exec = pl.DataFrame(exec_rows)
+def _render_summary(run: SyncSourceRun) -> bool:
+    """输出单个数据源的执行报告。"""
+    source = run.source
+    if run.plan:
+        logger.info(f"[{source.upper()}] 增量同步规划与就绪状态已生成 ({len(run.plan)} 项)")
+    if run.results:
+        rows = [
+            {
+                "任务端点": result.endpoint,
+                "标的": getattr(result, "symbol", "") or "全市场",
+                "同步区间": f"{result.start_date} ~ {result.end_date}",
+                "落盘记录数": result.records,
+                "耗时(秒)": result.duration_s,
+                "执行状态": result.status,
+                "原因": result.error or "",
+            }
+            for result in run.results
+        ]
+        frame = pl.DataFrame(rows)
         with pl.Config(tbl_rows=100, tbl_width_chars=120, tbl_hide_dataframe_shape=True):
-            logger.info(f"\n--- [{src.upper()}] 增量执行统计报告 ---\n{df_exec}")
-
-    if audit_res:
-        rate = audit_res.get("integrity_rate", 0.0)
-        status_text = "PASSED" if rate >= 99.9 else "WARNING"
-        logger.info(f"[质量门禁] 自动对账结果: {status_text} (行情完整率: {rate:.2f}%)")
-
-    return exec_failed
+            logger.info(f"\n--- [{source.upper()}] 增量执行统计报告 ---\n{frame}")
+    if run.audit_result:
+        rate = run.audit_result.get("integrity_rate", 0.0)
+        status = "PASSED" if rate >= 99.9 else "WARNING"
+        logger.info(f"[质量门禁] 自动对账结果: {status} (行情完整率: {rate:.2f}%)")
+    return run.has_failure
 
 
 def main() -> None:
-    """增量同步命令行主入口。"""
-    parser = _build_parser()
-    args = parser.parse_args()
-
-    target_dt = date.fromisoformat(args.date) if args.date else date.today()
-    ep_list = (
-        [e.strip() for e in args.endpoints.split(",") if e.strip()] if args.endpoints else None
+    """解析参数并调用增量同步 Facade。"""
+    args = _build_parser().parse_args()
+    target_date = date.fromisoformat(args.date) if args.date else date.today()
+    endpoints = (
+        [endpoint.strip() for endpoint in args.endpoints.split(",") if endpoint.strip()]
+        if args.endpoints
+        else None
     )
-    sources = (
-        ["tushare", "yfinance", "lixinger", "fred", "alphavantage"]
-        if args.source == "all"
-        else [args.source]
+    logger.info(f"启动极速增量数据同步: 目标日=[{target_date}], 数据源=[{args.source}]")
+    runs = run_sync(
+        source=args.source,
+        target_date=target_date,
+        endpoints=endpoints,
+        force=args.force,
+        run_audit_gate=not args.no_audit,
+        max_workers=args.max_workers,
+        target_date_is_explicit=args.date is not None,
     )
-
-    logger.info(f"启动极速增量数据同步: 目标日=[{target_dt}], 数据源=[{args.source}]")
-    has_failure = False
-    for src in sources:
-        engine = DailySyncEngine(data_source=src, max_workers=args.max_workers)
-        plan, results, audit_res = engine.sync_daily(
-            target_date=target_dt,
-            endpoints=ep_list,
-            force=args.force,
-            run_audit_gate=not args.no_audit,
-            target_date_is_explicit=args.date is not None,
-        )
-        if _render_summary(src, plan, results, audit_res):
-            has_failure = True
-
-    if has_failure:
+    if any(_render_summary(run) for run in runs):
         logger.error("增量同步执行存在失败任务，请检查上述日志报告！")
         sys.exit(1)
     logger.info("增量数据同步完成，所有任务均已就绪并对齐。")

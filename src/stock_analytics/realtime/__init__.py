@@ -14,6 +14,7 @@ from stock_analytics.realtime.monitor import (
     RealtimeMonitor,
     build_realtime_baselines,
 )
+from stock_analytics.realtime.runner import RealtimeSession, create_realtime_session
 
 __all__ = [
     "CacheFreshness",
@@ -24,6 +25,8 @@ __all__ = [
     "MarketAggregateMonitor",
     "RealtimeBaseline",
     "RealtimeMonitor",
+    "RealtimeSession",
     "RealtimeSnapshotCache",
     "build_realtime_baselines",
+    "create_realtime_session",
 ]
