@@ -55,15 +55,11 @@ def compute_percentile(series: pl.Series, current_value: float) -> float | None:
     return round(float(less_or_equal) / len(valid) * 100.0, 1)
 
 
-def norm_to_billion(v: float | None) -> float | None:
-    """统一将金额/市值规格化为亿元。"""
+def norm_to_billion(v: float | None, precision: int = 2) -> float | None:
+    """统一将以'元'为单位的金额/市值规格化为'亿元'。"""
     if v is None:
         return None
-    if v > 1e9 or v < -1e9:
-        return round(v / 1e8, 2)
-    if v > 1e4 or v < -1e4:
-        return round(v / 1e4, 2)
-    return round(v, 2)
+    return round(v / 1e8, precision)
 
 
 def load_10y_treasury_yield(storage_dir: Path | str | None = None) -> float | None:

@@ -20,8 +20,20 @@ from stock_analytics.pipelines.stock_diagnostics.sources import (
     compute_percentile,
     load_10y_treasury_yield,
     load_screen_status,
+    norm_to_billion,
     resolve_symbol_meta,
 )
+
+
+def test_norm_to_billion() -> None:
+    assert norm_to_billion(None) is None
+    assert norm_to_billion(0.0) == 0.0
+    # 百万级 (如 -891 万元 = -8910000 元 -> -0.09 亿元)
+    assert norm_to_billion(-8910000.0) == -0.09
+    # 千万级 (如 5200 万元 = 52000000 元 -> 0.52 亿元)
+    assert norm_to_billion(52000000.0) == 0.52
+    # 百亿级 (如 563.46 亿元 = 56346000000 元 -> 563.46 亿元)
+    assert norm_to_billion(56346000000.0) == 563.46
 
 
 def test_compute_percentile() -> None:
