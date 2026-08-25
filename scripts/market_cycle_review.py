@@ -291,12 +291,27 @@ def _phase_summary(rows: list[dict[str, Any]], size: int = 10) -> list[dict[str,
     phases: list[dict[str, Any]] = []
     for index in range(0, len(rows), size):
         chunk = rows[index : index + size]
+        risk_counts = Counter(row.get("risk_level") or "低到中等" for row in chunk)
+        primary_risk = risk_counts.most_common(1)[0][0] if risk_counts else "低到中等"
+        if len(risk_counts) == 1:
+            risk_desc = primary_risk
+        else:
+            elevated = [
+                f"{count}天{level}"
+                for level, count in risk_counts.most_common()
+                if level != "低到中等"
+            ]
+            if elevated:
+                risk_desc = f"{primary_risk} (含{'、'.join(elevated)})"
+            else:
+                risk_desc = _format_counts(dict(risk_counts))
         phases.append(
             {
                 "start_date": chunk[0]["date"],
                 "end_date": chunk[-1]["date"],
                 "date_count": len(chunk),
                 "composite": _mean(chunk, "composite"),
+                "risk_level": risk_desc,
                 "fund_flow": _mean(chunk, "fund_flow"),
                 "technical": _mean(chunk, "technical"),
                 "sentiment": _mean(chunk, "sentiment"),
@@ -648,12 +663,13 @@ def _market_summary_lines(summary: dict[str, Any]) -> list[str]:
 
 def _phase_table(phases: list[dict[str, Any]]) -> list[str]:
     lines = [
-        "| 阶段 | 综合 | 资金 | 技术 | 情绪 | 20日上涨行业 | 60日上涨行业 |",
-        "|---|---:|---:|---:|---:|---:|---:|",
+        "| 阶段 | 综合 | 系统风险 | 资金 | 技术 | 情绪 | 20日上涨行业 | 60日上涨行业 |",
+        "|---|---:|---|---:|---:|---:|---:|---:|",
     ]
     for row in phases:
         lines.append(
             f"| {row['start_date']}..{row['end_date']} | {_fmt(row['composite'])} | "
+            f"{row.get('risk_level', '--')} | "
             f"{_fmt(row['fund_flow'])} | {_fmt(row['technical'])} | "
             f"{_fmt(row['sentiment'])} | {_fmt(row['positive_return_20d_count'])} | "
             f"{_fmt(row['positive_return_60d_count'])} |"

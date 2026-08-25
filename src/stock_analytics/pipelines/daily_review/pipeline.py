@@ -54,6 +54,10 @@ def run_daily_review(
         refresh_upstream=refresh_upstream,
     )
     temp_score, temp_band, dimensions = _build_temperature_summary(market_context)
+    risk_info = market_context.get("risk", {})
+    risk_dict = risk_info if isinstance(risk_info, dict) else {}
+    systemic_risk_level = risk_dict.get("level", "低到中等")
+    systemic_risk_message = risk_dict.get("message", "")
     position_advice = _build_position_advice(temp_score)
     items_context = _build_watchlist_items(scan_result)
 
@@ -61,6 +65,8 @@ def run_daily_review(
         "as_of_date": scan_result.as_of_date,
         "temperature_score": f"{temp_score:.2f}" if temp_score is not None else None,
         "temperature_band": temp_band,
+        "systemic_risk_level": systemic_risk_level,
+        "systemic_risk_message": systemic_risk_message,
         "dimension_items": dimensions,
         "dimension_summary": (
             " ｜ ".join(f"{key}: {value:.1f}分" for key, value in dimensions.items())

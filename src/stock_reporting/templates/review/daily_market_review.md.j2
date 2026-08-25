@@ -8,6 +8,8 @@
 
 ## 一、 宏观大盘与六维市场温度 (Macro Temperature)
 - **综合市场温度**: **{{ temperature_score | default('--') }} 分** (【{{ temperature_band | default('中性平衡') }}】)
+- **系统性风险等级**: **{{ systemic_risk_level | default('低到中等') }}**{% if systemic_risk_message %} ({{ systemic_risk_message }}){% endif %}
+
 {% if dimension_items %}
 - **六维分项明细**: {{ dimension_summary }}
 {% endif %}
