@@ -10,11 +10,56 @@
     "src/stock_cli/backfill.py": {
       "max_lines": 109
     },
+    "src/stock_cli/daily_review.py": {
+      "max_lines": 66
+    },
+    "src/stock_cli/diagnose.py": {
+      "max_lines": 83
+    },
+    "src/stock_cli/features.py": {
+      "max_lines": 69
+    },
+    "src/stock_cli/industry_diagnose.py": {
+      "max_lines": 93
+    },
+    "src/stock_cli/industry_structure.py": {
+      "max_lines": 87
+    },
+    "src/stock_cli/investor_brief.py": {
+      "max_lines": 91
+    },
+    "src/stock_cli/main.py": {
+      "max_lines": 22
+    },
+    "src/stock_cli/market_aggregate.py": {
+      "max_lines": 109
+    },
+    "src/stock_cli/market_context.py": {
+      "max_lines": 81
+    },
+    "src/stock_cli/market_temperature.py": {
+      "max_lines": 103
+    },
+    "src/stock_cli/multi_date.py": {
+      "max_lines": 89
+    },
+    "src/stock_cli/quant_brief.py": {
+      "max_lines": 97
+    },
     "src/stock_cli/realtime.py": {
       "max_lines": 145
     },
     "src/stock_cli/sync.py": {
       "max_lines": 92
+    },
+    "src/stock_cli/scan_watchlist.py": {
+      "max_lines": 91
+    },
+    "src/stock_cli/stock_screen.py": {
+      "max_lines": 101
+    },
+    "src/stock_cli/thesis_review.py": {
+      "max_lines": 109
     }
   }
 }

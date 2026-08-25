@@ -22,14 +22,20 @@ def test_main_execution_flow():
 
     with (
         patch("stock_cli.main.settings") as mock_settings,
-        patch("stock_cli.main.data_settings") as mock_data_settings,
-        patch("stock_cli.main.load_strategy_config") as mock_load_config,
-        patch("stock_cli.main.create_pipeline") as mock_create_pipeline,
-        patch("stock_cli.main.StrategyRunner") as mock_runner_cls,
+        patch("stock_strategy.application.data_settings") as mock_data_settings,
+        patch("stock_strategy.application.load_data_config") as mock_load_data_config,
+        patch("stock_strategy.application.load_strategy_config") as mock_load_config,
+        patch("stock_strategy.application.create_pipeline") as mock_create_pipeline,
+        patch("stock_strategy.application.StrategyRunner") as mock_runner_cls,
     ):
         mock_settings.app_name = "StockApp"
         mock_settings.environment = "test"
         mock_data_settings.data_source_mode = "tushare"
+        mock_data_config = MagicMock()
+        mock_data_config.default_source_mode = "tushare"
+        mock_data_config.backfill.default_start_date = "today-30d"
+        mock_data_config.backfill.default_end_date = "today"
+        mock_load_data_config.return_value = mock_data_config
 
         mock_config = MagicMock()
         mock_config.name = "TestStrategy"

@@ -25,7 +25,7 @@ stock_cli 负责参数、任务编排和终端交互
 | 基础契约 | `src/stock_core/` | 数据契约、领域模型、配置、常量、异常和运行时上下文 | 业务指标、报告和数据源请求 |
 | 数据工程 | `src/stock_data/` | Fetcher、TaskRegistry、RAW/Curated ETL、存储、质量、审计和数据目录 | 指标解释、策略信号和报告渲染 |
 | 分析计算 | `src/stock_analytics/` | 纯算子、通用指标、可复用特征、领域事实和分析管线 | 远程 API 采集和最终交易执行 |
-| 策略研究 | `src/stock_strategy/` | 策略上下文、信号生成、组合/回测运行器 | 自己维护数据源和分析层内部实现 |
+| 策略研究 | `src/stock_strategy/` | 策略上下文、信号生成、组合/回测运行器；`application` 提供研究应用 Facade | 自己维护数据源和分析层内部实现；应用 Facade 只调用公开数据管线 |
 | 报告视图 | `src/stock_reporting/` | 模板、解释规则、Markdown/JSON 渲染 | 重新计算事实和指标 |
 | 应用编排 | `src/stock_cli/` | 参数解析、任务组合、日志和终端输出 | 承载领域公式和业务规则 |
 | 兼容门面 | `src/stock/` | 旧调用路径兼容 | 新能力的主要落点 |
@@ -101,6 +101,7 @@ stock_cli 负责参数、任务编排和终端交互
 | 新增可复用特征 | `stock_analytics/features` | 需要版本、血缘、水位或物化宽表/长表 |
 | 新增稳定领域事实 | `stock_analytics/marts` | 有明确领域主键、Schema、增量写入和审计需求 |
 | 组合多个事实或生成评分/报告 | `stock_analytics/pipelines` | 需要日期窗口、业务规则、产物或 Manifest |
+| 运行策略研究应用 | `stock_strategy.application` | 需要加载策略/数据配置、准备历史数据并调用 `StrategyRunner` |
 | 给外部调用方提供统一读取入口 | `stock_analytics.api` | 只聚合 metrics/features，不绕过数据工程层 |
 
 当一个需求同时涉及多个层时，先拆成“事实来源、纯计算、物化事实、流程编排”四部分，再分别落点；不要用一个跨层模块解决所有问题。

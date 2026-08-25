@@ -36,7 +36,7 @@ graph TD
 | 数据工程 | `src/stock_data/` | Fetcher、ETL、Curated 存储、质量与审计 |
 | 分析计算 | `src/stock_analytics/` | primitives、metrics、features、marts 和 pipelines |
 | 报告视图 | `src/stock_reporting/` | 解释规则、模板、Markdown/JSON 渲染 |
-| 策略研究 | `src/stock_strategy/` | 策略生命周期、上下文和结构化信号 |
+| 策略研究 | `src/stock_strategy/` | 策略生命周期、上下文、研究应用 Facade 和结构化信号 |
 | 应用入口 | `src/stock_cli/` | 参数解析、任务编排和 CLI 输出 |
 
 `src/stock/` 仅提供向后兼容门面，不作为新功能的主要落点。
