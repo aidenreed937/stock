@@ -2,12 +2,9 @@
 
 from __future__ import annotations
 
-import argparse
-import importlib
 import json
 import math
 import shutil
-import sys
 from collections import Counter, defaultdict
 from dataclasses import dataclass
 from datetime import datetime
@@ -17,12 +14,7 @@ from typing import Any, cast
 
 import polars as pl
 
-try:
-    _report_consistency = importlib.import_module("scripts.report_consistency")
-except ModuleNotFoundError:  # pragma: no cover - 支持直接按文件路径执行
-    _report_consistency = importlib.import_module("report_consistency")
-_ConsistencyValidator = _report_consistency.ConsistencyValidator
-
+from stock_analytics.pipelines.report_consistency import ConsistencyValidator
 
 DIMENSION_KEYS: tuple[str, ...] = (
     "valuation",
@@ -69,51 +61,49 @@ class ArtifactDirs:
     quant: Path | None = None
 
 
-def main(argv: list[str] | None = None) -> int:
-    args = _parse_args(sys.argv[1:] if argv is None else argv)
-    analytics_root = Path(args.analytics_root)
-    output_root = Path(args.output_root)
-    dates = _resolve_dates(args, analytics_root)
+@dataclass(frozen=True, slots=True)
+class MarketCycleReviewRunResult:
+    """市场跨周期复盘一次运行的结果。"""
+
+    dates: tuple[str, ...]
+    payload: dict[str, Any]
+    paths: dict[str, Path]
+
+
+def run_market_cycle_review(
+    *,
+    start: str,
+    end: str,
+    analytics_root: Path | str = "data/analytics",
+    output_root: Path | str = "data/analytics/market_cycle_review",
+    skip_consistency: bool = False,
+    update_latest: bool = True,
+) -> MarketCycleReviewRunResult:
+    """从已落盘分析产物生成市场跨周期复盘。"""
+    analytics_path = Path(analytics_root)
+    dates = _resolve_dates(start, end, analytics_path)
     if not dates:
-        print("没有找到可复盘的日期")
-        return 1
+        raise FileNotFoundError(f"没有找到可复盘的日期: {start} ~ {end}")
 
-    if not args.skip_consistency:
-        consistency = _ConsistencyValidator(analytics_root).validate_dates(dates)
+    if not skip_consistency:
+        consistency = ConsistencyValidator(analytics_path).validate_dates(dates)
         if consistency.status != "passed":
-            print("report_consistency 未通过，停止生成跨周期复盘")
-            for issue in consistency.errors[:20]:
-                print(f"[ERROR] {issue.as_of_date} {issue.artifact}: {issue.message}")
-            return 1
+            details = "; ".join(
+                f"{issue.as_of_date} {issue.artifact}: {issue.message}"
+                for issue in consistency.errors[:20]
+            )
+            raise RuntimeError(f"report_consistency 未通过，停止生成跨周期复盘: {details}")
 
-    market_rows, panel_rows = _load_rows(analytics_root, dates)
+    market_rows, panel_rows = _load_rows(analytics_path, dates)
     payload = _build_payload(dates, market_rows, panel_rows)
     markdown = _render_markdown(payload)
-    paths = _write_artifacts(output_root, payload, markdown, update_latest=not args.no_latest)
-    print(f"market_cycle_review: passed dates={len(dates)}")
-    print(f"json: {paths['json']}")
-    print(f"markdown: {paths['markdown']}")
-    return 0
+    paths = _write_artifacts(Path(output_root), payload, markdown, update_latest=update_latest)
+    return MarketCycleReviewRunResult(tuple(dates), payload, paths)
 
 
-def _parse_args(argv: list[str]) -> argparse.Namespace:
-    parser = argparse.ArgumentParser(description="生成市场跨周期复盘产物")
-    parser.add_argument("--start", required=True, help="起始基准日 YYYY-MM-DD")
-    parser.add_argument("--end", required=True, help="结束基准日 YYYY-MM-DD")
-    parser.add_argument("--analytics-root", default="data/analytics", help="分析产物根目录")
-    parser.add_argument(
-        "--output-root",
-        default="data/analytics/market_cycle_review",
-        help="跨周期复盘产物根目录",
-    )
-    parser.add_argument("--skip-consistency", action="store_true", help="跳过一致性校验")
-    parser.add_argument("--no-latest", action="store_true", help="不刷新 latest")
-    return parser.parse_args(argv)
-
-
-def _resolve_dates(args: argparse.Namespace, analytics_root: Path) -> list[str]:
-    dates = _ConsistencyValidator(analytics_root).available_dates(args.start, args.end)
-    return [value for value in dates if args.start <= value <= args.end]
+def _resolve_dates(start: str, end: str, analytics_root: Path) -> list[str]:
+    dates = ConsistencyValidator(analytics_root).available_dates(start, end)
+    return [value for value in dates if start <= value <= end]
 
 
 def _load_rows(
@@ -818,7 +808,3 @@ def _to_float(value: Any) -> float:
 def _fmt(value: Any) -> str:
     number = _to_float(value)
     return f"{number:.2f}" if math.isfinite(number) else ""
-
-
-if __name__ == "__main__":
-    raise SystemExit(main())

@@ -1,4 +1,4 @@
-"""跨周期复盘脚本测试。"""
+"""市场跨周期复盘管线测试。"""
 
 from __future__ import annotations
 
@@ -6,7 +6,12 @@ import json
 from typing import TYPE_CHECKING, Any
 
 import polars as pl
-from scripts.market_cycle_review import _build_payload, _render_markdown, main
+
+from stock_analytics.pipelines.market_cycle_review import (
+    _build_payload,
+    _render_markdown,
+    run_market_cycle_review,
+)
 
 if TYPE_CHECKING:
     from pathlib import Path
@@ -52,20 +57,14 @@ def test_market_cycle_review_generates_payload_from_artifacts(tmp_path: Path) ->
         },
     )
 
-    result = main(
-        [
-            "--start",
-            "2026-08-13",
-            "--end",
-            "2026-08-14",
-            "--analytics-root",
-            str(analytics_root),
-            "--output-root",
-            str(output_root),
-        ]
+    result = run_market_cycle_review(
+        start="2026-08-13",
+        end="2026-08-14",
+        analytics_root=analytics_root,
+        output_root=output_root,
     )
 
-    assert result == 0
+    assert result.dates == ("2026-08-13", "2026-08-14")
     payload = json.loads((output_root / "latest" / "review.json").read_text(encoding="utf-8"))
     markdown = (output_root / "latest" / "review.md").read_text(encoding="utf-8")
     assert payload["date_count"] == 2

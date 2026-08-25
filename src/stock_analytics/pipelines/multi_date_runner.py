@@ -2,12 +2,10 @@
 
 from __future__ import annotations
 
-import importlib
 from collections.abc import Sequence
 from dataclasses import dataclass
 from datetime import date
 from pathlib import Path
-from typing import Any
 
 from stock_analytics.features.store import FeatureStore
 from stock_analytics.pipelines.artifact_contracts import RunClass, normalize_run_class
@@ -18,6 +16,7 @@ from stock_analytics.pipelines.multi_date import (
     _load_trade_dates,
     run_multi_date_artifacts,
 )
+from stock_analytics.pipelines.report_consistency import ConsistencyValidator
 from stock_data.catalog import DataCatalog
 
 
@@ -245,12 +244,8 @@ def _validate_latest(analytics_root: Path) -> str:
     return "已通过 latest 一致性校验"
 
 
-def _consistency_validator(analytics_root: Path) -> Any:
-    try:
-        module = importlib.import_module("scripts.report_consistency")
-    except ModuleNotFoundError:
-        module = importlib.import_module("report_consistency")
-    return module.ConsistencyValidator(analytics_root)
+def _consistency_validator(analytics_root: Path) -> ConsistencyValidator:
+    return ConsistencyValidator(analytics_root)
 
 
 def _plan_messages(

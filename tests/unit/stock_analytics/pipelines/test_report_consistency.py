@@ -1,4 +1,4 @@
-"""报告一致性脚本测试。"""
+"""报告一致性管线测试。"""
 
 from __future__ import annotations
 
@@ -6,7 +6,8 @@ import json
 from typing import TYPE_CHECKING
 
 import polars as pl
-from scripts.report_consistency import ConsistencyValidator, _latest_run_dir
+
+from stock_analytics.pipelines.report_consistency import ConsistencyValidator, _latest_run_dir
 
 if TYPE_CHECKING:
     from pathlib import Path

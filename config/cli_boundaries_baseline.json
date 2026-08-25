@@ -31,6 +31,9 @@
     "src/stock_cli/main.py": {
       "max_lines": 22
     },
+    "src/stock_cli/market_cycle_review.py": {
+      "max_lines": 49
+    },
     "src/stock_cli/market_aggregate.py": {
       "max_lines": 109
     },
@@ -45,6 +48,9 @@
     },
     "src/stock_cli/quant_brief.py": {
       "max_lines": 97
+    },
+    "src/stock_cli/report_consistency.py": {
+      "max_lines": 74
     },
     "src/stock_cli/realtime.py": {
       "max_lines": 145

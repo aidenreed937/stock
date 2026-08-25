@@ -202,8 +202,8 @@ position_policy / data_quality_notes / reading_notes`。
 | 7 | `Makefile` | 新增 `quant-brief` 目标 + `scan` 追加 |
 | 8 | `src/stock_analytics/pipelines/__init__.py`、`src/stock_reporting/templates/__init__.py`、`src/stock_reporting/__init__.py` | 导出接线 |
 | 9 | `src/stock_analytics/pipelines/multi_date.py` | 批量时追加 `quant_brief` 产物（第 4 类） |
-| 10 | `scripts/report_consistency.py` | `ARTIFACT_FILES` 加 `quant_brief`；`_check_*` 校验 quant 内容与输入链接；`_markdown_paths` 加文件；接入 `_check_forbidden_phrases` |
-| 11 | `scripts/market_cycle_review.py` | 读取并列示 quant 产物，缺失时保留可定位告警 |
+| 10 | `stock_analytics.pipelines.report_consistency` | `ARTIFACT_FILES` 加 `quant_brief`；`_check_*` 校验 quant 内容与输入链接；`_markdown_paths` 加文件；接入 `_check_forbidden_phrases` |
+| 11 | `stock_analytics.pipelines.market_cycle_review` | 读取并列示 quant 产物，缺失时保留可定位告警；由 `stock_cli.market_cycle_review` 提供 CLI 入口 |
 | 12 | 测试 | `tests/unit/stock_analytics/pipelines/quant_brief/{test_pipeline,test_interpretation}.py`、`test_reporting.py` 加渲染、`test_report_consistency.py`、`test_market_cycle_review.py` |
 
 > 新指标落点：`src/stock_analytics/pipelines/market_temperature/derived.py` + `market_temperature.yaml` 观察项。

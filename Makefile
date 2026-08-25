@@ -176,10 +176,10 @@ cleanup-analytics:
 	uv run python -m stock_cli.artifact_ops cleanup --root $(ROOT) $(if $(LATEST_ROOT),--latest-root $(LATEST_ROOT)) $(if $(OLDER_THAN_DAYS),--older-than-days $(OLDER_THAN_DAYS)) $(if $(RUN_CLASS),--run-class $(RUN_CLASS)) $(if $(NO_KEEP_LATEST),--no-keep-latest) $(if $(filter 1 true yes,$(APPLY)),--apply)
 
 report-consistency:
-	uv run python scripts/report_consistency.py $(if $(DATE),--date $(DATE)) $(if $(START),--start $(START)) $(if $(END),--end $(END)) $(if $(ANALYTICS_ROOT),--analytics-root $(ANALYTICS_ROOT)) $(if $(OUTPUT),--output $(OUTPUT))
+	uv run python -m stock_cli.report_consistency $(if $(DATE),--date $(DATE)) $(if $(START),--start $(START)) $(if $(END),--end $(END)) $(if $(ANALYTICS_ROOT),--analytics-root $(ANALYTICS_ROOT)) $(if $(OUTPUT),--output $(OUTPUT))
 
 market-cycle-review:
-	uv run python scripts/market_cycle_review.py --start $(START) --end $(END) $(if $(ANALYTICS_ROOT),--analytics-root $(ANALYTICS_ROOT)) $(if $(OUTPUT_ROOT),--output-root $(OUTPUT_ROOT)) $(if $(NO_LATEST),--no-latest) $(if $(SKIP_CONSISTENCY),--skip-consistency)
+	uv run python -m stock_cli.market_cycle_review --start $(START) --end $(END) $(if $(ANALYTICS_ROOT),--analytics-root $(ANALYTICS_ROOT)) $(if $(OUTPUT_ROOT),--output-root $(OUTPUT_ROOT)) $(if $(NO_LATEST),--no-latest) $(if $(SKIP_CONSISTENCY),--skip-consistency)
 
 diagnose:
 	uv run python -m stock_cli.diagnose --symbol $(SYMBOL) $(if $(DATE),--as-of $(DATE)) $(if $(FORMAT),--format $(FORMAT)) $(if $(STORAGE_DIR),--storage-dir $(STORAGE_DIR))
