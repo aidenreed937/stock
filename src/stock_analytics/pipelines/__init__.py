@@ -5,6 +5,7 @@
 
 from __future__ import annotations
 
+from stock_analytics.pipelines.daily_review import DailyReviewRunResult, run_daily_review
 from stock_analytics.pipelines.industry_diagnostics import run_industry_diagnostics
 from stock_analytics.pipelines.industry_structure import (
     IndustryStructureRunResult,
@@ -35,12 +36,14 @@ from stock_analytics.pipelines.thesis_review import run_thesis_review
 from stock_analytics.pipelines.watchlist_scanner import run_watchlist_scanner
 
 __all__ = [
+    "DailyReviewRunResult",
     "IndustryStructureRunResult",
     "InvestorBriefRunResult",
     "MarketAggregateRunResult",
     "MarketTemperatureRunResult",
     "QuantBriefRunResult",
     "StockScreenRunResult",
+    "run_daily_review",
     "run_industry_diagnostics",
     "run_industry_structure",
     "run_investor_brief",

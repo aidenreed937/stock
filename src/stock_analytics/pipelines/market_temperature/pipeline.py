@@ -24,6 +24,7 @@ from stock_analytics.pipelines.market_temperature.facts import (
     resolve_trade_window,
 )
 from stock_analytics.pipelines.market_temperature.scoring import build_scores
+from stock_analytics.pipelines.market_temperature.snapshot import build_market_state_snapshot
 from stock_reporting.interpretation.market_temperature.config import (
     DEFAULT_CONFIG_PATH,
     MarketTemperatureConfig,
@@ -43,6 +44,7 @@ class MarketTemperatureRunResult:
     manifest: dict[str, Any]
     facts: pl.DataFrame
     scores: dict[str, Any]
+    snapshot: dict[str, Any]
     report_markdown: str
     human_report_markdown: str
     report_json: dict[str, Any]
@@ -106,11 +108,17 @@ def run_market_temperature(
     watermarks = build_watermark_index(facts.to_dicts())
     manifest["watermarks"] = watermarks
     manifest["inputs"] = {"datasets": watermarks}
+    manifest["files"]["snapshot"] = paths.snapshot.name
     scores = build_scores(
         config,
         as_of_date=as_of_date,
         facts=facts,
         previous_scores=comparison.get("previous_scores") if comparison else None,
+    )
+    snapshot = build_market_state_snapshot(
+        manifest=manifest,
+        scores=scores,
+        config_path=config_path,
     )
     quality_report_json = build_quality_report(
         title=config.title,
@@ -152,6 +160,7 @@ def run_market_temperature(
             manifest=manifest,
             facts=facts,
             scores=scores,
+            snapshot=snapshot,
             report_markdown=report_markdown,
             report_json=report_json,
             human_report_markdown=human_report_markdown,
@@ -166,6 +175,7 @@ def run_market_temperature(
         manifest=manifest,
         facts=facts,
         scores=scores,
+        snapshot=snapshot,
         report_markdown=report_markdown,
         human_report_markdown=human_report_markdown,
         report_json=report_json,

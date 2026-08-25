@@ -51,6 +51,9 @@ market_temperature:
     assert result.paths.quality_report_md.exists()
     assert result.paths.quality_report_json.exists()
     assert result.paths.facts.exists()
+    assert result.paths.snapshot.exists()
+    assert result.snapshot["identity"]["cache_key"]
+    assert (output_root / "index" / "history.parquet").exists()
     assert (output_root / "latest" / "report.md").exists()
     assert (output_root / "latest" / "human_report.md").exists()
     assert (output_root / "latest" / "quality_report.md").exists()

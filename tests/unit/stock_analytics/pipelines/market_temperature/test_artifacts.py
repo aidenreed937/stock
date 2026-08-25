@@ -44,6 +44,21 @@ def test_write_artifacts_updates_run_and_latest(tmp_path) -> None:
             },
             facts=facts,
             scores={"composite": {"temperature": None}},
+            snapshot={
+                "schema_version": 1,
+                "as_of_date": "2026-08-14",
+                "run_id": "run_test",
+                "identity": {},
+                "composite": {"temperature": None, "status": "pending"},
+                "dimensions": [],
+                "systemic_risk": {
+                    "level": "不可判定",
+                    "status": "pending",
+                    "red_flags": [],
+                    "warnings": [],
+                    "offsets": [],
+                },
+            },
             report_markdown="# report\n",
             report_json={"title": "report"},
             human_report_markdown="# human report\n",
@@ -55,19 +70,23 @@ def test_write_artifacts_updates_run_and_latest(tmp_path) -> None:
     assert paths.manifest.exists()
     assert paths.facts.exists()
     assert paths.scores.exists()
+    assert paths.snapshot.exists()
     assert paths.report_md.exists()
     assert paths.human_report_md.exists()
     assert paths.quality_report_md.exists()
     assert paths.quality_report_json.exists()
     assert (paths.latest_dir / "manifest.json").exists()
     assert (paths.latest_dir / "facts.parquet").exists()
+    assert (paths.latest_dir / "snapshot.json").exists()
     assert (paths.latest_dir / "human_report.md").exists()
     assert (paths.latest_dir / "quality_report.md").exists()
+    assert (tmp_path / "index" / "history.parquet").exists()
     persisted_manifest = json.loads(paths.manifest.read_text(encoding="utf-8"))
     assert set(persisted_manifest["artifact_files"]) == {
         "manifest.json",
         "facts.parquet",
         "scores.json",
+        "snapshot.json",
         "report.md",
         "report.json",
         "human_report.md",

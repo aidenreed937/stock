@@ -269,6 +269,10 @@ def test_build_scores_adds_systemic_risk_summary() -> None:
     assert scores["systemic_risk"]["level"] == "中等偏高"
     assert "估值面 85.00 已进入高温" in scores["systemic_risk"]["red_flags"][0]
     assert any("技术面偏热" in item for item in scores["systemic_risk"]["warnings"])
+    trace = scores["systemic_risk"]["decision_trace"]
+    assert trace["rule_version"] == "systemic-risk-v1"
+    assert trace["final_level"] == "中等偏高"
+    assert trace["triggered_rules"][0]["rule_id"] == "valuation_gte_80"
 
 
 def test_build_scores_reduces_stale_metric_weight() -> None:

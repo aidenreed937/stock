@@ -9,6 +9,7 @@ from typing import TYPE_CHECKING, Any
 
 from stock_analytics.pipelines.artifact_contracts import RunClass
 from stock_analytics.pipelines.artifact_store import ArtifactRunPaths, ArtifactStore
+from stock_analytics.pipelines.market_temperature.history import update_history_index
 
 if TYPE_CHECKING:
     import polars as pl
@@ -26,6 +27,7 @@ class MarketTemperatureRunPaths:
     manifest: Path
     facts: Path
     scores: Path
+    snapshot: Path
     report_md: Path
     report_json: Path
     human_report_md: Path
@@ -41,6 +43,7 @@ class MarketTemperatureArtifactPayload:
     manifest: MappingLike
     facts: pl.DataFrame
     scores: MappingLike
+    snapshot: MappingLike
     report_markdown: str
     report_json: MappingLike
     human_report_markdown: str
@@ -70,6 +73,7 @@ def build_run_paths(
         manifest=generic.run_dir / "manifest.json",
         facts=generic.run_dir / "facts.parquet",
         scores=generic.run_dir / "scores.json",
+        snapshot=generic.run_dir / "snapshot.json",
         report_md=generic.run_dir / "report.md",
         report_json=generic.run_dir / "report.json",
         human_report_md=generic.run_dir / "human_report.md",
@@ -96,8 +100,14 @@ def write_artifacts(
         session.write_json("manifest.json", payload.manifest)
         session.write_parquet("facts.parquet", payload.facts)
         session.write_json("scores.json", payload.scores)
+        session.write_json("snapshot.json", payload.snapshot)
         session.write_text("report.md", payload.report_markdown)
         session.write_json("report.json", payload.report_json)
         session.write_text("human_report.md", payload.human_report_markdown)
         session.write_text("quality_report.md", payload.quality_report_markdown)
         session.write_json("quality_report.json", payload.quality_report_json)
+    update_history_index(
+        paths.root,
+        manifest=payload.manifest,
+        snapshot=payload.snapshot,
+    )

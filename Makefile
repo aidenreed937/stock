@@ -1,4 +1,4 @@
-.PHONY: help install lint lint-rust format test test-rust-plugins check run scan realtime market-aggregate market-temperature industry-structure investor-brief quant-brief multi-date screen-stocks report-consistency market-cycle-review artifact-index cleanup-analytics backfill baseline migrate-data migrate-curated cleanup-data backfill-accept repair-stock-daily-bar build-plugins
+.PHONY: help install lint lint-rust format test test-rust-plugins check run scan realtime market-aggregate market-temperature market-context industry-structure investor-brief quant-brief multi-date screen-stocks report-consistency market-cycle-review artifact-index cleanup-analytics backfill baseline migrate-data migrate-curated cleanup-data backfill-accept repair-stock-daily-bar build-plugins
 
 export UV_CACHE_DIR ?= .uv_cache
 export UV_PYTHON_INSTALL_DIR ?= .uv_python
@@ -20,6 +20,7 @@ help:
 	@echo "  make realtime - Run Tencent core watchlist realtime monitor (e.g., make realtime WATCH=1)"
 	@echo "  make market-aggregate - Run low-frequency A-share full-market aggregate monitor"
 	@echo "  make market-temperature - Generate market temperature artifacts under data/analytics"
+	@echo "  make market-context - Query market temperature context as compact JSON"
 	@echo "  make industry-structure - Generate SW industry structure artifacts under data/analytics"
 	@echo "  make multi-date - Generate and publish four analytics artifacts for multiple trade dates"
 	@echo "  make screen-stocks - Generate stock screening artifacts under data/analytics"
@@ -149,6 +150,9 @@ features-build:
 market-temperature:
 	uv run python -m stock_cli.market_temperature $(if $(DATE),--date $(DATE)) $(if $(COMPARE_DATE),--compare-date $(COMPARE_DATE)) $(if $(CONFIG),--config $(CONFIG)) $(if $(OUTPUT_ROOT),--output-root $(OUTPUT_ROOT)) $(if $(RUN_CLASS),--run-class $(RUN_CLASS)) $(if $(NO_LATEST),--no-latest) $(if $(SKIP_METRICS),--skip-metrics)
 
+market-context:
+	uv run python -m stock_cli.market_context $(if $(DATE),--as-of $(DATE)) $(if $(RUN_ID),--run-id $(RUN_ID)) $(if $(QUESTIONS),--questions $(QUESTIONS)) $(if $(COMPARE_DATE),--compare-date $(COMPARE_DATE)) $(if $(ARTIFACT_ROOT),--artifact-root $(ARTIFACT_ROOT)) $(if $(REBUILD_HISTORY),--rebuild-history)
+
 industry-structure:
 	uv run python -m stock_cli.industry_structure $(if $(DATE),--date $(DATE)) $(if $(CONFIG),--config $(CONFIG)) $(if $(OUTPUT_ROOT),--output-root $(OUTPUT_ROOT)) $(if $(RUN_CLASS),--run-class $(RUN_CLASS)) $(if $(NO_LATEST),--no-latest)
 
@@ -186,7 +190,7 @@ scan-watchlist:
 	uv run python -m stock_cli.scan_watchlist $(if $(DATE),--as-of $(DATE)) $(if $(FORMAT),--format $(FORMAT)) $(if $(CONFIG),--config $(CONFIG)) $(if $(STORAGE_DIR),--storage-dir $(STORAGE_DIR)) $(if $(SAVE),--save)
 
 daily-review:
-	uv run python -m stock_cli.daily_review $(if $(DATE),--as-of $(DATE)) $(if $(OUTPUT),--output-dir $(OUTPUT))
+	uv run python -m stock_cli.daily_review $(if $(DATE),--as-of $(DATE)) $(if $(OUTPUT),--output-dir $(OUTPUT)) $(if $(STORAGE_DIR),--storage-dir $(STORAGE_DIR)) $(if $(REFRESH_UPSTREAM),--refresh-upstream)
 
 thesis-review:
 	uv run python -m stock_cli.thesis_review --symbol $(SYMBOL) $(if $(THESIS_DATE),--thesis-date $(THESIS_DATE)) $(if $(DATE),--as-of $(DATE)) $(if $(FORMAT),--format $(FORMAT)) $(if $(STORAGE_DIR),--storage-dir $(STORAGE_DIR)) $(if $(NO_SAVE),--no-save)
