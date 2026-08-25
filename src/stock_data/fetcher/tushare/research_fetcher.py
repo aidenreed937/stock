@@ -205,3 +205,69 @@ def fetch_stk_holdernumber_data(
     if not frames:
         return pl.DataFrame()
     return post_process_tushare_frame(pd.concat(frames, ignore_index=True), meta, symbol)
+
+
+def fetch_hk_hold_data(
+    client: TuShareClient,
+    symbol: str,
+    start_date: date,
+    end_date: date,
+    meta: EndpointMeta,
+    extra_kwargs: dict[str, Any],
+) -> pl.DataFrame:
+    """拉取沪深港通持股明细（A股北向 + 港股南向）。
+
+    当按日拉取全市场时，自动遍历沪股通(1)、深股通(2)、港股通(3,4)并合并结果。
+    """
+    is_real_symbol = bool(symbol and symbol != meta.api_name)
+    query_kwargs = dict(extra_kwargs)
+    if is_real_symbol:
+        query_kwargs["ts_code"] = symbol
+
+    if is_real_symbol or "k_type" in query_kwargs or "code" in query_kwargs:
+        if start_date == end_date:
+            query_kwargs.setdefault("trade_date", start_date.strftime("%Y%m%d"))
+        else:
+            query_kwargs.setdefault("start_date", start_date.strftime("%Y%m%d"))
+            query_kwargs.setdefault("end_date", end_date.strftime("%Y%m%d"))
+        if meta.request_fields:
+            query_kwargs.setdefault("fields", meta.request_fields)
+        pdf = client.query(
+            "hk_hold",
+            pagination_limit=meta.max_rows_per_request,
+            **query_kwargs,
+        )
+        return post_process_tushare_frame(pdf, meta, symbol)
+
+    date_str = start_date.strftime("%Y%m%d")
+    frames: list[pd.DataFrame] = []
+    # k_type: 1=沪股通(北向), 2=深股通(北向), 3=港股通沪, 4=港股通深
+    for kt in ["1", "2", "3", "4"]:
+        req = dict(query_kwargs)
+        req["k_type"] = kt
+        if start_date == end_date:
+            req["trade_date"] = date_str
+        else:
+            req["start_date"] = start_date.strftime("%Y%m%d")
+            req["end_date"] = end_date.strftime("%Y%m%d")
+        if meta.request_fields:
+            req.setdefault("fields", meta.request_fields)
+        pdf = client.query(
+            "hk_hold",
+            pagination_limit=meta.max_rows_per_request,
+            **req,
+        )
+        if not pdf.empty:
+            frames.append(pdf)
+
+    if not frames:
+        return pl.DataFrame()
+    raw_df = post_process_tushare_frame(pd.concat(frames, ignore_index=True), meta, symbol)
+    if not raw_df.is_empty():
+        if "code" in raw_df.columns and "ts_code" not in raw_df.columns:
+            raw_df = raw_df.rename({"code": "ts_code"})
+        elif "code" in raw_df.columns and "ts_code" in raw_df.columns:
+            raw_df = raw_df.with_columns(pl.coalesce(["ts_code", "code"]).alias("ts_code")).drop(
+                "code"
+            )
+    return raw_df

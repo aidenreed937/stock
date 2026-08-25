@@ -216,3 +216,30 @@ def test_tushare_stock_fetcher_trade_cal_single_request() -> None:
     assert kwargs["start_date"] == "19900101"
     assert kwargs["end_date"] == "20260101"
     assert "trade_date" not in kwargs
+
+
+def test_tushare_stock_fetcher_hk_hold_k_type_merge() -> None:
+    mock_client = MagicMock()
+    # 模拟 k_type 1, 2, 3, 4 分别返回沪股通、深股通和港股通
+    mock_client.query.side_effect = [
+        pd.DataFrame(
+            {"ts_code": ["601877.SH"], "trade_date": ["20240102"], "vol": [1000], "ratio": [2.5]}
+        ),
+        pd.DataFrame(
+            {"ts_code": ["000001.SZ"], "trade_date": ["20240102"], "vol": [2000], "ratio": [3.5]}
+        ),
+        pd.DataFrame(
+            {"code": ["00700.HK"], "trade_date": ["20240102"], "vol": [3000], "ratio": [8.0]}
+        ),
+        pd.DataFrame(),
+    ]
+    fetcher = TuShareStockFetcher(client=mock_client)
+    df = fetcher.fetch_daily_bars_df(
+        symbol="",
+        start_date=date(2024, 1, 2),
+        end_date=date(2024, 1, 2),
+        endpoint="hk_hold",
+    )
+    assert len(df) == 3
+    assert mock_client.query.call_count == 4
+    assert set(df["ts_code"].to_list()) == {"601877.SH", "000001.SZ", "00700.HK"}

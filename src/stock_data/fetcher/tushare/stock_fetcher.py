@@ -21,6 +21,7 @@ from stock_data.fetcher.tushare.query_builder import (
 from stock_data.fetcher.tushare.registry import TUSHARE_API_REGISTRY, EndpointMeta
 from stock_data.fetcher.tushare.research_fetcher import (
     fetch_dividend_data,
+    fetch_hk_hold_data,
     fetch_stk_holdernumber_data,
     fetch_top10_floatholders_data,
 )
@@ -123,6 +124,8 @@ class TuShareStockFetcher(BaseDataFetcher):
             return fetch_stk_holdernumber_data(
                 self.client, symbol, start_date, end_date, meta, extra_kwargs, max_workers
             )
+        if endpoint == "hk_hold":
+            return fetch_hk_hold_data(self.client, symbol, start_date, end_date, meta, extra_kwargs)
         if not is_index_dailybasic_supported(endpoint, symbol):
             logger.info(f"TuShare index_dailybasic 不支持指数 [{symbol}]，自动跳过")
             return pl.DataFrame()
