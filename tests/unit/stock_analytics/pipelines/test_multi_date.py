@@ -1,114 +1,61 @@
-"""多日期产物共享上下文测试。"""
+"""多日期业务管线测试。"""
+
+from __future__ import annotations
 
 from datetime import date
 from pathlib import Path
-from types import SimpleNamespace
 
-import polars as pl
-
-import stock_analytics.pipelines.multi_date as multi_date
+from stock_analytics.pipelines import multi_date_runner as multi_date
 
 
-def test_run_multi_date_artifacts_serializes_and_shares_batch_state(
-    monkeypatch, tmp_path: Path
-) -> None:
-    dates = (date(2026, 8, 18), date(2026, 8, 19))
-    calls: list[tuple[str, date]] = []
-    catalog_calls: list[tuple[str, int]] = []
-
-    class _Catalog:
-        data_source = "tushare"
-
-        def __init__(self, **_: object) -> None:
-            pass
-
-        def latest_trade_dates(self, dataset: str, n: int = 1, **_: object):
-            catalog_calls.append((dataset, n))
-            return dates
-
-    class _Store:
-        def __init__(self, **_: object) -> None:
-            pass
-
-        def get_market_daily(self, **_: object) -> pl.DataFrame:
-            return pl.DataFrame({"trade_date": list(dates), "return_20d": [0.1, 0.2]})
-
-    def _market_temperature(**kwargs: object):
-        target = kwargs["target_date"]
-        assert isinstance(target, date)
-        calls.append(("market", target))
-        assert kwargs["update_latest"] is False
-        assert kwargs["market_daily"] is not None
-        assert kwargs["output_root"] == analytics_root / "market_temperature"
-        nonlocal shared_cache
-        if shared_cache is None:
-            shared_cache = kwargs["dataset_cache"]
-        assert kwargs["dataset_cache"] is shared_cache
-        assert "metric_contexts" not in kwargs
-        assert max(kwargs["trade_dates"]) <= target  # type: ignore[arg-type]
-        return SimpleNamespace(paths=SimpleNamespace(run_dir=tmp_path / f"market-{target}"))
-
-    def _industry_structure(**kwargs: object):
-        target = kwargs["target_date"]
-        assert isinstance(target, date)
-        calls.append(("industry", target))
-        assert kwargs["update_latest"] is False
-        assert kwargs["dataset_cache"] is shared_cache
-        assert kwargs["output_root"] == analytics_root / "industry_structure"
-        assert max(kwargs["trade_dates"]) <= target  # type: ignore[arg-type]
-        return SimpleNamespace(paths=SimpleNamespace(run_dir=tmp_path / f"industry-{target}"))
-
-    def _investor_brief(**kwargs: object):
-        target = kwargs["target_date"]
-        assert isinstance(target, date)
-        calls.append(("brief", target))
-        assert kwargs["update_latest"] is False
-        assert kwargs["market_run_id"] == f"market-{target}"
-        assert kwargs["industry_run_id"] == f"industry-{target}"
-        assert kwargs["output_root"] == analytics_root / "investor_brief"
-        assert kwargs["market_temperature_root"] == analytics_root / "market_temperature"
-        assert kwargs["industry_structure_root"] == analytics_root / "industry_structure"
-        return SimpleNamespace(paths=SimpleNamespace(run_dir=tmp_path / f"brief-{target}"))
-
-    def _quant_brief(**kwargs: object):
-        target = kwargs["target_date"]
-        assert isinstance(target, date)
-        calls.append(("quant", target))
-        assert kwargs["update_latest"] is False
-        assert kwargs["market_run_id"] == f"market-{target}"
-        assert kwargs["industry_run_id"] == f"industry-{target}"
-        assert kwargs["output_root"] == analytics_root / "quant_brief"
-        assert kwargs["storage_dir"] == tmp_path
-        assert kwargs["market_temperature_root"] == analytics_root / "market_temperature"
-        assert kwargs["industry_structure_root"] == analytics_root / "industry_structure"
-        return SimpleNamespace(paths=SimpleNamespace(run_dir=tmp_path / f"quant-{target}"))
-
-    shared_cache = None
-    analytics_root = tmp_path / "analytics"
-
-    monkeypatch.setattr(multi_date, "DataCatalog", _Catalog)
-    monkeypatch.setattr(multi_date, "FeatureStore", _Store)
-    monkeypatch.setattr(multi_date, "run_market_temperature", _market_temperature)
-    monkeypatch.setattr(multi_date, "run_industry_structure", _industry_structure)
-    monkeypatch.setattr(multi_date, "run_investor_brief", _investor_brief)
-    monkeypatch.setattr(multi_date, "run_quant_brief", _quant_brief)
-
-    summaries = multi_date.run_multi_date_artifacts(
-        [dates[1], dates[0], dates[0]],
-        storage_dir=tmp_path,
-        analytics_root=analytics_root,
-        update_latest=False,
+def _summary(tmp_path: Path, target_date: date) -> multi_date.MultiDateArtifactSummary:
+    return multi_date.MultiDateArtifactSummary(
+        as_of_date=target_date,
+        market_temperature_run_dir=tmp_path / "market",
+        industry_structure_run_dir=tmp_path / "industry",
+        investor_brief_run_dir=tmp_path / "brief",
+        quant_brief_run_dir=tmp_path / "quant",
     )
 
-    assert [summary.as_of_date for summary in summaries] == list(dates)
-    assert calls == [
-        ("market", dates[0]),
-        ("industry", dates[0]),
-        ("brief", dates[0]),
-        ("quant", dates[0]),
-        ("market", dates[1]),
-        ("industry", dates[1]),
-        ("brief", dates[1]),
-        ("quant", dates[1]),
-    ]
-    assert {dataset for dataset, _ in catalog_calls} == {"stock_daily_bar", "sw_daily"}
+
+def test_run_multi_date_orchestrates_generation_validation_and_publish(
+    monkeypatch,
+    tmp_path: Path,
+) -> None:
+    dates = [date(2026, 8, 18), date(2026, 8, 19)]
+    calls: list[str] = []
+    summaries = tuple(_summary(tmp_path, value) for value in dates)
+
+    def _run_generation(target_dates, **_kwargs):
+        calls.append("generate")
+        assert target_dates == dates
+        return summaries
+
+    monkeypatch.setattr(multi_date, "run_multi_date_artifacts", _run_generation)
+    monkeypatch.setattr(
+        multi_date,
+        "_validate_dates",
+        lambda *_args, **_kwargs: calls.append("validate") or "validated",
+    )
+    monkeypatch.setattr(
+        multi_date,
+        "_publish_summary",
+        lambda *_args, **_kwargs: calls.append("publish") or "published",
+    )
+    monkeypatch.setattr(
+        multi_date,
+        "_validate_latest",
+        lambda _root: calls.append("latest") or "latest validated",
+    )
+
+    result = multi_date.run_multi_date(
+        dates=dates,
+        analytics_root=tmp_path / "analytics",
+        publish_date=dates[0],
+        run_class="experiment",
+    )
+
+    assert calls == ["generate", "validate", "publish", "latest"]
+    assert result.summaries == summaries
+    assert result.messages == ("validated", "published", "latest validated")
+    assert result.published is True

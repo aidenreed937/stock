@@ -2,10 +2,10 @@
 
 from __future__ import annotations
 
+from collections.abc import Sequence
 from dataclasses import dataclass
 from datetime import date, timedelta
 from pathlib import Path
-from typing import TYPE_CHECKING
 
 from stock_analytics.features.store import FeatureStore
 from stock_analytics.pipelines.artifact_contracts import RunClass
@@ -16,9 +16,6 @@ from stock_analytics.pipelines.market_temperature.cache import DatasetFrameCache
 from stock_analytics.pipelines.market_temperature.facts_mart import MARKET_DAILY_FACT_COLUMNS
 from stock_analytics.pipelines.quant_brief import run_quant_brief
 from stock_data.catalog import DataCatalog
-
-if TYPE_CHECKING:
-    from collections.abc import Sequence
 
 
 @dataclass(frozen=True, slots=True)
@@ -41,11 +38,7 @@ def run_multi_date_artifacts(
     run_class: RunClass = "official",
     collect_metric_values: bool | None = None,
 ) -> tuple[MultiDateArtifactSummary, ...]:
-    """串行生成多日期四类产物，并共享 Mart 与数据集读取缓存。
-
-    Mart 由调用方在批量任务前重建一次；本函数只读取同一份
-    ``market_daily``，不会在每个日期再次构建或重复读取原始数据集。
-    """
+    """串行生成多日期四类产物，并共享 Mart 与数据集读取缓存。"""
     unique_dates = tuple(sorted(set(dates)))
     if not unique_dates:
         raise ValueError("多日期产物生成至少需要一个日期")

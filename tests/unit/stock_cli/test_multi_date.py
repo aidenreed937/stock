@@ -4,19 +4,10 @@ from __future__ import annotations
 
 from datetime import date
 from pathlib import Path
+from unittest.mock import MagicMock
 
-from stock_analytics.pipelines.multi_date import MultiDateArtifactSummary
+from stock_analytics.pipelines.multi_date_runner import MultiDateRunResult
 from stock_cli import multi_date
-
-
-def _summary(tmp_path: Path, target_date: date) -> MultiDateArtifactSummary:
-    return MultiDateArtifactSummary(
-        as_of_date=target_date,
-        market_temperature_run_dir=tmp_path / "market",
-        industry_structure_run_dir=tmp_path / "industry",
-        investor_brief_run_dir=tmp_path / "brief",
-        quant_brief_run_dir=tmp_path / "quant",
-    )
 
 
 def test_multi_date_cli_dry_run(capsys) -> None:
@@ -42,25 +33,14 @@ def test_multi_date_cli_generates_validates_and_publishes(
     tmp_path: Path,
 ) -> None:
     dates = [date(2026, 8, 18), date(2026, 8, 19)]
-    calls: list[tuple[str, object]] = []
-
-    def _run_generation(target_dates, **kwargs):
-        calls.append(("generate", (target_dates, kwargs)))
-        return tuple(_summary(tmp_path, value) for value in target_dates)
-
-    def _validate_dates(target_dates, **kwargs):
-        calls.append(("validate", (target_dates, kwargs)))
-
-    def _publish(summary, **kwargs):
-        calls.append(("publish", (summary.as_of_date, kwargs)))
-
-    def _validate_latest(root):
-        calls.append(("latest", root))
-
-    monkeypatch.setattr(multi_date, "_run_generation", _run_generation)
-    monkeypatch.setattr(multi_date, "_validate_dates", _validate_dates)
-    monkeypatch.setattr(multi_date, "_publish_summary", _publish)
-    monkeypatch.setattr(multi_date, "_validate_latest", _validate_latest)
+    run = MagicMock(
+        return_value=MultiDateRunResult(
+            summaries=(),
+            messages=("已通过一致性校验", "已发布 latest", "已通过 latest 一致性校验"),
+            published=True,
+        )
+    )
+    monkeypatch.setattr(multi_date, "run_multi_date", run)
 
     analytics_root = tmp_path / "analytics"
     result = multi_date.main(
@@ -78,8 +58,18 @@ def test_multi_date_cli_generates_validates_and_publishes(
     )
 
     assert result == 0
-    assert [item[0] for item in calls] == ["generate", "validate", "publish", "latest"]
-    assert calls[0][1][1]["analytics_root"] == analytics_root
-    assert calls[0][1][1]["run_class"] == "experiment"
-    assert calls[2][1][0] == dates[0]
-    assert calls[3][1] == analytics_root
+    run.assert_called_once_with(
+        dates=dates,
+        start=None,
+        end=None,
+        last_n=None,
+        refresh_mart=False,
+        mart_start=None,
+        storage_dir=None,
+        analytics_root=analytics_root,
+        publish_date=dates[0],
+        run_class="experiment",
+        collect_metric_values=None,
+        no_publish_latest=False,
+        dry_run=False,
+    )

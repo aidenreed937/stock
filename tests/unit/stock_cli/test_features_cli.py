@@ -1,32 +1,14 @@
 """Features CLI 目标路由测试。"""
 
 from pathlib import Path
-
-import polars as pl
+from unittest.mock import MagicMock
 
 from stock_cli import features
 
 
 def test_features_cli_builds_domain_marts(monkeypatch, tmp_path: Path) -> None:
-    calls: list[tuple[str, object]] = []
-
-    class _Catalog:
-        pass
-
-    class _Store:
-        pass
-
-    class _Builder:
-        def __init__(self, **kwargs: object) -> None:
-            calls.append(("init", kwargs))
-
-        def build_all(self, **kwargs: object) -> dict[str, pl.DataFrame]:
-            calls.append(("build_all", kwargs))
-            return {"convertible_bond_daily": pl.DataFrame({"trade_date": []})}
-
-    monkeypatch.setattr(features, "DataCatalog", lambda **_: _Catalog())
-    monkeypatch.setattr(features, "FeatureStore", lambda **_: _Store())
-    monkeypatch.setattr(features, "DomainMartBuilder", _Builder)
+    build = MagicMock()
+    monkeypatch.setattr(features, "build_features", build)
     monkeypatch.setattr(
         "sys.argv",
         [
@@ -45,12 +27,10 @@ def test_features_cli_builds_domain_marts(monkeypatch, tmp_path: Path) -> None:
 
     features.main()
 
-    assert calls[0][0] == "init"
-    assert calls[1] == (
-        "build_all",
-        {
-            "start_date": features.date(2026, 8, 1),
-            "end_date": features.date(2026, 8, 2),
-            "overwrite": False,
-        },
+    build.assert_called_once_with(
+        target="domain_marts",
+        start_date=features.date(2026, 8, 1),
+        end_date=features.date(2026, 8, 2),
+        overwrite=False,
+        storage_dir=tmp_path,
     )

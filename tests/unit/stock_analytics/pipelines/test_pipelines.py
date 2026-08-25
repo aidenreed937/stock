@@ -1,11 +1,9 @@
 """测试 analytics.pipelines 顶级导出与管线入口。"""
 
 from stock_analytics.pipelines import (
-    DailyReviewRunResult,
     IndustryStructureRunResult,
     InvestorBriefRunResult,
     MarketTemperatureRunResult,
-    run_daily_review,
     run_industry_diagnostics,
     run_industry_structure,
     run_investor_brief,
@@ -18,8 +16,6 @@ from stock_analytics.pipelines import (
 
 
 def test_pipelines_exports() -> None:
-    assert callable(run_daily_review)
-    assert DailyReviewRunResult is not None
     assert callable(run_market_temperature)
     assert callable(run_industry_structure)
     assert callable(run_investor_brief)

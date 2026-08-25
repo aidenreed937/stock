@@ -1,6 +1,6 @@
 # 系统架构概览
 
-本页是架构入口索引。稳定的包边界和数据流见 [`../architecture.md`](../architecture.md)；领域职责见 [`domain-responsibilities.md`](domain-responsibilities.md)；Analytics 依赖和导入边界见 [`analytics-boundaries.md`](analytics-boundaries.md)；数据存储细节见 [`../data_architecture.md`](../data_architecture.md)。
+本页是架构入口索引。稳定的包边界和数据流见 [`../architecture.md`](../architecture.md)；领域职责见 [`domain-responsibilities.md`](domain-responsibilities.md)；CLI 领域边界见 [`cli-boundaries.md`](cli-boundaries.md)；Analytics 依赖和导入边界见 [`analytics-boundaries.md`](analytics-boundaries.md)；数据存储细节见 [`../data_architecture.md`](../data_architecture.md)。
 
 ## 分层关系
 
