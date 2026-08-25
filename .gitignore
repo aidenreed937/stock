@@ -53,6 +53,7 @@ data/**/*
 # Scratch and generated output
 scratch/
 output/
+reports/
 .dsh/
 
 # Environment variables and local secrets
