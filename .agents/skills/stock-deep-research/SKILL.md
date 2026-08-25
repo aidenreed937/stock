@@ -9,31 +9,36 @@ description: 个股全景量化投研体检与深度分析技能。当用户询�
 
 1. **事实第一 (Ground Truth First)**：
    - 严禁凭大模型记忆虚构股票价格、PE/PB 估值、分位数、ROE 等指标；
-   - 必须通过运行诊断 CLI 读取本地 Curated 黄金表真实计算结果。
-2. **画像受控 (Persona Driven)**：
-   - 默认加载 `config/agent/user_persona.yaml`（稳健价值与估值配置型画像）；
-   - 所有操作建议必须符合画像设定的回撤容忍度、股息安全垫与防价值陷阱纪律。
-3. **高频微观数据印证 (GrokSearch-rs MCP)**：
-   - 遇到特定垂直行业（白酒批价/库存、锂电/光伏报价、大宗商品），使用 `grok-search-rs` MCP 获取权威第三方最新产业事实，并在研报中明确标注来源，填补季报数据时滞。
-4. **完整证据链 (Evidence Chain)**：
-   - 报告中所有量化结论必须附带数据来源、基准日期与历史分位口径。
+   - 基础量化与财务数据（营收、利润、现金流、ROE、估值、分位数）**必须且只能通过运行本地诊断 CLI 及读取本地 Curated 黄金表真实计算结果**。
+2. **检索负向边界约束 (Search Boundary & Negative Constraints)**：
+   - **严禁将本地已具备的结构化财务指标作为外部检索词**（包括：“业绩”、“财报”、“营收”、“净利润”、“ROE”、“PE”、“估值”、“分红”等）；
+   - 外部联网检索（`grok-search-rs` MCP）**仅限且只能针对本地黄金表缺失的产业高频微观事实**（如第三方现货报价/批价走势、渠道库存与动销调研、行业开工率、产业政策与进出口关税动态等）。
+3. **画像受控 (Persona Driven)**：
+   - 默认加载 `config/agent/user_persona.yaml`（稳健价值与估值配置型画像，持仓周期 6-24 个月）；
+   - 所有操作建议必须符合画像设定的回撤容忍度（15% 硬红线）、股息安全垫与防价值陷阱纪律。
+4. **完整证据链与协同对齐 (Evidence Chain & Cross-Validation)**：
+   - 报告中所有量化结论必须附带数据来源、基准日期与历史分位口径；
+   - 必须协同最新 `stock_screen` 排雷决策与多因子综合评分（质量/估值/动量/规模）进行全市场与行业内横向定位。
 
 ---
 
 ## 标准执行 SOP (6 步工作流)
 
-### Step 1: 提取真实数据快照
-执行本地诊断命令获取结构化体检数据：
-
-```bash
-UV_CACHE_DIR=.uv_cache UV_PYTHON_INSTALL_DIR=.uv_python uv run python -m stock_cli.diagnose --symbol <SYMBOL> --format json
-```
+### Step 1: 提取真实数据快照与全市场评分
+1. 执行本地诊断命令获取结构化体检数据：
+   ```bash
+   UV_CACHE_DIR=.uv_cache UV_PYTHON_INSTALL_DIR=.uv_python uv run python -m stock_cli.diagnose --symbol <SYMBOL> --format json
+   ```
+2. 协同关联 `stock_screen` 最新产物（`data/analytics/stock_screen/latest/`），提取该标的的：
+   - 排雷决策状态（`passed` / `warned` / `excluded`）与具体命中规则；
+   - 综合评分（`composite_score`）、全市场排名、申万二级行业排名；
+   - 四维细分得分：质量分（Quality）、估值分（Value）、动量分（Momentum）、规模分（Size）。
 
 ### Step 2: 排雷与合规首检 (Veto Check)
 - 检查 `screen.status`：
   - 若为 `excluded`：判定为【一票否决/高危回避】，直接提示排雷警示项，禁止给出买入/重仓建议；
-  - 若为 `warned`：在风险项中重点提示触发的预警规则；
-  - 若为 `passed`：正常进入下一步。
+  - 若为 `warned`：在风险项中重点提示触发的预警规则（如应收账款畸高、半年内股东频繁减持、近30天大额大宗交易折价等）；
+  - 若为 `passed`：正常进入下一步深度分析。
 
 ### Step 3: 基本面盈利质量与防“价值陷阱”审查
 - **成长失速与价值陷阱判定**：
@@ -42,26 +47,35 @@ UV_CACHE_DIR=.uv_cache UV_PYTHON_INSTALL_DIR=.uv_python uv run python -m stock_c
     1. 检查 `valuation.dividend_spread_10y`（股息率超额国债利差），超额 ≥ +2.0% 才可视为具备“类债底仓安全垫”；
     2. 首次建仓仓位严格压降至 ≤5%（分批建仓）；
     3. 设定严格右侧加仓确认信号（季报拐点或放量站上 MA60 均线）。
+- **资金流单位校准**：
+  - 资金流金额黄金表标准单位为“元”，对外展示以“亿元”为单位（除以 $10^8$）。
 
 ### Step 4: 垂直产业高频微观数据联网核验 (GrokSearch-rs MCP)
-遇到白酒、新能源、半导体、光伏等强周期或产业链驱动行业时：
-1. 直接调用原生 MCP 工具 `mcp__grok_search__web_search`（或 `web_search`）检索权威第三方产业高频事实：
-   - 白酒标的：检索“今日酒价 飞天茅台 批价 2026年8月”、“白酒 渠道库存 中秋动销”；
-   - 锂电标的：检索“碳酸锂 现货报价 SMM”、“动力电池 行业装车量”；
+遇到白酒、新能源、半导体、光伏、医药等特定垂直行业时：
+1. **精确构造高频产业检索词**（严格遵守负向约束，不带财务词）：
+   - 白酒标的：检索 `今日酒价 飞天茅台 批价 2026年8月`、`白酒 经销商渠道库存 动销走访`；
+   - 锂电标的：检索 `碳酸锂 现货报价 SMM`、`动力电池 月度装车量`；
+   - 光伏/电网标的：检索 `硅料组件 现货价格 InfoLink`、`国网 电网设备 招标中标份额`；
 2. 提取核心微观事实指标，在报告中作为【高频产业微观事实（注明检索来源与日期）】列示；
-3. 将高频产业批价与本地 `capital_flow.main_net_inflow_20d_billion`（近 20 日主力大单）及北向持仓变动进行交叉验证，彻底消除季报 100+ 天的时滞空白。
+3. 将高频产业批价与本地主力资金流及北向持仓变动进行交叉印证，消除财报发布周期的时滞空白。
 
 ### Step 5: 宏观温度与技术趋势联动
 - **大盘温度 (Market Context)**：
-  - 参考 `market_context.temperature_score` 与 `temperature_band`，弱市环境下控制仓位，避免逆势重仓；
+  - 参考 `market_context.temperature_score` 与 `temperature_band`，弱市环境下严格控制总仓位；
 - **均线技术面 (Technicals)**：
   - 关注 `technicals.close` 相对于 `technicals.ma20`、`technicals.ma60`、`technicals.ma120` 的排列状态与关键支撑阻力位。
 
-### Step 6: 构建 Bull / Base / Bear 三维情景推演与输出报告
-根据数据边界明确设定触发条件：
-- **Bull Case (乐观场景)**：基本面超预期，估值向历史中位数或中枢修复；
-- **Base Case (基准场景)**：保持现有盈利中枢，赚取企业内生增长与股息收益（贴合画像 12% 目标）；
-- **Bear Case (悲观场景)**：行业景气度下滑或大盘系统性风险，触发 15% 回撤下行止损边界。
+### Step 6: 构建定量 Bull / Base / Bear 三维情景推演与输出报告
+严禁拍脑袋预测，严格依据量化估值锚点推演：
+- **Bull Case (乐观场景)**：
+  - 目标价锚点 = 预测 EPS × 近 5 年 PE 历史 50%~75% 分位中枢（或行业中枢估值修复）；
+  - 触发条件：产业景气度超预期、海外/新业务高增、突破关键阻力位。
+- **Base Case (基准场景)**：
+  - 目标价锚点 = 现价 × (1 + 净利润内生增速) + 股息收益率；
+  - 收益来源：内生业绩增长与稳定分红收益（对齐画像 12% 目标）。
+- **Bear Case (悲观场景)**：
+  - 下行支撑锚点 = 静态 PB 历史低位支撑价 或 10Y 国债超额利差安全底线；
+  - 止损硬线：最大下行容忍度严格对齐画像设定的 **15% 回撤红线**（跌破即执行纪律减仓/离场）。
 
 ---
 
@@ -71,10 +85,11 @@ UV_CACHE_DIR=.uv_cache UV_PYTHON_INSTALL_DIR=.uv_python uv run python -m stock_c
 # 投研诊断报告：{股票名称} ({股票代码})
 
 > **分析基准日**: {as_of_date} | **用户画像**: 稳健价值与估值配置型 (持仓6-24个月)
-> **数据来源**: 本地 Curated 黄金表 + GrokSearch-rs 产业高频事实核验
+> **数据来源**: 本地 Curated 黄金事实表 + GrokSearch-rs 产业高频事实核验
 
 ## 一、 核心结论与操作建议
 - **综合评级**: 【积极配置 / 逢低布局 / 中性观望 / 建议回避】
+- **全市场量化定位**: 全市场排雷状态 **{screen_status}** | 多因子综合评分 **{composite_score}** (全市场第 {rank} 名，申万二级行业第 {ind_rank} 名)
 - **核心逻辑摘要**:
   1. ...
   2. ...
@@ -82,15 +97,17 @@ UV_CACHE_DIR=.uv_cache UV_PYTHON_INSTALL_DIR=.uv_python uv run python -m stock_c
 ## 二、 全景量化体检事实表
 | 维度 | 关键指标 | 事实数值 | 历史分位 / 状态 |
 | :--- | :--- | :--- | :--- |
-| **估值面** | PE (TTM) | {pe_ttm} | 近5年 {pe_p5y}% 分位 |
-| | PB / 股息率 | {pb} / {dv_ttm}% | 股息超额利差: {spread_str} |
+| **全市场评分** | 综合评分 / 排名 | {composite_score} 分 (第 {rank} 名) | 申万二级行业第 {ind_rank} 名 |
+| | 四维因子分位 | 质量: {q_score} \| 估值: {v_score} | 动量: {m_score} \| 规模: {s_score} |
+| **估值面** | PE (TTM) | {pe_ttm} | 近5年 {pe_p5y}% 分位 / 近10年 {pe_p10y}% 分位 |
+| | PB / 股息率 | {pb} / {dv_ttm}% | 10Y 国债超额利差: {spread_str} |
 | | 总市值 / 流通市值 | {total_mv} 亿 / {circ_mv} 亿 | 换手率: {turnover}% |
 | **基本面** | ROE (最新财报) | {roe}% | 报告期: {report_date} |
 | | 营收 / 净利增速 | {rev_yoy}% / {np_yoy}% | 毛利率 / 资产负债率: {margin}% / {debt}% |
-| | 前瞻业绩预告 | {latest_forecast} | 净利变动区间: ... |
+| | 经营现金流净额 | {ocf_amount} 亿元 | 净现比 / 盈利质量特征: ... |
 | **技术面** | 收盘价 / 涨跌幅 | {close} ({pct_chg}%) | 状态: {trend_desc} |
 | | 均线位置 | MA20: {ma20} | MA60: {ma60} / MA120: {ma120} |
-| | 资金微观代理 | 近20日主力大单: {flow_main} 亿 | 北向持股: {flow_hk}% |
+| | 资金微观代理 | 近20日主力大单: {flow_main} 亿元 | 筹码与大宗/减持状态: ... |
 | **排雷审查** | 风险排雷状态 | {screen_status} | 警示项: {reasons} |
 | **大盘环境** | 六维市场温度 | {temp_score} 分 | 阶段: {temp_band} |
 
@@ -99,22 +116,23 @@ UV_CACHE_DIR=.uv_cache UV_PYTHON_INSTALL_DIR=.uv_python uv run python -m stock_c
 - **盈利质量与成长性检视**: ...
 - **产业高频微观事实 (GrokSearch-rs 检索印证)**:
   - 批价 / 现货报价: ... (信源: ...)
-  - 渠道库存 / 终端动销: ... (信源: ...)
+  - 渠道库存 / 终端动销 / 行业开工率: ... (信源: ...)
 
 ## 四、 技术面与波段支撑阻力分析
-...
+- 均线多空形态与支撑阻力位分布...
 
-## 五、 Bull / Base / Bear 三维情景推演
-- **Bull Case (乐观)**: 目标区间... 触发条件...
-- **Base Case (基准)**: 目标区间... 收益来源...
-- **Bear Case (悲观)**: 下行边界... 止损与失效纪律 (对齐15%回撤红线)...
+## 五、 Bull / Base / Bear 三维情景推演 (定量估值锚点)
+- **Bull Case (乐观)**: 目标区间 {bull_price_range} 元 (预期收益率 {bull_ret}%) | 锚点: 预测 EPS × 5Y PE 中枢 ({pe_target}x) | 触发条件: ...
+- **Base Case (基准)**: 目标区间 {base_price_range} 元 (预期收益率 {base_ret}%) | 锚点: 现价 × (1 + 业绩增速) + 股息收益 | 收益来源: ...
+- **Bear Case (悲观)**: 下行边界 {bear_price_range} 元 (最大容忍回撤 {bear_drawdown}%) | 锚点: PB/利差历史支撑底线 | 止损与失效纪律: 严格对齐 15% 回撤红线...
 
 ## 六、 关键风险提示清单 (信息分级)
-1. ...
-2. ...
+1. **产业/公司级风险**: ...
+2. **宏观/行业级风险**: ...
+3. **市场交易级风险**: ...
 
 ## 七、 画像适配与投资纪律
 - 仓位建议: 首仓 <= 5% (分批建仓)
 - 加仓确认条件: ...
-- 止损硬线: ...
+- 止损硬线: 有效跌破 {stop_loss_price} 元即刻执行纪律减仓/离场
 ```
