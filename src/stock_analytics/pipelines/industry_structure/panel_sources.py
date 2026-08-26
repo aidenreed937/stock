@@ -160,7 +160,7 @@ def load_benchmark_return_20d(
     for symbol in _benchmark_symbol_candidates(benchmark):
         frame = load_dataset(
             catalog,
-            "index_daily",
+            "index_daily_bar",
             start_date=as_of_date - timedelta(days=120),
             end_date=as_of_date,
             symbols=[symbol],

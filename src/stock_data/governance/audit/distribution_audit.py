@@ -238,26 +238,27 @@ class CuratedDistributionAuditor:
         end_date: date | None = None,
     ) -> DistributionAuditReport:
         """审计指定 Curated 数据集的历史数值分布与相邻日阶跃。"""
-        logger.info(f"开始 Curated 数值分布审计: 数据集 [{dataset_name}], 数据源 [{data_source}]")
-        target_dir = self.base_dir / data_source
-        files = [
-            p
-            for p in target_dir.rglob("*.parquet")
-            if dataset_name in p.parts and not StorageCompat.is_artifact_path(p)
-        ]
-        frames = []
-        for p in files:
-            try:
-                frame = pl.read_parquet(p)
-                if not frame.is_empty():
-                    frames.append(StorageCompat.safe_normalize_frame(frame))
-            except Exception as exc:
-                logger.debug(f"跳过异常文件 [{p}]: {exc}")
+        resolved_dataset = StorageCompat.canonical_dataset_name(dataset_name, data_source)
+        logger.info(
+            f"开始 Curated 数值分布审计: 数据集 [{resolved_dataset}], 数据源 [{data_source}]"
+        )
+        catalog = self.catalog
+        if catalog is None or getattr(catalog, "data_source", data_source) != data_source:
+            catalog = DataCatalog(data_source=data_source, storage_dir=self.base_dir)
+        try:
+            df = catalog.load_dataset(
+                resolved_dataset,
+                start_date=start_date,
+                end_date=end_date,
+            )
+        except Exception as exc:
+            logger.warning(f"读取规范数据集 [{resolved_dataset}] 失败: {exc}")
+            df = pl.DataFrame()
 
-        if not frames:
+        if df.is_empty():
             logger.warning(f"未找到数据集 [{dataset_name}] 的有效数据")
             return DistributionAuditReport(
-                dataset_name=dataset_name,
+                dataset_name=resolved_dataset,
                 data_source=data_source,
                 total_rows=0,
                 total_dates=0,
@@ -265,15 +266,10 @@ class CuratedDistributionAuditor:
                 passed=False,
             )
 
-        df = pl.concat(frames, how="diagonal_relaxed")
         df = StorageCompat.safe_cast_date_col(df, "trade_date")
-        if start_date is not None:
-            df = df.filter(pl.col("trade_date") >= start_date)
-        if end_date is not None:
-            df = df.filter(pl.col("trade_date") <= end_date)
 
         scope_issue: str | None = None
-        if dataset_name == "sw_daily" and data_source == "tushare":
+        if resolved_dataset == "sw_daily" and data_source == "tushare":
             df, scope_issue = filter_sw_daily_scope(df, self.base_dir)
 
         if df.is_empty():
@@ -290,7 +286,7 @@ class CuratedDistributionAuditor:
             )
 
         target_cols = value_cols or DEFAULT_DATASET_NUMERIC_COLS.get(
-            dataset_name,
+            resolved_dataset,
             [
                 col
                 for col, dtype in df.schema.items()
@@ -304,7 +300,7 @@ class CuratedDistributionAuditor:
         max_date = cast("date | None", dates.max())
 
         report = DistributionAuditReport(
-            dataset_name, data_source, len(df), dates.n_unique(), (min_date, max_date)
+            resolved_dataset, data_source, len(df), dates.n_unique(), (min_date, max_date)
         )
 
         if scope_issue and min_date is not None:

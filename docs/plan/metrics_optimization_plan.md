@@ -45,13 +45,13 @@
 | :--- | :--- | :--- |
 | `option_put_call_volume_ratio` | 全市场期权认沽/认购成交量比 | `opt_daily`, `opt_basic` |
 | `option_put_call_oi_ratio` | 全市场期权认沽/认购持仓量比 | `opt_daily`, `opt_basic` |
-| `option_settlement_iv_proxy_median` | 期权结算价隐含波动率代理（中位数） | `opt_daily`, `opt_basic`, `fund_daily`, `index_daily`, `shibor` |
+| `option_settlement_iv_proxy_median` | 期权结算价隐含波动率代理（中位数） | `opt_daily`, `opt_basic`, `fund_daily`, `index_daily_bar`, `shibor` |
 | `option_settlement_iv_proxy_put_call_skew` | 期权结算价IV认沽认购偏度 | 同上 |
 
 - **PCR**：按日聚合 `P`/`C` 成交量与持仓量，比值在分母为 0 时置空（与
   `market_daily_ops` 一致）。
 - **IV 代理**：复用 `plugins/options.compute_fast_bs_iv`（Rust 插件或 Python 回退），
-  标的收盘价由 `fund_daily`（ETF 期权）∪ `index_daily`（指数期权）提供，无风险利率取
+  标的收盘价由 `fund_daily`（ETF 期权）∪ `index_daily_bar`（指数期权）提供，无风险利率取
   `shibor.3m`（百分数 → 小数），按日取 `_iv` 中位数与 `put_median - call_median` 偏度。
   口径与 `marts/option_volatility.settlement_iv_proxy` 一致（结算价 ≠ 买一卖一中间价，
   不冒充标准 VIX）。

@@ -365,6 +365,40 @@ def test_catalog_standardized_methods(tmp_path) -> None:
     assert not basic_df.is_empty()
 
 
+def test_catalog_alias_ignores_legacy_dataset_when_canonical_exists(tmp_path: Path) -> None:
+    legacy = tmp_path / "tushare" / "market=CN" / "index_daily" / "year=2026" / "month=08"
+    canonical = tmp_path / "tushare" / "market=CN" / "index_daily_bar"
+    legacy.mkdir(parents=True)
+    canonical.mkdir(parents=True)
+    pl.DataFrame(
+        {
+            "symbol": ["000001.SH"],
+            "trade_date": [date(2026, 8, 14)],
+            "close": [3000.0],
+        }
+    ).write_parquet(legacy / "data.parquet")
+    pl.DataFrame(
+        {
+            "symbol": ["000001.SH"],
+            "trade_date": [date(2026, 8, 25)],
+            "close": [3200.0],
+        }
+    ).write_parquet(canonical / "data.parquet")
+
+    catalog = DataCatalog(data_source="tushare", storage_dir=tmp_path)
+    alias = catalog.load_dataset("index_daily", columns=["symbol", "trade_date", "close"])
+    resolved = catalog.load_dataset("index_daily_bar", columns=["symbol", "trade_date", "close"])
+
+    assert_frame_equal(alias, resolved)
+    assert alias["trade_date"].to_list() == [date(2026, 8, 25)]
+    assert catalog.get_latest_trade_date("index_daily") == date(2026, 8, 25)
+    assert catalog.list_datasets().count("index_daily_bar") == 1
+    assert "index_daily" not in catalog.list_datasets()
+    summary = catalog.summary().filter(pl.col("dataset") == "index_daily_bar")
+    assert summary["latest_date"].to_list() == ["2026-08-25"]
+    assert summary["total_rows"].to_list() == [1]
+
+
 def test_lixinger_latest_trade_date_falls_back_to_canonical_date_column(tmp_path: Path) -> None:
     partition = tmp_path / "lixinger/market=CN/stock_daily_bar"
     partition.mkdir(parents=True, exist_ok=True)

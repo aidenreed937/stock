@@ -7,6 +7,7 @@ from typing import Any
 import polars as pl
 
 from stock_data.core.settings import data_settings
+from stock_data.storage.compat import StorageCompat
 
 # 记录数允许较少的特定宏观与结构数据集
 LOW_VOLUME_DATASETS = {
@@ -103,6 +104,10 @@ def run_master_audit(base_dir: str | Path | None = None) -> pl.DataFrame:
     records: list[dict[str, Any]] = []
     for f in files:
         src, dataset = _parse_source_dataset(f, curated_path)
+        canonical_dataset = StorageCompat.canonical_dataset_name(dataset, src)
+        storage_role = (
+            "canonical" if dataset.casefold() == canonical_dataset.casefold() else "legacy"
+        )
         year_val: int | None = None
         for part in f.parts:
             if part.startswith("year="):
@@ -187,6 +192,9 @@ def run_master_audit(base_dir: str | Path | None = None) -> pl.DataFrame:
                 {
                     "source": src,
                     "dataset": dataset,
+                    "canonical_dataset": canonical_dataset,
+                    "storage_role": storage_role,
+                    "selected_for_business_read": storage_role == "canonical",
                     "path": str(f),
                     "year": year_val,
                     "partition_year": partition_year,
@@ -205,6 +213,9 @@ def run_master_audit(base_dir: str | Path | None = None) -> pl.DataFrame:
                 {
                     "source": src,
                     "dataset": dataset,
+                    "canonical_dataset": canonical_dataset,
+                    "storage_role": storage_role,
+                    "selected_for_business_read": storage_role == "canonical",
                     "path": str(f),
                     "year": year_val,
                     "partition_year": partition_year,
@@ -223,7 +234,15 @@ def run_master_audit(base_dir: str | Path | None = None) -> pl.DataFrame:
 
     df_rec = pl.DataFrame(records)
     grouped = (
-        df_rec.group_by(["source", "dataset"])
+        df_rec.group_by(
+            [
+                "source",
+                "dataset",
+                "canonical_dataset",
+                "storage_role",
+                "selected_for_business_read",
+            ]
+        )
         .agg(
             pl.len().alias("分区数"),
             pl.col("symbols").explode(empty_as_null=True).drop_nulls().n_unique().alias("标的数"),

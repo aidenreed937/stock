@@ -112,26 +112,24 @@ def test_run_index_audit():
     index_df = pl.DataFrame(
         {
             "symbol": ["000001.SH", "399001.SZ"],
-            "trade_date": ["2026-08-01", "2026-08-01"],
+            "trade_date": [date(2026, 8, 1), date(2026, 8, 1)],
         }
     )
 
     with (
-        patch("pathlib.Path.exists", return_value=True),
-        patch(
-            "pathlib.Path.rglob",
-            return_value=[
-                Path(
-                    "data/curated/tushare/market=CN/index_daily_bar/year=2026/month=08/data.parquet"
-                )
-            ],
-        ),
-        patch("polars.read_parquet", return_value=index_df),
+        patch("stock_data.governance.audit.reconciliation.DataCatalog") as mock_catalog,
     ):
+        mock_catalog.return_value.load_dataset.return_value = index_df
         res = run_index_audit(date(2026, 8, 1), data_source="tushare")
         assert res["date"] == date(2026, 8, 1)
         assert res["actual_count"] == 2
         assert res["integrity_rate"] > 0
+        mock_catalog.return_value.load_dataset.assert_called_once_with(
+            "index_daily_bar",
+            start_date=date(2026, 8, 1),
+            end_date=date(2026, 8, 1),
+            columns=["symbol", "trade_date"],
+        )
 
 
 def test_run_index_audit_range():

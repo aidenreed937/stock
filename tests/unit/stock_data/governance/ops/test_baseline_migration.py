@@ -507,6 +507,37 @@ def test_backfill_acceptance_ignores_migration_backups(tmp_path: Path) -> None:
     assert report["duplicate_keys"] == 0
 
 
+def test_backfill_acceptance_prefers_canonical_dataset_over_legacy_alias(tmp_path: Path) -> None:
+    legacy = tmp_path / "index_daily" / "year=2026" / "month=08"
+    canonical = tmp_path / "index_daily_bar"
+    legacy.mkdir(parents=True)
+    canonical.mkdir(parents=True)
+    legacy_frame = pl.DataFrame(
+        {
+            "symbol": ["A"],
+            "trade_date": ["2026-08-14"],
+            "data_source": ["tushare"],
+            "source_endpoint": ["index_daily"],
+            "request_id": ["legacy"],
+            "updated_at": ["2026-08-14"],
+        }
+    )
+    canonical_frame = legacy_frame.with_columns(
+        pl.lit("2026-08-25").alias("trade_date"),
+        pl.lit("canonical").alias("request_id"),
+    )
+    legacy_frame.write_parquet(legacy / "data.parquet")
+    canonical_frame.write_parquet(canonical / "data.parquet")
+
+    report = accept_backfill(str(tmp_path), "index_daily")
+
+    assert report["canonical_dataset"] == "index_daily_bar"
+    assert report["storage_role"] == "canonical"
+    assert report["files"] == 1
+    assert report["rows"] == 1
+    assert report["duplicate_keys"] == 0
+
+
 def test_backfill_acceptance_passes_and_reports_duplicates(tmp_path: Path) -> None:
     curated = tmp_path / "stock_daily_bar"
     curated.mkdir()

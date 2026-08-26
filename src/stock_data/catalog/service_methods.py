@@ -38,6 +38,29 @@ from stock_data.catalog.watermarks import (
 from stock_data.storage.compat import StorageCompat
 
 
+def _available_dataset_entries(
+    physical_files: list[Path], data_source: str
+) -> list[CatalogDataset]:
+    physical_names = {_dataset_name(path).casefold() for path in physical_files}
+    canonical_names = {
+        StorageCompat.canonical_dataset_name(_dataset_name(path), data_source)
+        for path in physical_files
+    }
+    seen = {
+        canonical: [
+            path
+            for path in physical_files
+            if _dataset_name(path).casefold() == canonical.casefold()
+        ]
+        for canonical in sorted(canonical_names)
+        if canonical.casefold() in physical_names
+    }
+    return [
+        CatalogDataset(data_source=data_source, dataset=name, files=tuple(sorted(paths)))
+        for name, paths in sorted(seen.items())
+    ]
+
+
 class CatalogReadMixin:
     """提供目录文件发现、读取、水位和摘要操作。"""
 
@@ -55,13 +78,7 @@ class CatalogReadMixin:
 
     def available_datasets(self, market: str | None = None) -> list[CatalogDataset]:
         """列出当前数据源下所有可用数据集。"""
-        seen: dict[str, list[Path]] = {}
-        for path in self._parquet_files(market=market):
-            seen.setdefault(_dataset_name(path), []).append(path)
-        return [
-            CatalogDataset(data_source=self.data_source, dataset=name, files=tuple(sorted(paths)))
-            for name, paths in sorted(seen.items())
-        ]
+        return _available_dataset_entries(self._parquet_files(market=market), self.data_source)
 
     def load_dataset(
         self,

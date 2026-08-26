@@ -87,7 +87,7 @@ def _iv_context() -> MetricContext:
         {
             "opt_daily": opt_daily,
             "opt_basic": opt_basic,
-            "index_daily": index_daily,
+            "index_daily_bar": index_daily,
             "shibor": shibor,
         },
         data_source="tushare",
@@ -111,7 +111,7 @@ def test_default_registry_contains_derivatives_metrics() -> None:
         "opt_daily",
         "opt_basic",
         "fund_daily",
-        "index_daily",
+        "index_daily_bar",
         "shibor",
     )
 

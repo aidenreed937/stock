@@ -9,6 +9,7 @@ from typing import Any
 import polars as pl
 
 from stock_core.utils.logger import logger
+from stock_data.catalog import DataCatalog
 from stock_data.core.settings import data_settings
 from stock_data.core.task_registry import resolve_task
 from stock_data.fetcher.tushare.client import TuShareClient
@@ -811,34 +812,30 @@ def run_index_audit(
             logger.warning(f"数据源 [{data_source}] 未配置指数观察池")
         return {}
 
-    target_year = f"year={target_date.year:04d}"
-    target_month = f"month={target_date.month:02d}"
-    root_path = data_settings.curated_data_dir / data_source
-    matched_files = (
-        [
-            p
-            for p in root_path.rglob("*.parquet")
-            if ("index_daily" in p.parts or "index_daily_bar" in p.parts)
-            and "index_dailybasic" not in p.parts
-            and target_year in p.parts
-            and target_month in p.parts
-            and not _is_artifact_path(p)
-        ]
-        if root_path.exists()
-        else []
-    )
-
+    canonical_dataset = StorageCompat.canonical_dataset_name("index_daily", data_source)
+    read_status = "empty"
     try:
-        if matched_files:
-            df = pl.read_parquet(matched_files)
-            df = StorageCompat.safe_cast_date_col(df, "trade_date")
-            sub_df = df.filter(pl.col("trade_date") == target_date)
-            actual_indices = set(sub_df["symbol"].to_list())
-        else:
+        catalog = DataCatalog(
+            data_source=data_source,
+            storage_dir=data_settings.curated_data_dir,
+        )
+        df = catalog.load_dataset(
+            canonical_dataset,
+            start_date=target_date,
+            end_date=target_date,
+            columns=["symbol", "trade_date"],
+        )
+        if df.is_empty():
             actual_indices = set()
+        else:
+            actual_indices = {
+                str(symbol) for symbol in df.get_column("symbol").drop_nulls().to_list()
+            }
+        read_status = "ok" if actual_indices else "no_rows"
     except Exception as exc:
         logger.debug(f"读取指数行情对账失败: {exc}")
         actual_indices = set()
+        read_status = "read_error"
 
     missing = expected_indices - actual_indices
     integrity_rate = (
@@ -858,6 +855,8 @@ def run_index_audit(
         "missing_count": len(missing),
         "missing_indices": list(missing),
         "integrity_rate": integrity_rate,
+        "canonical_dataset": canonical_dataset,
+        "read_status": read_status,
     }
 
 

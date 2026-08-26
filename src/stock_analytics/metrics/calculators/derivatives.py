@@ -98,9 +98,9 @@ def _pcr_frame(context: MetricContext) -> pl.DataFrame:
 
 
 def _underlying_prices_frame(context: MetricContext) -> pl.DataFrame:
-    """加载期权标的收盘价（ETF 期权用 ``fund_daily``，指数期权用 ``index_daily``）。"""
+    """加载期权标的收盘价（ETF 期权用 ``fund_daily``，指数期权用 ``index_daily_bar``）。"""
     frames: list[pl.DataFrame] = []
-    for dataset in ("fund_daily", "index_daily"):
+    for dataset in ("fund_daily", "index_daily_bar"):
         frame = load_metric_dataset(context, dataset, columns=["symbol", "trade_date", "close"])
         if not frame.is_empty() and {"symbol", "trade_date", "close"}.issubset(frame.columns):
             frames.append(
@@ -265,7 +265,7 @@ def _spec(metric_id: str, name: str, datasets: tuple[str, ...]) -> MetricSpec:
     )
 
 
-_IV_DATASETS = ("opt_daily", "opt_basic", "fund_daily", "index_daily", "shibor")
+_IV_DATASETS = ("opt_daily", "opt_basic", "fund_daily", "index_daily_bar", "shibor")
 
 METRIC_SPECS: tuple[MetricSpec, ...] = (
     _spec(

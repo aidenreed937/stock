@@ -101,6 +101,27 @@ def test_curated_distribution_auditor_clean_data(tmp_path: Path) -> None:
     assert "sw_daily" in fmt
 
 
+def test_curated_distribution_auditor_uses_canonical_alias_dataset(tmp_path: Path) -> None:
+    legacy_dir = tmp_path / "tushare" / "market=CN" / "index_daily" / "year=2026" / "month=08"
+    canonical_dir = tmp_path / "tushare" / "market=CN" / "index_daily_bar"
+    legacy_dir.mkdir(parents=True)
+    canonical_dir.mkdir(parents=True)
+    pl.DataFrame(
+        {"symbol": ["000001.SH"], "trade_date": [date(2026, 8, 14)], "close": [3000.0]}
+    ).write_parquet(legacy_dir / "data.parquet")
+    pl.DataFrame(
+        {"symbol": ["000001.SH"], "trade_date": [date(2026, 8, 25)], "close": [3200.0]}
+    ).write_parquet(canonical_dir / "data.parquet")
+
+    report = CuratedDistributionAuditor(base_dir=tmp_path).audit_dataset(
+        "index_daily", data_source="tushare"
+    )
+
+    assert report.dataset_name == "index_daily_bar"
+    assert report.total_rows == 1
+    assert report.date_range == (date(2026, 8, 25), date(2026, 8, 25))
+
+
 def test_curated_distribution_auditor_detect_step_jump(tmp_path: Path) -> None:
     """测试审计器精准捕捉 10,000 倍单位阶跃异动。"""
     ds_dir = tmp_path / "tushare" / "market=CN" / "sw_daily" / "year=2026" / "month=08"

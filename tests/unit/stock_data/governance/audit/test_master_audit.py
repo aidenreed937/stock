@@ -32,6 +32,29 @@ def test_run_master_audit_with_data(tmp_path: Path) -> None:
     assert summary["审计错误数"][0] == 0
 
 
+def test_run_master_audit_marks_legacy_alias_separately(tmp_path: Path) -> None:
+    legacy_dir = tmp_path / "tushare" / "market=CN" / "index_daily" / "year=2026" / "month=08"
+    canonical_dir = tmp_path / "tushare" / "market=CN" / "index_daily_bar"
+    legacy_dir.mkdir(parents=True, exist_ok=True)
+    canonical_dir.mkdir(parents=True, exist_ok=True)
+    pl.DataFrame(
+        {"symbol": ["000001.SH"], "trade_date": ["2026-08-14"], "close": [3000.0]}
+    ).write_parquet(legacy_dir / "data.parquet")
+    pl.DataFrame(
+        {"symbol": ["000001.SH"], "trade_date": ["2026-08-25"], "close": [3200.0]}
+    ).write_parquet(canonical_dir / "data.parquet")
+
+    summary = run_master_audit(str(tmp_path))
+
+    legacy = summary.filter(pl.col("dataset") == "index_daily")
+    canonical = summary.filter(pl.col("dataset") == "index_daily_bar")
+    assert legacy["canonical_dataset"].to_list() == ["index_daily_bar"]
+    assert legacy["storage_role"].to_list() == ["legacy"]
+    assert legacy["selected_for_business_read"].to_list() == [False]
+    assert canonical["storage_role"].to_list() == ["canonical"]
+    assert canonical["selected_for_business_read"].to_list() == [True]
+
+
 def test_run_master_audit_counts_union_of_normalized_symbols(tmp_path: Path) -> None:
     first_dir = tmp_path / "tushare" / "market=CN" / "stock_daily_bar" / "year=2026" / "month=08"
     second_dir = tmp_path / "tushare" / "market=CN" / "stock_daily_bar" / "year=2026" / "month=09"

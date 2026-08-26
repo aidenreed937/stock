@@ -102,7 +102,7 @@ def test_benchmark_return_resolves_csi_suffix() -> None:
     trade_dates = [date(2026, 1, 1) + timedelta(days=index) for index in range(22)]
     catalog = _MemoryCatalog(
         {
-            "index_daily": pl.DataFrame(
+            "index_daily_bar": pl.DataFrame(
                 {
                     "symbol": ["000985.CSI"] * 22,
                     "trade_date": trade_dates,

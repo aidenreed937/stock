@@ -29,7 +29,7 @@ _DATASET_LABELS = {
     ("tushare", "express"): "业绩快报",
     ("tushare", "report_rc"): "卖方盈利预测",
     ("tushare", "index_classify"): "申万行业分类字典",
-    ("tushare", "index_daily"): "宽基指数行情",
+    ("tushare", "index_daily_bar"): "宽基指数行情",
     ("tushare", "index_member"): "申万行业成份股映射",
     ("tushare", "sw_daily"): "申万行业指数行情",
     ("tushare", "shibor"): "银行间短端利率",

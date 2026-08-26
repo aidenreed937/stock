@@ -47,7 +47,7 @@ industry_structure:
       quality_tier: core
       note: "申万行业分类字典，用于识别 SW2021 一级行业"
     - data_source: tushare
-      dataset: index_daily
+      dataset: index_daily_bar
       required: false
       max_lag_days: 3
       cadence: trading_daily

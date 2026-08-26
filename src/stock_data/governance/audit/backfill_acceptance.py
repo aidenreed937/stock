@@ -20,6 +20,11 @@ from stock_data.governance.audit.raw_gap import (
 from stock_data.governance.audit.raw_gap import (
     raw_gap_status as _raw_gap_status,
 )
+from stock_data.storage.compat import StorageCompat
+from stock_data.storage.dataset_paths import (
+    matching_dataset_files as _matching_dataset_files,
+)
+from stock_data.storage.dataset_paths import path_contains_dataset as _path_contains_dataset
 
 _KNOWN_PROVIDERS = {"tushare", "lixinger", "yfinance", "fred", "alphavantage"}
 
@@ -102,19 +107,15 @@ def _meta(endpoint: str, data_source: str = "tushare") -> Any:
     return None
 
 
-def _endpoint_aliases(endpoint: str) -> set[str]:
+def _endpoint_aliases(endpoint: str, data_source: str) -> set[str]:
     """返回验收所对应的项目任务目录名。"""
-    aliases = {endpoint}
+    aliases = {*StorageCompat.dataset_aliases(endpoint, data_source), endpoint}
     try:
         from stock_data.core.task_registry import resolve_task
 
-        for prov in ("tushare", "lixinger", "yfinance", "fred", "alphavantage"):
-            try:
-                task = resolve_task(prov, endpoint)
-                aliases.add(task.dataset)
-                aliases.add(task.task_name)
-            except Exception:
-                pass
+        task = resolve_task(data_source, endpoint)
+        aliases.add(task.dataset)
+        aliases.add(task.task_name)
     except Exception:
         pass
     return aliases
@@ -124,24 +125,6 @@ def _column_present(column: str, columns: list[str]) -> bool:
     """判断源端字段是否已映射为 Curated 标准字段。"""
     aliases = {"date": "trade_date", "ts_code": "symbol", "stockCode": "symbol"}
     return column in columns or aliases.get(column) in columns
-
-
-def _is_artifact(path: Path) -> bool:
-    """跳过迁移备份和临时文件，验收只针对当前有效数据。"""
-    return path.name.endswith((".bak.parquet", ".tmp.parquet"))
-
-
-def _matching_files(root: str | Path, aliases: set[str]) -> list[Path]:
-    """按数据集别名查找有效 Parquet 文件。"""
-    base = Path(root)
-    if not base.exists():
-        return []
-    files = [path for path in base.rglob("*.parquet") if not _is_artifact(path)]
-    return [
-        path
-        for path in files
-        if any(alias in path.parts or alias in path.stem for alias in aliases)
-    ]
 
 
 def _count_rows(path: Path) -> int:
@@ -217,12 +200,22 @@ def accept_backfill(
 
     audit_spec = get_audit_spec(endpoint, data_source)
     raw_exempt = audit_spec.raw_reconciliation_exempt
-    aliases = _endpoint_aliases(endpoint)
+    canonical_dataset = StorageCompat.canonical_dataset_name(endpoint, data_source)
+    aliases = _endpoint_aliases(endpoint, data_source)
     matched = [
         path
-        for path in _matching_files(root, aliases)
+        for path in _matching_dataset_files(
+            root, aliases, canonical_dataset, data_source=data_source
+        )
         if _path_provider(path) in {None, data_source}
     ]
+    storage_role = (
+        "canonical"
+        if any(_path_contains_dataset(path, canonical_dataset) for path in matched)
+        else "legacy"
+        if matched
+        else "missing"
+    )
     rows = 0
     duplicates = 0
     dates: set[str] = set()
@@ -306,7 +299,9 @@ def accept_backfill(
     if raw_root is not None and not raw_exempt:
         raw_files = [
             path
-            for path in _matching_files(raw_root, aliases)
+            for path in _matching_dataset_files(
+                raw_root, aliases, canonical_dataset, data_source=data_source
+            )
             if _path_provider(path) in {None, data_source}
         ]
         raw_rows = 0
@@ -429,7 +424,9 @@ def accept_backfill(
     return {
         "status": "PASSED" if passed else "FAILED",
         "endpoint": endpoint,
+        "canonical_dataset": canonical_dataset,
         "data_source": data_source,
+        "storage_role": storage_role,
         "files": matched_count,
         "rows": rows,
         "duplicate_keys": duplicates,
