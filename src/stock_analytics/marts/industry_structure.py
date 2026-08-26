@@ -7,27 +7,28 @@ from typing import TYPE_CHECKING, Any, cast
 
 import polars as pl
 
-from stock_analytics.pipelines.industry_structure.panel import (
+from stock_analytics.features.dataset_cache import CachedCatalog, DatasetFrameCache
+from stock_analytics.marts.shared.industry_structure.panel import (
     BASE_PANEL_SCHEMA,
     _industry_daily_frame,
     build_industry_panel_from_daily,
 )
-from stock_analytics.pipelines.industry_structure.panel_batch import _market_panel_batch
-from stock_analytics.pipelines.industry_structure.panel_batch_inputs import (
+from stock_analytics.marts.shared.industry_structure.panel_batch import _market_panel_batch
+from stock_analytics.marts.shared.industry_structure.panel_batch_inputs import (
     IndustryPanelBatchInputs,
 )
-from stock_analytics.pipelines.industry_structure.panel_metrics import (
+from stock_analytics.marts.shared.industry_structure.panel_metrics import (
     historical_percentile,
     with_market_columns,
     with_return_columns,
 )
-from stock_analytics.pipelines.market_temperature.cache import CachedCatalog, DatasetFrameCache
+from stock_analytics.primitives.units import YUAN_PER_YI
 from stock_core.contracts import MarketDataCatalog
 from stock_data.catalog import DataCatalog
 
 if TYPE_CHECKING:
     from stock_analytics.features.store import FeatureStore
-    from stock_reporting.interpretation.industry_structure.config import IndustryStructureConfig
+    from stock_core.config.analytics_industry_structure import IndustryStructureConfig
 
 
 INDUSTRY_DAILY_MART_NAME = "industry_daily"
@@ -72,7 +73,7 @@ def build_industry_daily_frame(
     daily = with_return_columns(base, windows)
     daily = with_market_columns(daily, config.main_window)
     daily = daily.with_columns(
-        (pl.col("amount") / 1e8).alias("amount_yi"),
+        (pl.col("amount") / YUAN_PER_YI).alias("amount_yi"),
         pl.col("tcr").cast(pl.Float64, strict=False).alias("tcr"),
     )
     daily = _add_tcr_percentile(daily)

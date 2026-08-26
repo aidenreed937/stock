@@ -1,5 +1,6 @@
 """个股量化诊断核心引擎单元测试。"""
 
+import json
 from datetime import date
 from pathlib import Path
 
@@ -70,10 +71,23 @@ def test_missing_treasury_data_does_not_invent_a_rate(
 def test_corrupt_screen_snapshot_is_unscreened(
     monkeypatch: pytest.MonkeyPatch, tmp_path: Path
 ) -> None:
-    snapshot_dir = tmp_path / "data/analytics/stock_screen/latest"
-    snapshot_dir.mkdir(parents=True)
-    (snapshot_dir / "excluded.csv").write_text("symbol\n600519.SH\n", encoding="utf-8")
-    monkeypatch.chdir(tmp_path)
+    artifact_root = tmp_path / "data/analytics/stock_screen"
+    run_dir = artifact_root / "runs/as_of=2026-08-20/run_20260820_000000"
+    run_dir.mkdir(parents=True)
+    (run_dir / "excluded.csv").write_text("symbol\n600519.SH\n", encoding="utf-8")
+    (run_dir / "manifest.json").write_text(
+        json.dumps(
+            {
+                "artifact_type": "stock_screen",
+                "artifact_root": str(artifact_root),
+                "run_id": run_dir.name,
+                "as_of_date": "2026-08-20",
+                "run_class": "official",
+                "artifact_files": ["manifest.json", "excluded.csv"],
+            }
+        ),
+        encoding="utf-8",
+    )
     from stock_analytics.pipelines.stock_diagnostics import sources
 
     def _raise_read_csv(_path: Path) -> pl.DataFrame:
@@ -81,10 +95,24 @@ def test_corrupt_screen_snapshot_is_unscreened(
 
     monkeypatch.setattr(sources.pl, "read_csv", _raise_read_csv)
 
-    result = load_screen_status("600519.SH")
+    result = load_screen_status(
+        "600519.SH",
+        artifact_root=artifact_root,
+        as_of_date=date(2026, 8, 20),
+    )
 
     assert result.status == "unscreened"
     assert result.reasons == ["排雷快照读取失败: excluded.csv"]
+
+
+def test_missing_screen_snapshot_is_unavailable(tmp_path: Path) -> None:
+    result = load_screen_status(
+        "600519.SH",
+        artifact_root=tmp_path / "data/analytics/stock_screen",
+    )
+
+    assert result.status == "unavailable"
+    assert result.reasons
 
 
 def test_resolve_symbol_meta_with_mock(monkeypatch: pytest.MonkeyPatch) -> None:

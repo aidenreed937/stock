@@ -17,13 +17,12 @@ from stock_analytics.metrics.spec import (
     MetricDomain,
     MetricSpec,
 )
+from stock_analytics.primitives.units import YUAN_PER_YI
 
 #: 行业分类体系（申万 2021）。
 _CLASSIFICATION = "SW2021"
 #: 一级行业层级。
 _INDUSTRY_LEVEL = "L1"
-#: 全市场市值换算：元 -> 亿元。
-_YI_PER_YUAN: float = 1e8
 #: 一级行业截面必需的行情列。
 _REQUIRED_COLUMNS = ("trade_date", "symbol", "classification", "industry_level")
 #: 指标 ID 到 sw_daily 源列名的映射。
@@ -110,7 +109,7 @@ def calculate_industry_metric(context: MetricContext, spec: MetricSpec) -> pl.Da
     metric_frame = frame
     if spec.metric_id == "sw_industry_amount_yi":
         metric_frame = frame.with_columns(
-            (pl.col(source_column) / _YI_PER_YUAN).alias(spec.metric_id)
+            (pl.col(source_column) / YUAN_PER_YI).alias(spec.metric_id)
         )
     else:
         metric_frame = frame.rename({source_column: spec.metric_id})

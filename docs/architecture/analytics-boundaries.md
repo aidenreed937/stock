@@ -10,6 +10,7 @@
 metrics   ─┐
 features  ─┼──> primitives
 marts     ─┘
+plugins   ───> primitives
 
 pipelines ───> metrics / features / marts / reporting
 ```
@@ -19,6 +20,8 @@ pipelines ───> metrics / features / marts / reporting
 - `primitives` 读取 `DataCatalog`、`FeatureStore` 或写物理文件；
 - `metrics` 依赖 `features` 或直接写入 `FeatureStore`；
 - `features` 依赖 `pipelines`；
+- `marts` 依赖 `pipelines` 或 `realtime`；
+- `plugins` 依赖 `marts` 或 `pipelines`；
 - `pipelines` 直接遍历 `data/` 下的 Parquet 物理目录；
 - `stock_cli`、`stock_strategy` 直接导入 `pipeline.py`、`scoring.py` 等实现模块。
 
@@ -48,3 +51,6 @@ from stock_analytics.primitives import calculate_rsi
 - 叶子模块不得反向导入门面模块，避免循环依赖；
 - 兼容门面只做编排和重导出，不新增业务规则；
 - 先用现有测试锁定行为，再抽取共享批处理上下文。
+
+市场温度和行业结构的共享事实计算位于 `marts/shared/`；原
+`pipelines.<domain>` 下的同名模块只保留兼容导出，业务管线仍负责日期窗口、评分和产物编排。

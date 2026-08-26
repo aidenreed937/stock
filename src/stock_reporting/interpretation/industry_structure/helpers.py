@@ -4,7 +4,7 @@ from __future__ import annotations
 
 from typing import TYPE_CHECKING, Any
 
-from stock_reporting.interpretation.industry_structure.config import IndustryThresholdsConfig
+from stock_core.config.analytics_industry_structure import IndustryThresholdsConfig
 
 if TYPE_CHECKING:
     import polars as pl

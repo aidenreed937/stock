@@ -19,7 +19,7 @@ from stock_analytics.pipelines.industry_structure.panel import load_industry_pan
 from stock_analytics.pipelines.industry_structure.scoring import score_industry_panel
 from stock_analytics.pipelines.manifest import build_manifest_base, build_watermark_index
 from stock_analytics.pipelines.market_temperature.cache import DatasetFrameCache
-from stock_reporting.interpretation.industry_structure.config import (
+from stock_core.config.analytics_industry_structure import (
     DEFAULT_CONFIG_PATH,
     IndustryStructureConfig,
     load_industry_structure_config,

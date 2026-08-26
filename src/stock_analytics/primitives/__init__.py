@@ -64,11 +64,16 @@ from stock_analytics.primitives.neutralization import (
     cross_sectional_neutralize,
     cross_sectional_orthogonalize,
 )
+from stock_analytics.primitives.option_volatility import (
+    black_scholes_price,
+    settlement_implied_volatility,
+)
 from stock_analytics.primitives.rotation import (
     calculate_momentum_acceleration,
     calculate_rps,
     calculate_weighted_momentum,
 )
+from stock_analytics.primitives.units import YUAN_PER_YI, yuan_to_yi
 from stock_analytics.primitives.valuation import (
     calculate_dividend_spread,
     calculate_equity_risk_premium,
@@ -91,7 +96,9 @@ __all__ = [
     "DEFAULT_MACD_SLOW",
     "DEFAULT_RSI_WINDOW",
     "DEFAULT_SMA_WINDOW",
+    "YUAN_PER_YI",
     "add_forward_returns",
+    "black_scholes_price",
     "calculate_amihud_illiquidity",
     "calculate_atr",
     "calculate_bollinger_bandwidth",
@@ -136,4 +143,6 @@ __all__ = [
     "quantile_forward_returns",
     "quantile_summary",
     "rank_ic_series",
+    "settlement_implied_volatility",
+    "yuan_to_yi",
 ]

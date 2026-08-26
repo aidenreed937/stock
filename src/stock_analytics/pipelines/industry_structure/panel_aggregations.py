@@ -1,19 +1,12 @@
-"""行业结构面板聚合兼容门面。"""
+"""行业面板 Mart 共享实现兼容门面。"""
 
-from __future__ import annotations
+from importlib import import_module as _import_module
 
-from stock_analytics.pipelines.industry_structure.panel_fundamental import (
-    FastFundamentalContext,
-    fast_fundamental_panel,
-)
-from stock_analytics.pipelines.industry_structure.panel_moneyflow import (
-    IndustryMoneyflowContext,
-    industry_moneyflow_panel,
-)
+from stock_analytics.marts.shared.industry_structure.panel_aggregations import *  # noqa: F401,F403
 
-__all__ = [
-    "FastFundamentalContext",
-    "IndustryMoneyflowContext",
-    "fast_fundamental_panel",
-    "industry_moneyflow_panel",
-]
+_target = _import_module("stock_analytics.marts.shared.industry_structure.panel_aggregations")
+__all__ = getattr(_target, "__all__", ())
+
+
+def __getattr__(name: str) -> object:
+    return getattr(_target, name)

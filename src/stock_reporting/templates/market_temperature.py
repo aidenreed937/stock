@@ -14,7 +14,7 @@ from stock_reporting.core.watermark import (
 from stock_reporting.engine.renderer import ReportRenderer
 
 if TYPE_CHECKING:
-    from stock_reporting.interpretation.market_temperature.config import MarketTemperatureConfig
+    from stock_core.config.analytics_market_temperature import MarketTemperatureConfig
 
 from stock_reporting.interpretation.market_temperature.interpretation import (
     _DIMENSION_FOCUS,

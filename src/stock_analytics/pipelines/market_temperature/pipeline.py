@@ -25,7 +25,7 @@ from stock_analytics.pipelines.market_temperature.facts import (
 )
 from stock_analytics.pipelines.market_temperature.scoring import build_scores
 from stock_analytics.pipelines.market_temperature.snapshot import build_market_state_snapshot
-from stock_reporting.interpretation.market_temperature.config import (
+from stock_core.config.analytics_market_temperature import (
     DEFAULT_CONFIG_PATH,
     MarketTemperatureConfig,
     load_market_temperature_config,

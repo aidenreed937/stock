@@ -8,6 +8,10 @@ from datetime import date
 from pathlib import Path
 from typing import Any
 
+from stock_analytics.pipelines.artifact_reader import (
+    ArtifactUnavailableError,
+    resolve_artifact_run,
+)
 from stock_analytics.pipelines.industry_structure import run_industry_structure
 from stock_analytics.pipelines.market_temperature import (
     MarketAnalysisContext,
@@ -17,8 +21,9 @@ from stock_analytics.pipelines.watchlist_scanner import run_watchlist_scanner
 from stock_analytics.pipelines.watchlist_scanner.types import WatchlistScanResult
 from stock_core.utils.logger import logger
 from stock_reporting.engine import ReportRenderer
+from stock_reporting.interpretation.market_temperature.bands import get_temperature_band
 
-_INDUSTRY_ARTIFACT_ROOT = Path("data/analytics/industry_structure")
+_DEFAULT_ANALYTICS_ROOT = Path("data/analytics")
 
 
 @dataclass(frozen=True, slots=True)
@@ -36,21 +41,27 @@ def run_daily_review(
     target_date: date | None = None,
     output_dir: Path | str | None = None,
     storage_dir: Path | str | None = None,
+    analytics_root: Path | str | None = None,
     refresh_upstream: bool = False,
 ) -> DailyReviewRunResult:
     """复用或生成上游产物，组装每日复盘上下文并渲染报告。"""
     logger.info("开始执行每日盘后全景量化复盘流水线...")
+    analytics_base = Path(analytics_root) if analytics_root is not None else _DEFAULT_ANALYTICS_ROOT
+    market_artifact_root = analytics_base / "market_temperature"
+    industry_artifact_root = analytics_base / "industry_structure"
     scan_result = run_watchlist_scanner(target_date=target_date, storage_dir=storage_dir)
     as_of_date = date.fromisoformat(scan_result.as_of_date)
 
     market_context = _resolve_market_context(
         as_of_date,
         storage_dir=storage_dir,
+        artifact_root=market_artifact_root,
         refresh_upstream=refresh_upstream,
     )
     top_industries, low_value_industries, industry_context = _resolve_industry_structure(
         as_of_date,
         storage_dir=storage_dir,
+        artifact_root=industry_artifact_root,
         refresh_upstream=refresh_upstream,
     )
     temp_score, temp_band, dimensions = _build_temperature_summary(market_context)
@@ -112,15 +123,29 @@ def _resolve_market_context(
     as_of_date: date,
     *,
     storage_dir: Path | str | None,
+    artifact_root: Path,
     refresh_upstream: bool,
 ) -> dict[str, Any]:
     if not refresh_upstream:
         try:
-            return MarketAnalysisContext.load(as_of=as_of_date).query(("overview", "trend", "risk"))
-        except FileNotFoundError:
+            run = resolve_artifact_run(
+                artifact_root,
+                as_of_date=as_of_date,
+                expected_artifact_type="market_temperature",
+            )
+            return MarketAnalysisContext.load(
+                artifact_root=artifact_root,
+                as_of=as_of_date,
+                run_id=str(run.manifest["run_id"]),
+            ).query(("overview", "trend", "risk"))
+        except ArtifactUnavailableError:
             pass
 
-    run_result = run_market_temperature(target_date=as_of_date, storage_dir=storage_dir)
+    run_result = run_market_temperature(
+        target_date=as_of_date,
+        storage_dir=storage_dir,
+        output_root=artifact_root,
+    )
     return MarketAnalysisContext.load(
         artifact_root=run_result.paths.root,
         as_of=as_of_date,
@@ -132,11 +157,20 @@ def _resolve_industry_structure(
     as_of_date: date,
     *,
     storage_dir: Path | str | None,
+    artifact_root: Path,
     refresh_upstream: bool,
 ) -> tuple[list[dict[str, str]], list[dict[str, str]], dict[str, Any]]:
-    cached = None if refresh_upstream else _load_industry_structure_artifact(as_of_date)
+    cached = (
+        None
+        if refresh_upstream
+        else _load_industry_structure_artifact(as_of_date, artifact_root=artifact_root)
+    )
     if cached is None:
-        run_result = run_industry_structure(target_date=as_of_date, storage_dir=storage_dir)
+        run_result = run_industry_structure(
+            target_date=as_of_date,
+            storage_dir=storage_dir,
+            output_root=artifact_root,
+        )
         scores = run_result.scores
         metadata = {
             "as_of_date": run_result.manifest.get("as_of_date"),
@@ -150,21 +184,22 @@ def _resolve_industry_structure(
 
 def _load_industry_structure_artifact(
     as_of_date: date,
+    *,
+    artifact_root: Path,
 ) -> tuple[dict[str, Any], dict[str, Any]] | None:
-    date_root = _INDUSTRY_ARTIFACT_ROOT / "runs" / f"as_of={as_of_date.isoformat()}"
-    run_dirs = sorted(
-        path
-        for path in date_root.glob("run_*")
-        if path.is_dir() and (path / "manifest.json").exists() and (path / "scores.json").exists()
-    )
-    if not run_dirs:
+    try:
+        run = resolve_artifact_run(
+            artifact_root,
+            as_of_date=as_of_date,
+            expected_artifact_type="industry_structure",
+        )
+        scores = run.read_json("scores.json")
+    except ArtifactUnavailableError as exc:
+        logger.warning(f"行业结构缓存产物不可用: {exc}")
         return None
-    run_dir = run_dirs[-1]
-    manifest = _read_json(run_dir / "manifest.json")
-    scores = _read_json(run_dir / "scores.json")
     return scores, {
-        "as_of_date": manifest.get("as_of_date"),
-        "run_id": manifest.get("run_id"),
+        "as_of_date": run.manifest.get("as_of_date"),
+        "run_id": run.manifest.get("run_id"),
         "source": "cached",
     }
 
@@ -187,7 +222,7 @@ def _build_temperature_summary(
         and (item.get("name") or item.get("dimension_id"))
     }
     numeric_temperature = float(temperature) if temperature is not None else None
-    return numeric_temperature, _temperature_band(numeric_temperature), dimension_values
+    return numeric_temperature, get_temperature_band(numeric_temperature), dimension_values
 
 
 def _build_position_advice(temp_score: float | None) -> str:
@@ -275,27 +310,6 @@ def _format_industry_items(value: Any) -> list[dict[str, str]]:
         for item in value[:5]
         if isinstance(item, dict)
     ]
-
-
-def _temperature_band(value: float | None) -> str:
-    if value is None:
-        return "中性平衡 (震荡分化区)"
-    if value < 25.0:
-        return "极度冰点 (逆向筑底区)"
-    if value < 45.0:
-        return "冰点偏冷 (谨慎蓄势区)"
-    if value < 55.0:
-        return "中性平衡 (震荡分化区)"
-    if value < 75.0:
-        return "偏热活跃 (右侧顺势区)"
-    return "极度过热 (防范冲高回落)"
-
-
-def _read_json(path: Path) -> dict[str, Any]:
-    value = json.loads(path.read_text(encoding="utf-8"))
-    if not isinstance(value, dict):
-        raise ValueError(f"JSON 产物必须是对象: {path}")
-    return value
 
 
 __all__ = ["DailyReviewRunResult", "run_daily_review"]

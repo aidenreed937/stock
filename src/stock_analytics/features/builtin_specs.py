@@ -41,6 +41,7 @@ _BUILTIN_MARKET_DAILY_SPECS: tuple[FeatureSpec, ...] = (
         required_columns=("trade_date", "symbol", "close"),
         definition_version="v2",
         is_materialized_wide=True,
+        market_metric_ids=("advance_share",),
         description="全市场上涨家数占比（上涨家数 / 有效涨跌个股数）",
     ),
     FeatureSpec(
@@ -53,6 +54,7 @@ _BUILTIN_MARKET_DAILY_SPECS: tuple[FeatureSpec, ...] = (
         required_datasets=("stock_daily_bar",),
         required_columns=("trade_date", "symbol", "close"),
         is_materialized_wide=True,
+        market_metric_ids=("above_ma20_share",),
         description="站上 20 日均线的个股占比",
     ),
     FeatureSpec(
@@ -65,6 +67,7 @@ _BUILTIN_MARKET_DAILY_SPECS: tuple[FeatureSpec, ...] = (
         required_datasets=("stock_daily_bar",),
         required_columns=("trade_date", "symbol", "close"),
         is_materialized_wide=True,
+        market_metric_ids=("above_ma60_share",),
         description="站上 60 日均线的个股占比",
     ),
     FeatureSpec(
@@ -89,6 +92,7 @@ _BUILTIN_MARKET_DAILY_SPECS: tuple[FeatureSpec, ...] = (
         required_datasets=("stock_daily_bar",),
         required_columns=("trade_date", "symbol", "close"),
         is_materialized_wide=True,
+        market_metric_ids=("new_high_share_252d",),
         description="创 252 日新高的个股占比",
     ),
     FeatureSpec(
@@ -101,6 +105,7 @@ _BUILTIN_MARKET_DAILY_SPECS: tuple[FeatureSpec, ...] = (
         required_datasets=("stock_daily_bar",),
         required_columns=("trade_date", "symbol", "close"),
         is_materialized_wide=True,
+        market_metric_ids=("new_low_share_252d",),
         description="创 252 日新低的个股占比",
     ),
     FeatureSpec(
@@ -112,6 +117,7 @@ _BUILTIN_MARKET_DAILY_SPECS: tuple[FeatureSpec, ...] = (
         required_datasets=("stock_daily_bar",),
         required_columns=("trade_date", "symbol", "close"),
         is_materialized_wide=True,
+        market_metric_ids=("return_20d",),
         description="全市场个股 20 日收益率中位数",
     ),
     FeatureSpec(
@@ -123,6 +129,7 @@ _BUILTIN_MARKET_DAILY_SPECS: tuple[FeatureSpec, ...] = (
         required_datasets=("stock_daily_bar",),
         required_columns=("trade_date", "symbol", "close"),
         is_materialized_wide=True,
+        market_metric_ids=("rsi_14d",),
         description="全市场个股 RSI(14) 中位数",
     ),
     FeatureSpec(
@@ -134,6 +141,7 @@ _BUILTIN_MARKET_DAILY_SPECS: tuple[FeatureSpec, ...] = (
         required_datasets=("stock_daily_bar",),
         required_columns=("trade_date", "symbol", "close"),
         is_materialized_wide=True,
+        market_metric_ids=("ma_bias_20d",),
         description="全市场个股 20 日均线乖离率中位数",
     ),
     FeatureSpec(
@@ -144,6 +152,7 @@ _BUILTIN_MARKET_DAILY_SPECS: tuple[FeatureSpec, ...] = (
         required_datasets=("margin", "stock_daily_bar"),
         required_columns=("trade_date", "rzmre"),
         is_materialized_wide=True,
+        market_metric_ids=("margin_buy_share",),
         description="全市场融资买入额占成交额比重 (rzmre / total_turnover)",
     ),
     FeatureSpec(
@@ -164,6 +173,7 @@ _BUILTIN_MARKET_DAILY_SPECS: tuple[FeatureSpec, ...] = (
         required_datasets=("daily_basic", "stock_daily_bar"),
         required_columns=("trade_date", "circ_mv", "amount"),
         is_materialized_wide=True,
+        market_metric_ids=("market_turnover_rate",),
         description="全市场自由流通换手率（总成交额 / 总流通市值 * 100）",
     ),
     FeatureSpec(
@@ -174,6 +184,7 @@ _BUILTIN_MARKET_DAILY_SPECS: tuple[FeatureSpec, ...] = (
         required_datasets=("moneyflow", "stock_daily_bar"),
         required_columns=("trade_date", "net_mf_amount"),
         is_materialized_wide=True,
+        market_metric_ids=("main_money_net_inflow_share",),
         description="主力净流入占成交额比重",
     ),
     FeatureSpec(
@@ -267,6 +278,7 @@ _ADDITIONAL_MARKET_DAILY_SPECS: tuple[FeatureSpec, ...] = (
         required_datasets=("margin", "daily_basic"),
         required_columns=("trade_date", "rzrqye", "circ_mv"),
         is_materialized_wide=True,
+        market_metric_ids=("margin_penetration",),
         description="全市场两融余额占流通市值比重",
     ),
     FeatureSpec(

@@ -22,6 +22,8 @@ LAYER_FORBIDDEN = {
     "primitives": {"features", "metrics", "marts", "pipelines", "realtime"},
     "metrics": {"features", "marts", "pipelines"},
     "features": {"metrics", "pipelines"},
+    "marts": {"pipelines", "realtime"},
+    "plugins": {"marts", "pipelines"},
 }
 
 
@@ -39,6 +41,7 @@ def main() -> int:
     violations = [
         *_check_external_consumers(),
         *_check_internal_layers(),
+        *_check_hardcoded_latest_paths(),
         *_check_public_exports(),
     ]
     for violation in violations:
@@ -98,6 +101,43 @@ def _check_public_exports() -> list[Violation]:
                     Violation(path, _all_line(tree), f"__all__ 导出了未定义名称: {name}")
                 )
     return violations
+
+
+def _check_hardcoded_latest_paths() -> list[Violation]:
+    """禁止生产管线直接拼接固定 analytics/latest 物理路径。"""
+    violations: list[Violation] = []
+    pipeline_root = SRC_ROOT / "stock_analytics" / "pipelines"
+    for path in pipeline_root.rglob("*.py"):
+        tree = ast.parse(path.read_text(encoding="utf-8"), filename=str(path))
+        violations.extend(_check_hardcoded_latest_path(path, tree))
+    return violations
+
+
+def _check_hardcoded_latest_path(path: Path, tree: ast.AST) -> list[Violation]:
+    violations: list[Violation] = []
+    for node in ast.walk(tree):
+        if not isinstance(node, ast.Call) or not isinstance(node.func, ast.Name):
+            continue
+        if node.func.id != "Path":
+            continue
+        literals = [argument.value for argument in node.args if isinstance(argument, ast.Constant)]
+        if not any(_is_hardcoded_latest_path(value) for value in literals):
+            continue
+        violations.append(
+            Violation(
+                path,
+                node.lineno,
+                "管线不得直接读取固定 data/analytics/*/latest 产物，请通过 Artifact Reader 定位",
+            )
+        )
+    return violations
+
+
+def _is_hardcoded_latest_path(value: object) -> bool:
+    if not isinstance(value, str):
+        return False
+    normalized = value.replace("\\", "/")
+    return "data/analytics/" in normalized and "/latest" in normalized
 
 
 def _is_public_import(target: str) -> bool:

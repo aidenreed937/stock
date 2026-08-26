@@ -1,34 +1,12 @@
-"""市场温度计事实表 Schema。"""
+"""市场温度共享事实兼容门面。"""
 
-from __future__ import annotations
+from importlib import import_module as _import_module
 
-from typing import Any
+from stock_analytics.marts.shared.market_temperature.facts_schema import *  # noqa: F401,F403
 
-import polars as pl
-
-FACT_SCHEMA: dict[str, Any] = {
-    "fact_id": pl.Utf8,
-    "category": pl.Utf8,
-    "dimension": pl.Utf8,
-    "data_source": pl.Utf8,
-    "dataset": pl.Utf8,
-    "as_of_date": pl.Date,
-    "metric_date": pl.Date,
-    "window": pl.Int64,
-    "metric_id": pl.Utf8,
-    "value_float": pl.Float64,
-    "value_text": pl.Utf8,
-    "unit": pl.Utf8,
-    "sample_size": pl.Int64,
-    "source": pl.Utf8,
-    "status": pl.Utf8,
-    "note": pl.Utf8,
-}
+_target = _import_module("stock_analytics.marts.shared.market_temperature.facts_schema")
+__all__ = getattr(_target, "__all__", ())
 
 
-def empty_facts() -> pl.DataFrame:
-    """返回稳定 schema 的空事实表。"""
-    return pl.DataFrame(schema=FACT_SCHEMA)
-
-
-__all__ = ["FACT_SCHEMA", "empty_facts"]
+def __getattr__(name: str) -> object:
+    return getattr(_target, name)

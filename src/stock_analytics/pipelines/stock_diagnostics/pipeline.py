@@ -209,6 +209,7 @@ def run_stock_diagnostics(
     symbol: str,
     target_date: date | None = None,
     storage_dir: Path | str | None = None,
+    analytics_root: Path | str | None = None,
 ) -> StockDiagnosticsResult:
     """执行个股全景量化诊断聚合。
 
@@ -246,11 +247,23 @@ def run_stock_diagnostics(
     cap_flow = load_capital_flow(catalog, std_symbol, target_date)
 
     # 5. 排雷状态
-    screen_snapshot = load_screen_status(std_symbol)
+    analytics_base = Path(analytics_root) if analytics_root is not None else Path("data/analytics")
+    screen_snapshot = load_screen_status(
+        std_symbol,
+        artifact_root=analytics_base / "stock_screen",
+        as_of_date=target_date,
+    )
 
     # 6. 市场与行业宏观背景
-    temp_score, temp_band, temp_date = load_market_temperature_context()
-    ind_rank_str = load_industry_rank(industry)
+    temp_score, temp_band, temp_date = load_market_temperature_context(
+        artifact_root=analytics_base / "market_temperature",
+        as_of_date=target_date,
+    )
+    ind_rank_str = load_industry_rank(
+        industry,
+        artifact_root=analytics_base / "industry_structure",
+        as_of_date=target_date,
+    )
     market_ctx = MarketContextSnapshot(
         as_of_date=temp_date or as_of_date_val,
         temperature_score=temp_score,

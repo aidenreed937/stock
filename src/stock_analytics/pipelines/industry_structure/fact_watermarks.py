@@ -15,7 +15,7 @@ from stock_analytics.pipelines.market_temperature.cache import CachedCatalog, Da
 from stock_core.contracts import MarketDataCatalog
 
 if TYPE_CHECKING:
-    from stock_reporting.interpretation.industry_structure.config import DatasetConfig
+    from stock_core.config.analytics_industry_structure import DatasetConfig
 
 FactRowFactory = Callable[..., dict[str, Any]]
 

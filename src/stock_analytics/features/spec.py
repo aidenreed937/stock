@@ -61,6 +61,7 @@ class FeatureSpec:
     required_datasets: tuple[str, ...] = ()
     required_columns: tuple[str, ...] = ()
     is_materialized_wide: bool = False
+    market_metric_ids: tuple[str, ...] = ()
     description: str = ""
 
 

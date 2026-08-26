@@ -2,19 +2,24 @@
 
 from __future__ import annotations
 
-import json
 from datetime import date
 from pathlib import Path
 from typing import Any
 
 import polars as pl
 
+from stock_analytics.pipelines.artifact_reader import (
+    ArtifactUnavailableError,
+    resolve_artifact_run,
+)
 from stock_analytics.pipelines.stock_diagnostics.types import (
     CapitalFlowSnapshot,
     ScreenSnapshot,
 )
+from stock_analytics.primitives.units import yuan_to_yi
 from stock_core.utils.logger import logger
 from stock_data.catalog import DataCatalog
+from stock_reporting.interpretation.market_temperature.bands import get_temperature_band
 
 
 def resolve_symbol_meta(catalog: DataCatalog, input_symbol: str) -> tuple[str, str, str, str, str]:
@@ -59,7 +64,7 @@ def norm_to_billion(v: float | None, precision: int = 2) -> float | None:
     """统一将以'元'为单位的金额/市值规格化为'亿元'。"""
     if v is None:
         return None
-    return round(v / 1e8, precision)
+    return yuan_to_yi(v, precision=precision)
 
 
 def load_10y_treasury_yield(storage_dir: Path | str | None = None) -> float | None:
@@ -160,93 +165,101 @@ def load_latest_forecast(
     return None
 
 
-def load_market_temperature_context() -> tuple[float | None, str | None, str]:
-    """读取本地最新全市场温度与阶段。"""
-    latest_score_path = Path("data/analytics/market_temperature/latest/scores.json")
-    if latest_score_path.exists():
-        try:
-            with open(latest_score_path, encoding="utf-8") as f:
-                data = json.load(f)
-            composite = data.get("composite", {})
-            temp_val = composite.get("temperature")
-            as_of = data.get("as_of_date") or ""
-            if temp_val is not None:
-                temp_float = float(temp_val)
-                if temp_float < 25.0:
-                    band = "极度冰点 (逆向左侧筑底区)"
-                elif temp_float < 45.0:
-                    band = "冰点偏冷 (谨慎蓄势区)"
-                elif temp_float < 55.0:
-                    band = "中性平衡 (震荡分化区)"
-                elif temp_float < 75.0:
-                    band = "偏热活跃 (右侧顺势区)"
-                else:
-                    band = "极度过热 (防范冲高回落)"
-                return temp_float, band, str(as_of)
-        except Exception as exc:
-            logger.warning(f"解析市场温度最新产物失败: {exc}")
+def load_market_temperature_context(
+    *,
+    artifact_root: Path | str = Path("data/analytics/market_temperature"),
+    as_of_date: date | None = None,
+) -> tuple[float | None, str | None, str]:
+    """读取已校验的全市场温度产物。"""
+    try:
+        run = resolve_artifact_run(
+            artifact_root,
+            as_of_date=as_of_date or "latest",
+            expected_artifact_type="market_temperature",
+        )
+        data = run.read_json("scores.json")
+        composite = data.get("composite", {})
+        temp_val = composite.get("temperature") if isinstance(composite, dict) else None
+        if temp_val is not None:
+            temp_float = float(temp_val)
+            return (
+                temp_float,
+                get_temperature_band(temp_float),
+                str(run.manifest.get("as_of_date", "")),
+            )
+    except (ArtifactUnavailableError, TypeError, ValueError) as exc:
+        logger.warning(f"读取市场温度产物失败: {exc}")
     return None, None, ""
 
 
-def load_industry_rank(industry_name: str) -> str | None:
-    """读取申万行业结构最新排名。"""
-    latest_ind_path = Path("data/analytics/industry_structure/latest/scores.json")
-    if latest_ind_path.exists():
-        try:
-            with open(latest_ind_path, encoding="utf-8") as f:
-                data = json.load(f)
-            top_struct = data.get("top_structure", [])
-            total_count = data.get("scored_industry_count") or len(top_struct)
-            for idx, item in enumerate(top_struct, start=1):
-                name = item.get("industry_name", "")
-                if name and (name in industry_name or industry_name in name):
-                    score = item.get("structure_score", 0.0)
-                    tags = item.get("tags", "")
-                    tag_str = f" [{tags}]" if tags else ""
-                    return f"申万综合排名 {idx}/{total_count} (评分 {score:.1f}){tag_str}"
-        except Exception as exc:
-            logger.warning(f"解析行业结构排名失败: {exc}")
+def load_industry_rank(
+    industry_name: str,
+    *,
+    artifact_root: Path | str = Path("data/analytics/industry_structure"),
+    as_of_date: date | None = None,
+) -> str | None:
+    """读取已校验的申万行业结构排名。"""
+    try:
+        run = resolve_artifact_run(
+            artifact_root,
+            as_of_date=as_of_date or "latest",
+            expected_artifact_type="industry_structure",
+        )
+        data = run.read_json("scores.json")
+        top_struct = data.get("top_structure", [])
+        if not isinstance(top_struct, list):
+            return None
+        total_count = data.get("scored_industry_count") or len(top_struct)
+        for idx, item in enumerate(top_struct, start=1):
+            if not isinstance(item, dict):
+                continue
+            name = item.get("industry_name", "")
+            if name and (name in industry_name or industry_name in name):
+                score = item.get("structure_score", 0.0)
+                tags = item.get("tags", "")
+                tag_str = f" [{tags}]" if tags else ""
+                return f"申万综合排名 {idx}/{total_count} (评分 {score:.1f}){tag_str}"
+    except (ArtifactUnavailableError, TypeError, ValueError) as exc:
+        logger.warning(f"读取行业结构产物失败: {exc}")
     return None
 
 
-def load_screen_status(symbol: str) -> ScreenSnapshot:
-    """从本地个股排雷最新快照中查询标的状态。"""
-    screen_dir = Path("data/analytics/stock_screen/latest")
+def load_screen_status(
+    symbol: str,
+    *,
+    artifact_root: Path | str = Path("data/analytics/stock_screen"),
+    as_of_date: date | None = None,
+) -> ScreenSnapshot:
+    """从已校验的个股排雷产物中查询标的状态。"""
     clean_sym = symbol.split(".")[0]
+    try:
+        run = resolve_artifact_run(
+            artifact_root,
+            as_of_date=as_of_date or "latest",
+            expected_artifact_type="stock_screen",
+        )
+    except ArtifactUnavailableError as exc:
+        logger.warning(f"读取排雷产物失败: {exc}")
+        return ScreenSnapshot(status="unavailable", reasons=[str(exc)])
 
-    excluded_path = screen_dir / "excluded.csv"
-    if excluded_path.exists():
-        df = _read_screen_snapshot(excluded_path)
+    for filename, status in (
+        ("excluded.csv", "excluded"),
+        ("warned.csv", "warned"),
+        ("passed.csv", "passed"),
+    ):
+        path = run.path(filename)
+        if not path.exists():
+            continue
+        df = _read_screen_snapshot(path)
         if df is None:
-            return _unscreened_snapshot(excluded_path)
+            return _unscreened_snapshot(path)
         if "symbol" in df.columns:
             matched = df.filter(pl.col("symbol").str.contains(clean_sym))
             if not matched.is_empty():
                 reasons = matched["reasons"].to_list() if "reasons" in matched.columns else []
-                return ScreenSnapshot(status="excluded", reasons=[str(r) for r in reasons])
+                return ScreenSnapshot(status=status, reasons=[str(r) for r in reasons])
 
-    warned_path = screen_dir / "warned.csv"
-    if warned_path.exists():
-        df = _read_screen_snapshot(warned_path)
-        if df is None:
-            return _unscreened_snapshot(warned_path)
-        if "symbol" in df.columns:
-            matched = df.filter(pl.col("symbol").str.contains(clean_sym))
-            if not matched.is_empty():
-                reasons = matched["reasons"].to_list() if "reasons" in matched.columns else []
-                return ScreenSnapshot(status="warned", reasons=[str(r) for r in reasons])
-
-    passed_path = screen_dir / "passed.csv"
-    if passed_path.exists():
-        df = _read_screen_snapshot(passed_path)
-        if df is None:
-            return _unscreened_snapshot(passed_path)
-        if "symbol" in df.columns:
-            matched = df.filter(pl.col("symbol").str.contains(clean_sym))
-            if not matched.is_empty():
-                return ScreenSnapshot(status="passed", reasons=[])
-
-    return ScreenSnapshot(status="passed", reasons=[])
+    return ScreenSnapshot(status="unavailable", reasons=["排雷产物未包含该标的状态"])
 
 
 def _read_screen_snapshot(path: Path) -> pl.DataFrame | None:

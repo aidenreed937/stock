@@ -1,12 +1,12 @@
 """市场温度计解读与配置模块。"""
 
-from stock_reporting.interpretation.market_temperature.config import (
+from stock_core.config.analytics_market_temperature import (
     DEFAULT_CONFIG_PATH,
     BandsConfig,
     MarketTemperatureConfig,
     load_market_temperature_config,
 )
-from stock_reporting.interpretation.market_temperature.external_risk_config import (
+from stock_core.config.external_risk import (
     ExternalRiskConfig,
     ExternalShockConfig,
     ExternalShockRuleConfig,

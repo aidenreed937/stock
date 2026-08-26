@@ -35,7 +35,7 @@ from stock_reporting.interpretation.industry_structure.interpretation import (
 )
 
 if TYPE_CHECKING:
-    from stock_reporting.interpretation.industry_structure.config import IndustryStructureConfig
+    from stock_core.config.analytics_industry_structure import IndustryStructureConfig
 
 
 def build_report_json(

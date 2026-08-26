@@ -127,8 +127,8 @@ def compute_fast_bs_iv(
         except Exception:
             pass
 
-    # Fallback 到 Python 纯逻辑
-    from stock_analytics.marts.option_volatility import settlement_implied_volatility
+    # Fallback 到 Python 纯逻辑。纯求解器位于 primitives，避免插件反向依赖 Mart。
+    from stock_analytics.primitives.option_volatility import settlement_implied_volatility
 
     fallback_names = (
         "_settlement",

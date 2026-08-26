@@ -21,7 +21,7 @@ from stock_analytics.pipelines.market_temperature.scoring_risk import _systemic_
 if TYPE_CHECKING:
     from datetime import date
 
-    from stock_reporting.interpretation.market_temperature.config import (
+    from stock_core.config.analytics_market_temperature import (
         DimensionConfig,
         MarketTemperatureConfig,
     )

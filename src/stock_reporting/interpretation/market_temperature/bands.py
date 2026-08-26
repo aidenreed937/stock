@@ -4,7 +4,7 @@ from __future__ import annotations
 
 from typing import Any
 
-from stock_reporting.interpretation.market_temperature.config import BandsConfig
+from stock_core.config.analytics_market_temperature import BandsConfig
 
 _DIMENSION_LABELS: dict[str, str] = {
     "valuation": "估值",

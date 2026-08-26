@@ -10,7 +10,7 @@ from stock_analytics.pipelines.market_temperature.freshness import is_stale_metr
 from stock_analytics.pipelines.market_temperature.metric_temperature import fact_temperature
 
 if TYPE_CHECKING:
-    from stock_reporting.interpretation.market_temperature.config import DimensionConfig
+    from stock_core.config.analytics_market_temperature import DimensionConfig
 
 
 def dimension_temperature(

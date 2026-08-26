@@ -13,7 +13,7 @@ from typing import TYPE_CHECKING, Any
 import polars as pl
 
 if TYPE_CHECKING:
-    from stock_reporting.interpretation.market_temperature.config import DimensionConfig
+    from stock_core.config.analytics_market_temperature import DimensionConfig
 
 _METRIC_DATE_PATTERN = re.compile(r"\b\d{4}-\d{2}-\d{2}\b")
 _STALE_DAYS_PATTERN = re.compile(r"stale_days=(\d+)")

@@ -21,7 +21,7 @@ def test_build_temperature_summary_uses_market_context() -> None:
         }
     )
 
-    assert result == (42.0, "冰点偏冷 (谨慎蓄势区)", {"technical": 45.0})
+    assert result == (42.0, "中性轮动区", {"technical": 45.0})
 
 
 def test_run_daily_review_composes_and_persists_context(

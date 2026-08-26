@@ -7,7 +7,7 @@ from typing import TYPE_CHECKING, Any
 import polars as pl
 
 if TYPE_CHECKING:
-    from stock_reporting.interpretation.market_temperature.external_risk_config import (
+    from stock_core.config.external_risk import (
         ExternalRiskConfig,
         ExternalShockRuleConfig,
     )

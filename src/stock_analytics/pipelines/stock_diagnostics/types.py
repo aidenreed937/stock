@@ -66,7 +66,7 @@ class CapitalFlowSnapshot:
 class ScreenSnapshot:
     """排雷规则体检状态。"""
 
-    status: str = "passed"  # passed / warned / excluded / unscreened
+    status: str = "passed"  # passed / warned / excluded / unavailable / unscreened
     reasons: list[str] = field(default_factory=list)
 
 

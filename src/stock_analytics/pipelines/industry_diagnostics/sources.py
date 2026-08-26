@@ -13,6 +13,7 @@ from stock_analytics.pipelines.industry_diagnostics.types import (
     IndustryConstituentsSnapshot,
     IndustryValueChainSnapshot,
 )
+from stock_analytics.primitives.units import yuan_to_yi
 from stock_core.utils.logger import logger
 from stock_data.catalog import DataCatalog
 
@@ -92,7 +93,7 @@ def load_industry_constituents(
                     sym = str(row.get("symbol", ""))
                     total_mv = row.get("total_mv")
                     mv_billion = (
-                        round(float(total_mv) / 1e8, 1)
+                        yuan_to_yi(float(total_mv), precision=1)
                         if total_mv and float(total_mv) > 1e7
                         else 0.0
                     )

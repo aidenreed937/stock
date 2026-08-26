@@ -1,6 +1,6 @@
 """行业结构解读与配置模块。"""
 
-from stock_reporting.interpretation.industry_structure.config import (
+from stock_core.config.analytics_industry_structure import (
     DEFAULT_CONFIG_PATH,
     IndustryStructureConfig,
     load_industry_structure_config,

@@ -18,7 +18,7 @@ if TYPE_CHECKING:
     from collections.abc import Iterable
     from pathlib import Path
 
-    from stock_reporting.interpretation.industry_structure.config import IndustryStructureConfig
+    from stock_core.config.analytics_industry_structure import IndustryStructureConfig
 
 FACT_SCHEMA: dict[str, Any] = {
     "fact_id": pl.Utf8,

@@ -7,23 +7,22 @@ from typing import TYPE_CHECKING, Any
 
 import polars as pl
 
-from stock_analytics.catalog_compat import load_dataset_compat
+from stock_analytics.features.dataset_cache import DatasetFrameCache
 from stock_analytics.features.store import FeatureStore
-from stock_analytics.pipelines.market_temperature.cache import DatasetFrameCache
-from stock_analytics.pipelines.market_temperature.derived import (
+from stock_analytics.marts.shared.market_temperature.derived import (
     collect_amount_top_5pct_share_rows,
     collect_derived_metric_rows,
 )
-from stock_analytics.pipelines.market_temperature.derived_options import _latest_dataset_date
-from stock_analytics.pipelines.market_temperature.facts import (
+from stock_analytics.marts.shared.market_temperature.derived_options import _latest_dataset_date
+from stock_analytics.marts.shared.market_temperature.facts import (
     FACT_SCHEMA,
     _normalize_metric_dates,
 )
-from stock_analytics.pipelines.market_temperature.metric_facts import (
+from stock_analytics.marts.shared.market_temperature.metric_facts import (
     collect_metric_engine_rows,
 )
-from stock_analytics.pipelines.market_temperature.short_term import collect_short_term_rows
-from stock_reporting.interpretation.market_temperature.config import (
+from stock_analytics.marts.shared.market_temperature.short_term import collect_short_term_rows
+from stock_core.config.analytics_market_temperature import (
     MarketTemperatureConfig,
 )
 
@@ -185,22 +184,13 @@ def _collect_amount_top_5pct_rows(
     )
     if not configured or not target_dates:
         return {}
-    try:
-        stock_daily_bar = dataset_cache.load(
-            catalog,
-            "stock_daily_bar",
-            start_date=target_dates[0],
-            end_date=target_dates[-1],
-            columns=["trade_date", "amount"],
-        )
-    except Exception:
-        stock_daily_bar = load_dataset_compat(
-            catalog,
-            "stock_daily_bar",
-            start_date=target_dates[0],
-            end_date=target_dates[-1],
-            columns=["trade_date", "amount"],
-        )
+    stock_daily_bar = dataset_cache.load(
+        catalog,
+        "stock_daily_bar",
+        start_date=target_dates[0],
+        end_date=target_dates[-1],
+        columns=["trade_date", "amount"],
+    )
     return collect_amount_top_5pct_share_rows(stock_daily_bar, target_dates)
 
 

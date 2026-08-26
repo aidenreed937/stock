@@ -8,8 +8,8 @@ from datetime import date
 from pathlib import Path
 
 from stock_analytics.pipelines.industry_structure import run_industry_structure
+from stock_core.config.analytics_industry_structure import DEFAULT_CONFIG_PATH
 from stock_core.utils.logger import logger
-from stock_reporting.interpretation.industry_structure.config import DEFAULT_CONFIG_PATH
 
 
 def _build_parser() -> argparse.ArgumentParser:

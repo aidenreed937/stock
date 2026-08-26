@@ -7,7 +7,7 @@ from typing import TYPE_CHECKING, Any
 from stock_reporting.interpretation.market_temperature.bands import get_pressure_band
 
 if TYPE_CHECKING:
-    from stock_reporting.interpretation.market_temperature.config import MarketTemperatureConfig
+    from stock_core.config.analytics_market_temperature import MarketTemperatureConfig
 
 
 def external_risk_lines(

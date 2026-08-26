@@ -26,7 +26,7 @@ from stock_analytics.pipelines.industry_structure.scoring_utils import (
 )
 
 if TYPE_CHECKING:
-    from stock_reporting.interpretation.industry_structure.config import IndustryStructureConfig
+    from stock_core.config.analytics_industry_structure import IndustryStructureConfig
 
 SCORED_PANEL_SCHEMA: dict[str, Any] = {
     **BASE_PANEL_SCHEMA,

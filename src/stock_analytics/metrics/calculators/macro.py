@@ -24,9 +24,8 @@ from stock_analytics.primitives.macro import (
     calculate_securitization_ratio,
     calculate_yield_curve_slope,
 )
+from stock_analytics.primitives.units import YUAN_PER_YI
 
-#: 市值单位换算：元 -> 亿元。
-_YI_PER_YUAN: float = 1e8
 #: GDP TTM 滚动季度数。
 _GDP_TTM_QUARTERS: int = 4
 #: 期限利差计算所需的国债收益率列。
@@ -87,7 +86,7 @@ def _market_cap_daily(daily_basic: pl.DataFrame) -> pl.DataFrame:
         .drop_nulls(subset=["total_mv"])
         .filter(pl.col("total_mv") > 0)
         .group_by("trade_date")
-        .agg((pl.col("total_mv").sum() / _YI_PER_YUAN).alias("total_market_cap_yi"))
+        .agg((pl.col("total_mv").sum() / YUAN_PER_YI).alias("total_market_cap_yi"))
         .sort("trade_date")
     )
 

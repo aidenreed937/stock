@@ -620,13 +620,15 @@ def test_tushare_full_market_endpoint_uses_small_request_window() -> None:
     ]
 
 
-def test_tushare_hk_hold_splits_each_day_when_tail_date_is_empty() -> None:
+def test_tushare_hk_hold_queries_market_types_for_date_range() -> None:
     fetcher = TuShareDataFetcher(token="test_token")
     fetcher.client._pro_api = MagicMock()
 
     def query(api_name: str, **kwargs: str) -> pd.DataFrame:
         assert api_name == "hk_hold"
-        if kwargs["trade_date"] == "20260819":
+        assert kwargs["start_date"] == "20260819"
+        assert kwargs["end_date"] == "20260820"
+        if kwargs["k_type"] == "1":
             return pd.DataFrame(
                 {
                     "ts_code": ["600000.SH"],
@@ -643,8 +645,10 @@ def test_tushare_hk_hold_splits_each_day_when_tail_date_is_empty() -> None:
 
     assert result.get_column("trade_date").to_list() == ["20260819"]
     assert [call.kwargs for call in fetcher.client._pro_api.query.call_args_list] == [
-        {"trade_date": "20260819"},
-        {"trade_date": "20260820"},
+        {"k_type": "1", "start_date": "20260819", "end_date": "20260820"},
+        {"k_type": "2", "start_date": "20260819", "end_date": "20260820"},
+        {"k_type": "3", "start_date": "20260819", "end_date": "20260820"},
+        {"k_type": "4", "start_date": "20260819", "end_date": "20260820"},
     ]
 
 
