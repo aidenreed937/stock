@@ -71,6 +71,9 @@ class QuantBriefConfig:
     valuation_red_flag_temperature: float = 85.0
     composite_red_flag_temperature: float = 65.0
     defensive_position_band: str = "0%-30%"
+    divergence_extreme_threshold: float = 15.0
+    divergence_hot_fast_temperature: float = 60.0
+    divergence_ice_fast_temperature: float = 35.0
     main_money_outflow_share_hard: float = -0.05
     market_amount_high_percentile: float = 90.0
     margin_buy_share_warning: float = 0.10
@@ -134,6 +137,15 @@ class QuantBriefConfig:
                 risk_gates.get("composite_red_flag_temperature", 65.0)
             ),
             defensive_position_band=str(risk_gates.get("defensive_position_band", "0%-30%")),
+            divergence_extreme_threshold=float(
+                risk_gates.get("divergence_extreme_threshold", 15.0)
+            ),
+            divergence_hot_fast_temperature=float(
+                risk_gates.get("divergence_hot_fast_temperature", 60.0)
+            ),
+            divergence_ice_fast_temperature=float(
+                risk_gates.get("divergence_ice_fast_temperature", 35.0)
+            ),
             main_money_outflow_share_hard=float(
                 risk_gates.get("main_money_outflow_share_hard", -0.05)
             ),

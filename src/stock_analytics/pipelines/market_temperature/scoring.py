@@ -53,7 +53,8 @@ def build_scores(
     )
     if composite_temperature is None:
         composite_status = "pending"
-    systemic_risk = _systemic_risk(composite_temperature, dimensions)
+    fast_slow = _fast_slow_temperatures(dimensions)
+    systemic_risk = _systemic_risk(composite_temperature, dimensions, fast_slow=fast_slow)
     external_risk = build_external_risk(config.external_risk, facts)
     return {
         "schema_version": config.schema_version,
@@ -65,7 +66,7 @@ def build_scores(
             "status": composite_status,
             "reason": "按可用维度温度和默认权重重归一合成",
         },
-        "fast_slow": _fast_slow_temperatures(dimensions),
+        "fast_slow": fast_slow,
         "systemic_risk": systemic_risk,
         "external_risk": external_risk,
         "drivers": drivers,

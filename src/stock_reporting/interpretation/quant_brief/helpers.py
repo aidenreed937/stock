@@ -249,6 +249,28 @@ def _flag(flag_id: str, severity: str, message: str) -> dict[str, str]:
     return {"id": flag_id, "severity": severity, "message": message}
 
 
+def _gate(
+    gate_id: str,
+    title: str,
+    status: str,
+    severity: str,
+    message: str,
+    action: str,
+    facts_text: str,
+) -> dict[str, str]:
+    labels = {"triggered": "触发", "watch": "观察", "clear": "通过", "insufficient": "资料不足"}
+    return {
+        "id": gate_id,
+        "title": title,
+        "status": status,
+        "status_label": labels.get(status, status),
+        "severity": severity,
+        "message": message,
+        "action": action,
+        "facts_text": facts_text,
+    }
+
+
 def margin_turning_note(margin_status: object) -> str:
     """根据两融拐点状态生成数据质量说明。"""
     return {

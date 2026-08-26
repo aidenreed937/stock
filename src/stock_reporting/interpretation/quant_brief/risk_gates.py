@@ -1,4 +1,4 @@
-"""量化投研简报的四道风控闸门。"""
+"""量化投研简报的五道风控闸门。"""
 
 from __future__ import annotations
 
@@ -7,6 +7,7 @@ from typing import Any
 import polars as pl
 
 from stock_reporting.interpretation.quant_brief.config import QuantBriefConfig
+from stock_reporting.interpretation.quant_brief.divergence_gate import evaluate_divergence_gate
 from stock_reporting.interpretation.quant_brief.helpers import (
     _as_float,
     _breadth,
@@ -14,6 +15,7 @@ from stock_reporting.interpretation.quant_brief.helpers import (
     _dimension_temperatures,
     _fact_observation,
     _funding_observation,
+    _gate,
     _mapping,
     _panel_rows,
     _value_text,
@@ -27,11 +29,12 @@ def evaluate_risk_gates(
     industry_panel: pl.DataFrame,
     market_facts: pl.DataFrame | None,
 ) -> dict[str, Any]:
-    """执行宏观、资金杠杆、宽度和行业拥挤四道风控闸门。"""
+    """执行宏观、资金杠杆、宽度、快慢背离和行业拥挤五道风控闸门。"""
     gates = [
         evaluate_systemic_gate(config, market_scores),
         _evaluate_funding_gate(config, market_facts),
         evaluate_breadth_gate(config, market_scores, industry_scores, market_facts),
+        evaluate_divergence_gate(config, market_scores),
         evaluate_industry_gate(config, industry_panel),
     ]
     hard_stop = any(gate["severity"] == "hard" for gate in gates)
@@ -50,7 +53,7 @@ def evaluate_risk_gates(
             else (
                 "存在需要观察的风险闸门，按宏观仓位档位控制，不追高。"
                 if has_watch
-                else "四道风控闸门暂未触发硬性风险信号。"
+                else "五道风控闸门暂未触发硬性风险信号。"
             )
         ),
         "gates": gates,
@@ -337,28 +340,6 @@ def _evaluate_funding_gate(
     )
 
 
-def _gate(
-    gate_id: str,
-    title: str,
-    status: str,
-    severity: str,
-    message: str,
-    action: str,
-    facts_text: str,
-) -> dict[str, str]:
-    labels = {"triggered": "触发", "watch": "观察", "clear": "通过", "insufficient": "资料不足"}
-    return {
-        "id": gate_id,
-        "title": title,
-        "status": status,
-        "status_label": labels.get(status, status),
-        "severity": severity,
-        "message": message,
-        "action": action,
-        "facts_text": facts_text,
-    }
-
-
 def _composite_temperature(scores: dict[str, Any]) -> float | None:
     composite = scores.get("composite")
     return _as_float(composite.get("temperature")) if isinstance(composite, dict) else None
@@ -366,6 +347,7 @@ def _composite_temperature(scores: dict[str, Any]) -> float | None:
 
 __all__ = [
     "evaluate_breadth_gate",
+    "evaluate_divergence_gate",
     "evaluate_funding_health",
     "evaluate_industry_gate",
     "evaluate_risk_gates",

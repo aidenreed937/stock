@@ -8,6 +8,7 @@ from typing import Any
 def _systemic_risk(
     composite_temperature: float | None,
     dimensions: list[dict[str, Any]],
+    fast_slow: dict[str, Any] | None = None,
 ) -> dict[str, Any]:
     values = {str(item["dimension_id"]): _as_float(item.get("temperature")) for item in dimensions}
     valuation = values.get("valuation")
@@ -17,6 +18,9 @@ def _systemic_risk(
     macro = values.get("macro_liquidity")
     fundamental = values.get("fundamental")
     macro_domestic = _macro_domestic_temperature(dimensions)
+    fast = _as_float(fast_slow.get("fast_temperature")) if fast_slow else None
+    slow = _as_float(fast_slow.get("slow_temperature")) if fast_slow else None
+    divergence = _as_float(fast_slow.get("divergence")) if fast_slow else None
     red_flags: list[str] = []
     warnings: list[str] = []
     offsets: list[str] = []
@@ -28,6 +32,7 @@ def _systemic_risk(
     _add_macro_risk(macro, macro_domestic, red_flags, offsets, triggered_rules)
     _add_fundamental_risk(fundamental, warnings, offsets, triggered_rules)
     _add_composite_risk(composite_temperature, red_flags, warnings, triggered_rules)
+    _add_divergence_risk(fast, slow, divergence, red_flags, offsets, triggered_rules)
     level, status, message = _systemic_risk_level(red_flags, warnings)
 
     return {
@@ -38,11 +43,16 @@ def _systemic_risk(
         "warnings": warnings,
         "offsets": offsets,
         "decision_trace": {
-            "rule_version": "systemic-risk-v2",
+            "rule_version": "systemic-risk-v3",
             "inputs": {
                 **values,
                 "composite": composite_temperature,
                 "macro_liquidity_domestic": macro_domestic,
+                "fast_slow": (
+                    {"fast_temperature": fast, "slow_temperature": slow, "divergence": divergence}
+                    if fast_slow
+                    else None
+                ),
             },
             "triggered_rules": triggered_rules,
             "final_level": level,
@@ -172,6 +182,58 @@ def _add_composite_risk(
         message = f"综合温度 {_temperature_text(value)} 处于偏热区。"
         warnings.append(message)
         _add_rule(triggered_rules, "composite_gte_60", "warning", value, 60, message)
+
+
+# Phase 3 背离风控门限（61 天样本校准，见 diagnose_temperature_divergence_gates）
+_DIVERGENCE_EXTREME = 15.0  # 与快慢背离"深度背离"分档一致（|d| >= 15）
+_DIVERGENCE_HOT_FAST = 60.0  # 红旗下限：短线温度偏热，资金情绪与慢变量脱节
+_DIVERGENCE_ICE_FAST = 35.0  # 缓冲上限：短线温度冰点，慢变量温和的底部窗口
+
+
+def _add_divergence_risk(
+    fast: float | None,
+    slow: float | None,
+    divergence: float | None,
+    red_flags: list[str],
+    offsets: list[str],
+    triggered_rules: list[dict[str, Any]],
+) -> None:
+    """快慢背离风控：深度背离且短线偏热 -> 派发红旗；深度背离且短线冰点 -> 底部缓冲。
+
+    机制（Phase 3 接入风控，61 天前向验证支持冰点侧方向）：
+      - 快热慢冷：短线资金/情绪/技术火热而估值/基本面/流动性不配合，派发警惕；
+      - 快冷慢温：短线冰点而慢变量温和，情绪资金出清后的底部反攻窗口观察。
+    """
+    if fast is None or slow is None or divergence is None:
+        return
+    if divergence >= _DIVERGENCE_EXTREME and fast >= _DIVERGENCE_HOT_FAST:
+        message = (
+            f"快慢深度背离且短线偏热（快 {_temperature_text(fast)}，慢 {_temperature_text(slow)}），"
+            "短线资金情绪与慢变量脱节，派发警惕窗口。"
+        )
+        red_flags.append(message)
+        _add_rule(
+            triggered_rules,
+            "divergence_extreme_hot_fast",
+            "red_flag",
+            {"divergence": divergence, "fast": fast, "slow": slow},
+            {"divergence": _DIVERGENCE_EXTREME, "fast": _DIVERGENCE_HOT_FAST},
+            message,
+        )
+    elif divergence <= -_DIVERGENCE_EXTREME and fast <= _DIVERGENCE_ICE_FAST:
+        message = (
+            f"快慢深度背离且短线冰点（快 {_temperature_text(fast)}，慢 {_temperature_text(slow)}），"
+            "情绪资金处于冰点而慢变量温和，底部反攻窗口观察。"
+        )
+        offsets.append(message)
+        _add_rule(
+            triggered_rules,
+            "divergence_extreme_cold_fast",
+            "offset",
+            {"divergence": divergence, "fast": fast, "slow": slow},
+            {"divergence": -_DIVERGENCE_EXTREME, "fast": _DIVERGENCE_ICE_FAST},
+            message,
+        )
 
 
 def _add_rule(

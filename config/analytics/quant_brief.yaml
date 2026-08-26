@@ -65,6 +65,10 @@ quant_brief:
     valuation_red_flag_temperature: 85.0
     composite_red_flag_temperature: 65.0
     defensive_position_band: "0%-30%"
+    # 快慢背离闸门（与 scoring_risk 的 Phase 3 门限保持一致）
+    divergence_extreme_threshold: 15.0
+    divergence_hot_fast_temperature: 60.0
+    divergence_ice_fast_temperature: 35.0
     main_money_outflow_share_hard: -0.05
     market_amount_high_percentile: 90.0
     margin_buy_share_warning: 0.10

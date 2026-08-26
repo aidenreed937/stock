@@ -273,7 +273,7 @@ def test_build_scores_adds_systemic_risk_summary() -> None:
     assert "估值面 85.00 已进入高温" in scores["systemic_risk"]["red_flags"][0]
     assert any("技术面偏热" in item for item in scores["systemic_risk"]["warnings"])
     trace = scores["systemic_risk"]["decision_trace"]
-    assert trace["rule_version"] == "systemic-risk-v2"
+    assert trace["rule_version"] == "systemic-risk-v3"
     assert trace["final_level"] == "中等偏高"
     assert trace["triggered_rules"][0]["rule_id"] == "valuation_gte_80"
 
@@ -963,6 +963,110 @@ def test_systemic_risk_macro_offset_uses_domestic_when_blend_is_below_50() -> No
     )
     assert rule["actual"] == pytest.approx(60.0)
     assert any("未构成主要压力" in item for item in risk["offsets"])
+
+
+def test_systemic_risk_adds_divergence_hot_red_flag() -> None:
+    facts = pl.DataFrame(
+        [
+            _metric_fact("fund_flow", "fund_flow_temperature", 70.0),
+            _metric_fact("sentiment", "sentiment_temperature", 70.0),
+            _metric_fact("technical", "technical_temperature", 70.0),
+            _metric_fact("valuation", "valuation_temperature", 40.0),
+            _metric_fact("fundamental", "fundamental_temperature", 45.0),
+            _metric_fact("macro_liquidity", "macro_liquidity_temperature", 45.0),
+        ],
+        schema=FACT_SCHEMA,
+    )
+    config = MarketTemperatureConfig(
+        schema_version=1,
+        title="test",
+        artifact_root="data/analytics/market_temperature",
+        main_window=20,
+        short_windows=(),
+        dimensions=_six_dimension_configs(),
+        datasets=(),
+    )
+
+    risk = build_scores(config, as_of_date=date(2026, 8, 14), facts=facts)["systemic_risk"]
+
+    # 快 = 70，慢 = (40*0.2+45*0.15+45*0.15)/0.5 = 43，背离 +27 → 派发警惕红旗
+    assert any("派发警惕" in item for item in risk["red_flags"])
+    rule = next(
+        item
+        for item in risk["decision_trace"]["triggered_rules"]
+        if item["rule_id"] == "divergence_extreme_hot_fast"
+    )
+    assert rule["category"] == "red_flag"
+    assert rule["actual"]["divergence"] == pytest.approx(27.0)
+    trace = risk["decision_trace"]
+    assert trace["inputs"]["fast_slow"]["fast_temperature"] == pytest.approx(70.0)
+    assert trace["inputs"]["fast_slow"]["divergence"] == pytest.approx(27.0)
+
+
+def test_systemic_risk_adds_divergence_ice_offset() -> None:
+    facts = pl.DataFrame(
+        [
+            _metric_fact("fund_flow", "fund_flow_temperature", 30.0),
+            _metric_fact("sentiment", "sentiment_temperature", 30.0),
+            _metric_fact("technical", "technical_temperature", 30.0),
+            _metric_fact("valuation", "valuation_temperature", 55.0),
+            _metric_fact("fundamental", "fundamental_temperature", 58.0),
+            _metric_fact("macro_liquidity", "macro_liquidity_temperature", 60.0),
+        ],
+        schema=FACT_SCHEMA,
+    )
+    config = MarketTemperatureConfig(
+        schema_version=1,
+        title="test",
+        artifact_root="data/analytics/market_temperature",
+        main_window=20,
+        short_windows=(),
+        dimensions=_six_dimension_configs(),
+        datasets=(),
+    )
+
+    risk = build_scores(config, as_of_date=date(2026, 8, 14), facts=facts)["systemic_risk"]
+
+    # 快 = 30，慢 = (55*0.2+58*0.15+60*0.15)/0.5 = 57.4，背离 -27.4 → 底部反攻缓冲
+    assert any("底部反攻" in item for item in risk["offsets"])
+    rule = next(
+        item
+        for item in risk["decision_trace"]["triggered_rules"]
+        if item["rule_id"] == "divergence_extreme_cold_fast"
+    )
+    assert rule["category"] == "offset"
+    # 冰点窗口不抬高风险等级：无红旗下等级为低到中等
+    assert risk["level"] == "低到中等"
+
+
+def test_systemic_risk_divergence_gate_ignores_near_boundary() -> None:
+    facts = pl.DataFrame(
+        [
+            _metric_fact("fund_flow", "fund_flow_temperature", 58.0),
+            _metric_fact("sentiment", "sentiment_temperature", 58.0),
+            _metric_fact("technical", "technical_temperature", 58.0),
+            _metric_fact("valuation", "valuation_temperature", 50.0),
+            _metric_fact("fundamental", "fundamental_temperature", 52.0),
+            _metric_fact("macro_liquidity", "macro_liquidity_temperature", 52.0),
+        ],
+        schema=FACT_SCHEMA,
+    )
+    config = MarketTemperatureConfig(
+        schema_version=1,
+        title="test",
+        artifact_root="data/analytics/market_temperature",
+        main_window=20,
+        short_windows=(),
+        dimensions=_six_dimension_configs(),
+        datasets=(),
+    )
+
+    risk = build_scores(config, as_of_date=date(2026, 8, 14), facts=facts)["systemic_risk"]
+
+    # 快 58（<60）且背离未达 ±15：两侧都不触发
+    rule_ids = [item["rule_id"] for item in risk["decision_trace"]["triggered_rules"]]
+    assert "divergence_extreme_hot_fast" not in rule_ids
+    assert "divergence_extreme_cold_fast" not in rule_ids
 
 
 def _metric_fact(

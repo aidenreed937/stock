@@ -13,6 +13,7 @@ from stock_reporting.interpretation.quant_brief.interpretation import (
     evaluate_sector,
     evaluate_veto,
 )
+from stock_reporting.interpretation.quant_brief.risk_gates import evaluate_divergence_gate
 from stock_reporting.templates.quant_brief import (
     build_quant_brief_json,
     render_quant_brief_markdown,
@@ -448,6 +449,90 @@ def test_risk_gates_report_partial_when_required_facts_are_missing() -> None:
     assert result["status"] == "partial"
     assert result["hard_stop"] is False
     assert all(gate["status"] == "insufficient" for gate in result["gates"])
+
+
+def test_divergence_gate_marks_hot_extreme_as_watch() -> None:
+    config = load_quant_brief_config()
+    gate = evaluate_divergence_gate(
+        config,
+        {
+            "fast_slow": {
+                "status": "ready",
+                "fast_temperature": 65.0,
+                "slow_temperature": 40.0,
+                "divergence": 25.0,
+            }
+        },
+    )
+
+    assert gate["status"] == "watch"
+    assert gate["severity"] == "watch"
+    assert "派发警惕" in gate["message"]
+    assert "收紧止盈" in gate["action"]
+
+
+def test_divergence_gate_marks_ice_extreme_as_observation_without_hard_stop() -> None:
+    config = load_quant_brief_config()
+    gate = evaluate_divergence_gate(
+        config,
+        {
+            "fast_slow": {
+                "status": "ready",
+                "fast_temperature": 30.0,
+                "slow_temperature": 60.0,
+                "divergence": -30.0,
+            }
+        },
+    )
+
+    assert gate["status"] == "clear"
+    assert gate["severity"] == "none"
+    assert "底部反攻" in gate["message"]
+    assert gate["action"] != ""
+
+
+def test_divergence_gate_clear_when_synchronized() -> None:
+    config = load_quant_brief_config()
+    gate = evaluate_divergence_gate(
+        config,
+        {
+            "fast_slow": {
+                "status": "ready",
+                "fast_temperature": 50.0,
+                "slow_temperature": 50.0,
+                "divergence": 0.0,
+            }
+        },
+    )
+
+    assert gate["status"] == "clear"
+    assert "未出现深度背离" in gate["message"]
+
+
+def test_divergence_gate_hot_requires_high_fast_even_at_extreme_divergence() -> None:
+    config = load_quant_brief_config()
+    gate = evaluate_divergence_gate(
+        config,
+        {
+            "fast_slow": {
+                "status": "ready",
+                "fast_temperature": 55.0,
+                "slow_temperature": 30.0,
+                "divergence": 25.0,
+            }
+        },
+    )
+
+    # 背离够深但短线温度 55 < 60：不触发派发观察
+    assert gate["status"] == "clear"
+
+
+def test_divergence_gate_insufficient_without_fast_slow() -> None:
+    config = load_quant_brief_config()
+    gate = evaluate_divergence_gate(config, {})
+
+    assert gate["status"] == "insufficient"
+    assert gate["severity"] == "none"
 
 
 def _facts(values: list[tuple[str, float]]) -> pl.DataFrame:
