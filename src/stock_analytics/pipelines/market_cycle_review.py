@@ -18,6 +18,9 @@ from stock_analytics.pipelines.market_cycle_review_analysis import (
     _build_payload,
 )
 from stock_analytics.pipelines.market_cycle_review_render import _render_markdown
+from stock_analytics.pipelines.market_temperature.scoring import (
+    _fast_slow_temperatures,
+)
 from stock_analytics.pipelines.report_consistency import ConsistencyValidator
 
 
@@ -113,6 +116,32 @@ def _optional_latest_run_dir(root: Path, as_of_date: str) -> Path | None:
     return select_artifact_run_dir(root, as_of_date=as_of_date)
 
 
+def _add_fast_slow_fields(
+    scores: dict[str, Any],
+    row: dict[str, Any],
+) -> None:
+    """为 daily_rows 补充快/慢温度与背离字段。
+
+    优先读 scores.fast_slow（新运行产物）；旧产物缺失该块时，用
+    scoring 的权威合成函数按维度权重回退计算，保证跨周期复盘对历史
+    产物向后兼容且口径一致（权重与分档阈值只维护在 scoring 一处）。
+    """
+    fast_slow = scores.get("fast_slow")
+    if isinstance(fast_slow, dict) and fast_slow.get("status") == "ready":
+        row["fast_temperature"] = fast_slow.get("fast_temperature")
+        row["slow_temperature"] = fast_slow.get("slow_temperature")
+        row["divergence"] = fast_slow.get("divergence")
+        row["divergence_level"] = fast_slow.get("divergence_level")
+        return
+    computed = _fast_slow_temperatures(scores.get("dimensions", []))
+    if computed.get("status") != "ready":
+        return
+    row["fast_temperature"] = computed.get("fast_temperature")
+    row["slow_temperature"] = computed.get("slow_temperature")
+    row["divergence"] = computed.get("divergence")
+    row["divergence_level"] = computed.get("divergence_level")
+
+
 def _load_market_row(dirs: ArtifactDirs, as_of_date: str) -> dict[str, Any]:
     scores = _read_json(dirs.market / "scores.json")
     industry_scores = _read_json(dirs.industry / "scores.json")
@@ -150,6 +179,7 @@ def _load_market_row(dirs: ArtifactDirs, as_of_date: str) -> dict[str, Any]:
         "quant_avoid_industries": _names(quant.get("sector", {}).get("avoid", [])),
     }
     row.update({key: dimensions.get(key) for key in DIMENSION_KEYS})
+    _add_fast_slow_fields(scores, row)
     sentiment_row: dict[str, Any] = next(
         (item for item in scores.get("dimensions", []) if item.get("dimension_id") == "sentiment"),
         {},

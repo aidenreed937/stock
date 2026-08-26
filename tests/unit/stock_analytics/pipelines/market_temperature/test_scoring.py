@@ -6,7 +6,10 @@ import polars as pl
 import pytest
 
 from stock_analytics.pipelines.market_temperature.facts import FACT_SCHEMA
-from stock_analytics.pipelines.market_temperature.scoring import build_scores
+from stock_analytics.pipelines.market_temperature.scoring import (
+    _fast_slow_temperatures,
+    build_scores,
+)
 from stock_reporting.interpretation.market_temperature.config import (
     DimensionConfig,
     MarketTemperatureConfig,
@@ -580,6 +583,102 @@ def test_build_scores_builds_structured_comparison_drivers() -> None:
     assert drivers["composite_delta"] == pytest.approx(12.0)
     assert drivers["top_contributors"][0]["dimension_id"] == "technical"
     assert drivers["top_contributors"][0]["direction"] == "warming"
+
+
+def test_build_scores_builds_fast_slow_block() -> None:
+    facts = pl.DataFrame(
+        [
+            _metric_fact("valuation", "valuation_temperature", 54.24),
+            _metric_fact("fund_flow", "fund_flow_temperature", 50.34),
+            _metric_fact("sentiment", "sentiment_temperature", 73.39),
+            _metric_fact("technical", "technical_temperature", 56.79),
+            _metric_fact("fundamental", "fundamental_temperature", 57.25),
+            _metric_fact("macro_liquidity", "macro_liquidity_temperature", 61.16),
+        ],
+        schema=FACT_SCHEMA,
+    )
+    config = MarketTemperatureConfig(
+        schema_version=1,
+        title="test",
+        artifact_root="data/analytics/market_temperature",
+        main_window=20,
+        short_windows=(),
+        dimensions=_six_dimension_configs(),
+        datasets=(),
+    )
+
+    scores = build_scores(config, as_of_date=date(2026, 8, 25), facts=facts)
+    fast_slow = scores["fast_slow"]
+
+    assert fast_slow["status"] == "ready"
+    # 快 = (资金50.34*0.2 + 情绪73.39*0.15 + 技术56.79*0.15) / 0.5
+    assert fast_slow["fast_temperature"] == pytest.approx(
+        round((50.34 * 0.2 + 73.39 * 0.15 + 56.79 * 0.15) / 0.5, 2)
+    )
+    # 慢 = (估值54.24*0.2 + 基本面57.25*0.15 + 宏观61.16*0.15) / 0.5
+    assert fast_slow["slow_temperature"] == pytest.approx(
+        round((54.24 * 0.2 + 57.25 * 0.15 + 61.16 * 0.15) / 0.5, 2)
+    )
+    assert fast_slow["divergence"] == pytest.approx(1.97)
+
+
+def _six_dimension_configs() -> tuple[DimensionConfig, ...]:
+    return (
+        _weighted_dimension_config("valuation", "估值面", "valuation_temperature", 0.20),
+        _weighted_dimension_config("fund_flow", "资金面", "fund_flow_temperature", 0.20),
+        _weighted_dimension_config("technical", "技术面", "technical_temperature", 0.15),
+        _weighted_dimension_config("sentiment", "情绪面", "sentiment_temperature", 0.15),
+        _weighted_dimension_config(
+            "macro_liquidity", "宏观流动性", "macro_liquidity_temperature", 0.15
+        ),
+        _weighted_dimension_config("fundamental", "基本面", "fundamental_temperature", 0.15),
+    )
+
+
+def _weighted_dimension_config(dimension_id, name, metric_id, weight) -> DimensionConfig:
+    return DimensionConfig(
+        id=dimension_id,
+        name=name,
+        weight=weight,
+        metrics=(MetricInputConfig(metric_id, source="derived", weight=1.0),),
+    )
+
+
+def test_fast_slow_block_flags_extreme_divergence() -> None:
+    dims = [
+        {"dimension_id": "fund_flow", "temperature": 29.21, "weight": 0.20},
+        {"dimension_id": "sentiment", "temperature": 10.6, "weight": 0.15},
+        {"dimension_id": "technical", "temperature": 25.0, "weight": 0.15},
+        {"dimension_id": "valuation", "temperature": 62.0, "weight": 0.20},
+        {"dimension_id": "fundamental", "temperature": 58.0, "weight": 0.15},
+        {"dimension_id": "macro_liquidity", "temperature": 56.5, "weight": 0.15},
+    ]
+    fast_slow = _fast_slow_temperatures(dims)
+
+    assert fast_slow["status"] == "ready"
+    assert fast_slow["divergence"] < -15
+    assert fast_slow["divergence_level"] == "extreme"
+    assert fast_slow["divergence_label"] == "深度背离"
+
+
+def test_build_scores_fast_slow_insufficient_when_group_missing() -> None:
+    facts = pl.DataFrame(
+        [_metric_fact("valuation", "valuation_temperature", 60.0)],
+        schema=FACT_SCHEMA,
+    )
+    config = MarketTemperatureConfig(
+        schema_version=1,
+        title="test",
+        artifact_root="data/analytics/market_temperature",
+        main_window=20,
+        short_windows=(),
+        dimensions=(_dimension_config("valuation", "估值面", "valuation_temperature"),),
+        datasets=(),
+    )
+
+    scores = build_scores(config, as_of_date=date(2026, 8, 14), facts=facts)
+
+    assert scores["fast_slow"]["status"] == "insufficient"
 
 
 def _metric_fact(

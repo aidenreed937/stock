@@ -7,11 +7,65 @@ import shutil
 from datetime import date, timedelta
 from pathlib import Path
 
+import polars as pl
+
 from stock_analytics.pipelines.market_temperature.context import MarketAnalysisContext
 from stock_analytics.pipelines.market_temperature.history import (
+    load_history_index,
     rebuild_history_index,
     update_history_index,
 )
+
+
+def test_history_index_persists_fast_slow_columns(tmp_path: Path) -> None:
+    """历史索引记录快/慢温度与背离字段，旧行缺失时补空值。"""
+    manifest = {
+        "as_of_date": "2026-08-25",
+        "run_id": "run_fast_slow",
+        "run_class": "official",
+        "generated_at": "2026-08-26T18:09:54",
+        "provenance": {},
+        "inputs": {},
+        "watermarks": {},
+    }
+    snapshot = {
+        "schema_version": 2,
+        "as_of_date": "2026-08-25",
+        "run_id": "run_fast_slow",
+        "identity": {"config_hash": "c", "data_fingerprint": "d", "code_version": "v"},
+        "composite": {"temperature": 58.2, "status": "ready"},
+        "fast_slow": {
+            "status": "ready",
+            "fast_temperature": 59.19,
+            "slow_temperature": 57.22,
+            "divergence": 1.97,
+            "divergence_level": "synchronized",
+        },
+        "dimensions": [],
+        "systemic_risk": {
+            "level": "低到中等",
+            "status": "contained",
+            "red_flags": [],
+            "warnings": [],
+            "offsets": [],
+        },
+        "data_quality": {"status": "ready"},
+        "provenance": {},
+    }
+    update_history_index(tmp_path, manifest=manifest, snapshot=snapshot)
+
+    frame = load_history_index(tmp_path)
+    assert frame is not None
+    row = frame.filter(pl.col("run_id") == "run_fast_slow").to_dicts()[0]
+    assert row["fast_temperature"] == 59.19
+    assert row["slow_temperature"] == 57.22
+    assert row["divergence"] == 1.97
+    assert row["divergence_level"] == "synchronized"
+    # 旧 run（snapshot 无 fast_slow）写入后新列为空值，不破坏结构
+    row = frame.filter(pl.col("run_id") != "run_fast_slow")
+    assert {"fast_temperature", "slow_temperature", "divergence", "divergence_level"}.issubset(
+        set(frame.columns)
+    )
 
 
 def test_market_context_reuses_snapshot_and_history_index(tmp_path: Path) -> None:

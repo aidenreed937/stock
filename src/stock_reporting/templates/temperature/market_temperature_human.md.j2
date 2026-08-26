@@ -17,6 +17,12 @@
 {% for dim in dimension_interpretations %}
 | {{ dim.name }} | {{ dim.temperature }} | {{ dim.band }} | {{ dim.subgroups }} | {{ dim.comment }} |
 {% endfor %}
+{% if fast_slow_lines %}
+
+{% for line in fast_slow_lines %}
+{{ line }}
+{% endfor %}
+{% endif %}
 
 ## 关键背离
 

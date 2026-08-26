@@ -126,6 +126,38 @@ def evaluate_systemic_risk_section(scores: dict[str, Any]) -> list[str]:
     return lines
 
 
+def evaluate_fast_slow_section(scores: dict[str, Any]) -> list[str]:
+    """生成快慢温度与背离小节（Phase 1 输出层，不改变六维合成数值）。"""
+    fast_slow = scores.get("fast_slow")
+    if not isinstance(fast_slow, dict) or fast_slow.get("status") != "ready":
+        return []
+    fast = _as_float(fast_slow.get("fast_temperature"))
+    slow = _as_float(fast_slow.get("slow_temperature"))
+    divergence = _as_float(fast_slow.get("divergence"))
+    if fast is None or slow is None or divergence is None:
+        return []
+    level = str(fast_slow.get("divergence_level") or "")
+    label = str(fast_slow.get("divergence_label") or "")
+    level_comment = {
+        "synchronized": "快慢温度同步，综合温度读数是当前市场状态的较好摘要。",
+        "divergent": "快慢温度出现分歧，综合温度是快慢的中和，单看综合会掩盖结构差异；"
+        "先确认是谁在驱动综合温度，再下结论。",
+        "extreme": "快慢温度深度背离，综合温度只具参考意义；"
+        "快冷慢温通常是情绪资金冰点 vs 基本面温，快热慢冷则为派发警惕窗口。",
+    }.get(level, "")
+    return [
+        "## 快慢温度与背离",
+        "",
+        "| 快温度 | 慢温度 | 背离(快-慢) | 状态 | 读法 |",
+        "|---|---:|---:|---|---|",
+        f"| {_temperature_text(fast)} | {_temperature_text(slow)} | {divergence:+.2f} | {label} | {level_comment} |",
+        "",
+        "- 口径: 快温度 = 资金/情绪/技术 按维度权重重归一；慢温度 = 估值/基本面/宏观流动性；"
+        "背离 = 快 - 慢。快慢分组不改变六维综合温度合成。",
+        "",
+    ]
+
+
 def evaluate_key_divergences(
     dimensions: list[dict[str, Any]],
     facts: pl.DataFrame,

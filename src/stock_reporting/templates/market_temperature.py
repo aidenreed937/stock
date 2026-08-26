@@ -25,6 +25,9 @@ from stock_reporting.interpretation.market_temperature.interpretation import (
     evaluate_external_pressure_section as _external_pressure_section,
 )
 from stock_reporting.interpretation.market_temperature.interpretation import (
+    evaluate_fast_slow_section as _fast_slow_section,
+)
+from stock_reporting.interpretation.market_temperature.interpretation import (
     evaluate_follow_ups as _follow_up_section,
 )
 from stock_reporting.interpretation.market_temperature.interpretation import (
@@ -213,6 +216,7 @@ def render_human_report_markdown(
         "one_line_summary": _one_line_summary(dimensions, temperature),
         "reading_brief_lines": _human_reading_brief(dimensions, scores, facts),
         "cross_period_lines": cross_period_lines,
+        "fast_slow_lines": _fast_slow_section(scores),
         "quality_brief_lines": _human_quality_brief(facts),
         "divergence_lines": _key_divergence_section(dimensions, facts),
         "systemic_risk_lines": _systemic_risk_section(scores),

@@ -21,6 +21,10 @@ _HISTORY_SCHEMA = {
     "run_class": pl.String,
     "composite_temperature": pl.Float64,
     "temperature_status": pl.String,
+    "fast_temperature": pl.Float64,
+    "slow_temperature": pl.Float64,
+    "divergence": pl.Float64,
+    "divergence_level": pl.String,
     "risk_level": pl.String,
     "risk_status": pl.String,
     "red_flag_count": pl.Int64,
@@ -92,6 +96,7 @@ def load_history_index(artifact_root: Path | str) -> pl.DataFrame | None:
 def _history_row(manifest: Mapping[str, Any], snapshot: Mapping[str, Any]) -> dict[str, Any]:
     identity = _mapping(snapshot.get("identity"))
     composite = _mapping(snapshot.get("composite"))
+    fast_slow = _mapping(snapshot.get("fast_slow"))
     risk = _mapping(snapshot.get("systemic_risk"))
     dimensions = snapshot.get("dimensions", [])
     as_of_value = str(manifest.get("as_of_date") or snapshot.get("as_of_date") or "")
@@ -101,6 +106,10 @@ def _history_row(manifest: Mapping[str, Any], snapshot: Mapping[str, Any]) -> di
         "run_class": str(manifest.get("run_class") or "official"),
         "composite_temperature": _as_float(composite.get("temperature")),
         "temperature_status": str(composite.get("status") or "pending"),
+        "fast_temperature": _as_float(fast_slow.get("fast_temperature")),
+        "slow_temperature": _as_float(fast_slow.get("slow_temperature")),
+        "divergence": _as_float(fast_slow.get("divergence")),
+        "divergence_level": str(fast_slow.get("divergence_level") or ""),
         "risk_level": str(risk.get("level") or "不可判定"),
         "risk_status": str(risk.get("status") or "pending"),
         "red_flag_count": _list_length(risk.get("red_flags")),

@@ -8,7 +8,7 @@ from collections.abc import Mapping
 from pathlib import Path
 from typing import Any
 
-SNAPSHOT_SCHEMA_VERSION = 1
+SNAPSHOT_SCHEMA_VERSION = 2
 _CODE_FILES = ("pipeline.py", "scoring.py", "scoring_risk.py")
 
 
@@ -23,12 +23,14 @@ def build_market_state_snapshot(
     identity = build_cache_identity(manifest, config_path=config_path)
     composite = _mapping(scores.get("composite"))
     systemic_risk = _mapping(scores.get("systemic_risk"))
+    fast_slow = _mapping(scores.get("fast_slow"))
     return {
         "schema_version": SNAPSHOT_SCHEMA_VERSION,
         "as_of_date": str(manifest.get("as_of_date") or scores.get("as_of_date") or ""),
         "run_id": str(manifest.get("run_id") or ""),
         "identity": identity,
         "composite": composite,
+        "fast_slow": fast_slow,
         "dimensions": dimensions,
         "dimension_groups": _dimension_groups(dimensions),
         "trend": {
@@ -48,7 +50,7 @@ def build_market_state_snapshot(
             "parents": _mapping(manifest.get("parents")),
             "source_cutoffs": _mapping(manifest.get("source_cutoffs")),
         },
-        "explanation_facts": _explanation_facts(composite, dimensions, systemic_risk),
+        "explanation_facts": _explanation_facts(composite, dimensions, systemic_risk, fast_slow),
     }
 
 
@@ -114,6 +116,7 @@ def _explanation_facts(
     composite: Mapping[str, Any],
     dimensions: list[dict[str, Any]],
     systemic_risk: Mapping[str, Any],
+    fast_slow: Mapping[str, Any] | None = None,
 ) -> list[dict[str, Any]]:
     facts: list[dict[str, Any]] = [
         {
@@ -122,6 +125,16 @@ def _explanation_facts(
             "status": composite.get("status"),
         }
     ]
+    if fast_slow is not None and fast_slow.get("status") == "ready":
+        facts.append(
+            {
+                "kind": "fast_slow_divergence",
+                "fast_temperature": fast_slow.get("fast_temperature"),
+                "slow_temperature": fast_slow.get("slow_temperature"),
+                "divergence": fast_slow.get("divergence"),
+                "divergence_level": fast_slow.get("divergence_level"),
+            }
+        )
     facts.extend(
         {
             "kind": "dimension_temperature",

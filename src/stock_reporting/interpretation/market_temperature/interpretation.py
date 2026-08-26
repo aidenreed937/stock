@@ -19,6 +19,7 @@ from stock_reporting.interpretation.market_temperature.bands import (
 )
 from stock_reporting.interpretation.market_temperature.evaluators import (
     evaluate_external_pressure_section,
+    evaluate_fast_slow_section,
     evaluate_follow_ups,
     evaluate_interpretation_priority_rows,
     evaluate_key_divergences,
@@ -33,6 +34,7 @@ __all__ = [
     "_DIMENSION_TIMELINESS",
     "_METRIC_LABELS",
     "evaluate_external_pressure_section",
+    "evaluate_fast_slow_section",
     "evaluate_follow_ups",
     "evaluate_interpretation_priority_rows",
     "evaluate_key_divergences",

@@ -71,6 +71,108 @@ def test_human_report_includes_interpretation_priority() -> None:
     assert "财报是低频底座，预告和研报才反映近20日预期变化" in report
 
 
+def test_human_report_includes_fast_slow_section() -> None:
+    config = MarketTemperatureConfig(
+        schema_version=1,
+        title="测试温度计",
+        artifact_root=Path("data/analytics/market_temperature"),
+        main_window=20,
+        short_windows=(5, 10),
+        dimensions=(),
+        datasets=(),
+    )
+    manifest = {
+        "as_of_date": "2026-08-14",
+        "trade_dates": ["2026-07-20", "2026-08-14"],
+        "main_window": 20,
+        "short_windows": [5, 10],
+    }
+    scores = {
+        "composite": {"temperature": 61.79, "status": "ready"},
+        "fast_slow": {
+            "status": "ready",
+            "fast_temperature": 59.19,
+            "slow_temperature": 57.22,
+            "divergence": 1.97,
+            "divergence_level": "synchronized",
+            "divergence_label": "快慢同步",
+        },
+        "systemic_risk": {
+            "level": "中等偏高",
+            "message": "存在明确风险源，但尚未形成全面风险扩散。",
+            "red_flags": [],
+            "warnings": [],
+            "offsets": [],
+        },
+        "dimensions": [
+            _dimension("valuation", "估值面", 81.23),
+            _dimension("fund_flow", "资金面", 47.64),
+            _dimension("sentiment", "情绪面", 52.06),
+            _dimension("technical", "技术面", 67.39),
+            _dimension("fundamental", "基本面", 60.70),
+            _dimension("macro_liquidity", "宏观流动性", 59.96),
+        ],
+        "drivers": {"status": "no_comparison"},
+    }
+
+    report = render_human_report_markdown(
+        config=config,
+        manifest=manifest,
+        scores=scores,
+        facts=pl.DataFrame(schema=FACT_SCHEMA),
+    )
+
+    assert "## 快慢温度与背离" in report
+    assert "| 59.19 | 57.22 | +1.97 | 快慢同步 |" in report
+    assert "- 口径: 快温度 = 资金/情绪/技术" in report
+
+
+def test_human_report_omits_fast_slow_section_when_missing() -> None:
+    config = MarketTemperatureConfig(
+        schema_version=1,
+        title="测试温度计",
+        artifact_root=Path("data/analytics/market_temperature"),
+        main_window=20,
+        short_windows=(5, 10),
+        dimensions=(),
+        datasets=(),
+    )
+    manifest = {
+        "as_of_date": "2026-08-14",
+        "trade_dates": ["2026-07-20", "2026-08-14"],
+        "main_window": 20,
+        "short_windows": [5, 10],
+    }
+    scores = {
+        "composite": {"temperature": 61.79, "status": "ready"},
+        "systemic_risk": {
+            "level": "中等偏高",
+            "message": "存在明确风险源。",
+            "red_flags": [],
+            "warnings": [],
+            "offsets": [],
+        },
+        "dimensions": [
+            _dimension("valuation", "估值面", 81.23),
+            _dimension("fund_flow", "资金面", 47.64),
+            _dimension("sentiment", "情绪面", 52.06),
+            _dimension("technical", "技术面", 67.39),
+            _dimension("fundamental", "基本面", 60.70),
+            _dimension("macro_liquidity", "宏观流动性", 59.96),
+        ],
+        "drivers": {"status": "no_comparison"},
+    }
+
+    report = render_human_report_markdown(
+        config=config,
+        manifest=manifest,
+        scores=scores,
+        facts=pl.DataFrame(schema=FACT_SCHEMA),
+    )
+
+    assert "## 快慢温度与背离" not in report
+
+
 def test_human_report_includes_external_risk_status() -> None:
     config = MarketTemperatureConfig(
         schema_version=1,

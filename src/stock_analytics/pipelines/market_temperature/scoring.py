@@ -65,6 +65,7 @@ def build_scores(
             "status": composite_status,
             "reason": "按可用维度温度和默认权重重归一合成",
         },
+        "fast_slow": _fast_slow_temperatures(dimensions),
         "systemic_risk": systemic_risk,
         "external_risk": external_risk,
         "drivers": drivers,
@@ -177,6 +178,78 @@ def _composite_temperature(dimensions: list[dict[str, Any]]) -> float | None:
     if weight_sum == 0:
         return None
     return round(weighted_sum / weight_sum, 2)
+
+
+# 快慢分组的维度归属与背离分档（Phase 1 输出层，不改变六维合成数值）
+_FAST_DIMENSION_IDS = ("fund_flow", "sentiment", "technical")
+_SLOW_DIMENSION_IDS = ("valuation", "fundamental", "macro_liquidity")
+_DIVERGENCE_STABLE = 8.0
+_DIVERGENCE_SIGNIFICANT = 15.0
+# 兜底维度权重：仅当产物缺少维度 weight 字段时使用（与 market_temperature.yaml 当前权重一致）
+_GROUP_DEFAULT_WEIGHTS = {
+    "valuation": 0.20,
+    "fund_flow": 0.20,
+    "sentiment": 0.15,
+    "technical": 0.15,
+    "fundamental": 0.15,
+    "macro_liquidity": 0.15,
+}
+
+
+def _fast_slow_temperatures(dimensions: list[dict[str, Any]]) -> dict[str, Any]:
+    """按维度权重归一合成快温度、慢温度与背离读数。
+
+    快温度 = 资金/情绪/技术 按各自维度权重归一；慢温度 = 估值/基本面/宏观流动性。
+    背离 = 快 - 慢；分档读法：
+      - |背离| < 8: 快慢同步；
+      - 8 <= |背离| < 15: 分歧观察（快慢未同步，需看到底谁在驱动综合温度）；
+      - |背离| >= 15: 深度背离（派发警惕或冰点反攻窗口）。
+    """
+    by_id = {str(item.get("dimension_id")): item for item in dimensions if isinstance(item, dict)}
+
+    def _group(ids: tuple[str, ...]) -> float | None:
+        weighted_sum = 0.0
+        weight_sum = 0.0
+        for dimension_id in ids:
+            item = by_id.get(dimension_id)
+            if item is None:
+                continue
+            temperature = item.get("temperature")
+            if temperature is None:
+                continue
+            weight = item.get("weight")
+            if weight is None:
+                weight = _GROUP_DEFAULT_WEIGHTS.get(dimension_id, 1.0)
+            weighted_sum += float(temperature) * float(weight)
+            weight_sum += float(weight)
+        if weight_sum == 0:
+            return None
+        return round(weighted_sum / weight_sum, 2)
+
+    fast = _group(_FAST_DIMENSION_IDS)
+    slow = _group(_SLOW_DIMENSION_IDS)
+    if fast is None or slow is None:
+        return {"status": "insufficient"}
+
+    divergence = round(fast - slow, 2)
+    abs_divergence = abs(divergence)
+    if abs_divergence < _DIVERGENCE_STABLE:
+        level = "synchronized"
+        label = "快慢同步"
+    elif abs_divergence < _DIVERGENCE_SIGNIFICANT:
+        level = "divergent"
+        label = "分歧观察"
+    else:
+        level = "extreme"
+        label = "深度背离"
+    return {
+        "status": "ready",
+        "fast_temperature": fast,
+        "slow_temperature": slow,
+        "divergence": divergence,
+        "divergence_level": level,
+        "divergence_label": label,
+    }
 
 
 def _count_metric_facts(

@@ -6,6 +6,7 @@ import json
 from typing import TYPE_CHECKING, Any
 
 import polars as pl
+import pytest
 
 from stock_analytics.pipelines.market_cycle_review import (
     _build_payload,
@@ -151,6 +152,76 @@ def test_market_cycle_review_aggregates_quant_nature_veto_and_sectors() -> None:
     assert payload["daily_rows"][0]["quant_top5pct_share"] == 0.55
     assert "量化投研性质与排雷" in markdown
     assert "行情性质分布" in markdown
+
+
+def test_market_cycle_review_fills_fast_slow_from_dimension_weights(tmp_path: Path) -> None:
+    """旧运行产物无 fast_slow 块时，按维度权重回退合成快/慢温度与背离。"""
+    analytics_root = tmp_path / "analytics"
+    output_root = tmp_path / "market_cycle_review"
+    _write_day(
+        analytics_root,
+        {
+            "date": "2026-08-13",
+            "market_run": "run_market_1",
+            "industry_run": "run_industry_1",
+            "brief_run": "run_brief_1",
+            "composite": 60.12,
+            "fund_flow": 52.30,
+            "technical": 45.20,
+            "sentiment": 58.10,
+            "risk": "中等",
+            "health": "偏弱",
+            "positive_20d": 12,
+            "positive_60d": 2,
+            "coal_tcr": 0.40,
+        },
+    )
+
+    run_market_cycle_review(
+        start="2026-08-13",
+        end="2026-08-13",
+        analytics_root=analytics_root,
+        output_root=output_root,
+        skip_consistency=True,
+    )
+
+    payload = json.loads((output_root / "latest" / "review.json").read_text(encoding="utf-8"))
+    row = payload["daily_rows"][0]
+    # fast = (fund_flow52.30*0.2 + sentiment58.10*0.15 + technical45.20*0.15)/0.5 = 51.91
+    assert row["fast_temperature"] == pytest.approx(51.91, abs=0.01)
+    assert row["divergence"] is not None
+    assert row["divergence_level"] in {"synchronized", "divergent", "extreme"}
+
+
+def test_market_cycle_review_render_includes_fast_slow_lines() -> None:
+    row = {
+        "date": "2026-08-14",
+        "composite": 62.96,
+        "risk_level": "中等偏高",
+        "structure_health": "修复中但偏脆弱",
+        "positive_return_20d_count": 30,
+        "positive_return_60d_count": 3,
+        "fast_temperature": 59.19,
+        "slow_temperature": 57.22,
+        "divergence": 1.97,
+        "divergence_level": "synchronized",
+    }
+    for key in (
+        "valuation",
+        "fund_flow",
+        "sentiment",
+        "technical",
+        "fundamental",
+        "macro_liquidity",
+    ):
+        row[key] = 50.0
+
+    payload = _build_payload(["2026-08-14"], [row], [])
+    markdown = _render_markdown(payload)
+
+    assert "- 快温度: 59.19 -> 59.19" in markdown
+    assert "- 慢温度: 57.22 -> 57.22" in markdown
+    assert "快慢背离分布: 快慢同步 1天。" in markdown
 
 
 def _write_day(root: Path, day: dict[str, Any]) -> None:

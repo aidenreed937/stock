@@ -113,7 +113,23 @@ def _market_summary_lines(summary: dict[str, Any]) -> list[str]:
         "positive_return_60d_count", series["positive_return_60d_count"]["end"]
     )
 
-    return [
+    fast_lines = []
+    for key, label in (
+        ("fast_temperature", "快温度"),
+        ("slow_temperature", "慢温度"),
+        ("divergence", "背离(快-慢)"),
+    ):
+        item = series.get(key)
+        if not isinstance(item, dict) or item.get("status") == "missing":
+            continue
+        fast_lines.append(
+            f"- {label}: {_format_series_val(key, item['start'])} -> "
+            f"{_format_series_val(key, item['end'])}，均值 {_format_series_val(key, item['mean'])}，"
+            f"区间最低 {item['min']['date']}={_format_series_val(key, item['min']['value'])}，"
+            f"最高 {item['max']['date']}={_format_series_val(key, item['max']['value'])}。"
+        )
+
+    lines = [
         (
             f"- 综合温度: {comp_start} -> {comp_end}，均值 {comp_mean}，"
             f"区间最低 {comp_min_date}={comp_min_val}，"
@@ -127,7 +143,16 @@ def _market_summary_lines(summary: dict[str, Any]) -> list[str]:
         ),
         f"- 系统风险分布: {_format_counts(summary['risk_level_counts'])}。",
         f"- 结构健康度分布: {_format_counts(summary['structure_health_counts'])}。",
+        *fast_lines,
     ]
+    if summary.get("divergence_level_counts"):
+        labels = {"synchronized": "快慢同步", "divergent": "分歧观察", "extreme": "深度背离"}
+        level_text = "，".join(
+            f"{labels.get(key, key)} {count}天"
+            for key, count in summary["divergence_level_counts"].items()
+        )
+        lines.append(f"- 快慢背离分布: {level_text}。")
+    return lines
 
 
 def _phase_table(phases: list[dict[str, Any]]) -> list[str]:
@@ -167,11 +192,17 @@ def _signal_table(signal_days: list[dict[str, Any]], limit: int = 24) -> list[st
     for row in selected:
         sorted_reasons = sorted(row["reasons"], key=_reason_priority)
         reasons = "；".join(sorted_reasons[:2])
+        divergence = row.get("divergence")
+        divergence_text = (
+            f"，背离{divergence:+.1f}"
+            if divergence is not None and math.isfinite(float(divergence))
+            else ""
+        )
         lines.append(
             f"| {row['date']} | {_fmt(row['composite'])} | {row['risk_level']} | "
             f"{_fmt(row['fund_flow'])} | {_fmt(row['technical'])} | "
             f"{row['positive_return_20d_count']}/{row['positive_return_60d_count']} | "
-            f"{reasons} |"
+            f"{reasons}{divergence_text} |"
         )
     return lines
 

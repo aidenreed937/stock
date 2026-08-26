@@ -86,12 +86,23 @@ def _build_payload(
 
 
 def _market_summary(rows: list[dict[str, Any]]) -> dict[str, Any]:
-    keys = ("composite", *DIMENSION_KEYS, "positive_return_20d_count", "positive_return_60d_count")
+    keys = (
+        "composite",
+        *DIMENSION_KEYS,
+        "fast_temperature",
+        "slow_temperature",
+        "divergence",
+        "positive_return_20d_count",
+        "positive_return_60d_count",
+    )
     summary = {key: _series_summary(rows, key) for key in keys}
     return {
         "series": summary,
         "risk_level_counts": dict(Counter(row["risk_level"] for row in rows)),
         "structure_health_counts": dict(Counter(row["structure_health"] for row in rows)),
+        "divergence_level_counts": dict(
+            Counter(row["divergence_level"] for row in rows if row.get("divergence_level"))
+        ),
     }
 
 
@@ -274,6 +285,10 @@ def _signal_payload(row: dict[str, Any], reasons: list[str]) -> dict[str, Any]:
         "technical",
         "sentiment",
         "valuation",
+        "fast_temperature",
+        "slow_temperature",
+        "divergence",
+        "divergence_level",
         "structure_health",
         "positive_return_20d_count",
         "positive_return_60d_count",
