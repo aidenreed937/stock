@@ -79,3 +79,60 @@ quant_brief:
     industry_tcr_warning: 20.0
     industry_tcr_hard: 25.0
     industry_crowding_hard_temperature: 90.0
+
+  # 跨周期胜率/赔率矩阵（odds-matrix-v1 校准版：61 天回归后弱化方向性分项，校准说明见设计文档第 9 节）
+  # 设计说明见 docs/research/cross_cycle_odds_matrix_design.md 第 4 节
+  cross_cycle:
+    rules_version: "odds-matrix-v1"
+    # 胜率环境 S
+    win_sync_bonus: 10.0
+    win_ice_extreme_penalty: -15.0
+    win_hot_extreme_penalty: -10.0
+    short_ice_threshold: 35.0
+    short_hot_threshold: 65.0
+    win_short_ice_bonus: 10.0
+    win_short_hot_penalty: -10.0
+    width_healthy_threshold: 0.60
+    width_weak_threshold: 0.40
+    win_width_healthy_bonus: 10.0
+    win_width_weak_penalty: -10.0
+    win_fund_confirmed_bonus: 10.0
+    win_fund_outflow_penalty: -10.0
+    win_external_pending_penalty: -10.0
+    win_level_high: 5.0
+    win_level_low: -25.0
+    # 赔率环境 O
+    slow_low_threshold: 50.0
+    slow_high_threshold: 65.0
+    odds_slow_low_bonus: 20.0
+    odds_slow_high_penalty: -10.0
+    valuation_low_threshold: 40.0
+    valuation_high_threshold: 70.0
+    odds_valuation_low_bonus: 10.0
+    odds_valuation_high_penalty: -10.0
+    diffusion_low_threshold: 30.0
+    diffusion_high_threshold: 60.0
+    odds_diffusion_low_bonus: 10.0
+    odds_diffusion_high_penalty: -10.0
+    crowding_share_threshold: 10.0
+    odds_crowding_none_bonus: 10.0
+    odds_crowding_high_penalty: -10.0
+    macro_loose_threshold: 40.0
+    macro_tight_threshold: 65.0
+    odds_macro_loose_bonus: 10.0
+    odds_macro_tight_penalty: -10.0
+    external_pressure_threshold: 75.0
+    odds_external_pressure_penalty: -10.0
+    odds_level_high: 5.0
+    odds_level_low: -10.0
+    # 轨迹修正
+    trajectory_convergence_bonus: 5.0
+    trajectory_deterioration_penalty: -5.0
+    trajectory_rising_bonus: 5.0
+    trajectory_falling_penalty: -5.0
+    composite_trend_window: 5
+    # 象限仓位微调（ppe）
+    adj_core_pp: 0.0
+    adj_left_pp: -7.0
+    adj_band_pp: -5.0
+    adj_avoid_pp: -5.0

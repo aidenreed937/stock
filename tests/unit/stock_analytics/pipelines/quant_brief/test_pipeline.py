@@ -174,7 +174,8 @@ def test_run_quant_brief_reads_upstream_artifacts_and_writes_four_step_report(
     assert result.manifest["inputs"]["market_temperature"]["run_id"] == "run_market"
     assert result.brief_json["veto"]["top5pct"]["value"] == 0.55
     assert result.brief_json["sector"]["priority"][0]["industry_name"] == "煤炭"
-    assert "## 3. 微观排雷与一票否决" in result.brief_markdown
+    assert "## 1. 跨周期胜率赔率矩阵" in result.brief_markdown
+    assert "## 4. 微观排雷与一票否决" in result.brief_markdown
     assert margin_calls == [storage_dir]
 
 

@@ -5,6 +5,10 @@ from __future__ import annotations
 from typing import TYPE_CHECKING, Any
 
 from stock_reporting.engine.renderer import ReportRenderer
+from stock_reporting.interpretation.quant_brief.cross_cycle import (
+    cross_cycle_summary,
+    evaluate_cross_cycle,
+)
 from stock_reporting.interpretation.quant_brief.interpretation import (
     evaluate_data_quality_notes,
     evaluate_macro,
@@ -30,10 +34,12 @@ def build_quant_brief_json(
     industry_panel: pl.DataFrame,
     market_facts: pl.DataFrame | None = None,
     margin_series: pl.DataFrame | None = None,
+    history: pl.DataFrame | None = None,
 ) -> dict[str, Any]:
     """构造量化投研简报机器结构。
 
     ``margin_series`` 为可选的两融日频序列，用于两融拐点的连续状态判定。
+    ``history`` 为可选的市场温度历史索引，用于跨周期矩阵的轨迹修正。
     """
     macro = evaluate_macro(config, market_scores)
     nature = evaluate_nature(config, market_scores, industry_scores, market_facts)
@@ -54,6 +60,13 @@ def build_quant_brief_json(
         market_facts,
     )
     position_policy = _build_position_policy(macro, risk_gates)
+    cross_cycle = evaluate_cross_cycle(
+        config,
+        market_scores,
+        industry_scores,
+        market_facts=market_facts,
+        history=history,
+    )
     data_quality_notes = evaluate_data_quality_notes(
         market_scores,
         industry_scores,
@@ -70,6 +83,7 @@ def build_quant_brief_json(
         "sector": sector,
         "risk_gates": risk_gates,
         "position_policy": position_policy,
+        "cross_cycle": cross_cycle,
         "data_quality_notes": data_quality_notes,
         "reading_notes": evaluate_reading_notes(macro, nature, veto, sector, risk_gates),
     }
@@ -86,6 +100,9 @@ def render_quant_brief_markdown(brief: dict[str, Any]) -> str:
     position_policy = brief.get("position_policy")
     if not isinstance(position_policy, dict):
         position_policy = _build_position_policy(macro, risk_gates)
+    cross_cycle = brief.get("cross_cycle")
+    if not isinstance(cross_cycle, dict):
+        cross_cycle = {}
     reading_notes = brief.get("reading_notes", {})
     context = {
         "title": brief.get("title", ""),
@@ -96,6 +113,14 @@ def render_quant_brief_markdown(brief: dict[str, Any]) -> str:
         "sector": sector,
         "risk_gates": risk_gates,
         "position_policy": position_policy,
+        "cross_cycle": cross_cycle,
+        "cross_cycle_summary": cross_cycle_summary(cross_cycle),
+        "cross_cycle_table_rows": _format_cross_cycle_table(cross_cycle.get("table")),
+        "cross_cycle_trajectory": _format_trajectory(cross_cycle.get("trajectory")),
+        "cross_cycle_parts": _format_score_parts(cross_cycle),
+        "cross_cycle_triggers": cross_cycle.get("upgrade_triggers", [])
+        if isinstance(cross_cycle.get("upgrade_triggers"), list)
+        else [],
         "risk_gate_rows": _format_risk_gates(risk_gates.get("gates", [])),
         "funding_health": _format_funding_health(nature.get("funding_health", {})),
         "macro_temperature_str": _value_text(macro.get("temperature")),
@@ -127,6 +152,77 @@ def render_quant_brief_markdown(brief: dict[str, Any]) -> str:
         else [],
     }
     return ReportRenderer.get_instance().render("temperature/quant_brief.md.j2", context)
+
+
+def _format_cross_cycle_table(table: object) -> list[dict[str, str]]:
+    """把三周期表转成 md 模板友好结构。"""
+    if not isinstance(table, dict):
+        return []
+    layers = (
+        ("long", "长周期（60-120日）", "赔率"),
+        ("medium", "中周期（20日）", "中枢"),
+        ("short", "短周期（5-10日）", "胜率"),
+    )
+    rows: list[dict[str, str]] = []
+    for key, layer, role in layers:
+        item = table.get(key)
+        if not isinstance(item, dict):
+            rows.append({"layer": layer, "readings": "-", "role": role})
+            continue
+        if key == "long":
+            readings = (
+                f"慢温 {_value_text(item.get('slow_temperature'))}；"
+                f"60日扩散 {_percent_text(item.get('diffusion_60d_share'))}"
+            )
+        elif key == "medium":
+            readings = (
+                f"综合 {_value_text(item.get('composite'))}；背离 {_value_text(item.get('divergence'))}"
+                f"（{item.get('divergence_level') or '-'}）"
+            )
+        else:
+            readings = (
+                f"短线5d {_value_text(item.get('short_term_5d'))}；10d {_value_text(item.get('short_term_10d'))}"
+                f"；外盘 {item.get('external') or '-'}"
+            )
+        rows.append({"layer": layer, "readings": readings, "role": role})
+    return rows
+
+
+def _format_trajectory(trajectory: object) -> str:
+    if not isinstance(trajectory, dict) or not trajectory:
+        return "历史索引缺失，轨迹修正未启用。"
+    parts = []
+    if trajectory.get("divergence_transition"):
+        parts.append(f"背离迁移 {trajectory['divergence_transition']}")
+    if trajectory.get("d5_composite_direction"):
+        direction = {
+            "up": "连续上行",
+            "down": "连续下行",
+            "flat": "基本走平",
+            "insufficient": "数据不足",
+        }.get(str(trajectory["d5_composite_direction"]), str(trajectory["d5_composite_direction"]))
+        parts.append(f"近5日综合温度 {direction}")
+    if trajectory.get("slow_5d_delta_pp") is not None:
+        parts.append(f"慢温5日变化 {trajectory['slow_5d_delta_pp']:+.2f}pp")
+    return "；".join(parts) if parts else "无可用轨迹事实。"
+
+
+def _format_score_parts(cross_cycle: dict[str, Any]) -> dict[str, list[str]]:
+    """把 S/O 分项转成 md 模板友好的文本列表。"""
+    result: dict[str, list[str]] = {"win": [], "odds": []}
+    for key, label in (("win", "胜率环境"), ("odds", "赔率环境")):
+        parts = cross_cycle.get(f"{key}_parts")
+        if not isinstance(parts, dict) or not parts:
+            result[key] = [f"{label}分项缺失。"]
+            continue
+        result[key] = [
+            f"{name} {value:+.0f}"
+            for name, value in parts.items()
+            if isinstance(value, int | float)
+        ]
+        if not result[key]:
+            result[key] = [f"{label}无有效分项。"]
+    return result
 
 
 def _format_rows(rows: object) -> list[dict[str, str]]:

@@ -95,6 +95,7 @@ def run_quant_brief(
         industry_panel=industry["industry_panel"],
         market_facts=market["facts"],
         margin_series=margin_series,
+        history=_load_temperature_history(config.market_temperature_root),
     )
     brief_markdown = render_quant_brief_markdown(brief_json)
     write_artifacts(
@@ -168,6 +169,17 @@ def _load_margin_series(
             .agg(pl.col(balance_col).sum().alias("margin_balance"))
             .sort("trade_date")
         )
+    except Exception:
+        return None
+
+
+def _load_temperature_history(market_root: Path) -> pl.DataFrame | None:
+    """读取市场温度历史索引，用于跨周期矩阵轨迹修正。"""
+    path = market_root / "index" / "history.parquet"
+    if not path.exists():
+        return None
+    try:
+        return pl.read_parquet(path)
     except Exception:
         return None
 

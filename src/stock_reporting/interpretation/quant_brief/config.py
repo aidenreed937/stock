@@ -3,7 +3,7 @@
 from __future__ import annotations
 
 from collections.abc import Mapping, Sequence
-from dataclasses import dataclass, replace
+from dataclasses import dataclass, field, replace
 from pathlib import Path
 from typing import Any, Self, cast
 
@@ -35,6 +35,139 @@ class TemperatureBandConfig:
             equity_position_band=str(data["equity_position_band"]),
             stance=str(data["stance"]),
             tactic=str(data["tactic"]),
+        )
+
+
+@dataclass(frozen=True, slots=True)
+class CrossCycleConfig:
+    """跨周期胜率/赔率矩阵配置（初始机制草案，待 61 天回测校准）。
+
+    分值均为环境级评分分量：S=胜率环境、O=赔率环境，数值为正偏积极、为负偏谨慎。
+    阈值与分值来源见 docs/research/cross_cycle_odds_matrix_design.md 第 4 节。
+    """
+
+    # 胜率环境 S：快慢背离等级
+    win_sync_bonus: float = 10.0
+    win_ice_extreme_penalty: float = -15.0
+    win_hot_extreme_penalty: float = -10.0
+    # S：短线温度位置
+    short_ice_threshold: float = 35.0
+    short_hot_threshold: float = 65.0
+    win_short_ice_bonus: float = 10.0
+    win_short_hot_penalty: float = -10.0
+    # S：技术宽度
+    width_healthy_threshold: float = 0.60
+    width_weak_threshold: float = 0.40
+    win_width_healthy_bonus: float = 10.0
+    win_width_weak_penalty: float = -10.0
+    # S：主力资金与外部冲击
+    win_fund_confirmed_bonus: float = 10.0
+    win_fund_outflow_penalty: float = -10.0
+    win_external_pending_penalty: float = -10.0
+    # S 档位映射
+    win_level_high: float = 5.0
+    win_level_low: float = -25.0
+
+    # 赔率环境 O：慢温度/估值分位
+    slow_low_threshold: float = 50.0
+    slow_high_threshold: float = 65.0
+    odds_slow_low_bonus: float = 20.0
+    odds_slow_high_penalty: float = -10.0
+    valuation_low_threshold: float = 40.0
+    valuation_high_threshold: float = 70.0
+    odds_valuation_low_bonus: float = 10.0
+    odds_valuation_high_penalty: float = -10.0
+    # O：行业扩散
+    diffusion_low_threshold: float = 30.0
+    diffusion_high_threshold: float = 60.0
+    odds_diffusion_low_bonus: float = 10.0
+    odds_diffusion_high_penalty: float = -10.0
+    # O：拥挤占比
+    crowding_share_threshold: float = 10.0
+    odds_crowding_none_bonus: float = 10.0
+    odds_crowding_high_penalty: float = -10.0
+    # O：宏观流动性与外盘压力
+    macro_loose_threshold: float = 40.0
+    macro_tight_threshold: float = 65.0
+    odds_macro_loose_bonus: float = 10.0
+    odds_macro_tight_penalty: float = -10.0
+    external_pressure_threshold: float = 75.0
+    odds_external_pressure_penalty: float = -10.0
+    # O 档位映射
+    odds_level_high: float = 5.0
+    odds_level_low: float = -10.0
+
+    # 轨迹修正（作用于 S/O 最终分）
+    trajectory_convergence_bonus: float = 5.0
+    trajectory_deterioration_penalty: float = -5.0
+    trajectory_rising_bonus: float = 5.0
+    trajectory_falling_penalty: float = -5.0
+    composite_trend_window: int = 5
+
+    # 象限仓位微调（ppe）
+    adj_core_pp: float = 0.0
+    adj_left_pp: float = -7.0
+    adj_band_pp: float = -5.0
+    adj_avoid_pp: float = -5.0
+    rules_version: str = "odds-matrix-v1"
+
+    @classmethod
+    def from_mapping(cls, data: Mapping[str, Any]) -> Self:
+        """从 YAML 映射构造跨周期矩阵配置。"""
+
+        def number(name: str, default: float) -> float:
+            return float(data.get(name, default))
+
+        return cls(
+            win_sync_bonus=number("win_sync_bonus", 20.0),
+            win_ice_extreme_penalty=number("win_ice_extreme_penalty", -30.0),
+            win_hot_extreme_penalty=number("win_hot_extreme_penalty", -20.0),
+            short_ice_threshold=number("short_ice_threshold", 35.0),
+            short_hot_threshold=number("short_hot_threshold", 65.0),
+            win_short_ice_bonus=number("win_short_ice_bonus", 10.0),
+            win_short_hot_penalty=number("win_short_hot_penalty", -10.0),
+            width_healthy_threshold=number("width_healthy_threshold", 0.60),
+            width_weak_threshold=number("width_weak_threshold", 0.40),
+            win_width_healthy_bonus=number("win_width_healthy_bonus", 10.0),
+            win_width_weak_penalty=number("win_width_weak_penalty", -10.0),
+            win_fund_confirmed_bonus=number("win_fund_confirmed_bonus", 10.0),
+            win_fund_outflow_penalty=number("win_fund_outflow_penalty", -10.0),
+            win_external_pending_penalty=number("win_external_pending_penalty", -10.0),
+            win_level_high=number("win_level_high", 30.0),
+            win_level_low=number("win_level_low", -10.0),
+            slow_low_threshold=number("slow_low_threshold", 50.0),
+            slow_high_threshold=number("slow_high_threshold", 65.0),
+            odds_slow_low_bonus=number("odds_slow_low_bonus", 20.0),
+            odds_slow_high_penalty=number("odds_slow_high_penalty", -10.0),
+            valuation_low_threshold=number("valuation_low_threshold", 40.0),
+            valuation_high_threshold=number("valuation_high_threshold", 70.0),
+            odds_valuation_low_bonus=number("odds_valuation_low_bonus", 10.0),
+            odds_valuation_high_penalty=number("odds_valuation_high_penalty", -10.0),
+            diffusion_low_threshold=number("diffusion_low_threshold", 30.0),
+            diffusion_high_threshold=number("diffusion_high_threshold", 60.0),
+            odds_diffusion_low_bonus=number("odds_diffusion_low_bonus", 10.0),
+            odds_diffusion_high_penalty=number("odds_diffusion_high_penalty", -10.0),
+            crowding_share_threshold=number("crowding_share_threshold", 10.0),
+            odds_crowding_none_bonus=number("odds_crowding_none_bonus", 10.0),
+            odds_crowding_high_penalty=number("odds_crowding_high_penalty", -10.0),
+            macro_loose_threshold=number("macro_loose_threshold", 40.0),
+            macro_tight_threshold=number("macro_tight_threshold", 65.0),
+            odds_macro_loose_bonus=number("odds_macro_loose_bonus", 10.0),
+            odds_macro_tight_penalty=number("odds_macro_tight_penalty", -10.0),
+            external_pressure_threshold=number("external_pressure_threshold", 75.0),
+            odds_external_pressure_penalty=number("odds_external_pressure_penalty", -10.0),
+            odds_level_high=number("odds_level_high", 20.0),
+            odds_level_low=number("odds_level_low", -10.0),
+            trajectory_convergence_bonus=number("trajectory_convergence_bonus", 10.0),
+            trajectory_deterioration_penalty=number("trajectory_deterioration_penalty", -20.0),
+            trajectory_rising_bonus=number("trajectory_rising_bonus", 5.0),
+            trajectory_falling_penalty=number("trajectory_falling_penalty", -5.0),
+            composite_trend_window=int(data.get("composite_trend_window", 5)),
+            adj_core_pp=number("adj_core_pp", 0.0),
+            adj_left_pp=number("adj_left_pp", -7.0),
+            adj_band_pp=number("adj_band_pp", -5.0),
+            adj_avoid_pp=number("adj_avoid_pp", -10.0),
+            rules_version=str(data.get("rules_version", "odds-matrix-v1")),
         )
 
 
@@ -74,6 +207,7 @@ class QuantBriefConfig:
     divergence_extreme_threshold: float = 15.0
     divergence_hot_fast_temperature: float = 60.0
     divergence_ice_fast_temperature: float = 35.0
+    cross_cycle: CrossCycleConfig = field(default_factory=CrossCycleConfig)
     main_money_outflow_share_hard: float = -0.05
     market_amount_high_percentile: float = 90.0
     margin_buy_share_warning: float = 0.10
@@ -146,6 +280,9 @@ class QuantBriefConfig:
             divergence_ice_fast_temperature=float(
                 risk_gates.get("divergence_ice_fast_temperature", 35.0)
             ),
+            cross_cycle=CrossCycleConfig.from_mapping(
+                _as_mapping(data.get("cross_cycle", {}), "cross_cycle")
+            ),
             main_money_outflow_share_hard=float(
                 risk_gates.get("main_money_outflow_share_hard", -0.05)
             ),
@@ -204,6 +341,7 @@ def _as_sequence(value: Any, name: str) -> Sequence[Any]:
 
 __all__ = [
     "DEFAULT_CONFIG_PATH",
+    "CrossCycleConfig",
     "QuantBriefConfig",
     "TemperatureBandConfig",
     "load_quant_brief_config",

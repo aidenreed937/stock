@@ -23,7 +23,42 @@
 | - | 资料不足 | - | 暂无闸门结果。 | 补齐上游事实。 |
 {% endfor %}
 
-## 1. 宏观定基调
+## 1. 跨周期胜率赔率矩阵
+
+- 规则版本: {{ cross_cycle.get('rules_version') or '-' }}；状态: {{ cross_cycle.get('status') or '-' }}
+- 矩阵: {{ cross_cycle_summary }}
+- 仓位执行: {{ cross_cycle.get('adjustment_note') or '-' }}
+- 轨迹: {{ cross_cycle_trajectory }}
+
+| 周期层 | 关键读数 | 角色 |
+|---|---|---|
+{% for row in cross_cycle_table_rows %}
+| {{ row.layer }} | {{ row.readings }} | {{ row.role }} |
+{% else %}
+| - | 矩阵表格缺失。 | - |
+{% endfor %}
+
+胜率环境分项（原始 {{ cross_cycle.get('win_raw') }} → 修正 {{ cross_cycle.get('win_adj', 0) }}）:
+
+{% for line in cross_cycle_parts.win %}
+- {{ line }}
+{% endfor %}
+
+赔率环境分项（原始 {{ cross_cycle.get('odds_raw') }} → 修正 {{ cross_cycle.get('odds_adj', 0) }}）:
+
+{% for line in cross_cycle_parts.odds %}
+- {{ line }}
+{% endfor %}
+
+升级触发线:
+
+{% for trigger in cross_cycle_triggers %}
+- {{ trigger }}
+{% else %}
+- 暂无。
+{% endfor %}
+
+## 2. 宏观定基调
 
 - 综合温度: {{ macro_temperature_str }} / 100
 - 温度档位: {{ macro.band_label }}
@@ -36,7 +71,7 @@
 - {{ line }}
 {% endfor %}
 
-## 2. 量价判性质
+## 3. 量价判性质
 
 - 性质: {{ nature.nature_label or nature.nature_type }}
 - 技术面温度: {{ technical_temperature_str }}；资金面温度: {{ fund_flow_temperature_str }}
@@ -50,7 +85,7 @@
 - 资金口径说明: {{ funding_health.note }}
 - 结论: {{ nature.message }}
 
-## 3. 微观排雷与一票否决
+## 4. 微观排雷与一票否决
 
 - 排雷状态: {{ veto.status }}
 - Top5% 成交占比: {{ top5pct_str }}；阈值: {{ veto.top5pct.threshold * 100 if veto.top5pct.threshold is not none else '-' }}%
@@ -77,7 +112,7 @@
 | - | - | - | - | - | 暂无可列示的拥挤行业。 |
 {% endfor %}
 
-## 4. 中观选方向
+## 5. 中观选方向
 
 ### 优先方向
 
@@ -117,13 +152,13 @@
 - 暂无可列示的落后方向。
 {% endfor %}
 
-## 5. 数据限制
+## 6. 数据限制
 
 {% for note in data_quality_notes %}
 - {{ note }}
 {% endfor %}
 
-## 6. 事实与推断分层
+## 7. 事实与推断分层
 
 ### 已验证事实
 

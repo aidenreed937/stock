@@ -6,6 +6,10 @@ from typing import Any
 import polars as pl
 
 from stock_reporting.interpretation.quant_brief.config import load_quant_brief_config
+from stock_reporting.interpretation.quant_brief.cross_cycle import (
+    cross_cycle_summary,
+    evaluate_cross_cycle,
+)
 from stock_reporting.interpretation.quant_brief.interpretation import (
     evaluate_macro,
     evaluate_nature,
@@ -222,14 +226,16 @@ def test_render_quant_brief_contains_four_decision_sections() -> None:
     )
     markdown = render_quant_brief_markdown(brief)
 
-    assert "## 1. 宏观定基调" in markdown
+    assert "## 1. 跨周期胜率赔率矩阵" in markdown
+    assert "## 2. 宏观定基调" in markdown
     assert "## 0. 风控闸门总览" in markdown
-    assert "## 2. 量价判性质" in markdown
-    assert "## 3. 微观排雷与一票否决" in markdown
-    assert "## 4. 中观选方向" in markdown
+    assert "## 3. 量价判性质" in markdown
+    assert "## 4. 微观排雷与一票否决" in markdown
+    assert "## 5. 中观选方向" in markdown
     assert "主力资金与杠杆健康度" in markdown
     assert brief["veto"]["top5pct"]["value"] == 0.32
     assert "结构领先但未进入优先方向" in markdown
+    assert brief["cross_cycle"]["rules_version"] == "odds-matrix-v1"
 
 
 def test_quant_brief_exposes_effective_position_band_and_conservative_nature_label() -> None:
@@ -566,3 +572,219 @@ def _clear_panel() -> pl.DataFrame:
 
 def _gate(result: dict[str, Any], gate_id: str) -> dict[str, Any]:
     return next(gate for gate in result["gates"] if gate["id"] == gate_id)
+
+
+def _market_scores(
+    *,
+    as_of: str = "2026-08-25",
+    div_level: str = "synchronized",
+    fast: float = 59.19,
+    slow: float = 57.28,
+    divergence: float = 1.91,
+    short_5d: float = 40.84,
+    transmission: str = "pending_next_ashare_session",
+    background_pressure: float = 80.74,
+    valuation: float = 54.24,
+    macro_liquidity: float = 61.35,
+    composite: float = 58.23,
+) -> dict[str, Any]:
+    return {
+        "as_of_date": as_of,
+        "composite": {"temperature": composite},
+        "dimensions": [
+            {"dimension_id": "valuation", "temperature": valuation},
+            {"dimension_id": "macro_liquidity", "temperature": macro_liquidity},
+        ],
+        "fast_slow": {
+            "status": "ready",
+            "fast_temperature": fast,
+            "slow_temperature": slow,
+            "divergence": divergence,
+            "divergence_level": div_level,
+        },
+        "short_term": [
+            {"window": 5, "temperature": short_5d},
+            {"window": 10, "temperature": short_5d + 6.0},
+        ],
+        "external_risk": {
+            "background_pressure": background_pressure,
+            "transmission_status": transmission,
+        },
+    }
+
+
+def _industry_scores(
+    *,
+    diffusion_60d: float = 12.9,
+    crowded_share: float | None = 9.68,
+) -> dict[str, Any]:
+    return {
+        "trend_diagnostics": {"positive_return_60d_share": diffusion_60d},
+        "structure_health": {"crowded_industry_share": crowded_share},
+    }
+
+
+def test_cross_cycle_standard_when_mid_win_and_mid_odds() -> None:
+    config = load_quant_brief_config()
+    result = evaluate_cross_cycle(
+        config,
+        _market_scores(),
+        _industry_scores(),
+        market_facts=_facts(
+            [("above_ma60_share", 0.4453), ("main_money_net_inflow_share_20d_cum", -0.011)]
+        ),
+    )
+
+    assert result["status"] == "ready"
+    assert result["win_level"] == "中"
+    assert result["odds_level"] == "中"
+    assert result["quadrature"] == "standard"
+    assert result["position_adjustment_pp"] == 0.0
+    assert any("背离同步" in item for item in result["win_parts"])
+
+
+def test_cross_cycle_core_when_high_win_and_high_odds() -> None:
+    config = load_quant_brief_config()
+    result = evaluate_cross_cycle(
+        config,
+        _market_scores(
+            div_level="synchronized",
+            fast=55.0,
+            slow=45.0,
+            short_5d=30.0,
+            transmission="",
+            background_pressure=50.0,
+            valuation=35.0,
+            macro_liquidity=30.0,
+        ),
+        _industry_scores(diffusion_60d=20.0, crowded_share=0.0),
+        market_facts=_facts(
+            [("above_ma60_share", 0.65), ("main_money_net_inflow_share_20d_cum", 0.01)]
+        ),
+    )
+
+    assert result["win_level"] == "高"
+    assert result["odds_level"] == "高"
+    assert result["quadrature"] == "core"
+    assert result["position_adjustment_pp"] == 0.0
+    assert "核心仓" in result["adjustment_note"]
+
+
+def test_cross_cycle_left_when_high_odds_and_low_win() -> None:
+    config = load_quant_brief_config()
+    result = evaluate_cross_cycle(
+        config,
+        _market_scores(
+            div_level="extreme",
+            fast=30.0,
+            slow=45.0,
+            divergence=-30.0,
+            short_5d=30.0,
+            transmission="pending_next_ashare_session",
+            background_pressure=50.0,
+            valuation=35.0,
+            macro_liquidity=30.0,
+        ),
+        _industry_scores(diffusion_60d=20.0, crowded_share=0.0),
+        market_facts=_facts(
+            [("above_ma60_share", 0.20), ("main_money_net_inflow_share_20d_cum", -0.02)]
+        ),
+    )
+
+    assert result["win_level"] == "低"
+    assert result["odds_level"] == "高"
+    assert result["quadrature"] == "left"
+    assert result["position_adjustment_pp"] == -7.0
+    assert "试错仓" in result["adjustment_note"]
+
+
+def test_cross_cycle_avoid_when_low_win_and_low_odds() -> None:
+    config = load_quant_brief_config()
+    result = evaluate_cross_cycle(
+        config,
+        _market_scores(
+            div_level="extreme",
+            fast=72.0,
+            slow=70.0,
+            divergence=30.0,
+            short_5d=70.0,
+            transmission="pending_next_ashare_session",
+            background_pressure=85.0,
+            valuation=75.0,
+            macro_liquidity=70.0,
+        ),
+        _industry_scores(diffusion_60d=65.0, crowded_share=12.0),
+        market_facts=_facts(
+            [("above_ma60_share", 0.20), ("main_money_net_inflow_share_20d_cum", -0.02)]
+        ),
+    )
+
+    assert result["win_level"] == "低"
+    assert result["odds_level"] == "低"
+    assert result["quadrature"] == "avoid"
+    assert result["position_adjustment_pp"] == -5.0
+
+
+def test_cross_cycle_trajectory_convergence_adds_win_adj() -> None:
+    config = load_quant_brief_config()
+    history = pl.DataFrame(
+        {
+            "as_of_date": [date(2026, 8, 24), date(2026, 8, 25)],
+            "divergence_level": ["extreme", "synchronized"],
+            "composite_temperature": [48.98, 58.23],
+            "slow_temperature": [57.82, 57.28],
+            "is_latest_for_date": [True, True],
+        }
+    )
+    result = evaluate_cross_cycle(
+        config,
+        _market_scores(),
+        _industry_scores(),
+        market_facts=_facts(
+            [("above_ma60_share", 0.4453), ("main_money_net_inflow_share_20d_cum", -0.011)]
+        ),
+        history=history,
+    )
+
+    # 同步 +10、资金流出 -10、外盘待确认 -10（v1 校准后）
+    assert result["win_raw"] == -10.0
+    # 收敛确认 +5、近5日复合温度上行 +5（v1 校准后弱化）
+    assert result["win_adj"] == 10.0
+    assert result["win_score"] == 0.0
+    # 慢温 5 日变化 -0.54pp <= -0.5 → -5
+    assert result["odds_adj"] == -5.0
+    trajectory = result["trajectory"]
+    assert trajectory is not None
+    assert "收敛确认" in trajectory["divergence_transition"]
+    assert trajectory["d5_composite_direction"] == "up"
+
+
+def test_cross_cycle_degraded_when_inputs_missing() -> None:
+    config = load_quant_brief_config()
+    result = evaluate_cross_cycle(
+        config,
+        {"as_of_date": "2026-08-25"},
+        _industry_scores(),
+    )
+
+    assert result["status"] == "degraded"
+    assert result["missing"]
+    assert result["quadrature"] == "standard"
+
+
+def test_cross_cycle_rules_version_and_summary() -> None:
+    config = load_quant_brief_config()
+    result = evaluate_cross_cycle(
+        config,
+        _market_scores(),
+        _industry_scores(),
+        market_facts=_facts(
+            [("above_ma60_share", 0.4453), ("main_money_net_inflow_share_20d_cum", -0.011)]
+        ),
+    )
+
+    assert result["rules_version"] == config.cross_cycle.rules_version == "odds-matrix-v1"
+    summary = cross_cycle_summary(result)
+    assert "胜率环境" in summary
+    assert "赔率环境" in summary
+    assert "象限" in summary
