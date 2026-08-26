@@ -8,6 +8,7 @@ from datetime import date
 from pathlib import Path
 from typing import Any
 
+from stock_analytics.pipelines.artifact_contracts import normalize_run_class
 from stock_analytics.pipelines.artifact_validator import ArtifactValidator
 
 
@@ -44,24 +45,28 @@ def resolve_artifact_run(
     *,
     as_of_date: date | str | None = "latest",
     expected_artifact_type: str,
+    expected_run_class: str | None = None,
 ) -> ArtifactRun:
     """定位并校验指定基准日的最新一次产物运行。"""
     artifact_root = Path(root)
     date_text = (
         as_of_date.isoformat() if isinstance(as_of_date, date) else str(as_of_date or "latest")
     )
-    if date_text == "latest":
+    run_dir = select_artifact_run_dir(
+        artifact_root,
+        as_of_date=date_text,
+        expected_run_class=expected_run_class,
+    )
+    if run_dir is None and date_text == "latest":
         run_dir = artifact_root / "latest"
-    else:
+    if run_dir is None:
         date_root = artifact_root / "runs" / f"as_of={date_text}"
-        candidates = sorted(path for path in date_root.glob("run_*") if path.is_dir())
-        if not candidates:
-            raise ArtifactUnavailableError(f"缺少 {expected_artifact_type} 产物运行: {date_root}")
-        run_dir = candidates[-1]
+        raise ArtifactUnavailableError(f"缺少 {expected_artifact_type} 产物运行: {date_root}")
 
     result = ArtifactValidator().validate(
         run_dir,
         expected_artifact_type=expected_artifact_type,
+        expected_run_class=expected_run_class,
     )
     if not result.valid or result.manifest is None:
         details = "；".join(issue.message for issue in result.issues[:3])
@@ -76,4 +81,46 @@ def resolve_artifact_run(
     return ArtifactRun(artifact_root, run_dir, result.manifest)
 
 
-__all__ = ["ArtifactRun", "ArtifactUnavailableError", "resolve_artifact_run"]
+def select_artifact_run_dir(
+    root: Path | str,
+    *,
+    as_of_date: date | str | None = "latest",
+    expected_run_class: str | None = None,
+) -> Path | None:
+    """按基准日和运行类别选择最新运行目录，不执行文件完整性校验。"""
+    artifact_root = Path(root)
+    date_text = (
+        as_of_date.isoformat() if isinstance(as_of_date, date) else str(as_of_date or "latest")
+    )
+    if expected_run_class is not None:
+        normalize_run_class(expected_run_class)
+    if date_text == "latest":
+        run_dir = artifact_root / "latest"
+        return run_dir if run_dir.is_dir() else None
+
+    date_root = artifact_root / "runs" / f"as_of={date_text}"
+    candidates = sorted(path for path in date_root.glob("run_*") if path.is_dir())
+    if expected_run_class is None:
+        return candidates[-1] if candidates else None
+    for candidate in reversed(candidates):
+        manifest_path = candidate / "manifest.json"
+        if not manifest_path.is_file():
+            continue
+        try:
+            manifest = json.loads(manifest_path.read_text(encoding="utf-8"))
+        except (OSError, json.JSONDecodeError):
+            continue
+        if (
+            isinstance(manifest, dict)
+            and manifest.get("run_class", "official") == expected_run_class
+        ):
+            return candidate
+    return None
+
+
+__all__ = [
+    "ArtifactRun",
+    "ArtifactUnavailableError",
+    "resolve_artifact_run",
+    "select_artifact_run_dir",
+]

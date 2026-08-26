@@ -12,7 +12,13 @@ from stock_analytics.pipelines.artifact_reader import (
 )
 
 
-def _write_run(root: Path, *, as_of_date: str = "2026-08-20", run_id: str = "run_0001") -> Path:
+def _write_run(
+    root: Path,
+    *,
+    as_of_date: str = "2026-08-20",
+    run_id: str = "run_0001",
+    run_class: str = "official",
+) -> Path:
     run_dir = root / "runs" / f"as_of={as_of_date}" / run_id
     run_dir.mkdir(parents=True)
     (run_dir / "scores.json").write_text("{}", encoding="utf-8")
@@ -23,7 +29,7 @@ def _write_run(root: Path, *, as_of_date: str = "2026-08-20", run_id: str = "run
                 "artifact_root": str(root),
                 "run_id": run_id,
                 "as_of_date": as_of_date,
-                "run_class": "official",
+                "run_class": run_class,
                 "artifact_files": ["manifest.json", "scores.json"],
             }
         ),
@@ -69,3 +75,18 @@ def test_resolve_artifact_run_fails_when_requested_date_is_missing(tmp_path: Pat
             as_of_date=date(2026, 8, 21),
             expected_artifact_type="market_temperature",
         )
+
+
+def test_resolve_artifact_run_selects_requested_run_class(tmp_path: Path) -> None:
+    root = tmp_path / "market_temperature"
+    _write_run(root, run_id="run_official", run_class="official")
+    _write_run(root, run_id="run_backfill", run_class="backfill")
+
+    run = resolve_artifact_run(
+        root,
+        as_of_date=date(2026, 8, 20),
+        expected_artifact_type="market_temperature",
+        expected_run_class="backfill",
+    )
+
+    assert run.manifest["run_id"] == "run_backfill"
