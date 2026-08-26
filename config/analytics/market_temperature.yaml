@@ -296,147 +296,186 @@ market_temperature:
       name: "宏观流动性"
       weight: 0.15
       role: "利率、货币信用与外部流动性状态"
+      # Phase 2: 维度温度由“国内流动性”子口径主导，外部环境子口径贡献占比上限 25%
+      # （修复前 macro_external_environment_temperature 单指标 0.40 权重直接决定维度读数，
+      #   六十日样本显示外盘贡献占比均值 29%、峰值 41%）。
+      subgroup_external_cap: 0.25
       metrics:
         - metric_id: equity_bond_yield_ratio
           aggregation: mean
           direction: inverse
           weight: 0.00
+          subgroup: domestic
         - metric_id: dividend_bond_spread
           aggregation: mean
           direction: inverse
           weight: 0.00
+          subgroup: domestic
         - metric_id: macro_bond_yield_10y_temperature
           source: derived
           direction: positive
           weight: 0.18
+          subgroup: domestic
         - metric_id: macro_shibor_on_temperature
           source: derived
           direction: positive
           weight: 0.12
+          subgroup: domestic
         - metric_id: macro_real_rate_temperature
           source: derived
           direction: positive
           weight: 0.10
+          subgroup: domestic
         - metric_id: macro_m2_yoy_temperature
           source: derived
           direction: positive
           weight: 0.08
+          subgroup: domestic
         - metric_id: macro_m1_m2_gap_temperature
           source: derived
           direction: positive
           weight: 0.06
+          subgroup: domestic
         - metric_id: macro_social_finance_stock_temperature
           source: derived
           direction: positive
           weight: 0.06
+          subgroup: domestic
         - metric_id: macro_external_environment_temperature
           source: derived
           direction: positive
           weight: 0.40
+          subgroup: external
         - metric_id: macro_sp500_20d_return_temperature
           source: derived
           direction: positive
           weight: 0.00
+          subgroup: external
         - metric_id: macro_nasdaq_20d_return_temperature
           source: derived
           direction: positive
           weight: 0.00
+          subgroup: external
         - metric_id: macro_usd_index_temperature
           source: derived
           direction: positive
           weight: 0.00
+          subgroup: external
         - metric_id: macro_usd_index_20d_change_temperature
           source: derived
           direction: positive
           weight: 0.00
+          subgroup: external
         - metric_id: macro_vix_temperature
           source: derived
           direction: positive
           weight: 0.00
+          subgroup: external
         - metric_id: macro_us_10y_temperature
           source: derived
           direction: positive
           weight: 0.00
+          subgroup: external
         - metric_id: macro_copper_20d_return_temperature
           source: derived
           direction: positive
           weight: 0.00
+          subgroup: external
         - metric_id: macro_gold_20d_return_pressure
           source: derived
           direction: positive
           weight: 0.00
+          subgroup: external
         - metric_id: macro_oil_20d_return_pressure
           source: derived
           direction: positive
           weight: 0.00
+          subgroup: external
         - metric_id: macro_safe_haven_pressure_temperature
           source: derived
           direction: positive
           weight: 0.00
+          subgroup: external
         - metric_id: macro_inflation_pressure_temperature
           source: derived
           direction: positive
           weight: 0.00
+          subgroup: external
         - metric_id: macro_demand_pressure_temperature
           source: derived
           direction: positive
           weight: 0.00
+          subgroup: external
         - metric_id: macro_external_pressure_temperature
           source: derived
           direction: positive
           weight: 0.00
+          subgroup: external
         - metric_id: macro_sp500_1d_return
           source: derived
           direction: positive
           weight: 0.00
+          subgroup: external
         - metric_id: macro_nasdaq_1d_return
           source: derived
           direction: positive
           weight: 0.00
+          subgroup: external
         - metric_id: macro_sox_1d_return
           source: derived
           direction: positive
           weight: 0.00
+          subgroup: external
         - metric_id: macro_vix_1d_change
           source: derived
           direction: positive
           weight: 0.00
+          subgroup: external
         - metric_id: macro_us_10y_1d_change
           source: derived
           direction: positive
           weight: 0.00
+          subgroup: external
         - metric_id: macro_cnh_20d_change_temperature
           source: derived
           direction: positive
           weight: 0.00
+          subgroup: external
         - metric_id: macro_fred_t10y2y_temperature
           source: derived
           direction: positive
           weight: 0.00
+          subgroup: external
         - metric_id: macro_fred_fedfunds_temperature
           source: derived
           direction: positive
           weight: 0.00
+          subgroup: external
         - metric_id: macro_fred_walcl_temperature
           source: derived
           direction: positive
           weight: 0.00
+          subgroup: external
         - metric_id: macro_fred_cpi_yoy_temperature
           source: derived
           direction: positive
           weight: 0.00
+          subgroup: external
         - metric_id: macro_fred_unrate_temperature
           source: derived
           direction: positive
           weight: 0.00
+          subgroup: external
         - metric_id: macro_fred_payems_yoy_temperature
           source: derived
           direction: positive
           weight: 0.00
+          subgroup: external
         - metric_id: macro_fred_gdp_yoy_temperature
           source: derived
           direction: positive
           weight: 0.00
+          subgroup: external
 
   datasets:
     - data_source: tushare

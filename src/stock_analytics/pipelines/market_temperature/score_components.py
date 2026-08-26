@@ -63,10 +63,24 @@ def subgroup_temperatures(
     item: DimensionConfig,
     facts: pl.DataFrame,
 ) -> dict[str, float | None]:
-    """计算活跃水位和慢情绪子口径温度。"""
+    """计算维度下全部已配置子口径温度。
+
+    子口径集合来自 enabled 且 weight>0 指标声明的 subgroup（activity/slow/
+    domestic/external 等），按指标声明顺序去重；未声明子口径的维度返回空映射。
+    """
+    subgroup_names: list[str] = []
+    seen: set[str] = set()
+    for metric in item.metrics:
+        if not metric.enabled or metric.weight <= 0:
+            continue
+        subgroup = metric.subgroup
+        if subgroup in {"", "daily"} or subgroup in seen:
+            continue
+        seen.add(subgroup)
+        subgroup_names.append(subgroup)
     return {
         subgroup: dimension_temperature(item, facts, subgroup=subgroup)
-        for subgroup in ("activity", "slow")
+        for subgroup in subgroup_names
     }
 
 

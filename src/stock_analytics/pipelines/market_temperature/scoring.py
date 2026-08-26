@@ -117,9 +117,13 @@ def _dimension_score(
     temperature = dimension_temperature(item, facts)
     subgroups = subgroup_temperatures(item, facts)
     temperature_source = "daily" if temperature is not None else None
-    if temperature is None:
+    macro_composed = _macro_liquidity_temperature(item, subgroups)
+    if macro_composed is not None:
+        temperature = macro_composed
+        temperature_source = "macro_domestic_capped"
+    elif temperature is None:
         for subgroup in ("activity", "slow"):
-            fallback_temperature = subgroups[subgroup]
+            fallback_temperature = subgroups.get(subgroup)
             if fallback_temperature is not None:
                 temperature = fallback_temperature
                 temperature_source = subgroup
@@ -140,6 +144,8 @@ def _dimension_score(
     if temperature_source in {"activity", "slow"}:
         source_label = {"activity": "活跃水位", "slow": "慢情绪"}[temperature_source]
         reason = f"主温度已降级为{source_label}口径；{reason}"
+    if temperature_source == "macro_domestic_capped" and item.subgroup_external_cap is not None:
+        reason = f"{reason}；外部环境子口径贡献已按 {item.subgroup_external_cap:.0%} 上限约束"
     return {
         "dimension_id": dimension_id,
         "name": item.name,
@@ -158,10 +164,11 @@ def _dimension_score(
 
 
 def _scored_metric_ids(item: DimensionConfig) -> set[str]:
+    # activity/slow 是降级子口径，不计入主动能指标集合；domestic/external 计入
     return {
         metric.metric_id
         for metric in item.metrics
-        if metric.enabled and metric.weight > 0 and metric.subgroup in {"", "daily"}
+        if metric.enabled and metric.weight > 0 and metric.subgroup not in {"activity", "slow"}
     }
 
 
@@ -178,6 +185,29 @@ def _composite_temperature(dimensions: list[dict[str, Any]]) -> float | None:
     if weight_sum == 0:
         return None
     return round(weighted_sum / weight_sum, 2)
+
+
+def _macro_liquidity_temperature(
+    item: DimensionConfig,
+    subgroups: dict[str, float | None],
+) -> float | None:
+    """宏观流动性维度温度：国内/外部子口径按外部贡献上限混合（Phase 2）。
+
+    仅在维度配置了 subgroup_external_cap 且存在 domestic/external 子口径时启用；
+    否则返回 None，维度温度走原来的 daily/activity/slow 合成路径。
+    """
+    cap = item.subgroup_external_cap
+    if cap is None:
+        return None
+    domestic = subgroups.get("domestic")
+    external = subgroups.get("external")
+    if domestic is None and external is None:
+        return None
+    if domestic is None:
+        return external
+    if external is None:
+        return domestic
+    return round(domestic * (1 - cap) + external * cap, 2)
 
 
 # 快慢分组的维度归属与背离分档（Phase 1 输出层，不改变六维合成数值）

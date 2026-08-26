@@ -33,7 +33,7 @@ class MetricInputConfig:
     def from_mapping(cls, data: Mapping[str, Any]) -> Self:
         """从 YAML 字典构造指标配置。"""
         subgroup = str(data.get("subgroup", ""))
-        if subgroup not in {"", "daily", "activity", "slow"}:
+        if subgroup not in {"", "daily", "activity", "slow", "domestic", "external"}:
             raise ValueError(f"不支持的指标 subgroup: {subgroup}")
         return cls(
             metric_id=str(data["metric_id"]),
@@ -57,12 +57,16 @@ class DimensionConfig:
     metrics: tuple[MetricInputConfig, ...] = ()
     stale_after_days: int | None = None
     stale_weight_scale: float = 0.4
+    subgroup_external_cap: float | None = None
 
     @classmethod
     def from_mapping(cls, data: Mapping[str, Any]) -> Self:
         """从 YAML 字典构造维度配置。"""
         raw_metrics = _as_sequence(data.get("metrics", ()), "dimensions.metrics")
         stale_after = data.get("stale_after_days")
+        external_cap = data.get("subgroup_external_cap")
+        if external_cap is not None and not 0.0 < float(external_cap) <= 1.0:
+            raise ValueError(f"subgroup_external_cap 必须在 (0, 1] 内: {external_cap}")
         return cls(
             id=str(data["id"]),
             name=str(data["name"]),
@@ -73,6 +77,7 @@ class DimensionConfig:
             ),
             stale_after_days=int(stale_after) if stale_after is not None else None,
             stale_weight_scale=float(data.get("stale_weight_scale", 0.4)),
+            subgroup_external_cap=float(external_cap) if external_cap is not None else None,
         )
 
 

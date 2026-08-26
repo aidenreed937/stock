@@ -187,3 +187,92 @@ market_temperature:
     assert config.external_risk.shock.rules[0].threshold == pytest.approx(-0.02)
     assert config.external_risk.message_on_shock == "测试冲击消息"
     assert config.external_risk.observation_focus == ("科技成长", "两融")
+
+
+def test_load_config_parses_domestic_external_subgroups_and_cap(tmp_path: Path) -> None:
+    config_path = tmp_path / "market_temperature.yaml"
+    config_path.write_text(
+        """
+market_temperature:
+  schema_version: 1
+  title: "测试温度计"
+  artifact_root: "data/analytics/market_temperature"
+  main_window: 20
+  short_windows: []
+  dimensions:
+    - id: macro_liquidity
+      name: "宏观流动性"
+      weight: 0.15
+      subgroup_external_cap: 0.25
+      metrics:
+        - metric_id: macro_bond_yield_10y_temperature
+          source: derived
+          weight: 0.18
+          subgroup: domestic
+        - metric_id: macro_external_environment_temperature
+          source: derived
+          weight: 0.40
+          subgroup: external
+""",
+        encoding="utf-8",
+    )
+
+    config = load_market_temperature_config(config_path)
+
+    dimension = config.dimensions[0]
+    assert dimension.subgroup_external_cap == pytest.approx(0.25)
+    subgroups = {metric.subgroup for metric in dimension.metrics}
+    assert subgroups == {"domestic", "external"}
+
+
+def test_load_config_rejects_unknown_subgroup(tmp_path: Path) -> None:
+    config_path = tmp_path / "market_temperature.yaml"
+    config_path.write_text(
+        """
+market_temperature:
+  schema_version: 1
+  title: "测试温度计"
+  artifact_root: "data/analytics/market_temperature"
+  main_window: 20
+  short_windows: []
+  dimensions:
+    - id: valuation
+      name: "估值面"
+      weight: 0.2
+      metrics:
+        - metric_id: valuation_temperature
+          subgroup: fantom
+""",
+        encoding="utf-8",
+    )
+
+    with pytest.raises(ValueError, match="不支持的指标 subgroup"):
+        load_market_temperature_config(config_path)
+
+
+def test_load_config_rejects_invalid_external_cap(tmp_path: Path) -> None:
+    config_path = tmp_path / "market_temperature.yaml"
+    config_path.write_text(
+        """
+market_temperature:
+  schema_version: 1
+  title: "测试温度计"
+  artifact_root: "data/analytics/market_temperature"
+  main_window: 20
+  short_windows: []
+  dimensions:
+    - id: macro_liquidity
+      name: "宏观流动性"
+      weight: 0.15
+      subgroup_external_cap: 1.5
+      metrics:
+        - metric_id: macro_bond_yield_10y_temperature
+          source: derived
+          weight: 1.0
+          subgroup: domestic
+""",
+        encoding="utf-8",
+    )
+
+    with pytest.raises(ValueError, match="subgroup_external_cap"):
+        load_market_temperature_config(config_path)

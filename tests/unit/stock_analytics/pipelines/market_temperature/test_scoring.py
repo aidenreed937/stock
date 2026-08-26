@@ -273,7 +273,7 @@ def test_build_scores_adds_systemic_risk_summary() -> None:
     assert "估值面 85.00 已进入高温" in scores["systemic_risk"]["red_flags"][0]
     assert any("技术面偏热" in item for item in scores["systemic_risk"]["warnings"])
     trace = scores["systemic_risk"]["decision_trace"]
-    assert trace["rule_version"] == "systemic-risk-v1"
+    assert trace["rule_version"] == "systemic-risk-v2"
     assert trace["final_level"] == "中等偏高"
     assert trace["triggered_rules"][0]["rule_id"] == "valuation_gte_80"
 
@@ -679,6 +679,290 @@ def test_build_scores_fast_slow_insufficient_when_group_missing() -> None:
     scores = build_scores(config, as_of_date=date(2026, 8, 14), facts=facts)
 
     assert scores["fast_slow"]["status"] == "insufficient"
+
+
+def test_build_scores_composes_macro_liquidity_domestic_external_capped() -> None:
+    facts = pl.DataFrame(
+        [
+            _metric_fact("macro_liquidity", "macro_bond_yield_10y_temperature", 60.0),
+            _metric_fact("macro_liquidity", "macro_shibor_on_temperature", 80.0),
+            _metric_fact("macro_liquidity", "macro_external_environment_temperature", 90.0),
+        ],
+        schema=FACT_SCHEMA,
+    )
+    config = MarketTemperatureConfig(
+        schema_version=1,
+        title="test",
+        artifact_root="data/analytics/market_temperature",
+        main_window=20,
+        short_windows=(),
+        dimensions=(
+            DimensionConfig(
+                id="macro_liquidity",
+                name="宏观流动性",
+                weight=0.15,
+                subgroup_external_cap=0.25,
+                metrics=(
+                    MetricInputConfig(
+                        "macro_bond_yield_10y_temperature",
+                        source="derived",
+                        weight=0.18,
+                        subgroup="domestic",
+                    ),
+                    MetricInputConfig(
+                        "macro_shibor_on_temperature",
+                        source="derived",
+                        weight=0.12,
+                        subgroup="domestic",
+                    ),
+                    MetricInputConfig(
+                        "macro_external_environment_temperature",
+                        source="derived",
+                        weight=0.40,
+                        subgroup="external",
+                    ),
+                ),
+            ),
+        ),
+        datasets=(),
+    )
+
+    dimension = build_scores(config, as_of_date=date(2026, 8, 14), facts=facts)["dimensions"][0]
+
+    # 国内 = (60*0.18 + 80*0.12)/0.30 = 68.0；外部 = 90.0；cap 0.25 → 68*0.75 + 90*0.25
+    assert dimension["subgroups"] == {"domestic": 68.0, "external": 90.0}
+    assert dimension["temperature"] == pytest.approx(73.5)
+    assert dimension["temperature_source"] == "macro_domestic_capped"
+    assert dimension["metric_count"] == 3
+    assert dimension["ok_metric_count"] == 3
+    assert "外部环境子口径贡献已按 25% 上限约束" in dimension["reason"]
+
+
+def test_build_scores_macro_uses_domestic_when_external_missing() -> None:
+    facts = pl.DataFrame(
+        [_metric_fact("macro_liquidity", "macro_bond_yield_10y_temperature", 40.0)],
+        schema=FACT_SCHEMA,
+    )
+    config = MarketTemperatureConfig(
+        schema_version=1,
+        title="test",
+        artifact_root="data/analytics/market_temperature",
+        main_window=20,
+        short_windows=(),
+        dimensions=(
+            DimensionConfig(
+                id="macro_liquidity",
+                name="宏观流动性",
+                weight=0.15,
+                subgroup_external_cap=0.25,
+                metrics=(
+                    MetricInputConfig(
+                        "macro_bond_yield_10y_temperature",
+                        source="derived",
+                        weight=1.0,
+                        subgroup="domestic",
+                    ),
+                    MetricInputConfig(
+                        "macro_external_environment_temperature",
+                        source="derived",
+                        weight=1.0,
+                        subgroup="external",
+                    ),
+                ),
+            ),
+        ),
+        datasets=(),
+    )
+
+    dimension = build_scores(config, as_of_date=date(2026, 8, 14), facts=facts)["dimensions"][0]
+
+    assert dimension["temperature"] == pytest.approx(40.0)
+    assert "外部环境子口径贡献已按 25% 上限约束" in dimension["reason"]
+
+
+def test_build_scores_macro_uses_external_when_domestic_missing() -> None:
+    facts = pl.DataFrame(
+        [_metric_fact("macro_liquidity", "macro_external_environment_temperature", 55.0)],
+        schema=FACT_SCHEMA,
+    )
+    config = MarketTemperatureConfig(
+        schema_version=1,
+        title="test",
+        artifact_root="data/analytics/market_temperature",
+        main_window=20,
+        short_windows=(),
+        dimensions=(
+            DimensionConfig(
+                id="macro_liquidity",
+                name="宏观流动性",
+                weight=0.15,
+                subgroup_external_cap=0.25,
+                metrics=(
+                    MetricInputConfig(
+                        "macro_bond_yield_10y_temperature",
+                        source="derived",
+                        weight=1.0,
+                        subgroup="domestic",
+                    ),
+                    MetricInputConfig(
+                        "macro_external_environment_temperature",
+                        source="derived",
+                        weight=1.0,
+                        subgroup="external",
+                    ),
+                ),
+            ),
+        ),
+        datasets=(),
+    )
+
+    dimension = build_scores(config, as_of_date=date(2026, 8, 14), facts=facts)["dimensions"][0]
+
+    assert dimension["temperature"] == pytest.approx(55.0)
+
+
+def test_build_scores_macro_without_cap_keeps_legacy_daily_path() -> None:
+    facts = pl.DataFrame(
+        [
+            _metric_fact("macro_liquidity", "macro_external_environment_temperature", 60.0),
+            _metric_fact("macro_liquidity", "macro_bond_yield_10y_temperature", 80.0),
+        ],
+        schema=FACT_SCHEMA,
+    )
+    config = MarketTemperatureConfig(
+        schema_version=1,
+        title="test",
+        artifact_root="data/analytics/market_temperature",
+        main_window=20,
+        short_windows=(),
+        dimensions=(
+            DimensionConfig(
+                id="macro_liquidity",
+                name="宏观流动性",
+                weight=0.15,
+                metrics=(
+                    MetricInputConfig(
+                        "macro_external_environment_temperature", source="derived", weight=0.40
+                    ),
+                    MetricInputConfig(
+                        "macro_bond_yield_10y_temperature", source="derived", weight=0.60
+                    ),
+                ),
+            ),
+        ),
+        datasets=(),
+    )
+
+    dimension = build_scores(config, as_of_date=date(2026, 8, 14), facts=facts)["dimensions"][0]
+
+    # 未配置 cap：继续按原 flat 权重合成，subgroups 不包含子口径
+    assert dimension["temperature"] == pytest.approx(72.0)
+    assert dimension["temperature_source"] == "daily"
+    assert dimension["subgroups"] == {}
+
+
+def test_systemic_risk_switches_macro_rule_to_domestic_reading() -> None:
+    facts = pl.DataFrame(
+        [
+            _metric_fact("macro_liquidity", "macro_bond_yield_10y_temperature", 35.0),
+            _metric_fact("macro_liquidity", "macro_external_environment_temperature", 70.0),
+        ],
+        schema=FACT_SCHEMA,
+    )
+    config = MarketTemperatureConfig(
+        schema_version=1,
+        title="test",
+        artifact_root="data/analytics/market_temperature",
+        main_window=20,
+        short_windows=(),
+        dimensions=(
+            DimensionConfig(
+                id="macro_liquidity",
+                name="宏观流动性",
+                weight=0.15,
+                subgroup_external_cap=0.25,
+                metrics=(
+                    MetricInputConfig(
+                        "macro_bond_yield_10y_temperature",
+                        source="derived",
+                        weight=1.0,
+                        subgroup="domestic",
+                    ),
+                    MetricInputConfig(
+                        "macro_external_environment_temperature",
+                        source="derived",
+                        weight=1.0,
+                        subgroup="external",
+                    ),
+                ),
+            ),
+        ),
+        datasets=(),
+    )
+
+    risk = build_scores(config, as_of_date=date(2026, 8, 14), facts=facts)["systemic_risk"]
+
+    # 混合读数 = 35*0.75 + 70*0.25 = 43.75（≥40 不触发红旗），但国内口径 35 < 40 触发
+    assert any("宏观流动性国内口径" in item for item in risk["red_flags"])
+    assert any("偏紧" in item for item in risk["red_flags"])
+    rule = next(
+        item
+        for item in risk["decision_trace"]["triggered_rules"]
+        if item["rule_id"] == "macro_liquidity_lt_40"
+    )
+    assert rule["actual"] == pytest.approx(35.0)
+    assert risk["decision_trace"]["inputs"]["macro_liquidity_domestic"] == pytest.approx(35.0)
+
+
+def test_systemic_risk_macro_offset_uses_domestic_when_blend_is_below_50() -> None:
+    facts = pl.DataFrame(
+        [
+            _metric_fact("macro_liquidity", "macro_bond_yield_10y_temperature", 60.0),
+            _metric_fact("macro_liquidity", "macro_external_environment_temperature", 20.0),
+        ],
+        schema=FACT_SCHEMA,
+    )
+    config = MarketTemperatureConfig(
+        schema_version=1,
+        title="test",
+        artifact_root="data/analytics/market_temperature",
+        main_window=20,
+        short_windows=(),
+        dimensions=(
+            DimensionConfig(
+                id="macro_liquidity",
+                name="宏观流动性",
+                weight=0.15,
+                subgroup_external_cap=0.25,
+                metrics=(
+                    MetricInputConfig(
+                        "macro_bond_yield_10y_temperature",
+                        source="derived",
+                        weight=1.0,
+                        subgroup="domestic",
+                    ),
+                    MetricInputConfig(
+                        "macro_external_environment_temperature",
+                        source="derived",
+                        weight=1.0,
+                        subgroup="external",
+                    ),
+                ),
+            ),
+        ),
+        datasets=(),
+    )
+
+    risk = build_scores(config, as_of_date=date(2026, 8, 14), facts=facts)["systemic_risk"]
+
+    # 混合读数 = 60*0.75 + 20*0.25 = 50（恰好 ≥50），国内口径 60 依然构成缓冲因素
+    rule = next(
+        item
+        for item in risk["decision_trace"]["triggered_rules"]
+        if item["rule_id"] == "macro_liquidity_gte_50"
+    )
+    assert rule["actual"] == pytest.approx(60.0)
+    assert any("未构成主要压力" in item for item in risk["offsets"])
 
 
 def _metric_fact(

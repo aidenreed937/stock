@@ -16,6 +16,7 @@ def _systemic_risk(
     technical = values.get("technical")
     macro = values.get("macro_liquidity")
     fundamental = values.get("fundamental")
+    macro_domestic = _macro_domestic_temperature(dimensions)
     red_flags: list[str] = []
     warnings: list[str] = []
     offsets: list[str] = []
@@ -24,7 +25,7 @@ def _systemic_risk(
     _add_valuation_risk(valuation, red_flags, warnings, triggered_rules)
     _add_repair_quality_risk(technical, fund_flow, warnings, triggered_rules)
     _add_sentiment_risk(sentiment, red_flags, warnings, offsets, triggered_rules)
-    _add_macro_risk(macro, red_flags, offsets, triggered_rules)
+    _add_macro_risk(macro, macro_domestic, red_flags, offsets, triggered_rules)
     _add_fundamental_risk(fundamental, warnings, offsets, triggered_rules)
     _add_composite_risk(composite_temperature, red_flags, warnings, triggered_rules)
     level, status, message = _systemic_risk_level(red_flags, warnings)
@@ -37,13 +38,29 @@ def _systemic_risk(
         "warnings": warnings,
         "offsets": offsets,
         "decision_trace": {
-            "rule_version": "systemic-risk-v1",
-            "inputs": {**values, "composite": composite_temperature},
+            "rule_version": "systemic-risk-v2",
+            "inputs": {
+                **values,
+                "composite": composite_temperature,
+                "macro_liquidity_domestic": macro_domestic,
+            },
             "triggered_rules": triggered_rules,
             "final_level": level,
             "final_status": status,
         },
     }
+
+
+def _macro_domestic_temperature(dimensions: list[dict[str, Any]]) -> float | None:
+    """从宏观流动性维度子口径中取国内流动性读数（Phase 2 规则切换输入）。"""
+    for item in dimensions:
+        if str(item.get("dimension_id")) != "macro_liquidity":
+            continue
+        subgroups = item.get("subgroups")
+        if not isinstance(subgroups, dict):
+            return None
+        return _as_float(subgroups.get("domestic"))
+    return None
 
 
 def _add_valuation_risk(
@@ -104,18 +121,25 @@ def _add_sentiment_risk(
 
 def _add_macro_risk(
     value: float | None,
+    domestic_value: float | None,
     red_flags: list[str],
     offsets: list[str],
     triggered_rules: list[dict[str, Any]],
 ) -> None:
-    if value is not None and value < 40:
-        message = f"宏观流动性 {_temperature_text(value)} 偏紧，对估值形成压力。"
+    # Phase 2 规则切换：维度携带 domestic 子口径时，lt_40/gte_50 以国内流动性读数判定，
+    # 避免外盘环境子口径掩盖国内流动性收紧或宽松的信号。
+    effective = domestic_value if domestic_value is not None else value
+    if effective is None:
+        return
+    calibre = "国内口径 " if domestic_value is not None else ""
+    if effective < 40:
+        message = f"宏观流动性{calibre}{_temperature_text(effective)} 偏紧，对估值形成压力。"
         red_flags.append(message)
-        _add_rule(triggered_rules, "macro_liquidity_lt_40", "red_flag", value, 40, message)
-    elif value is not None and value >= 50:
-        message = f"宏观流动性 {_temperature_text(value)} 未构成主要压力。"
+        _add_rule(triggered_rules, "macro_liquidity_lt_40", "red_flag", effective, 40, message)
+    elif effective >= 50:
+        message = f"宏观流动性{calibre}{_temperature_text(effective)} 未构成主要压力。"
         offsets.append(message)
-        _add_rule(triggered_rules, "macro_liquidity_gte_50", "offset", value, 50, message)
+        _add_rule(triggered_rules, "macro_liquidity_gte_50", "offset", effective, 50, message)
 
 
 def _add_fundamental_risk(

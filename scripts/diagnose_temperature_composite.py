@@ -68,10 +68,12 @@ def _short_term_temperature(scores: dict, window: int) -> float | None:
 
 
 def _macro_external_share(report: dict, macro_weights: dict[str, float]) -> float | None:
-    """外盘环境温度在宏观流动性维度内的加权贡献占比（%）。
+    """外盘环境温度在宏观流动性维度内的名义加权贡献占比（%）。
 
     权重来自当前 config/analytics/market_temperature.yaml（与管线同源），
     数值来自运行产物 metric_values；贡献占比 = 外盘加权值 / 维度加权和。
+    修复后（Phase 2）维度读数由国内/外部子口径按 external cap 混合，
+    该名义占比仍反映指标权重结构，不代表实际维度贡献。
     """
     values: dict[str, float] = {}
     for metric in report.get("fact_summary", {}).get("metric_values", []):
@@ -89,6 +91,28 @@ def _macro_external_share(report: dict, macro_weights: dict[str, float]) -> floa
     if weighted_sum <= 0 or external_value is None or external_weight <= 0:
         return None
     return (external_value * external_weight) / weighted_sum * 100.0
+
+
+def _macro_external_actual_share(report: dict, cap: float | None) -> float | None:
+    """外部环境子口径对宏观流动性维度的实际贡献占比（%，修复后口径）。
+
+    实际贡献 = 外部子口径温度 × cap / 维度温度；未配置 cap 或无外部事实时返回 None。
+    """
+    if cap is None:
+        return None
+    values: dict[str, float] = {}
+    for metric in report.get("fact_summary", {}).get("metric_values", []):
+        value = metric.get("value_float")
+        if value is not None:
+            values[str(metric.get("metric_id", ""))] = float(value)
+    external_value = values.get(MACRO_EXTERNAL_ENVIRONMENT_METRIC)
+    if external_value is None:
+        return None
+    scores = report.get("scores", {})
+    macro_temperature = _dimension_temperature(scores, MACRO_DIMENSION_ID)
+    if macro_temperature is None or macro_temperature <= 0:
+        return None
+    return (external_value * cap) / macro_temperature * 100.0
 
 
 def collect_macro_weights() -> dict[str, float]:
@@ -109,6 +133,19 @@ def collect_macro_weights() -> dict[str, float]:
     return {}
 
 
+def collect_macro_external_cap() -> float | None:
+    """从当前配置读取宏观流动性维度的 subgroup_external_cap。"""
+    try:
+        from stock_core.config.analytics_market_temperature import load_market_temperature_config
+    except ImportError:
+        return None
+    config = load_market_temperature_config()
+    for dimension in config.dimensions:
+        if dimension.id == MACRO_DIMENSION_ID:
+            return dimension.subgroup_external_cap
+    return None
+
+
 def _weighted_group_temperature(
     temps: dict[str, float | None], weights: dict[str, float]
 ) -> float | None:
@@ -127,7 +164,7 @@ def _weighted_group_temperature(
 
 
 def collect_runs(
-    runs_root: Path, macro_weights: dict[str, float]
+    runs_root: Path, macro_weights: dict[str, float], macro_cap: float | None
 ) -> list[dict]:
     rows = []
     for as_of_dir in sorted(runs_root.glob("as_of=*")):
@@ -155,6 +192,7 @@ def collect_runs(
                 "st5": _short_term_temperature(scores, 5),
                 "st10": _short_term_temperature(scores, 10),
                 "macro_external_share": _macro_external_share(report, macro_weights),
+                "macro_external_actual_share": _macro_external_actual_share(report, macro_cap),
             }
         )
     return rows
@@ -187,17 +225,27 @@ def build_diagnosis(rows: list[dict]) -> dict:
     slow = [r["slow"] for r in rows]
     st5 = [r["st5"] for r in rows if r["st5"] is not None]
     st10 = [r["st10"] for r in rows if r["st10"] is not None]
-    external_shares = [r["macro_external_share"] for r in rows if r["macro_external_share"] is not None]
+    external_shares = [
+        r["macro_external_share"] for r in rows if r["macro_external_share"] is not None
+    ]
+    external_actual_shares = [
+        r["macro_external_actual_share"]
+        for r in rows
+        if r["macro_external_actual_share"] is not None
+    ]
     divergences = sorted(rows, key=lambda r: abs(r["divergence"]), reverse=True)
     return {
         "sample_count": len(rows),
-        "series_stats": {k: _stats(v) for k, v in {
-            "composite": composite,
-            "fast": fast,
-            "slow": slow,
-            "st5": st5,
-            "st10": st10,
-        }.items()},
+        "series_stats": {
+            k: _stats(v)
+            for k, v in {
+                "composite": composite,
+                "fast": fast,
+                "slow": slow,
+                "st5": st5,
+                "st10": st10,
+            }.items()
+        },
         "correlations": {
             "composite_vs_fast": round(_correlation(composite, fast), 3),
             "composite_vs_slow": round(_correlation(composite, slow), 3),
@@ -205,15 +253,21 @@ def build_diagnosis(rows: list[dict]) -> dict:
             "st5_vs_fast": round(_correlation(st5, fast), 3),
             "st10_vs_slow": round(_correlation(st10, slow), 3),
         },
-        "macro_external_share": (
-            _stats(external_shares) if external_shares else None
+        "macro_external_share": (_stats(external_shares) if external_shares else None),
+        "macro_external_actual_share": (
+            _stats(external_actual_shares) if external_actual_shares else None
         ),
         "divergence_tops": [
-            {"date": r["date"], "fast": round(r["fast"], 1), "slow": round(r["slow"], 1),
-             "divergence": round(r["divergence"], 1)}
+            {
+                "date": r["date"],
+                "fast": round(r["fast"], 1),
+                "slow": round(r["slow"], 1),
+                "divergence": round(r["divergence"], 1),
+            }
             for r in divergences[:8]
         ]
-        if math.isfinite(divergences[0]["divergence"]) else [],
+        if math.isfinite(divergences[0]["divergence"])
+        else [],
         "latest": {
             "date": rows[-1]["date"],
             "composite": round(rows[-1]["composite"], 1),
@@ -228,21 +282,33 @@ def print_report(diag: dict) -> None:
     print(f"样本天数: {diag['sample_count']}")
     print("\n序列统计 (mean/std/min/max/range):")
     for name, s in diag["series_stats"].items():
-        print(f"  {name:<12} {s['mean']:>7.1f} {s['std']:>6.1f} {s['min']:>7.1f} {s['max']:>7.1f} {s['range']:>7.1f}")
+        print(
+            f"  {name:<12} {s['mean']:>7.1f} {s['std']:>6.1f} {s['min']:>7.1f} {s['max']:>7.1f} {s['range']:>7.1f}"
+        )
     print("\n相关性:")
     for name, value in diag["correlations"].items():
         print(f"  {name:<20} {value:+.3f}")
     share = diag.get("macro_external_share")
     if share:
         print(
-            f"\n宏观流动性-外盘环境贡献占比: 均值 {share['mean']}% "
+            f"\n宏观流动性-外盘环境名义权重占比: 均值 {share['mean']}% "
             f"(min {share['min']}% / max {share['max']}%)"
+        )
+    actual_share = diag.get("macro_external_actual_share")
+    if actual_share:
+        print(
+            f"宏观流动性-外盘环境实际贡献占比(修复后 cap 约束): 均值 {actual_share['mean']}% "
+            f"(min {actual_share['min']}% / max {actual_share['max']}%)"
         )
     print("\n背离极值 (|fast-slow| top8):")
     for item in diag["divergence_tops"]:
-        print(f"  {item['date']}  fast={item['fast']:>5.1f} slow={item['slow']:>5.1f} 差={item['divergence']:+.1f}")
+        print(
+            f"  {item['date']}  fast={item['fast']:>5.1f} slow={item['slow']:>5.1f} 差={item['divergence']:+.1f}"
+        )
     latest = diag["latest"]
-    print(f"\n最新(修复基线): {latest['date']} 综合={latest['composite']} 快={latest['fast']} 慢={latest['slow']} 差={latest['divergence']:+.1f}")
+    print(
+        f"\n最新(修复基线): {latest['date']} 综合={latest['composite']} 快={latest['fast']} 慢={latest['slow']} 差={latest['divergence']:+.1f}"
+    )
 
 
 def main() -> int:
@@ -256,7 +322,7 @@ def main() -> int:
         print(f"运行目录不存在: {args.runs_root}", file=sys.stderr)
         return 1
 
-    rows = collect_runs(args.runs_root, collect_macro_weights())
+    rows = collect_runs(args.runs_root, collect_macro_weights(), collect_macro_external_cap())
     if not rows:
         print("未收集到可用运行（全部缺少综合温度或六维）", file=sys.stderr)
         return 1
@@ -266,9 +332,7 @@ def main() -> int:
 
     if not args.no_write:
         args.out.parent.mkdir(parents=True, exist_ok=True)
-        args.out.write_text(
-            json.dumps(diag, ensure_ascii=False, indent=2), encoding="utf-8"
-        )
+        args.out.write_text(json.dumps(diag, ensure_ascii=False, indent=2), encoding="utf-8")
         print(f"\n诊断 JSON 已写入: {args.out}")
     return 0
 
