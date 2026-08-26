@@ -12,6 +12,9 @@ from stock_analytics.pipelines.artifact_reader import (
     ArtifactUnavailableError,
     resolve_artifact_run,
 )
+from stock_analytics.pipelines.daily_review.quant_brief_context import (
+    resolve_quant_brief_context,
+)
 from stock_analytics.pipelines.industry_structure import run_industry_structure
 from stock_analytics.pipelines.market_temperature import (
     MarketAnalysisContext,
@@ -69,6 +72,12 @@ def run_daily_review(
     risk_dict = risk_info if isinstance(risk_info, dict) else {}
     systemic_risk_level = risk_dict.get("level", "低到中等")
     systemic_risk_message = risk_dict.get("message", "")
+    quant_brief_context = resolve_quant_brief_context(
+        as_of_date,
+        analytics_base=analytics_base,
+        storage_dir=storage_dir,
+        refresh_upstream=refresh_upstream,
+    )
     position_advice = _build_position_advice(temp_score)
     items_context = _build_watchlist_items(scan_result)
 
@@ -85,6 +94,7 @@ def run_daily_review(
             else ""
         ),
         "position_advice": position_advice,
+        "quant_brief": quant_brief_context,
         "macro_decoupling": _load_macro_decoupling_info(scan_result.as_of_date, market_context),
         "market_context": market_context,
         "industry_context": industry_context,

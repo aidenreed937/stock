@@ -230,3 +230,108 @@ def test_industry_structure_templates_rendering() -> None:
     )
     assert "# 测试申万行业结构人工阅读版" in human_md
     assert "一句话结论" in human_md
+
+
+def test_daily_review_template_renders_l1_l4_chain() -> None:
+    from stock_reporting.engine.renderer import ReportRenderer
+
+    context = {
+        "as_of_date": "2026-08-21",
+        "quant_brief": {
+            "run_id": "brief_run",
+            "rules_version": {"cross_cycle": "odds-matrix-v1", "extreme_state": "extreme-route-v1"},
+            "risk_gates": {
+                "status": "watch",
+                "hard_stop": False,
+                "max_position_band": None,
+                "summary": "存在需要观察的风险闸门。",
+                "gates": [
+                    {
+                        "title": "主力资金与杠杆健康度",
+                        "status_label": "观察",
+                        "action": "降低追高和杠杆暴露。",
+                    }
+                ],
+            },
+            "veto": {
+                "crowded_industry_share": 9.68,
+                "crowded_industries": [
+                    {
+                        "industry_name": "通信",
+                        "crowding_temperature": 98.67,
+                        "tcr": 8.6,
+                    }
+                ],
+            },
+            "extreme_state": {
+                "windows": ["crowded_window"],
+                "composite_window_rank": "crowded_only",
+                "hot_window": {"triggered": False},
+                "frozen_window": {"triggered": False, "ice_divergence": False},
+                "crowded_window": {
+                    "triggered": True,
+                    "crowded_count": 3,
+                    "crowded_industries": ["通信", "建筑材料", "电子"],
+                },
+                "position_bias_pp": 0.0,
+                "action": "拥挤窗口：3 个行业达硬阈值，一票否决回避。",
+            },
+            "position_policy": {
+                "temperature_band": "40%-50%",
+                "risk_cap": None,
+                "effective_band": "40%-50%",
+                "status": "temperature_band",
+                "reason": "未触发硬性总闸门。",
+            },
+            "cross_cycle": {
+                "win_level": "中",
+                "win_score": -5.0,
+                "odds_level": "中",
+                "odds_score": -5.0,
+                "quadrature_label": "O 中或 S 中：标准档",
+                "position_adjustment_pp": 0.0,
+                "trajectory": {
+                    "divergence_transition": "extreme->synchronized 收敛确认",
+                    "d5_composite_direction": "flat",
+                    "slow_5d_delta_pp": -1.21,
+                },
+                "upgrade_triggers": ["60日扩散回升至 30% 以上"],
+            },
+            "sector_priority": [
+                {
+                    "industry_name": "银行",
+                    "tags": "资金确认",
+                    "structure_score": 56.02,
+                    "crowding_temperature": 48.17,
+                    "reason": "结构分靠前、资金确认。",
+                }
+            ],
+            "sector_avoid": ["通信"],
+        },
+    }
+    ReportRenderer.reset_instance()
+    renderer = ReportRenderer.get_instance()
+    rendered = renderer.render("review/daily_market_review.md.j2", context)
+
+    assert "## 二、 量化风控闸门与极端状态执行链 (L1-L4)" in rendered
+    assert "### L1 风控裁剪" in rendered
+    assert "### L2 极端状态定位" in rendered
+    assert "### L3 档位纪律" in rendered
+    assert "### L4 方向约束" in rendered
+    assert "拥挤一票否决名单" in rendered
+    assert "银行" in rendered
+
+
+def test_daily_review_template_falls_back_when_quant_brief_missing() -> None:
+    from stock_reporting.engine.renderer import ReportRenderer
+
+    context = {
+        "as_of_date": "2026-08-21",
+        "quant_brief": None,
+    }
+    renderer = ReportRenderer.get_instance()
+    rendered = renderer.render("review/daily_market_review.md.j2", context)
+
+    assert "## 二、 量化风控闸门与极端状态执行链 (L1-L4)" in rendered
+    assert "量化简报产物缺失" in rendered
+    assert "### L1 风控裁剪" not in rendered

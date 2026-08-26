@@ -25,7 +25,65 @@
 {% endfor %}
 {% endif %}
 
-## 二、 申万 31 行业强弱与轮动主线 (Sector Allocation)
+## 二、 量化风控闸门与极端状态执行链 (L1-L4)
+{% if quant_brief %}
+- **量化简报**: run `{{ quant_brief.run_id | default('--') }}` ｜ 矩阵规则 `{{ quant_brief.rules_version.cross_cycle | default('--') }}` ｜ 极端状态规则 `{{ quant_brief.rules_version.extreme_state | default('--') }}`
+
+### L1 风控裁剪 (Risk Gates)
+- **闸门总状态**: **{{ quant_brief.risk_gates.status | default('--') }}**{% if quant_brief.risk_gates.hard_stop %}（硬性停止）{% endif %}{% if quant_brief.risk_gates.max_position_band %}（仓位上限 {{ quant_brief.risk_gates.max_position_band }}）{% endif %} ｜ {{ quant_brief.risk_gates.summary | default('') }}
+
+| 闸门 | 状态 | 动作 |
+| :--- | :--- | :--- |
+{% for gate in quant_brief.risk_gates.gates %}
+| {{ gate.title }} | {{ gate.status_label }} | {{ gate.action }} |
+{% endfor %}
+
+
+{% if quant_brief.veto.crowded_industries %}
+- **拥挤一票否决名单 ({{ quant_brief.veto.crowded_industry_share }}%)**:
+{% for ind in quant_brief.veto.crowded_industries %}
+  - **{{ ind.industry_name }}**（拥挤温度 {{ ind.crowding_temperature | decimal(1) }}，TCR {{ ind.tcr | decimal(2) }}）: 回避，不追高
+{% endfor %}
+{% endif %}
+
+### L2 极端状态定位 (Extreme State)
+- **窗口集合**: {{ quant_brief.extreme_state.windows | join('、') | default('无') }} ｜ **窗口排序**: {{ quant_brief.extreme_state.composite_window_rank | default('normal') }}
+- **高温窗口**: {% if quant_brief.extreme_state.hot_window.triggered %}触发（composite {{ quant_brief.extreme_state.hot_window.composite | decimal(1) }} > {{ quant_brief.extreme_state.hot_window.threshold | decimal(1) }}），只减不加{% else %}未触发{% endif %}
+
+- **冰点窗口**: {% if quant_brief.extreme_state.frozen_window.triggered %}触发（composite {{ quant_brief.extreme_state.frozen_window.composite | decimal(1) }} < {{ quant_brief.extreme_state.frozen_window.threshold | decimal(1) }}），左侧分批{% elif quant_brief.extreme_state.frozen_window.ice_divergence %}冰点背离待确认{% else %}未触发{% endif %}
+
+- **拥挤窗口**: {% if quant_brief.extreme_state.crowded_window.triggered %}{{ quant_brief.extreme_state.crowded_window.crowded_count }} 个行业达硬阈值（{{ quant_brief.extreme_state.crowded_window.crowded_industries | join('、') }}），一票否决回避{% else %}未触发{% endif %}
+
+- **仓位偏置**: {{ quant_brief.extreme_state.position_bias_pp | decimal(1, signed=True) }}pp ｜ **动作**: {{ quant_brief.extreme_state.action | default('--') }}
+
+### L3 档位纪律 (Position Policy)
+- **综合温度档位**: {{ quant_brief.position_policy.temperature_band | default('--') }}{% if quant_brief.position_policy.risk_cap %} ｜ 风险闸门上限 {{ quant_brief.position_policy.risk_cap }}{% endif %}
+
+- **有效仓位档位**: **{{ quant_brief.position_policy.effective_band | default('--') }}**（{{ quant_brief.position_policy.status | default('--') }}）: {{ quant_brief.position_policy.reason | default('') }}
+
+### L4 方向约束 (Direction & Odds Matrix)
+- **胜率档位**: {{ quant_brief.cross_cycle.win_level | default('--') }}（{{ quant_brief.cross_cycle.win_score | default('--') }}）｜ **赔率档位**: {{ quant_brief.cross_cycle.odds_level | default('--') }}（{{ quant_brief.cross_cycle.odds_score | default('--') }}）
+- **象限**: {{ quant_brief.cross_cycle.quadrature_label | default('--') }} ｜ **仓位调整**: {{ quant_brief.cross_cycle.position_adjustment_pp | decimal(1, signed=True) }}pp
+{% if quant_brief.cross_cycle.trajectory %}
+- **轨迹语境**: {{ quant_brief.cross_cycle.trajectory.divergence_transition | default('--') }}; 5日温度方向 {{ quant_brief.cross_cycle.trajectory.d5_composite_direction | default('--') }}; 慢温5日 {{ quant_brief.cross_cycle.trajectory.slow_5d_delta_pp | decimal(2, signed=True) }}pp
+{% endif %}
+{% if quant_brief.cross_cycle.upgrade_triggers %}
+- **升级触发线**: {{ quant_brief.cross_cycle.upgrade_triggers | join('；') }}
+{% endif %}
+{% if quant_brief.sector_priority %}
+- **方向优先（防御底仓/条件弹性，不作买入预测）**:
+{% for row in quant_brief.sector_priority %}
+  - **{{ row.industry_name }}** [{{ row.tags | default('') }}]（结构分 {{ row.structure_score | decimal(1) }}，拥挤温度 {{ row.crowding_temperature | decimal(1) }}）: {{ row.reason | default('') }}
+{% endfor %}
+{% endif %}
+{% if quant_brief.sector_avoid %}
+- **方向回避**: {{ quant_brief.sector_avoid | join('、') }}
+{% endif %}
+{% else %}
+> 量化简报产物缺失，本次复盘跳过 L1-L4 执行链；请先运行 `make quant-brief DATE={{ as_of_date }}`。
+{% endif %}
+
+## 三、 申万 31 行业强弱与轮动主线 (Sector Allocation)
 {% if top_industries %}
 - **今日综合结构占优主线 Top 5**:
 {% for ind in top_industries %}
@@ -41,7 +99,7 @@
 {% endfor %}
 {% endif %}
 
-## 三、 核心观察池量化全景雷达 (Watchlist Radar)
+## 四、 核心观察池量化全景雷达 (Watchlist Radar)
 - **总扫描标的**: {{ total_scanned }} 只
 - **极低估值黄金坑 (PE 5Y ≤ 15%)**: {{ golden_pit_count }} 只
 - **高股息利差安全垫 (利差 ≥ +2.0%)**: {{ high_dividend_count }} 只
@@ -53,7 +111,7 @@
 | {{ item.symbol }} | {{ item.name }} | {{ item.industry }} | {{ item.close | decimal(2) }} ({{ item.pct_chg | decimal(2, signed=True) }}%) | {{ item.pe_display }} | {{ item.pb_display }} | {{ item.dividend_display }} | {{ item.roe_display }} | {{ item.trend_status }} | {{ item.tag_display }} |
 {% endfor %}
 
-## 四、 稳健价值型投资决策与操作指引 (Action Plan)
+## 五、 稳健价值型投资决策与操作指引 (Action Plan)
 1. **高安全垫标的配置建议**: 优先关注股息利差安全垫丰厚（超额国债利差 > 2.0%）且无价值陷阱预警的标的，可采取逢低分批建仓策略（首仓 ≤5%）；
 2. **防价值陷阱防线**: 严禁仅凭历史低分位在左侧盲目加仓成长失速标的，必须等待下一季财报净利增速降幅收窄或放量站上 MA60 确认；
 3. **回撤纪律**: 组合严格执行 15% 最大回撤容忍度红线，单标的破位坚决止损。
