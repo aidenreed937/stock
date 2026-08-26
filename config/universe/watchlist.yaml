@@ -7,9 +7,6 @@ universe:
   # A 股核心自选标的 (TuShare / 理杏仁)
   a_shares:
     stocks:
-      - code: "600519.SH"
-        name: "贵州茅台"
-        base_date: "2001-08-27"
       - code: "000001.SZ"
         name: "平安银行"
         base_date: "1991-04-03"
