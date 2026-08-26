@@ -19,6 +19,7 @@ description: 使用仓库内的市场温度、行业结构和简报管线完成 
 - 量化投研简报：基于同一上游产物，生成量化视角、风险闸门、行业筛选和仓位解释。
 - 多日期与跨周期：按交易日批量生成、校验已落盘产物，并进行阶段变化、信号日和结构迁移复盘。
 - 盘后复盘：按仓库提供的每日复盘入口生成组合式阅读报告。
+- 复盘纪律与极端状态窗口：读取 `quant_brief` 的 `extreme_state` 与 `cross_cycle` 字段，按"风控裁剪 → 极端状态定位 → 档位纪律 → 方向约束"执行链组织每日/阶段/校准复盘（详见 `references/extreme-state-playbook.md`）。
 
 ## 工作流
 
@@ -114,6 +115,7 @@ uv run python -m stock_cli.market_context \
 - `references/industry-structure.md`：行业结构和轮动结果的阅读框架。
 - `references/scoring.md`：评分结果和短线温度的阅读框架。
 - `references/cross-cycle-study.md`、`references/signal-days.md`：多日期复盘和信号日阅读框架。
+- `references/extreme-state-playbook.md`：复盘纪律（每日/阶段/校准检查单）、极端状态窗口解读与实证规律。
 - `references/investor-interpretation.md`：面向普通投资者的结果表达。
 - `references/report-consistency.md`：产物一致性、溯源和验收原则。
 
