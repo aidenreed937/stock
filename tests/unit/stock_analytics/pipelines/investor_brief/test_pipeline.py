@@ -228,7 +228,12 @@ def _write_market_artifacts(root: Path, target_date: date = date(2026, 8, 14)) -
     run_dir.mkdir(parents=True)
     _write_json(
         run_dir / "manifest.json",
-        {"as_of_date": target_date.isoformat(), "run_id": "run_market"},
+        {
+            "artifact_type": "market_temperature",
+            "artifact_files": ["manifest.json", "scores.json", "facts.parquet"],
+            "as_of_date": target_date.isoformat(),
+            "run_id": "run_market",
+        },
     )
     _write_json(
         run_dir / "scores.json",
@@ -275,7 +280,12 @@ def _write_industry_artifacts(root: Path, target_date: date = date(2026, 8, 14))
     run_dir.mkdir(parents=True)
     _write_json(
         run_dir / "manifest.json",
-        {"as_of_date": target_date.isoformat(), "run_id": "run_industry"},
+        {
+            "artifact_type": "industry_structure",
+            "artifact_files": ["manifest.json", "scores.json", "industry_panel.parquet"],
+            "as_of_date": target_date.isoformat(),
+            "run_id": "run_industry",
+        },
     )
     _write_json(
         run_dir / "scores.json",

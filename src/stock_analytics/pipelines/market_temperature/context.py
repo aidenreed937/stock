@@ -11,6 +11,7 @@ from typing import Any
 
 import polars as pl
 
+from stock_analytics.pipelines.artifact_reader import resolve_artifact_run
 from stock_analytics.pipelines.market_temperature.history import load_history_index
 from stock_analytics.pipelines.market_temperature.snapshot import build_market_state_snapshot
 
@@ -40,13 +41,19 @@ class MarketAnalysisContext:
     ) -> MarketAnalysisContext:
         """加载 latest 或指定观测日的已落盘运行。"""
         root = Path(artifact_root)
-        run_dir = _resolve_run_dir(root, as_of=as_of, run_id=run_id)
-        manifest = _read_json(run_dir / "manifest.json")
-        scores = _read_json(run_dir / "scores.json")
-        snapshot_path = run_dir / "snapshot.json"
+        run = resolve_artifact_run(
+            root,
+            as_of_date=as_of,
+            expected_artifact_type="market_temperature",
+            run_id=run_id,
+        )
+        run_dir = run.run_dir
+        manifest = run.manifest
+        scores = run.read_json("scores.json")
+        snapshot_path = run.path("snapshot.json")
         snapshot_exists = snapshot_path.exists()
         snapshot = (
-            _read_json(snapshot_path)
+            run.read_json("snapshot.json")
             if snapshot_exists
             else build_market_state_snapshot(manifest=manifest, scores=scores, config_path=None)
         )
@@ -192,32 +199,6 @@ class MarketAnalysisContext:
         }
 
 
-def _resolve_run_dir(root: Path, *, as_of: date | str | None, run_id: str | None) -> Path:
-    if as_of is None or str(as_of).lower() == "latest":
-        manifest_path = root / "latest" / "manifest.json"
-        manifest = _read_json(manifest_path)
-        resolved_date_text = str(manifest.get("as_of_date") or "")
-        resolved_run_id = run_id or str(manifest.get("run_id") or "")
-        candidate = root / "runs" / f"as_of={resolved_date_text}" / resolved_run_id
-        return candidate if candidate.is_dir() else manifest_path.parent
-
-    resolved_trade_date: date = as_of if isinstance(as_of, date) else date.fromisoformat(as_of)
-    date_root = root / "runs" / f"as_of={resolved_trade_date.isoformat()}"
-    if run_id is not None:
-        candidate = date_root / run_id
-        if not candidate.is_dir():
-            raise FileNotFoundError(f"未找到市场温度运行: {candidate}")
-        return candidate
-    candidates = sorted(
-        path
-        for path in date_root.glob("run_*")
-        if path.is_dir() and (path / "manifest.json").exists()
-    )
-    if not candidates:
-        raise FileNotFoundError(f"未找到市场温度观测日产物: {resolved_trade_date.isoformat()}")
-    return candidates[-1]
-
-
 def _latest_history_rows(history: pl.DataFrame, as_of: Any) -> list[dict[str, Any]]:
     rows = history.to_dicts()
     target = _as_date(as_of)
@@ -305,15 +286,6 @@ def _json_list(value: Any) -> list[dict[str, Any]]:
         if isinstance(parsed, list)
         else []
     )
-
-
-def _read_json(path: Path) -> dict[str, Any]:
-    if not path.exists():
-        raise FileNotFoundError(f"缺少市场温度产物: {path}")
-    value = json.loads(path.read_text(encoding="utf-8"))
-    if not isinstance(value, dict):
-        raise ValueError(f"市场温度 JSON 产物必须是对象: {path}")
-    return value
 
 
 def _mapping(value: Any) -> dict[str, Any]:

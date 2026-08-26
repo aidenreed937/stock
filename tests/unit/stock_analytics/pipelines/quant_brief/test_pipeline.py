@@ -34,7 +34,12 @@ def test_run_quant_brief_reads_upstream_artifacts_and_writes_four_step_report(
 
     _write_json(
         market_run / "manifest.json",
-        {"as_of_date": "2026-08-14", "run_id": "run_market"},
+        {
+            "artifact_type": "market_temperature",
+            "artifact_files": ["manifest.json", "scores.json", "facts.parquet"],
+            "as_of_date": "2026-08-14",
+            "run_id": "run_market",
+        },
     )
     _write_json(
         market_run / "scores.json",
@@ -69,7 +74,12 @@ def test_run_quant_brief_reads_upstream_artifacts_and_writes_four_step_report(
 
     _write_json(
         industry_run / "manifest.json",
-        {"as_of_date": "2026-08-14", "run_id": "run_industry"},
+        {
+            "artifact_type": "industry_structure",
+            "artifact_files": ["manifest.json", "scores.json", "industry_panel.parquet"],
+            "as_of_date": "2026-08-14",
+            "run_id": "run_industry",
+        },
     )
     _write_json(
         industry_run / "scores.json",
@@ -215,7 +225,12 @@ def test_run_quant_brief_passes_through_upstream_drivers_and_margin_series(
 
     _write_json(
         market_run / "manifest.json",
-        {"as_of_date": "2026-08-14", "run_id": "run_market"},
+        {
+            "artifact_type": "market_temperature",
+            "artifact_files": ["manifest.json", "scores.json", "facts.parquet"],
+            "as_of_date": "2026-08-14",
+            "run_id": "run_market",
+        },
     )
     _write_json(
         market_run / "scores.json",
@@ -251,7 +266,12 @@ def test_run_quant_brief_passes_through_upstream_drivers_and_margin_series(
 
     _write_json(
         industry_run / "manifest.json",
-        {"as_of_date": "2026-08-14", "run_id": "run_industry"},
+        {
+            "artifact_type": "industry_structure",
+            "artifact_files": ["manifest.json", "scores.json", "industry_panel.parquet"],
+            "as_of_date": "2026-08-14",
+            "run_id": "run_industry",
+        },
     )
     _write_json(
         industry_run / "scores.json",

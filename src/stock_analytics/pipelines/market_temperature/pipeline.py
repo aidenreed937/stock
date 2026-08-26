@@ -2,7 +2,6 @@
 
 from __future__ import annotations
 
-import json
 from dataclasses import dataclass
 from datetime import date
 from pathlib import Path
@@ -10,6 +9,7 @@ from typing import TYPE_CHECKING, Any
 
 from stock_analytics.data_quality import build_quality_report
 from stock_analytics.pipelines.artifact_contracts import RunClass
+from stock_analytics.pipelines.artifact_reader import resolve_artifact_run
 from stock_analytics.pipelines.manifest import build_manifest_base, build_watermark_index
 from stock_analytics.pipelines.market_temperature.artifacts import (
     MarketTemperatureArtifactPayload,
@@ -251,14 +251,14 @@ def _load_comparison(
 ) -> dict[str, Any] | None:
     if comparison_date is None:
         return None
-    run_root = Path(artifact_root) / "runs" / f"as_of={comparison_date.isoformat()}"
-    run_dirs = sorted(path for path in run_root.glob("run_*") if path.is_dir())
-    if not run_dirs:
-        raise FileNotFoundError(f"未找到对比日期的市场温度计产物: {comparison_date.isoformat()}")
-    previous_run = run_dirs[-1]
+    previous_run = resolve_artifact_run(
+        artifact_root,
+        as_of_date=comparison_date,
+        expected_artifact_type="market_temperature",
+    )
     return {
-        "previous_manifest": _read_json(previous_run / "manifest.json"),
-        "previous_scores": _read_json(previous_run / "scores.json"),
+        "previous_manifest": previous_run.manifest,
+        "previous_scores": previous_run.read_json("scores.json"),
     }
 
 
@@ -278,12 +278,3 @@ def _latest_previous_run_date(artifact_root: Path | str, as_of_date: date) -> da
         if candidate < as_of_date:
             previous.append(candidate)
     return max(previous) if previous else None
-
-
-def _read_json(path: Path) -> dict[str, Any]:
-    if not path.exists():
-        raise FileNotFoundError(f"缺少对比产物文件: {path}")
-    payload = json.loads(path.read_text(encoding="utf-8"))
-    if not isinstance(payload, dict):
-        raise ValueError(f"对比产物不是 JSON 对象: {path}")
-    return payload

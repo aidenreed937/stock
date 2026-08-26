@@ -8,6 +8,7 @@ import sys
 from datetime import date
 from pathlib import Path
 
+from stock_analytics.pipelines.artifact_reader import ArtifactUnavailableError
 from stock_analytics.pipelines.market_temperature import (
     DEFAULT_ARTIFACT_ROOT,
     MarketAnalysisContext,
@@ -39,9 +40,7 @@ def _build_parser() -> argparse.ArgumentParser:
     )
     parser.add_argument("--compare-date", default=None, help="explain-date 的对比日期")
     parser.add_argument(
-        "--rebuild-history",
-        action="store_true",
-        help="先从已有运行快照重建历史索引",
+        "--rebuild-history", action="store_true", help="先从已有运行快照重建历史索引"
     )
     parser.add_argument("--format", choices=("json",), default="json")
     return parser
@@ -63,7 +62,7 @@ def main() -> None:
             _parse_questions(args.questions),
             compare_date=_parse_date(args.compare_date),
         )
-    except (FileNotFoundError, ValueError) as exc:
+    except (ArtifactUnavailableError, FileNotFoundError, ValueError) as exc:
         sys.stderr.write(f"Error: {exc}\n")
         raise SystemExit(1) from exc
     sys.stdout.write(json.dumps(result, ensure_ascii=False, indent=2, default=str) + "\n")

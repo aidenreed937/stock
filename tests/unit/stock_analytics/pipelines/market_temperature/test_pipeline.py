@@ -96,7 +96,12 @@ market_temperature:
     previous_run.mkdir(parents=True)
     _write_json(
         previous_run / "manifest.json",
-        {"as_of_date": "2026-06-30", "run_id": "run_20260801T000000"},
+        {
+            "artifact_type": "market_temperature",
+            "artifact_files": ["manifest.json", "scores.json"],
+            "as_of_date": "2026-06-30",
+            "run_id": "run_20260801T000000",
+        },
     )
     _write_json(
         previous_run / "scores.json",
@@ -156,7 +161,12 @@ market_temperature:
     previous_run.mkdir(parents=True)
     _write_json(
         previous_run / "manifest.json",
-        {"as_of_date": "2026-08-13", "run_id": "run_20260814T000000"},
+        {
+            "artifact_type": "market_temperature",
+            "artifact_files": ["manifest.json", "scores.json"],
+            "as_of_date": "2026-08-13",
+            "run_id": "run_20260814T000000",
+        },
     )
     _write_json(
         previous_run / "scores.json",

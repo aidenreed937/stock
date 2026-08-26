@@ -51,6 +51,8 @@ def _write_run(root: Path, as_of: date, run_id: str, temperature: float) -> None
     run_dir.mkdir(parents=True, exist_ok=True)
     manifest = {
         "artifact_type": "market_temperature",
+        "artifact_files": ["manifest.json", "snapshot.json", "scores.json"],
+        "artifact_root": str(root),
         "as_of_date": as_of.isoformat(),
         "run_id": run_id,
         "run_class": "official",
