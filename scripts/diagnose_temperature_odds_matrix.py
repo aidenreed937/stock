@@ -32,6 +32,9 @@ from stock_reporting.interpretation.quant_brief.config import load_quant_brief_c
 from stock_reporting.interpretation.quant_brief.cross_cycle import (  # noqa: E402
     evaluate_cross_cycle,
 )
+from stock_reporting.interpretation.quant_brief.extreme_state import (  # noqa: E402
+    evaluate_extreme_state,
+)
 
 _DEFAULT_MARKET_ROOT = _PROJECT_ROOT / "data/analytics/market_temperature"
 _DEFAULT_INDUSTRY_ROOT = _PROJECT_ROOT / "data/analytics/industry_structure"
@@ -79,9 +82,17 @@ def _market_inputs(run_dir: Path) -> dict:
 def _industry_inputs(run_dir: Path) -> dict:
     report = json.loads((run_dir / "report.json").read_text(encoding="utf-8"))
     scores = report.get("scores", {}) if isinstance(report.get("scores"), dict) else {}
+    panel = pl.DataFrame()
+    panel_path = run_dir / "industry_panel.parquet"
+    if panel_path.exists():
+        try:
+            panel = pl.read_parquet(panel_path)
+        except Exception:
+            panel = pl.DataFrame()
     return {
         "trend_diagnostics": scores.get("trend_diagnostics"),
         "structure_health": scores.get("structure_health"),
+        "panel": panel,
     }
 
 
@@ -164,6 +175,11 @@ def run_diagnose(
             market_facts=facts,
             history=history,
         )
+        extreme = evaluate_extreme_state(
+            config,
+            market_scores,
+            industry_scores.get("panel"),
+        )
         trajectory = result.get("trajectory") or {}
         composite = None
         if isinstance(market_scores.get("composite"), dict):
@@ -178,6 +194,9 @@ def run_diagnose(
                 "quadrature": result["quadrature"],
                 "adjustment_pp": result["position_adjustment_pp"],
                 "transition": trajectory.get("divergence_transition", ""),
+                "extreme_rank": extreme.get("composite_window_rank"),
+                "extreme_windows": list(extreme.get("windows") or []),
+                "extreme_bias_pp": extreme.get("position_bias_pp"),
                 "composite": composite,
                 "degraded": result["status"] == "degraded",
             }
@@ -249,6 +268,26 @@ def run_diagnose(
         ]
         _print_stats(f"轨迹事件（{label}）", stats)
 
+    extreme_ranks = {}
+    for row in rows:
+        rank = row.get("extreme_rank") or "missing"
+        extreme_ranks[rank] = extreme_ranks.get(rank, 0) + 1
+    print("\n极端状态窗口分布（61 天）")
+    for rank, count in sorted(extreme_ranks.items()):
+        print(f"  {rank:<14} {count:>3} 天")
+    hot_rows = [row for row in rows if "hot_window" in (row.get("extreme_windows") or [])]
+    frozen_rows = [row for row in rows if "frozen_window" in (row.get("extreme_windows") or [])]
+    conflict_rows = [row for row in hot_rows if row.get("adjustment_pp", 0) > 0]
+    print(f"\n冲突检查（hot 日不得出现仓位上调）: {len(conflict_rows)} / {len(hot_rows)} 天")
+    _print_stats("高温窗口前向综合温度变化", [
+        _fwd_stats(hot_rows, composite_by_date=composite_by_date, window=window, key="hot_window")
+        for window in FORWARD_WINDOWS
+    ])
+    _print_stats("冰点窗口前向综合温度变化", [
+        _fwd_stats(frozen_rows, composite_by_date=composite_by_date, window=window, key="frozen_window")
+        for window in FORWARD_WINDOWS
+    ])
+
     print("\n轨迹事件分布（61 天）")
     for transition, count in sorted(transitions.items()):
         print(f"  {transition:<48} {count:>3} 天")
@@ -262,6 +301,16 @@ def run_diagnose(
         "win_level_counts": level_counts,
         "odds_level_counts": odds_level_counts,
         "quadrature_fwd": _group_stats("quadrature"),
+        "extreme_window_rank_counts": extreme_ranks,
+        "extreme_hot_fwd": [
+            _fwd_stats(hot_rows, composite_by_date=composite_by_date, window=window, key="hot")
+            for window in FORWARD_WINDOWS
+        ],
+        "extreme_frozen_fwd": [
+            _fwd_stats(frozen_rows, composite_by_date=composite_by_date, window=window, key="frozen")
+            for window in FORWARD_WINDOWS
+        ],
+        "extreme_conflict_days": [row["date"] for row in conflict_rows],
         "transition_counts": transitions,
         "convergence_fwd": [
             _fwd_stats(

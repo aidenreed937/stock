@@ -58,7 +58,23 @@
 - 暂无。
 {% endfor %}
 
-## 2. 宏观定基调
+## 2. 极端状态窗口与执行链
+
+- 窗口摘要: {{ extreme_state_summary }}
+- 窗口规则版本: {{ extreme_state.get('rules_version') or '-' }}；状态: {{ extreme_state.get('status') or '-' }}
+
+| 窗口 | 状态 | 明细 |
+|---|---|---|
+{% for row in extreme_window_rows %}
+| {{ row.name }} | {{ row.status }} | {{ row.detail }} |
+{% else %}
+| - | - | 极端状态事实缺失。 |
+{% endfor %}
+
+执行链按 L1 风控裁剪 → L2 极端状态定位 → L3 档位纪律 → L4 方向约束 顺序执行：
+冲突保护：窗口偏置只允许下调仓位，不突破风控档位；高温窗口优先于冰点窗口；拥挤窗口只做行业回避、不改总仓。
+
+## 3. 宏观定基调
 
 - 综合温度: {{ macro_temperature_str }} / 100
 - 温度档位: {{ macro.band_label }}
@@ -71,7 +87,7 @@
 - {{ line }}
 {% endfor %}
 
-## 3. 量价判性质
+## 4. 量价判性质
 
 - 性质: {{ nature.nature_label or nature.nature_type }}
 - 技术面温度: {{ technical_temperature_str }}；资金面温度: {{ fund_flow_temperature_str }}
@@ -85,7 +101,7 @@
 - 资金口径说明: {{ funding_health.note }}
 - 结论: {{ nature.message }}
 
-## 4. 微观排雷与一票否决
+## 5. 微观排雷与一票否决
 
 - 排雷状态: {{ veto.status }}
 - Top5% 成交占比: {{ top5pct_str }}；阈值: {{ veto.top5pct.threshold * 100 if veto.top5pct.threshold is not none else '-' }}%
@@ -112,7 +128,7 @@
 | - | - | - | - | - | 暂无可列示的拥挤行业。 |
 {% endfor %}
 
-## 5. 中观选方向
+## 6. 中观选方向
 
 ### 优先方向
 
@@ -152,13 +168,13 @@
 - 暂无可列示的落后方向。
 {% endfor %}
 
-## 6. 数据限制
+## 7. 数据限制
 
 {% for note in data_quality_notes %}
 - {{ note }}
 {% endfor %}
 
-## 7. 事实与推断分层
+## 8. 事实与推断分层
 
 ### 已验证事实
 

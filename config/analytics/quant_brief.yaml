@@ -80,6 +80,15 @@ quant_brief:
     industry_tcr_hard: 25.0
     industry_crowding_hard_temperature: 90.0
 
+  # 极端状态窗口原语（可靠路线 L2，extreme-route-v1）
+  # 设计说明见 docs/research/extreme_state_route_design.md；拥挤窗口复用 risk_gates 的硬阈值
+  extreme_state:
+    rules_version: "extreme-route-v1"
+    hot_threshold: 60.0
+    cold_threshold: 45.0
+    bias_hot_pp: -10.0
+    bias_frozen_pp: -7.0
+
   # 跨周期胜率/赔率矩阵（odds-matrix-v1 校准版：61 天回归后弱化方向性分项，校准说明见设计文档第 9 节）
   # 设计说明见 docs/research/cross_cycle_odds_matrix_design.md 第 4 节
   cross_cycle:

@@ -218,6 +218,11 @@ class QuantBriefConfig:
     industry_tcr_warning: float = 20.0
     industry_tcr_hard: float = 25.0
     industry_crowding_hard_temperature: float = 90.0
+    extreme_rules_version: str = "extreme-route-v1"
+    extreme_hot_threshold: float = 60.0
+    extreme_cold_threshold: float = 45.0
+    extreme_bias_hot_pp: float = -10.0
+    extreme_bias_frozen_pp: float = -7.0
 
     @classmethod
     def from_mapping(cls, data: Mapping[str, Any]) -> Self:
@@ -228,6 +233,7 @@ class QuantBriefConfig:
         nature = _as_mapping(data.get("nature", {}), "nature")
         veto = _as_mapping(data.get("veto", {}), "veto")
         risk_gates = _as_mapping(data.get("risk_gates", {}), "risk_gates")
+        extreme_state = _as_mapping(data.get("extreme_state", {}), "extreme_state")
         return cls(
             schema_version=int(data.get("schema_version", 1)),
             title=str(data.get("title", "A 股量化投研简报")),
@@ -301,6 +307,11 @@ class QuantBriefConfig:
             industry_crowding_hard_temperature=float(
                 risk_gates.get("industry_crowding_hard_temperature", 90.0)
             ),
+            extreme_rules_version=str(extreme_state.get("rules_version", "extreme-route-v1")),
+            extreme_hot_threshold=float(extreme_state.get("hot_threshold", 60.0)),
+            extreme_cold_threshold=float(extreme_state.get("cold_threshold", 45.0)),
+            extreme_bias_hot_pp=float(extreme_state.get("bias_hot_pp", -10.0)),
+            extreme_bias_frozen_pp=float(extreme_state.get("bias_frozen_pp", -7.0)),
         )
 
     def with_artifact_root(self, artifact_root: Path | str | None) -> Self:

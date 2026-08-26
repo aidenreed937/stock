@@ -10,6 +10,7 @@ from stock_reporting.interpretation.quant_brief.cross_cycle import (
     cross_cycle_summary,
     evaluate_cross_cycle,
 )
+from stock_reporting.interpretation.quant_brief.extreme_state import evaluate_extreme_state
 from stock_reporting.interpretation.quant_brief.interpretation import (
     evaluate_macro,
     evaluate_nature,
@@ -227,11 +228,12 @@ def test_render_quant_brief_contains_four_decision_sections() -> None:
     markdown = render_quant_brief_markdown(brief)
 
     assert "## 1. 跨周期胜率赔率矩阵" in markdown
-    assert "## 2. 宏观定基调" in markdown
+    assert "## 2. 极端状态窗口与执行链" in markdown
+    assert "## 3. 宏观定基调" in markdown
     assert "## 0. 风控闸门总览" in markdown
-    assert "## 3. 量价判性质" in markdown
-    assert "## 4. 微观排雷与一票否决" in markdown
-    assert "## 5. 中观选方向" in markdown
+    assert "## 4. 量价判性质" in markdown
+    assert "## 5. 微观排雷与一票否决" in markdown
+    assert "## 6. 中观选方向" in markdown
     assert "主力资金与杠杆健康度" in markdown
     assert brief["veto"]["top5pct"]["value"] == 0.32
     assert "结构领先但未进入优先方向" in markdown
@@ -788,3 +790,126 @@ def test_cross_cycle_rules_version_and_summary() -> None:
     assert "胜率环境" in summary
     assert "赔率环境" in summary
     assert "象限" in summary
+
+
+def _extreme_panel(rows: list[tuple[str, float, float]]) -> pl.DataFrame:
+    """构造行业面板：(名称, tcr, crowding_temperature)。"""
+    return pl.DataFrame(
+        [
+            {
+                "industry_name": name,
+                "industry_code": f"80{i:04d}.SI",
+                "status": "ok",
+                "tcr": tcr,
+                "crowding_temperature": crowding,
+            }
+            for i, (name, tcr, crowding) in enumerate(rows)
+        ]
+    )
+
+
+def test_extreme_state_hot_window_sets_bias_and_rank() -> None:
+    config = load_quant_brief_config()
+    result = evaluate_extreme_state(
+        config,
+        _market_scores(composite=65.3),
+        _extreme_panel([("电子", 5.0, 40.0)]),
+    )
+
+    assert result["status"] == "ready"
+    assert result["hot_window"]["triggered"] is True
+    assert result["composite_window_rank"] == "hot"
+    assert result["position_bias_pp"] == -10.0
+    assert "只减不加" in result["action"]
+    assert "hot_window" in result["windows"]
+
+
+def test_extreme_state_frozen_by_cold_composite() -> None:
+    config = load_quant_brief_config()
+    result = evaluate_extreme_state(
+        config,
+        _market_scores(composite=40.0),
+        _extreme_panel([("电子", 5.0, 40.0)]),
+    )
+
+    assert result["frozen_window"]["triggered"] is True
+    assert result["composite_window_rank"] == "frozen"
+    assert result["position_bias_pp"] == -7.0
+    assert "左侧分批" in result["action"]
+
+
+def test_extreme_state_frozen_by_ice_divergence() -> None:
+    config = load_quant_brief_config()
+    result = evaluate_extreme_state(
+        config,
+        _market_scores(composite=50.0, div_level="extreme", fast=30.0, slow=58.0, divergence=-20.0),
+        _extreme_panel([("电子", 5.0, 40.0)]),
+    )
+
+    assert result["frozen_window"]["triggered"] is True
+    assert result["frozen_window"]["ice_divergence"] is True
+    assert result["composite_window_rank"] == "frozen"
+
+
+def test_extreme_state_crowded_window_keeps_total_position() -> None:
+    config = load_quant_brief_config()
+    result = evaluate_extreme_state(
+        config,
+        _market_scores(composite=55.0),
+        _extreme_panel([("电子", 26.0, 40.0), ("通信", 5.0, 95.0), ("银行", 1.0, 30.0)]),
+    )
+
+    assert result["crowded_window"]["triggered"] is True
+    assert result["crowded_window"]["crowded_count"] == 2
+    assert "电子" in result["crowded_window"]["crowded_industries"]
+    assert "通信" in result["crowded_window"]["crowded_industries"]
+    assert result["position_bias_pp"] == 0.0
+    assert result["composite_window_rank"] == "crowded_only"
+    assert "crowded_window" in result["windows"]
+
+
+def test_extreme_state_hot_overrides_frozen() -> None:
+    config = load_quant_brief_config()
+    # 同时满足 hot（>60）与冰点背离条件：hot 优先
+    result = evaluate_extreme_state(
+        config,
+        _market_scores(composite=62.0, div_level="extreme", fast=25.0, slow=60.0, divergence=-25.0),
+        _extreme_panel([]),
+    )
+
+    assert result["hot_window"]["triggered"] is True
+    assert result["frozen_window"]["triggered"] is False
+    assert result["composite_window_rank"] == "hot"
+
+
+def test_extreme_state_normal_without_windows() -> None:
+    config = load_quant_brief_config()
+    result = evaluate_extreme_state(
+        config,
+        _market_scores(composite=55.0),
+        _extreme_panel([("银行", 1.0, 30.0)]),
+    )
+
+    assert result["windows"] == []
+    assert result["composite_window_rank"] == "normal"
+    assert result["position_bias_pp"] == 0.0
+    assert "无极端状态窗口" in result["action"]
+
+
+def test_extreme_state_degraded_when_temperature_missing() -> None:
+    config = load_quant_brief_config()
+    result = evaluate_extreme_state(
+        config,
+        {"fast_slow": {"fast_temperature": 30.0, "slow_temperature": 60.0, "divergence": -20.0}},
+        _extreme_panel([]),
+    )
+
+    assert result["status"] == "degraded"
+    assert "temperature" in result["missing"]
+
+
+def test_extreme_state_rules_version() -> None:
+    config = load_quant_brief_config()
+    result = evaluate_extreme_state(config, _market_scores(composite=55.0), _extreme_panel([]))
+
+    assert result["rules_version"] == config.extreme_rules_version == "extreme-route-v1"
