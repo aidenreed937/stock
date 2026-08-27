@@ -11,6 +11,7 @@ from enum import StrEnum
 from typing import TYPE_CHECKING
 
 from stock_core.models.market import EntityType
+from stock_core.units import Unit as FeatureUnit
 
 if TYPE_CHECKING:
     from datetime import date, datetime
@@ -25,21 +26,6 @@ class FeatureKind(StrEnum):
     SCORE = "score"  # 标准化评分（固定 0-100 或 [-1, 1]，如 市场温度、行业景气度）
     SIGNAL = "signal"  # 离散信号或状态（布尔或枚举，如 多空金叉、超买超卖预警）
     LABEL = "label"  # 监督学习或回测标签（如 未来5日超额收益、持仓区间收益标签）
-
-
-class FeatureUnit(StrEnum):
-    """特征物理或标准化单位。"""
-
-    CNY = "CNY"  # 人民币金额（元/亿元）
-    SHARES = "shares"  # 股数/份额
-    COUNT = "count"  # 家数/次数
-    RATIO = "ratio"  # 比例/比率
-    PERCENT = "percent"  # 百分数（如 2.5 表示 2.5%）
-    PERCENTILE = "percentile"  # 历史分位数 (0~100)
-    ZSCORE = "zscore"  # 标准化 Z-Score (通常无界，均值0方差1)
-    SCORE_0_100 = "score_0_100"  # 0~100 综合评分
-    BOOLEAN = "boolean"  # 布尔值 (0/1 或 True/False)
-    UNKNOWN = "unknown"  # 未指定/复合
 
 
 @dataclass(frozen=True, slots=True)

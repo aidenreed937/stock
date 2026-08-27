@@ -30,6 +30,10 @@ stock_cli 负责参数、任务编排和终端交互
 | 应用编排 | `src/stock_cli/` | 参数解析、任务组合、日志和终端输出 | 承载领域公式和业务规则 |
 | 兼容门面 | `src/stock/` | 旧调用路径兼容 | 新能力的主要落点 |
 
+> 指标/特征的单位枚举唯一事实源为 `src/stock_core/units.py` 的 `Unit`；
+> `stock_analytics.features.spec.FeatureUnit` 与 `metrics.spec.MetricUnit` 为兼容别名，
+> 不在分析层重复定义（P4 收敛）。
+
 ## 3. Analytics 层职责
 
 ### 3.1 计算层
