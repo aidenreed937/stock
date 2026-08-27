@@ -1,6 +1,6 @@
 # 系统架构概览
 
-本页是架构入口索引。稳定的包边界和数据流见 [`../architecture.md`](../architecture.md)；领域职责见 [`domain-responsibilities.md`](domain-responsibilities.md)；CLI 领域边界见 [`cli-boundaries.md`](cli-boundaries.md)；Analytics 依赖和导入边界见 [`analytics-boundaries.md`](analytics-boundaries.md)；数据存储细节见 [`../data_architecture.md`](../data_architecture.md)。
+本页是架构入口索引。稳定的包边界和数据流见 [`../architecture.md`](../architecture.md)；领域职责见 [`domain-responsibilities.md`](domain-responsibilities.md)；CLI 领域边界见 [`cli-boundaries.md`](cli-boundaries.md)；Analytics 依赖和导入边界见 [`analytics-boundaries.md`](analytics-boundaries.md)；管线设计规范见 [`pipeline_design.md`](pipeline_design.md)；数据存储细节见 [`../data_architecture.md`](../data_architecture.md)。
 
 ## 分层关系
 
@@ -61,6 +61,6 @@ graph TD
 
 - 新增数据源、回填、同步或审计能力：先看 `.agents/skills/data-pipeline/SKILL.md`；
 - 新增本地数据查询：先看 `.agents/skills/data-catalog/SKILL.md`；
-- 新增市场/行业/简报管线：先看 `.agents/skills/market-temperature-analysis/SKILL.md`；
+- 新增或重构分析管线：先阅读 [`pipeline_design.md`](pipeline_design.md) 与 `.agents/skills/market-temperature-analysis/SKILL.md`；
 - 需要改变 Analytics 分层：先阅读 [`analytics-boundaries.md`](analytics-boundaries.md) 和相关测试；
 - CLI 参数和调用方式：以对应 `python -m stock_cli.<command> --help` 为准。
