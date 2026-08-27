@@ -6,8 +6,8 @@ from typing import Any
 
 import polars as pl
 
-from stock_analytics.pipelines.report_consistency_hooks import ConsistencyCheckHooks
-from stock_analytics.pipelines.report_consistency_utils import (
+from stock_analytics.pipelines.report_consistency.hooks import ConsistencyCheckHooks
+from stock_analytics.pipelines.report_consistency.utils import (
     _numbers_equal,
     _panel_by_name,
     _to_float,
@@ -122,3 +122,6 @@ class IndustryConsistencyChecksMixin(ConsistencyCheckHooks):
                 message = f"{name}.{key}={row.get(key)!r}，行业面板={source.get(key)!r}"
                 self._error("brief_industry_value", artifact, as_of_date, message)
         return source
+
+
+__all__ = ["IndustryConsistencyChecksMixin"]

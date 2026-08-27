@@ -61,3 +61,6 @@ class ConsistencyCheckHooks:
         artifact: str = "investor_brief",
     ) -> dict[str, Any] | None:
         raise NotImplementedError
+
+
+__all__ = ["ConsistencyCheckHooks"]

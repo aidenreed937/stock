@@ -72,7 +72,7 @@ stock_cli 负责参数、任务编排和终端交互
 | 衍生品与风险 | `marts/option_volatility.py`、`marts/convertible_bond.py`、`metrics` 的 derivatives 域 | 期权 PCR、结算价 IV 代理、期权标的行情和可转债聚合 | 衍生品指标、IV/可转债 Domain Mart |
 | 公司行为 | `marts/corporate_actions.py` | 增减持、回购、大宗交易及其领域聚合 | 公司行为 Domain Mart |
 | 实时市场监控 | `stock_analytics/realtime/`、`pipelines/market_aggregate/` | 核心观察池逐标的快照与全市场聚合摘要，区分实时快照和历史事实 | 实时快照、聚合摘要和质量报告 |
-| 投研简报与论点复盘 | `pipelines/investor_brief/`、`pipelines/quant_brief/`、`pipelines/thesis_review/`、`pipelines/market_cycle_review.py`、`pipelines/report_consistency.py` | 组合已物化事实、评分和既有报告产物，完成一致性校验并形成面向人的简报、跨周期复盘和论点复盘 | Markdown/JSON 简报、Manifest、复盘产物与校验结果 |
+| 投研简报与论点复盘 | `pipelines/investor_brief/`、`pipelines/quant_brief/`、`pipelines/thesis_review/`、`pipelines/market_cycle_review.py`、`pipelines/report_consistency/` | 组合已物化事实、评分和既有报告产物，完成一致性校验并形成面向人的简报、跨周期复盘和论点复盘 | Markdown/JSON 简报、Manifest、复盘产物与校验结果 |
 
 领域模块之间的关系是“共享事实、分别编排”，不是互相复制数据访问或业务规则。跨领域组合应放在 `pipelines`，而不是把评分逻辑塞回 `marts` 或 `metrics`。
 

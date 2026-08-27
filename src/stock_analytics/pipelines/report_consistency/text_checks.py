@@ -4,12 +4,12 @@ from __future__ import annotations
 
 from typing import Any
 
-from stock_analytics.pipelines.report_consistency_contracts import (
+from stock_analytics.pipelines.report_consistency.contracts import (
     BANNED_UNSOURCED_PHRASES,
     ArtifactBundle,
 )
-from stock_analytics.pipelines.report_consistency_hooks import ConsistencyCheckHooks
-from stock_analytics.pipelines.report_consistency_utils import (
+from stock_analytics.pipelines.report_consistency.hooks import ConsistencyCheckHooks
+from stock_analytics.pipelines.report_consistency.utils import (
     _markdown_paths,
     _number_variants,
     _read_text,
@@ -56,3 +56,6 @@ class TextConsistencyChecksMixin(ConsistencyCheckHooks):
         variants = _number_variants(expected)
         if variants and not any(value in text for value in variants):
             self._error(check, artifact, as_of_date, f"报告文本缺少数值 {sorted(variants)}")
+
+
+__all__ = ["TextConsistencyChecksMixin"]
