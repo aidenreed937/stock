@@ -117,3 +117,37 @@ def test_atr_matches_wilder_seed_and_recursion() -> None:
     assert result["atr_3d"].to_list()[:2] == [None, None]
     assert result["atr_3d"][2] == pytest.approx(7.0 / 3.0)
     assert result["atr_3d"][3] == pytest.approx((7.0 / 3.0 * 2.0 + 3.0) / 3.0)
+
+
+def test_calculate_indicators_grouped_by_symbol() -> None:
+    """多标的拼接帧下 SMA/EMA/MACD 必须按 symbol 分组，与单标的计算一致。"""
+    n = 40
+    dates = [date(2026, 1, 1) + timedelta(days=i) for i in range(n)]
+    prices_a = [10.0 + float(i) for i in range(n)]  # 单调上升
+    prices_b = [50.0 - float(i) * 0.7 for i in range(n)]  # 单调下降
+    frame = pl.concat(
+        [
+            pl.DataFrame({"symbol": ["A"] * n, "trade_date": dates, "close": prices_a}),
+            pl.DataFrame({"symbol": ["B"] * n, "trade_date": dates, "close": prices_b}),
+        ],
+        how="vertical",
+    )
+
+    def _assert_same_ignoring_nulls(actual: pl.Series, expected: pl.Series) -> None:
+        for x, y in zip(actual.to_list(), expected.to_list()):
+            if x is not None and y is not None:
+                assert x == pytest.approx(y, abs=1e-9)
+
+    for symbol, prices in (("A", prices_a), ("B", prices_b)):
+        sma = calculate_sma(frame, window=5).filter(pl.col("symbol") == symbol)
+        sma_iso = calculate_sma(pl.DataFrame({"symbol": [symbol] * n, "close": prices}), window=5)
+        _assert_same_ignoring_nulls(sma["sma_5"], sma_iso["sma_5"])
+
+        ema = calculate_ema(frame, window=12).filter(pl.col("symbol") == symbol)
+        ema_iso = calculate_ema(pl.DataFrame({"symbol": [symbol] * n, "close": prices}), window=12)
+        _assert_same_ignoring_nulls(ema["ema_12"], ema_iso["ema_12"])
+
+        macd = calculate_macd(frame).filter(pl.col("symbol") == symbol)
+        macd_iso = calculate_macd(pl.DataFrame({"symbol": [symbol] * n, "close": prices}))
+        for col in ("macd", "macd_signal", "macd_hist"):
+            _assert_same_ignoring_nulls(macd[col], macd_iso[col])

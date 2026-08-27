@@ -20,6 +20,11 @@ def calculate_equity_risk_premium(
     """计算股权风险溢价 (ERP, Equity Risk Premium)。
 
     公式: ERP = (1 / PE_TTM) * 100 - 10年期国债收益率(%)
+
+    单位约定: bond_yield_col 为百分数制（如 2.5 表示 2.5%）。
+    注意: Curated 国债收益率 tcm_y10 为小数制（0.025 表示 2.5%），与本函数口径
+    不兼容；接入生产前需将债券收益率乘以 100。生产 ERP 请使用
+    stock_analytics.metrics.calculators.valuation（小数制实现）。
     """
     required = {pe_col, bond_yield_col}
     if df.is_empty() or not required.issubset(df.columns):
@@ -45,6 +50,11 @@ def calculate_ey_by_ratio(
     """计算股债收益比 (EY/BY Ratio: 股票盈利收益率 / 国债收益率)。
 
     公式: EY/BY = (1 / PE) / (Bond_Yield / 100) = (100 / PE) / Bond_Yield
+
+    单位约定: bond_yield_col 为百分数制（如 2.5 表示 2.5%）。
+    注意: Curated 国债收益率 tcm_y10 为小数制（0.025 表示 2.5%），与本函数口径
+    不兼容；接入生产前需将债券收益率乘以 100。生产口径请参阅
+    stock_analytics.metrics.calculators.valuation（小数制实现）。
     """
     required = {pe_col, bond_yield_col}
     if df.is_empty() or not required.issubset(df.columns):

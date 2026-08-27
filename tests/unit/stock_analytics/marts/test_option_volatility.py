@@ -30,6 +30,19 @@ def test_settlement_implied_volatility_rejects_invalid_price() -> None:
     assert settlement_implied_volatility(100.0, 100.0, 100.0, 0.1, 0.0, "C") is None
 
 
+def test_black_scholes_price_rejects_invalid_inputs() -> None:
+    with pytest.raises(ValueError, match="spot/strike/volatility"):
+        _black_scholes_price(0.0, 100.0, 1.0, 0.0, 0.2, "C")
+    with pytest.raises(ValueError, match="spot/strike/volatility"):
+        _black_scholes_price(100.0, 0.0, 1.0, 0.0, 0.2, "C")
+    with pytest.raises(ValueError, match="spot/strike/volatility"):
+        _black_scholes_price(100.0, 100.0, 1.0, 0.0, 0.0, "C")
+    with pytest.raises(ValueError, match="call_put"):
+        _black_scholes_price(100.0, 100.0, 1.0, 0.0, 0.2, "X")
+    # 到期时间非正返回内在价值，不抛错
+    assert _black_scholes_price(100.0, 90.0, 0.0, 0.0, 0.2, "C") == 10.0
+
+
 def test_build_settlement_iv_proxy_mart_aggregates_call_and_put() -> None:
     trade_date = date(2026, 8, 1)
     maturity = date(2026, 9, 1)

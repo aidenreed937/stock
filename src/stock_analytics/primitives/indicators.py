@@ -32,8 +32,11 @@ def calculate_sma(
     """计算简单移动平均线 (Simple Moving Average)。"""
     if df.is_empty() or column not in df.columns:
         return df
+    has_symbol = "symbol" in df.columns
+    over: Callable[[pl.Expr], pl.Expr] = _over_symbol if has_symbol else _over_identity
     sma_col_name = f"sma_{window}"
-    return df.with_columns(pl.col(column).rolling_mean(window_size=window).alias(sma_col_name))
+    sma_expr = over(pl.col(column).rolling_mean(window_size=window))
+    return df.with_columns(sma_expr.alias(sma_col_name))
 
 
 def calculate_ema(
@@ -42,8 +45,11 @@ def calculate_ema(
     """计算指数移动平均线 (Exponential Moving Average)。"""
     if df.is_empty() or column not in df.columns:
         return df
+    has_symbol = "symbol" in df.columns
+    over: Callable[[pl.Expr], pl.Expr] = _over_symbol if has_symbol else _over_identity
     ema_col_name = f"ema_{window}"
-    return df.with_columns(pl.col(column).ewm_mean(span=window, adjust=False).alias(ema_col_name))
+    ema_expr = over(pl.col(column).ewm_mean(span=window, adjust=False))
+    return df.with_columns(ema_expr.alias(ema_col_name))
 
 
 def _wilder_mean(
@@ -153,17 +159,17 @@ def calculate_macd(
     if df.is_empty() or column not in df.columns:
         return df
 
-    fast_ema = pl.col(column).ewm_mean(span=fast, adjust=False)
-    slow_ema = pl.col(column).ewm_mean(span=slow, adjust=False)
-    macd = fast_ema - slow_ema
-    macd_signal = macd.ewm_mean(span=signal, adjust=False)
-    macd_hist = macd - macd_signal
-
-    return df.with_columns(
+    has_symbol = "symbol" in df.columns
+    over: Callable[[pl.Expr], pl.Expr] = _over_symbol if has_symbol else _over_identity
+    fast_ema = over(pl.col(column).ewm_mean(span=fast, adjust=False))
+    slow_ema = over(pl.col(column).ewm_mean(span=slow, adjust=False))
+    # 先物化 macd 列再对 signal 做分组 ewm，避免嵌套 window 表达式语义失效
+    frame = df.with_columns((fast_ema - slow_ema).alias("macd"))
+    macd_signal = over(pl.col("macd").ewm_mean(span=signal, adjust=False))
+    return frame.with_columns(
         [
-            macd.alias("macd"),
             macd_signal.alias("macd_signal"),
-            macd_hist.alias("macd_hist"),
+            (pl.col("macd") - macd_signal).alias("macd_hist"),
         ]
     )
 

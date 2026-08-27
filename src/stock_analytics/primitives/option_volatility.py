@@ -19,6 +19,8 @@ def black_scholes_price(
     call_put: str,
 ) -> float:
     """计算欧式 Black-Scholes 期权价格。"""
+    if spot <= 0.0 or strike <= 0.0 or volatility <= 0.0 or call_put not in {"C", "P"}:
+        raise ValueError("spot/strike/volatility 必须为正数，call_put 必须为 'C' 或 'P'")
     if time_years <= 0.0:
         intrinsic = max(spot - strike, 0.0) if call_put == "C" else max(strike - spot, 0.0)
         return intrinsic
