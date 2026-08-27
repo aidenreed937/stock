@@ -19,10 +19,16 @@ DOMAIN_MART_RULES: dict[str, tuple[str, tuple[str, ...]]] = {
     ),
     "industry_daily": ("trade_date", ("trade_date", "industry_code")),
     "industry_panel_daily": ("as_of_date", ("as_of_date", "industry_code")),
+    "industry_l2_daily": ("trade_date", ("trade_date", "industry_code")),
     "market_temperature_derived_facts": (
         "as_of_date",
         ("as_of_date", "fact_id"),
     ),
+    "global_macro_daily": ("trade_date", ("trade_date",)),
+    "dragon_tiger_daily": ("trade_date", ("trade_date",)),
+    "etf_flow_daily": ("trade_date", ("trade_date",)),
+    "unlock_pressure_daily": ("trade_date", ("trade_date",)),
+    "northbound_industry_daily": ("trade_date", ("trade_date", "industry_code")),
 }
 
 DOMAIN_INPUT_REQUIRED_COLUMNS: dict[str, tuple[str, ...]] = {

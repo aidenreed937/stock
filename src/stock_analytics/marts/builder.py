@@ -14,9 +14,19 @@ from stock_analytics.marts.build_steps import (
     _load_risk_free_rates,
     build_convertible_bond,
     build_corporate_actions,
+    build_dragon_tiger,
+    build_etf_flow,
+    build_global_macro,
+    build_industry_l2,
+    build_northbound_industry,
     build_settlement_iv_proxy,
+    build_unlock_pressure,
 )
 from stock_analytics.marts.convertible_bond import CB_MART_NAME
+from stock_analytics.marts.dragon_tiger import DRAGON_TIGER_MART_NAME
+from stock_analytics.marts.etf_flow import ETF_FLOW_MART_NAME
+from stock_analytics.marts.global_macro import GLOBAL_MACRO_MART_NAME
+from stock_analytics.marts.industry_l2 import INDUSTRY_L2_MART_NAME
 from stock_analytics.marts.industry_structure import (
     build_industry_daily_mart,
     build_industry_panel_daily_mart,
@@ -24,10 +34,12 @@ from stock_analytics.marts.industry_structure import (
 from stock_analytics.marts.market_temperature import (
     build_market_temperature_derived_facts_mart,
 )
+from stock_analytics.marts.northbound_industry import NORTHBOUND_INDUSTRY_MART_NAME
 from stock_analytics.marts.option_volatility import (
     DEFAULT_UNDERLYINGS,
     SETTLEMENT_IV_PROXY_MART_NAME,
 )
+from stock_analytics.marts.unlock_pressure import UNLOCK_PRESSURE_MART_NAME
 from stock_core.config.analytics_industry_structure import (
     DEFAULT_CONFIG_PATH as DEFAULT_INDUSTRY_CONFIG_PATH,
 )
@@ -182,6 +194,104 @@ class DomainMartBuilder:
             dataset_cache=dataset_cache,
         )
 
+    def build_global_macro(
+        self,
+        *,
+        start_date: date | None = None,
+        end_date: date | None = None,
+        overwrite: bool = False,
+    ) -> pl.DataFrame:
+        """构建并保存全球大类资产与宏观流动性日频 Mart。"""
+        return build_global_macro(
+            self.catalog,
+            self.store,
+            runtime=self.runtime,
+            start_date=start_date,
+            end_date=end_date,
+            overwrite=overwrite,
+        )
+
+    def build_dragon_tiger(
+        self,
+        *,
+        start_date: date | None = None,
+        end_date: date | None = None,
+        overwrite: bool = False,
+    ) -> pl.DataFrame:
+        """构建并保存龙虎榜机构/游资席位日频 Mart。"""
+        return build_dragon_tiger(
+            self.catalog,
+            self.store,
+            start_date=start_date,
+            end_date=end_date,
+            overwrite=overwrite,
+        )
+
+    def build_etf_flow(
+        self,
+        *,
+        start_date: date | None = None,
+        end_date: date | None = None,
+        overwrite: bool = False,
+    ) -> pl.DataFrame:
+        """构建并保存 ETF 份额变动与风格资金流 Mart。"""
+        return build_etf_flow(
+            self.catalog,
+            self.store,
+            start_date=start_date,
+            end_date=end_date,
+            overwrite=overwrite,
+        )
+
+    def build_industry_l2(
+        self,
+        *,
+        start_date: date | None = None,
+        end_date: date | None = None,
+        overwrite: bool = False,
+    ) -> pl.DataFrame:
+        """构建并保存申万二级行业估值与动量 Mart。"""
+        return build_industry_l2(
+            self.catalog,
+            self.store,
+            runtime=self.runtime,
+            start_date=start_date,
+            end_date=end_date,
+            overwrite=overwrite,
+        )
+
+    def build_unlock_pressure(
+        self,
+        *,
+        start_date: date | None = None,
+        end_date: date | None = None,
+        overwrite: bool = False,
+    ) -> pl.DataFrame:
+        """构建并保存限售解禁压力日频 Mart。"""
+        return build_unlock_pressure(
+            self.catalog,
+            self.store,
+            start_date=start_date,
+            end_date=end_date,
+            overwrite=overwrite,
+        )
+
+    def build_northbound_industry(
+        self,
+        *,
+        start_date: date | None = None,
+        end_date: date | None = None,
+        overwrite: bool = False,
+    ) -> pl.DataFrame:
+        """构建并保存北向资金行业持仓日频 Mart。"""
+        return build_northbound_industry(
+            self.catalog,
+            self.store,
+            start_date=start_date,
+            end_date=end_date,
+            overwrite=overwrite,
+        )
+
     def _load_risk_free_rates(
         self,
         *,
@@ -233,6 +343,24 @@ class DomainMartBuilder:
             end_date=end_date,
             overwrite=overwrite,
             dataset_cache=dataset_cache,
+        )
+        results[GLOBAL_MACRO_MART_NAME] = self.build_global_macro(
+            start_date=start_date, end_date=end_date, overwrite=overwrite
+        )
+        results[DRAGON_TIGER_MART_NAME] = self.build_dragon_tiger(
+            start_date=start_date, end_date=end_date, overwrite=overwrite
+        )
+        results[ETF_FLOW_MART_NAME] = self.build_etf_flow(
+            start_date=start_date, end_date=end_date, overwrite=overwrite
+        )
+        results[INDUSTRY_L2_MART_NAME] = self.build_industry_l2(
+            start_date=start_date, end_date=end_date, overwrite=overwrite
+        )
+        results[UNLOCK_PRESSURE_MART_NAME] = self.build_unlock_pressure(
+            start_date=start_date, end_date=end_date, overwrite=overwrite
+        )
+        results[NORTHBOUND_INDUSTRY_MART_NAME] = self.build_northbound_industry(
+            start_date=start_date, end_date=end_date, overwrite=overwrite
         )
         return results
 

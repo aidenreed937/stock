@@ -59,7 +59,17 @@ def build_features(
             output_count += count
             logger.info("领域 Mart [{}] 构建完成: {} 行", name, count)
         logger.info("领域 Mart 全部构建完成: {} 行", output_count)
-    elif target in ("industry_daily", "industry_panel_daily", "derived_facts"):
+    elif target in (
+        "industry_daily",
+        "industry_panel_daily",
+        "derived_facts",
+        "global_macro_daily",
+        "dragon_tiger_daily",
+        "etf_flow_daily",
+        "industry_l2_daily",
+        "unlock_pressure_daily",
+        "northbound_industry_daily",
+    ):
         domain_builder = DomainMartBuilder(catalog=catalog, store=store)
         if target == "industry_daily":
             result = domain_builder.build_industry_daily(
@@ -75,7 +85,7 @@ def build_features(
                 overwrite=overwrite,
             )
             logger.info("领域 Mart [industry_panel_daily] 构建完成: {} 行", result.height)
-        else:
+        elif target == "derived_facts":
             result = domain_builder.build_market_temperature_derived_facts(
                 start_date=start_date,
                 end_date=end_date,
@@ -85,6 +95,48 @@ def build_features(
                 "领域 Mart [market_temperature_derived_facts] 构建完成: {} 行",
                 result.height,
             )
+        elif target == "global_macro_daily":
+            result = domain_builder.build_global_macro(
+                start_date=start_date,
+                end_date=end_date,
+                overwrite=overwrite,
+            )
+            logger.info("领域 Mart [global_macro_daily] 构建完成: {} 行", result.height)
+        elif target == "dragon_tiger_daily":
+            result = domain_builder.build_dragon_tiger(
+                start_date=start_date,
+                end_date=end_date,
+                overwrite=overwrite,
+            )
+            logger.info("领域 Mart [dragon_tiger_daily] 构建完成: {} 行", result.height)
+        elif target == "etf_flow_daily":
+            result = domain_builder.build_etf_flow(
+                start_date=start_date,
+                end_date=end_date,
+                overwrite=overwrite,
+            )
+            logger.info("领域 Mart [etf_flow_daily] 构建完成: {} 行", result.height)
+        elif target == "unlock_pressure_daily":
+            result = domain_builder.build_unlock_pressure(
+                start_date=start_date,
+                end_date=end_date,
+                overwrite=overwrite,
+            )
+            logger.info("领域 Mart [unlock_pressure_daily] 构建完成: {} 行", result.height)
+        elif target == "northbound_industry_daily":
+            result = domain_builder.build_northbound_industry(
+                start_date=start_date,
+                end_date=end_date,
+                overwrite=overwrite,
+            )
+            logger.info("领域 Mart [northbound_industry_daily] 构建完成: {} 行", result.height)
+        else:
+            result = domain_builder.build_industry_l2(
+                start_date=start_date,
+                end_date=end_date,
+                overwrite=overwrite,
+            )
+            logger.info("领域 Mart [industry_l2_daily] 构建完成: {} 行", result.height)
 
 
 __all__ = ["build_features"]

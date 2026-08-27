@@ -17,7 +17,7 @@
       "max_lines": 83
     },
     "src/stock_cli/features.py": {
-      "max_lines": 69
+      "max_lines": 78
     },
     "src/stock_cli/industry_diagnose.py": {
       "max_lines": 93

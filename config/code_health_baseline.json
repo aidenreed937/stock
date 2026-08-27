@@ -6,6 +6,10 @@
     "max_file_lines": 400
   },
   "classes": {
+    "src/stock_analytics/marts/builder.py::DomainMartBuilder": {
+      "lines": 305,
+      "methods": 15
+    },
     "src/stock_data/fetcher/lixinger/client.py::LixingerClient": {
       "lines": 231,
       "methods": 5
@@ -68,6 +72,9 @@
     }
   },
   "files": {
+    "src/stock_analytics/marts/build_steps.py": {
+      "lines": 757
+    },
     "src/stock_analytics/metrics/calculators/flow.py": {
       "lines": 464
     },

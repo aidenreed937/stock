@@ -10,6 +10,22 @@ from pathlib import Path
 from stock_analytics.pipelines.features import build_features
 from stock_core.utils.logger import logger
 
+#: ``features build`` 的目标选择（保持 ratchet：文件行数最小化）
+TARGET_CHOICES = [
+    "market_daily",
+    "industry_daily",
+    "industry_panel_daily",
+    "derived_facts",
+    "global_macro_daily",
+    "dragon_tiger_daily",
+    "etf_flow_daily",
+    "industry_l2_daily",
+    "unlock_pressure_daily",
+    "northbound_industry_daily",
+    "domain_marts",
+    "all",
+]
+
 
 def _build_parser() -> argparse.ArgumentParser:
     parser = argparse.ArgumentParser(
@@ -20,14 +36,7 @@ def _build_parser() -> argparse.ArgumentParser:
     build_parser = subparsers.add_parser("build", help="构建并物化市场/行业日频特征宽表")
     build_parser.add_argument(
         "--target",
-        choices=[
-            "market_daily",
-            "industry_daily",
-            "industry_panel_daily",
-            "derived_facts",
-            "domain_marts",
-            "all",
-        ],
+        choices=TARGET_CHOICES,
         default="market_daily",
         help="待构建的目标宽表或领域 Mart",
     )
