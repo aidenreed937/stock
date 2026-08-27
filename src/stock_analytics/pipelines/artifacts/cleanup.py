@@ -8,7 +8,7 @@ import time
 from dataclasses import dataclass
 from pathlib import Path
 
-from stock_analytics.pipelines.artifact_contracts import RunClass, normalize_run_class
+from stock_analytics.pipelines.artifacts.contracts import RunClass, normalize_run_class
 
 SECONDS_PER_DAY = 24 * 60 * 60
 

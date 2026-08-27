@@ -6,7 +6,7 @@ from pathlib import Path
 
 import pytest
 
-from stock_analytics.pipelines.artifact_cleanup import (
+from stock_analytics.pipelines.artifacts import (
     collect_run_candidates,
     delete_run_candidates,
 )

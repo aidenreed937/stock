@@ -4,7 +4,7 @@ import hashlib
 from datetime import date
 from pathlib import Path
 
-from stock_analytics.pipelines.manifest import build_manifest_base, build_watermark_index
+from stock_analytics.pipelines.artifacts import build_manifest_base, build_watermark_index
 
 
 def test_build_manifest_base_contains_common_provenance_fields(tmp_path: Path) -> None:

@@ -9,7 +9,7 @@ import polars as pl
 import pytest
 import yaml
 
-from stock_analytics.pipelines.artifact_reader import ArtifactUnavailableError
+from stock_analytics.pipelines.artifacts import ArtifactUnavailableError
 from stock_analytics.pipelines.factor_portfolio.pipeline import run_factor_portfolio
 from stock_core.exceptions import DataValidationError
 from stock_strategy.portfolio.application import run_backtest_application

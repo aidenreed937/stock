@@ -5,7 +5,7 @@ from __future__ import annotations
 from pathlib import Path
 from typing import TYPE_CHECKING, Any
 
-from stock_analytics.pipelines.manifest import build_manifest_base
+from stock_analytics.pipelines.artifacts import build_manifest_base
 from stock_analytics.pipelines.market_aggregate.artifacts import MarketAggregateRunPaths
 
 if TYPE_CHECKING:

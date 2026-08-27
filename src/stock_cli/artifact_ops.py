@@ -5,7 +5,7 @@ from __future__ import annotations
 import argparse
 from pathlib import Path
 
-from stock_analytics.pipelines.artifact_ops import (
+from stock_analytics.pipelines.artifacts import (
     RUN_CLASSES,
     ArtifactRunCandidate,
     cleanup_artifacts,

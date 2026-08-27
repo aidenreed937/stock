@@ -9,8 +9,7 @@ from typing import Any
 
 import polars as pl
 
-from stock_analytics.pipelines.artifact_contracts import RunClass
-from stock_analytics.pipelines.artifact_store import ArtifactRunPaths, ArtifactStore
+from stock_analytics.pipelines.artifacts import ArtifactRunPaths, ArtifactStore, RunClass
 
 
 @dataclass(frozen=True, slots=True)

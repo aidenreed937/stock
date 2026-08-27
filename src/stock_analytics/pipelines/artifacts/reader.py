@@ -8,8 +8,8 @@ from datetime import date
 from pathlib import Path
 from typing import Any
 
-from stock_analytics.pipelines.artifact_contracts import normalize_run_class
-from stock_analytics.pipelines.artifact_validator import ArtifactValidator
+from stock_analytics.pipelines.artifacts.contracts import normalize_run_class
+from stock_analytics.pipelines.artifacts.validator import ArtifactValidator
 
 
 class ArtifactUnavailableError(RuntimeError):

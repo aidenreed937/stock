@@ -7,7 +7,7 @@ from hashlib import sha256
 from pathlib import Path
 from typing import Any
 
-from stock_analytics.pipelines.artifact_validator_files import ArtifactValidationIssue
+from stock_analytics.pipelines.artifacts.validator_files import ArtifactValidationIssue
 
 CHUNK_SIZE = 1024 * 1024
 

@@ -7,8 +7,7 @@ from datetime import date
 from pathlib import Path
 from typing import Any
 
-from stock_analytics.pipelines.artifact_contracts import RunClass
-from stock_analytics.pipelines.artifact_store import ArtifactRunPaths, ArtifactStore
+from stock_analytics.pipelines.artifacts import ArtifactRunPaths, ArtifactStore, RunClass
 
 MappingLike = dict[str, Any]
 

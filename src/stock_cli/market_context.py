@@ -8,7 +8,7 @@ import sys
 from datetime import date
 from pathlib import Path
 
-from stock_analytics.pipelines.artifact_reader import ArtifactUnavailableError
+from stock_analytics.pipelines.artifacts import ArtifactUnavailableError
 from stock_analytics.pipelines.market_temperature import (
     DEFAULT_ARTIFACT_ROOT,
     MarketAnalysisContext,

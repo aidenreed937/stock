@@ -28,7 +28,7 @@ from stock_analytics.pipelines._shared.panel import (
     assemble_panel,
     load_optional_dataset,
 )
-from stock_analytics.pipelines.artifact_contracts import RunClass
+from stock_analytics.pipelines.artifacts import RunClass, build_manifest_base
 from stock_analytics.pipelines.factor_research.artifacts import (
     FactorResearchArtifactPayload,
     FactorResearchRunPaths,
@@ -41,7 +41,6 @@ from stock_analytics.pipelines.factor_research.config import (
     load_factor_research_config,
 )
 from stock_analytics.pipelines.factor_research.report import build_report
-from stock_analytics.pipelines.manifest import build_manifest_base
 from stock_analytics.primitives.factor_evaluation import (
     add_forward_returns,
     ic_summary,

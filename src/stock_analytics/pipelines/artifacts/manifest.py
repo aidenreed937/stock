@@ -11,7 +11,7 @@ from pathlib import Path
 from typing import Any
 
 MANIFEST_SCHEMA_VERSION = 1
-_PROJECT_ROOT = Path(__file__).resolve().parents[3]
+_PROJECT_ROOT = Path(__file__).resolve().parents[4]
 
 
 def build_manifest_base(

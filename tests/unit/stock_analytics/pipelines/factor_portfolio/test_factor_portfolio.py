@@ -73,7 +73,7 @@ def _write_research_report(root: Path, verdicts: dict[str, str] | None = None) -
 
     改写后同步重算 latest 与源运行目录的 manifest 完整性记录，保持产物自洽。
     """
-    from stock_analytics.pipelines.artifact_integrity import build_artifact_integrity
+    from stock_analytics.pipelines.artifacts import build_artifact_integrity
 
     run_factor_research(end_date=_END, output_root=root, panel=_make_base_panel())
     verdicts = verdicts or {}

@@ -14,10 +14,10 @@ from tempfile import mkdtemp
 from typing import TYPE_CHECKING, Any, Literal
 from uuid import uuid4
 
-from stock_analytics.pipelines.artifact_contracts import RunClass, normalize_run_class
-from stock_analytics.pipelines.artifact_index import rebuild_run_index
-from stock_analytics.pipelines.artifact_integrity import build_artifact_integrity
-from stock_analytics.pipelines.artifact_validator import ArtifactValidator
+from stock_analytics.pipelines.artifacts.contracts import RunClass, normalize_run_class
+from stock_analytics.pipelines.artifacts.index import rebuild_run_index
+from stock_analytics.pipelines.artifacts.integrity import build_artifact_integrity
+from stock_analytics.pipelines.artifacts.validator import ArtifactValidator
 
 if TYPE_CHECKING:
     import polars as pl

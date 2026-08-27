@@ -7,8 +7,7 @@ from datetime import date
 from pathlib import Path
 from typing import TYPE_CHECKING, Any
 
-from stock_analytics.pipelines.artifact_contracts import RunClass
-from stock_analytics.pipelines.artifact_store import ArtifactRunPaths, ArtifactStore
+from stock_analytics.pipelines.artifacts import ArtifactRunPaths, ArtifactStore, RunClass
 
 if TYPE_CHECKING:
     import polars as pl

@@ -10,7 +10,7 @@ from pathlib import Path
 from stock_analytics.features.dataset_cache import DatasetFrameCache
 from stock_analytics.features.store import FeatureStore
 from stock_analytics.marts.shared.market_temperature.facts_mart import MARKET_DAILY_FACT_COLUMNS
-from stock_analytics.pipelines.artifact_contracts import RunClass
+from stock_analytics.pipelines.artifacts import RunClass
 from stock_analytics.pipelines.industry_structure import run_industry_structure
 from stock_analytics.pipelines.investor_brief import run_investor_brief
 from stock_analytics.pipelines.market_temperature import run_market_temperature

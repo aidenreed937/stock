@@ -7,8 +7,7 @@ from datetime import date
 from pathlib import Path
 from typing import TYPE_CHECKING, Any
 
-from stock_analytics.pipelines.artifact_contracts import RunClass
-from stock_analytics.pipelines.artifact_store import ArtifactRunPaths, ArtifactStore
+from stock_analytics.pipelines.artifacts import ArtifactRunPaths, ArtifactStore, RunClass
 from stock_analytics.pipelines.market_temperature.history import update_history_index
 
 if TYPE_CHECKING:

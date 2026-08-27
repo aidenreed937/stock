@@ -9,7 +9,7 @@ from typing import Any
 
 import polars as pl
 
-from stock_analytics.pipelines.artifact_contracts import RunClass
+from stock_analytics.pipelines.artifacts import RunClass
 from stock_analytics.pipelines.stock_screen.artifacts import (
     StockScreenArtifactPayload,
     StockScreenRunPaths,

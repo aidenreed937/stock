@@ -4,8 +4,12 @@ import json
 from datetime import date
 from pathlib import Path
 
-from stock_analytics.pipelines.artifact_index import read_run_index, rebuild_run_index
-from stock_analytics.pipelines.artifact_store import ArtifactRunPaths, ArtifactStore
+from stock_analytics.pipelines.artifacts import (
+    ArtifactRunPaths,
+    ArtifactStore,
+    read_run_index,
+    rebuild_run_index,
+)
 
 
 def _manifest(paths: ArtifactRunPaths) -> dict[str, str]:

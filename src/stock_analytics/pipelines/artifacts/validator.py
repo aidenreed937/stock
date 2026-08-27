@@ -7,9 +7,9 @@ from dataclasses import dataclass
 from pathlib import Path
 from typing import Any, Literal
 
-from stock_analytics.pipelines.artifact_contracts import RUN_CLASSES
-from stock_analytics.pipelines.artifact_integrity import check_artifact_integrity
-from stock_analytics.pipelines.artifact_validator_files import (
+from stock_analytics.pipelines.artifacts.contracts import RUN_CLASSES
+from stock_analytics.pipelines.artifacts.integrity import check_artifact_integrity
+from stock_analytics.pipelines.artifacts.validator_files import (
     ArtifactValidationIssue,
     actual_files,
     check_artifact_files,

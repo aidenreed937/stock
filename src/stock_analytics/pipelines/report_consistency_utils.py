@@ -9,7 +9,7 @@ from typing import Any, cast
 
 import polars as pl
 
-from stock_analytics.pipelines.artifact_reader import select_artifact_run_dir
+from stock_analytics.pipelines.artifacts import select_artifact_run_dir
 from stock_analytics.pipelines.report_consistency_contracts import ArtifactBundle
 
 

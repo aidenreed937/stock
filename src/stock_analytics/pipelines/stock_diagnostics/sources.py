@@ -8,7 +8,7 @@ from typing import Any
 
 import polars as pl
 
-from stock_analytics.pipelines.artifact_reader import (
+from stock_analytics.pipelines.artifacts import (
     ArtifactUnavailableError,
     resolve_artifact_run,
 )

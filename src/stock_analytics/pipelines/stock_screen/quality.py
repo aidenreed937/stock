@@ -8,7 +8,7 @@ from typing import Any
 
 import polars as pl
 
-from stock_analytics.pipelines.manifest import build_manifest_base
+from stock_analytics.pipelines.artifacts import build_manifest_base
 from stock_analytics.pipelines.stock_screen.artifacts import StockScreenRunPaths
 from stock_analytics.pipelines.stock_screen.sources import StockScreenSources
 from stock_reporting.interpretation.stock_screen.config import StockScreenConfig

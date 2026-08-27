@@ -6,8 +6,7 @@ from pathlib import Path
 
 import pytest
 
-from stock_analytics.pipelines.artifact_store import ArtifactStore
-from stock_analytics.pipelines.artifact_validator import ArtifactValidator
+from stock_analytics.pipelines.artifacts import ArtifactStore, ArtifactValidator
 
 
 def _write_manifest(

@@ -10,7 +10,7 @@ from zoneinfo import ZoneInfo
 
 import polars as pl
 
-from stock_analytics.pipelines.artifact_contracts import RunClass
+from stock_analytics.pipelines.artifacts import RunClass
 from stock_analytics.pipelines.market_aggregate.artifacts import (
     MarketAggregateArtifactPayload,
     MarketAggregateRunPaths,

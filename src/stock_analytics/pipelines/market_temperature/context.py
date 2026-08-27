@@ -11,7 +11,7 @@ from typing import Any
 
 import polars as pl
 
-from stock_analytics.pipelines.artifact_reader import resolve_artifact_run
+from stock_analytics.pipelines.artifacts import resolve_artifact_run
 from stock_analytics.pipelines.market_temperature.history import load_history_index
 from stock_analytics.pipelines.market_temperature.snapshot import build_market_state_snapshot
 

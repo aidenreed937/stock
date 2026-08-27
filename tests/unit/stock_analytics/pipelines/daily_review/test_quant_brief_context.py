@@ -5,7 +5,7 @@ from __future__ import annotations
 from datetime import date
 from pathlib import Path
 
-from stock_analytics.pipelines.artifact_reader import ArtifactUnavailableError
+from stock_analytics.pipelines.artifacts import ArtifactUnavailableError
 from stock_analytics.pipelines.daily_review.quant_brief_context import (
     _project_brief,
     resolve_quant_brief_context,

@@ -8,7 +8,7 @@ from datetime import date
 from pathlib import Path
 from typing import Any
 
-from stock_analytics.pipelines.artifact_reader import (
+from stock_analytics.pipelines.artifacts import (
     ArtifactUnavailableError,
     resolve_artifact_run,
 )

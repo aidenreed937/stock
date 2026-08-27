@@ -6,13 +6,13 @@ from dataclasses import dataclass
 from pathlib import Path
 from time import time
 
-from stock_analytics.pipelines.artifact_cleanup import (
+from stock_analytics.pipelines.artifacts.cleanup import (
     ArtifactRunCandidate,
     collect_run_candidates,
     delete_run_candidates,
 )
-from stock_analytics.pipelines.artifact_contracts import RUN_CLASSES, RunClass
-from stock_analytics.pipelines.artifact_index import rebuild_run_index
+from stock_analytics.pipelines.artifacts.contracts import RUN_CLASSES, RunClass
+from stock_analytics.pipelines.artifacts.index import rebuild_run_index
 
 
 @dataclass(frozen=True)

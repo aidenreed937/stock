@@ -7,14 +7,15 @@ from pathlib import Path
 import polars as pl
 import pytest
 
-import stock_analytics.pipelines.artifact_store as artifact_store_module
-from stock_analytics.pipelines.artifact_index import INDEX_FILENAME
-from stock_analytics.pipelines.artifact_store import (
+import stock_analytics.pipelines.artifacts.store as artifact_store_module
+from stock_analytics.pipelines.artifacts import (
+    INDEX_FILENAME,
     ArtifactRunPaths,
     ArtifactStore,
+    ArtifactValidationError,
+    ArtifactValidator,
     ArtifactWriteSession,
 )
-from stock_analytics.pipelines.artifact_validator import ArtifactValidationError, ArtifactValidator
 
 
 def _manifest(paths: ArtifactRunPaths) -> dict[str, str]:

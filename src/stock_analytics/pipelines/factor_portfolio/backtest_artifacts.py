@@ -14,11 +14,13 @@ from typing import Any
 
 import polars as pl
 
-from stock_analytics.pipelines.artifact_contracts import RunClass
-from stock_analytics.pipelines.artifact_reader import (
+from stock_analytics.pipelines.artifacts import (
+    ArtifactRunPaths,
+    ArtifactStore,
+    RunClass,
+    build_manifest_base,
     resolve_artifact_run,
 )
-from stock_analytics.pipelines.artifact_store import ArtifactRunPaths, ArtifactStore
 
 MappingLike = dict[str, Any]
 
@@ -82,8 +84,6 @@ def build_backtest_manifest(
     parents: MappingLike,
 ) -> MappingLike:
     """构造回测产物 Manifest（schema_version=1）。"""
-    from stock_analytics.pipelines.manifest import build_manifest_base
-
     return build_manifest_base(
         artifact_type="factor_backtest",
         schema_version=1,

@@ -12,7 +12,7 @@
 | 策略研究 | `main` | `stock_strategy.application`、`stock_data` |
 | 报告复盘 | `daily-review`、`investor-brief`、`quant-brief`、`market-cycle-review`、`report-consistency` | `stock_analytics.pipelines`、`stock_reporting` |
 | 实时监控 | `realtime`、`market-aggregate` | `stock_analytics.realtime`、`stock_data.fetcher.realtime` |
-| 运维 | `artifact-ops` | `stock_analytics.pipelines.artifact_*`、`stock_data.governance` |
+| 运维 | `artifact-ops` | `stock_analytics.pipelines.artifacts`、`stock_data.governance` |
 
 ## 依赖规则
 
@@ -39,7 +39,7 @@ stock_cli → 领域包级 Facade → 领域内部实现
 - 已完成：`daily_review` → `stock_analytics.pipelines.daily_review`。
 - 已完成：`features` → `stock_analytics.pipelines.features`；`multi_date` 的日期解析、Mart 刷新、产物生成、一致性校验和 latest 发布 → `stock_analytics.pipelines.multi_date`。
 - 已完成：`backfill` → `stock_data.pipeline.backfill_runner`；`audit` → `stock_data.governance.audit.facade`；`sync` → `stock_data.pipeline.sync_runner`。
-- 已完成：`realtime` → `stock_analytics.realtime.runner`；`artifact_ops` → `stock_analytics.pipelines.artifact_ops`。
+- 已完成：`realtime` → `stock_analytics.realtime.runner`；`artifact_ops` → `stock_analytics.pipelines.artifacts`。
 - 已完成：`market-cycle-review` → `stock_analytics.pipelines.market_cycle_review`；`report-consistency` → `stock_analytics.pipelines.report_consistency`。
 - 已完成：`main` → `stock_strategy.application`，CLI 不再直接装配数据管线和策略运行器。
 

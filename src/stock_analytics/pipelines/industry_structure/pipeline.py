@@ -9,7 +9,11 @@ from typing import TYPE_CHECKING, Any
 from stock_analytics.data_quality import build_quality_report
 from stock_analytics.features.dataset_cache import DatasetFrameCache
 from stock_analytics.marts.shared.industry_structure.panel import load_industry_panel_daily
-from stock_analytics.pipelines.artifact_contracts import RunClass
+from stock_analytics.pipelines.artifacts import (
+    RunClass,
+    build_manifest_base,
+    build_watermark_index,
+)
 from stock_analytics.pipelines.industry_structure.artifacts import (
     IndustryStructureArtifactPayload,
     IndustryStructureRunPaths,
@@ -18,7 +22,6 @@ from stock_analytics.pipelines.industry_structure.artifacts import (
 )
 from stock_analytics.pipelines.industry_structure.facts import collect_facts, resolve_trade_window
 from stock_analytics.pipelines.industry_structure.scoring import score_industry_panel
-from stock_analytics.pipelines.manifest import build_manifest_base, build_watermark_index
 from stock_core.config.analytics_industry_structure import (
     DEFAULT_CONFIG_PATH,
     IndustryStructureConfig,
