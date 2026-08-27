@@ -2,40 +2,13 @@
 
 import polars as pl
 
-from stock_analytics.primitives import (
-    calculate_amihud_illiquidity,
-    calculate_atr,
-    calculate_bollinger_bandwidth,
-    calculate_distance_to_high,
-    calculate_ema_spread,
-    calculate_main_moneyflow_factors,
-    calculate_momentum,
-    calculate_realized_volatility,
-    calculate_rolling_percentile,
-    calculate_short_term_reversal,
-    calculate_turnover_factors,
-    calculate_volume_surprise,
+from stock_analytics.features import factor_steps
+from stock_analytics.features.factor_steps import (
+    _INPUT_BASE_COLUMNS,
+    run_factor_step,
+    validate_factor_engine_steps,
 )
 from stock_core.exceptions import DataValidationError
-
-#: compute_all_factors 的输入基础列（其余列视为因子派生列，纳入注册校验）。
-_INPUT_BASE_COLUMNS = frozenset(
-    {
-        "trade_date",
-        "symbol",
-        "open",
-        "high",
-        "low",
-        "close",
-        "volume",
-        "amount",
-        "pre_close",
-        "turnover_rate",
-        "net_mf_amount",
-        "pe_ttm",
-        "pb",
-    }
-)
 
 
 def ensure_factor_columns_registered(columns: list[str]) -> None:
@@ -64,7 +37,11 @@ def ensure_factor_columns_registered(columns: list[str]) -> None:
 
 
 class FactorEngine:
-    """量化多因子统一计算、截面去极值与标准化引擎。"""
+    """量化多因子统一计算、截面去极值与标准化引擎。
+
+    因子计算由 :data:`~stock_analytics.features.factor_steps.FACTOR_ENGINE_STEPS`
+    步骤表驱动（P2）：新增因子只需追加步骤与列级 spec，无需改动本类。
+    """
 
     @staticmethod
     def winsorize(
@@ -126,7 +103,7 @@ class FactorEngine:
         *,
         normalize: bool = False,
     ) -> pl.DataFrame:
-        """对日线行情与基本面数据执行全套因子特征提取。
+        """对日线行情与基本面数据执行全套因子特征提取（步骤表驱动）。
 
         Args:
             df: 必须包含 trade_date, close 等列的基础数据表。
@@ -139,25 +116,13 @@ class FactorEngine:
         if df.is_empty():
             return df
 
-        # 1. 动量与反转
-        res = calculate_momentum(df, price_col=price_col)
-        res = calculate_short_term_reversal(res, price_col=price_col)
-        res = calculate_distance_to_high(res, price_col=price_col)
-        res = calculate_ema_spread(res, price_col=price_col)
+        # 静态一致性校验：步骤表产出与列级 spec 双集合一致（fail-closed）
+        validate_factor_engine_steps()
 
-        # 2. 波动率与风险
-        res = calculate_realized_volatility(res, price_col=price_col)
-        res = calculate_atr(res, close_col=price_col)
-        res = calculate_bollinger_bandwidth(res, price_col=price_col)
-
-        # 3. 流动性与微观结构
-        res = calculate_amihud_illiquidity(res, price_col=price_col)
-        res = calculate_turnover_factors(res)
-        res = calculate_volume_surprise(res)
-
-        # 4. 资金流与估值
-        res = calculate_main_moneyflow_factors(res)
-        res = calculate_rolling_percentile(res)
+        # 按步骤表顺序执行各因子算子（调用时读模块属性，单一事实源）
+        res = df
+        for step in factor_steps.FACTOR_ENGINE_STEPS:
+            res = run_factor_step(res, step, price_col=price_col)
 
         # 硬校验：所有派生列都必须已登记为 STOCK FACTOR 元数据
         derived_columns = [column for column in res.columns if column not in _INPUT_BASE_COLUMNS]
