@@ -29,6 +29,7 @@ DOMAIN_MART_RULES: dict[str, tuple[str, tuple[str, ...]]] = {
     "etf_flow_daily": ("trade_date", ("trade_date",)),
     "unlock_pressure_daily": ("trade_date", ("trade_date",)),
     "northbound_industry_daily": ("trade_date", ("trade_date", "industry_code")),
+    "capital_game_daily": ("trade_date", ("trade_date",)),
 }
 
 DOMAIN_INPUT_REQUIRED_COLUMNS: dict[str, tuple[str, ...]] = {

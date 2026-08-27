@@ -74,6 +74,69 @@ _OBSERVATION_SPECS: tuple[dict[str, str], ...] = (
         "unit": "ratio",
         "note": "期权结算价 Black-Scholes 波动率代理，仅作风险偏好观察，不等同标准 VIX",
     },
+    {
+        "mart": "capital_game_daily",
+        "date_column": "trade_date",
+        "dimension": "fund_flow",
+        "metric_id": "capital_game_state_observation",
+        "value_column": "game_state",
+        "unit": "state",
+        "note": "全市场资金多路博弈微观状态标签（如 BOTTOM_SUPPORT, HIGH_DISTRIBUTION 等）",
+    },
+    {
+        "mart": "capital_game_daily",
+        "date_column": "trade_date",
+        "dimension": "fund_flow",
+        "metric_id": "capital_divergence_score_observation",
+        "value_column": "divergence_score",
+        "unit": "score",
+        "note": "全市场多主体资金博弈分歧度得分（[-100, 100]，正为机构承接/负为散户接盘）",
+    },
+    {
+        "mart": "capital_game_daily",
+        "date_column": "trade_date",
+        "dimension": "fund_flow",
+        "metric_id": "capital_etf_percentile_observation",
+        "value_column": "etf_flow_ratio_percentile_5y",
+        "unit": "percent",
+        "note": "全市场 ETF 净流入比率 5 年历史滚动分位数（%）",
+    },
+    {
+        "mart": "capital_game_daily",
+        "date_column": "trade_date",
+        "dimension": "fund_flow",
+        "metric_id": "capital_margin_percentile_observation",
+        "value_column": "margin_flow_ratio_percentile_5y",
+        "unit": "percent",
+        "note": "全市场两融净买入比率 5 年历史滚动分位数（%）",
+    },
+    {
+        "mart": "capital_game_daily",
+        "date_column": "trade_date",
+        "dimension": "fund_flow",
+        "metric_id": "capital_winner_rate_observation",
+        "value_column": "winner_rate_avg",
+        "unit": "percent",
+        "note": "全市场平均筹码获利盘比例（%）",
+    },
+    {
+        "mart": "capital_game_daily",
+        "date_column": "trade_date",
+        "dimension": "fund_flow",
+        "metric_id": "capital_etf_flow_ratio_observation",
+        "value_column": "etf_flow_ratio",
+        "unit": "ratio",
+        "note": "全市场 ETF 净流入占总成交额比率（无量纲化）",
+    },
+    {
+        "mart": "capital_game_daily",
+        "date_column": "trade_date",
+        "dimension": "fund_flow",
+        "metric_id": "capital_margin_flow_ratio_observation",
+        "value_column": "margin_flow_ratio",
+        "unit": "ratio",
+        "note": "全市场两融融资净买入占总成交额比率（无量纲化）",
+    },
 )
 
 
@@ -116,22 +179,26 @@ def _observation_rows(
     latest = frame.filter(pl.col(spec["date_column"]) == latest_date)
     rows: list[dict[str, Any]] = []
     for row in latest.to_dicts():
+        raw_value = row.get(value_column)
         value = _observation_value(spec, row)
+        text_val = str(raw_value).strip() if isinstance(raw_value, str) else None
         sample_size = _sample_size(spec, row)
         observation_id = spec["metric_id"]
         underlying = str(row.get("underlying_symbol") or "").strip()
         if underlying:
             observation_id = f"{observation_id}.{underlying}"
         note = f"{spec['note']}; metric_date={latest_date.isoformat()}"
+        is_ok = value is not None or (text_val is not None and text_val != "")
         rows.append(
             _fact_row(
                 spec,
                 as_of_date=as_of_date,
                 metric_id=observation_id,
                 value_float=value,
+                value_text=text_val,
                 sample_size=sample_size,
-                status="ok" if value is not None else "insufficient",
-                note=note if value is not None else f"{note}; 数值为空",
+                status="ok" if is_ok else "insufficient",
+                note=note if is_ok else f"{note}; 数值为空",
             )
         )
     return rows or [_unavailable_row(spec, as_of_date, "最新业务日期无记录")]
@@ -172,6 +239,7 @@ def _unavailable_row(spec: dict[str, str], as_of_date: date, note: str) -> dict[
         as_of_date=as_of_date,
         metric_id=spec["metric_id"],
         value_float=None,
+        value_text=None,
         sample_size=0,
         status="unavailable",
         note=f"{spec['note']}; {note}",
@@ -184,10 +252,16 @@ def _fact_row(
     as_of_date: date,
     metric_id: str,
     value_float: float | None,
+    value_text: str | None = None,
     sample_size: int | None,
     status: str,
     note: str,
 ) -> dict[str, Any]:
+    text = (
+        value_text
+        if value_text is not None
+        else ("" if value_float is None else f"{value_float:.6g}")
+    )
     return {
         "fact_id": f"observation.{metric_id}",
         "category": "domain_observation",
@@ -198,7 +272,7 @@ def _fact_row(
         "window": 0,
         "metric_id": metric_id,
         "value_float": value_float,
-        "value_text": "" if value_float is None else f"{value_float:.6g}",
+        "value_text": text,
         "unit": spec["unit"],
         "sample_size": sample_size,
         "source": f"FeatureStore.{spec['mart']}",

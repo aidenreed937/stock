@@ -1,6 +1,11 @@
 """衍生品、公司行为与日频聚合领域数据集市。"""
 
 from stock_analytics.marts.builder import DomainMartBuilder
+from stock_analytics.marts.capital_game import (
+    CAPITAL_GAME_MART_NAME,
+    build_capital_game_frame,
+)
+from stock_analytics.marts.capital_game_build import build_capital_game
 from stock_analytics.marts.convertible_bond import build_convertible_bond_mart
 from stock_analytics.marts.corporate_actions import (
     build_block_trade_mart,
@@ -24,8 +29,11 @@ from stock_analytics.marts.option_volatility import build_settlement_iv_proxy_ma
 from stock_analytics.marts.unlock_pressure import build_unlock_pressure_frame
 
 __all__ = [
+    "CAPITAL_GAME_MART_NAME",
     "DomainMartBuilder",
     "build_block_trade_mart",
+    "build_capital_game",
+    "build_capital_game_frame",
     "build_convertible_bond_mart",
     "build_dragon_tiger_frame",
     "build_etf_flow_frame",

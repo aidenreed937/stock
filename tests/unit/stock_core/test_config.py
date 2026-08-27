@@ -21,7 +21,7 @@ def test_load_strategy_config() -> None:
     config_path = Path("config/strategy/double_sma_rsi.yaml")
     cfg = load_strategy_config(config_path)
     assert cfg.name == "Double_SMA_RSI_Cross"
-    assert "600519.SH" in cfg.universe.all_symbols
+    assert "300750.SZ" in cfg.universe.all_symbols
     assert "000300.SH" in cfg.universe.all_symbols
     assert cfg.indicators.sma.fast_period == 5
     assert cfg.indicators.rsi.period == 14
@@ -29,9 +29,9 @@ def test_load_strategy_config() -> None:
 
 def test_load_watchlist_and_data_config() -> None:
     wl = load_watchlist_config()
-    assert "600519.SH" in wl.tushare.stocks
+    assert "300750.SZ" in wl.tushare.stocks
     assert "000300.SH" in wl.tushare.indices
-    assert "600519" in wl.lixinger.stocks
+    assert "300750" in wl.lixinger.stocks
     assert "000300" in wl.lixinger.indices
     assert "AAPL" in wl.yfinance.stocks
     assert "^GSPC" in wl.yfinance.indices
@@ -39,7 +39,7 @@ def test_load_watchlist_and_data_config() -> None:
 
     data_cfg = load_data_config()
     assert data_cfg.default_source_mode == "tushare"
-    assert "600519.SH" in data_cfg.watchlists.tushare.stocks
+    assert "300750.SZ" in data_cfg.watchlists.tushare.stocks
     assert "AAPL" in data_cfg.watchlists.yfinance.stocks
     assert data_cfg.backfill.default_start_date == "today-30d"
     assert data_cfg.backfill.default_end_date == "today"
@@ -74,8 +74,8 @@ def test_watchlist_base_dates() -> None:
     assert wl.tushare.get_base_date("159516.SZ") == date(2023, 7, 27)
     assert wl.tushare.get_base_date("510300.SH") == date(2012, 5, 28)
     assert wl.tushare.get_base_date("513920.SH") == date(2024, 1, 5)
-    assert wl.tushare.get_base_date("600519.SH") == date(2001, 8, 27)
-    assert wl.lixinger.get_base_date("600519") == date(2001, 8, 27)
+    assert wl.tushare.get_base_date("300750.SZ") == date(2018, 6, 11)
+    assert wl.lixinger.get_base_date("300750") == date(2018, 6, 11)
     assert wl.tushare.get_base_date("NON_EXISTENT") is None
 
 

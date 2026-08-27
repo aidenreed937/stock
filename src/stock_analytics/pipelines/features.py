@@ -10,6 +10,23 @@ from stock_analytics.marts import DomainMartBuilder
 from stock_core.utils.logger import logger
 from stock_data.catalog import DataCatalog
 
+#: ``features build`` 支持的目标宽表或领域 Mart
+TARGET_CHOICES: tuple[str, ...] = (
+    "market_daily",
+    "industry_daily",
+    "industry_panel_daily",
+    "derived_facts",
+    "global_macro_daily",
+    "dragon_tiger_daily",
+    "etf_flow_daily",
+    "industry_l2_daily",
+    "unlock_pressure_daily",
+    "northbound_industry_daily",
+    "capital_game_daily",
+    "domain_marts",
+    "all",
+)
+
 
 def build_features(
     *,
@@ -69,6 +86,7 @@ def build_features(
         "industry_l2_daily",
         "unlock_pressure_daily",
         "northbound_industry_daily",
+        "capital_game_daily",
     ):
         domain_builder = DomainMartBuilder(catalog=catalog, store=store)
         if target == "industry_daily":
@@ -130,6 +148,13 @@ def build_features(
                 overwrite=overwrite,
             )
             logger.info("领域 Mart [northbound_industry_daily] 构建完成: {} 行", result.height)
+        elif target == "capital_game_daily":
+            result = domain_builder.build_capital_game(
+                start_date=start_date,
+                end_date=end_date,
+                overwrite=overwrite,
+            )
+            logger.info("领域 Mart [capital_game_daily] 构建完成: {} 行", result.height)
         else:
             result = domain_builder.build_industry_l2(
                 start_date=start_date,
@@ -139,4 +164,4 @@ def build_features(
             logger.info("领域 Mart [industry_l2_daily] 构建完成: {} 行", result.height)
 
 
-__all__ = ["build_features"]
+__all__ = ["TARGET_CHOICES", "build_features"]

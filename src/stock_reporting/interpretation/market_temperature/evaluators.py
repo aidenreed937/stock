@@ -14,6 +14,11 @@ from stock_reporting.interpretation.market_temperature.bands import (
     get_systemic_risk_level,
     get_temperature_band,
 )
+from stock_reporting.interpretation.market_temperature.evaluators_divergence import (
+    evaluate_fast_slow_section,
+    evaluate_key_divergences,
+    evaluate_systemic_risk_section,
+)
 
 if TYPE_CHECKING:
     import polars as pl
@@ -105,129 +110,6 @@ def evaluate_reading_brief(
     return lines
 
 
-def evaluate_systemic_risk_section(scores: dict[str, Any]) -> list[str]:
-    """生成系统性风险模块解读行。"""
-    risk = scores.get("systemic_risk", {})
-    if not isinstance(risk, dict) or not risk:
-        return ["- 系统性风险暂不可判定。"]
-    lines = [
-        f"- 风险等级: {risk.get('level', '不可判定')}",
-        f"- 结论: {risk.get('message', '')}",
-    ]
-    red_flags = _text_items(risk.get("red_flags"))
-    warnings = _text_items(risk.get("warnings"))
-    offsets = _text_items(risk.get("offsets"))
-    if red_flags:
-        lines.append(f"- 主要风险: {_join_text_items(red_flags)}")
-    if warnings:
-        lines.append(f"- 观察信号: {_join_text_items(warnings)}")
-    if offsets:
-        lines.append(f"- 缓冲因素: {_join_text_items(offsets)}")
-    return lines
-
-
-def evaluate_fast_slow_section(scores: dict[str, Any]) -> list[str]:
-    """生成快慢温度与背离小节（Phase 1 输出层，不改变六维合成数值）。"""
-    fast_slow = scores.get("fast_slow")
-    if not isinstance(fast_slow, dict) or fast_slow.get("status") != "ready":
-        return []
-    fast = _as_float(fast_slow.get("fast_temperature"))
-    slow = _as_float(fast_slow.get("slow_temperature"))
-    divergence = _as_float(fast_slow.get("divergence"))
-    if fast is None or slow is None or divergence is None:
-        return []
-    level = str(fast_slow.get("divergence_level") or "")
-    label = str(fast_slow.get("divergence_label") or "")
-    level_comment = {
-        "synchronized": "快慢温度同步，综合温度读数是当前市场状态的较好摘要。",
-        "divergent": "快慢温度出现分歧，综合温度是快慢的中和，单看综合会掩盖结构差异；"
-        "先确认是谁在驱动综合温度，再下结论。",
-        "extreme": "快慢温度深度背离，综合温度只具参考意义；"
-        "快冷慢温通常是情绪资金冰点 vs 基本面温，快热慢冷则为派发警惕窗口。",
-    }.get(level, "")
-    return [
-        "## 快慢温度与背离",
-        "",
-        "| 快温度 | 慢温度 | 背离(快-慢) | 状态 | 读法 |",
-        "|---|---:|---:|---|---|",
-        f"| {_temperature_text(fast)} | {_temperature_text(slow)} | {divergence:+.2f} | {label} | {level_comment} |",
-        "",
-        "- 口径: 快温度 = 资金/情绪/技术 按维度权重重归一；慢温度 = 估值/基本面/宏观流动性；"
-        "背离 = 快 - 慢。快慢分组不改变六维综合温度合成。",
-        "",
-    ]
-
-
-def evaluate_key_divergences(
-    dimensions: list[dict[str, Any]],
-    facts: pl.DataFrame,
-) -> list[str]:
-    """研判各维度之间背离并生成观察建议。"""
-    valuation = _dimension_temperature(dimensions, "valuation")
-    fund_flow = _dimension_temperature(dimensions, "fund_flow")
-    sentiment = _dimension_temperature(dimensions, "sentiment")
-    technical = _dimension_temperature(dimensions, "technical")
-    fundamental = _dimension_temperature(dimensions, "fundamental")
-    macro = _dimension_temperature(dimensions, "macro_liquidity")
-    investor_temperature = _metric_float(facts, "investor_account_temperature")
-    margin_growth = _metric_float(facts, "margin_balance_growth_20d")
-    main_money = _metric_float(facts, "main_money_net_inflow_share")
-    lines: list[str] = []
-
-    if technical is not None and fund_flow is not None and technical >= 60 and fund_flow < 50:
-        detail = []
-        if margin_growth is not None:
-            detail.append(f"两融余额20日变化 {margin_growth:.2%}")
-        if main_money is not None:
-            detail.append(f"主力净流入占比 {main_money:.2%}")
-        suffix = f"；{'，'.join(detail)}" if detail else ""
-        lines.append(
-            "- 价格修复的资金确认不足: "
-            f"技术面 {_temperature_text(technical)}，"
-            f"资金面 {_temperature_text(fund_flow)}{suffix}。"
-        )
-    if (
-        investor_temperature is not None
-        and investor_temperature >= 80
-        and (sentiment is None or sentiment < 65)
-    ):
-        lines.append(
-            "- 开户热度与日频情绪背离: "
-            f"新增投资者温度 {_temperature_text(investor_temperature)}，"
-            f"情绪面 {_temperature_text(sentiment)}；慢变量高温尚未等同于当日全面过热。"
-        )
-    sentiment_item = _dimension_item(dimensions, "sentiment")
-    subgroup_values = sentiment_item.get("subgroups", {}) if sentiment_item else {}
-    activity_temperature = _as_float(subgroup_values.get("activity"))
-    if (
-        sentiment is not None
-        and activity_temperature is not None
-        and activity_temperature - sentiment >= 25
-    ):
-        lines.append(
-            "- 活跃水位与动能背离: "
-            f"活跃水位 {_temperature_text(activity_temperature)}，"
-            f"动能 {_temperature_text(sentiment)}；高换手低位动能，呈现派发/退潮特征。"
-        )
-    if valuation is not None and macro is not None and valuation >= 80 and macro >= 60:
-        lines.append(
-            "- 估值约束与流动性支撑并存: "
-            f"估值面 {_temperature_text(valuation)}，宏观流动性 {_temperature_text(macro)}；"
-            "低利率能支撑风险偏好，但高估值会压缩追高安全边际。"
-        )
-    if (
-        fundamental is not None
-        and fundamental >= 50
-        and _has_dataset_status(facts, "sw_2021_fs_", {"lagging"})
-    ):
-        lines.append(
-            "- 基本面分数可用但正式财报偏慢: "
-            f"基本面 {_temperature_text(fundamental)}；季频行业财报只作底座，"
-            "近20日变化应优先看预告和研报上修事实。"
-        )
-    return lines or ["- 暂未发现需要单独强调的维度背离。"]
-
-
 def evaluate_follow_ups(
     dimensions: list[dict[str, Any]],
     facts: pl.DataFrame,
@@ -248,17 +130,10 @@ def evaluate_follow_ups(
         fund_flow_line,
         "- 趋势确认: 观察站上60日线占比是否继续提高，避免只有20日修复而中期趋势未确认。",
     ]
-    investor_temperature = _metric_float(facts, "investor_account_temperature")
-    if investor_temperature is not None and investor_temperature >= 80:
-        lines.append(
-            "- 情绪传导: 新增开户已处高温时，继续跟踪换手率、上涨家数和涨跌停事件是否同步升温。"
-        )
-    if _has_dataset_status(facts, "sw_2021_fs_", {"lagging"}) or _has_dataset_status(
-        facts, "", {"lagging"}
-    ):
-        lines.append("- 慢变量更新: 月频宏观和季频财报更新后再复核基本面、宏观流动性分数。")
     if _has_pending_short_term(scores):
-        lines.append("- 短线温度: 短线组件样本不足或尚未就绪，短节奏暂不要当成正式温度分。")
+        lines.append(
+            "- 短线温度: 短线组件样本不足或尚未就绪，优先参考行业结构中的短线动量与拥挤度。"
+        )
     return lines
 
 
@@ -386,11 +261,13 @@ def _has_pending_short_term(scores: dict[str, Any]) -> bool:
     )
 
 
-def _text_items(value: object) -> list[str]:
-    if not isinstance(value, list):
-        return []
-    return [str(item) for item in value if str(item)]
-
-
-def _join_text_items(items: list[str]) -> str:
-    return "；".join(item.rstrip("。；; ") for item in items if item.strip())
+__all__ = [
+    "evaluate_external_pressure_section",
+    "evaluate_fast_slow_section",
+    "evaluate_follow_ups",
+    "evaluate_interpretation_priority_rows",
+    "evaluate_key_divergences",
+    "evaluate_one_line_summary",
+    "evaluate_reading_brief",
+    "evaluate_systemic_risk_section",
+]

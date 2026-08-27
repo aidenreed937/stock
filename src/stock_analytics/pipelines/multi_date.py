@@ -157,9 +157,20 @@ def _load_trade_dates(
 
         catalog = CachedCatalog(catalog, dataset_cache)  # type: ignore[assignment]
     scan_start = start_date - timedelta(days=extra_window * 4)
-    count = max((end_date - scan_start).days + 1, extra_window)
-    values = catalog.latest_trade_dates(dataset=dataset, n=count)
-    return tuple(sorted(value for value in values if scan_start <= value <= end_date))
+    frame = catalog.load_dataset(
+        dataset,
+        start_date=scan_start,
+        end_date=end_date,
+        columns=["trade_date"],
+    )
+    if frame.is_empty() or "trade_date" not in frame.columns:
+        return ()
+    values = frame["trade_date"].drop_nulls().unique().to_list()
+    return tuple(
+        sorted(
+            value for value in values if isinstance(value, date) and scan_start <= value <= end_date
+        )
+    )
 
 
 def _window_until(values: Sequence[date], target_date: date, window: int) -> tuple[date, ...]:
