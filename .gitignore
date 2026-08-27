@@ -38,9 +38,7 @@ target/
 .codegraph/
 
 # Local data, caches, databases, and logs
-data/**/*
-!data/**/
-!data/**/.gitkeep
+data/
 *.db
 *.duckdb
 *.feather
@@ -68,6 +66,4 @@ reports/
 *.swo
 *.swp
 *.tmp
-
-
-.agents/browser-tmp
+.agents/browser-tmp/
