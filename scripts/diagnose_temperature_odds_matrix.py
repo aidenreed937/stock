@@ -279,14 +279,24 @@ def run_diagnose(
     frozen_rows = [row for row in rows if "frozen_window" in (row.get("extreme_windows") or [])]
     conflict_rows = [row for row in hot_rows if row.get("adjustment_pp", 0) > 0]
     print(f"\n冲突检查（hot 日不得出现仓位上调）: {len(conflict_rows)} / {len(hot_rows)} 天")
-    _print_stats("高温窗口前向综合温度变化", [
-        _fwd_stats(hot_rows, composite_by_date=composite_by_date, window=window, key="hot_window")
-        for window in FORWARD_WINDOWS
-    ])
-    _print_stats("冰点窗口前向综合温度变化", [
-        _fwd_stats(frozen_rows, composite_by_date=composite_by_date, window=window, key="frozen_window")
-        for window in FORWARD_WINDOWS
-    ])
+    _print_stats(
+        "高温窗口前向综合温度变化",
+        [
+            _fwd_stats(
+                hot_rows, composite_by_date=composite_by_date, window=window, key="hot_window"
+            )
+            for window in FORWARD_WINDOWS
+        ],
+    )
+    _print_stats(
+        "冰点窗口前向综合温度变化",
+        [
+            _fwd_stats(
+                frozen_rows, composite_by_date=composite_by_date, window=window, key="frozen_window"
+            )
+            for window in FORWARD_WINDOWS
+        ],
+    )
 
     print("\n轨迹事件分布（61 天）")
     for transition, count in sorted(transitions.items()):
@@ -307,7 +317,9 @@ def run_diagnose(
             for window in FORWARD_WINDOWS
         ],
         "extreme_frozen_fwd": [
-            _fwd_stats(frozen_rows, composite_by_date=composite_by_date, window=window, key="frozen")
+            _fwd_stats(
+                frozen_rows, composite_by_date=composite_by_date, window=window, key="frozen"
+            )
             for window in FORWARD_WINDOWS
         ],
         "extreme_conflict_days": [row["date"] for row in conflict_rows],
