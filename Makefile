@@ -141,10 +141,7 @@ monitor:
 	uv run python scripts/monitor_resources.py $(if $(WATCH),--watch) $(if $(INTERVAL),--interval $(INTERVAL))
 
 scan:
-	uv run python -m stock_cli.market_temperature $(if $(DATE),--date $(DATE)) $(if $(RUN_CLASS),--run-class $(RUN_CLASS))
-	uv run python -m stock_cli.industry_structure $(if $(DATE),--date $(DATE)) $(if $(RUN_CLASS),--run-class $(RUN_CLASS))
-	uv run python -m stock_cli.investor_brief $(if $(DATE),--date $(DATE)) $(if $(RUN_CLASS),--run-class $(RUN_CLASS))
-	uv run python -m stock_cli.quant_brief $(if $(DATE),--date $(DATE)) $(if $(RUN_CLASS),--run-class $(RUN_CLASS))
+	uv run python -m stock_cli.multi_date $(if $(or $(DATE),$(DATES)),--dates $(or $(DATE),$(DATES)),$(if $(LAST_N),--last-n $(LAST_N),--last-n 1)) --refresh-mart $(if $(MART_START),--mart-start $(MART_START)) $(if $(STORAGE_DIR),--storage-dir $(STORAGE_DIR)) $(if $(ANALYTICS_ROOT),--analytics-root $(ANALYTICS_ROOT)) $(if $(RUN_CLASS),--run-class $(RUN_CLASS)) $(if $(SKIP_METRICS),--skip-metrics) $(if $(NO_PUBLISH_LATEST),--no-publish-latest) $(if $(DRY_RUN),--dry-run)
 
 features-build:
 	uv run python -m stock_cli.features build $(if $(TARGET),--target $(TARGET)) $(if $(START),--start $(START)) $(if $(END),--end $(END)) $(if $(OVERWRITE),--overwrite) $(if $(STORAGE_DIR),--storage-dir $(STORAGE_DIR))

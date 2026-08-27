@@ -33,6 +33,11 @@ description: 使用仓库内的市场温度、行业结构和简报管线完成 
    - 需要多日期产物：使用 `make multi-date ...` 或 `python -m stock_cli.multi_date --help`
    - 需要跨周期复盘：先运行 `make report-consistency START=... END=...`，再运行 `make market-cycle-review START=... END=...`
 
+`make scan DATE=YYYY-MM-DD` 已并入 `multi-date` 单日入口：生成前自动增量刷新 Mart（`--refresh-mart`），
+然后串行生成四类运行目录、统一校验后发布 `latest`。新增或修订特征定义后，若增量刷 Mart 因定义指纹
+不匹配失败，明确报错并提示用 `make features-build TARGET=market_daily OVERWRITE=1 START=2012-01-01 END=...`
+全量重建（覆盖式，需先确认历史范围）；不要用无 Mart 支撑的产物冒充有效结果。
+
 4. 多日期入口负责串行生成四类运行目录、统一校验并最后发布选定日期的 `latest`；需要更新 Mart 时使用 `--refresh-mart` 增量入口。只有明确进行历史重建或数据修复时，才使用覆盖式构建参数，并先确认备份和历史范围。
    每日复盘默认复用同一交易日已验证的市场温度和行业结构产物；需要强制刷新上游时使用 `make daily-review DATE=YYYY-MM-DD REFRESH_UPSTREAM=1`。
 5. 不手工拼装 facts、不直接复制或编辑 `latest/`、不绕过管线写报告。运行失败、质量校验失败或上游日期不一致时，不把部分结果当作完成。
