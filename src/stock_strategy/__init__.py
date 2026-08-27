@@ -11,9 +11,17 @@ from stock_strategy.config import (
 )
 from stock_strategy.context import Context, Position
 from stock_strategy.exceptions import StrategyError
+from stock_strategy.portfolio import (
+    BacktestApplicationResult,
+    BacktestResult,
+    run_backtest_application,
+    run_factor_backtest,
+)
 from stock_strategy.signal import Signal, SignalDirection
 
 __all__ = [
+    "BacktestApplicationResult",
+    "BacktestResult",
     "BaseStrategy",
     "Context",
     "IndicatorsConfig",
@@ -26,4 +34,6 @@ __all__ = [
     "StrategyConfig",
     "StrategyError",
     "load_strategy_config",
+    "run_backtest_application",
+    "run_factor_backtest",
 ]

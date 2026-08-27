@@ -53,8 +53,10 @@ from stock_analytics.primitives import calculate_rsi
 共用（不做业务规则，只做读取与列装配）。
 
 因子评估与组合两条链路的产物消费方式：`factor_portfolio` 通过 `artifact_reader`
-`resolve_artifact_run` 读取 `factor_research` 产物（默认 latest）的通过因子清单，
-不直接拼接 `data/analytics/*/latest` 物理路径。
+`resolve_artifact_run` 读取 `factor_research` 产物（默认 latest）的通过因子清单；
+策略层回测器（`stock_strategy.portfolio`）通过同一个 `artifact_reader` 定位
+`factor_portfolio` latest 产物读取分数面板，不直接拼接 `data/analytics/*/latest`
+物理路径。
 
 ## 大管线拆分约束
 
