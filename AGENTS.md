@@ -32,9 +32,10 @@
 项目要求 Python 3.12+，使用 `uv` 管理环境和依赖。在沙箱或受限环境下，将缓存和解释器路径约束在项目内：
 
 ```bash
-export UV_CACHE_DIR=.uv_cache
+export PATH="/opt/homebrew/bin:$PATH" # Homebrew (Apple Silicon)；非交互 shell 的 PATH 可能缺失 uv
+export UV_CACHE_DIR="$PWD/.uv_cache"
 export UV_PYTHON_INSTALL_DIR=.uv_python
-export PRE_COMMIT_HOME="$(pwd)/.pre_commit_cache"
+export PRE_COMMIT_HOME="$PWD/.pre_commit_cache"
 ```
 
 所有命令优先通过 `make` 或 `uv run` 执行，禁止直接使用系统全局 `python` 或 `pip`。后台任务应使用合理的等待时间，避免循环轮询状态；未收到完成事件前不要反复查询。
