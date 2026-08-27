@@ -53,7 +53,11 @@ def check_file(path: Path) -> list[Violation]:
             violations.append(
                 Violation(path, node.lineno, f"业务层禁止直接使用 {method}() 扫描 Curated 目录")
             )
-        elif method in PARQUET_READ_METHODS and node.args and _contains_curated_reference(node.args[0]):
+        elif (
+            method in PARQUET_READ_METHODS
+            and node.args
+            and _contains_curated_reference(node.args[0])
+        ):
             violations.append(
                 Violation(path, node.lineno, f"业务层禁止直接使用 {method}() 读取 Curated 文件")
             )
@@ -80,7 +84,9 @@ def _contains_curated_reference(node: ast.AST) -> bool:
 
 def _is_curated_name(value: str) -> bool:
     normalized = value.casefold()
-    return any(marker.replace("_", "") in normalized.replace("_", "") for marker in CURATED_MARKERS[1:])
+    return any(
+        marker.replace("_", "") in normalized.replace("_", "") for marker in CURATED_MARKERS[1:]
+    )
 
 
 if __name__ == "__main__":
