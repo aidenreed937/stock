@@ -13,7 +13,13 @@ from stock_analytics.metrics.context import MetricContext
 from stock_analytics.metrics.datasets.loaders import load_metric_dataset
 from stock_analytics.metrics.datasets.windows import empty_metric_frame as _empty
 from stock_analytics.metrics.datasets.windows import first_column as _first_column
-from stock_analytics.metrics.spec import EntityType, MetricCalculator, MetricDomain, MetricSpec
+from stock_analytics.metrics.spec import (
+    EntityType,
+    MetricCalculator,
+    MetricDomain,
+    MetricSpec,
+    MetricUnit,
+)
 from stock_analytics.primitives.rules import growth, rolling_percentile, rolling_zscore
 
 _TRADING_DAYS_5Y = 1250
@@ -159,6 +165,7 @@ METRIC_SPECS: tuple[MetricSpec, ...] = (
         name="融资买入成交占比",
         domain=MetricDomain.FLOW,
         entity_type=EntityType.MARKET,
+        unit=MetricUnit.RATIO,
         required_datasets=("margin", "stock_daily_bar"),
         output_columns=("trade_date", "margin_buy_share"),
     ),
@@ -167,6 +174,7 @@ METRIC_SPECS: tuple[MetricSpec, ...] = (
         name="两融余额流通市值比",
         domain=MetricDomain.FLOW,
         entity_type=EntityType.MARKET,
+        unit=MetricUnit.RATIO,
         required_datasets=("margin", "daily_basic"),
         output_columns=("trade_date", "margin_penetration"),
     ),
@@ -175,6 +183,7 @@ METRIC_SPECS: tuple[MetricSpec, ...] = (
         name="融资买入占比60日Z分数",
         domain=MetricDomain.FLOW,
         entity_type=EntityType.MARKET,
+        unit=MetricUnit.ZSCORE,
         windows=(_FLOW_ZSCORE_WINDOW,),
         required_datasets=("margin", "stock_daily_bar"),
         output_columns=("trade_date", "margin_buy_share_zscore_60d"),
@@ -184,6 +193,7 @@ METRIC_SPECS: tuple[MetricSpec, ...] = (
         name="两融渗透率五年分位数",
         domain=MetricDomain.FLOW,
         entity_type=EntityType.MARKET,
+        unit=MetricUnit.PERCENTILE,
         windows=(_TRADING_DAYS_5Y,),
         required_datasets=("margin", "daily_basic"),
         output_columns=("trade_date", "margin_penetration_percentile_1250d"),
@@ -193,6 +203,7 @@ METRIC_SPECS: tuple[MetricSpec, ...] = (
         name="杠杆资金情绪指数",
         domain=MetricDomain.FLOW,
         entity_type=EntityType.MARKET,
+        unit=MetricUnit.ZSCORE,
         windows=(MARGIN_GROWTH_WINDOW, _FLOW_ZSCORE_WINDOW),
         required_datasets=("margin", "stock_daily_bar", "daily_basic"),
         output_columns=("trade_date", "leverage_sentiment_score"),

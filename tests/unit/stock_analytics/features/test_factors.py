@@ -5,7 +5,13 @@ from datetime import date
 import polars as pl
 import pytest
 
-from stock_analytics.features.factors import FactorEngine
+from stock_analytics.features import (
+    EntityType,
+    FactorEngine,
+    FeatureKind,
+    FeatureRegistry,
+)
+from stock_analytics.features.factors import ensure_factor_columns_registered
 from stock_analytics.primitives import (
     calculate_amihud_illiquidity,
     calculate_atr,
@@ -23,6 +29,23 @@ from stock_analytics.primitives import (
     calculate_volume_surprise,
     calculate_yield_curve_slope,
 )
+from stock_core.exceptions import DataValidationError
+
+_INPUT_BASE_COLUMNS = {
+    "trade_date",
+    "symbol",
+    "open",
+    "high",
+    "low",
+    "close",
+    "volume",
+    "amount",
+    "pre_close",
+    "turnover_rate",
+    "net_mf_amount",
+    "pe_ttm",
+    "pb",
+}
 
 
 def _create_sample_ohlcv(n: int = 50) -> pl.DataFrame:
@@ -53,10 +76,13 @@ def test_momentum_factors() -> None:
     assert "mom_5d" in res.columns
     assert "mom_20d" in res.columns
     assert res["mom_5d"][-1] is not None
+    # 价格 10+0.2i 线性递增，5 日收益 = 21.8/20.8 - 1（小数制，非百分数）
+    assert res["mom_5d"][-1] == pytest.approx(21.8 / 20.8 - 1.0, abs=1e-6)
     assert res["mom_5d"][-1] > 0
 
     res_rev = calculate_short_term_reversal(df, window=5)
     assert "reversal_5d" in res_rev.columns
+    assert res_rev["reversal_5d"][-1] == pytest.approx(-(21.8 / 20.8 - 1.0), abs=1e-6)
     assert res_rev["reversal_5d"][-1] < 0  # 价格上涨时反转因子为负
 
     res_high = calculate_distance_to_high(df, window=20)
@@ -82,10 +108,14 @@ def test_volatility_factors() -> None:
     assert "atr_10d" in res_atr.columns
     assert "atr_ratio_10d" in res_atr.columns
     assert res_atr["atr_10d"][-1] > 0
+    # ATR/Close 为小数制比率，取值远小于 1
+    assert 0 < res_atr["atr_ratio_10d"][-1] < 0.5
 
     res_bb = calculate_bollinger_bandwidth(df, window=10)
     assert "bollinger_bandwidth_10d" in res_bb.columns
     assert res_bb["bollinger_bandwidth_10d"][-1] > 0
+    # 带宽为小数制比率（百分数制下约为 5，此处显式排除）
+    assert res_bb["bollinger_bandwidth_10d"][-1] < 1.0
 
 
 def test_normalized_factors_return_none_for_invalid_denominators() -> None:
@@ -117,6 +147,8 @@ def test_liquidity_factors() -> None:
 
     res_vs = calculate_volume_surprise(df, short_window=5, long_window=20)
     assert "volume_surprise_5_20" in res_vs.columns
+    # 成交量线性递增，短均量高于长均量：突增为正小数（非百分数）
+    assert 0 < res_vs["volume_surprise_5_20"][-1] < 1.0
 
 
 def test_moneyflow_and_margin_factors() -> None:
@@ -138,6 +170,8 @@ def test_moneyflow_and_margin_factors() -> None:
     assert "margin_trading_share" in res_margin.columns
     assert "margin_growth_5d" in res_margin.columns
     assert abs(res_margin["margin_trading_share"][0] - 0.08) < 1e-4
+    # rzrqye = 1e9 + i*1e7：5 日增长 = 1.29e9/1.24e9 - 1（小数制，非百分数）
+    assert res_margin["margin_growth_5d"][-1] == pytest.approx(1.29e9 / 1.24e9 - 1.0, abs=1e-6)
 
     invalid_amount = pl.DataFrame(
         {
@@ -203,3 +237,50 @@ def test_empty_dataframe_safety() -> None:
     assert calculate_main_moneyflow_factors(empty_df).is_empty()
     assert calculate_rolling_percentile(empty_df).is_empty()
     assert FactorEngine.compute_all_factors(empty_df).is_empty()
+
+
+def _stock_factor_specs() -> list:
+    return [
+        spec
+        for spec in FeatureRegistry.list_by_kind(FeatureKind.FACTOR)
+        if spec.entity_type == EntityType.STOCK
+    ]
+
+
+def test_all_factor_engine_outputs_have_registered_spec() -> None:
+    """compute_all_factors 的全部派生列都必须有 STOCK FACTOR 元数据登记。"""
+    df = _create_sample_ohlcv(60)
+    all_factors = FactorEngine.compute_all_factors(df)
+
+    derived = [col for col in all_factors.columns if col not in _INPUT_BASE_COLUMNS]
+    assert len(derived) == 26  # FactorEngine 产出 26 个因子列
+
+    registered_ids = {spec.feature_id for spec in _stock_factor_specs()}
+    assert set(derived) <= registered_ids
+
+
+def test_stock_factor_registry_is_populated_and_unique() -> None:
+    """STOCK 粒度 FACTOR 注册非空：FactorEngine 26 列 + stock_screen 10 列。"""
+    specs = _stock_factor_specs()
+    assert len(specs) == 36
+
+    pairs = [(spec.feature_id, spec.definition_version) for spec in specs]
+    assert len(pairs) == len(set(pairs))
+
+    engine_ids = {
+        "mom_20d",
+        "reversal_5d",
+        "realized_vol_20d",
+        "amihud_illiq_20d",
+        "pe_ttm_percentile_1250d",
+        "main_inflow_ratio_20d",
+    }
+    assert engine_ids <= {spec.feature_id for spec in specs}
+    screen_ids = {"rel_return_20d", "rel_return_60d", "roe", "goodwill_ratio"}
+    assert screen_ids <= {spec.feature_id for spec in specs}
+
+
+def test_registration_validation_rejects_unregistered_factor_columns() -> None:
+    """未登记的因子产出列必须抛 DataValidationError（fail-closed）。"""
+    with pytest.raises(DataValidationError):
+        ensure_factor_columns_registered(["not_a_registered_factor"])

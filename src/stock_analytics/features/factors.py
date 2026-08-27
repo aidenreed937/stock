@@ -16,6 +16,51 @@ from stock_analytics.primitives import (
     calculate_turnover_factors,
     calculate_volume_surprise,
 )
+from stock_core.exceptions import DataValidationError
+
+#: compute_all_factors 的输入基础列（其余列视为因子派生列，纳入注册校验）。
+_INPUT_BASE_COLUMNS = frozenset(
+    {
+        "trade_date",
+        "symbol",
+        "open",
+        "high",
+        "low",
+        "close",
+        "volume",
+        "amount",
+        "pre_close",
+        "turnover_rate",
+        "net_mf_amount",
+        "pe_ttm",
+        "pb",
+    }
+)
+
+
+def ensure_factor_columns_registered(columns: list[str]) -> None:
+    """硬校验因子产出列均已登记为 STOCK 粒度 FACTOR 元数据（fail-closed）。
+
+    Args:
+        columns: 待校验的派生列名列表。
+
+    Raises:
+        DataValidationError: 存在未登记的产出列。
+    """
+    from stock_analytics.features.registry import FeatureRegistry
+    from stock_analytics.features.spec import EntityType, FeatureKind
+
+    registered = {
+        spec.feature_id
+        for spec in FeatureRegistry.list_all()
+        if spec.kind == FeatureKind.FACTOR and spec.entity_type == EntityType.STOCK
+    }
+    unregistered = [column for column in columns if column not in registered]
+    if unregistered:
+        raise DataValidationError(
+            "未登记的因子产出列: "
+            f"{sorted(unregistered)}；请在 features/builtin_factor_specs.py 中登记后重试"
+        )
 
 
 class FactorEngine:
@@ -113,6 +158,10 @@ class FactorEngine:
         # 4. 资金流与估值
         res = calculate_main_moneyflow_factors(res)
         res = calculate_rolling_percentile(res)
+
+        # 硬校验：所有派生列都必须已登记为 STOCK FACTOR 元数据
+        derived_columns = [column for column in res.columns if column not in _INPUT_BASE_COLUMNS]
+        ensure_factor_columns_registered(derived_columns)
 
         if normalize:
             computed_factor_cols = [

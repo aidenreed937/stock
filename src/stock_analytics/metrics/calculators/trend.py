@@ -11,7 +11,13 @@ from stock_analytics.metrics.datasets.windows import (
 from stock_analytics.metrics.datasets.windows import (
     load_start_date as _load_start_date,
 )
-from stock_analytics.metrics.spec import EntityType, MetricCalculator, MetricDomain, MetricSpec
+from stock_analytics.metrics.spec import (
+    EntityType,
+    MetricCalculator,
+    MetricDomain,
+    MetricSpec,
+    MetricUnit,
+)
 from stock_analytics.primitives.indicators import calculate_rsi
 
 _RSI_WINDOW = 14
@@ -84,12 +90,13 @@ def calculate_trend_metric(context: MetricContext, spec: MetricSpec) -> pl.DataF
     return frame.select(spec.output_columns)
 
 
-def _spec(metric_id: str, name: str, window: int) -> MetricSpec:
+def _spec(metric_id: str, name: str, window: int, unit: MetricUnit) -> MetricSpec:
     return MetricSpec(
         metric_id=metric_id,
         name=name,
         domain=MetricDomain.TREND,
         entity_type=EntityType.STOCK,
+        unit=unit,
         windows=(window,),
         required_datasets=("stock_daily_bar",),
         output_columns=("trade_date", "symbol", metric_id),
@@ -97,9 +104,14 @@ def _spec(metric_id: str, name: str, window: int) -> MetricSpec:
 
 
 METRIC_SPECS: tuple[MetricSpec, ...] = (
-    _spec("ma_bias_20d", "20日均线乖离率", _MA_BIAS_WINDOW),
-    _spec("rsi_14d", "14日相对强弱指标", _RSI_WINDOW),
-    _spec("distance_to_252d_high", "距252日高点距离", _HIGH_DISTANCE_WINDOW),
+    _spec("ma_bias_20d", "20日均线乖离率", _MA_BIAS_WINDOW, MetricUnit.RATIO),
+    _spec("rsi_14d", "14日相对强弱指标", _RSI_WINDOW, MetricUnit.PERCENT),
+    _spec(
+        "distance_to_252d_high",
+        "距252日高点距离",
+        _HIGH_DISTANCE_WINDOW,
+        MetricUnit.RATIO,
+    ),
 )
 
 CALCULATORS: dict[str, MetricCalculator] = {

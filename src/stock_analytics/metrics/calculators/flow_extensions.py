@@ -4,7 +4,7 @@ from __future__ import annotations
 
 import polars as pl
 
-from stock_analytics.metrics.spec import EntityType, MetricDomain, MetricSpec
+from stock_analytics.metrics.spec import EntityType, MetricDomain, MetricSpec, MetricUnit
 from stock_analytics.primitives.rules import share
 
 MARGIN_GROWTH_WINDOW = 20
@@ -36,6 +36,7 @@ FLOW_EXTENSION_SPECS: tuple[MetricSpec, ...] = (
         name="两融余额20日增长率",
         domain=MetricDomain.FLOW,
         entity_type=EntityType.MARKET,
+        unit=MetricUnit.RATIO,
         windows=(MARGIN_GROWTH_WINDOW,),
         required_datasets=("margin",),
         output_columns=("trade_date", "margin_balance_growth_20d"),
@@ -45,6 +46,7 @@ FLOW_EXTENSION_SPECS: tuple[MetricSpec, ...] = (
         name="两融余额60日增长率",
         domain=MetricDomain.FLOW,
         entity_type=EntityType.MARKET,
+        unit=MetricUnit.RATIO,
         windows=(MARGIN_GROWTH_LONG_WINDOW,),
         required_datasets=("margin",),
         output_columns=("trade_date", "margin_balance_growth_60d"),
@@ -54,6 +56,7 @@ FLOW_EXTENSION_SPECS: tuple[MetricSpec, ...] = (
         name="主力净流入20日累计成交占比",
         domain=MetricDomain.FLOW,
         entity_type=EntityType.MARKET,
+        unit=MetricUnit.RATIO,
         windows=(MONEYFLOW_CUM_WINDOW,),
         required_datasets=("moneyflow", "stock_daily_bar"),
         output_columns=("trade_date", "main_money_net_inflow_share_20d_cum"),

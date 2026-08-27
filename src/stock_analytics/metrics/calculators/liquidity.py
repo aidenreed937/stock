@@ -8,7 +8,13 @@ from stock_analytics.metrics.datasets.windows import (
 from stock_analytics.metrics.datasets.windows import (
     load_start_date as _load_start_date,
 )
-from stock_analytics.metrics.spec import EntityType, MetricCalculator, MetricDomain, MetricSpec
+from stock_analytics.metrics.spec import (
+    EntityType,
+    MetricCalculator,
+    MetricDomain,
+    MetricSpec,
+    MetricUnit,
+)
 from stock_analytics.primitives.rules import rolling_percentile, rolling_zscore
 
 _TRADING_DAYS_5Y = 1250
@@ -135,6 +141,7 @@ def calculate_liquidity_metric(context: MetricContext, spec: MetricSpec) -> pl.D
 def _spec(
     metric_id: str,
     name: str,
+    unit: MetricUnit,
     *,
     windows: tuple[int, ...] = (),
     datasets: tuple[str, ...] = ("daily_basic",),
@@ -144,6 +151,7 @@ def _spec(
         name=name,
         domain=MetricDomain.LIQUIDITY,
         entity_type=EntityType.MARKET,
+        unit=unit,
         windows=windows,
         required_datasets=datasets,
         output_columns=("trade_date", metric_id),
@@ -151,28 +159,32 @@ def _spec(
 
 
 METRIC_SPECS: tuple[MetricSpec, ...] = (
-    _spec("market_turnover_rate", "全市场平均换手率"),
+    _spec("market_turnover_rate", "全市场平均换手率", MetricUnit.PERCENT),
     _spec(
         "turnover_rate_percentile_1250d",
         "全市场换手率五年分位数",
+        MetricUnit.PERCENTILE,
         windows=(_TRADING_DAYS_5Y,),
         datasets=("daily_basic", "stock_daily_bar"),
     ),
     _spec(
         "turnover_rate_zscore_60d",
         "全市场换手率60日Z分数",
+        MetricUnit.ZSCORE,
         windows=(_ZSCORE_WINDOW,),
         datasets=("daily_basic", "stock_daily_bar"),
     ),
     _spec(
         "amount_ma_ratio_20d",
         "全市场成交额20日均量比",
+        MetricUnit.RATIO,
         windows=(_AMOUNT_MA_WINDOW,),
         datasets=("stock_daily_bar",),
     ),
     _spec(
         "amount_zscore_60d",
         "全市场成交额60日Z分数",
+        MetricUnit.ZSCORE,
         windows=(_ZSCORE_WINDOW,),
         datasets=("stock_daily_bar",),
     ),

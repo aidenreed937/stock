@@ -9,7 +9,13 @@ from stock_analytics.metrics.context import MetricContext
 from stock_analytics.metrics.datasets.loaders import load_metric_dataset
 from stock_analytics.metrics.datasets.windows import empty_metric_frame as _empty
 from stock_analytics.metrics.datasets.windows import first_column as _first_column
-from stock_analytics.metrics.spec import EntityType, MetricCalculator, MetricDomain, MetricSpec
+from stock_analytics.metrics.spec import (
+    EntityType,
+    MetricCalculator,
+    MetricDomain,
+    MetricSpec,
+    MetricUnit,
+)
 from stock_analytics.primitives.rules import rolling_percentile, rolling_zscore, share
 
 _TRADING_DAYS_5Y = 1250
@@ -275,6 +281,7 @@ MARKET_METRIC_SPECS: tuple[MetricSpec, ...] = (
         name="主力净流入成交占比",
         domain=MetricDomain.FLOW,
         entity_type=EntityType.MARKET,
+        unit=MetricUnit.RATIO,
         required_datasets=("moneyflow", "stock_daily_bar"),
         output_columns=("trade_date", "main_money_net_inflow_share"),
     ),
@@ -283,6 +290,7 @@ MARKET_METRIC_SPECS: tuple[MetricSpec, ...] = (
         name="主力大单净流入成交占比",
         domain=MetricDomain.FLOW,
         entity_type=EntityType.MARKET,
+        unit=MetricUnit.RATIO,
         required_datasets=("moneyflow", "stock_daily_bar"),
         output_columns=("trade_date", "main_large_order_net_inflow_share"),
     ),
@@ -291,6 +299,7 @@ MARKET_METRIC_SPECS: tuple[MetricSpec, ...] = (
         name="超大单净流入成交占比",
         domain=MetricDomain.FLOW,
         entity_type=EntityType.MARKET,
+        unit=MetricUnit.RATIO,
         required_datasets=("moneyflow", "stock_daily_bar"),
         output_columns=("trade_date", "super_large_net_inflow_share"),
     ),
@@ -299,6 +308,7 @@ MARKET_METRIC_SPECS: tuple[MetricSpec, ...] = (
         name="主力净流入占比60日Z分数",
         domain=MetricDomain.FLOW,
         entity_type=EntityType.MARKET,
+        unit=MetricUnit.ZSCORE,
         windows=(_FLOW_ZSCORE_WINDOW,),
         required_datasets=("moneyflow", "stock_daily_bar"),
         output_columns=("trade_date", "main_money_net_inflow_share_zscore_60d"),
@@ -308,6 +318,7 @@ MARKET_METRIC_SPECS: tuple[MetricSpec, ...] = (
         name="北向净流入额",
         domain=MetricDomain.FLOW,
         entity_type=EntityType.MARKET,
+        unit=MetricUnit.CNY,
         required_datasets=("moneyflow_hsgt",),
         output_columns=("trade_date", "northbound_net_inflow"),
     ),
@@ -316,6 +327,7 @@ MARKET_METRIC_SPECS: tuple[MetricSpec, ...] = (
         name="北向净流入成交占比",
         domain=MetricDomain.FLOW,
         entity_type=EntityType.MARKET,
+        unit=MetricUnit.RATIO,
         required_datasets=("moneyflow_hsgt", "stock_daily_bar"),
         output_columns=("trade_date", "northbound_net_inflow_share"),
     ),
@@ -324,6 +336,7 @@ MARKET_METRIC_SPECS: tuple[MetricSpec, ...] = (
         name="北向净流入60日Z分数",
         domain=MetricDomain.FLOW,
         entity_type=EntityType.MARKET,
+        unit=MetricUnit.ZSCORE,
         windows=(_FLOW_ZSCORE_WINDOW,),
         required_datasets=("moneyflow_hsgt",),
         output_columns=("trade_date", "northbound_net_inflow_zscore_60d"),
@@ -333,6 +346,7 @@ MARKET_METRIC_SPECS: tuple[MetricSpec, ...] = (
         name="全市场自由流通换手率五年分位数",
         domain=MetricDomain.FLOW,
         entity_type=EntityType.MARKET,
+        unit=MetricUnit.PERCENTILE,
         windows=(_TRADING_DAYS_5Y,),
         required_datasets=("stock_daily_bar", "daily_basic"),
         output_columns=("trade_date", "market_amount_percentile_1250d"),

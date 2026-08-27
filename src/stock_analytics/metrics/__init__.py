@@ -9,6 +9,7 @@ from stock_analytics.metrics.spec import (
     MetricDomain,
     MetricFrequency,
     MetricSpec,
+    MetricUnit,
 )
 
 __all__ = [
@@ -20,5 +21,6 @@ __all__ = [
     "MetricRegistry",
     "MetricResult",
     "MetricSpec",
+    "MetricUnit",
     "create_default_registry",
 ]

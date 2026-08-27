@@ -11,7 +11,13 @@ from stock_analytics.metrics.datasets.windows import (
 from stock_analytics.metrics.datasets.windows import (
     load_start_date as _load_start_date,
 )
-from stock_analytics.metrics.spec import EntityType, MetricCalculator, MetricDomain, MetricSpec
+from stock_analytics.metrics.spec import (
+    EntityType,
+    MetricCalculator,
+    MetricDomain,
+    MetricSpec,
+    MetricUnit,
+)
 from stock_analytics.primitives.rules import (
     above_ma,
     at_rolling_high,
@@ -122,6 +128,7 @@ def _spec(metric_id: str, name: str, windows: tuple[int, ...] = ()) -> MetricSpe
         name=name,
         domain=MetricDomain.BREADTH,
         entity_type=EntityType.MARKET,
+        unit=MetricUnit.RATIO,
         windows=windows,
         required_datasets=("stock_daily_bar",),
         output_columns=("trade_date", metric_id),

@@ -18,6 +18,7 @@ from stock_analytics.metrics.spec import (
     MetricCalculator,
     MetricDomain,
     MetricSpec,
+    MetricUnit,
 )
 from stock_analytics.primitives.macro import (
     calculate_macro_spread,
@@ -214,22 +215,38 @@ def calculate_macro_metric(context: MetricContext, spec: MetricSpec) -> pl.DataF
     return _select_metric(frame, spec)
 
 
-def _spec(metric_id: str, name: str, datasets: tuple[str, ...]) -> MetricSpec:
+def _spec(metric_id: str, name: str, datasets: tuple[str, ...], unit: MetricUnit) -> MetricSpec:
     """构造宏观指标定义。"""
     return MetricSpec(
         metric_id=metric_id,
         name=name,
         domain=MetricDomain.MACRO,
         entity_type=EntityType.MARKET,
+        unit=unit,
         required_datasets=datasets,
         output_columns=("trade_date", metric_id),
     )
 
 
 METRIC_SPECS: tuple[MetricSpec, ...] = (
-    _spec("yield_curve_slope_10y_2y", "中国国债10Y-2Y期限利差", ("national_debt",)),
-    _spec("yield_curve_slope_30y_10y", "中国国债30Y-10Y期限利差", ("national_debt",)),
-    _spec("buffett_securitization_ratio", "巴菲特证券化率", ("daily_basic", "cn_gdp")),
+    _spec(
+        "yield_curve_slope_10y_2y",
+        "中国国债10Y-2Y期限利差",
+        ("national_debt",),
+        MetricUnit.PERCENT,
+    ),
+    _spec(
+        "yield_curve_slope_30y_10y",
+        "中国国债30Y-10Y期限利差",
+        ("national_debt",),
+        MetricUnit.PERCENT,
+    ),
+    _spec(
+        "buffett_securitization_ratio",
+        "巴菲特证券化率",
+        ("daily_basic", "cn_gdp"),
+        MetricUnit.PERCENT,
+    ),
 )
 
 CALCULATORS: dict[str, MetricCalculator] = {

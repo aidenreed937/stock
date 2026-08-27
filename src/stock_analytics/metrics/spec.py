@@ -37,6 +37,26 @@ class MetricFrequency(StrEnum):
     MONTHLY = "monthly"
 
 
+class MetricUnit(StrEnum):
+    """指标物理或标准化单位。
+
+    取值与 :class:`stock_analytics.features.spec.FeatureUnit` 对齐，
+    避免跨层单位语义漂移，并遵守 metrics→features 依赖门禁
+    （metrics 不依赖 features）。
+    """
+
+    CNY = "CNY"  # 人民币金额（元/亿元）
+    SHARES = "shares"  # 股数/份额
+    COUNT = "count"  # 家数/次数
+    RATIO = "ratio"  # 比例/比率（小数，如 0.03 表示 3%）
+    PERCENT = "percent"  # 百分数（如 2.5 表示 2.5%）
+    PERCENTILE = "percentile"  # 历史分位数 (0~100)
+    ZSCORE = "zscore"  # 标准化 Z-Score (通常无界，均值0方差1)
+    SCORE_0_100 = "score_0_100"  # 0~100 综合评分
+    BOOLEAN = "boolean"  # 布尔值 (0/1 或 True/False)
+    UNKNOWN = "unknown"  # 未指定/复合
+
+
 MetricCalculator = Callable[["MetricContext", "MetricSpec"], pl.DataFrame]
 
 
@@ -48,6 +68,7 @@ class MetricSpec:
     name: str
     domain: MetricDomain
     entity_type: EntityType
+    unit: MetricUnit = MetricUnit.UNKNOWN
     frequency: MetricFrequency = MetricFrequency.DAILY
     windows: tuple[int, ...] = ()
     required_datasets: tuple[str, ...] = ()
@@ -61,4 +82,5 @@ __all__ = [
     "MetricDomain",
     "MetricFrequency",
     "MetricSpec",
+    "MetricUnit",
 ]

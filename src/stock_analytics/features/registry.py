@@ -4,6 +4,7 @@ from __future__ import annotations
 
 from typing import TYPE_CHECKING, ClassVar
 
+from stock_analytics.features.builtin_factor_specs import get_all_builtin_factor_specs
 from stock_analytics.features.builtin_specs import get_all_builtin_specs
 
 if TYPE_CHECKING:
@@ -85,6 +86,8 @@ class FeatureRegistry:
     def register_builtins(cls) -> None:
         """注册全套内置特征元数据规范。"""
         for spec in get_all_builtin_specs():
+            cls.register(spec)
+        for spec in get_all_builtin_factor_specs():
             cls.register(spec)
 
 

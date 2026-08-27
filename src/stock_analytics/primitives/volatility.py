@@ -108,7 +108,7 @@ def calculate_atr(
 
     natr_expr = (
         pl.when(pl.col(close_col) > 0)
-        .then(pl.col(atr_name) / pl.col(close_col) * 100.0)
+        .then(pl.col(atr_name) / pl.col(close_col))
         .otherwise(None)
         .alias(natr_name)
     )
@@ -123,7 +123,7 @@ def calculate_bollinger_bandwidth(
 ) -> pl.DataFrame:
     """计算布林带相对宽度与价格分位数 (%B)。
 
-    公式: Bandwidth = (Upper - Lower) / Middle * 100
+    公式: Bandwidth = (Upper - Lower) / Middle
           %B = (Close - Lower) / (Upper - Lower)
     """
     if df.is_empty() or price_col not in df.columns:
@@ -140,9 +140,7 @@ def calculate_bollinger_bandwidth(
     upper = rolling_mean + (rolling_std * num_std)
     lower = rolling_mean - (rolling_std * num_std)
 
-    bandwidth = ((upper - lower) / (rolling_mean + 1e-8) * 100.0).alias(
-        f"bollinger_bandwidth_{window}d"
-    )
+    bandwidth = ((upper - lower) / (rolling_mean + 1e-8)).alias(f"bollinger_bandwidth_{window}d")
     percent_b = ((pl.col(price_col) - lower) / (upper - lower + 1e-8)).alias(
         f"bollinger_percent_b_{window}d"
     )

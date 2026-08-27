@@ -11,7 +11,13 @@ from stock_analytics.metrics.datasets.windows import (
 from stock_analytics.metrics.datasets.windows import (
     load_start_date as _load_start_date,
 )
-from stock_analytics.metrics.spec import EntityType, MetricCalculator, MetricDomain, MetricSpec
+from stock_analytics.metrics.spec import (
+    EntityType,
+    MetricCalculator,
+    MetricDomain,
+    MetricSpec,
+    MetricUnit,
+)
 
 _RETURN_WINDOWS = (1, 5, 20, 60, 252)
 
@@ -75,6 +81,7 @@ def _spec(metric_id: str, name: str, window: int) -> MetricSpec:
         name=name,
         domain=MetricDomain.PERFORMANCE,
         entity_type=EntityType.STOCK,
+        unit=MetricUnit.RATIO,
         windows=(window,),
         required_datasets=("stock_daily_bar",),
         output_columns=("trade_date", "symbol", metric_id),

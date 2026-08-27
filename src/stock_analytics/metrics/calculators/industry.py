@@ -16,6 +16,7 @@ from stock_analytics.metrics.spec import (
     MetricCalculator,
     MetricDomain,
     MetricSpec,
+    MetricUnit,
 )
 from stock_analytics.primitives.units import YUAN_PER_YI
 
@@ -118,13 +119,14 @@ def calculate_industry_metric(context: MetricContext, spec: MetricSpec) -> pl.Da
     return _select_metric(metric_frame, spec)
 
 
-def _spec(metric_id: str, name: str, domain: MetricDomain) -> MetricSpec:
+def _spec(metric_id: str, name: str, domain: MetricDomain, unit: MetricUnit) -> MetricSpec:
     """构造申万一级行业指标定义。"""
     return MetricSpec(
         metric_id=metric_id,
         name=name,
         domain=domain,
         entity_type=EntityType.INDUSTRY,
+        unit=unit,
         required_datasets=("sw_daily",),
         output_columns=("trade_date", "industry_code", "industry_name", metric_id),
     )
@@ -135,14 +137,26 @@ METRIC_SPECS: tuple[MetricSpec, ...] = (
         "sw_industry_pct_change",
         "申万一级行业日涨跌幅（%）",
         MetricDomain.PERFORMANCE,
+        MetricUnit.PERCENT,
     ),
     _spec(
         "sw_industry_amount_yi",
         "申万一级行业成交额（亿元）",
         MetricDomain.LIQUIDITY,
+        MetricUnit.CNY,
     ),
-    _spec("sw_industry_pe", "申万一级行业市盈率", MetricDomain.VALUATION),
-    _spec("sw_industry_pb", "申万一级行业市净率", MetricDomain.VALUATION),
+    _spec(
+        "sw_industry_pe",
+        "申万一级行业市盈率",
+        MetricDomain.VALUATION,
+        MetricUnit.RATIO,
+    ),
+    _spec(
+        "sw_industry_pb",
+        "申万一级行业市净率",
+        MetricDomain.VALUATION,
+        MetricUnit.RATIO,
+    ),
 )
 
 CALCULATORS: dict[str, MetricCalculator] = {

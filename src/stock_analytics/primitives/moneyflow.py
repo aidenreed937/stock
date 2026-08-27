@@ -75,16 +75,12 @@ def calculate_margin_factors(
             col_name = f"margin_growth_{w}d"
             if has_symbol:
                 expr = (
-                    (
-                        pl.col(margin_balance_col)
-                        / pl.col(margin_balance_col).shift(w).over("symbol")
-                        - 1.0
-                    )
-                    * 100.0
+                    pl.col(margin_balance_col) / pl.col(margin_balance_col).shift(w).over("symbol")
+                    - 1.0
                 ).alias(col_name)
             else:
                 expr = (
-                    (pl.col(margin_balance_col) / pl.col(margin_balance_col).shift(w) - 1.0) * 100.0
+                    pl.col(margin_balance_col) / pl.col(margin_balance_col).shift(w) - 1.0
                 ).alias(col_name)
             exprs.append(expr)
         temp_df = temp_df.with_columns(exprs)

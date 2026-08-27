@@ -99,7 +99,7 @@ def calculate_volume_surprise(
         vol_long = pl.col(volume_col).rolling_mean(window_size=long_window)
 
     col_name = f"volume_surprise_{short_window}_{long_window}"
-    surprise_expr = ((vol_short / (vol_long + 1e-8) - 1.0) * 100.0).alias(col_name)
+    surprise_expr = (vol_short / (vol_long + 1e-8) - 1.0).alias(col_name)
     return df.with_columns(surprise_expr)
 
 

@@ -1,0 +1,172 @@
+# 指标/因子 ID 语义登记表（机器可查源）
+#
+# 登记存量冲突 ID 的完整语义：同一 ID 在不同实体粒度/层使用不同单位，
+# 本轮（docs/plan/factor_spec_plan.md P0-c）只登记不改名。
+# 人工查阅入口：docs/plan/factor_spec_plan.md 第 1.3 节。
+version: 1
+
+naming_rules:
+  - "新增比率类 ID 不使用 _pct 后缀：单位统一小数制后，比率类内部一律 RATIO 小数，百分数仅作展示格式。"
+  - "跨层同根仅在登记表用 _median / _pct 标注存量（如 return_20d 的 MARKET 中位数、INDUSTRY 百分数），不强制改名存量。"
+  - "横截面因子默认不带实体前缀，靠 entity_type 字段区分粒度（如 return_20d 同时作为 STOCK 指标与 MARKET 聚合）。"
+
+entries:
+  # === return_20d：四粒度 × 两单位 ===
+  - id: return_20d
+    entity_type: STOCK
+    unit: ratio
+    definition: "close / shift(20) - 1（小数）"
+    producers:
+      - "src/stock_analytics/metrics/calculators/performance.py:87"
+    consumers:
+      - "features/builders/market_daily_ops.py:91（取 median 生成 MARKET 聚合）"
+    conflict_note: "与 INDUSTRY 百分数、stock_screen 内部百分数同 ID 不同单位。"
+  - id: return_20d
+    entity_type: MARKET
+    unit: ratio
+    definition: "全市场个股 return_20d 的中位数（小数）"
+    producers:
+      - "src/stock_analytics/features/builders/market_daily_ops.py:91"
+    consumers:
+      - "features/builtin_specs.py:112-122（FeatureSpec 注册）"
+    conflict_note: "由 STOCK return_20d 聚合而来，单位同为小数，语义为截面中位数。"
+  - id: return_20d
+    entity_type: INDUSTRY
+    unit: percent
+    definition: "(close / shift(20) - 1) * 100（百分数）"
+    producers:
+      - "src/stock_analytics/marts/shared/industry_structure/panel_batch.py:165"
+    consumers:
+      - "stock_reporting/interpretation/quant_brief/formatting.py:123（按百分数展示）"
+    conflict_note: "行业粒度基准收益，与 STOCK/MARKET 小数口径冲突。"
+  - id: return_20d
+    entity_type: STOCK
+    unit: percent
+    definition: "(close_now / close_20d - 1) * 100（内部中间列，百分数）"
+    producers:
+      - "src/stock_analytics/pipelines/stock_screen/factors.py:100"
+    consumers:
+      - "stock_screen/factors.py:106-115（随后替换/重命名为 rel_return_20d）"
+    conflict_note: "仅 stock_screen 内部临时列，不出现在宽表输出；与 STOCK 小数指标同名同粒度不同单位。"
+
+  # === return_60d ===
+  - id: return_60d
+    entity_type: STOCK
+    unit: ratio
+    definition: "close / shift(60) - 1（小数）"
+    producers:
+      - "src/stock_analytics/metrics/calculators/performance.py:95"
+    consumers:
+      - "stock_reporting 模板（industry_structure / investor_brief）消费 marts 列"
+    conflict_note: "与 stock_screen 内部 return_60d 百分数同 ID 不同单位。"
+  - id: return_60d
+    entity_type: STOCK
+    unit: percent
+    definition: "(close_now / close_60d - 1) * 100（内部中间列，百分数）"
+    producers:
+      - "src/stock_analytics/pipelines/stock_screen/factors.py:101"
+    consumers:
+      - "stock_screen/factors.py:106-115（随后替换/重命名为 rel_return_60d）"
+    conflict_note: "仅 stock_screen 内部临时列，不出现在宽表输出。"
+
+  # === rsi_14d ===
+  - id: rsi_14d
+    entity_type: STOCK
+    unit: percent
+    definition: "RSI(14)，0-100 自然区间"
+    producers:
+      - "src/stock_analytics/metrics/calculators/trend.py:101"
+    consumers:
+      - "features/builders/market_daily_ops.py:92（取 median 生成 MARKET 聚合）"
+    conflict_note: "与 MARKET 中位数同 ID 同单位，语义不同（个股时序 vs 市场截面中位数）。"
+  - id: rsi_14d
+    entity_type: MARKET
+    unit: percent
+    definition: "全市场个股 RSI(14) 中位数"
+    producers:
+      - "src/stock_analytics/features/builders/market_daily_ops.py:92"
+    consumers:
+      - "features/builtin_specs.py:123-134（FeatureSpec 注册）"
+    conflict_note: "由 STOCK rsi_14d 聚合而来。"
+
+  # === ma_bias_20d ===
+  - id: ma_bias_20d
+    entity_type: STOCK
+    unit: ratio
+    definition: "close / MA20 - 1（小数）"
+    producers:
+      - "src/stock_analytics/metrics/calculators/trend.py:100"
+    consumers:
+      - "features/builders/market_daily_ops.py:93（取 median 生成 MARKET 聚合）"
+    conflict_note: "与 MARKET 中位数同 ID，单位同为小数但语义不同。"
+  - id: ma_bias_20d
+    entity_type: MARKET
+    unit: ratio
+    definition: "全市场个股 20 日均线乖离率中位数"
+    producers:
+      - "src/stock_analytics/features/builders/market_daily_ops.py:93"
+    consumers:
+      - "features/builtin_specs.py:135-146（FeatureSpec 注册）"
+    conflict_note: "由 STOCK ma_bias_20d 聚合而来。"
+
+  # === 同族异名：realized_vol_20d vs realized_volatility_20d ===
+  - id: realized_vol_20d
+    entity_type: STOCK
+    unit: ratio
+    definition: "年化已实现波动率（小数，Std(ln 收益, 20) * sqrt(252)）"
+    producers:
+      - "src/stock_analytics/primitives/volatility.py（calculate_realized_volatility）"
+      - "features/factors.py:104（FactorEngine 调用）"
+    consumers:
+      - "暂无业务消费方（FactorEngine 无下游）"
+    conflict_note: "与 metrics 的 realized_volatility_20d 同义异名，保留原列名，aliases 记 realized_volatility_20d。"
+  - id: realized_volatility_20d
+    entity_type: STOCK
+    unit: ratio
+    definition: "20 日年化已实现波动率（小数，rolling_std * sqrt(252)）"
+    producers:
+      - "src/stock_analytics/metrics/calculators/volatility.py:115"
+    consumers:
+      - "stock_reporting / analytics 消费方"
+    conflict_note: "与 FactorEngine 的 realized_vol_20d 同义异名。"
+
+  # === 同族异名：dist_to_high_250d vs distance_to_252d_high ===
+  - id: dist_to_high_250d
+    entity_type: STOCK
+    unit: ratio
+    definition: "距 250 日最高价距离（小数，(close - rolling_max) / rolling_max）"
+    producers:
+      - "src/stock_analytics/primitives/momentum.py（calculate_distance_to_high）"
+      - "features/factors.py:100（FactorEngine 调用）"
+    consumers:
+      - "暂无业务消费方（FactorEngine 无下游）"
+    conflict_note: "与 metrics 的 distance_to_252d_high 同义异名且窗口不同（250 vs 252），保留原列名。"
+  - id: distance_to_252d_high
+    entity_type: STOCK
+    unit: ratio
+    definition: "距 252 日高点距离（小数，close / rolling_max(252) - 1）"
+    producers:
+      - "src/stock_analytics/metrics/calculators/trend.py:102"
+    consumers:
+      - "stock_reporting / analytics 消费方"
+    conflict_note: "与 FactorEngine 的 dist_to_high_250d 同义异名且窗口不同。"
+
+  # === stock_screen 相对强弱输出 ===
+  - id: rel_return_20d
+    entity_type: STOCK
+    unit: percent
+    definition: "个股 20 日收益相对沪深300 的差值（百分数）"
+    producers:
+      - "src/stock_analytics/pipelines/stock_screen/factors.py:107-115"
+    consumers:
+      - "pipelines/stock_screen/scoring.py:39（评分输入）"
+    conflict_note: "由内部 return_20d（百分数）派生，命名带 rel_ 前缀以示相对基准。"
+  - id: rel_return_60d
+    entity_type: STOCK
+    unit: percent
+    definition: "个股 60 日收益相对沪深300 的差值（百分数）"
+    producers:
+      - "src/stock_analytics/pipelines/stock_screen/factors.py:110-113"
+    consumers:
+      - "pipelines/stock_screen/scoring.py:40（评分输入）"
+    conflict_note: "由内部 return_60d（百分数）派生，命名带 rel_ 前缀以示相对基准。"

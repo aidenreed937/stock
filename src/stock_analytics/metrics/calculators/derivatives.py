@@ -17,6 +17,7 @@ from stock_analytics.metrics.spec import (
     MetricCalculator,
     MetricDomain,
     MetricSpec,
+    MetricUnit,
 )
 from stock_analytics.plugins.options import compute_fast_bs_iv
 
@@ -253,13 +254,14 @@ def calculate_derivatives_metric(context: MetricContext, spec: MetricSpec) -> pl
     return _select_metric(frame, spec)
 
 
-def _spec(metric_id: str, name: str, datasets: tuple[str, ...]) -> MetricSpec:
+def _spec(metric_id: str, name: str, datasets: tuple[str, ...], unit: MetricUnit) -> MetricSpec:
     """构造衍生品指标定义。"""
     return MetricSpec(
         metric_id=metric_id,
         name=name,
         domain=MetricDomain.DERIVATIVES,
         entity_type=EntityType.MARKET,
+        unit=unit,
         required_datasets=datasets,
         output_columns=("trade_date", metric_id),
     )
@@ -272,21 +274,25 @@ METRIC_SPECS: tuple[MetricSpec, ...] = (
         "option_put_call_volume_ratio",
         "全市场期权认沽/认购成交量比",
         ("opt_daily", "opt_basic"),
+        MetricUnit.RATIO,
     ),
     _spec(
         "option_put_call_oi_ratio",
         "全市场期权认沽/认购持仓量比",
         ("opt_daily", "opt_basic"),
+        MetricUnit.RATIO,
     ),
     _spec(
         "option_settlement_iv_proxy_median",
         "期权结算价隐含波动率代理（中位数）",
         _IV_DATASETS,
+        MetricUnit.RATIO,
     ),
     _spec(
         "option_settlement_iv_proxy_put_call_skew",
         "期权结算价IV认沽认购偏度",
         _IV_DATASETS,
+        MetricUnit.RATIO,
     ),
 )
 

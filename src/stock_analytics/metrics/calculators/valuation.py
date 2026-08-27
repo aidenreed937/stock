@@ -15,6 +15,7 @@ from stock_analytics.metrics.spec import (
     MetricCalculator,
     MetricDomain,
     MetricSpec,
+    MetricUnit,
 )
 from stock_analytics.primitives.rules import rolling_percentile, rolling_zscore
 
@@ -212,6 +213,7 @@ def calculate_valuation_metric(context: MetricContext, spec: MetricSpec) -> pl.D
 def _spec(
     metric_id: str,
     name: str,
+    unit: MetricUnit,
     *,
     datasets: tuple[str, ...] = ("index_fundamental",),
     windows: tuple[int, ...] = (),
@@ -221,6 +223,7 @@ def _spec(
         name=name,
         domain=MetricDomain.VALUATION,
         entity_type=EntityType.INDEX,
+        unit=unit,
         windows=windows,
         required_datasets=datasets,
         output_columns=("trade_date", "symbol", metric_id),
@@ -228,55 +231,71 @@ def _spec(
 
 
 METRIC_SPECS: tuple[MetricSpec, ...] = (
-    _spec("earnings_yield", "盈利收益率"),
-    _spec("pe_zscore_5y", "PE五年Z分数", windows=(_TRADING_DAYS_5Y,)),
-    _spec("pb_zscore_5y", "PB五年Z分数", windows=(_TRADING_DAYS_5Y,)),
-    _spec("pe_percentile_5y", "PE五年历史分位数", windows=(_TRADING_DAYS_5Y,)),
-    _spec("pb_percentile_5y", "PB五年历史分位数", windows=(_TRADING_DAYS_5Y,)),
+    _spec("earnings_yield", "盈利收益率", MetricUnit.RATIO),
+    _spec("pe_zscore_5y", "PE五年Z分数", MetricUnit.ZSCORE, windows=(_TRADING_DAYS_5Y,)),
+    _spec("pb_zscore_5y", "PB五年Z分数", MetricUnit.ZSCORE, windows=(_TRADING_DAYS_5Y,)),
+    _spec(
+        "pe_percentile_5y", "PE五年历史分位数", MetricUnit.PERCENTILE, windows=(_TRADING_DAYS_5Y,)
+    ),
+    _spec(
+        "pb_percentile_5y", "PB五年历史分位数", MetricUnit.PERCENTILE, windows=(_TRADING_DAYS_5Y,)
+    ),
     _spec(
         "dividend_yield_percentile_5y",
         "股息率五年历史分位数",
+        MetricUnit.PERCENTILE,
         windows=(_TRADING_DAYS_5Y,),
     ),
-    _spec("pe_zscore_10y", "PE十年Z分数", windows=(_TRADING_DAYS_10Y,)),
-    _spec("pb_zscore_10y", "PB十年Z分数", windows=(_TRADING_DAYS_10Y,)),
-    _spec("pe_percentile_10y", "PE十年历史分位数", windows=(_TRADING_DAYS_10Y,)),
-    _spec("pb_percentile_10y", "PB十年历史分位数", windows=(_TRADING_DAYS_10Y,)),
+    _spec("pe_zscore_10y", "PE十年Z分数", MetricUnit.ZSCORE, windows=(_TRADING_DAYS_10Y,)),
+    _spec("pb_zscore_10y", "PB十年Z分数", MetricUnit.ZSCORE, windows=(_TRADING_DAYS_10Y,)),
+    _spec(
+        "pe_percentile_10y", "PE十年历史分位数", MetricUnit.PERCENTILE, windows=(_TRADING_DAYS_10Y,)
+    ),
+    _spec(
+        "pb_percentile_10y", "PB十年历史分位数", MetricUnit.PERCENTILE, windows=(_TRADING_DAYS_10Y,)
+    ),
     _spec(
         "dividend_yield_percentile_10y",
         "股息率十年历史分位数",
+        MetricUnit.PERCENTILE,
         windows=(_TRADING_DAYS_10Y,),
     ),
     _spec(
         "equity_risk_premium",
         "股权风险溢价",
+        MetricUnit.RATIO,
         datasets=("index_fundamental", "national_debt"),
     ),
     _spec(
         "equity_risk_premium_percentile_5y",
         "股权风险溢价五年历史分位数",
+        MetricUnit.PERCENTILE,
         datasets=("index_fundamental", "national_debt"),
         windows=(_TRADING_DAYS_5Y,),
     ),
     _spec(
         "equity_risk_premium_percentile_10y",
         "股权风险溢价十年历史分位数",
+        MetricUnit.PERCENTILE,
         datasets=("index_fundamental", "national_debt"),
         windows=(_TRADING_DAYS_10Y,),
     ),
     _spec(
         "equity_bond_yield_ratio",
         "股债收益比",
+        MetricUnit.RATIO,
         datasets=("index_fundamental", "national_debt"),
     ),
     _spec(
         "dividend_bond_spread",
         "股息率国债利差",
+        MetricUnit.RATIO,
         datasets=("index_fundamental", "national_debt"),
     ),
     _spec(
         "valuation_temperature",
         "估值温度",
+        MetricUnit.SCORE_0_100,
         datasets=("index_fundamental", "national_debt"),
         windows=(_TRADING_DAYS_10Y,),
     ),

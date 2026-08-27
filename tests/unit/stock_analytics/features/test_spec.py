@@ -27,7 +27,10 @@ def test_feature_registry_query() -> None:
     assert any(s.feature_id == "above_ma20_ratio" for s in indicators)
 
     market_features = FeatureRegistry.list_by_entity_type(EntityType.MARKET)
-    assert len(market_features) == len(FeatureRegistry.list_all())
+    stock_features = FeatureRegistry.list_by_entity_type(EntityType.STOCK)
+    # 注册表包含 MARKET 与 STOCK 两类实体，两者并集为全量
+    assert len(market_features) + len(stock_features) == len(FeatureRegistry.list_all())
+    assert any(s.feature_id == "mom_20d" for s in stock_features)
 
 
 def test_registry_covers_all_market_daily_output_features() -> None:
