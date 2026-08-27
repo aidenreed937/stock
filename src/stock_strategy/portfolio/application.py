@@ -79,8 +79,8 @@ def run_backtest_application(
     source_run, scores, summary = load_latest_scores(portfolio_root_path)
     if scores.is_empty():
         raise DataValidationError(f"组合分数面板为空: {portfolio_root_path}")
-    min_date = cast(date, scores["trade_date"].min())
-    max_date = cast(date, scores["trade_date"].max())
+    min_date = cast("date", scores["trade_date"].min())
+    max_date = cast("date", scores["trade_date"].max())
 
     if prices is None:
         catalog = DataCatalog(data_source="tushare", storage_dir=storage_dir)
