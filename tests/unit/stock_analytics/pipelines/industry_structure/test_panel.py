@@ -5,7 +5,7 @@ from pathlib import Path
 
 import polars as pl
 
-from stock_analytics.pipelines.industry_structure.panel import (
+from stock_analytics.marts.shared.industry_structure.panel import (
     _industry_daily_frame,
     build_industry_panel,
 )

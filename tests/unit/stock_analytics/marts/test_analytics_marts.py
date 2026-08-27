@@ -6,13 +6,13 @@ from pathlib import Path
 import polars as pl
 
 import stock_analytics.marts.market_temperature as market_temperature_mart
+from stock_analytics.features.dataset_cache import DatasetFrameCache
 from stock_analytics.features.store import FeatureStore
 from stock_analytics.marts.industry_structure import build_industry_daily_frame
 from stock_analytics.marts.market_temperature import (
     _market_daily_option_source_is_current,
     build_market_temperature_derived_facts_mart,
 )
-from stock_analytics.pipelines.market_temperature.cache import DatasetFrameCache
 from stock_reporting.interpretation.industry_structure.config import (
     FundamentalBlendConfig,
     IndustryStructureConfig,

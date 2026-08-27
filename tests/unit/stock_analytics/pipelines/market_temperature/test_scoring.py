@@ -5,7 +5,7 @@ from datetime import date
 import polars as pl
 import pytest
 
-from stock_analytics.pipelines.market_temperature.facts import FACT_SCHEMA
+from stock_analytics.marts.shared.market_temperature.facts import FACT_SCHEMA
 from stock_analytics.pipelines.market_temperature.scoring import (
     _fast_slow_temperatures,
     build_scores,

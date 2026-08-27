@@ -4,7 +4,7 @@ from datetime import date
 
 import polars as pl
 
-from stock_analytics.pipelines.market_temperature.cache import CachedCatalog, DatasetFrameCache
+from stock_analytics.features.dataset_cache import CachedCatalog, DatasetFrameCache
 
 
 class _Catalog:

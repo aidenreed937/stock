@@ -7,8 +7,8 @@ from unittest.mock import MagicMock
 
 import polars as pl
 
-from stock_analytics.pipelines.industry_structure.classifier import IndustryClassifier
-from stock_analytics.pipelines.industry_structure.pb_roe import IndustryPBROEAnalyzer
+from stock_analytics.marts.shared.industry_structure.classifier import IndustryClassifier
+from stock_analytics.marts.shared.industry_structure.pb_roe import IndustryPBROEAnalyzer
 from stock_data.catalog import DataCatalog
 
 

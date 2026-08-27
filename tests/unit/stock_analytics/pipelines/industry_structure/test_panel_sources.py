@@ -5,11 +5,11 @@ from datetime import date, timedelta
 import polars as pl
 import pytest
 
-from stock_analytics.pipelines.industry_structure.industry_mapping import (
+from stock_analytics.marts.shared.industry_structure.industry_mapping import (
     prepare_stock_industry_members,
     stock_industry_map_from_prepared_members,
 )
-from stock_analytics.pipelines.industry_structure.panel_sources import (
+from stock_analytics.marts.shared.industry_structure.panel_sources import (
     _stock_industry_map_from_index_member,
     load_benchmark_return_20d,
     load_stock_industry_map,

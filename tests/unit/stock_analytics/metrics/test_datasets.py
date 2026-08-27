@@ -4,10 +4,10 @@ from typing import TYPE_CHECKING, cast
 
 import polars as pl
 
+from stock_analytics.features.dataset_cache import DatasetFrameCache
 from stock_analytics.metrics import MetricContext
 from stock_analytics.metrics.datasets import build_calendar_lookback_window
 from stock_analytics.metrics.datasets.loaders import load_metric_dataset
-from stock_analytics.pipelines.market_temperature.cache import DatasetFrameCache
 
 if TYPE_CHECKING:
     from stock_data.catalog import DataCatalog

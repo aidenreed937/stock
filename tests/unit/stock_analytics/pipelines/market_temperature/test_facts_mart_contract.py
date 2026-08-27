@@ -1,7 +1,7 @@
 """市场温度指标与宽表特征绑定契约测试。"""
 
 from stock_analytics.features.builtin_specs import get_all_builtin_specs
-from stock_analytics.pipelines.market_temperature.facts_mart import _MARKET_DAILY_COLUMN_MAP
+from stock_analytics.marts.shared.market_temperature.facts_mart import _MARKET_DAILY_COLUMN_MAP
 
 
 def test_market_daily_bindings_are_declared_by_feature_specs() -> None:

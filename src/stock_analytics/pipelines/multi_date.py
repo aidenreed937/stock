@@ -7,13 +7,13 @@ from dataclasses import dataclass
 from datetime import date, timedelta
 from pathlib import Path
 
+from stock_analytics.features.dataset_cache import DatasetFrameCache
 from stock_analytics.features.store import FeatureStore
+from stock_analytics.marts.shared.market_temperature.facts_mart import MARKET_DAILY_FACT_COLUMNS
 from stock_analytics.pipelines.artifact_contracts import RunClass
 from stock_analytics.pipelines.industry_structure import run_industry_structure
 from stock_analytics.pipelines.investor_brief import run_investor_brief
 from stock_analytics.pipelines.market_temperature import run_market_temperature
-from stock_analytics.pipelines.market_temperature.cache import DatasetFrameCache
-from stock_analytics.pipelines.market_temperature.facts_mart import MARKET_DAILY_FACT_COLUMNS
 from stock_analytics.pipelines.quant_brief import run_quant_brief
 from stock_data.catalog import DataCatalog
 
@@ -153,7 +153,7 @@ def _load_trade_dates(
 ) -> tuple[date, ...]:
     catalog = DataCatalog(data_source="tushare", storage_dir=storage_dir)
     if dataset_cache is not None:
-        from stock_analytics.pipelines.market_temperature.cache import CachedCatalog
+        from stock_analytics.features.dataset_cache import CachedCatalog
 
         catalog = CachedCatalog(catalog, dataset_cache)  # type: ignore[assignment]
     scan_start = start_date - timedelta(days=extra_window * 4)

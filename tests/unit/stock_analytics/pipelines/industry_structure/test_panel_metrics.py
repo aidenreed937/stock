@@ -4,10 +4,10 @@ from datetime import date
 
 import polars as pl
 
-from stock_analytics.pipelines.industry_structure.panel_metrics_batch import (
+from stock_analytics.marts.shared.industry_structure.panel_metrics_batch import (
     _valuation_base_frame,
 )
-from stock_analytics.pipelines.industry_structure.pb_roe import _extract_pb_roe_cols
+from stock_analytics.marts.shared.industry_structure.pb_roe import _extract_pb_roe_cols
 
 
 def test_valuation_base_frame_treats_nonpositive_pe_as_missing() -> None:

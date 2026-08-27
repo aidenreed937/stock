@@ -11,7 +11,7 @@ import polars as pl
 
 from stock_analytics.catalog_compat import load_dataset_compat
 from stock_analytics.data_quality import is_dataset_lagging
-from stock_analytics.pipelines.market_temperature.cache import CachedCatalog, DatasetFrameCache
+from stock_analytics.features.dataset_cache import CachedCatalog, DatasetFrameCache
 from stock_core.contracts import MarketDataCatalog
 
 if TYPE_CHECKING:

@@ -5,7 +5,7 @@ from pathlib import Path
 
 import polars as pl
 
-from stock_analytics.pipelines.market_temperature.facts import FACT_SCHEMA
+from stock_analytics.marts.shared.market_temperature.facts import FACT_SCHEMA
 from stock_reporting.interpretation.market_temperature.config import MarketTemperatureConfig
 from stock_reporting.templates.market_temperature import (
     build_report_json,

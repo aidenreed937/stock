@@ -5,7 +5,7 @@ from datetime import date, timedelta
 import polars as pl
 import pytest
 
-from stock_analytics.pipelines.market_temperature.facts_mart import try_get_market_daily_fact
+from stock_analytics.marts.shared.market_temperature.facts_mart import try_get_market_daily_fact
 from stock_reporting.interpretation.market_temperature.config import MetricInputConfig
 
 

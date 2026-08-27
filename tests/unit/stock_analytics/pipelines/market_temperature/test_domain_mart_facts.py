@@ -6,7 +6,7 @@ from pathlib import Path
 import polars as pl
 
 from stock_analytics.features.store import FeatureStore
-from stock_analytics.pipelines.market_temperature.domain_mart_facts import (
+from stock_analytics.marts.shared.market_temperature.domain_mart_facts import (
     collect_domain_mart_observations,
 )
 

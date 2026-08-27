@@ -6,7 +6,7 @@ from pathlib import Path
 import polars as pl
 import pytest
 
-from stock_analytics.pipelines.market_temperature.derived import (
+from stock_analytics.marts.shared.market_temperature.derived import (
     _amount_top_5pct_daily_frame,
     _external_environment_row,
     _external_macro_rows,
@@ -62,10 +62,10 @@ def test_amount_top_5pct_share_keeps_missing_target_as_insufficient() -> None:
     assert rows[date(2026, 8, 15)]["status"] == "insufficient"
 
 
-from stock_analytics.pipelines.market_temperature.derived_options import (
+from stock_analytics.marts.shared.market_temperature.derived_options import (
     build_option_daily_frame,
 )
-from stock_analytics.pipelines.market_temperature.external_risk_facts import (
+from stock_analytics.marts.shared.market_temperature.external_risk_facts import (
     raw_external_change_metric_row,
 )
 

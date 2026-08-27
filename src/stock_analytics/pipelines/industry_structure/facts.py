@@ -7,11 +7,11 @@ from typing import TYPE_CHECKING, Any
 
 import polars as pl
 
+from stock_analytics.features.dataset_cache import DatasetFrameCache
 from stock_analytics.pipelines.industry_structure.fact_watermarks import _latest_dataset_date
 from stock_analytics.pipelines.industry_structure.fact_watermarks import (
     collect_dataset_rows as _dataset_rows,
 )
-from stock_analytics.pipelines.market_temperature.cache import DatasetFrameCache
 from stock_core.contracts import MarketDataCatalog
 
 if TYPE_CHECKING:
@@ -63,7 +63,7 @@ def resolve_trade_window(
 
         active_catalog = DataCatalog(data_source="tushare", storage_dir=storage_dir)
     if dataset_cache is not None:
-        from stock_analytics.pipelines.market_temperature.cache import CachedCatalog
+        from stock_analytics.features.dataset_cache import CachedCatalog
 
         active_catalog = CachedCatalog(active_catalog, dataset_cache)
     if target_date is None and hasattr(active_catalog, "latest_trade_dates"):

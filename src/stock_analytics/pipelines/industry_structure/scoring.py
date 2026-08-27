@@ -6,7 +6,7 @@ from typing import TYPE_CHECKING, Any
 
 import polars as pl
 
-from stock_analytics.pipelines.industry_structure.panel import BASE_PANEL_SCHEMA
+from stock_analytics.marts.shared.industry_structure.panel import BASE_PANEL_SCHEMA
 from stock_analytics.pipelines.industry_structure.scoring_diagnostics import (
     _bottom_rows,
     _count_by_text,
