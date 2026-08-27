@@ -10,13 +10,13 @@ import pytest
 import yaml
 
 from stock_analytics.features.builtin_factor_specs import FACTOR_ENGINE_SPECS
+from stock_analytics.pipelines._shared.panel import assemble_panel
 from stock_analytics.pipelines.factor_research.config import (
     DEFAULT_CONFIG_PATH,
     FactorResearchConfig,
     load_factor_research_config,
 )
 from stock_analytics.pipelines.factor_research.pipeline import (
-    _assemble_panel,
     _evaluate_factor,
     _select_factor_pool,
     run_factor_research,
@@ -101,7 +101,7 @@ class TestAssemblePanel:
             "amount",
             "pre_close",
         )
-        panel = _assemble_panel(bar, pl.DataFrame(), pl.DataFrame())
+        panel = assemble_panel(bar, pl.DataFrame(), pl.DataFrame())
         for column in (
             "trade_date",
             "symbol",
@@ -133,12 +133,12 @@ class TestAssemblePanel:
             "pre_close",
         )
         basic = _make_base_panel().select("symbol", "trade_date", "turnover_rate", "pe_ttm", "pb")
-        panel = _assemble_panel(bar, basic, pl.DataFrame())
+        panel = assemble_panel(bar, basic, pl.DataFrame())
         assert panel["turnover_rate"].null_count() == 0
 
     def test_empty_bar_raises(self) -> None:
         with pytest.raises(DataValidationError):
-            _assemble_panel(pl.DataFrame(), pl.DataFrame(), pl.DataFrame())
+            assemble_panel(pl.DataFrame(), pl.DataFrame(), pl.DataFrame())
 
 
 class TestFactorPool:

@@ -47,6 +47,15 @@ from stock_analytics.primitives import calculate_rsi
 `docs/plan/factor_spec_plan_p3.md`）。业务管线如需共享事实，直接导入
 `stock_analytics.marts.shared.<domain>.<module>`。
 
+面板装配复用：`stock_daily_bar` 主数据集 + `daily_basic` / `moneyflow` 可选增强的
+基础列面板装配（`assemble_panel` / `load_optional_dataset`）统一位于
+`stock_analytics.pipelines._shared.panel`，由 `factor_research` 与 `factor_portfolio`
+共用（不做业务规则，只做读取与列装配）。
+
+因子评估与组合两条链路的产物消费方式：`factor_portfolio` 通过 `artifact_reader`
+`resolve_artifact_run` 读取 `factor_research` 产物（默认 latest）的通过因子清单，
+不直接拼接 `data/analytics/*/latest` 物理路径。
+
 ## 大管线拆分约束
 
 市场温度计按事实主题拆分为基本面、情绪、宏观和通用事实工具；行业结构按面板构建、批量聚合、评分和诊断拆分。每个拆分模块必须满足：

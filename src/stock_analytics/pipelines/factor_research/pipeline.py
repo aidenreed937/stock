@@ -21,6 +21,13 @@ import polars as pl
 from stock_analytics.catalog_compat import load_dataset_compat
 from stock_analytics.features.builtin_factor_specs import FACTOR_ENGINE_SPECS
 from stock_analytics.features.factors import FactorEngine
+from stock_analytics.pipelines._shared.panel import (
+    BAR_COLUMNS,
+    BASIC_COLUMNS,
+    FLOW_COLUMNS,
+    assemble_panel,
+    load_optional_dataset,
+)
 from stock_analytics.pipelines.artifact_contracts import RunClass
 from stock_analytics.pipelines.factor_research.artifacts import (
     FactorResearchArtifactPayload,
@@ -47,44 +54,6 @@ from stock_analytics.primitives.factor_quantile import (
 from stock_core.exceptions import DataValidationError
 from stock_core.utils.logger import logger
 
-_BAR_COLUMNS = (
-    "symbol",
-    "trade_date",
-    "open",
-    "high",
-    "low",
-    "close",
-    "volume",
-    "amount",
-    "pre_close",
-)
-_BASIC_COLUMNS = ("symbol", "trade_date", "turnover_rate", "pe_ttm", "pb")
-_FLOW_COLUMNS = ("symbol", "trade_date", "net_mf_amount")
-
-#: compute_all_factors 期望的输入基础列（引擎校验派生列全集用）。
-_BASE_COLUMNS = frozenset(
-    {
-        "trade_date",
-        "symbol",
-        "open",
-        "high",
-        "low",
-        "close",
-        "volume",
-        "amount",
-        "pre_close",
-        "turnover_rate",
-        "net_mf_amount",
-        "pe_ttm",
-        "pb",
-    }
-)
-
-_OPTIONAL_DATASETS: tuple[tuple[str, tuple[str, ...]], ...] = (
-    ("daily_basic", _BASIC_COLUMNS),
-    ("moneyflow", _FLOW_COLUMNS),
-)
-
 
 @dataclass(frozen=True, slots=True)
 class FactorResearchRunResult:
@@ -95,43 +64,6 @@ class FactorResearchRunResult:
     manifest: dict[str, Any]
     report_markdown: str
     report_json: dict[str, Any]
-
-
-def _load_optional_dataset(
-    catalog: Any,
-    dataset: str,
-    columns: Sequence[str],
-    start: date,
-    end: date,
-) -> pl.DataFrame:
-    """读取可选增强数据集；异常或空表时返回带缺失列的空帧（不阻塞评估）。"""
-    try:
-        frame = load_dataset_compat(
-            catalog,
-            dataset,
-            start_date=start,
-            end_date=end,
-            columns=list(columns),
-        )
-    except Exception as exc:  # noqa: BLE001 - 可选数据集缺失不阻塞评估
-        logger.debug(f"加载可选数据集 {dataset} 失败: {exc}")
-        return pl.DataFrame()
-    return frame if not frame.is_empty() else pl.DataFrame()
-
-
-def _assemble_panel(bar: pl.DataFrame, basic: pl.DataFrame, flow: pl.DataFrame) -> pl.DataFrame:
-    """把日线与可选增强数据装配为引擎基础列面板（缺失列补 null，不推断）。"""
-    if bar.is_empty():
-        raise DataValidationError("stock_daily_bar 评估窗口内无数据，无法评估因子")
-    panel = bar
-    for optional in (basic, flow):
-        if optional.is_empty():
-            continue
-        panel = panel.join(optional, on=("symbol", "trade_date"), how="left")
-    missing = sorted(_BASE_COLUMNS - set(panel.columns))
-    if missing:
-        panel = panel.with_columns(pl.lit(None, dtype=pl.Float64).alias(col) for col in missing)
-    return panel
 
 
 def _select_factor_pool(config: FactorResearchConfig, wide_columns: Sequence[str]) -> list[str]:
@@ -272,13 +204,13 @@ def run_factor_research(
             "stock_daily_bar",
             start_date=window_start,
             end_date=as_of_date,
-            columns=list(_BAR_COLUMNS),
+            columns=list(BAR_COLUMNS),
         )
-        basic = _load_optional_dataset(
-            catalog, "daily_basic", _BASIC_COLUMNS, window_start, as_of_date
+        basic = load_optional_dataset(
+            catalog, "daily_basic", BASIC_COLUMNS, window_start, as_of_date
         )
-        flow = _load_optional_dataset(catalog, "moneyflow", _FLOW_COLUMNS, window_start, as_of_date)
-        panel = _assemble_panel(bar, basic, flow)
+        flow = load_optional_dataset(catalog, "moneyflow", FLOW_COLUMNS, window_start, as_of_date)
+        panel = assemble_panel(bar, basic, flow)
 
     wide = FactorEngine.compute_all_factors(panel, price_col=config.price_col, normalize=False)
     factor_cols = _select_factor_pool(config, wide.columns)

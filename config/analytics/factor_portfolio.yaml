@@ -1,0 +1,22 @@
+factor_portfolio:
+  schema_version: 1
+  title: "因子组合分数报告"
+  artifact_root: "data/analytics/factor_portfolio"
+
+  # 组合/回测历史窗口（自然日回看长度）
+  window_days: 1095
+  # 价格基准列（未复权口径；除权日收益可能失真，见报告口径说明）
+  price_col: "close"
+  # 调仓周期（交易日）
+  rebalance_days: 5
+  # 每期持仓数（top-N 等权多头）
+  top_n: 10
+  # 当日有效因子少于该值时该日组合分数为缺失
+  min_valid_factors: 3
+  # 窗口内可回溯交易日下限，不足则 fail-closed
+  min_trade_days: 200
+
+  # 因子准入来源：factor_research 产物根目录；null = 使用 artifact_root 相邻的 factor_research
+  factor_research_dir: null
+  # 显式因子白名单（feature_id 列表）；非空时覆盖准入报告读取
+  factor_whitelist: []
