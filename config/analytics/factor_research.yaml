@@ -1,0 +1,32 @@
+factor_research:
+  schema_version: 1
+  title: "因子准入评估报告"
+  artifact_root: "data/analytics/factor_research"
+
+  # 评估历史窗口（自然日回看长度）
+  window_days: 730
+  # 前向收益窗口（交易日）
+  horizons: [1, 5, 20]
+  # 准入判定使用的主口径前向窗口（须在 horizons 内）
+  decision_horizon: 5
+  # 分层分箱数
+  n_bins: 5
+  # 价格基准列（未复权口径；除权日收益可能失真，见报告口径说明）
+  price_col: "close"
+  # 分层单调性/多空分析使用的前向窗口（交易日）
+  quantile_horizon: 20
+  # 因子最少有效 IC 天数，不足则判定 insufficient（避免噪声因子误判）
+  min_ic_days: 60
+
+  thresholds:
+    # 主口径 ICIR（不年化）
+    icir: 0.5
+    # t 统计量
+    t_stat: 2.0
+    # 多空价差时序均值（百分点），须大于该值
+    long_short_mean: 0.0
+
+  # 可评估因子池筛选：unit 白名单（无量纲可横截面排序的单位）
+  allowed_units: ["ratio", "percent", "percentile", "zscore", "score_0_100"]
+  # 显式因子白名单（feature_id 列表）；非空时覆盖 allowed_units/direction 规则
+  factor_whitelist: []
