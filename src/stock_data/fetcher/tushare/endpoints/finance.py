@@ -61,7 +61,7 @@ FINANCE_ENDPOINTS: dict[str, EndpointMeta] = {
             "vol": "10k_share",
             "amount": "CNY10k",
         },
-        request_window_days=31,
+        request_window_days=1,
         max_rows_per_request=1000,
         request_fields="ts_code,trade_date,price,vol,amount,buyer,seller",
     ),
