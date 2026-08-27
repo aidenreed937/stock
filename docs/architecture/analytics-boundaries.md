@@ -41,16 +41,21 @@ from stock_analytics.primitives import calculate_rsi
 `marts` 和 `pipelines` 仍分别通过各自的包级门面提供领域 Mart 构建与业务流程编排。
 外部消费者不应因此直接导入 `metrics`、`features` 或 `marts` 下的内部实现模块。
 
-`pipeline.py`、`facts.py`、`scoring.py`、`panel.py` 等实现文件可以保留兼容导出，但不作为新的外部依赖入口。拆分大文件时应优先保留这些兼容门面，再逐步迁移调用方。
+共享事实一律从 `marts/shared/<domain>` 导入：市场温度与行业结构的
+`facts`、`panel`、`cache` 等共享事实模块只存在于 `marts/shared/`，
+`pipelines.<domain>` 下不再保留同名兼容门面（兼容门面已随调用方迁移完成删除，见
+`docs/plan/factor_spec_plan_p3.md`）。业务管线如需共享事实，直接导入
+`stock_analytics.marts.shared.<domain>.<module>`。
 
 ## 大管线拆分约束
 
 市场温度计按事实主题拆分为基本面、情绪、宏观和通用事实工具；行业结构按面板构建、批量聚合、评分和诊断拆分。每个拆分模块必须满足：
 
 - 不改变原有事实 Schema、metric ID、score key 和日期截断规则；
-- 叶子模块不得反向导入门面模块，避免循环依赖；
-- 兼容门面只做编排和重导出，不新增业务规则；
+- 叶子模块不得反向导入编排模块，避免循环依赖；
+- 共享事实定义于 `marts/shared/<domain>`，`pipelines.<domain>` 只保留真实业务编排，不保留同名兼容门面；
 - 先用现有测试锁定行为，再抽取共享批处理上下文。
 
-市场温度和行业结构的共享事实计算位于 `marts/shared/`；原
-`pipelines.<domain>` 下的同名模块只保留兼容导出，业务管线仍负责日期窗口、评分和产物编排。
+市场温度和行业结构的共享事实计算位于 `marts/shared/`；业务管线从
+`marts/shared/<domain>` 导入共享事实，仍负责日期窗口、评分和产物编排。
+`pipelines.<domain>` 下的兼容门面已全部删除，旧导入路径不再可用。
