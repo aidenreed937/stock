@@ -1,0 +1,34 @@
+# 📅 宏观风控双轨制雷达日报 ({{ trade_date }})
+
+> **核心结论：{{ eval_result.status }}**
+
+## 📊 双轨制指数监控
+
+- **🔥 狂热指数 (Overheat Index)**: `{{ "%.1f"|format(eval_result.overheat_value) }}` (当前数值越大，发生毁灭性回撤的概率越高)
+- **🥶 恐慌指数 (Panic Index)**: `{{ "%.1f"|format(eval_result.panic_value) }}` (当前数值越大，发生报复性反弹的概率越高)
+
+---
+
+## 🔍 风险归因分析
+
+当前市场的核心驱动力量来自 **{{ eval_result.top_driver }}** (读数: `{{ "%.1f"|format(eval_result.top_driver_val) }}`)。
+
+**各子维度拆解 (0-100 历史分位)：**
+{% for dim_name, dim_val in eval_result.dimensions.items() %}
+- {{ dim_name }}: `{{ "%.1f"|format(dim_val) if dim_val else "N/A" }}`
+{% endfor %}
+
+---
+
+## 💡 交叉诊断与操作建议
+
+{% if eval_result.level == "danger" %}
+**【强烈做空/减仓信号】**
+{% elif eval_result.level == "opportunity" %}
+**【黄金坑抄底信号】**
+{% elif eval_result.level == "warning" %}
+**【警报信号】**
+{% else %}
+**【平稳期】**
+{% endif %}
+{{ eval_result.advice }}

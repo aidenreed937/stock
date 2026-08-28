@@ -72,7 +72,7 @@ def evaluate_systemic_gate(
     flags: list[str] = []
     hard = False
     if risk.get("status") == "high_systemic_risk":
-        flags.append("系统性风险状态已达高风险")
+        flags.append("系统风险档位已达高位，温度读数可信度低")
         hard = True
     if valuation is not None and valuation >= config.valuation_red_flag_temperature:
         flags.append(f"估值温度 {valuation:.2f} 达到红旗阈值")
