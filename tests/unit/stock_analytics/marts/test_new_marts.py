@@ -425,6 +425,42 @@ def test_unlock_pressure_empty() -> None:
     )
 
 
+def test_unlock_pressure_zero_fill_for_trading_days_without_unlocks() -> None:
+    """交易日历中无解禁事件的交易日应合规填充 0 值。"""
+    share_float = pl.DataFrame(
+        {
+            "symbol": ["600000.SH"],
+            "float_date": [date(2026, 8, 3)],
+            "float_share": [10_000_000.0],
+            "float_ratio": [1.0],
+        }
+    )
+    # 构造 3 个交易日：08-03 (有解禁), 08-04 (无解禁), 08-05 (无解禁)
+    close = pl.DataFrame(
+        {
+            "symbol": ["600000.SH"] * 3,
+            "trade_date": [date(2026, 8, 3), date(2026, 8, 4), date(2026, 8, 5)],
+            "close": [10.0, 10.5, 11.0],
+        }
+    )
+    frame = build_unlock_pressure_frame(share_float, close)
+    assert len(frame) == 3
+    # 08-03 有解禁
+    row_3 = frame.filter(pl.col("trade_date") == date(2026, 8, 3)).to_pandas().iloc[0]
+    assert row_3["unlock_count"] == 1
+    assert abs(row_3["unlock_share_amount"] - 10_000_000.0) < 1e-6
+
+    # 08-04 无解禁，应全为 0
+    row_4 = frame.filter(pl.col("trade_date") == date(2026, 8, 4)).to_pandas().iloc[0]
+    assert row_4["unlock_count"] == 0
+    assert row_4["unlock_batch_count"] == 0
+    assert row_4["unlock_share_amount"] == 0.0
+    assert row_4["unlock_amount"] == 0.0
+    assert row_4["large_unlock_count"] == 0
+    assert row_4["avg_float_ratio"] == 0.0
+    assert row_4["max_float_ratio"] == 0.0
+
+
 # --------------------------------------------------------------------------- #
 # northbound_industry
 # --------------------------------------------------------------------------- #

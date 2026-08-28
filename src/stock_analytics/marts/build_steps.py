@@ -645,16 +645,16 @@ def build_unlock_pressure(
     )
     if share_float.is_empty():
         return build_unlock_pressure_frame(pl.DataFrame(), pl.DataFrame())
-    close_start = None
-    if effective_start is not None:
-        close_start = effective_start - timedelta(days=60)
+    close_start = effective_start - timedelta(days=60) if effective_start is not None else None
     daily_close = catalog.load_dataset(
         "stock_daily_bar",
         start_date=close_start,
         end_date=end_date,
         columns=["symbol", "trade_date", "close"],
     )
-    result = build_unlock_pressure_frame(share_float, daily_close)
+    result = build_unlock_pressure_frame(
+        share_float, daily_close, start_date=effective_start, end_date=end_date
+    )
     if not result.is_empty():
         store.save_domain_mart(
             UNLOCK_PRESSURE_MART_NAME,

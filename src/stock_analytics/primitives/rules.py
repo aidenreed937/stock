@@ -82,9 +82,11 @@ def percentile_rank(
     return float(rank_min) / (len(valid_values) - 1) * 100.0
 
 
-def rolling_percentile(column: str, window: int, output: str | None = None) -> pl.Expr:
+def rolling_percentile(
+    column: str, window: int, output: str | None = None, *, min_samples: int | None = None
+) -> pl.Expr:
     """构造允许历史缺失值的滚动分位表达式。"""
-    min_valid_samples = ceil(window * _MIN_VALID_RATIO)
+    min_valid_samples = min_samples if min_samples is not None else ceil(window * _MIN_VALID_RATIO)
     valid_count = (
         pl.col(column)
         .is_not_null()

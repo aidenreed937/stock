@@ -221,6 +221,62 @@ class BandsConfig:
 
 
 @dataclass(frozen=True, slots=True)
+class SystemicRiskConfig:
+    """系统性风险规则阈值（Step 2 校准：死规则分位化、情绪红旗降级）。
+
+    语义（Step 1 修正）：risk_level 是"温度读数可信度"——低=各维度共振干净，
+    高=存在硬性风险事件（估值/情绪/宏观/背离），读数可能被污染或滞后；
+    不是价格收益预测器。阈值经 8.9.1 审计校准：
+      - valuation 原 80/70 永不可达（历史峰值 69.2），改为 p90≈60 / p80≈55；
+      - macro 原 <40 永不可达（国内口径 min=46.1），改为国内口径 <50 告警；
+      - composite 原 80 永不可达（峰值 68.6），红灯收敛到 65（与高温极端一致）；
+      - sentiment >=80 触发后 fwd20 反而 +2.44%（方向存疑），降级为 warning，
+        不参与红旗表决，仅保留触发记录。
+    """
+
+    rules_version: str = "systemic-risk-v4"
+    valuation_red: float = 60.0
+    valuation_warning: float = 55.0
+    technical_gte: float = 60.0
+    fund_flow_lt: float = 50.0
+    sentiment_red: float = 200.0  # 已降级：不参与红旗表决（触发即 warning）
+    sentiment_warning: float = 80.0
+    sentiment_offset_below: float = 60.0
+    macro_domestic_warning_below: float = 50.0  # 国内流动性偏紧告警线
+    fundamental_offset_gte: float = 55.0
+    fundamental_warning_below: float = 40.0
+    composite_red: float = 65.0
+    composite_warning: float = 60.0
+    divergence_extreme: float = 15.0
+    divergence_hot_fast: float = 60.0
+    divergence_ice_fast: float = 35.0
+
+    @classmethod
+    def from_mapping(cls, data: Mapping[str, Any] | None) -> Self:
+        """从 YAML 字典构造风险规则阈值配置。"""
+        if data is None:
+            return cls()
+        return cls(
+            rules_version=str(data.get("rules_version", "systemic-risk-v4")),
+            valuation_red=float(data.get("valuation_red", 60.0)),
+            valuation_warning=float(data.get("valuation_warning", 55.0)),
+            technical_gte=float(data.get("technical_gte", 60.0)),
+            fund_flow_lt=float(data.get("fund_flow_lt", 50.0)),
+            sentiment_red=float(data.get("sentiment_red", 200.0)),
+            sentiment_warning=float(data.get("sentiment_warning", 80.0)),
+            sentiment_offset_below=float(data.get("sentiment_offset_below", 60.0)),
+            macro_domestic_warning_below=float(data.get("macro_domestic_warning_below", 50.0)),
+            fundamental_offset_gte=float(data.get("fundamental_offset_gte", 55.0)),
+            fundamental_warning_below=float(data.get("fundamental_warning_below", 40.0)),
+            composite_red=float(data.get("composite_red", 65.0)),
+            composite_warning=float(data.get("composite_warning", 60.0)),
+            divergence_extreme=float(data.get("divergence_extreme", 15.0)),
+            divergence_hot_fast=float(data.get("divergence_hot_fast", 60.0)),
+            divergence_ice_fast=float(data.get("divergence_ice_fast", 35.0)),
+        )
+
+
+@dataclass(frozen=True, slots=True)
 class MarketTemperatureConfig:
     """市场温度计顶层配置。"""
 
@@ -235,6 +291,7 @@ class MarketTemperatureConfig:
     domain_mart_observations_enabled: bool = False
     bands: BandsConfig = field(default_factory=BandsConfig)
     external_risk: ExternalRiskConfig = field(default_factory=ExternalRiskConfig)
+    systemic_risk: SystemicRiskConfig = field(default_factory=SystemicRiskConfig)
 
     @classmethod
     def from_mapping(cls, data: Mapping[str, Any]) -> Self:
@@ -246,6 +303,7 @@ class MarketTemperatureConfig:
         domain_mart_observations_enabled = bool(data.get("domain_mart_observations_enabled", False))
         bands = data.get("bands")
         external_risk = data.get("external_risk")
+        systemic_risk = data.get("systemic_risk")
         return cls(
             schema_version=int(data.get("schema_version", 1)),
             title=str(data.get("title", "A 股六维市场温度计")),
@@ -268,6 +326,9 @@ class MarketTemperatureConfig:
             ),
             external_risk=ExternalRiskConfig.from_mapping(
                 _as_mapping(external_risk, "external_risk") if external_risk is not None else None
+            ),
+            systemic_risk=SystemicRiskConfig.from_mapping(
+                _as_mapping(systemic_risk, "systemic_risk") if systemic_risk is not None else None
             ),
         )
 
@@ -316,6 +377,7 @@ __all__ = [
     "MetricInputConfig",
     "MetricValuesConfig",
     "PressureLevelsConfig",
+    "SystemicRiskConfig",
     "TemperatureLevelsConfig",
     "load_market_temperature_config",
 ]

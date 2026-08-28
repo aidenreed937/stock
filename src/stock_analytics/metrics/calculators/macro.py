@@ -37,6 +37,26 @@ _DAILY_BASIC_REQUIRED_COLUMNS = ("trade_date", "total_mv")
 _GDP_REQUIRED_COLUMNS = ("quarter", "gdp")
 
 
+def _vix_frame(context: MetricContext) -> pl.DataFrame:
+    raw = load_metric_dataset(
+        context,
+        "macro_indicators",
+        data_source="yfinance",
+        start_date=context.start_date,
+        end_date=context.end_date,
+    )
+    if raw.is_empty():
+        return _empty(("trade_date", "vix"))
+    return (
+        raw.filter(pl.col("symbol") == "^VIX")
+        .select(["trade_date", "close"])
+        .rename({"close": "vix"})
+        .with_columns((pl.col("trade_date") + pl.duration(days=1)).alias("trade_date"))
+        .drop_nulls()
+        .sort("trade_date")
+    )
+
+
 def _yield_curve_frame(context: MetricContext) -> pl.DataFrame:
     """加载国债收益率曲线并计算期限利差列。"""
     end_date = context.resolve_end_date()
@@ -203,11 +223,12 @@ def _select_metric(frame: pl.DataFrame, spec: MetricSpec) -> pl.DataFrame:
 
 def calculate_macro_metric(context: MetricContext, spec: MetricSpec) -> pl.DataFrame:
     """按指标 ID 调度宏观指标计算。"""
-    frame = (
-        _buffett_frame(context)
-        if spec.metric_id == "buffett_securitization_ratio"
-        else _yield_curve_frame(context)
-    )
+    if spec.metric_id == "buffett_securitization_ratio":
+        frame = _buffett_frame(context)
+    elif spec.metric_id == "vix":
+        frame = _vix_frame(context)
+    else:
+        frame = _yield_curve_frame(context)
     if frame.is_empty():
         return _empty(spec.output_columns)
     if context.start_date is not None:
@@ -229,6 +250,12 @@ def _spec(metric_id: str, name: str, datasets: tuple[str, ...], unit: MetricUnit
 
 
 METRIC_SPECS: tuple[MetricSpec, ...] = (
+    _spec(
+        "vix",
+        "VIX恐慌指数",
+        ("macro_indicators",),
+        MetricUnit.UNKNOWN,
+    ),
     _spec(
         "yield_curve_slope_10y_2y",
         "中国国债10Y-2Y期限利差",

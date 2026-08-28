@@ -63,6 +63,8 @@ def build_breadth_and_turnover(
         above_ma("close", 20).alias("_above_ma20"),
         above_ma("close", 60).alias("_above_ma60"),
         above_ma("close", 120).alias("_above_ma120"),
+        at_rolling_high("close", 60).alias("_new_high_60d"),
+        at_rolling_low("close", 60).alias("_new_low_60d"),
         at_rolling_high("close", 252).alias("_new_high_252d"),
         at_rolling_low("close", 252).alias("_new_low_252d"),
         (pl.col("close") / pl.col("close").shift(20).over("symbol") - 1.0).alias("_return_20d"),
@@ -85,6 +87,9 @@ def build_breadth_and_turnover(
             pl.col("_above_ma60").count().alias("_ma60_valid"),
             pl.col("_above_ma120").sum().alias("_above_ma120_count"),
             pl.col("_above_ma120").count().alias("_ma120_valid"),
+            pl.col("_new_high_60d").sum().alias("_new_high_60d_count"),
+            pl.col("_new_high_60d").count().alias("_high_low_60d_valid"),
+            pl.col("_new_low_60d").sum().alias("_new_low_60d_count"),
             pl.col("_new_high_252d").sum().alias("_new_high_count"),
             pl.col("_new_high_252d").count().alias("_high_low_valid"),
             pl.col("_new_low_252d").sum().alias("_new_low_count"),
@@ -98,6 +103,8 @@ def build_breadth_and_turnover(
             share("_above_ma20_count", "_ma20_valid", "above_ma20_ratio"),
             share("_above_ma60_count", "_ma60_valid", "above_ma60_ratio"),
             share("_above_ma120_count", "_ma120_valid", "above_ma120_ratio"),
+            share("_new_high_60d_count", "_high_low_60d_valid", "new_high_60d_ratio"),
+            share("_new_low_60d_count", "_high_low_60d_valid", "new_low_60d_ratio"),
             share("_new_high_count", "_high_low_valid", "new_high_252d_ratio"),
             share("_new_low_count", "_high_low_valid", "new_low_252d_ratio"),
         )
@@ -109,6 +116,8 @@ def build_breadth_and_turnover(
             "above_ma20_ratio",
             "above_ma60_ratio",
             "above_ma120_ratio",
+            "new_high_60d_ratio",
+            "new_low_60d_ratio",
             "new_high_252d_ratio",
             "new_low_252d_ratio",
             "return_20d",
@@ -130,29 +139,30 @@ def build_margin_features(
     start_date: date,
     end_date: date,
 ) -> pl.DataFrame:
-    """从 margin 数据集聚合两融余额与融资买入额。"""
+    """从 margin 数据集计算全市场两融余额与融资买入额。"""
     margin = catalog.load_dataset(
         "margin",
         start_date=start_date,
         end_date=end_date,
-        columns=["trade_date", "rzmre", "rzye", "rqye", "rzrqye", "exchange_id"],
+        columns=["trade_date", "rzrqye", "rzmre"],
     )
     if margin.is_empty() or "trade_date" not in margin.columns:
         return pl.DataFrame()
 
-    agg_exprs = []
-    if "rzrqye" in margin.columns:
-        agg_exprs.append(pl.col("rzrqye").sum().alias("margin_balance"))
-    elif "rzye" in margin.columns:
-        agg_exprs.append(pl.col("rzye").sum().alias("margin_balance"))
-
-    if "rzmre" in margin.columns:
-        agg_exprs.append(pl.col("rzmre").sum().alias("margin_buy_amount"))
-
-    if not agg_exprs:
-        return pl.DataFrame()
-
-    return margin.group_by("trade_date").agg(agg_exprs).sort("trade_date")
+    return (
+        margin.select(
+            "trade_date",
+            pl.col("rzrqye").cast(pl.Float64, strict=False),
+            pl.col("rzmre").cast(pl.Float64, strict=False),
+        )
+        .drop_nulls()
+        .group_by("trade_date")
+        .agg(
+            pl.col("rzrqye").sum().alias("margin_balance"),
+            pl.col("rzmre").sum().alias("margin_buy_amount"),
+        )
+        .sort("trade_date")
+    )
 
 
 def build_turnover_rate_features(
@@ -162,61 +172,32 @@ def build_turnover_rate_features(
     *,
     turnover: pl.DataFrame | None = None,
 ) -> pl.DataFrame:
-    """按总成交额 / 总流通市值计算全市场自由流通换手率。"""
+    """从 daily_basic 计算全市场换手率与流通市值。"""
     basic = catalog.load_dataset(
         "daily_basic",
         start_date=start_date,
         end_date=end_date,
         columns=["trade_date", "circ_mv"],
     )
-    if basic.is_empty() or "trade_date" not in basic.columns:
+    if basic.is_empty() or "trade_date" not in basic.columns or "circ_mv" not in basic.columns:
         return pl.DataFrame()
 
-    if "circ_mv" not in basic.columns:
-        return pl.DataFrame()
-    circ_mv = (
-        basic.select(
-            "trade_date",
-            pl.col("circ_mv").cast(pl.Float64, strict=False).alias("market_circ_mv"),
-        )
+    circ_mv_daily = (
+        basic.select("trade_date", pl.col("circ_mv").cast(pl.Float64, strict=False))
         .drop_nulls()
         .group_by("trade_date")
-        .agg(pl.col("market_circ_mv").sum())
+        .agg(pl.col("circ_mv").sum().alias("market_circ_mv"))
+        .sort("trade_date")
     )
-    if turnover is None:
-        bars = catalog.load_dataset(
-            "stock_daily_bar",
-            start_date=start_date,
-            end_date=end_date,
-            columns=["trade_date", "amount"],
-        )
-        if bars.is_empty() or "amount" not in bars.columns:
-            return circ_mv.with_columns(
-                pl.lit(None, dtype=pl.Float64).alias("market_turnover_rate")
-            )
-        amount = (
-            bars.select(
-                "trade_date",
-                pl.col("amount").cast(pl.Float64, strict=False).alias("total_turnover"),
-            )
-            .drop_nulls()
-            .group_by("trade_date")
-            .agg(pl.col("total_turnover").sum())
-        )
-    elif {"trade_date", "total_turnover"}.issubset(turnover.columns):
-        amount = (
-            turnover.select(
-                "trade_date",
-                pl.col("total_turnover").cast(pl.Float64, strict=False),
-            )
-            .drop_nulls()
-            .group_by("trade_date")
-            .agg(pl.col("total_turnover").sum())
-        )
-    else:
-        return circ_mv.with_columns(pl.lit(None, dtype=pl.Float64).alias("market_turnover_rate"))
+
+    if turnover is None or turnover.is_empty():
+        turnover_daily = build_breadth_and_turnover(catalog, start_date, end_date)
+        if turnover_daily.is_empty() or "total_turnover" not in turnover_daily.columns:
+            return pl.DataFrame()
+        turnover = turnover_daily.select("trade_date", "total_turnover")
+
     return (
-        circ_mv.join(amount, on="trade_date", how="left")
+        circ_mv_daily.join(turnover, on="trade_date", how="inner")
         .with_columns(
             pl.when(pl.col("market_circ_mv") > 0)
             .then(pl.col("total_turnover") / pl.col("market_circ_mv") * 100.0)
@@ -233,24 +214,44 @@ def build_moneyflow_features(
     start_date: date,
     end_date: date,
 ) -> pl.DataFrame:
-    """从 moneyflow 计算主力净流入额。"""
+    """从 moneyflow 计算主力净流入额 (超大单+大单净额)。"""
     flow = catalog.load_dataset(
         "moneyflow",
         start_date=start_date,
         end_date=end_date,
-        columns=["trade_date", "net_mf_amount"],
+        columns=[
+            "trade_date",
+            "buy_elg_amount",
+            "buy_lg_amount",
+            "sell_elg_amount",
+            "sell_lg_amount",
+            "net_mf_amount",
+        ],
     )
-    if flow.is_empty() or "trade_date" not in flow.columns or "net_mf_amount" not in flow.columns:
+    if flow.is_empty() or "trade_date" not in flow.columns:
+        return pl.DataFrame()
+
+    if {"buy_elg_amount", "buy_lg_amount", "sell_elg_amount", "sell_lg_amount"}.issubset(
+        flow.columns
+    ):
+        flow = flow.with_columns(
+            (
+                pl.col("buy_elg_amount").fill_null(0.0)
+                + pl.col("buy_lg_amount").fill_null(0.0)
+                - pl.col("sell_elg_amount").fill_null(0.0)
+                - pl.col("sell_lg_amount").fill_null(0.0)
+            ).alias("main_net_inflow")
+        )
+    elif "net_mf_amount" in flow.columns:
+        flow = flow.with_columns(pl.col("net_mf_amount").alias("main_net_inflow"))
+    else:
         return pl.DataFrame()
 
     return (
-        flow.select(
-            "trade_date",
-            pl.col("net_mf_amount").cast(pl.Float64, strict=False),
-        )
+        flow.select("trade_date", pl.col("main_net_inflow").cast(pl.Float64, strict=False))
         .drop_nulls()
         .group_by("trade_date")
-        .agg(pl.col("net_mf_amount").sum().alias("main_net_inflow"))
+        .agg(pl.col("main_net_inflow").sum().alias("main_net_inflow"))
         .sort("trade_date")
     )
 
@@ -295,7 +296,7 @@ def build_option_features(
     start_date: date,
     end_date: date,
 ) -> pl.DataFrame:
-    """从 opt_daily 与 opt_basic 计算期权聚合指标。"""
+    """从 opt_daily 与 opt_basic 计算期权聚合指标 (仅限 ETF 期权，排除商品期权)。"""
     daily = catalog.load_dataset(
         "opt_daily",
         start_date=start_date,
@@ -305,12 +306,12 @@ def build_option_features(
     if daily.is_empty() or "trade_date" not in daily.columns:
         return pl.DataFrame()
 
-    basic = catalog.load_dataset(
-        "opt_basic",
-        columns=["symbol", "call_put", "s_month"],
-    )
+    basic = catalog.load_dataset("opt_basic", columns=["symbol", "call_put", "s_month", "opt_type"])
     if basic.is_empty() or not {"symbol", "call_put", "s_month"}.issubset(basic.columns):
         return pl.DataFrame()
+
+    if "opt_type" in basic.columns:
+        basic = basic.filter(pl.col("opt_type") == "ETF期权")
 
     basic_frame = basic.select(
         pl.col("symbol").cast(pl.String).alias("symbol"),

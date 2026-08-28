@@ -54,7 +54,9 @@ def build_scores(
     if composite_temperature is None:
         composite_status = "pending"
     fast_slow = _fast_slow_temperatures(dimensions)
-    systemic_risk = _systemic_risk(composite_temperature, dimensions, fast_slow=fast_slow)
+    systemic_risk = _systemic_risk(
+        composite_temperature, dimensions, fast_slow=fast_slow, config=config.systemic_risk
+    )
     external_risk = build_external_risk(config.external_risk, facts)
     return {
         "schema_version": config.schema_version,

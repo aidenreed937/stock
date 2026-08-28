@@ -143,6 +143,24 @@ def build_block_trade_mart(
         pl.col("amount").cast(pl.Float64, strict=False).alias("_amount"),
     )
     symbol = _symbol_column(frame)
+    if symbol is not None:
+        sym_col = pl.col(symbol).cast(pl.Utf8)
+        is_equity = (
+            sym_col.str.starts_with("00")
+            | sym_col.str.starts_with("30")
+            | sym_col.str.starts_with("60")
+            | sym_col.str.starts_with("68")
+            | sym_col.str.starts_with("43")
+            | sym_col.str.starts_with("83")
+            | sym_col.str.starts_with("87")
+            | sym_col.str.starts_with("92")
+        ) & (
+            sym_col.str.ends_with(".SH")
+            | sym_col.str.ends_with(".SZ")
+            | sym_col.str.ends_with(".BJ")
+        )
+        frame = frame.filter(is_equity)
+
     if daily_bars is not None and symbol is not None:
         bar_symbol = _symbol_column(daily_bars)
         if bar_symbol is not None and {"trade_date", "close"}.issubset(daily_bars.columns):

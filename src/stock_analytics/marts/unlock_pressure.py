@@ -17,6 +17,7 @@
 
 from __future__ import annotations
 
+from datetime import date
 from typing import Any
 
 import polars as pl
@@ -47,6 +48,8 @@ def build_unlock_pressure_frame(
     share_float: pl.DataFrame,
     daily_close: pl.DataFrame,
     *,
+    start_date: date | None = None,
+    end_date: date | None = None,
     large_threshold: float = LARGE_UNLOCK_THRESHOLD,
 ) -> pl.DataFrame:
     """从限售解禁明细构建按解禁日的压力聚合。
@@ -117,6 +120,31 @@ def build_unlock_pressure_frame(
     result = base.join(large, on="trade_date", how="left").with_columns(
         pl.col("large_unlock_count").fill_null(0).cast(pl.Int64)
     )
+
+    # 若提供了有效的行情交易日历，则按交易日历做对齐并对零解禁日补 0
+    if not daily_close.is_empty() and "trade_date" in daily_close.columns:
+        calendar = (
+            daily_close.select(pl.col("trade_date").cast(pl.Date, strict=False))
+            .drop_nulls()
+            .unique()
+            .sort("trade_date")
+        )
+        if start_date is not None:
+            calendar = calendar.filter(pl.col("trade_date") >= start_date)
+        if end_date is not None:
+            calendar = calendar.filter(pl.col("trade_date") <= end_date)
+
+        if not calendar.is_empty():
+            result = calendar.join(result, on="trade_date", how="full", coalesce=True).with_columns(
+                pl.col("unlock_count").fill_null(0).cast(pl.Int64),
+                pl.col("unlock_batch_count").fill_null(0).cast(pl.Int64),
+                pl.col("unlock_share_amount").fill_null(0.0).cast(pl.Float64),
+                pl.col("unlock_amount").fill_null(0.0).cast(pl.Float64),
+                pl.col("large_unlock_count").fill_null(0).cast(pl.Int64),
+                pl.col("avg_float_ratio").fill_null(0.0).cast(pl.Float64),
+                pl.col("max_float_ratio").fill_null(0.0).cast(pl.Float64),
+            )
+
     return result.select(list(schema)).sort("trade_date")
 
 

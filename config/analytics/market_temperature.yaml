@@ -63,6 +63,30 @@ market_temperature:
       - "主力净流入"
       - "上涨行业扩散"
 
+  systemic_risk:
+    # Step 1/2/3 (2026-08-28)：risk_level 语义 = 温度读数可信度，非价格风险预测。
+    # 阈值依据 docs/research/temperature_signal_calibration.md 8.9/8.9.1 审计：
+    #   - valuation 原 80/70 死规则(峰值 69.2) → 60/55；
+    #   - macro 原 <40 死规则(国内口径 min=46.1) → 国内口径 <50 告警，去红旗；
+    #   - composite 原 80 死规则(峰值 68.6) → 红旗 65（与高温极端一致）；
+    #   - sentiment >=80 触发后 fwd20 +2.44%（方向存疑）→ 仅 warning 观察。
+    rules_version: "systemic-risk-v4"
+    valuation_red: 60.0
+    valuation_warning: 55.0
+    technical_gte: 60.0
+    fund_flow_lt: 50.0
+    sentiment_red: 200.0
+    sentiment_warning: 80.0
+    sentiment_offset_below: 60.0
+    macro_domestic_warning_below: 50.0
+    fundamental_offset_gte: 55.0
+    fundamental_warning_below: 40.0
+    composite_red: 65.0
+    composite_warning: 60.0
+    divergence_extreme: 15.0
+    divergence_hot_fast: 60.0
+    divergence_ice_fast: 35.0
+
   dimensions:
     - id: valuation
       name: "估值面"

@@ -273,9 +273,10 @@ def test_build_scores_adds_systemic_risk_summary() -> None:
     assert "估值面 85.00 已进入高温" in scores["systemic_risk"]["red_flags"][0]
     assert any("技术面偏热" in item for item in scores["systemic_risk"]["warnings"])
     trace = scores["systemic_risk"]["decision_trace"]
-    assert trace["rule_version"] == "systemic-risk-v3"
+    assert trace["rule_version"] == "systemic-risk-v4"
     assert trace["final_level"] == "中等偏高"
-    assert trace["triggered_rules"][0]["rule_id"] == "valuation_gte_80"
+    assert trace["triggered_rules"][0]["rule_id"] == "valuation_gte_60"
+    assert scores["systemic_risk"].get("semantics") == "temperature_trust"
 
 
 def test_build_scores_reduces_stale_metric_weight() -> None:
@@ -902,15 +903,18 @@ def test_systemic_risk_switches_macro_rule_to_domestic_reading() -> None:
 
     risk = build_scores(config, as_of_date=date(2026, 8, 14), facts=facts)["systemic_risk"]
 
-    # 混合读数 = 35*0.75 + 70*0.25 = 43.75（≥40 不触发红旗），但国内口径 35 < 40 触发
-    assert any("宏观流动性国内口径" in item for item in risk["red_flags"])
-    assert any("偏紧" in item for item in risk["red_flags"])
+    # Step 2 修正：宏观偏紧由红旗降级为告警（原 <40 死规则，国内口径 min=46.1）。
+    # 混合读数 = 35*0.75 + 70*0.25 = 43.75，国内口径 35 < 50 → warning（观察，不参与红旗表决）。
+    assert any("宏观流动性国内口径" in item for item in risk["warnings"])
+    assert any("偏紧" in item for item in risk["warnings"])
+    assert risk["red_flags"] == []
     rule = next(
         item
         for item in risk["decision_trace"]["triggered_rules"]
-        if item["rule_id"] == "macro_liquidity_lt_40"
+        if item["rule_id"] == "macro_liquidity_lt_50"
     )
     assert rule["actual"] == pytest.approx(35.0)
+    assert rule["category"] == "warning"
     assert risk["decision_trace"]["inputs"]["macro_liquidity_domestic"] == pytest.approx(35.0)
 
 
