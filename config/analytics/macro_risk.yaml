@@ -30,6 +30,24 @@ macro_risk:
       window: 1250
       min_periods: 500
       direction: rev
+    composite_flow:
+      series: main_flow
+      column: composite_flow
+      window: 1250
+      min_periods: 500
+      direction: rev
+    etf_flow_ratio:
+      series: main_flow
+      column: etf_flow_ratio
+      window: 1250
+      min_periods: 500
+      direction: raw
+    divergence_score:
+      series: main_flow
+      column: divergence_score
+      window: 1250
+      min_periods: 500
+      direction: raw
     adv_dec:
       series: breadth
       column: adv_dec
@@ -60,12 +78,6 @@ macro_risk:
       window: 1250
       min_periods: 500
       direction: raw
-    unlock_ratio:
-      series: unlock
-      column: unlock_ratio
-      window: 1250
-      min_periods: 500
-      direction: raw
     market_turnover:
       series: crowdedness
       column: market_turnover_rate
@@ -79,7 +91,8 @@ macro_risk:
     leverage:
     - margin_pen
     flow:
-    - main_ratio
+    - composite_flow
+    - divergence_score
     - margin_buy_ratio
     breadth:
     - adv_dec
@@ -88,8 +101,6 @@ macro_risk:
     - pcr
     - iv
     - vix
-    unlock:
-    - unlock_ratio
     crowding:
     - market_turnover
   indices:

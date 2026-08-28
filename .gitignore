@@ -67,3 +67,6 @@ reports/
 *.swp
 *.tmp
 .agents/browser-tmp/
+
+
+.mplconfig/

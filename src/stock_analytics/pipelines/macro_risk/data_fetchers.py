@@ -130,10 +130,43 @@ def fetch_leverage(ctx: FetchContext) -> pl.DataFrame:
 
 @register_fetcher("main_flow")
 def fetch_main_flow(ctx: FetchContext) -> pl.DataFrame:
-    """获取主力资金流数据：主力净流入占比 (main_ratio)。"""
-    return ctx.md.select(["trade_date", pl.col("main_net_inflow_ratio").alias("main_ratio")]).sort(
-        "trade_date"
-    )
+    """获取主力资金流多维数据：现货主力、国家队宽基ETF、散户博弈分歧与综合主力流向。"""
+    try:
+        cg = ctx.fs.get_domain_mart("capital_game_daily")
+    except Exception:
+        cg = pl.DataFrame()
+
+    if not cg.is_empty() and "trade_date" in cg.columns:
+        cols_needed = [
+            "trade_date",
+            "main_order_net_inflow",
+            "broad_etf_net_inflow",
+            "total_turnover",
+            "divergence_score",
+        ]
+        if all(c in cg.columns for c in cols_needed):
+            return cg.select(
+                pl.col("trade_date").cast(pl.Date),
+                pl.when(pl.col("total_turnover") > 0)
+                .then(
+                    (pl.col("main_order_net_inflow") + 1.2 * pl.col("broad_etf_net_inflow"))
+                    / pl.col("total_turnover")
+                )
+                .otherwise(None)
+                .alias("composite_flow"),
+                pl.col("main_order_flow_ratio").alias("main_ratio"),
+                pl.col("broad_etf_flow_ratio").alias("etf_flow_ratio"),
+                pl.col("divergence_score").alias("divergence_score"),
+            ).sort("trade_date")
+
+    # Fallback to market_daily
+    return ctx.md.select(
+        pl.col("trade_date").cast(pl.Date),
+        pl.col("main_net_inflow_ratio").alias("main_ratio"),
+        pl.col("main_net_inflow_ratio").alias("composite_flow"),
+        pl.lit(0.0).alias("etf_flow_ratio"),
+        pl.lit(0.0).alias("divergence_score"),
+    ).sort("trade_date")
 
 
 @register_fetcher("breadth")

@@ -28,6 +28,7 @@ def render_macro_risk_report(df: pl.DataFrame, target_date: date | None = None) 
 
     template_content = template_path.read_text(encoding="utf-8")
 
-    context = {"trade_date": row_dict["trade_date"], "eval_result": eval_result}
+    trade_date_str = str(row_dict["trade_date"])[:10]
+    context = {"trade_date": trade_date_str, "eval_result": eval_result}
 
     return renderer.render_string(template_content, context)

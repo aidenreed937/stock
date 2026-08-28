@@ -9,18 +9,18 @@
 
 ---
 
-## 🔍 风险归因分析
+## 🔍 全维度系统性风险穿透 (0-100 历史分位)
 
-当前市场的核心驱动力量来自 **{{ eval_result.top_driver }}** (读数: `{{ "%.1f"|format(eval_result.top_driver_val) }}`)。
-
-**各子维度拆解 (0-100 历史分位)：**
-{% for dim_name, dim_val in eval_result.dimensions.items() %}
-- {{ dim_name }}: `{{ "%.1f"|format(dim_val) if dim_val else "N/A" }}`
+{% for tier in eval_result.risk_tiers %}
+### {{ loop.index }}. {{ tier.name }}
+{% for item in tier.metrics %}
+- **{{ item.name }} (`{{ item.code }}`)**: `{{ "%.1f"|format(item.val) if item.val is not none else "N/A" }}` {{ item.badge }} 【{{ item.status }}】({{ item.desc }})
 {% endfor %}
 
+{% endfor %}
 ---
 
-## 💡 交叉诊断与操作建议
+## 💡 深度归因与操作建议
 
 {% if eval_result.level == "danger" %}
 **【强烈做空/减仓信号】**
