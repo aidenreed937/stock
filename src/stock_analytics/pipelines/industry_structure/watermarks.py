@@ -1,10 +1,9 @@
-"""行业结构事实层数据水位检查。"""
+"""行业结构事实层数据水位检查与探测。"""
 
 from __future__ import annotations
 
 from collections.abc import Callable, Iterable
 from datetime import date, timedelta
-from pathlib import Path
 from typing import TYPE_CHECKING, Any
 
 import polars as pl
@@ -15,6 +14,8 @@ from stock_analytics.features.dataset_cache import CachedCatalog, DatasetFrameCa
 from stock_core.contracts import MarketDataCatalog
 
 if TYPE_CHECKING:
+    from pathlib import Path
+
     from stock_core.config.analytics_industry_structure import DatasetConfig
 
 FactRowFactory = Callable[..., dict[str, Any]]
@@ -28,6 +29,7 @@ def collect_dataset_rows(
     dataset_cache: DatasetFrameCache | None,
     fact_row: FactRowFactory,
 ) -> list[dict[str, Any]]:
+    """采集各输入数据集的最新可用水位事实记录。"""
     rows: list[dict[str, Any]] = []
     catalogs: dict[str, MarketDataCatalog] = {}
     for item in datasets:
@@ -45,7 +47,7 @@ def collect_dataset_rows(
         note = item.note
         sample_size: int | None = None
         try:
-            latest = _latest_dataset_date(catalog, item, as_of_date)
+            latest = latest_dataset_date(catalog, item, as_of_date)
             if latest is None:
                 if item.static:
                     sample_size = _static_dataset_sample_size(catalog, item.dataset)
@@ -116,11 +118,12 @@ def _load_dataset_date_frame(
         return pl.DataFrame()
 
 
-def _latest_dataset_date(
+def latest_dataset_date(
     catalog: MarketDataCatalog,
     item: DatasetConfig,
     as_of_date: date,
 ) -> date | None:
+    """探测指定数据集在 as_of_date 及之前的最新落盘日期。"""
     date_column = item.date_column or "trade_date"
     if date_column == "trade_date" and hasattr(catalog, "latest_trade_dates"):
         latest_dates = catalog.latest_trade_dates(item.dataset, n=1)

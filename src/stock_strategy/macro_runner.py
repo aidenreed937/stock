@@ -7,7 +7,7 @@
 from __future__ import annotations
 
 from collections.abc import Mapping, Sequence
-from datetime import datetime
+from datetime import date, datetime
 
 import polars as pl
 
@@ -16,14 +16,14 @@ from stock_strategy.runner import SignalReport
 from stock_strategy.signal import Signal
 
 
-def _trading_days(panel: pl.DataFrame) -> list[object]:
+def _trading_days(panel: pl.DataFrame) -> list[date]:
     return panel["trade_date"].unique(maintain_order=True).to_list()
 
 
 def _daily_return(
     price_wide: pl.DataFrame,
-    price_rows: dict[object, int],
-    day: object,
+    price_rows: dict[date, int],
+    day: date,
     weights: Mapping[str, float],
 ) -> float:
     """组合当日收益：Σ 权重 × 标的日收益（缺失价格按 0，现金收益 0）。"""
@@ -97,10 +97,11 @@ class MacroRiskRunner:
         records: list[float] = []
         days = _trading_days(panel)
         for day in days:
+            # 先按当前持仓计算当日收益，再处理当日信号（目标权重次日生效，对齐 T+1）。
+            nav *= 1.0 + _daily_return(price_wide, price_rows, day, weights)
             window = panel.filter(pl.col("trade_date") <= day)
             for sig in self.strategy.on_bar(window):
                 weights[sig.symbol] = float(sig.target_weight or 0.0)
-            nav *= 1.0 + _daily_return(price_wide, price_rows, day, weights)
             records.append(nav)
         return pl.DataFrame({"trade_date": days, "nav": records})
 

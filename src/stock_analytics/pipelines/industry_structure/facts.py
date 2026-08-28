@@ -7,15 +7,16 @@ from typing import TYPE_CHECKING, Any
 
 import polars as pl
 
-from stock_analytics.features.dataset_cache import DatasetFrameCache
-from stock_analytics.pipelines.industry_structure.fact_watermarks import _latest_dataset_date
-from stock_analytics.pipelines.industry_structure.fact_watermarks import (
-    collect_dataset_rows as _dataset_rows,
+from stock_analytics.features.dataset_cache import CachedCatalog, DatasetFrameCache
+from stock_analytics.pipelines.industry_structure.watermarks import (
+    collect_dataset_rows as _collect_dataset_rows,
+)
+from stock_analytics.pipelines.industry_structure.watermarks import (
+    latest_dataset_date as _latest_dataset_date,
 )
 from stock_core.contracts import MarketDataCatalog
 
 if TYPE_CHECKING:
-    from collections.abc import Iterable
     from pathlib import Path
 
     from stock_core.config.analytics_industry_structure import IndustryStructureConfig
@@ -63,8 +64,6 @@ def resolve_trade_window(
 
         active_catalog = DataCatalog(data_source="tushare", storage_dir=storage_dir)
     if dataset_cache is not None:
-        from stock_analytics.features.dataset_cache import CachedCatalog
-
         active_catalog = CachedCatalog(active_catalog, dataset_cache)
     if target_date is None and hasattr(active_catalog, "latest_trade_dates"):
         dates = active_catalog.latest_trade_dates(dataset="sw_daily", n=max_window)
@@ -75,11 +74,13 @@ def resolve_trade_window(
             start_date=start_date,
             end_date=target_date,
         )
-        dates = (
-            _date_values(frame["trade_date"].unique().to_list())
-            if "trade_date" in frame.columns
-            else []
-        )
+        dates = [
+            d
+            for v in (
+                frame["trade_date"].unique().to_list() if "trade_date" in frame.columns else []
+            )
+            if isinstance(d := _parse_date(v), date)
+        ]
     trade_dates = tuple(
         sorted({value for value in dates if target_date is None or value <= target_date})
     )
@@ -103,7 +104,7 @@ def collect_facts(
     rows: list[dict[str, Any]] = []
     rows.extend(_window_rows(config, as_of_date, trade_dates))
     rows.extend(
-        _dataset_rows(
+        _collect_dataset_rows(
             config.datasets,
             as_of_date,
             storage_dir=storage_dir,
@@ -124,9 +125,9 @@ def _window_rows(
     for window in config.windows:
         window_dates = trade_dates[-window:]
         status = "ok" if len(window_dates) >= window else "insufficient"
-        value_text = ""
-        if window_dates:
-            value_text = f"{window_dates[0].isoformat()}..{window_dates[-1].isoformat()}"
+        value_text = (
+            f"{window_dates[0].isoformat()}..{window_dates[-1].isoformat()}" if window_dates else ""
+        )
         rows.append(
             _fact_row(
                 {
@@ -222,7 +223,11 @@ def _panel_date_row(
     metric_id: str,
     note: str,
 ) -> dict[str, Any]:
-    dates = _date_values(panel[metric_id].drop_nulls().unique().to_list())
+    dates = [
+        d
+        for v in panel[metric_id].drop_nulls().unique().to_list()
+        if isinstance(d := _parse_date(v), date)
+    ]
     latest = max(dates) if dates else None
     lag_text = f"; 距基准日 {max((as_of_date - latest).days, 0)} 天" if latest else ""
     return _fact_row(
@@ -322,16 +327,7 @@ def _fact_row(
     }
 
 
-def _date_values(values: Iterable[object]) -> list[date]:
-    dates: list[date] = []
-    for value in values:
-        parsed = _parse_date_value(value)
-        if parsed is not None:
-            dates.append(parsed)
-    return dates
-
-
-def _parse_date_value(value: object) -> date | None:
+def _parse_date(value: object) -> date | None:
     if isinstance(value, date):
         return value
     if value is None:

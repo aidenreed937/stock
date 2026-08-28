@@ -1,0 +1,99 @@
+from datetime import date
+from pathlib import Path
+
+import polars as pl
+import pytest
+
+from stock_core.exceptions import DataValidationError
+from stock_strategy import macro_assembly
+
+
+class _FakeCatalog:
+    """按 symbol 返回预置 close 面板的假目录。"""
+
+    def __init__(self, frames: dict[str, pl.DataFrame]) -> None:
+        self._frames = frames
+
+    def load_bars(self, *, symbol: str, dataset: str, columns: list[str]) -> pl.DataFrame:
+        frame = self._frames.get(symbol, pl.DataFrame())
+        if frame.is_empty():
+            return frame
+        return frame.select([c for c in columns if c in frame.columns])
+
+
+def _patch_factors(monkeypatch, factors: pl.DataFrame) -> None:
+    monkeypatch.setattr(
+        macro_assembly,
+        "load_latest_risk_factors",
+        lambda risk_root=None: (Path("."), factors, {}),
+    )
+
+
+def test_assemble_macro_panel_joins_and_forward_fills(monkeypatch) -> None:
+    close = pl.DataFrame(
+        {
+            "trade_date": [date(2026, 1, 1 + i) for i in range(5)],
+            "close": [100.0, 101.0, 102.0, 103.0, 104.0],
+        }
+    )
+    factors = pl.DataFrame(
+        {
+            "trade_date": [date(2026, 1, 2), date(2026, 1, 4)],
+            "panic_index": [10.0, 20.0],
+            "overheat_index": [30.0, 40.0],
+        }
+    )
+    _patch_factors(monkeypatch, factors)
+    panel = macro_assembly.assemble_macro_panel(
+        catalog=_FakeCatalog({"000985.CSI": close}),
+        benchmark_symbol="000985.CSI",
+    )
+    assert set(panel.columns) == {"trade_date", "close", "panic_index", "overheat_index"}
+    assert panel["trade_date"].to_list() == [date(2026, 1, 2 + i) for i in range(4)]
+    assert panel["panic_index"].to_list() == [10.0, 10.0, 20.0, 20.0]
+    assert panel["overheat_index"].to_list() == [30.0, 30.0, 40.0, 40.0]
+    assert panel["close"].to_list() == [101.0, 102.0, 103.0, 104.0]
+
+
+def test_assemble_macro_panel_missing_factor_cols_raises(monkeypatch) -> None:
+    factors = pl.DataFrame({"trade_date": [date(2026, 1, 1)], "panic_index": [10.0]})
+    _patch_factors(monkeypatch, factors)
+    close = pl.DataFrame({"trade_date": [date(2026, 1, 1)], "close": [100.0]})
+    with pytest.raises(DataValidationError):
+        macro_assembly.assemble_macro_panel(
+            catalog=_FakeCatalog({"000985.CSI": close}),
+            benchmark_symbol="000985.CSI",
+        )
+
+
+def test_assemble_macro_panel_empty_close_raises(monkeypatch) -> None:
+    factors = pl.DataFrame(
+        {
+            "trade_date": [date(2026, 1, 1)],
+            "panic_index": [10.0],
+            "overheat_index": [30.0],
+        }
+    )
+    _patch_factors(monkeypatch, factors)
+    with pytest.raises(DataValidationError):
+        macro_assembly.assemble_macro_panel(
+            catalog=_FakeCatalog({}),
+            benchmark_symbol="000985.CSI",
+        )
+
+
+def test_load_price_panel_concats_symbols() -> None:
+    frames = {
+        "000922.CSI": pl.DataFrame(
+            {"trade_date": [date(2026, 1, 1)], "symbol": ["000922.CSI"], "close": [10.0]}
+        ),
+        "399006.SZ": pl.DataFrame(
+            {"trade_date": [date(2026, 1, 1)], "symbol": ["399006.SZ"], "close": [20.0]}
+        ),
+    }
+    panel = macro_assembly.load_price_panel(
+        catalog=_FakeCatalog(frames),
+        symbols=["000922.CSI", "399006.SZ"],
+    )
+    assert sorted(panel["symbol"].to_list()) == ["000922.CSI", "399006.SZ"]
+    assert sorted(panel["close"].to_list()) == [10.0, 20.0]

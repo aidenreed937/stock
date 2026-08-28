@@ -11,15 +11,12 @@ from stock_analytics.data_quality import build_quality_report
 from stock_analytics.features.dataset_cache import DatasetFrameCache
 from stock_analytics.marts.shared.industry_structure.panel import load_industry_panel_daily
 from stock_analytics.pipelines.artifacts import (
+    ArtifactRunPaths,
+    ArtifactStore,
+    ArtifactWriteSession,
     RunClass,
     build_manifest_base,
     build_watermark_index,
-)
-from stock_analytics.pipelines.industry_structure.artifacts import (
-    IndustryStructureArtifactPayload,
-    IndustryStructureRunPaths,
-    build_run_paths,
-    write_artifacts,
 )
 from stock_analytics.pipelines.industry_structure.config import (
     DEFAULT_CONFIG_PATH,
@@ -28,7 +25,14 @@ from stock_analytics.pipelines.industry_structure.config import (
 )
 from stock_analytics.pipelines.industry_structure.facts import collect_facts, resolve_trade_window
 from stock_analytics.pipelines.industry_structure.scoring import score_industry_panel
+from stock_core.utils.logger import logger
 from stock_data.core.runtime import DataRuntimeContext
+from stock_reporting.core.quality import render_quality_report_markdown
+from stock_reporting.templates.industry_structure import (
+    build_report_json,
+    render_human_report_markdown,
+    render_report_markdown,
+)
 
 if TYPE_CHECKING:
     import polars as pl
@@ -39,7 +43,7 @@ class IndustryStructureRunResult:
     """行业结构分析一次运行结果。"""
 
     as_of_date: date
-    paths: IndustryStructureRunPaths
+    paths: ArtifactRunPaths
     manifest: dict[str, Any]
     facts: pl.DataFrame
     industry_panel: pl.DataFrame
@@ -101,7 +105,11 @@ class IndustryStructurePipeline:
                 raise ValueError("传入的行业结构交易日窗口为空")
             as_of_date = target_date or resolved_trade_dates[-1]
 
-        paths = build_run_paths(as_of_date, config.artifact_root, run_class=run_class)
+        paths = ArtifactStore.build_run_paths(
+            as_of_date=as_of_date,
+            artifact_root=config.artifact_root,
+            run_class=run_class,
+        )
         manifest = _build_manifest(
             config,
             as_of_date,
@@ -140,13 +148,6 @@ class IndustryStructurePipeline:
             period_note="行业结构主窗口按最近已落盘申万行业交易日取窗口；60/120 日只作中期确认。",
         )
 
-        from stock_reporting.core.quality import render_quality_report_markdown
-        from stock_reporting.templates.industry_structure import (
-            build_report_json,
-            render_human_report_markdown,
-            render_report_markdown,
-        )
-
         quality_report_markdown = render_quality_report_markdown(quality_report_json)
         report_json = build_report_json(
             config=config,
@@ -170,21 +171,18 @@ class IndustryStructurePipeline:
             industry_panel=industry_panel,
         )
 
-        write_artifacts(
-            paths,
-            IndustryStructureArtifactPayload(
-                manifest=manifest,
-                facts=facts,
-                industry_panel=industry_panel,
-                scores=scores,
-                report_markdown=report_markdown,
-                report_json=report_json,
-                human_report_markdown=human_report_markdown,
-                quality_report_markdown=quality_report_markdown,
-                quality_report_json=quality_report_json,
-            ),
-            update_latest=update_latest,
-        )
+        with ArtifactWriteSession(paths, update_latest=update_latest) as session:
+            session.write_json("manifest.json", manifest)
+            session.write_parquet("facts.parquet", facts)
+            session.write_parquet("industry_panel.parquet", industry_panel)
+            session.write_json("scores.json", scores)
+            session.write_text("report.md", report_markdown)
+            session.write_json("report.json", report_json)
+            session.write_text("human_report.md", human_report_markdown)
+            session.write_text("quality_report.md", quality_report_markdown)
+            session.write_json("quality_report.json", quality_report_json)
+
+        logger.info(f"行业结构分析产物已落盘: {paths.run_dir}")
 
         return IndustryStructureRunResult(
             as_of_date=as_of_date,
@@ -237,7 +235,7 @@ def _build_manifest(
     config: IndustryStructureConfig,
     as_of_date: date,
     trade_dates: tuple[date, ...],
-    paths: IndustryStructureRunPaths,
+    paths: ArtifactRunPaths,
     *,
     config_path: Path | str | None = None,
 ) -> dict[str, Any]:
@@ -250,25 +248,11 @@ def _build_manifest(
         artifact_root=paths.root,
         config_path=config_path,
     )
-    manifest.update(
-        {
-            "main_window": config.main_window,
-            "short_windows": list(config.short_windows),
-            "medium_windows": list(config.medium_windows),
-            "classification": config.classification,
-            "benchmark": config.benchmark,
-            "trade_dates": [value.isoformat() for value in trade_dates],
-            "files": {
-                "manifest": paths.manifest.name,
-                "facts": paths.facts.name,
-                "industry_panel": paths.industry_panel.name,
-                "scores": paths.scores.name,
-                "report_md": paths.report_md.name,
-                "report_json": paths.report_json.name,
-                "human_report_md": paths.human_report_md.name,
-                "quality_report_md": paths.quality_report_md.name,
-                "quality_report_json": paths.quality_report_json.name,
-            },
-        }
-    )
+    manifest["methodology"] = {
+        "score_type": "cross_sectional_ranking",
+        "description": "申万一级行业横截面结构分",
+    }
+    manifest["trade_dates"] = [value.isoformat() for value in trade_dates]
+    manifest["windows"] = list(config.windows)
+    manifest["main_window"] = config.main_window
     return manifest

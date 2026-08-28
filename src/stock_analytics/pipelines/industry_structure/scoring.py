@@ -1,7 +1,9 @@
-"""行业结构评分。"""
+"""行业结构横截面评分计算。"""
 
 from __future__ import annotations
 
+from datetime import date
+from math import isfinite
 from typing import TYPE_CHECKING, Any
 
 import polars as pl
@@ -10,20 +12,13 @@ from stock_analytics.marts.shared.industry_structure.panel import BASE_PANEL_SCH
 from stock_analytics.pipelines.industry_structure.scoring_diagnostics import (
     _bottom_rows,
     _count_by_text,
+    _methodology,
     _structure_health,
     _tagged_rows,
     _top_rows,
     _trend_diagnostics,
 )
-from stock_analytics.pipelines.industry_structure.scoring_utils import (
-    _apply_cross_percentile,
-    _apply_fund_flow_percentiles,
-    _as_float,
-    _clip,
-    _inverse,
-    _mean_available,
-    _parse_date_value,
-)
+from stock_analytics.primitives.rules import percentile_rank
 
 if TYPE_CHECKING:
     from stock_core.config.analytics_industry_structure import IndustryStructureConfig
@@ -55,8 +50,7 @@ def score_industry_panel(
 ) -> tuple[pl.DataFrame, dict[str, Any]]:
     """给行业面板增加四类子分、总分、标签和摘要。"""
     if panel.is_empty():
-        empty = pl.DataFrame(schema=SCORED_PANEL_SCHEMA)
-        return empty, _empty_scores(config)
+        return pl.DataFrame(schema=SCORED_PANEL_SCHEMA), _empty_scores(config)
 
     rows = panel.to_dicts()
     _apply_cross_percentile(rows, "return_20d", "_return_20d_pct")
@@ -83,7 +77,7 @@ def score_industry_panel(
             _inverse(row.get("pb_percentile_5y")),
             row.get("_pbroe_score"),
         )
-        official_score = _mean_available(
+        off_score = _mean_available(
             row.get("revenue_growth_percentile"),
             row.get("profit_growth_percentile"),
             row.get("roe_percentile"),
@@ -95,17 +89,17 @@ def score_industry_panel(
             row.get("_express_roe_pct"),
             row.get("_report_revision_pct"),
         )
-        fundamental = _blend_fundamental_score(config, row, official_score, fast_score)
-        row["official_fundamental_score"] = official_score
+        f_blend = _blend_fundamental_score(config, row, off_score, fast_score)
+        row["official_fundamental_score"] = off_score
         row["fast_fundamental_score"] = fast_score
-        row["fundamental_score"] = fundamental["score"]
-        row["fundamental_official_weight"] = fundamental["official_weight"]
-        row["fundamental_fast_weight"] = fundamental["fast_weight"]
-        row["fundamental_status"] = fundamental["status"]
-        crowding_temperature = _as_float(row.get("tcr_percentile"))
-        if crowding_temperature is None:
-            crowding_temperature = _as_float(row.get("tcr"))
-        row["crowding_temperature"] = _clip(crowding_temperature)
+        row["fundamental_score"] = f_blend["score"]
+        row["fundamental_official_weight"] = f_blend["official_weight"]
+        row["fundamental_fast_weight"] = f_blend["fast_weight"]
+        row["fundamental_status"] = f_blend["status"]
+        crowd_temp = _as_float(row.get("tcr_percentile"))
+        if crowd_temp is None:
+            crowd_temp = _as_float(row.get("tcr"))
+        row["crowding_temperature"] = _clip(crowd_temp)
         row["crowding_score"] = _inverse(row.get("crowding_temperature"))
         row["fund_flow_score"] = _mean_available(
             row.get("_money_inflow_pct"),
@@ -185,107 +179,6 @@ def _empty_scores(config: IndustryStructureConfig) -> dict[str, Any]:
     }
 
 
-def _methodology(config: IndustryStructureConfig) -> dict[str, Any]:
-    return {
-        "score_type": "行业结构分是申万一级行业横截面排序分，不并入六维市场温度。",
-        "missing_policy": "缺失子项不填补，对可用子项按有效权重重归一。",
-        "field_definitions": {
-            "tcr": (
-                f"TCR=最近{config.main_window}个行业交易日的行业成交额占全部申万一级行业成交额比例均值，"
-                "单位为百分点。"
-            ),
-            "tcr_percentile": "该行业自身历史 TCR 分位，越高代表成交越集中。",
-            "crowding_temperature": "等于 TCR 历史分位，越高越拥挤。",
-            "crowding_score": "100-crowding_temperature，越高代表越不拥挤。",
-            "fund_flow_score": (
-                "由行业20日主力净流入成交占比、大单/超大单净流入成交占比、"
-                "5日主力净流入成交占比的横截面分位等权合成；仅作资金确认观察，"
-                "不并入结构总分。"
-            ),
-        },
-        "subscores": {
-            "momentum_score": {
-                "components": [
-                    "return_20d 横截面分位",
-                    "relative_return_20d 横截面分位",
-                    "return_60d 横截面分位",
-                    "ma_bias_20d 横截面分位",
-                ],
-                "direction": "越强越高",
-                "normalization": "基准日申万一级行业横截面分位，0-100。",
-            },
-            "valuation_score": {
-                "components": [
-                    "100-PE五年历史分位",
-                    "100-PB五年历史分位",
-                    "PB-ROE残差横截面反向分位",
-                ],
-                "direction": "越便宜、PB-ROE越低估越高",
-                "normalization": "历史分位和横截面反向分位混合，0-100。",
-            },
-            "fundamental_score": {
-                "components": [
-                    "official_fundamental_score",
-                    "fast_fundamental_score",
-                ],
-                "direction": "越强越高",
-                "normalization": (
-                    "正式财报使用行业自身历史分位；快速项使用当前窗口行业横截面分位。"
-                ),
-                "cadence": ("正式财报是季频底座；预告、快报和研报用于中报窗口过渡确认。"),
-                "blend": (
-                    f"财报距基准日超过 {config.fundamental_blend.stale_after_days} 天视为 stale；"
-                    f"fresh 使用正式/快速 {config.fundamental_blend.official_weight:.0%}/"
-                    f"{config.fundamental_blend.fast_weight:.0%}，stale 使用 "
-                    f"{config.fundamental_blend.stale_official_weight:.0%}/"
-                    f"{config.fundamental_blend.stale_fast_weight:.0%}。"
-                ),
-            },
-            "crowding_score": {
-                "components": ["100-TCR历史分位"],
-                "direction": "越不拥挤越高",
-                "normalization": "行业自身历史反向分位，0-100。",
-            },
-            "fund_flow_score": {
-                "components": [
-                    "money_net_inflow_share_20d 横截面分位",
-                    "large_money_net_inflow_share_20d 横截面分位",
-                    "money_net_inflow_share_5d 横截面分位",
-                ],
-                "direction": "越流入越高",
-                "normalization": "基准日申万一级行业横截面分位，0-100；观察项不入结构总分。",
-            },
-        },
-        "tag_rules": {
-            "强势主线": "momentum_score>=75 且 return_20d>0。",
-            "低估改善": "valuation_score>=70 且 fundamental_score>=55。",
-            "拥挤风险": "crowding_temperature>=80。",
-            "超跌修复": "return_20d<0 且 return_5d>0。",
-            "景气承压": "fundamental_score<40。",
-            "相对占优": "relative_return_20d>0。",
-            "资金确认": "fund_flow_score>=70 且 money_net_inflow_share_20d>0。",
-            "资金流出压力": "fund_flow_score<=30 且 money_net_inflow_share_20d<0。",
-            "中性观察": "不满足以上标签时使用。",
-        },
-        "group_rules": {
-            "结构分Top": "structure_score 降序前10。",
-            "动量主线": "momentum_score 降序前5。",
-            "低估线索": "valuation_score 降序前5。",
-            "强势主线": "带有强势主线标签，按 structure_score 降序。",
-            "低估改善": "带有低估改善标签，按 structure_score 降序。",
-            "拥挤风险": "带有拥挤风险标签，按 structure_score 降序；标签可与其他标签重叠。",
-            "资金确认": "带有资金确认标签，按 structure_score 降序；只作验证方向。",
-            "资金流出压力": "带有资金流出压力标签，按 structure_score 降序；用于风险排查。",
-            "落后方向": "structure_score 升序后5；不是互斥标签。",
-        },
-        "data_mapping": (
-            "行业代码优先由 tushare.index_classify 识别申万2021一级行业；"
-            "分类字典不可用时回退为 sw_daily 可用行业代码，名称优先用分类字典，"
-            "再用 sw_daily 名称或理杏仁估值表名称回填。"
-        ),
-    }
-
-
 def _blend_fundamental_score(
     config: IndustryStructureConfig,
     row: dict[str, Any],
@@ -301,52 +194,42 @@ def _blend_fundamental_score(
             "status": "insufficient",
         }
     if stale:
-        official_weight = config.fundamental_blend.stale_official_weight
-        fast_weight = config.fundamental_blend.stale_fast_weight
+        w_off = config.fundamental_blend.stale_official_weight
+        w_fast = config.fundamental_blend.stale_fast_weight
     else:
-        official_weight = config.fundamental_blend.official_weight
-        fast_weight = config.fundamental_blend.fast_weight
+        w_off = config.fundamental_blend.official_weight
+        w_fast = config.fundamental_blend.fast_weight
     if official_score is None:
-        official_weight = 0.0
+        w_off = 0.0
     if fast_score is None:
-        fast_weight = 0.0
-    weight_sum = official_weight + fast_weight
-    if weight_sum <= 0:
+        w_fast = 0.0
+    w_sum = w_off + w_fast
+    if w_sum <= 0:
         return {
             "score": None,
             "official_weight": None,
             "fast_weight": None,
             "status": "insufficient",
         }
-    score = 0.0
-    if official_score is not None:
-        score += official_score * official_weight
-    if fast_score is not None:
-        score += fast_score * fast_weight
+    score = (official_score or 0.0) * w_off + (fast_score or 0.0) * w_fast
     return {
-        "score": round(score / weight_sum, 2),
-        "official_weight": round(official_weight / weight_sum, 4),
-        "fast_weight": round(fast_weight / weight_sum, 4),
+        "score": round(score / w_sum, 2),
+        "official_weight": round(w_off / w_sum, 4),
+        "fast_weight": round(w_fast / w_sum, 4),
         "status": _fundamental_status(official_score, fast_score, stale=stale),
     }
 
 
-def _is_official_fundamental_stale(
-    config: IndustryStructureConfig,
-    row: dict[str, Any],
-) -> bool:
-    as_of_date = _parse_date_value(row.get("as_of_date"))
-    fundamental_date = _parse_date_value(row.get("fundamental_date"))
-    if as_of_date is None or fundamental_date is None:
+def _is_official_fundamental_stale(config: IndustryStructureConfig, row: dict[str, Any]) -> bool:
+    as_of = _parse_date(row.get("as_of_date"))
+    f_date = _parse_date(row.get("fundamental_date"))
+    if as_of is None or f_date is None:
         return True
-    return (as_of_date - fundamental_date).days > config.fundamental_blend.stale_after_days
+    return (as_of - f_date).days > config.fundamental_blend.stale_after_days
 
 
 def _fundamental_status(
-    official_score: float | None,
-    fast_score: float | None,
-    *,
-    stale: bool,
+    official_score: float | None, fast_score: float | None, *, stale: bool
 ) -> str:
     if official_score is None and fast_score is not None:
         return "provisional_fast_only"
@@ -364,30 +247,29 @@ def _weighted_score(config: IndustryStructureConfig, row: dict[str, Any]) -> flo
         (row.get("fundamental_score"), config.score_weights.fundamental),
         (row.get("crowding_score"), config.score_weights.crowding),
     )
-    weighted_sum = 0.0
-    weight_sum = 0.0
-    for value, weight in items:
-        numeric = _as_float(value)
-        if numeric is None or weight <= 0:
-            continue
-        weighted_sum += numeric * weight
-        weight_sum += weight
-    if weight_sum == 0:
-        return None
-    return round(weighted_sum / weight_sum, 2)
+    weighted_sum = sum(num * w for val, w in items if (num := _as_float(val)) is not None and w > 0)
+    weight_sum = sum(w for val, w in items if _as_float(val) is not None and w > 0)
+    return round(weighted_sum / weight_sum, 2) if weight_sum > 0 else None
 
 
 def _tags(row: dict[str, Any]) -> list[str]:
     tags: list[str] = []
-    momentum = _as_float(row.get("momentum_score"))
-    valuation = _as_float(row.get("valuation_score"))
-    fundamental = _as_float(row.get("fundamental_score"))
-    crowding = _as_float(row.get("crowding_temperature"))
-    fund_flow = _as_float(row.get("fund_flow_score"))
-    money_inflow = _as_float(row.get("money_net_inflow_share_20d"))
-    return_20d = _as_float(row.get("return_20d"))
-    return_5d = _as_float(row.get("return_5d"))
-    relative_return = _as_float(row.get("relative_return_20d"))
+    momentum, valuation, fundamental = (
+        _as_float(row.get("momentum_score")),
+        _as_float(row.get("valuation_score")),
+        _as_float(row.get("fundamental_score")),
+    )
+    crowding, fund_flow, money_inflow = (
+        _as_float(row.get("crowding_temperature")),
+        _as_float(row.get("fund_flow_score")),
+        _as_float(row.get("money_net_inflow_share_20d")),
+    )
+    return_20d, return_5d, rel_return = (
+        _as_float(row.get("return_20d")),
+        _as_float(row.get("return_5d")),
+        _as_float(row.get("relative_return_20d")),
+    )
+
     if momentum is not None and momentum >= 75 and (return_20d or 0.0) > 0:
         tags.append("强势主线")
     if valuation is not None and valuation >= 70 and (fundamental or 0.0) >= 55:
@@ -398,7 +280,7 @@ def _tags(row: dict[str, Any]) -> list[str]:
         tags.append("超跌修复")
     if fundamental is not None and fundamental < 40:
         tags.append("景气承压")
-    if relative_return is not None and relative_return > 0:
+    if rel_return is not None and rel_return > 0:
         tags.append("相对占优")
     if fund_flow is not None and money_inflow is not None and fund_flow >= 70 and money_inflow > 0:
         tags.append("资金确认")
@@ -409,29 +291,80 @@ def _tags(row: dict[str, Any]) -> list[str]:
 
 def _score_note(row: dict[str, Any]) -> str:
     available = [
-        key
-        for key in (
-            "momentum_score",
-            "valuation_score",
-            "fundamental_score",
-            "crowding_score",
-        )
-        if _as_float(row.get(key)) is not None
+        k
+        for k in ("momentum_score", "valuation_score", "fundamental_score", "crowding_score")
+        if _as_float(row.get(k)) is not None
     ]
-    observations = []
-    if _as_float(row.get("fund_flow_score")) is not None:
-        observations.append("fund_flow_score")
+    obs = ["fund_flow_score"] if _as_float(row.get("fund_flow_score")) is not None else []
     note = f"available_subscores={','.join(available)}"
-    if observations:
-        note = f"{note}; available_observations={','.join(observations)}"
-    return note
+    return f"{note}; available_observations={','.join(obs)}" if obs else note
 
 
 def _select_scored_columns(panel: pl.DataFrame) -> pl.DataFrame:
-    columns = []
-    for column, dtype in SCORED_PANEL_SCHEMA.items():
-        if column in panel.columns:
-            columns.append(pl.col(column).cast(dtype, strict=False).alias(column))
-        else:
-            columns.append(pl.lit(None, dtype=dtype).alias(column))
+    columns = [
+        pl.col(c).cast(dtype, strict=False).alias(c)
+        if c in panel.columns
+        else pl.lit(None, dtype=dtype).alias(c)
+        for c, dtype in SCORED_PANEL_SCHEMA.items()
+    ]
     return panel.select(columns)
+
+
+def _apply_cross_percentile(
+    rows: list[dict[str, Any]],
+    source: str,
+    target: str,
+    *,
+    inverse: bool = False,
+) -> None:
+    values = [
+        (idx, val)
+        for idx, row in enumerate(rows)
+        if (val := _as_float(row.get(source))) is not None
+    ]
+    if len(values) < 2:
+        return
+    v_series = pl.Series([v for _, v in values])
+    for idx, val in values:
+        pct = percentile_rank(v_series, len(values), current=val)
+        rows[idx][target] = round(100.0 - pct if inverse else pct, 2) if pct is not None else None
+
+
+def _apply_fund_flow_percentiles(rows: list[dict[str, Any]]) -> None:
+    _apply_cross_percentile(rows, "money_net_inflow_share_20d", "_money_inflow_pct")
+    _apply_cross_percentile(rows, "large_money_net_inflow_share_20d", "_large_money_inflow_pct")
+    _apply_cross_percentile(rows, "money_net_inflow_share_5d", "_short_money_inflow_pct")
+
+
+def _mean_available(*values: object) -> float | None:
+    clean = [num for v in values if (num := _as_float(v)) is not None]
+    return round(sum(clean) / len(clean), 2) if clean else None
+
+
+def _parse_date(value: object) -> date | None:
+    if isinstance(value, date):
+        return value
+    if not value:
+        return None
+    compact = str(value).strip().replace("-", "")[:8]
+    if len(compact) == 8 and compact.isdigit():
+        return date(int(compact[:4]), int(compact[4:6]), int(compact[6:8]))
+    return None
+
+
+def _inverse(value: object) -> float | None:
+    return _clip(100.0 - num) if (num := _as_float(value)) is not None else None
+
+
+def _clip(value: object) -> float | None:
+    return round(min(100.0, max(0.0, num)), 2) if (num := _as_float(value)) is not None else None
+
+
+def _as_float(value: object) -> float | None:
+    if value is None or not isinstance(value, int | float | str):
+        return None
+    try:
+        num = float(value)
+        return num if isfinite(num) else None
+    except (TypeError, ValueError):
+        return None

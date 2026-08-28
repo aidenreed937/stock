@@ -64,11 +64,11 @@ industry_structure:
         "quality_report.md",
         "quality_report.json",
     }
-    assert result.paths.report_md.exists()
-    assert result.paths.human_report_md.exists()
-    assert result.paths.quality_report_md.exists()
-    assert result.paths.quality_report_json.exists()
-    assert result.paths.industry_panel.exists()
+    assert (result.paths.run_dir / "report.md").exists()
+    assert (result.paths.run_dir / "human_report.md").exists()
+    assert (result.paths.run_dir / "quality_report.md").exists()
+    assert (result.paths.run_dir / "quality_report.json").exists()
+    assert (result.paths.run_dir / "industry_panel.parquet").exists()
     assert (output_root / "latest" / "industry_panel.parquet").exists()
     assert (output_root / "latest" / "quality_report.md").exists()
     assert result.industry_panel.height == 12
@@ -120,7 +120,7 @@ industry_structure:
 
     assert result.as_of_date == date(2026, 8, 14)
     assert result.manifest["title"] == "测试行业结构Pipeline类"
-    assert result.paths.manifest.exists()
+    assert (result.paths.run_dir / "manifest.json").exists()
 
 
 def _write_sw_daily(storage_dir: Path) -> None:
