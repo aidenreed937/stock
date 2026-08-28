@@ -1,0 +1,113 @@
+macro_risk:
+  factors:
+    erp:
+      series: valuation
+      column: erp
+      window: 2500
+      min_periods: 1250
+      direction: rev
+    pb:
+      series: valuation
+      column: pb
+      window: 2500
+      min_periods: 1250
+      direction: raw
+    margin_pen:
+      series: leverage
+      column: margin_pen
+      window: 1250
+      min_periods: 500
+      direction: raw
+    margin_buy_ratio:
+      series: leverage
+      column: margin_buy_ratio
+      window: 1250
+      min_periods: 500
+      direction: raw
+    main_ratio:
+      series: main_flow
+      column: main_ratio
+      window: 1250
+      min_periods: 500
+      direction: rev
+    adv_dec:
+      series: breadth
+      column: adv_dec
+      window: 1250
+      min_periods: 500
+      direction: rev
+    newhigh60_ratio:
+      series: breadth
+      column: newhigh60_ratio
+      window: 1250
+      min_periods: 500
+      direction: rev
+    pcr:
+      series: pcr
+      column: pcr
+      window: 750
+      min_periods: 250
+      direction: raw
+    iv:
+      series: iv
+      column: iv
+      window: 750
+      min_periods: 250
+      direction: raw
+    vix:
+      series: vix
+      column: vix
+      window: 1250
+      min_periods: 500
+      direction: raw
+    unlock_ratio:
+      series: unlock
+      column: unlock_ratio
+      window: 1250
+      min_periods: 500
+      direction: raw
+    market_turnover:
+      series: crowdedness
+      column: market_turnover_rate
+      window: 1250
+      min_periods: 500
+      direction: raw
+  dimensions:
+    valuation:
+    - erp
+    - pb
+    leverage:
+    - margin_pen
+    flow:
+    - main_ratio
+    - margin_buy_ratio
+    breadth:
+    - adv_dec
+    - newhigh60_ratio
+    sentiment:
+    - pcr
+    - iv
+    - vix
+    unlock:
+    - unlock_ratio
+    crowding:
+    - market_turnover
+  indices:
+    overheat_index:
+    - dim: valuation
+      direction: raw
+    - dim: leverage
+      direction: raw
+    - dim: sentiment
+      direction: rev
+    - dim: flow
+      direction: rev
+    - dim: crowding
+      direction: raw
+    panic_index:
+    - dim: breadth
+      direction: raw
+    - dim: sentiment
+      direction: raw
+    - dim: flow
+      direction: raw
