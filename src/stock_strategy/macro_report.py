@@ -7,6 +7,7 @@
 
 from __future__ import annotations
 
+from collections.abc import Callable
 from datetime import date
 from math import sqrt
 from pathlib import Path
@@ -18,17 +19,12 @@ import yaml
 from stock_data.catalog import DataCatalog
 from stock_strategy.macro_assembly import assemble_macro_panel, load_price_panel
 from stock_strategy.macro_runner import MacroRiskRunner
-from stock_strategy.pool import MacroRiskV3Strategy, MacroRotationV4Strategy
+from stock_strategy.pool import create_strategy
 
 _TRADING_DAYS_PER_YEAR = 252.0
 _DEFAULT_CONFIG_PATH = Path("config/strategy/macro_risk.yaml")
 _DEFAULT_RISK_ROOT = Path("data/analytics/macro_risk")
 _DEFAULT_OUTPUT_DIR = Path("data/analytics/macro_strategy")
-
-_STRATEGY_CLASSES = {
-    "MacroRiskV3Strategy": MacroRiskV3Strategy,
-    "MacroRotationV4Strategy": MacroRotationV4Strategy,
-}
 
 _BENCHMARKS = (
     ("000985.CSI", "中证全指"),
@@ -36,13 +32,21 @@ _BENCHMARKS = (
 )
 
 
-def load_strategy_spec(name: str, config_path: Path | str = _DEFAULT_CONFIG_PATH) -> dict[str, Any]:
-    """读取单个宏观策略的运行配置（benchmark / symbols / initial_weights / ma_window）。"""
+def load_all_strategy_specs(
+    config_path: Path | str = _DEFAULT_CONFIG_PATH,
+) -> dict[str, dict[str, Any]]:
+    """读取配置文件中所有已注册宏观策略的配置字典。"""
     payload = yaml.safe_load(Path(config_path).read_text(encoding="utf-8"))
     if not isinstance(payload, dict):
         return {}
-    entry = payload.get("strategies", {}).get(name)
-    return entry if isinstance(entry, dict) else {}
+    strategies = payload.get("strategies", {})
+    return {k: v for k, v in strategies.items() if isinstance(v, dict)}
+
+
+def load_strategy_spec(name: str, config_path: Path | str = _DEFAULT_CONFIG_PATH) -> dict[str, Any]:
+    """读取单个宏观策略的运行配置（benchmark / symbols / initial_weights / ma_window）。"""
+    all_specs = load_all_strategy_specs(config_path)
+    return all_specs.get(name, {})
 
 
 def nav_from_close(
@@ -109,8 +113,10 @@ def compute_stats(nav: pl.DataFrame) -> dict[str, float | None]:
 
 
 def _runner_for(spec: dict[str, Any]) -> tuple[MacroRiskRunner, str]:
-    strategy_cls = _STRATEGY_CLASSES[spec["strategy_class"]]
-    strategy = strategy_cls(ma_window=int(spec.get("ma_window", 20)))
+    strategy = create_strategy(
+        str(spec["strategy_class"]),
+        ma_window=int(spec.get("ma_window", 20)),
+    )
     runner = MacroRiskRunner(
         strategy,
         symbols=tuple(spec["symbols"]),
@@ -118,26 +124,27 @@ def _runner_for(spec: dict[str, Any]) -> tuple[MacroRiskRunner, str]:
         strategy_name=spec["strategy_class"],
         data_source="tushare",
     )
-    return runner, spec["benchmark_symbol"]
+    return runner, str(spec["benchmark_symbol"])
 
 
-def build_v3_v4_comparison_report(
+def build_multi_strategy_comparison_report(
     *,
     output_dir: Path | str = _DEFAULT_OUTPUT_DIR,
     risk_root: Path | str = _DEFAULT_RISK_ROOT,
     config_path: Path | str = _DEFAULT_CONFIG_PATH,
 ) -> dict[str, Any]:
-    """生成 V3/V4 与基准的资金曲线、指标对比与 Markdown 文档。"""
+    """生成配置文件中所有策略与基准的资金曲线、指标对比与 Markdown 文档。"""
     out = Path(output_dir)
     out.mkdir(parents=True, exist_ok=True)
     catalog = DataCatalog(data_source="tushare")
 
-    # 1. 策略净值（以 V4 面板日期范围为统一轴）
+    # 1. 动态加载并运行所有已配置策略
+    strategy_specs = load_all_strategy_specs(config_path)
     series: dict[str, pl.DataFrame] = {}
     start: date | None = None
     end: date | None = None
-    for name in ("macro_risk_v3", "macro_rotation_v4"):
-        spec = load_strategy_spec(name, config_path)
+
+    for name, spec in strategy_specs.items():
         runner, benchmark = _runner_for(spec)
         panel = assemble_macro_panel(
             catalog=catalog,
@@ -164,9 +171,9 @@ def build_v3_v4_comparison_report(
     stats = {name: compute_stats(nav) for name, nav in series.items()}
 
     # 4. 资金曲线图 + 净值 CSV + Markdown
-    png_path = out / "v3_v4_comparison.png"
-    csv_path = out / "v3_v4_nav.csv"
-    md_path = out / "v3_v4_comparison.md"
+    png_path = out / "multi_strategy_comparison.png"
+    csv_path = out / "multi_strategy_nav.csv"
+    md_path = out / "multi_strategy_comparison.md"
     _write_nav_csv(series, csv_path)
     plot_comparison(series, png_path)
     md_content = render_comparison_markdown(stats, image_rel_path=png_path.name)
@@ -178,6 +185,10 @@ def build_v3_v4_comparison_report(
         "csv": csv_path,
         "stats": stats,
     }
+
+
+# 向后兼容别名
+build_v3_v4_comparison_report = build_multi_strategy_comparison_report
 
 
 def _write_nav_csv(series: dict[str, pl.DataFrame], path: Path) -> None:
@@ -218,7 +229,7 @@ def plot_comparison(series: dict[str, pl.DataFrame], output_png: Path) -> None:
     for name, nav in series.items():
         ax.plot(nav["trade_date"].to_list(), nav["nav"].to_list(), label=name, linewidth=1.2)
 
-    ax.set_title("宏观风控固化策略 V3 / V4 与基准资金曲线对比 (2015-2026)")
+    ax.set_title("宏观风控多策略演进与基准资金曲线全景对比 (2015-2026)")
     ax.set_xlabel("交易日期")
     ax.set_ylabel("累计净值 (对数轴)")
     ax.set_yscale("log")
@@ -229,59 +240,77 @@ def plot_comparison(series: dict[str, pl.DataFrame], output_png: Path) -> None:
     plt.close(fig)
 
 
+_RowSpec = tuple[str, str, Callable[[float], str]]
+
+
 def render_comparison_markdown(
     stats: dict[str, dict[str, float | None]],
     *,
-    image_rel_path: str = "v3_v4_comparison.png",
+    image_rel_path: str = "multi_strategy_comparison.png",
 ) -> str:
-    """按模板渲染 V3/V4 与基准的对比 Markdown 文档。"""
-    v3 = stats["macro_risk_v3"]
-    v4 = stats["macro_rotation_v4"]
-    csi = stats["中证全指"]
-    hs300 = stats["沪深300"]
+    """按模板动态渲染多策略与基准的对比 Markdown 文档。"""
+    benchmark_labels = [label for _, label in _BENCHMARKS if label in stats]
+    strategy_names = [name for name in stats if name not in benchmark_labels]
+    all_cols = benchmark_labels + strategy_names
 
-    def pct(key: str, row: dict[str, float | None]) -> str:
-        value = row.get(key)
-        return f"{value:.2%}" if isinstance(value, float) else "—"
+    headers = ["核心指标项"] + [
+        f"{col} (基准)" if col in benchmark_labels else f"**{col}**" for col in all_cols
+    ]
+    header_line = "| " + " | ".join(headers) + " |"
+    align_line = "| :--- | " + " | ".join(":---:" for _ in all_cols) + " |"
 
-    def num(key: str, row: dict[str, float | None], ndigits: int = 2) -> str:
-        value = row.get(key)
-        return f"{value:.{ndigits}f}" if isinstance(value, float) else "—"
+    rows: list[_RowSpec] = [
+        ("累计净值", "final_nav", lambda v: f"{v:.3f}"),
+        ("累计收益", "total_return", lambda v: f"{v:.2%}"),
+        ("年化收益 (CAGR)", "annual_return", lambda v: f"{v:.2%}"),
+        ("最大回撤 (Max DD)", "max_drawdown", lambda v: f"{v:.2%}"),
+        ("年化波动率", "annual_volatility", lambda v: f"{v:.2%}"),
+        ("夏普比率 (Sharpe)", "sharpe", lambda v: f"{v:.2f}"),
+        ("卡玛比率 (Calmar)", "calmar", lambda v: f"{v:.2f}"),
+    ]
 
-    return f"""# 宏观风控固化策略：V3 与 V4 全周期重测全景对比 (2015-2026)
+    row_lines: list[str] = []
+    for label, key, fmt in rows:
+        cells = [f"**{label}**"]
+        for col in all_cols:
+            val = stats.get(col, {}).get(key)
+            formatted = fmt(val) if isinstance(val, int | float) else "—"
+            if col in strategy_names and formatted != "—":
+                formatted = f"**`{formatted}`**"
+            cells.append(formatted)
+        row_lines.append("| " + " | ".join(cells) + " |")
 
-本报告基于固化入库的生产级代码，对 **V3（沪深300单宽基择时）** 与 **V4（中证红利/创业板指 双核轮动）** 在 2015-01-05 至 2026-08-26 全量真实历史数据进行严格横向对账。回测采用 T+1 语义（信号当日收盘生成、次日生效），未计交易成本/滑点/T+1 涨跌停，仅供研究参考。
+    table_markdown = "\n".join([header_line, align_line, *row_lines])
 
-![V3 vs V4 资金曲线对比]({image_rel_path})
+    return f"""# 宏观风控多策略演进与全周期重测全景对比 (2015-2026)
+
+本报告基于固化入库的生产级代码，对所有已配置的宏观风控策略在全量真实历史数据上进行严格横向对账。回测采用 T+1 语义（信号当日收盘生成、次日生效），未计交易成本/滑点/T+1 涨跌停，仅供研究参考。
+
+![多策略资金曲线全景对比]({image_rel_path})
 
 ---
 
 ### 全周期量化绩效总览 (2015-01-05 至 2026-08-26)
 
-| 核心指标项 | 中证全指 (基准) | 沪深300 (基准) | **V3 (沪深300单标的)** | **V4 (红利/创业板哑铃轮动)** |
-| :--- | :---: | :---: | :---: | :---: |
-| **累计净值** | {num("final_nav", csi, 3)} | {num("final_nav", hs300, 3)} | {num("final_nav", v3, 3)} | **`{num("final_nav", v4, 3)}`** |
-| **累计收益** | {pct("total_return", csi)} | {pct("total_return", hs300)} | {pct("total_return", v3)} | **`{pct("total_return", v4)}`** |
-| **年化收益 (CAGR)** | {pct("annual_return", csi)} | {pct("annual_return", hs300)} | {pct("annual_return", v3)} | **`{pct("annual_return", v4)}`** |
-| **最大回撤 (Max DD)** | {pct("max_drawdown", csi)} | {pct("max_drawdown", hs300)} | {pct("max_drawdown", v3)} | {pct("max_drawdown", v4)} |
-| **年化波动率** | {pct("annual_volatility", csi)} | {pct("annual_volatility", hs300)} | {pct("annual_volatility", v3)} | {pct("annual_volatility", v4)} |
-| **夏普比率 (Sharpe)** | {num("sharpe", csi)} | {num("sharpe", hs300)} | {num("sharpe", v3)} | **`{num("sharpe", v4)}`** |
-| **卡玛比率 (Calmar)** | {num("calmar", csi)} | {num("calmar", hs300)} | {num("calmar", v3)} | **`{num("calmar", v4)}`** |
+{table_markdown}
 
 ---
 
-### 定性总结：双策略互补矩阵
+### 定性总结：多策略互补矩阵
 
-- **V3（沪深300单标的）**：宏观 Beta 仓位控制的保守压舱石，波动与回撤均显著低于基准。
-- **V4（红利/创业板哑铃轮动）**：攻守兼备，历史年化与夏普均显著领先基准，回撤控制在基准之下。
+- **趋势防守压舱石**：单宽基趋势择时策略，在市场面临系统性下跌时坚决破均线降仓，控制下行回撤。
+- **双核风格轮动**：攻守兼备，牛市吃满成长主升浪弹性，存量熊市高股息红利托底避险。
+- **资金博弈智能增强**：在风格轮动基础上融入国家队大额托底抢跑与高位散户接盘逃顶，提升胜率与极值捕获效率。
 
 > 以上为历史回测结果，不代表未来表现；实盘需叠加交易成本、流动性约束与策略漂移再评估。
 """
 
 
 __all__ = [
+    "build_multi_strategy_comparison_report",
     "build_v3_v4_comparison_report",
     "compute_stats",
+    "load_all_strategy_specs",
     "load_strategy_spec",
     "nav_from_close",
     "plot_comparison",

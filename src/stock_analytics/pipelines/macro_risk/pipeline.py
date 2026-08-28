@@ -58,6 +58,7 @@ class MacroRiskPipeline:
 
     def run(
         self,
+        as_of: date | None = None,
         output_dir: Path | str | None = "data/analytics/macro_risk",
         update_latest: bool = True,
         run_class: Literal["official", "backfill", "experiment"] = "official",
@@ -68,10 +69,14 @@ class MacroRiskPipeline:
             .select("trade_date")
             .sort("trade_date")
         )
-        as_of_val = axis["trade_date"].max()
-        if as_of_val is None or not isinstance(as_of_val, date):
-            raise ValueError("无法获取有效的基准日期")
-        as_of: date = as_of_val
+        if as_of is None:
+            as_of_val = axis["trade_date"].max()
+            if as_of_val is None or not isinstance(as_of_val, date):
+                raise ValueError("无法获取有效的基准日期")
+            as_of = as_of_val
+        else:
+            axis = axis.filter(pl.col("trade_date") <= as_of)
+
         score_frame = axis.select("trade_date")
         raw_cache: dict[str, pl.DataFrame] = {}
 

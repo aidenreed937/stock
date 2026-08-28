@@ -307,6 +307,17 @@ _DATASET_OPTIONAL_COLUMNS: dict[str, frozenset[str]] = {
     "sw_2021_fs_bank": _LIXINGER_FINANCIAL_STATEMENT_OPTIONAL_COLUMNS,
     "sw_2021_fs_security": _LIXINGER_FINANCIAL_STATEMENT_OPTIONAL_COLUMNS,
     "sw_2021_fs_insurance": _LIXINGER_FINANCIAL_STATEMENT_OPTIONAL_COLUMNS,
+    "interest_rates": frozenset(
+        {"cdnaaa_y1", "fdr_d7", "shibor_on", "shibor_w1", "shibor_y1", "adjustment", "areaCode"}
+    ),
+    "national_debt": frozenset(
+        {"tcm_y1", "tcm_y2", "tcm_y5", "tcm_y10", "tcm_y30", "areaCode", "adjustment"}
+    ),
+    "crude_oil": frozenset({"wti_co_sp", "brent_co_sp", "areaCode", "adjustment"}),
+    "non_ferrous_metals": frozenset(
+        {"l_pb_p", "l_al_p", "l_cu_p", "l_zn_p", "l_sn_p", "l_ni_p", "areaCode", "adjustment"}
+    ),
+    "pledge_info": frozenset({"ps", "ps_mc", "ps_shbt10sh_r", "ps_sc_r", "pc", "adjustment"}),
 }
 
 

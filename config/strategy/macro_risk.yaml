@@ -20,3 +20,14 @@ strategies:
       "000922.CSI": 0.5
       "399006.SZ": 0.5
     ma_window: 20
+
+  macro_rotation_v5:
+    strategy_class: "MacroRotationV5Strategy"
+    benchmark_symbol: "000985.CSI" # 趋势基准 = 中证全指
+    symbols:
+      - "000922.CSI" # 中证红利 (防守)
+      - "399006.SZ" # 创业板指 (进攻)
+    initial_weights:
+      "000922.CSI": 0.5
+      "399006.SZ": 0.5
+    ma_window: 20

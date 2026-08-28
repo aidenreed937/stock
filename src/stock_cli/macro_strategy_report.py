@@ -1,15 +1,15 @@
-"""宏观风控策略 V3/V4 对比报告 CLI 入口。"""
+"""宏观风控多策略对比报告 CLI 入口。"""
 
 from __future__ import annotations
 
 import argparse
 
 from stock_core.utils.logger import setup_logger
-from stock_strategy.macro_report import build_v3_v4_comparison_report
+from stock_strategy.macro_report import build_multi_strategy_comparison_report
 
 
 def main() -> None:
-    parser = argparse.ArgumentParser(description="生成 V3/V4 与基准的资金曲线对比报告。")
+    parser = argparse.ArgumentParser(description="生成多策略 (V3/V4/V5) 与基准的资金曲线对比报告。")
     parser.add_argument(
         "--output-dir",
         type=str,
@@ -25,7 +25,7 @@ def main() -> None:
     args = parser.parse_args()
     setup_logger()
 
-    result = build_v3_v4_comparison_report(
+    result = build_multi_strategy_comparison_report(
         output_dir=args.output_dir,
         risk_root=args.risk_root,
     )

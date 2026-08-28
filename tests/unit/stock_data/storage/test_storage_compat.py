@@ -211,3 +211,13 @@ def test_fred_dataset_aliases_keep_legacy_directories_readable() -> None:
         "FEDFUNDS",
     )
     assert StorageCompat.dataset_symbol_filter("FEDFUNDS", "fred") == "FEDFUNDS"
+
+
+def test_optional_columns_for_macro_and_commodity_datasets() -> None:
+    from stock_data.storage.compat_rules import optional_columns_for_dataset
+
+    assert "cdnaaa_y1" in optional_columns_for_dataset("interest_rates")
+    assert "tcm_y10" in optional_columns_for_dataset("national_debt")
+    assert "wti_co_sp" in optional_columns_for_dataset("crude_oil")
+    assert "l_cu_p" in optional_columns_for_dataset("non_ferrous_metals")
+    assert "ps_mc" in optional_columns_for_dataset("pledge_info")

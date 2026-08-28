@@ -15,15 +15,10 @@ from stock_core.utils.logger import logger, setup_logger
 from stock_data.catalog import DataCatalog
 from stock_strategy.macro_assembly import assemble_macro_panel, load_price_panel
 from stock_strategy.macro_runner import MacroRiskRunner
-from stock_strategy.pool import MacroRiskV3Strategy, MacroRotationV4Strategy
+from stock_strategy.pool import create_strategy
 
 DEFAULT_CONFIG_PATH = Path("config/strategy/macro_risk.yaml")
 DEFAULT_RISK_ROOT = Path("data/analytics/macro_risk")
-
-_STRATEGY_CLASSES = {
-    "MacroRiskV3Strategy": MacroRiskV3Strategy,
-    "MacroRotationV4Strategy": MacroRotationV4Strategy,
-}
 
 _TRADING_DAYS_PER_YEAR = 252.0
 
@@ -68,12 +63,17 @@ def _summarize_nav(nav: list[float]) -> dict[str, float | None]:
 
 
 def main() -> None:
-    parser = argparse.ArgumentParser(description="运行宏观风控策略 (V3/V4) 并输出信号与净值。")
+    parser = argparse.ArgumentParser(description="运行宏观风控策略并输出信号与净值。")
     parser.add_argument(
         "--strategy",
-        choices=["macro_risk_v3", "macro_rotation_v4"],
-        required=True,
-        help="策略键（对应 config/strategy/macro_risk.yaml）",
+        type=str,
+        default=None,
+        help="策略键（对应 config/strategy/macro_risk.yaml 中的键名）",
+    )
+    parser.add_argument(
+        "--list",
+        action="store_true",
+        help="列出配置文件中所有可用的策略",
     )
     parser.add_argument("--config", type=str, default=str(DEFAULT_CONFIG_PATH))
     parser.add_argument("--risk-root", type=str, default=str(DEFAULT_RISK_ROOT))
@@ -83,17 +83,37 @@ def main() -> None:
     setup_logger()
 
     config = _load_config(Path(args.config))
-    entry = config.get("strategies", {}).get(args.strategy)
+    available_strategies = config.get("strategies", {})
+
+    if args.list:
+        print("当前配置中已注册的宏观策略：")
+        for key, spec in available_strategies.items():
+            print(
+                f"  - {key}: {spec.get('strategy_class')} (基准: {spec.get('benchmark_symbol')}, 标的: {spec.get('symbols')})"
+            )
+        sys.exit(0)
+
+    if not args.strategy:
+        logger.error("请指定 --strategy <策略名>，或使用 --list 查看可用策略。")
+        sys.exit(1)
+
+    entry = available_strategies.get(args.strategy)
     if not entry:
-        logger.error("未找到策略配置: %s", args.strategy)
+        logger.error(
+            "未找到策略配置: %s (可用策略: %s)",
+            args.strategy,
+            list(available_strategies.keys()),
+        )
         sys.exit(1)
 
-    strategy_cls = _STRATEGY_CLASSES.get(entry.get("strategy_class", ""))
-    if strategy_cls is None:
-        logger.error("未知策略类: %s", entry.get("strategy_class"))
+    cls_name = str(entry.get("strategy_class", ""))
+    ma_window = int(entry.get("ma_window", 20))
+    try:
+        strategy = create_strategy(cls_name, ma_window=ma_window)
+    except Exception as exc:
+        logger.error("创建策略实例失败: %s", exc)
         sys.exit(1)
 
-    strategy = strategy_cls(ma_window=int(entry.get("ma_window", 20)))
     symbols = tuple(entry["symbols"])
     initial_weights = entry.get("initial_weights", {})
     benchmark = entry["benchmark_symbol"]

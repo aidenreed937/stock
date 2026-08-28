@@ -55,8 +55,20 @@ def assemble_macro_panel(
     if close.is_empty():
         raise DataValidationError(f"指数日线为空: {benchmark_symbol}")
 
+    extra_cols = [
+        c
+        for c in [
+            "etf_flow_ratio_score",
+            "divergence_score_score",
+            "composite_flow_score",
+            "dim_flow",
+        ]
+        if c in factors.columns
+    ]
+    factor_cols = ["trade_date", "panic_index", "overheat_index", *extra_cols]
+
     factors = (
-        factors.select(["trade_date", "panic_index", "overheat_index"])
+        factors.select(factor_cols)
         .with_columns(pl.col("trade_date").cast(pl.Date))
         .sort("trade_date")
     )
@@ -70,20 +82,23 @@ def assemble_macro_panel(
         .sort("trade_date")
     )
 
+    fill_exprs = [
+        pl.col("panic_index").forward_fill(),
+        pl.col("overheat_index").forward_fill(),
+        *(pl.col(c).forward_fill() for c in extra_cols),
+    ]
+
     panel = (
         close.join(factors, on="trade_date", how="left")
         .sort("trade_date")
-        .with_columns(
-            pl.col("panic_index").forward_fill(),
-            pl.col("overheat_index").forward_fill(),
-        )
+        .with_columns(fill_exprs)
         .drop_nulls(subset=["panic_index", "overheat_index"])
     )
     if start_date is not None:
         panel = panel.filter(pl.col("trade_date") >= start_date)
     if end_date is not None:
         panel = panel.filter(pl.col("trade_date") <= end_date)
-    return panel.select(list(_SIGNAL_COLUMNS))
+    return panel.select(["trade_date", "close", "panic_index", "overheat_index", *extra_cols])
 
 
 def load_price_panel(
