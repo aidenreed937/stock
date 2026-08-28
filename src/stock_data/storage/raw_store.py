@@ -1,11 +1,11 @@
 """RAW 原始数据离线时间分区归档存储引擎。"""
 
+from __future__ import annotations
+
 import shutil
 import threading
-from contextlib import ExitStack
 from datetime import date
 from pathlib import Path
-from typing import Any
 
 import polars as pl
 
@@ -18,89 +18,22 @@ from stock_data.governance.quality.margin_coverage import is_margin_complete
 from stock_data.pipeline.cleaner.date_utils import parse_mixed_date
 from stock_data.storage.compat import StorageCompat
 from stock_data.storage.raw_cache import has_raw_cache
+from stock_data.storage.raw_helpers import (
+    append_write_buffer,
+    dataset_paths_for_key,
+    date_column_for_key,
+    is_event_frequency_task,
+    read_dataset_paths,
+    shared_file_lock,
+)
 from stock_data.storage.raw_merge import merge_raw_frames
 from stock_data.storage.raw_schema import (
-    RAW_DATE_COLUMNS,
     RAW_RANGE_DATE_COLUMNS,
     RAW_SYMBOL_COLUMNS,
     first_existing_column,
-    month_key_for,
     normalize_raw_date_series,
     resolve_raw_primary_keys,
 )
-
-_FILE_LOCKS_GUARD = threading.Lock()
-_FILE_LOCKS: dict[Path, threading.Lock] = {}
-
-
-def _shared_file_lock(file_path: Path) -> threading.Lock:
-    """返回当前进程内按目标文件复用的读写锁。"""
-    resolved_path = file_path.resolve()
-    with _FILE_LOCKS_GUARD:
-        lock = _FILE_LOCKS.get(resolved_path)
-        if lock is None:
-            lock = threading.Lock()
-            _FILE_LOCKS[resolved_path] = lock
-        return lock
-
-
-def _append_write_buffer(
-    lock: Any,
-    write_buffer: dict[Path, list[Any]],
-    file_path: Path,
-    item: Any,
-) -> None:
-    """在共享文件锁下追加 batch 缓冲项。"""
-    with lock:
-        write_buffer.setdefault(file_path, []).append(item)
-
-
-def _iter_month_starts(start_date: date, end_date: date) -> list[date]:
-    months: list[date] = []
-    current = date(start_date.year, start_date.month, 1)
-    last = date(end_date.year, end_date.month, 1)
-    while current <= last:
-        months.append(current)
-        current = (
-            date(current.year + 1, 1, 1)
-            if current.month == 12
-            else date(current.year, current.month + 1, 1)
-        )
-    return months
-
-
-def _dataset_paths_for_key(storage: Any, key: DatasetKey) -> list[Path]:
-    paths: list[Path] = []
-    for month_start in _iter_month_starts(key.start_date, key.end_date):
-        path = storage._get_dataset_path(month_key_for(key, month_start))
-        if path not in paths:
-            paths.append(path)
-    return paths
-
-
-def _date_column_for_key(key: DatasetKey, df: pl.DataFrame) -> str | None:
-    """按任务契约选择 RAW 的业务日期列，优先使用报告期而非公告日。"""
-    try:
-        from stock_data.core.task_registry import resolve_task
-
-        task = resolve_task(key.provider, key.endpoint)
-        candidates = (*task.date_columns, *RAW_DATE_COLUMNS)
-    except Exception:
-        candidates = RAW_DATE_COLUMNS
-    return first_existing_column(df, tuple(dict.fromkeys(candidates)))
-
-
-def _read_dataset_paths(paths: list[Path]) -> pl.DataFrame | None:
-    with ExitStack() as stack:
-        for path in sorted(paths, key=str):
-            stack.enter_context(_shared_file_lock(path))
-        if any(not path.exists() for path in paths):
-            return None
-        frames = [pl.read_parquet(path) for path in paths]
-    frames = [frame for frame in frames if not frame.is_empty()]
-    if not frames:
-        return None
-    return frames[0] if len(frames) == 1 else pl.concat(frames, how="diagonal_relaxed")
 
 
 class RawDataStorage:
@@ -203,9 +136,8 @@ class RawDataStorage:
         self, key: DatasetKey, df: pl.DataFrame, *, replace_existing: bool = False
     ) -> Path:
         """按数据集和月份幂等合并保存 RAW 归档数据。"""
-        date_col = _date_column_for_key(key, df)
+        date_col = date_column_for_key(key, df)
         if date_col and not df.is_empty() and date_col in RAW_RANGE_DATE_COLUMNS:
-            # 按真实业务日期分桶，避免请求 end_date 造成历史快照串区。
             parsed = df.with_columns(parse_mixed_date(date_col).alias("_dt"))
             valid = parsed.filter(pl.col("_dt").is_not_null())
             invalid_count = len(parsed) - len(valid)
@@ -251,7 +183,7 @@ class RawDataStorage:
         if getattr(self, "_batch_mode", False):
             if replace_existing:
                 self._replace_paths.add(file_path)
-            _append_write_buffer(self._file_lock, self._write_buffer, file_path, (key, df))
+            append_write_buffer(self._file_lock, self._write_buffer, file_path, (key, df))
             return file_path
 
         self._merge_and_save(file_path, [(key, df)], replace_existing=replace_existing)
@@ -277,7 +209,7 @@ class RawDataStorage:
         replace_existing: bool = False,
     ) -> None:
         """执行物理合并与覆写。"""
-        with _shared_file_lock(file_path):
+        with shared_file_lock(file_path):
             file_path.parent.mkdir(parents=True, exist_ok=True)
             existing = pl.DataFrame()
             if file_path.exists():
@@ -307,15 +239,13 @@ class RawDataStorage:
 
     def load_dataset(self, key: DatasetKey) -> pl.DataFrame | None:
         """按数据集和月份读取 RAW 归档数据。"""
-        paths = _dataset_paths_for_key(self, key)
+        paths = dataset_paths_for_key(self, key)
         try:
-            df = _read_dataset_paths(paths)
-            if df is None:
-                return None
-            if df.is_empty():
+            df = read_dataset_paths(paths)
+            if df is None or df.is_empty():
                 return None
             symbol = key.instrument.symbol if key.instrument is not None else None
-            date_col = _date_column_for_key(key, df)
+            date_col = date_column_for_key(key, df)
             if date_col:
                 values = normalize_raw_date_series(df.get_column(date_col)).str.slice(0, 8)
                 start = key.start_date.strftime("%Y%m%d")
@@ -325,7 +255,6 @@ class RawDataStorage:
                     return None
                 df = df.filter(in_range_mask)
                 values = values.filter(in_range_mask)
-            symbol = key.instrument.symbol if key.instrument is not None else None
             if symbol:
                 symbol_col = first_existing_column(df, RAW_SYMBOL_COLUMNS)
                 if symbol_col:
@@ -334,7 +263,9 @@ class RawDataStorage:
                         return None
                     if date_col:
                         values = normalize_raw_date_series(df.get_column(date_col)).str.slice(0, 8)
-            if date_col:
+
+            is_event = is_event_frequency_task(key.provider, key.endpoint)
+            if date_col and not is_event:
                 min_value = values.min()
                 max_value = values.max()
                 if (
@@ -343,13 +274,14 @@ class RawDataStorage:
                     and (min_value > start or max_value < end)
                 ):
                     return None
-            if key.dataset == "margin" or key.endpoint == "margin":
-                if not is_margin_complete(df, start_date=key.start_date, end_date=key.end_date):
-                    logger.warning(
-                        f"拒绝命中不完整两融 RAW 缓存 [{key.provider}/{key.endpoint}] "
-                        f"({key.start_date} ~ {key.end_date})"
-                    )
-                    return None
+            if (key.dataset == "margin" or key.endpoint == "margin") and not is_margin_complete(
+                df, start_date=key.start_date, end_date=key.end_date
+            ):
+                logger.warning(
+                    f"拒绝命中不完整两融 RAW 缓存 [{key.provider}/{key.endpoint}] "
+                    f"({key.start_date} ~ {key.end_date})"
+                )
+                return None
             return df
         except Exception as e:
             logger.error(f"读取 RAW 请求缓存失败 [{paths}]: {e}")

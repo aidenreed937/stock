@@ -11,7 +11,7 @@ from stock_data.core.task_registry import resolve_task
 from stock_data.fetcher.base import BaseDataFetcher
 from stock_data.pipeline.cleaner.bar_cleaner import BarDataCleaner
 from stock_data.pipeline.cleaner.base import BaseDataCleaner
-from stock_data.pipeline.cleaner.generic_cleaner import GenericCleaner
+from stock_data.pipeline.cleaner.generic_cleaner import BlockTradeCleaner, GenericCleaner
 from stock_data.pipeline.cleaner.macro_cleaner import MacroDataCleaner
 from stock_data.pipeline.normalizer.bar_normalizer import BarDataNormalizer
 from stock_data.pipeline.normalizer.base import BaseDataNormalizer
@@ -61,6 +61,11 @@ class MarketDataPipeline:
             )
         elif profile == "macro":
             self.cleaner = MacroDataCleaner()
+        elif self.endpoint == "block_trade":
+            self.cleaner = BlockTradeCleaner(
+                primary_keys=list(task.primary_keys) or None,
+                nullable_primary_keys=getattr(task, "nullable_primary_keys", None),
+            )
         else:
             self.cleaner = GenericCleaner(primary_keys=list(task.primary_keys) or None)
 

@@ -33,6 +33,23 @@ def filter_lixinger_index_fundamental_placeholders(
     return filtered, len(df) - len(filtered)
 
 
+def is_a_share_equity_symbol(symbol_col: str) -> pl.Expr:
+    """判定是否为 A 股股票代码（主板/创业板/科创板/北交所），排除债券、基金、指数等标的。"""
+    col = pl.col(symbol_col).cast(pl.Utf8)
+    is_sh_sz_bj = col.str.ends_with(".SH") | col.str.ends_with(".SZ") | col.str.ends_with(".BJ")
+    is_equity_prefix = (
+        col.str.starts_with("00")
+        | col.str.starts_with("30")
+        | col.str.starts_with("60")
+        | col.str.starts_with("68")
+        | col.str.starts_with("43")
+        | col.str.starts_with("83")
+        | col.str.starts_with("87")
+        | col.str.starts_with("92")
+    )
+    return is_sh_sz_bj & is_equity_prefix
+
+
 class GenericCleaner(BaseDataCleaner):
     """通用数据清洗器，适用于非 K 线行情接口（如每日指标、财报、股票基础列表等）。
 
@@ -179,4 +196,25 @@ class LixingerIndexFundamentalCleaner(GenericCleaner):
             logger.info(
                 f"LiXinger 指数估值清洗完成: 过滤 {placeholder_count} 条非交易日空指标占位行"
             )
+        return super().clean(filtered)
+
+
+class BlockTradeCleaner(GenericCleaner):
+    """大宗交易清洗器：剔除非 A 股股票标的（如交易所债券、可转债、基金等），防止量纲异常。"""
+
+    def clean(self, df: pl.DataFrame) -> pl.DataFrame:
+        """过滤非 A 股股票代码，再执行通用主键清洗与去重。"""
+        if df.is_empty():
+            return df
+
+        symbol_col = next((c for c in ("symbol", "ts_code", "code") if c in df.columns), None)
+        filtered = df
+        if symbol_col is not None:
+            initial = len(df)
+            filtered = df.filter(is_a_share_equity_symbol(symbol_col))
+            dropped = initial - len(filtered)
+            if dropped > 0:
+                logger.info(
+                    f"大宗交易清洗: 剔除非 A 股股票标的 {dropped} 条 (交易所债券/可转债/基金等)"
+                )
         return super().clean(filtered)

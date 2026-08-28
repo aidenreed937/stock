@@ -191,6 +191,7 @@ MARKET_ENDPOINTS: dict[str, EndpointMeta] = {
         required_columns=["ts_code", "trade_date", "close", "settle"],
         request_window_days=1,
         max_rows_per_request=15000,
+        pagination_required=True,
     ),
     "cb_basic": EndpointMeta(
         api_name="cb_basic",
