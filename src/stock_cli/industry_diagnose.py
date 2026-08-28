@@ -59,34 +59,24 @@ def main() -> None:
     parser = _build_parser()
     args = parser.parse_args()
 
+    output_dir = Path("data/analytics/industry_diagnostics") if args.save else None
     try:
         result = run_industry_diagnostics(
             industry=args.industry,
             target_date=args.as_of_date,
             storage_dir=args.storage_dir,
+            output_dir=output_dir,
         )
     except Exception as exc:
         logger.error(f"行业诊断失败: {exc}")
         sys.stderr.write(f"Error: {exc}\n")
         sys.exit(1)
 
-    # 1. 命令行输出
+    # 命令行输出
     if args.output_format == "json":
         sys.stdout.write(json.dumps(result.to_dict(), ensure_ascii=False, indent=2) + "\n")
     else:
         sys.stdout.write(result.to_markdown() + "\n")
-
-    # 2. 可选落盘归档
-    if args.save:
-        base_dir = args.storage_dir or Path("data")
-        save_dir = (
-            base_dir / "analytics" / "industry_diagnostics" / "runs" / f"as_of={result.as_of_date}"
-        )
-        save_dir.mkdir(parents=True, exist_ok=True)
-        save_path = save_dir / f"{result.industry_code}.json"
-        with open(save_path, "w", encoding="utf-8") as f:
-            json.dump(result.to_dict(), f, ensure_ascii=False, indent=2)
-        logger.info(f"行业诊断产物已保存至: {save_path}")
 
 
 if __name__ == "__main__":

@@ -48,43 +48,6 @@ def _apply_fund_flow_percentiles(rows: list[dict[str, Any]]) -> None:
     _apply_cross_percentile(rows, "money_net_inflow_share_5d", "_short_money_inflow_pct")
 
 
-def _top_rows(rows: list[dict[str, Any]], key: str, limit: int = 5) -> list[dict[str, Any]]:
-    valid = [row for row in rows if _as_float(row.get(key)) is not None]
-    valid.sort(key=lambda row: _as_float(row.get(key)) or -1.0, reverse=True)
-    return [_summary_row(row, key) for row in valid[:limit]]
-
-
-def _bottom_rows(rows: list[dict[str, Any]], key: str, limit: int = 5) -> list[dict[str, Any]]:
-    valid = [row for row in rows if _as_float(row.get(key)) is not None]
-    valid.sort(key=lambda row: _as_float(row.get(key)) or 101.0)
-    return [_summary_row(row, key) for row in valid[:limit]]
-
-
-def _tagged_rows(rows: list[dict[str, Any]], tag: str, limit: int = 8) -> list[dict[str, Any]]:
-    tagged = [row for row in rows if tag in str(row.get("tags", ""))]
-    tagged.sort(key=lambda row: _as_float(row.get("structure_score")) or -1.0, reverse=True)
-    return [_summary_row(row, "structure_score") for row in tagged[:limit]]
-
-
-def _summary_row(row: dict[str, Any], score_key: str) -> dict[str, Any]:
-    return {
-        "industry_code": row.get("industry_code"),
-        "industry_name": row.get("industry_name"),
-        "score": _round_or_none(row.get(score_key)),
-        "structure_score": _round_or_none(row.get("structure_score")),
-        "return_20d": _round_or_none(row.get("return_20d")),
-        "return_60d": _round_or_none(row.get("return_60d")),
-        "tcr": _round_or_none(row.get("tcr")),
-        "fund_flow_score": _round_or_none(row.get("fund_flow_score")),
-        "money_net_inflow_share_20d": _round_or_none(row.get("money_net_inflow_share_20d")),
-        "large_money_net_inflow_share_20d": _round_or_none(
-            row.get("large_money_net_inflow_share_20d")
-        ),
-        "fundamental_status": row.get("fundamental_status"),
-        "tags": row.get("tags", ""),
-    }
-
-
 def _mean_available(*values: object) -> float | None:
     clean: list[float] = []
     for value in values:

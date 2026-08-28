@@ -6,8 +6,12 @@
 from __future__ import annotations
 
 from stock_analytics.pipelines.daily_review import DailyReviewRunResult, run_daily_review
-from stock_analytics.pipelines.industry_diagnostics import run_industry_diagnostics
+from stock_analytics.pipelines.industry_diagnostics import (
+    IndustryDiagnosticsPipeline,
+    run_industry_diagnostics,
+)
 from stock_analytics.pipelines.industry_structure import (
+    IndustryStructurePipeline,
     IndustryStructureRunResult,
     run_industry_structure,
 )
@@ -15,6 +19,7 @@ from stock_analytics.pipelines.investor_brief import (
     InvestorBriefRunResult,
     run_investor_brief,
 )
+from stock_analytics.pipelines.macro_risk import MacroRiskPipeline
 from stock_analytics.pipelines.market_aggregate import (
     MarketAggregateRunResult,
     run_market_aggregate,
@@ -41,8 +46,11 @@ from stock_analytics.pipelines.watchlist_scanner import run_watchlist_scanner
 
 __all__ = [
     "DailyReviewRunResult",
+    "IndustryDiagnosticsPipeline",
+    "IndustryStructurePipeline",
     "IndustryStructureRunResult",
     "InvestorBriefRunResult",
+    "MacroRiskPipeline",
     "MarketAggregateRunResult",
     "MarketCycleReviewRunResult",
     "MarketTemperatureRunResult",

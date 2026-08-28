@@ -1,0 +1,87 @@
+"""中观产业与行业诊断管线配置。"""
+
+from __future__ import annotations
+
+from collections.abc import Mapping
+from dataclasses import dataclass, field
+from pathlib import Path
+from typing import Any
+
+import yaml
+
+DEFAULT_CONFIG_PATH = Path("config/analytics/industry_diagnostics.yaml")
+
+
+@dataclass(frozen=True)
+class TechnicalsConfig:
+    ma_short_window: int = 20
+    ma_medium_window: int = 60
+    rsi_window: int = 14
+
+    @classmethod
+    def from_mapping(cls, data: Mapping[str, Any]) -> TechnicalsConfig:
+        return cls(
+            ma_short_window=int(data.get("ma_short_window", 20)),
+            ma_medium_window=int(data.get("ma_medium_window", 60)),
+            rsi_window=int(data.get("rsi_window", 14)),
+        )
+
+
+@dataclass(frozen=True)
+class ValuationConfig:
+    percentile_5y_window: int = 1250
+    percentile_10y_window: int = 2500
+    threshold_low: float = 20.0
+    threshold_fair: float = 40.0
+    threshold_neutral: float = 70.0
+
+    @classmethod
+    def from_mapping(cls, data: Mapping[str, Any]) -> ValuationConfig:
+        return cls(
+            percentile_5y_window=int(data.get("percentile_5y_window", 1250)),
+            percentile_10y_window=int(data.get("percentile_10y_window", 2500)),
+            threshold_low=float(data.get("threshold_low", 20.0)),
+            threshold_fair=float(data.get("threshold_fair", 40.0)),
+            threshold_neutral=float(data.get("threshold_neutral", 70.0)),
+        )
+
+
+@dataclass(frozen=True)
+class IndustryDiagnosticsConfig:
+    technicals: TechnicalsConfig = field(default_factory=TechnicalsConfig)
+    valuation: ValuationConfig = field(default_factory=ValuationConfig)
+    value_chain_map_path: Path | str = "config/industry/value_chain_map.yaml"
+    schema_version: int = 1
+    artifact_type: str = "industry_diagnostics"
+    title: str = "中观产业与行业量化体检"
+
+    @classmethod
+    def from_mapping(cls, data: Mapping[str, Any]) -> IndustryDiagnosticsConfig:
+        tech_data = data.get("technicals", {})
+        val_data = data.get("valuation", {})
+        return cls(
+            technicals=TechnicalsConfig.from_mapping(tech_data)
+            if isinstance(tech_data, Mapping)
+            else TechnicalsConfig(),
+            valuation=ValuationConfig.from_mapping(val_data)
+            if isinstance(val_data, Mapping)
+            else ValuationConfig(),
+            value_chain_map_path=str(
+                data.get("value_chain_map_path", "config/industry/value_chain_map.yaml")
+            ),
+            schema_version=int(data.get("schema_version", 1)),
+            artifact_type=str(data.get("artifact_type", "industry_diagnostics")),
+            title=str(data.get("title", "中观产业与行业量化体检")),
+        )
+
+
+def load_industry_diagnostics_config(
+    config_path: Path | str | None = None,
+) -> IndustryDiagnosticsConfig:
+    """加载行业量化诊断配置。若文件不存在则返回默认配置。"""
+    path = Path(config_path) if config_path else DEFAULT_CONFIG_PATH
+    if not path.exists():
+        return IndustryDiagnosticsConfig()
+    with path.open("r", encoding="utf-8") as f:
+        raw = yaml.safe_load(f) or {}
+    return IndustryDiagnosticsConfig.from_mapping(raw.get("industry_diagnostics", raw))

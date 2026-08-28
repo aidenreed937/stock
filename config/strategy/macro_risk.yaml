@@ -1,0 +1,22 @@
+# 宏观风控策略配置（V3 单宽基 / V4 哑铃轮动）
+# 该文件仅作为 CLI 与研究的默认参数来源，不套用 StrategyConfig（选股策略 schema 不适用）。
+strategies:
+  macro_risk_v3:
+    strategy_class: "MacroRiskV3Strategy"
+    benchmark_symbol: "000300.SH" # 趋势基准 = 交易标的 = 沪深300
+    symbols:
+      - "000300.SH"
+    initial_weights:
+      "000300.SH": 1.0
+    ma_window: 20
+
+  macro_rotation_v4:
+    strategy_class: "MacroRotationV4Strategy"
+    benchmark_symbol: "000985.CSI" # 趋势基准 = 中证全指
+    symbols:
+      - "000922.CSI" # 中证红利 (防守)
+      - "399006.SZ" # 创业板指 (进攻)
+    initial_weights:
+      "000922.CSI": 0.5
+      "399006.SZ": 0.5
+    ma_window: 20

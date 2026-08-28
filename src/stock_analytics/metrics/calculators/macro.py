@@ -254,7 +254,7 @@ METRIC_SPECS: tuple[MetricSpec, ...] = (
         "vix",
         "VIX恐慌指数",
         ("macro_indicators",),
-        MetricUnit.UNKNOWN,
+        MetricUnit.PERCENT,
     ),
     _spec(
         "yield_curve_slope_10y_2y",

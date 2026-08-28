@@ -33,7 +33,7 @@ def test_registry_filters_specs_by_domain_and_entity_type() -> None:
 
 def test_builtin_metric_specs_declare_unit() -> None:
     """内置指标必须声明物理单位，不允许停留在 UNKNOWN 占位。"""
-    assert len(BUILTIN_METRIC_SPECS) == 67
+    assert len(BUILTIN_METRIC_SPECS) == 68
     undeclared = [
         spec.metric_id for spec in BUILTIN_METRIC_SPECS if spec.unit == MetricUnit.UNKNOWN
     ]

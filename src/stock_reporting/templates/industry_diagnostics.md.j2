@@ -1,0 +1,41 @@
+# 中观产业深度量化诊断报告: {{ data.industry_name }} ({{ data.industry_code }})
+
+- **所属层级**: {{ data.level }}
+- **基准日期**: {{ data.as_of_date }}
+- **周期与估值定调**: 【{{ data.financials.cycle_stage }}】 | 【{{ data.valuation.valuation_status }}】
+
+## 1. 行业行情与技术形态 (Technicals)
+- **指数最新收盘**: {{ "%.2f"|format(data.technicals.close) }} (日涨跌幅: {% if data.technicals.pct_chg is not none %}{{ "%+.2f%%"|format(data.technicals.pct_chg) }}{% else %}--{% endif %})
+- **均线系统**: MA20 = {% if data.technicals.ma20 is not none %}{{ "%.2f"|format(data.technicals.ma20) }}{% else %}--{% endif %} | MA60 = {% if data.technicals.ma60 is not none %}{{ "%.2f"|format(data.technicals.ma60) }}{% else %}--{% endif %}
+- **动量与趋势**: RSI(14) = {% if data.technicals.rsi14 is not none %}{{ "%.1f"|format(data.technicals.rsi14) }}{% else %}--{% endif %} | 形态: {{ data.technicals.trend_description }}
+
+## 2. 行业估值水位与股息利差 (Valuation)
+- **PE (TTM)**: {% if data.valuation.pe_ttm is not none %}{{ "%.2f"|format(data.valuation.pe_ttm) }}{% else %}--{% endif %} (近5年分位: {% if data.valuation.pe_percentile_5y is not none %}{{ "%.1f%%"|format(data.valuation.pe_percentile_5y) }}{% else %}--{% endif %} | 近10年分位: {% if data.valuation.pe_percentile_10y is not none %}{{ "%.1f%%"|format(data.valuation.pe_percentile_10y) }}{% else %}--{% endif %})
+- **PB**: {% if data.valuation.pb is not none %}{{ "%.2f"|format(data.valuation.pb) }}{% else %}--{% endif %} (近5年分位: {% if data.valuation.pb_percentile_5y is not none %}{{ "%.1f%%"|format(data.valuation.pb_percentile_5y) }}{% else %}--{% endif %})
+- **整体股息率 (TTM)**: {% if data.valuation.dv_ttm is not none %}{{ "%.2f%%"|format(data.valuation.dv_ttm) }}{% else %}--{% endif %} | **超额利差安全垫**: {% if data.valuation.dividend_spread_10y is not none and data.valuation.treasury_10y_yield is not none %}{{ "%+.2f%%"|format(data.valuation.dividend_spread_10y) }} (10Y国债 {{ "%.2f%%"|format(data.valuation.treasury_10y_yield) }}){% else %}--{% endif %}
+
+## 3. 行业整体基本面与财务质量 (Financials)
+- **最新财报期**: {{ data.financials.report_date or '--' }}
+- **行业整体 ROE**: {% if data.financials.roe_avg is not none %}{{ "%.2f%%"|format(data.financials.roe_avg) }}{% else %}--{% endif %}
+- **营收同比 / 净利同比**: {% if data.financials.revenue_yoy is not none %}{{ "%.2f%%"|format(data.financials.revenue_yoy) }}{% else %}--{% endif %} / {% if data.financials.netprofit_yoy is not none %}{{ "%.2f%%"|format(data.financials.netprofit_yoy) }}{% else %}--{% endif %}
+- **综合毛利率**: {% if data.financials.gross_margin is not none %}{{ "%.2f%%"|format(data.financials.gross_margin) }}{% else %}--{% endif %}
+
+## 4. 行业成份股格局与核心龙头梯队 (Market Structure)
+- **成份股总数**: {{ data.constituents.total_count }} 家
+{% if data.constituents.top_market_cap_leaders %}
+- **核心市值龙头 Top 5**:
+{% for item in data.constituents.top_market_cap_leaders %}
+  - {{ item.name }} ({{ item.symbol }}): 市值 {{ "%.1f"|format(item.total_mv_billion) }} 亿 | PE: {{ item.pe_ttm if item.pe_ttm is not none else '--' }} | ROE: {{ item.roe if item.roe is not none else '--' }}%
+{% endfor %}
+{% endif %}
+
+## 5. 产业链上下游传导与高频监测图谱 (Value Chain)
+- **上游成本端**: {{ data.value_chain.upstream | join(', ') if data.value_chain.upstream else '待补充' }}
+- **下游应用端**: {{ data.value_chain.downstream | join(', ') if data.value_chain.downstream else '待补充' }}
+- **成本传导机制**: {{ data.value_chain.cost_sensitivity or '成本波动直接影响中游加工毛利' }}
+{% if data.value_chain.high_frequency_indicators %}
+- **建议使用 GrokSearch-rs MCP 联网核验的高频微观指标**:
+{% for ind in data.value_chain.high_frequency_indicators %}
+  - **{{ ind.name }}** (权威信源: {{ ind.source }})
+{% endfor %}
+{% endif %}

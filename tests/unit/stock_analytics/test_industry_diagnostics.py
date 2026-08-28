@@ -8,6 +8,8 @@ import pytest
 
 from stock_analytics.pipelines.industry_diagnostics import (
     IndustryConstituentsSnapshot,
+    IndustryDiagnosticsConfig,
+    IndustryDiagnosticsPipeline,
     IndustryDiagnosticsResult,
     IndustryFinancialsSnapshot,
     IndustryTechnicalsSnapshot,
@@ -18,6 +20,9 @@ from stock_analytics.pipelines.industry_diagnostics import (
 from stock_analytics.pipelines.industry_diagnostics.sources import (
     load_value_chain_map,
     resolve_industry_meta,
+)
+from stock_reporting.templates.industry_diagnostics_report import (
+    render_industry_diagnostics_report,
 )
 
 
@@ -56,7 +61,7 @@ def test_load_value_chain_map() -> None:
     assert len(vc.high_frequency_indicators) > 0
 
 
-def test_industry_diagnostics_serialization() -> None:
+def test_industry_diagnostics_serialization_and_reporting() -> None:
     res = IndustryDiagnosticsResult(
         industry_code="801120.SI",
         industry_name="食品饮料",
@@ -84,8 +89,82 @@ def test_industry_diagnostics_serialization() -> None:
     assert "13788.89" in md
     assert "贵州茅台" in md
 
+    rendered = render_industry_diagnostics_report(res)
+    assert rendered == md
 
-def test_run_industry_diagnostics_mock(monkeypatch: pytest.MonkeyPatch, tmp_path: Path) -> None:
+
+def test_industry_diagnostics_pipeline_and_artifacts(
+    monkeypatch: pytest.MonkeyPatch, tmp_path: Path
+) -> None:
+    trade_dates = [date(2026, 8, d) for d in range(1, 21)]
+    mock_sw_df = pl.DataFrame(
+        {
+            "symbol": ["801120.SI"] * 20,
+            "trade_date": trade_dates,
+            "close": [10000.0 + i * 10 for i in range(20)],
+            "pct_change": [1.0] * 20,
+            "pe": [20.0 + i * 0.1 for i in range(20)],
+            "pb": [3.0] * 20,
+        }
+    )
+
+    mock_ic = pl.DataFrame(
+        {
+            "index_code": ["801120.SI"],
+            "industry_name": ["食品饮料"],
+            "level": ["L1"],
+            "industry_code": ["340000"],
+        }
+    )
+
+    class _MockCatalog:
+        def __init__(self, *args: object, **kwargs: object) -> None:
+            pass
+
+        def load_dataset(self, dataset: str, **kwargs: object) -> pl.DataFrame:
+            if dataset == "index_classify":
+                return mock_ic
+            if dataset == "sw_daily":
+                return mock_sw_df
+            return pl.DataFrame()
+
+    from stock_analytics.pipelines.industry_diagnostics import pipeline
+
+    monkeypatch.setattr(pipeline, "DataCatalog", _MockCatalog)
+
+    output_dir = tmp_path / "analytics" / "industry_diagnostics"
+    custom_cfg = IndustryDiagnosticsConfig(title="测试产业量化体检")
+    pipe = IndustryDiagnosticsPipeline(config=custom_cfg)
+
+    result = pipe.run(
+        "食品饮料",
+        target_date=date(2026, 8, 20),
+        output_dir=output_dir,
+        update_latest=True,
+    )
+
+    assert result.industry_code == "801120.SI"
+    assert result.industry_name == "食品饮料"
+    assert result.technicals.close == 10190.0
+    assert result.valuation.pe_ttm is not None
+
+    # 验证标准产物落盘
+    as_of_dir = output_dir / "runs" / "as_of=2026-08-20"
+    run_dirs = list(as_of_dir.glob("run_*"))
+    assert len(run_dirs) == 1
+    actual_run_dir = run_dirs[0]
+
+    assert (actual_run_dir / "diagnostics.json").exists()
+    assert (actual_run_dir / "report.md").exists()
+    assert (actual_run_dir / "manifest.json").exists()
+
+    latest_dir = output_dir / "latest"
+    assert (latest_dir / "diagnostics.json").exists()
+    assert (latest_dir / "report.md").exists()
+    assert (latest_dir / "manifest.json").exists()
+
+
+def test_run_industry_diagnostics_mock(monkeypatch: pytest.MonkeyPatch) -> None:
     trade_dates = [date(2026, 8, d) for d in range(1, 21)]
     mock_sw_df = pl.DataFrame(
         {

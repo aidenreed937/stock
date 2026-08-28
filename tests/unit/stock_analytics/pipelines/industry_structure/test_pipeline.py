@@ -6,7 +6,11 @@ from pathlib import Path
 import polars as pl
 
 from stock_analytics.features.store import FeatureStore
-from stock_analytics.pipelines.industry_structure.pipeline import run_industry_structure
+from stock_analytics.pipelines.industry_structure import (
+    IndustryStructurePipeline,
+    load_industry_structure_config,
+    run_industry_structure,
+)
 
 
 def test_run_industry_structure_writes_minimal_artifacts(tmp_path: Path) -> None:
@@ -75,6 +79,48 @@ industry_structure:
     assert "人工阅读版" in result.human_report_markdown
     assert "口径与质量报告" in result.quality_report_markdown
     assert "标签不是互斥分组" in result.human_report_markdown
+
+
+def test_industry_structure_pipeline_class(tmp_path: Path) -> None:
+    storage_dir = tmp_path / "curated"
+    _write_sw_daily(storage_dir)
+    _write_industry_panel_mart(storage_dir, date(2026, 8, 14))
+    config_path = tmp_path / "industry_structure.yaml"
+    output_root = tmp_path / "analytics" / "industry_structure"
+    config_path.write_text(
+        f"""
+industry_structure:
+  schema_version: 1
+  title: "测试行业结构Pipeline类"
+  artifact_root: "{output_root}"
+  main_window: 20
+  short_windows: [5, 10]
+  medium_windows: [60, 120]
+  classification: "SW2021"
+  benchmark: ""
+  score_weights:
+    momentum: 1.0
+    valuation: 0.0
+    fundamental: 0.0
+    crowding: 0.0
+  datasets:
+    - data_source: tushare
+      dataset: sw_daily
+      required: true
+""",
+        encoding="utf-8",
+    )
+
+    cfg = load_industry_structure_config(config_path)
+    pipeline = IndustryStructurePipeline(config=cfg)
+    result = pipeline.run(
+        target_date=date(2026, 8, 14),
+        storage_dir=storage_dir,
+    )
+
+    assert result.as_of_date == date(2026, 8, 14)
+    assert result.manifest["title"] == "测试行业结构Pipeline类"
+    assert result.paths.manifest.exists()
 
 
 def _write_sw_daily(storage_dir: Path) -> None:
