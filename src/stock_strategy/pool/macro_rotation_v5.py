@@ -7,6 +7,8 @@
    (smart_money_score < 40，内部人/机构/国家队未逆势接货) 判定为假黄金坑，
    不左侧建仓，等待真实资金确认；
 2. 【常规极值与均线趋势保护】：保持 V4 优良的双轨制极值确认与 MA20 趋势破位逃顶机制。
+3. 【极值乖离止盈】：基准 20 日乖离率 (Bias20) 过大时（如 924 式政策脉冲）清仓避险，
+   乖离回落至阈值内即恢复哑铃——与 Overheat+MA20 破位形成"急涨先降仓、破位再清仓"两段式退出。
 
 注：原"ETF 份额托底提前全仓"分支经四重证据证伪后移除（与国家队真实增持无关、
 2024 危机回撤翻倍）；"恐慌区间提前全仓创业板"动作本身经对照回测亦损害风险调整收益，
@@ -52,6 +54,7 @@ class MacroRotationV5Strategy(BaseStrategy):
         panic_entry_threshold: float = 65.0,
         overheat_threshold: float = 65.0,
         smart_filter_threshold: float = 40.0,
+        bias_threshold: float = 0.15,
     ) -> None:
         super().__init__(context)
         self.ma_window = ma_window
@@ -64,6 +67,9 @@ class MacroRotationV5Strategy(BaseStrategy):
         self.panic_entry_threshold = float(panic_entry_threshold)
         self.overheat_threshold = float(overheat_threshold)
         self.smart_filter_threshold = float(smart_filter_threshold)
+        # 极值乖离止盈阈值: 基准 20 日乖离率 (close/MA20 - 1) 超过该值且非恐慌区时清仓
+        self.bias_threshold = float(bias_threshold)
+        self.bias_cut_active = False
 
         self.initial_weights = (
             dict(initial_weights)
@@ -78,6 +84,7 @@ class MacroRotationV5Strategy(BaseStrategy):
     def on_init(self) -> None:
         """复位跨回测状态，避免多次运行间仓位残留。"""
         self.weights = dict(self.initial_weights)
+        self.bias_cut_active = False
 
     def on_bar(self, data: pl.DataFrame) -> list[Signal]:
         """处理最新数据，生成资金博弈增强的多标的轮动交易信号。"""
@@ -107,6 +114,7 @@ class MacroRotationV5Strategy(BaseStrategy):
         close = float(close_val)
         panic = float(panic_val)
         overheat = float(overheat_val)
+        bias20 = (close / ma20 - 1.0) if ma20 > 0 else 0.0
 
         smart_val = latest.get("smart_money_score")
         smart = float(smart_val) if isinstance(smart_val, int | float) else None
@@ -120,7 +128,25 @@ class MacroRotationV5Strategy(BaseStrategy):
         # ==============================================================
         # V5 核心状态机逻辑 (资金博弈智能增强)
         # ==============================================================
-        if overheat > self.overheat_threshold and close < ma20:
+        # 0. 极值乖离止盈分支 (优先级最高): 基准 20 日乖离率过大时清仓避险,
+        #    规避 924 式政策脉冲后的剧烈均值回归; 乖离回落至阈值内即恢复哑铃。
+        #    仅非恐慌区生效 (恐慌区由下方建仓逻辑接管)
+        if panic <= self.panic_threshold and bias20 > self.bias_threshold:
+            target[self.sym_defensive] = 0.0
+            target[self.sym_growth] = 0.0
+            self.bias_cut_active = True
+            reason = (
+                f"极值乖离清仓避险 (Bias20={bias20:.1%} > {self.bias_threshold:.0%}, "
+                f"Panic={panic:.1f})"
+            )
+
+        elif self.bias_cut_active and bias20 <= self.bias_threshold:
+            # 乖离回落至阈值内: 恢复初始哑铃配置
+            self.bias_cut_active = False
+            target = dict(self.initial_weights)
+            reason = f"极值乖离回落恢复哑铃 (Bias20={bias20:.1%})"
+
+        elif overheat > self.overheat_threshold and close < ma20:
             # 1. 泡沫破裂且跌破均线：全额清仓避险转固收
             target[self.sym_defensive] = 0.0
             target[self.sym_growth] = 0.0
