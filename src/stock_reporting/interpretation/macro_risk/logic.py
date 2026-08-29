@@ -99,39 +99,19 @@ def evaluate_macro_risk(
     panic = _safe_float(row.get("panic_index"))
     crowding = _safe_float(row.get("dim_crowding"))
 
-    val_valuation = (
-        _safe_float(row.get("dim_valuation")) if row.get("dim_valuation") is not None else None
-    )
-    val_leverage = (
-        _safe_float(row.get("dim_leverage")) if row.get("dim_leverage") is not None else None
-    )
-    val_crowding = (
-        _safe_float(row.get("dim_crowding")) if row.get("dim_crowding") is not None else None
-    )
-    val_flow = _safe_float(row.get("dim_flow")) if row.get("dim_flow") is not None else None
-    val_sentiment = (
-        _safe_float(row.get("dim_sentiment")) if row.get("dim_sentiment") is not None else None
-    )
-    val_breadth = (
-        _safe_float(row.get("dim_breadth")) if row.get("dim_breadth") is not None else None
-    )
+    def _get(k: str) -> float | None:
+        return _safe_float(row.get(k)) if row.get(k) is not None else None
 
-    val_etf_score = (
-        _safe_float(row.get("etf_flow_ratio_score"))
-        if row.get("etf_flow_ratio_score") is not None
-        else None
-    )
-    val_div_score = (
-        _safe_float(row.get("divergence_score_score"))
-        if row.get("divergence_score_score") is not None
-        else None
-    )
-    val_corporate = (
-        _safe_float(row.get("dim_corporate")) if row.get("dim_corporate") is not None else None
-    )
-    val_cross_asset = (
-        _safe_float(row.get("dim_cross_asset")) if row.get("dim_cross_asset") is not None else None
-    )
+    val_valuation = _get("dim_valuation")
+    val_leverage = _get("dim_leverage")
+    val_crowding = _get("dim_crowding")
+    val_flow = _get("dim_flow")
+    val_sentiment = _get("dim_sentiment")
+    val_breadth = _get("dim_breadth")
+    val_etf_score = _get("etf_flow_ratio_score")
+    val_div_score = _get("divergence_score_score")
+    val_corporate = _get("dim_corporate")
+    val_cross_asset = _get("dim_cross_asset")
 
     special_flow = {"etf_score": val_etf_score, "div_score": val_div_score}
 
@@ -226,21 +206,11 @@ def evaluate_macro_risk(
         },
     ]
 
-    val_fund_issue = (
-        _safe_float(row.get("fund_issue_pct_score"))
-        if row.get("fund_issue_pct_score") is not None
-        else None
-    )
-    val_insider_sell = (
-        _safe_float(row.get("insider_sell_score"))
-        if row.get("insider_sell_score") is not None
-        else None
-    )
-    val_unlock = (
-        _safe_float(row.get("unlock_amount_score"))
-        if row.get("unlock_amount_score") is not None
-        else None
-    )
+    val_fund_issue = _get("fund_issue_pct_score")
+    val_insider_sell = _get("insider_sell_score")
+    val_unlock = _get("unlock_amount_score")
+    val_div = _get("divergence_score_score")
+    val_turnover = _get("market_turnover_score")
 
     advice = ""
     if overheat > 65 and panic > 65:
@@ -257,10 +227,19 @@ def evaluate_macro_risk(
             (val_insider_sell is not None and val_insider_sell >= 75.0)
             or (val_unlock is not None and val_unlock >= 80.0)
         )
+        extra_evidences = []
+        if val_div is not None and val_div >= 70.0:
+            extra_evidences.append(f"主力散户博弈分歧度极高 ({val_div:.1f})，机构大单正在密集派发")
+        if val_turnover is not None and val_turnover >= 85.0:
+            extra_evidences.append(
+                f"全市场换手率触及天花板 ({val_turnover:.1f})，买盘进入物理耗尽区"
+            )
+        evidence_str = f"（核心证据：{'; '.join(extra_evidences)}）" if extra_evidences else ""
+
         if has_top_divergence:
             status = "极度狂热 —— 【高位公募接盘与产业资本出逃背离 (见顶预警)】"
             advice = (
-                f"- **当前状态**：狂热指数 ({overheat:.1f}) 处于高位，公募新发火爆 ({val_fund_issue:.1f})，而董监高减持与解禁分位同步爆发 ({val_insider_sell if val_insider_sell is not None else val_unlock:.1f})。\n"
+                f"- **当前状态**：狂热指数 ({overheat:.1f}) 突破警戒线，公募新发 ({val_fund_issue:.1f}) 与大股东减持/解禁 ({val_insider_sell if val_insider_sell is not None else val_unlock:.1f}) 同步爆发{evidence_str}。\n"
                 "- **市场定性**：典型的‘场外羊群资金高位狂热接盘、产业资本与大股东密集套现兑现’的大级别背离。\n"
                 "- **后续推演**：二级市场承接流动性正在被产业资本实质性抽干，主升浪已进入尾声，未来季度预期收益极大概率为负。\n"
                 "👉 **操作建议**：严禁加杠杆追高；全面收紧止盈线，严格以 20 日均线 (MA20) 作为右侧刚性退出开关，放量跌破 MA20 坚决清仓进攻端退守国债/黄金避险。"
@@ -268,7 +247,7 @@ def evaluate_macro_risk(
         else:
             status = "极度狂热 (极高回撤风险)"
             advice = (
-                f"- **当前状态**：狂热指数 ({overheat:.1f}) 已突破危险阈值。\n"
+                f"- **当前状态**：狂热指数 ({overheat:.1f}) 已突破危险阈值{evidence_str}。\n"
                 "- **市场定性**：全市场资金处于极度亢奋的“博傻”阶段。\n"
                 "- **后续推演**：无论当前是否处于护盘期，未来一季度的预期收益极大概率为负。\n"
                 "👉 **操作建议**：狂热区不盲目左侧猜顶，但严禁加杠杆追高；收紧止盈线，以 20 日均线 (MA20) 作为右侧刚性退出开关，一旦放量跌破 MA20 坚决清仓进攻端。"
