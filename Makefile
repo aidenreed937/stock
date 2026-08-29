@@ -3,6 +3,7 @@
 export UV_CACHE_DIR ?= .uv_cache
 export UV_PYTHON_INSTALL_DIR ?= .uv_python
 export PRE_COMMIT_HOME ?= $(CURDIR)/.pre_commit_cache
+export MPLCONFIGDIR ?= $(CURDIR)/data/.mplconfig
 export POLARS_MAX_THREADS ?= 4
 
 help:
@@ -202,3 +203,18 @@ daily-review:
 
 thesis-review:
 	uv run python -m stock_cli.thesis_review --symbol $(SYMBOL) $(if $(THESIS_DATE),--thesis-date $(THESIS_DATE)) $(if $(DATE),--as-of $(DATE)) $(if $(FORMAT),--format $(FORMAT)) $(if $(STORAGE_DIR),--storage-dir $(STORAGE_DIR)) $(if $(NO_SAVE),--no-save)
+
+industry-factors:
+	uv run python -m stock_cli.industry_factors $(if $(DATE),--as-of $(DATE)) $(if $(OUTPUT),--output-dir $(OUTPUT))
+
+industry-strategy:
+	uv run python -m stock_cli.industry_strategy $(if $(STRATEGY),--strategy $(STRATEGY)) $(if $(LIST),--list)
+
+industry-strategy-report:
+	uv run python -m stock_cli.industry_strategy_report $(if $(OUTPUT),--output-dir $(OUTPUT))
+
+industry-strategy-audit:
+	uv run python -m stock_cli.industry_strategy_audit $(if $(ASSERT),--assert-guardrails) $(if $(OUTPUT),--output-dir $(OUTPUT))
+
+industry-strategy-live:
+	uv run python -m stock_cli.industry_strategy_live $(if $(STRATEGY),--strategy $(STRATEGY)) $(if $(CAPITAL),--capital $(CAPITAL)) $(if $(DRY_RUN),--dry-run)

@@ -3,17 +3,39 @@ name: industry-deep-research
 description: 中观产业量化深度投研分析技能。当用户询问某个行业/板块（如白酒、食品饮料、电力设备/新能源、半导体/电子、医药生物、煤炭等）的供需周期、估值分位、产业链上下游传导、龙头梯队格局或行业配置评级时使用此技能。
 ---
 
-# Industry Deep Research (中观产业量化深度投研技能)
+# Industry Deep Research (中观产业量化深度投研与行业轮动策略技能)
 
 ## 核心原则
 
 1. **真实数据第一 (Ground Truth First)**：
    - 严禁虚构行业整体 PE/PB 估值与历史分位数；
    - 必须通过运行 `stock_cli.industry_diagnose` 读取本地申万黄金表真实计算结果。
-2. **中观产业视角 (Macro to Industry to Micro)**：
-   - 聚焦于**行业供需周期、库存周转、产业链上下游传导与竞争格局 (CR3/CR5)**，而非单一公司细节。
+2. **中观因子驱动与闭环对账**：
+   - 行业配置由 **5 大标准化中观因子** (景气动量 / 供需剪刀差 / 拥挤过热 / 估值赔率 / 聪明资金流) 与 **4 类量化轮动策略** 决定；
+   - 策略须经受 11 年（2015-2026）跨周期 6 大宏观范式回测检验与 CI 门禁断言。
 3. **高频微观数据印证 (GrokSearch-rs MCP)**：
    - 结合 `grok-search-rs` MCP 检索该产业最新的核心微观高频事实（如原料报价、出货量、渠道库存与政策催化），填补季频财报时滞。
+
+---
+
+## 常用量化工具链命令
+
+```bash
+# 1. 生成 31 行业 5 大中观量化因子面板 (2015-2026 全历史)
+uv run python -m stock_cli.industry_factors
+
+# 2. 生成多策略全周期横向对账研报 (年化、夏普、最大回撤与资金曲线)
+uv run python -m stock_cli.industry_strategy_report
+
+# 3. 运行跨周期稳定性审计与防退化 CI 门禁
+uv run python -m stock_cli.industry_strategy_audit --assert-guardrails
+
+# 4. 每日 14:50 盘尾实盘推演与行业 ETF 报单生成
+uv run python -m stock_cli.industry_strategy_live --strategy industry_momentum --dry-run
+
+# 5. 单产业微观全景量化体检与上下游诊断
+uv run python -m stock_cli.industry_diagnose --industry 食品饮料 --format json
+```
 
 ---
 
@@ -46,6 +68,7 @@ UV_CACHE_DIR=.uv_cache UV_PYTHON_INSTALL_DIR=.uv_python uv run python -m stock_c
 - 分析行业成份股市值 Top 5 龙头梯队（马太效应与龙头壁垒）；
 - 输出行业中观配置评级：【超配 (Overweight) / 标配 (Neutral) / 低配 (Underweight)】；
 - 给出优选细分赛道与核心关注标的池。
+
 
 ---
 
