@@ -246,7 +246,54 @@ def evaluate_macro_risk(
             "👉 **操作建议**：狂热区不盲目左侧猜顶，但严禁加杠杆追高；收紧止盈线，以 20 日均线 (MA20) 作为右侧刚性退出开关，一旦放量跌破 MA20 坚决清仓进攻端。"
         )
     elif panic > 65:
-        if crowding > 45:
+        val_rep_val = (
+            _safe_float(row.get("repurchase_score"))
+            if row.get("repurchase_score") is not None
+            else None
+        )
+        has_corp_support = (val_corporate is not None and val_corporate >= 75.0) or (
+            val_rep_val is not None and val_rep_val >= 80.0
+        )
+        is_corp_absent = (val_corporate is not None and val_corporate <= 25.0) and (
+            val_rep_val is None or val_rep_val <= 30.0
+        )
+        is_corp_lead = (
+            val_etf_score is not None
+            and val_etf_score < 40.0
+            and (
+                (val_corporate is not None and val_corporate >= 65.0)
+                or (val_rep_val is not None and val_rep_val >= 70.0)
+            )
+        )
+
+        if is_corp_lead:
+            corp_metric = val_corporate if val_corporate is not None else val_rep_val
+            status = "极度恐慌 —— 【微观产业底抢跑 (企业大额回购)】"
+            advice = (
+                f"- **当前状态**：恐慌指数偏高 ({panic:.1f})，国家队 ETF 买盘尚不明显 ({val_etf_score:.1f})，但上市公司回购潮已率先爆发 ({corp_metric:.1f})。\n"
+                "- **市场定性**：产业资本先行于宏观调令，对细分行业估值底线展开实质性投票。\n"
+                "- **后续推演**：微观企业自发展开托底，筑底周期开启，下行空间有限。\n"
+                "👉 **操作建议**：左侧跟随产业资本低吸被错杀的绩优蓝筹与红利资产，防范错过反弹行情。"
+            )
+        elif has_corp_support:
+            corp_metric = val_corporate if val_corporate is not None else val_rep_val
+            status = "极度恐慌 —— 【产业托底真黄金坑 (强共振底)】"
+            advice = (
+                f"- **当前状态**：恐慌指数突破危险阈值 ({panic:.1f})，同时全市场回购与产业资本托底达极高分位 ({corp_metric:.1f})。\n"
+                "- **市场定性**：二级市场非理性情绪杀跌与上市公司真金白银大额回购注销发生罕见强共振。\n"
+                "- **后续推演**：下行空间已被微观基本面与产业资本托底彻底锁死，极大概率为历史级坚实大底。\n"
+                "👉 **操作建议**：坚决在左侧分批重仓配置大盘宽基（沪深300）与高股息红利，无需精准择时，耐心锁仓等待均值回归。"
+            )
+        elif is_corp_absent:
+            corp_metric = val_corporate if val_corporate is not None else 0.0
+            status = "极度恐慌 —— 【警惕多杀多中继 (产业未托底/假黄金坑)】"
+            advice = (
+                f"- **当前状态**：恐慌指数爆表 ({panic:.1f})，但全市场回购分位数仅处于低位 ({corp_metric:.1f})。\n"
+                "- **市场定性**：暴跌主要由场内杠杆爆仓与情绪踩踏造成，实体企业尚未认可当前估值底线并大额回购。\n"
+                "- **后续推演**：属于典型的流动性挤压中继，谨防单日反弹诱多，后续仍面临二次下探与多杀多连环风险。\n"
+                "👉 **操作建议**：严禁盲目左侧加杠杆抄底；坚决以 20 日均线 (MA20) 作为刚性防线，未站稳均线前保持防守或持有债金避险。"
+            )
+        elif crowding > 45:
             status = "极度恐慌 —— 【放量出清底】"
             advice = (
                 f"- **当前状态**：恐慌爆表 ({panic:.1f})，且换手拥挤度依然极高 ({crowding:.1f})。\n"

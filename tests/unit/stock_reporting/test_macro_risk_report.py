@@ -120,3 +120,49 @@ def test_evaluate_macro_risk_divergence_distribution() -> None:
     )
     assert flow_item["status"] == "主力派发"
     assert "🔴" in flow_item["badge"]
+
+
+def test_evaluate_macro_risk_true_gold_pit() -> None:
+    """测试真黄金坑：恐慌爆表 + 产业资本/回购大额托底共振。"""
+    row = {
+        "trade_date": date(2026, 3, 23),
+        "overheat_index": 40.0,
+        "panic_index": 86.0,
+        "dim_corporate": 85.0,
+        "repurchase_score": 90.0,
+    }
+    res = evaluate_macro_risk(row)
+    assert "产业托底真黄金坑" in res["status"]
+    assert res["level"] == "opportunity"
+    assert "大额回购注销发生罕见强共振" in res["advice"]
+
+
+def test_evaluate_macro_risk_false_gold_pit_warning() -> None:
+    """测试假黄金坑警示：恐慌高企但产业资本完全缺位观望。"""
+    row = {
+        "trade_date": date(2015, 6, 19),
+        "overheat_index": 50.0,
+        "panic_index": 72.0,
+        "dim_corporate": 10.0,
+        "repurchase_score": 10.0,
+    }
+    res = evaluate_macro_risk(row)
+    assert "警惕多杀多中继" in res["status"]
+    assert "假黄金坑" in res["status"]
+    assert "严禁盲目左侧加杠杆抄底" in res["advice"]
+
+
+def test_evaluate_macro_risk_corporate_lead() -> None:
+    """测试独立产业底：国家队未买但上市公司率先大额回购。"""
+    row = {
+        "trade_date": date(2026, 2, 2),
+        "overheat_index": 45.0,
+        "panic_index": 72.0,
+        "etf_flow_ratio_score": 5.0,
+        "dim_corporate": 80.0,
+        "repurchase_score": 85.0,
+    }
+    res = evaluate_macro_risk(row)
+    assert "微观产业底抢跑" in res["status"]
+    assert res["level"] == "opportunity"
+    assert "上市公司回购潮已率先爆发" in res["advice"]
