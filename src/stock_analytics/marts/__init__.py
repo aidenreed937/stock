@@ -14,6 +14,11 @@ from stock_analytics.marts.corporate_actions import (
 )
 from stock_analytics.marts.dragon_tiger import build_dragon_tiger_frame
 from stock_analytics.marts.etf_flow import build_etf_flow_frame
+from stock_analytics.marts.fund_issuance import (
+    FUND_ISSUANCE_MART_NAME,
+    build_fund_issuance_frame,
+    build_fund_issuance_mart,
+)
 from stock_analytics.marts.global_macro import build_global_macro_daily_frame
 from stock_analytics.marts.industry_l2 import build_industry_l2_frame
 from stock_analytics.marts.industry_structure import (
@@ -34,6 +39,7 @@ from stock_analytics.marts.unlock_pressure import build_unlock_pressure_frame
 
 __all__ = [
     "CAPITAL_GAME_MART_NAME",
+    "FUND_ISSUANCE_MART_NAME",
     "INSIDER_INDUSTRY_MART_NAME",
     "DomainMartBuilder",
     "build_block_trade_mart",
@@ -42,6 +48,8 @@ __all__ = [
     "build_convertible_bond_mart",
     "build_dragon_tiger_frame",
     "build_etf_flow_frame",
+    "build_fund_issuance_frame",
+    "build_fund_issuance_mart",
     "build_global_macro_daily_frame",
     "build_industry_daily_frame",
     "build_industry_daily_mart",

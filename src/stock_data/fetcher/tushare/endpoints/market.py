@@ -136,6 +136,16 @@ MARKET_ENDPOINTS: dict[str, EndpointMeta] = {
         frequency="static",
         group="basic_info",
         primary_keys=["ts_code"],
+        date_columns=[
+            "found_date",
+            "issue_date",
+            "due_date",
+            "list_date",
+            "delist_date",
+            "purc_startdate",
+            "redm_startdate",
+        ],
+        required_columns=["ts_code", "name", "fund_type"],
     ),
     "fund_daily": EndpointMeta(
         api_name="fund_daily",
