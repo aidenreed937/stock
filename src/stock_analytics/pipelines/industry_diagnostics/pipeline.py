@@ -88,17 +88,50 @@ class IndustryDiagnosticsPipeline:
         # 2. 行业估值分位与利差
         val_snapshot = build_industry_valuation(sw_df, self.config.valuation, self.cat_lx)
 
-        # 3. 行业基本面（预留与兜底）
+        # 3. 行业基本面（从行业面板或财报黄金表提取）
+        roe_val = None
+        rev_yoy = None
+        np_yoy = None
+        gm_val = None
+        veto_flag = False
+        veto_reason = ""
+
+        try:
+            p_daily_path = (
+                self.runtime.data_root / "curated" / "mart" / "industry_panel_daily.parquet"
+            )
+            if p_daily_path.exists():
+                p_df = pl.read_parquet(p_daily_path).filter(pl.col("industry_code") == std_code)
+                if not p_df.is_empty():
+                    p_df = p_df.sort("as_of_date")
+                    if target_date is not None:
+                        p_df = p_df.filter(pl.col("as_of_date") <= target_date)
+                    if not p_df.is_empty():
+                        latest_p = p_df.tail(1).to_dicts()[0]
+                        roe_val = latest_p.get("roe_ttm")
+                        rev_yoy = latest_p.get("revenue_growth_ttm")
+                        np_yoy = latest_p.get("profit_growth_ttm")
+                        if np_yoy is not None and rev_yoy is not None:
+                            if float(np_yoy) < -30.0 and float(rev_yoy) < -15.0:
+                                veto_flag = True
+                                veto_reason = (
+                                    f"利润大幅下滑({np_yoy:.1f}%)且营收萎缩({rev_yoy:.1f}%)"
+                                )
+        except Exception as exc:
+            logger.warning(f"读取行业面板基本面数据失败: {exc}")
+
         fin_snapshot = IndustryFinancialsSnapshot(
             report_date=as_of_date_val,
-            roe_avg=None,
-            revenue_yoy=None,
-            netprofit_yoy=None,
-            gross_margin=None,
-            cycle_stage="存量博弈与结构分化期",
+            roe_avg=round(float(roe_val), 2) if roe_val is not None else None,
+            revenue_yoy=round(float(rev_yoy), 2) if rev_yoy is not None else None,
+            netprofit_yoy=round(float(np_yoy), 2) if np_yoy is not None else None,
+            gross_margin=gm_val,
+            cycle_stage="存量博弈与结构分化期" if not veto_flag else "下行去库与压力出清期",
+            veto_flag=veto_flag,
+            veto_reason=veto_reason,
         )
 
-        # 4. 行业成份股龙头梯队
+        # 4. 行业成份股龙头梯队与 CR5 集中度
         const_snapshot = load_industry_constituents(self.cat_tu, std_code, target_date=target_date)
 
         # 5. 产业链上下游图谱
@@ -116,6 +149,7 @@ class IndustryDiagnosticsPipeline:
             financials=fin_snapshot,
             constituents=const_snapshot,
             value_chain=chain_snapshot,
+            veto_flag=veto_flag,
         )
 
         # 6. 标准化产物管理与落盘

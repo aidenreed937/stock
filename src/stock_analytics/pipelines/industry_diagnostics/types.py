@@ -43,6 +43,8 @@ class IndustryFinancialsSnapshot:
     netprofit_yoy: float | None = None
     gross_margin: float | None = None
     cycle_stage: str = "成熟平稳期"
+    veto_flag: bool = False
+    veto_reason: str = ""
 
 
 @dataclass(frozen=True, slots=True)
@@ -52,6 +54,8 @@ class IndustryConstituentsSnapshot:
     total_count: int = 0
     top_market_cap_leaders: list[dict[str, Any]] = field(default_factory=list)
     top_roe_leaders: list[dict[str, Any]] = field(default_factory=list)
+    cr5_concentration: float | None = None
+    leader_roe_spread: float | None = None
 
 
 @dataclass(frozen=True, slots=True)
@@ -62,6 +66,7 @@ class IndustryValueChainSnapshot:
     downstream: list[str] = field(default_factory=list)
     cost_sensitivity: str = ""
     high_frequency_indicators: list[dict[str, str]] = field(default_factory=list)
+    margin_transmission: dict[str, Any] = field(default_factory=dict)
 
 
 @dataclass(frozen=True, slots=True)
@@ -77,6 +82,7 @@ class IndustryDiagnosticsResult:
     financials: IndustryFinancialsSnapshot
     constituents: IndustryConstituentsSnapshot
     value_chain: IndustryValueChainSnapshot
+    veto_flag: bool = False
 
     def to_dict(self) -> dict[str, Any]:
         """序列化为紧凑字典。"""

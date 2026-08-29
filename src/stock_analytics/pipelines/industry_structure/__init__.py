@@ -9,6 +9,11 @@ from stock_analytics.pipelines.industry_structure.config import (
     ScoreWeights,
     load_industry_structure_config,
 )
+from stock_analytics.pipelines.industry_structure.factor_panel import (
+    build_industry_factor_panel,
+    load_latest_industry_factors,
+    save_industry_factor_panel,
+)
 from stock_analytics.pipelines.industry_structure.pipeline import (
     IndustryStructurePipeline,
     IndustryStructureRunResult,
@@ -24,6 +29,9 @@ __all__ = [
     "IndustryStructureRunResult",
     "IndustryThresholdsConfig",
     "ScoreWeights",
+    "build_industry_factor_panel",
     "load_industry_structure_config",
+    "load_latest_industry_factors",
     "run_industry_structure",
+    "save_industry_factor_panel",
 ]

@@ -1,0 +1,43 @@
+# 申万 31 行业中观 5 大量化因子特征工厂配置
+# 负责定义因子计算窗口、去量纲归一化逻辑与中观多维复合得分。
+
+schema_version: 1
+title: "申万行业 5 大中观量化因子特征面板"
+artifact_root: "data/analytics/industry_structure"
+
+# 1. 5 大因子权重定义 (用于合成复合中观得分 composite_industry_score)
+weights:
+  ind_momentum: 0.30
+  ind_scissors: 0.25
+  ind_crowding: 0.15
+  ind_valuation: 0.15
+  ind_smart_flow: 0.15
+
+# 2. 因子参数与窗口设定
+factors:
+  ind_momentum:
+    name: "景气动量因子"
+    components:
+      - { column: "return_20d", weight: 0.35 }
+      - { column: "return_60d", weight: 0.35 }
+      - { column: "ma_bias_20d", weight: 0.15 }
+      - { column: "profit_growth_ttm", weight: 0.15 }
+    description: "综合 20/60 日价格动量、MA20偏离度与净利润同比增速历史分位"
+
+  ind_scissors:
+    name: "供需剪刀差因子"
+    description: "净利润同比增速 - 营收同比增速，衡量毛利率扩张与产业链抗通胀定价权"
+    min_periods: 20
+
+  ind_crowding:
+    name: "拥挤过热因子"
+    column: "tcr_percentile"
+    description: "行业成交额占全市场比重的 5Y 滚动历史百分位 (数值越高越过热拥挤)"
+
+  ind_valuation:
+    name: "估值赔率因子"
+    description: "基于 PE/PB 滚动 5Y 历史百分位反转计算 (100 - PE/PB分位)，数值越高安全边际与向上赔率越大"
+
+  ind_smart_flow:
+    name: "聪明资金流因子"
+    description: "北向资金 20 日持仓变动与全市场机构大单 20 日净流入占比的横截面分位"

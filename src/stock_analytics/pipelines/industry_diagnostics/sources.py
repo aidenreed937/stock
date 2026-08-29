@@ -158,11 +158,18 @@ def load_industry_constituents(
 
         leader_items.sort(key=lambda x: x["total_mv_billion"], reverse=True)
         top_5_mv = leader_items[:5]
+        total_ind_mv = sum(x["total_mv_billion"] for x in leader_items)
+        cr5_val = (
+            round(sum(x["total_mv_billion"] for x in top_5_mv) / total_ind_mv * 100.0, 1)
+            if total_ind_mv > 0
+            else None
+        )
 
         return IndustryConstituentsSnapshot(
             total_count=total_count,
             top_market_cap_leaders=top_5_mv,
             top_roe_leaders=[],
+            cr5_concentration=cr5_val,
         )
     except Exception as exc:
         logger.warning(f"加载行业成份股失败: {exc}")
