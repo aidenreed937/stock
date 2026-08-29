@@ -213,7 +213,9 @@ def run_industry_strategy_audit(
     # 7. 渲染图表与研报
     chart_p = render_industry_stability_charts(wide_df, regime_df, stress_df, r3_df, out_dir)
     md_p = out_dir / "strategy_stability_report.md"
-    render_industry_audit_markdown(regime_df, stress_df, r1_df, r3_df, guardrails, md_p)
+    render_industry_audit_markdown(
+        regime_df, stress_df, r1_df, r3_df, guardrails, md_p, chart_path=chart_p
+    )
 
     if assert_guardrails:
         failed = [g for g in guardrails if not g["passed"]]

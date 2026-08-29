@@ -106,6 +106,7 @@ def render_industry_audit_markdown(
     r3_df: pd.DataFrame,
     guardrail_results: list[dict[str, Any]],
     output_path: Path,
+    chart_path: Path | str | None = None,
 ) -> str:
     """渲染申万行业策略跨周期稳定性审计 Markdown 研报。"""
     regime_md = _format_df_table(regime_df)
@@ -129,14 +130,16 @@ def render_industry_audit_markdown(
     )
 
     overall_status = "✅ 全部门禁验证通过" if all_passed else "⚠️ 存在未达标门禁项"
+    chart_name = Path(chart_path).name if chart_path else "strategy_stability_charts.png"
 
     md = f"""# 申万行业轮动策略跨周期稳定性审计报告
 
 > **审计范围**: 2015-2026 全历史 11 年（6 大宏观范式 + 4 大极端危机压力测试 + 滚动持有期胜率）
 > **门禁总评**: **{overall_status}**
 
----
+![申万行业策略跨周期稳定性多维对比图]({chart_name})
 
+---
 
 ## 一、 策略防退化 CI 门禁判定 (Regression Guardrails)
 
@@ -166,9 +169,9 @@ def render_industry_audit_markdown(
 
 ---
 
-## 五、 高清 4 合 1 跨周期稳定性多维对比走势图
+## 五、 跨周期走势与压力测试图表索引
 
-![申万行业策略跨周期稳定性多维对比图](strategy_stability_charts.png)
+- **高清图表产物**: [`{chart_name}`]({chart_name})
 """
     output_path.parent.mkdir(parents=True, exist_ok=True)
     output_path.write_text(md, encoding="utf-8")
