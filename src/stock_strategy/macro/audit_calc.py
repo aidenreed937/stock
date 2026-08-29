@@ -165,4 +165,39 @@ def compute_rolling_stats(
     return pd.DataFrame(rows)
 
 
-__all__ = ["compute_rolling_stats", "compute_slice_metrics", "compute_stress_test"]
+def compute_bear_regimes(
+    wide_df: pl.DataFrame,
+    risk_factors: pl.DataFrame | None,
+    cols: list[str] | None = None,
+    *,
+    drawdown_threshold: float = -0.20,
+    min_days: int = 60,
+    factor_score_min: int = 3,
+) -> pd.DataFrame:
+    """双引擎熊市区间识别 (转发至 bear_regime 管线，单一实现源)。
+
+    兼容旧签名的薄封装：将参数映射为 ``BearRegimeConfig`` 后调用
+    ``stock_analytics.pipelines.bear_regime.identify_bear_regimes``。
+    """
+    from stock_analytics.pipelines.bear_regime import (
+        BearRegimeConfig,
+        identify_bear_regimes,
+    )
+
+    cfg = BearRegimeConfig(
+        drawdown_threshold=drawdown_threshold,
+        price_min_days=min_days,
+        price_gap_buffer=min_days,
+        factor_score_min=factor_score_min,
+        factor_min_days=min_days,
+        factor_gap_buffer=10,
+    )
+    return identify_bear_regimes(wide_df, risk_factors, cfg=cfg, cols=cols)
+
+
+__all__ = [
+    "compute_bear_regimes",
+    "compute_rolling_stats",
+    "compute_slice_metrics",
+    "compute_stress_test",
+]

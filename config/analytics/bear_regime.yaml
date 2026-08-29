@@ -1,0 +1,17 @@
+# 熊市区间识别管线配置（双引擎）
+# 引擎 1: 价格回撤 (基准 250 日新高回撤)
+# 引擎 2: 四低共振 (估值/成交/杠杆/价格分位低位)
+bear_regime:
+  # 引擎 1: 价格回撤
+  drawdown_threshold: -0.20   # 250 日新高回撤阈值
+  price_min_days: 60          # 最短持续交易日
+  price_gap_buffer: 60        # 相邻区间回升缓冲交易日
+
+  # 引擎 2: 四低共振
+  valuation_threshold: 30.0   # 估值分位低位阈值
+  crowding_threshold: 30.0    # 成交(换手)分位低位阈值
+  leverage_threshold: 40.0    # 杠杆资金分位低位阈值
+  price_rank_threshold: 0.20  # 价格 250 日滚动分位低位阈值 (与估值/成交/杠杆分位口径统一)
+  factor_score_min: 3         # 四低中至少 N 项共振
+  factor_min_days: 60         # 最短持续交易日
+  factor_gap_buffer: 10       # 相邻区间回升缓冲交易日

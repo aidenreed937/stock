@@ -4,8 +4,9 @@
 1. 跨 6 大宏观范式分段回溯切片对账；
 2. 历史 4 大极端危机压力测试 (Stress Testing)；
 3. 任意时点入场滚动 1 年 (252D) 与 3 年 (756D) 胜率与回撤分布统计；
-4. 输出标准化 CSV、高清 4 合 1 对比图与 Markdown 审计研报；
-5. 提供策略退化回归断言门禁 (Regression Guardrails)。
+4. 双引擎熊市区间识别 (价格回撤 + 宏观因子共振) 与策略表现/回本时长统计；
+5. 输出标准化 CSV、高清 4 合 1 对比图与 Markdown 审计研报；
+6. 提供策略退化回归断言门禁 (Regression Guardrails)。
 """
 
 from __future__ import annotations
@@ -23,6 +24,7 @@ from stock_core.utils.logger import logger
 from stock_data.catalog import DataCatalog
 from stock_strategy.macro.assembly import assemble_macro_panel, load_price_panel
 from stock_strategy.macro.audit_calc import (
+    compute_bear_regimes,
     compute_rolling_stats,
     compute_slice_metrics,
     compute_stress_test,
@@ -37,6 +39,19 @@ from stock_strategy.macro.report import (
     load_benchmarks,
     nav_from_close,
 )
+
+
+def _load_risk_factors(risk_root: Path) -> pl.DataFrame:
+    """加载宏观风控因子产物（熊市因子共振识别用），缺失时返回空表。"""
+    try:
+        from stock_analytics.pipelines.macro_risk import load_latest_risk_factors
+
+        _, factors, _ = load_latest_risk_factors(risk_root)
+        return factors if factors is not None else pl.DataFrame()
+    except Exception as exc:  # noqa: BLE001
+        logger.warning("加载宏观风控因子产物失败，熊市因子共振识别将跳过: %s", exc)
+        return pl.DataFrame()
+
 
 # 默认 6 大宏观范式定义（配置缺失时的默认回退）
 _DEFAULT_MACRO_REGIMES: list[tuple[str, date, date, str]] = [
@@ -122,6 +137,7 @@ class StabilityAuditResult:
     regime_df: pd.DataFrame
     stress_df: pd.DataFrame
     rolling_df: pd.DataFrame
+    bear_df: pd.DataFrame
     report_path: Path
     chart_path: Path | None
 
@@ -217,6 +233,11 @@ def run_full_stability_audit(
     rolling_df = compute_rolling_stats(wide_df, all_cols, windows=(252, 756))
     rolling_df.to_csv(output_dir / "rolling_stability_stats.csv", index=False)
 
+    # 双引擎熊市区间识别（价格回撤 + 因子共振）
+    risk_factors = _load_risk_factors(risk_root)
+    bear_df = compute_bear_regimes(wide_df, risk_factors, all_cols)
+    bear_df.to_csv(output_dir / "bear_regime_comparison.csv", index=False)
+
     chart_path: Path | None = None
     r3_subset = rolling_df[rolling_df["滚动窗口"].str.contains("3 年")].copy()
     if generate_charts:
@@ -234,6 +255,7 @@ def run_full_stability_audit(
         regime_df=regime_df,
         stress_df=stress_df,
         rolling_df=rolling_df,
+        bear_df=bear_df,
         chart_file=chart_path,
         report_file=report_path,
     )
@@ -244,6 +266,7 @@ def run_full_stability_audit(
         regime_df=regime_df,
         stress_df=stress_df,
         rolling_df=rolling_df,
+        bear_df=bear_df,
         report_path=report_path,
         chart_path=chart_path,
     )

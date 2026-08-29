@@ -88,6 +88,7 @@ def render_audit_markdown(
     regime_df: pd.DataFrame,
     stress_df: pd.DataFrame,
     rolling_df: pd.DataFrame,
+    bear_df: pd.DataFrame,
     chart_file: Path | None,
     report_file: Path,
 ) -> None:
@@ -141,10 +142,29 @@ def render_audit_markdown(
 
     img_line = f"![多策略跨周期稳定性对比图]({chart_file.name})\n" if chart_file else ""
 
+    bear_md = ""
+    if bear_df is not None and not bear_df.empty:
+        bear_md = "| 识别引擎 | 熊市区间 | 持续天数 | 标的/策略 | 区间收益 | 最深回撤 | 回本所需交易日 |\n"
+        bear_md += "| :--- | :--- | :---: | :--- | :---: | :---: | :---: |\n"
+        for _, row in bear_df.iterrows():
+            name_c = (
+                f"**`{row['标的/策略']}`**"
+                if "macro" in str(row["标的/策略"])
+                else str(row["标的/策略"])
+            )
+            bear_md += (
+                f"| {row['识别引擎']} | {row['熊市区间']} | {int(row['区间天数'])} | {name_c} "
+                f"| {_pct(row['区间收益'])} | {_pct(row['最深回撤'])} | {int(row['回本所需交易日'])} |\n"
+            )
+        bear_md += (
+            "\n> **解读**：价格回撤引擎回答「历史最惨能多深、多久收复」（长期资金最坏准备）；"
+            "因子共振引擎回答「当前环境是否处于熊市土壤」（恐慌/杠杆/拥挤/估值共振，持有信心与补仓参考）。\n"
+        )
+
     content = f"""# 宏观风控多策略全周期稳定性审计报告
 
 > **审计交易日总数**：{len(wide_df)} 交易日 ({wide_df["trade_date"].min()!s} ~ {wide_df["trade_date"].max()!s})
-> **审计覆盖**：6 大宏观范式切片 + 4 大极端危机压力测试 + 滚动 1Y/3Y 胜率对账
+> **审计覆盖**：6 大宏观范式切片 + 4 大极端危机压力测试 + 滚动 1Y/3Y 胜率对账 + 双引擎熊市识别
 > **生成时间**：{date.today()}
 
 {img_line}
@@ -165,6 +185,12 @@ def render_audit_markdown(
 ## 三、 任意时点入场滚动 1 年 (252D) 与 3 年 (756D) 稳定性统计
 
 {rolling_md}
+
+---
+
+## 四、 双引擎熊市区间识别与策略表现
+
+{bear_md}
 """
     report_file.write_text(content, encoding="utf-8")
 
