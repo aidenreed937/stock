@@ -204,37 +204,9 @@ def fetch_iv(ctx: FetchContext) -> pl.DataFrame:
     )
 
 
-@register_fetcher("unlock")
-def fetch_unlock(ctx: FetchContext) -> pl.DataFrame:
-    """获取微观流动性冲击数据：解禁压力比例 (unlock_ratio)。
-
-    逻辑：用未来20天的滚动解禁总额，除以全市场当下的流通总市值，度量抽血压力。
-    """
-    # 提取每日原始解禁金额
-    un = ctx.fs.get_domain_mart("unlock_pressure_daily").select(["trade_date", "unlock_amount"])
-    # 提取全市场当日流通市值
-    db = ctx.md.select(["trade_date", pl.col("market_circ_mv").alias("circ_mv")])
-
-    return (
-        un.join(db, on="trade_date", how="left")
-        # 滚动累加计算未来20天解禁总金额（注：原始表中的 unlock_amount 本就是按日对齐好的预期解禁额）
-        .with_columns(
-            pl.col("unlock_amount").rolling_sum(window_size=20).alias("unlock_amount_20d")
-        )
-        # 除以当日总流通市值得到比例
-        .with_columns((pl.col("unlock_amount_20d") / pl.col("circ_mv")).alias("unlock_ratio"))
-        .select(["trade_date", "unlock_ratio"])
-        .sort("trade_date")
-    )
-
-
 @register_fetcher("crowdedness")
 def fetch_crowdedness(ctx: FetchContext) -> pl.DataFrame:
-    """获取全市场拥挤度类指标。
-
-    使用全市场每日换手率 (market_turnover_rate) 作为核心拥挤度代理。
-    换手率极高意味着买盘耗尽、交易过度拥挤。
-    """
+    """获取全市场拥挤度类指标：全市场每日换手率 (market_turnover_rate)。"""
     return ctx.md.select(["trade_date", "market_turnover_rate"]).drop_nulls()
 
 
@@ -280,7 +252,7 @@ def fetch_fund_issuance(ctx: FetchContext) -> pl.DataFrame:
 
 @register_fetcher("corporate")
 def fetch_corporate(ctx: FetchContext) -> pl.DataFrame:
-    """获取产业资本行为：20日滚动回购金额与董监高净买入金额。"""
+    """获取产业资本行为：20日滚动回购金额、董监高净买入、董监高减持及解禁压力金额。"""
     cal = ctx.md.select(["trade_date"]).sort("trade_date")
     try:
         rep = ctx.fs.get_domain_mart("repurchase_daily")
@@ -290,6 +262,10 @@ def fetch_corporate(ctx: FetchContext) -> pl.DataFrame:
         ins = ctx.fs.get_domain_mart("insider_activity_daily")
     except Exception:
         ins = pl.DataFrame()
+    try:
+        unl = ctx.fs.get_domain_mart("unlock_pressure_daily")
+    except Exception:
+        unl = pl.DataFrame()
 
     if (
         not rep.is_empty()
@@ -317,12 +293,14 @@ def fetch_corporate(ctx: FetchContext) -> pl.DataFrame:
         not ins.is_empty()
         and "announcement_date" in ins.columns
         and "insider_net_buy_amount" in ins.columns
+        and "insider_sell_amount" in ins.columns
     ):
         ins_sub = (
             cal.join(
                 ins.select(
                     pl.col("announcement_date").cast(pl.Date).alias("trade_date"),
                     pl.col("insider_net_buy_amount").cast(pl.Float64, strict=False),
+                    pl.col("insider_sell_amount").cast(pl.Float64, strict=False),
                 ),
                 on="trade_date",
                 how="left",
@@ -331,13 +309,41 @@ def fetch_corporate(ctx: FetchContext) -> pl.DataFrame:
             .with_columns(
                 pl.col("insider_net_buy_amount")
                 .rolling_sum(window_size=20)
-                .alias("insider_net_buy_amount")
+                .alias("insider_net_buy_amount"),
+                pl.col("insider_sell_amount")
+                .rolling_sum(window_size=20)
+                .alias("insider_sell_amount"),
             )
         )
     else:
-        ins_sub = cal.with_columns(pl.lit(0.0).alias("insider_net_buy_amount"))
+        ins_sub = cal.with_columns(
+            pl.lit(0.0).alias("insider_net_buy_amount"),
+            pl.lit(0.0).alias("insider_sell_amount"),
+        )
 
-    return rep_sub.join(ins_sub, on="trade_date", how="left").sort("trade_date")
+    if not unl.is_empty() and "trade_date" in unl.columns and "unlock_amount" in unl.columns:
+        unl_sub = (
+            cal.join(
+                unl.select(
+                    pl.col("trade_date").cast(pl.Date),
+                    pl.col("unlock_amount").cast(pl.Float64, strict=False),
+                ),
+                on="trade_date",
+                how="left",
+            )
+            .fill_null(0.0)
+            .with_columns(
+                pl.col("unlock_amount").rolling_sum(window_size=20).alias("unlock_amount")
+            )
+        )
+    else:
+        unl_sub = cal.with_columns(pl.lit(0.0).alias("unlock_amount"))
+
+    return (
+        rep_sub.join(ins_sub, on="trade_date", how="left")
+        .join(unl_sub, on="trade_date", how="left")
+        .sort("trade_date")
+    )
 
 
 @register_fetcher("convertible_bond")

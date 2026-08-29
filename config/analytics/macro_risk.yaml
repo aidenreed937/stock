@@ -102,6 +102,18 @@ macro_risk:
       window: 1250
       min_periods: 250
       direction: rev
+    insider_sell:
+      series: corporate
+      column: insider_sell_amount
+      window: 1250
+      min_periods: 250
+      direction: raw
+    unlock_amount:
+      series: corporate
+      column: unlock_amount
+      window: 1250
+      min_periods: 250
+      direction: raw
     cb_price:
       series: convertible_bond
       column: cb_price_median
@@ -145,6 +157,8 @@ macro_risk:
     corporate:
     - repurchase
     - insider_net
+    - insider_sell
+    - unlock_amount
     cross_asset:
     - cb_price
     - us_yield_curve

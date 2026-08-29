@@ -63,6 +63,8 @@ def assemble_macro_panel(
             "composite_flow_score",
             "repurchase_score",
             "insider_net_score",
+            "insider_sell_score",
+            "unlock_amount_score",
             "cb_price_score",
             "copper_gold_score",
             "dim_flow",
