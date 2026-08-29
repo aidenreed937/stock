@@ -62,8 +62,28 @@ def test_backtest_empty_price_panel_is_cash_flat() -> None:
     assert all(v == pytest.approx(1.0) for v in nav["nav"].to_list())
 
 
-def test_backtest_with_commission_and_slippage() -> None:
-    # 当发生从 1.0 -> 0.0 清仓换手时，扣除换手摩擦 (1.0 * (0.001 + 0.001) = 0.002)
+def test_backtest_fee_applied_on_effective_day() -> None:
+    """T+1 语义：信号 t 日收盘生成、t+1 日生效；摩擦成本在生效日扣而非信号日。
+
+    前 24 天横盘 100，第 25 天跌破至 80 且过热触发清仓（信号日满仓承受 -20%）；
+    第 26 天横盘 80（信号生效日，空仓 0 收益，扣除清仓换手摩擦 0.002）。
+    """
+    dates = [date(2026, 6, i + 1) for i in range(26)]
+    panel = pl.DataFrame(
+        {
+            "trade_date": dates,
+            "close": [100.0] * 24 + [80.0, 80.0],
+            "panic_index": [20.0] * 26,
+            "overheat_index": [40.0] * 24 + [70.0, 70.0],
+        }
+    )
+    price_panel = pl.DataFrame(
+        {
+            "trade_date": dates,
+            "symbol": ["000300.SH"] * 26,
+            "close": [100.0] * 24 + [80.0, 80.0],
+        }
+    )
     runner = MacroRiskRunner(
         MacroRiskV3Strategy(),
         symbols=("000300.SH",),
@@ -72,10 +92,12 @@ def test_backtest_with_commission_and_slippage() -> None:
         commission_rate=0.001,
         slippage_rate=0.001,
     )
-    nav = runner.backtest(_panel(), _price_panel())
+    nav = runner.backtest(panel, price_panel)
     values = nav["nav"].to_list()
-    # 24天: 1.0; 25天: 0.8 * (1 - 0.002) = 0.7984
-    assert values[24] == pytest.approx(0.8 * (1.0 - 0.002))
+    # 信号日：满仓承受 -20%，摩擦未扣
+    assert values[24] == pytest.approx(0.8)
+    # T+1 生效日：空仓 0 收益，扣除清仓摩擦 (1.0 * 0.002)
+    assert values[25] == pytest.approx(0.8 * (1.0 - 0.002))
 
 
 def test_backtest_with_deadband_filtering() -> None:
@@ -92,6 +114,23 @@ def test_backtest_with_deadband_filtering() -> None:
     values = nav["nav"].to_list()
     # 调仓被忽略，不扣手续费
     assert values[24] == pytest.approx(0.8)
+
+
+def test_backtest_deadband_syncs_strategy_positions() -> None:
+    """死区过滤后策略内部状态必须回写为执行层实际权重，避免后续信号脱节。"""
+    strat = MacroRiskV3Strategy()
+    runner = MacroRiskRunner(
+        strat,
+        symbols=("000300.SH",),
+        initial_weights={"000300.SH": 1.0},
+        strategy_name="macro_risk_v3",
+        commission_rate=0.01,
+        rebalance_deadband=1.5,
+    )
+    nav = runner.backtest(_panel(), _price_panel())
+    # 清仓被死区过滤，策略内部权重应与执行层一致（仍满仓）
+    assert strat.current_weight == pytest.approx(1.0)
+    assert nav["nav"].to_list()[-1] == pytest.approx(0.8)
 
 
 def test_strategy_custom_thresholds_injection() -> None:

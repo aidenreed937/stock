@@ -142,7 +142,9 @@ def main() -> None:
         print("\n正在执行策略防退化回归门禁断言 (CI Guardrails)...")
         try:
             assert_stability_guardrails(result)
-            print("  ✅ 所有稳定性回归断言全部通过 (V4 3Y胜率 >= 80%, V6 2024踩踏回撤 >= -10%)！")
+            print(
+                "  ✅ 所有稳定性回归断言全部通过 (V4 3Y跑赢全指概率 >= 80%, V6 2024踩踏回撤 >= -15%)！"
+            )
         except AssertionError as err:
             logger.error("❌ 策略稳定性门禁断言失败: %s", err)
             sys.exit(1)

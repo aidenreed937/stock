@@ -192,6 +192,36 @@ def render_comparison_markdown(
     start_str = start.isoformat() if start else "N/A"
     end_str = end.isoformat() if end else "N/A"
 
+    # ---- 定性总结：数字一律动态取自 stats，避免与表格漂移 ----
+    def _fmt_pct(v: float) -> str:
+        return f"{v * 100:.2f}%"
+
+    summary_lines: list[str] = ["### 三、 定性总结与实战选型", ""]
+    v5_stats = stats.get("macro_rotation_v5_etf")
+    if v5_stats:
+        v5_cagr = _get_val(v5_stats, "cagr", _get_val(v5_stats, "annual_return"))
+        v5_sharpe = _get_val(v5_stats, "sharpe_ratio", _get_val(v5_stats, "sharpe"))
+        summary_lines.append(
+            f"- **实盘收益与夏普冠军**：**`macro_rotation_v5_etf`** 在双核轮动基础上"
+            f"引入聪明钱假黄金坑确认过滤，实盘 CAGR 达 **{_fmt_pct(v5_cagr)}**、"
+            f"夏普 **{v5_sharpe:.2f}**，综合收益风险比最优；"
+        )
+    aw_stats = stats.get("macro_all_weather_etf")
+    if aw_stats:
+        aw_vol = _get_val(
+            aw_stats, "annualized_volatility", _get_val(aw_stats, "annual_volatility")
+        )
+        aw_dd = _get_val(aw_stats, "max_drawdown")
+        summary_lines.append(
+            f"- **大类资产稳健防御**：**`macro_all_weather_etf`** 引入国债与黄金跨资产避险，"
+            f"年化波动率压至 **{_fmt_pct(aw_vol)}**，最大回撤收窄至 **{_fmt_pct(aw_dd)}**。"
+        )
+    summary_lines.extend(
+        [
+            "",
+            "> 以上为历史回测结果，不代表未来表现；实盘需叠加交易成本、流动性约束与策略漂移再评估。",
+        ]
+    )
     content = f"""# 宏观风控多策略全周期横向对账全景报告 ({start_str} 至 {end_str})
 
 本报告基于固化入库的生产级代码，对所有已配置的宏观风控策略在全量真实历史数据上进行严格横向对账。回测采用 T+1 语义（信号当日收盘生成、次日生效）。
@@ -208,13 +238,7 @@ def render_comparison_markdown(
 
 ---
 
-### 三、 定性总结与实战选型
-
-- **实盘收益与夏普冠军**：**`macro_rotation_v5_etf`** 在双核轮动基础上引入聪明钱假黄金坑确认过滤，实盘 CAGR 达 **10.12%**、夏普 **0.43**，综合收益风险比最优；
-- **防极端踩踏增强**：**`macro_rotation_v6_etf`** 引入大盘沪深300压舱，在 2024 年初极端流动性危机中回撤控制更优；
-- **大类资产稳健防御**：**`macro_all_weather_etf`** 引入国债与黄金跨资产避险，年化波动率压至 **16.29%**，最大回撤收窄至 **-36.73%**。
-
-> 以上为历史回测结果，不代表未来表现；实盘需叠加交易成本、流动性约束与策略漂移再评估。
+{chr(10).join(summary_lines)}
 """
     if out_path is not None:
         out_p = Path(out_path)

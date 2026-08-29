@@ -42,6 +42,20 @@ def _daily_return(
     return total
 
 
+def _sync_strategy_positions(strategy: BaseStrategy, weights: Mapping[str, float]) -> None:
+    """把策略内部持仓状态回写为执行层实际权重。
+
+    死区过滤（rebalance_deadband）后，策略 ``on_bar`` 内部已按目标权重更新了
+    自身状态（如 ``self.weights`` / ``self.current_weight``），但执行层因换手未达
+    死区阈值不采纳该调仓。若不回写，策略与执行层持仓将脱节：后续 ``on_bar``
+    会基于错误的"已调仓"状态生成信号。此函数在死区过滤分支调用，保证一致。
+    """
+    if hasattr(strategy, "weights") and isinstance(strategy.weights, dict):
+        strategy.weights = dict(weights)
+    if hasattr(strategy, "current_weight"):
+        strategy.current_weight = float(next(iter(weights.values()), 0.0))
+
+
 class MacroRiskRunner:
     """宏观策略研究运行器（支持微观交易成本与死区过滤）。"""
 
@@ -104,13 +118,21 @@ class MacroRiskRunner:
         days = _trading_days(panel)
         fee_rate = self.commission_rate + self.slippage_rate
 
+        # 上一交易日收盘信号产生的待生效摩擦成本（T+1：信号 t 日生成、t+1 日生效并扣费）
+        pending_fee: float = 0.0
+
         for i, day in enumerate(days):
             # 1. 首日为建仓日（当日收盘以初始权重建仓，nav 归一为 1.0），自次日起按持仓计算收益
             if i > 0:
                 daily_gain = _daily_return(price_wide, price_rows, day, weights)
                 nav *= 1.0 + daily_gain
 
-            # 2. 获取当日收盘信号（次日生效，T+1）
+            # 2. 扣减前一日信号在本日（T+1 生效日）产生的调仓摩擦
+            if pending_fee > 0.0:
+                nav *= max(1.0 - pending_fee, 0.0)
+                pending_fee = 0.0
+
+            # 3. 获取当日收盘信号（次日生效，T+1）
             window = panel.filter(pl.col("trade_date") <= day)
             new_signals = self.strategy.on_bar(window)
             if new_signals:
@@ -126,11 +148,13 @@ class MacroRiskRunner:
 
                 # 死区过滤 (Deadband): 权重变动总和小于阈值时不触发真实调仓
                 if turnover >= self.rebalance_deadband:
-                    # 扣除换手交易摩擦 (佣金 + 冲击滑点)
+                    # 记录待扣摩擦（信号日不扣，T+1 生效日扣）
                     if fee_rate > 0.0 and turnover > 0.0:
-                        friction_cost = turnover * fee_rate
-                        nav *= max(1.0 - friction_cost, 0.0)
+                        pending_fee = turnover * fee_rate
                     weights = tentative_weights
+                else:
+                    # 死区过滤：执行层不调仓，策略内部状态需回写为实际权重，避免后续信号脱节
+                    _sync_strategy_positions(self.strategy, weights)
 
             records.append(nav)
 
