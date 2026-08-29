@@ -41,6 +41,39 @@ class FetchContext:
         return MetricContext(start_date=date(2010, 1, 1), catalog=self.cat)
 
 
+def _shift_to_next_trading_day(
+    frame: pl.DataFrame,
+    cal: pl.DataFrame,
+    shift_cols: list[str],
+    date_col: str = "trade_date",
+) -> pl.DataFrame:
+    """把 ``shift_cols`` 列的值整体平移至下一交易日（消除 T+1 发布时滞前视）。
+
+    适用于 T 日收盘后才公布的日终数据（如两融、ETF 份额变动）：
+    将 T-1 日的值打戳到 T 日，使 T 日收盘仅可使用 T-1 日及以前的信息。
+    ``cal`` 为升序、无重复的交易日历（含 ``date_col``）。
+    """
+    cal_idx = cal.select(date_col).sort(date_col).with_row_index("_idx")
+    return (
+        frame.drop_nulls(subset=shift_cols)
+        .join(cal_idx, on=date_col, how="left")
+        .with_columns((pl.col("_idx") + 1).alias("_next_idx"))
+        .drop("_idx")
+        .join(
+            cal_idx.select(["_idx", date_col]).rename(
+                {"_idx": "_next_idx", date_col: "_shifted_date"}
+            ),
+            on="_next_idx",
+            how="left",
+        )
+        .drop("_next_idx")
+        .with_columns(pl.col("_shifted_date").alias(date_col))
+        .select([date_col, *shift_cols])
+        .drop_nulls(subset=[date_col])
+        .sort(date_col)
+    )
+
+
 # ============================================================================
 # 提取器注册表 (Registry Pattern)
 # ============================================================================
@@ -121,16 +154,31 @@ def fetch_vix(ctx: FetchContext) -> pl.DataFrame:
 def fetch_leverage(ctx: FetchContext) -> pl.DataFrame:
     """获取杠杆类情绪数据：融资余额占比 (margin_pen) 与 融资买入额占比 (margin_buy_ratio)。
 
-    直接从预加载的 market_daily 宽表中投影所需列。
+    两融数据为 T+1 早间公布（T 日收盘尚不可得），为消除发布时滞前视，
+    将原始值按 market_daily 交易日历整体平移至下一交易日（T 日仅可用 T-1 日两融值）。
     """
-    return ctx.md.select(
-        ["trade_date", pl.col("margin_penetration").alias("margin_pen"), "margin_buy_ratio"]
-    ).sort("trade_date")
+    lev = ctx.md.select(
+        [
+            "trade_date",
+            pl.col("margin_penetration").alias("margin_pen"),
+            "margin_buy_ratio",
+        ]
+    )
+    if ctx.md.is_empty() or "trade_date" not in ctx.md.columns:
+        return lev
+    return _shift_to_next_trading_day(lev, ctx.md, shift_cols=["margin_pen", "margin_buy_ratio"])
 
 
 @register_fetcher("main_flow")
 def fetch_main_flow(ctx: FetchContext) -> pl.DataFrame:
-    """获取主力资金流多维数据：现货主力、国家队宽基ETF、散户博弈分歧与综合主力流向。"""
+    """获取主力资金流多维数据：现货主力、国家队宽基ETF、散户博弈分歧与综合主力流向。
+
+    ETF 资金流由日终份额变动（Δ份额 × 收盘价）计算，T+1 早间才公布：
+    对 ``etf_flow_ratio`` 按交易日历平移至下一交易日，消除发布时滞前视。
+    复合列 ``composite_flow``（含 1.2×ETF 净流入分量）与 ``divergence_score``
+    （含龙虎榜/两融成分）为混合口径，经 1250 日滚动分位与维度均值平滑后
+    时滞影响有限，暂不平移。
+    """
     try:
         cg = ctx.fs.get_domain_mart("capital_game_daily")
     except Exception:
@@ -145,7 +193,7 @@ def fetch_main_flow(ctx: FetchContext) -> pl.DataFrame:
             "divergence_score",
         ]
         if all(c in cg.columns for c in cols_needed):
-            return cg.select(
+            frame = cg.select(
                 pl.col("trade_date").cast(pl.Date),
                 pl.when(pl.col("total_turnover") > 0)
                 .then(
@@ -158,6 +206,15 @@ def fetch_main_flow(ctx: FetchContext) -> pl.DataFrame:
                 pl.col("broad_etf_flow_ratio").alias("etf_flow_ratio"),
                 pl.col("divergence_score").alias("divergence_score"),
             ).sort("trade_date")
+            # 交易日历不可用时跳过平移（保留原始时序），仅在有完整日历时执行 PIT 修复
+            if ctx.md.is_empty() or "trade_date" not in ctx.md.columns:
+                return frame
+            etf_shifted = _shift_to_next_trading_day(
+                frame.select(["trade_date", "etf_flow_ratio"]),
+                ctx.md.select("trade_date"),
+                shift_cols=["etf_flow_ratio"],
+            )
+            return frame.drop("etf_flow_ratio").join(etf_shifted, on="trade_date", how="left")
 
     # Fallback to market_daily
     return ctx.md.select(
@@ -250,102 +307,6 @@ def fetch_fund_issuance(ctx: FetchContext) -> pl.DataFrame:
     )
 
 
-@register_fetcher("corporate")
-def fetch_corporate(ctx: FetchContext) -> pl.DataFrame:
-    """获取产业资本行为：20日滚动回购金额、董监高净买入、董监高减持及解禁压力金额。"""
-    cal = ctx.md.select(["trade_date"]).sort("trade_date")
-    try:
-        rep = ctx.fs.get_domain_mart("repurchase_daily")
-    except Exception:
-        rep = pl.DataFrame()
-    try:
-        ins = ctx.fs.get_domain_mart("insider_activity_daily")
-    except Exception:
-        ins = pl.DataFrame()
-    try:
-        unl = ctx.fs.get_domain_mart("unlock_pressure_daily")
-    except Exception:
-        unl = pl.DataFrame()
-
-    if (
-        not rep.is_empty()
-        and "announcement_date" in rep.columns
-        and "repurchase_amount" in rep.columns
-    ):
-        rep_sub = (
-            cal.join(
-                rep.select(
-                    pl.col("announcement_date").cast(pl.Date).alias("trade_date"),
-                    pl.col("repurchase_amount").cast(pl.Float64, strict=False),
-                ),
-                on="trade_date",
-                how="left",
-            )
-            .fill_null(0.0)
-            .with_columns(
-                pl.col("repurchase_amount").rolling_sum(window_size=20).alias("repurchase_amount")
-            )
-        )
-    else:
-        rep_sub = cal.with_columns(pl.lit(0.0).alias("repurchase_amount"))
-
-    if (
-        not ins.is_empty()
-        and "announcement_date" in ins.columns
-        and "insider_net_buy_amount" in ins.columns
-        and "insider_sell_amount" in ins.columns
-    ):
-        ins_sub = (
-            cal.join(
-                ins.select(
-                    pl.col("announcement_date").cast(pl.Date).alias("trade_date"),
-                    pl.col("insider_net_buy_amount").cast(pl.Float64, strict=False),
-                    pl.col("insider_sell_amount").cast(pl.Float64, strict=False),
-                ),
-                on="trade_date",
-                how="left",
-            )
-            .fill_null(0.0)
-            .with_columns(
-                pl.col("insider_net_buy_amount")
-                .rolling_sum(window_size=20)
-                .alias("insider_net_buy_amount"),
-                pl.col("insider_sell_amount")
-                .rolling_sum(window_size=20)
-                .alias("insider_sell_amount"),
-            )
-        )
-    else:
-        ins_sub = cal.with_columns(
-            pl.lit(0.0).alias("insider_net_buy_amount"),
-            pl.lit(0.0).alias("insider_sell_amount"),
-        )
-
-    if not unl.is_empty() and "trade_date" in unl.columns and "unlock_amount" in unl.columns:
-        unl_sub = (
-            cal.join(
-                unl.select(
-                    pl.col("trade_date").cast(pl.Date),
-                    pl.col("unlock_amount").cast(pl.Float64, strict=False),
-                ),
-                on="trade_date",
-                how="left",
-            )
-            .fill_null(0.0)
-            .with_columns(
-                pl.col("unlock_amount").rolling_sum(window_size=20).alias("unlock_amount")
-            )
-        )
-    else:
-        unl_sub = cal.with_columns(pl.lit(0.0).alias("unlock_amount"))
-
-    return (
-        rep_sub.join(ins_sub, on="trade_date", how="left")
-        .join(unl_sub, on="trade_date", how="left")
-        .sort("trade_date")
-    )
-
-
 @register_fetcher("convertible_bond")
 def fetch_convertible_bond(ctx: FetchContext) -> pl.DataFrame:
     """获取全市场可转债价格中位数。"""
@@ -392,3 +353,9 @@ def fetch_global_macro(ctx: FetchContext) -> pl.DataFrame:
         pl.lit(None, dtype=pl.Float64).alias("us_yield_curve_10y_2y"),
         pl.lit(None, dtype=pl.Float64).alias("copper_gold_ratio"),
     )
+
+
+# 底部导入：触发 corporate_fetchers 模块注册 corporate 提取器到 FETCHER_REGISTRY
+from stock_analytics.pipelines.macro_risk.corporate_fetchers import (  # noqa: E402, F401
+    fetch_corporate,
+)

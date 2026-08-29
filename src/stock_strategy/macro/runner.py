@@ -104,10 +104,11 @@ class MacroRiskRunner:
         days = _trading_days(panel)
         fee_rate = self.commission_rate + self.slippage_rate
 
-        for day in days:
-            # 1. 先按当前持仓计算当日资产收益
-            daily_gain = _daily_return(price_wide, price_rows, day, weights)
-            nav *= 1.0 + daily_gain
+        for i, day in enumerate(days):
+            # 1. 首日为建仓日（当日收盘以初始权重建仓，nav 归一为 1.0），自次日起按持仓计算收益
+            if i > 0:
+                daily_gain = _daily_return(price_wide, price_rows, day, weights)
+                nav *= 1.0 + daily_gain
 
             # 2. 获取当日收盘信号（次日生效，T+1）
             window = panel.filter(pl.col("trade_date") <= day)

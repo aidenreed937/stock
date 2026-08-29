@@ -105,3 +105,56 @@ def test_strategy_custom_thresholds_injection() -> None:
     )
     report = runner.run(_panel())
     assert len(report.signals) == 0
+
+
+def test_backtest_signal_takes_effect_next_day() -> None:
+    """T+1 语义：T 日收盘生成的信号不影响 T 日收益，自 T+1 日按新权重生效。"""
+    dates = [date(2026, 6, i + 1) for i in range(26)]
+    # day24 跌破至 80（此时无信号，满仓承受 -20%）；day25 横盘但 overheat 触发清仓信号；
+    # day26 再跌 -10%：若信号当日生效，该跌幅将被吸收（nav 0.72）；正确 T+1 下 nav 保持 0.8。
+    panel = pl.DataFrame(
+        {
+            "trade_date": dates,
+            "close": [100.0] * 23 + [80.0, 80.0, 72.0],
+            "panic_index": [20.0] * 26,
+            "overheat_index": [40.0] * 23 + [40.0, 70.0, 70.0],
+        }
+    )
+    price_panel = pl.DataFrame(
+        {
+            "trade_date": dates,
+            "symbol": ["000300.SH"] * 26,
+            "close": [100.0] * 23 + [80.0, 80.0, 72.0],
+        }
+    )
+    nav = _runner().backtest(panel, price_panel)
+    values = nav["nav"].to_list()
+    # day24 满仓承受 -20%；day25 信号生成但当日不生效；day26 空仓不承受 -10%
+    assert values[23] == pytest.approx(0.8)
+    assert values[24] == pytest.approx(0.8)
+    assert values[25] == pytest.approx(0.8)
+
+
+def test_backtest_nav_starts_at_one() -> None:
+    """净值首日归一为 1.0（首日为建仓日，不产生收益）。"""
+    panel = pl.DataFrame(
+        {
+            "trade_date": [date(2026, 6, i + 1) for i in range(5)],
+            "close": [100.0, 110.0, 120.0, 130.0, 140.0],
+            "panic_index": [20.0] * 5,
+            "overheat_index": [40.0] * 5,
+        }
+    )
+    # 价格面板提前 1 天（模拟真实数据早于 panel 起点），首日不应计入 pre-panel 收益
+    price_panel = pl.DataFrame(
+        {
+            "trade_date": [date(2026, 5, 29)] + [date(2026, 6, i + 1) for i in range(5)],
+            "symbol": ["000300.SH"] * 6,
+            "close": [90.0, 100.0, 110.0, 120.0, 130.0, 140.0],
+        }
+    )
+    nav = _runner().backtest(panel, price_panel)
+    values = nav["nav"].to_list()
+    assert values[0] == pytest.approx(1.0)
+    # 次日按 100 -> 110 计收益
+    assert values[1] == pytest.approx(1.1)
