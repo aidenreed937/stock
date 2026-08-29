@@ -39,6 +39,7 @@ from stock_analytics.pipelines.artifacts.reader import (
     resolve_artifact_run,
     select_artifact_run_dir,
 )
+from stock_analytics.pipelines.artifacts.registry_repo import ArtifactRegistryRepository
 from stock_analytics.pipelines.artifacts.store import (
     ArtifactRunPaths,
     ArtifactStore,
@@ -66,6 +67,7 @@ __all__ = [
     "RUN_CLASSES",
     "ArtifactCleanupResult",
     "ArtifactIndexResult",
+    "ArtifactRegistryRepository",
     "ArtifactRun",
     "ArtifactRunCandidate",
     "ArtifactRunPaths",

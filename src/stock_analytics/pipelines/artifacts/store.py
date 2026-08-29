@@ -17,6 +17,7 @@ from uuid import uuid4
 from stock_analytics.pipelines.artifacts.contracts import RunClass, normalize_run_class
 from stock_analytics.pipelines.artifacts.index import rebuild_run_index
 from stock_analytics.pipelines.artifacts.integrity import build_artifact_integrity
+from stock_analytics.pipelines.artifacts.registry_repo import ArtifactRegistryRepository
 from stock_analytics.pipelines.artifacts.validator import ArtifactValidator
 
 if TYPE_CHECKING:
@@ -185,6 +186,21 @@ class ArtifactWriteSession(AbstractContextManager["ArtifactWriteSession"]):
                 require_integrity=True,
             )
             rebuild_run_index(self.paths.root)
+
+            # 同步落库至 SQLite 控制面
+            manifest_file = self.paths.run_dir / "manifest.json"
+            if manifest_file.is_file():
+                try:
+                    manifest_data = json.loads(manifest_file.read_text(encoding="utf-8"))
+                    ArtifactRegistryRepository().record_run(
+                        manifest=manifest_data,
+                        run_dir=self.paths.run_dir,
+                        files=self._written_names,
+                        is_latest=self.update_latest,
+                    )
+                except Exception:
+                    pass
+
             if not self.update_latest:
                 return
             self._publish_latest()
