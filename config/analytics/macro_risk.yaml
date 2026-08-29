@@ -84,16 +84,54 @@ macro_risk:
       window: 1250
       min_periods: 500
       direction: raw
+    fund_issue_pct:
+      series: fund_issuance
+      column: fund_issue_pct5y
+      window: 1250
+      min_periods: 250
+      direction: raw
+    repurchase:
+      series: corporate
+      column: repurchase_amount
+      window: 1250
+      min_periods: 250
+      direction: rev
+    insider_net:
+      series: corporate
+      column: insider_net_buy_amount
+      window: 1250
+      min_periods: 250
+      direction: rev
+    cb_price:
+      series: convertible_bond
+      column: cb_price_median
+      window: 1250
+      min_periods: 250
+      direction: raw
+    us_yield_curve:
+      series: global_macro
+      column: us_yield_curve_10y_2y
+      window: 1250
+      min_periods: 250
+      direction: rev
+    copper_gold:
+      series: global_macro
+      column: copper_gold_ratio
+      window: 1250
+      min_periods: 250
+      direction: raw
   dimensions:
     valuation:
     - erp
     - pb
     leverage:
     - margin_pen
-    flow:
-    - composite_flow
-    - divergence_score
     - margin_buy_ratio
+    flow:
+    - main_ratio
+    - composite_flow
+    - etf_flow_ratio
+    - divergence_score
     breadth:
     - adv_dec
     - newhigh60_ratio
@@ -101,24 +139,32 @@ macro_risk:
     - pcr
     - iv
     - vix
+    - fund_issue_pct
     crowding:
     - market_turnover
+    corporate:
+    - repurchase
+    - insider_net
+    cross_asset:
+    - cb_price
+    - us_yield_curve
+    - copper_gold
   indices:
     overheat_index:
-    - dim: valuation
-      direction: raw
-    - dim: leverage
-      direction: raw
-    - dim: sentiment
-      direction: rev
-    - dim: flow
-      direction: rev
-    - dim: crowding
-      direction: raw
+      - dim: valuation
+        direction: raw
+      - dim: leverage
+        direction: raw
+      - dim: sentiment
+        direction: rev
+      - dim: flow
+        direction: rev
+      - dim: crowding
+        direction: raw
     panic_index:
-    - dim: breadth
-      direction: raw
-    - dim: sentiment
-      direction: raw
-    - dim: flow
-      direction: raw
+      - dim: breadth
+        direction: raw
+      - dim: sentiment
+        direction: raw
+      - dim: flow
+        direction: raw

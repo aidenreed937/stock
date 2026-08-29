@@ -236,3 +236,153 @@ def fetch_crowdedness(ctx: FetchContext) -> pl.DataFrame:
     换手率极高意味着买盘耗尽、交易过度拥挤。
     """
     return ctx.md.select(["trade_date", "market_turnover_rate"]).drop_nulls()
+
+
+@register_fetcher("fund_issuance")
+def fetch_fund_issuance(ctx: FetchContext) -> pl.DataFrame:
+    """获取公募基金新发规模与 5 年滚动历史分位。
+
+    用于刻画场外散户增量流动性与情绪过热/冰点。
+    """
+    try:
+        fi = ctx.fs.get_domain_mart("fund_issuance_monthly")
+    except Exception:
+        fi = pl.DataFrame()
+
+    if fi.is_empty():
+        try:
+            from stock_analytics.marts.fund_issuance import build_fund_issuance_frame
+
+            cat_ts = DataCatalog(runtime=ctx.cat.runtime, data_source="tushare")
+            fb = cat_ts.load_dataset("fund_basic")
+            fi = build_fund_issuance_frame(fb)
+        except Exception:
+            fi = pl.DataFrame()
+
+    if fi.is_empty() or "month" not in fi.columns:
+        return ctx.md.select(["trade_date"]).with_columns(
+            pl.lit(None, dtype=pl.Float64).alias("fund_issue_pct5y")
+        )
+
+    cal = ctx.md.select(["trade_date"]).with_columns(
+        pl.col("trade_date").cast(pl.Date).dt.to_string("%Y-%m").alias("month")
+    )
+    return (
+        cal.join(
+            fi.select(["month", pl.col("equity_issue_pct5y").alias("fund_issue_pct5y")]),
+            on="month",
+            how="left",
+        )
+        .select(["trade_date", "fund_issue_pct5y"])
+        .sort("trade_date")
+    )
+
+
+@register_fetcher("corporate")
+def fetch_corporate(ctx: FetchContext) -> pl.DataFrame:
+    """获取产业资本行为：20日滚动回购金额与董监高净买入金额。"""
+    cal = ctx.md.select(["trade_date"]).sort("trade_date")
+    try:
+        rep = ctx.fs.get_domain_mart("repurchase_daily")
+    except Exception:
+        rep = pl.DataFrame()
+    try:
+        ins = ctx.fs.get_domain_mart("insider_activity_daily")
+    except Exception:
+        ins = pl.DataFrame()
+
+    if (
+        not rep.is_empty()
+        and "announcement_date" in rep.columns
+        and "repurchase_amount" in rep.columns
+    ):
+        rep_sub = (
+            cal.join(
+                rep.select(
+                    pl.col("announcement_date").cast(pl.Date).alias("trade_date"),
+                    pl.col("repurchase_amount").cast(pl.Float64, strict=False),
+                ),
+                on="trade_date",
+                how="left",
+            )
+            .fill_null(0.0)
+            .with_columns(
+                pl.col("repurchase_amount").rolling_sum(window_size=20).alias("repurchase_amount")
+            )
+        )
+    else:
+        rep_sub = cal.with_columns(pl.lit(0.0).alias("repurchase_amount"))
+
+    if (
+        not ins.is_empty()
+        and "announcement_date" in ins.columns
+        and "insider_net_buy_amount" in ins.columns
+    ):
+        ins_sub = (
+            cal.join(
+                ins.select(
+                    pl.col("announcement_date").cast(pl.Date).alias("trade_date"),
+                    pl.col("insider_net_buy_amount").cast(pl.Float64, strict=False),
+                ),
+                on="trade_date",
+                how="left",
+            )
+            .fill_null(0.0)
+            .with_columns(
+                pl.col("insider_net_buy_amount")
+                .rolling_sum(window_size=20)
+                .alias("insider_net_buy_amount")
+            )
+        )
+    else:
+        ins_sub = cal.with_columns(pl.lit(0.0).alias("insider_net_buy_amount"))
+
+    return rep_sub.join(ins_sub, on="trade_date", how="left").sort("trade_date")
+
+
+@register_fetcher("convertible_bond")
+def fetch_convertible_bond(ctx: FetchContext) -> pl.DataFrame:
+    """获取全市场可转债价格中位数。"""
+    try:
+        cb = ctx.fs.get_domain_mart("convertible_bond_daily")
+    except Exception:
+        cb = pl.DataFrame()
+
+    if not cb.is_empty() and "trade_date" in cb.columns and "cb_price_median" in cb.columns:
+        return cb.select(
+            [
+                pl.col("trade_date").cast(pl.Date),
+                pl.col("cb_price_median").cast(pl.Float64, strict=False),
+            ]
+        ).sort("trade_date")
+    return ctx.md.select(["trade_date"]).with_columns(
+        pl.lit(None, dtype=pl.Float64).alias("cb_price_median")
+    )
+
+
+@register_fetcher("global_macro")
+def fetch_global_macro(ctx: FetchContext) -> pl.DataFrame:
+    """获取全球宏观指标：美债 10Y-2Y 利差与铜金比。"""
+    try:
+        gm = ctx.fs.get_domain_mart("global_macro_daily")
+    except Exception:
+        gm = pl.DataFrame()
+
+    if not gm.is_empty() and "trade_date" in gm.columns:
+        cols = [pl.col("trade_date").cast(pl.Date)]
+        if "us_yield_curve_10y_2y" in gm.columns:
+            cols.append(pl.col("us_yield_curve_10y_2y").cast(pl.Float64, strict=False))
+        else:
+            cols.append(pl.lit(None, dtype=pl.Float64).alias("us_yield_curve_10y_2y"))
+
+        if "copper_gold_ratio" in gm.columns:
+            cols.append(pl.col("copper_gold_ratio").cast(pl.Float64, strict=False))
+        else:
+            cols.append(pl.lit(None, dtype=pl.Float64).alias("copper_gold_ratio"))
+
+        return gm.select(cols).sort("trade_date")
+
+    return ctx.md.select(["trade_date"]).with_columns(
+        pl.lit(None, dtype=pl.Float64).alias("us_yield_curve_10y_2y"),
+        pl.lit(None, dtype=pl.Float64).alias("copper_gold_ratio"),
+    )

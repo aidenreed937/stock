@@ -192,3 +192,31 @@ strategies:
       commission_rate: 0.0001 # 万1券商佣金
       slippage_rate: 0.0005 # 0.05% 冲击滑点
       rebalance_deadband: 0.03 # 3% 调仓死区
+
+  macro_all_weather_etf:
+    strategy_class: "MacroAllWeatherStrategy"
+    benchmark_symbol: "000985.CSI" # 趋势基准 = 中证全指
+    symbols:
+      - "510880.SH" # 华泰柏瑞红利 ETF (权益防守)
+      - "159915.SZ" # 易方达创业板 ETF (权益进攻)
+      - "510300.SH" # 华泰柏瑞沪深300 ETF (核心压舱)
+      - "511010.SH" # 国泰上证5年期国债 ETF (固收避险)
+      - "518880.SH" # 华安黄金 ETF (大宗避险)
+    initial_weights:
+      "510880.SH": 0.3
+      "159915.SZ": 0.3
+      "510300.SH": 0.2
+      "511010.SH": 0.2
+      "518880.SH": 0.0
+    ma_window: 20
+    thresholds:
+      panic_threshold: 75.0
+      panic_entry_threshold: 65.0
+      overheat_threshold: 65.0
+      etf_score_threshold: 90.0
+      repurchase_score_threshold: 80.0
+      valuation_threshold: 15.0
+    friction:
+      commission_rate: 0.0001 # 万1券商佣金
+      slippage_rate: 0.0005 # 0.05% 冲击滑点
+      rebalance_deadband: 0.03 # 3% 调仓死区

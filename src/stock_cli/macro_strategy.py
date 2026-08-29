@@ -130,8 +130,13 @@ def main() -> None:
             "initial_weights",
             "benchmark_symbol",
             "friction",
+            "thresholds",
         }:
             strategy_kwargs[k] = v
+
+    if "thresholds" in entry and isinstance(entry["thresholds"], dict):
+        for tk, tv in entry["thresholds"].items():
+            strategy_kwargs[tk] = tv
 
     try:
         strategy = create_strategy(

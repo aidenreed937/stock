@@ -61,12 +61,18 @@ def assemble_macro_panel(
             "etf_flow_ratio_score",
             "divergence_score_score",
             "composite_flow_score",
+            "repurchase_score",
+            "insider_net_score",
+            "cb_price_score",
+            "copper_gold_score",
             "dim_flow",
             "dim_valuation",
             "dim_leverage",
             "dim_crowding",
             "dim_sentiment",
             "dim_breadth",
+            "dim_corporate",
+            "dim_cross_asset",
         ]
         if c in factors.columns
     ]

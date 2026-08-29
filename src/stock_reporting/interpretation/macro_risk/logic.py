@@ -126,6 +126,12 @@ def evaluate_macro_risk(
         if row.get("divergence_score_score") is not None
         else None
     )
+    val_corporate = (
+        _safe_float(row.get("dim_corporate")) if row.get("dim_corporate") is not None else None
+    )
+    val_cross_asset = (
+        _safe_float(row.get("dim_cross_asset")) if row.get("dim_cross_asset") is not None else None
+    )
 
     special_flow = {"etf_score": val_etf_score, "div_score": val_div_score}
 
@@ -135,6 +141,8 @@ def evaluate_macro_risk(
     s_sen, b_sen, d_sen = _grade_dim("sentiment", val_sentiment, cfg)
     s_brd, b_brd, d_brd = _grade_dim("breadth", val_breadth, cfg)
     s_val, b_val, d_val = _grade_dim("valuation", val_valuation, cfg)
+    s_corp, b_corp, d_corp = _grade_dim("corporate", val_corporate, cfg)
+    s_cross, b_cross, d_cross = _grade_dim("cross_asset", val_cross_asset, cfg)
 
     risk_tiers = [
         {
@@ -197,6 +205,22 @@ def evaluate_macro_risk(
                     "status": s_val,
                     "badge": b_val,
                     "desc": d_val,
+                },
+                {
+                    "name": "产业资本",
+                    "code": "dim_corporate",
+                    "val": val_corporate,
+                    "status": s_corp,
+                    "badge": b_corp,
+                    "desc": d_corp,
+                },
+                {
+                    "name": "跨资产宏观",
+                    "code": "dim_cross_asset",
+                    "val": val_cross_asset,
+                    "status": s_cross,
+                    "badge": b_cross,
+                    "desc": d_cross,
                 },
             ],
         },
@@ -271,6 +295,8 @@ def evaluate_macro_risk(
         "拥挤度 (Crowding)": crowding,
         "主力资金 (Flow)": val_flow if val_flow is not None else 0.0,
         "市场广度 (Breadth)": val_breadth if val_breadth is not None else 0.0,
+        "产业资本 (Corporate)": val_corporate if val_corporate is not None else 0.0,
+        "跨资产宏观 (CrossAsset)": val_cross_asset if val_cross_asset is not None else 0.0,
     }
     top_dim = max(dims.items(), key=lambda x: x[1]) if dims else ("未知", 0.0)
 

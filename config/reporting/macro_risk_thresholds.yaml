@@ -160,6 +160,48 @@ dimensions:
         icon: "⚪"
         comment: "处于历史中位数水平"
 
+  corporate:
+    name: "产业资本"
+    category: "企业与股东行为 (微观底与出逃)"
+    missing:
+      grade: "数据暂缺"
+      icon: "⚪"
+      comment: "历史数据不足"
+    tiers:
+      - min: 80.0
+        grade: "减持潮起"
+        icon: "🔴"
+        comment: "产业资本与董监高净减持激增，警惕产业离场"
+      - max: 25.0
+        grade: "回购托底"
+        icon: "🟢"
+        comment: "上市公司回购与股东净增持高发，产业资本积极抄底"
+      - default: true
+        grade: "运作常态"
+        icon: "⚪"
+        comment: "产业资本增减持与回购处于平稳区间"
+
+  cross_asset:
+    name: "跨资产与宏观"
+    category: "大类资产与跨市场流动性 (转债/铜金/利差)"
+    missing:
+      grade: "数据暂缺"
+      icon: "⚪"
+      comment: "历史数据不足"
+    tiers:
+      - min: 75.0
+        grade: "跨市场过热"
+        icon: "🔴"
+        comment: "转债溢价与铜金比高企，跨市场流动性偏紧或过热"
+      - max: 25.0
+        grade: "跨市场低估"
+        icon: "🟢"
+        comment: "转债价格与铜金比处于低位，宏观避险过度迎均值回归"
+      - default: true
+        grade: "跨资产均衡"
+        icon: "⚪"
+        comment: "跨市场估值与宏观利差处于中枢水平"
+
 indices:
   overheat:
     threshold_critical: 65.0

@@ -116,6 +116,12 @@ class MacroMetaRouterStrategy(BaseStrategy):
         etf_score_val = latest.get("etf_flow_ratio_score")
         etf_score = float(etf_score_val) if isinstance(etf_score_val, int | float) else None
 
+        rep_score_val = latest.get("repurchase_score")
+        rep_score = float(rep_score_val) if isinstance(rep_score_val, int | float) else None
+
+        dim_corp_val = latest.get("dim_corporate")
+        dim_corp = float(dim_corp_val) if isinstance(dim_corp_val, int | float) else None
+
         dim_val_raw = latest.get("dim_valuation")
         dim_val = float(dim_val_raw) if isinstance(dim_val_raw, int | float) else None
 
@@ -123,6 +129,13 @@ class MacroMetaRouterStrategy(BaseStrategy):
 
         target = self.weights.copy()
         reason = ""
+
+        # 是否触发政策/产业资本强托底共振 (国家队大额申购 ETF 或 企业大额回购潮)
+        has_support_resonance = (
+            (etf_score is not None and etf_score >= self.etf_score_threshold)
+            or (rep_score is not None and rep_score >= 80.0)
+            or (dim_corp is not None and dim_corp >= 80.0)
+        )
 
         # ==============================================================
         # 宏观元策略 5 大相态动态路由
@@ -135,11 +148,9 @@ class MacroMetaRouterStrategy(BaseStrategy):
             target[self.sym_core] = 0.0
             reason = f"相态4: 泡沫破裂全额清仓 (Overheat={overheat:.1f}, 跌破MA{self.ma_window})"
 
-        # 相态 1：极度恐慌与国家队托底抢跑
+        # 相态 1：极度恐慌与国家队/产业资本托底抢跑
         elif panic > self.panic_threshold or (
-            panic > self.panic_entry_threshold
-            and etf_score is not None
-            and etf_score >= self.etf_score_threshold
+            panic > self.panic_entry_threshold and has_support_resonance
         ):
             if close < ma20:
                 # 左侧探底：对齐国家队大盘宽基托底，防微盘踩踏
@@ -147,7 +158,7 @@ class MacroMetaRouterStrategy(BaseStrategy):
                 target[self.sym_growth] = 0.2
                 target[self.sym_core] = 0.5
                 etf_desc = f", ETF={etf_score:.1f}" if etf_score is not None else ""
-                reason = f"相态1: 国家队左侧托底防踩踏 (Panic={panic:.1f}{etf_desc})"
+                reason = f"相态1: 政策与产业左侧托底防踩踏 (Panic={panic:.1f}{etf_desc})"
             else:
                 # 右侧突破：全仓打满弹性成长
                 target[self.sym_defensive] = 0.0
