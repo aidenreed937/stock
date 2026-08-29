@@ -1,6 +1,6 @@
 ---
 name: macro-risk-research
-description: 宏观风控双轨雷达、A 股 14 年跨周期 6 大宏观范式定位、20日/60日短中周期推演与配置驱动多策略轮动研究技能。当用户询问宏观风控雷达水温、狂热/恐慌极值、两融杠杆与换手拥挤硬约束、国家队 ETF 托底、主力资金博弈背离、20日/60日短中周期胜率对账、多策略回测对比（V3/V4/V5/V6资金曲线、CAGR、夏普比率、最大回撤、调仓信号）、跨周期资产配置建议或新策略构建验证流程时使用此技能。
+description: 宏观风控双轨雷达、A 股跨周期（2015 年以来，约 11 年）6 大宏观范式定位、20日/60日短中周期推演与配置驱动多策略轮动研究技能。当用户询问宏观风控雷达水温、狂热/恐慌极值、两融杠杆与换手拥挤硬约束、国家队 ETF 托底、主力资金博弈背离、20日/60日短中周期胜率对账、多策略回测对比（V3/V4/V5/V6资金曲线、CAGR、夏普比率、最大回撤、调仓信号）、跨周期资产配置建议或新策略构建验证流程时使用此技能。
 ---
 
 # 宏观风控与跨周期策略研究技能 (Macro Risk & Strategy Research)
@@ -11,6 +11,7 @@ description: 宏观风控双轨雷达、A 股 14 年跨周期 6 大宏观范式�
    - 宏观风控因子、分位数与双轨制指数必须来自本地黄金产物 `data/analytics/macro_risk/latest/risk_factors.parquet` 或历史运行目录；
    - 策略信号与回测净值必须来自 `stock_strategy.macro` 真实执行产物（`data/analytics/macro_strategy/multi_strategy_comparison.md` / `multi_strategy_nav.csv` / `multi_strategy_comparison.png`）；
    - 严禁凭记忆臆造历史点位、指数分位或策略净值；外部宏观政策与新闻必须显式标注为【外部背景】。
+   - **数据缺口披露**：两融数据（`dim_leverage`）为日终同步，最新交易日可能暂缺（缺失时该字段为 null，manifest 摘要亦不含该项）。涉及杠杆维度的硬约束排查前，先核对最新一日 `dim_leverage` 是否可用，缺失时需先补数或显式披露，不得静默跳过。
 2. **8 维全景风控画像金字塔 (8-Dimension Pyramid)**：
    - **3 大生存硬约束**：两融杠杆 (`dim_leverage`)、换手拥挤 (`dim_crowding`)、主力资金 (`dim_flow`)；
    - **2 大拐点快变量**：期权情绪 (`dim_sentiment`)、市场广度 (`dim_breadth`)；
@@ -18,7 +19,7 @@ description: 宏观风控双轨雷达、A 股 14 年跨周期 6 大宏观范式�
    - **1 个微观基本面底**：产业资本 (`dim_corporate`：回购 + 董监高增持)；
    - **1 个全谱系流动性**：跨资产宏观 (`dim_cross_asset`：转债中位数 + 美债利差 + 铜金比)。
 3. **多时间窗口协同分析准则**：
-   - **10~15 年跨周期全景**：识别当前处于 6 大宏观范式中的哪一类；
+   - **跨周期全景（2015 年以来，约 11 年）**：识别当前处于 6 大宏观范式中的哪一类；
    - **60 日季度窗口**：评估均值回归、胜率兑现与主升浪吃满（极度恐慌底 60 日胜率高达 88%）；
    - **20 日月度窗口**：依托 20 日均线 (MA20) 过滤短期情绪冲顶与洗盘震荡，执行逃顶与控损；
    - **多交易日连续性窗口**：跟踪国家队 ETF 申购（`etf_score >= 90`）与企业回购（`repurchase_score >= 80`）的连续维持天数（$\ge$ 1D vs $\ge$ 3D vs $\ge$ 5D）。
@@ -57,6 +58,11 @@ flowchart TD
   ```
 
 ### 步骤 2：穿透 8 维核心画像与连续维持极值检测
+
+> 本步骤所有"历史胜率/均值"数字均为历史快照统计，来源与复算脚本见
+> [`references/cycle_windows_matrix.md`](references/cycle_windows_matrix.md) 顶部说明；
+> 引用时以复算脚本 `scripts/compute_cycle_winrate_matrix.py` 最新输出为准。
+
 1. **生存硬约束排查**：
    - 若 `dim_leverage >= 85.0` 且 `overheat_index >= 65.0`：触发【高杠杆多杀多毁灭警报】（历史后验 60 日胜率 0%），坚决建议清仓降杠杆；
    - 若 `dim_crowding <= 20.0` 且 `dim_valuation <= 5.0` 且 `dim_leverage <= 20.0`：触发【地量估值双底大底】（历史后验 1 年胜率 100%），坚决满仓锁仓。
@@ -90,7 +96,9 @@ flowchart TD
   uv run python -m stock_cli.macro_strategy --strategy macro_rotation_v5
   # 运行 V6 三元资产自适应轮动 (红利 40% + 创业板 40% + 300 20%)
   uv run python -m stock_cli.macro_strategy --strategy macro_rotation_v6
-  # 运行 MacroMetaRouter 元策略路由器
+  # 运行 MacroMetaRouter 元策略路由器 (理论版)
+  uv run python -m stock_cli.macro_strategy --strategy macro_meta_router
+  # 运行 MacroMetaRouter 元策略路由器 (ETF 实盘版)
   uv run python -m stock_cli.macro_strategy --strategy macro_meta_router_etf
   # 运行 MacroAllWeather 全天候大类资产轮动 (红利/创业板/300/国债/黄金)
   uv run python -m stock_cli.macro_strategy --strategy macro_all_weather_etf
@@ -119,7 +127,7 @@ flowchart TD
 
 ## 3. 配置驱动的宏观风控多策略池
 
-策略体系由 [`config/strategy/macro_risk.yaml`](file:///Users/mac/workspace/personal/finance/stock/config/strategy/macro_risk.yaml) 统一驱动。标的资产、初始权重、摩擦成本与策略阈值以配置文件为唯一真实源。
+策略体系由 [`config/strategy/macro_risk.yaml`](config/strategy/macro_risk.yaml) 统一驱动。标的资产、初始权重、摩擦成本与策略阈值以配置文件为唯一真实源。
 
 | 策略键名 | 核心类名 | 交易标的与初始权重 | 趋势基准 | 核心投资哲学与风险收益特征 |
 | :--- | :--- | :--- | :--- | :--- |
@@ -129,6 +137,7 @@ flowchart TD
 | **`macro_rotation_v6`** | `MacroRotationV6Strategy` | 中证红利 (`000922.CSI`: 40%)<br>创业板指 (`399006.SZ`: 40%)<br>沪深300 (`000300.SH`: 20%) | 中证全指 (`000985.CSI`) | **三核资产与动量自适应智能轮动 (终极版)**：国家队托底左侧对齐沪深300防踩踏、低估值环境增配红利大盘防踏空、高估值打满创业板弹性。 |
 | **`macro_rotation_v4_etf`** | `MacroRotationV4Strategy` | 红利 ETF (`510880.SH`: 50%)<br>创业板 ETF (`159915.SZ`: 50%) | 中证全指 (`000985.CSI`) | **双核哑铃风格轮动 (场内 ETF 代理实盘版)**：可直接使用普通 A 股股票账户在场内一键报单交易。 |
 | **`macro_rotation_v6_etf`** | `MacroRotationV6Strategy` | 红利 ETF (`510880.SH`: 40%)<br>创业板 ETF (`159915.SZ`: 40%)<br>300 ETF (`510300.SH`: 20%) | 中证全指 (`000985.CSI`) | **三核自适应轮动 (场内 ETF 代理实盘版)**：兼顾左侧防微盘踩踏与牛市弹性的场内实战组合。 |
+| **`macro_meta_router`** | `MacroMetaRouterStrategy` | 中证红利 (`000922.CSI`: 40%)<br>创业板指 (`399006.SZ`: 40%)<br>沪深300 (`000300.SH`: 20%) | 中证全指 (`000985.CSI`) | **宏观元策略动态路由器 (理论版)**：融合国家队与企业回购双托底，动态切换 5 大宏观相态。 |
 | **`macro_meta_router_etf`** | `MacroMetaRouterStrategy` | 红利 ETF (`510880.SH`: 40%)<br>创业板 ETF (`159915.SZ`: 40%)<br>300 ETF (`510300.SH`: 20%) | 中证全指 (`000985.CSI`) | **宏观元策略动态路由器 (ETF 版)**：融合国家队与企业回购双托底，动态切换 5 大宏观相态。 |
 | **`macro_all_weather_etf`** 🌟 | `MacroAllWeatherStrategy` | 红利 ETF (30%) + 创业板 ETF (30%)<br>300 ETF (20%) + 国债 ETF (20%)<br>黄金 ETF (0%) | 中证全指 (`000985.CSI`) | **大类资产全天候自适应相态轮动 (终极跨资产版)**：泡沫破裂期刚性转入 60% 国债 + 40% 黄金避险，全周期波动率压至 **16.69%**，最大回撤收窄至 **-36.17%**。 |
 
@@ -178,15 +187,17 @@ flowchart TD
 #### 四、 宏观多策略回测对账与最新状态机指引
 
 ##### 1. 全周期策略回测绩效对账 (2015-2026)
-| 核心指标项 | 中证全指 (基准) | 沪深300 (基准) | **macro_risk_v3** | **macro_rotation_v4** | **macro_rotation_v5** | **macro_rotation_v6** |
-| :--- | :---: | :---: | :---: | :---: | :---: | :---: |
-| **累计净值** | `X.XXX` | `X.XXX` | **`X.XXX`** | **`X.XXX`** | **`X.XXX`** | **`X.XXX`** |
-| **累计收益** | `XX.XX%` | `XX.XX%` | **`XX.XX%`** | **`XX.XX%`** | **`XX.XX%`** | **`XX.XX%`** |
-| **年化收益 (CAGR)** | `X.XX%` | `X.XX%` | **`X.XX%`** | **`X.XX%`** | **`X.XX%`** | **`X.XX%`** |
-| **最大回撤 (Max DD)** | `-XX.XX%` | `-XX.XX%` | **`-XX.XX%`** | **`-XX.XX%`** | **`-XX.XX%`** | **`-XX.XX%`** |
-| **年化波动率** | `XX.XX%` | `XX.XX%` | **`XX.XX%`** | **`XX.XX%`** | **`XX.XX%`** | **`XX.XX%`** |
-| **夏普比率 (Sharpe)** | `0.XX` | `0.XX` | **`0.XX`** | **`0.XX`** | **`0.XX`** | **`0.XX`** |
-| **卡玛比率 (Calmar)** | `0.XX` | `0.XX` | **`0.XX`** | **`0.XX`** | **`0.XX`** | **`0.XX`** |
+| 核心指标项 | 中证全指 (基准) | 沪深300 (基准) | **macro_risk_v3** | **macro_rotation_v4** | **macro_rotation_v5** | **macro_rotation_v6** | **macro_rotation_v4_etf** | **macro_rotation_v6_etf** | **macro_meta_router** | **macro_meta_router_etf** | **macro_all_weather_etf** |
+| :--- | :---: | :---: | :---: | :---: | :---: | :---: | :---: | :---: | :---: | :---: | :---: |
+| **累计净值** | `X.XXX` | `X.XXX` | **`X.XXX`** | **`X.XXX`** | **`X.XXX`** | **`X.XXX`** | **`X.XXX`** | **`X.XXX`** | **`X.XXX`** | **`X.XXX`** | **`X.XXX`** |
+| **累计收益** | `XX.XX%` | `XX.XX%` | **`XX.XX%`** | **`XX.XX%`** | **`XX.XX%`** | **`XX.XX%`** | **`XX.XX%`** | **`XX.XX%`** | **`XX.XX%`** | **`XX.XX%`** | **`XX.XX%`** |
+| **年化收益 (CAGR)** | `X.XX%` | `X.XX%` | **`X.XX%`** | **`X.XX%`** | **`X.XX%`** | **`X.XX%`** | **`X.XX%`** | **`X.XX%`** | **`X.XX%`** | **`X.XX%`** | **`X.XX%`** |
+| **最大回撤 (Max DD)** | `-XX.XX%` | `-XX.XX%` | **`-XX.XX%`** | **`-XX.XX%`** | **`-XX.XX%`** | **`-XX.XX%`** | **`-XX.XX%`** | **`-XX.XX%`** | **`-XX.XX%`** | **`-XX.XX%`** | **`-XX.XX%`** |
+| **年化波动率** | `XX.XX%` | `XX.XX%` | **`XX.XX%`** | **`XX.XX%`** | **`XX.XX%`** | **`XX.XX%`** | **`XX.XX%`** | **`XX.XX%`** | **`XX.XX%`** | **`XX.XX%`** | **`XX.XX%`** |
+| **夏普比率 (Sharpe)** | `0.XX` | `0.XX` | **`0.XX`** | **`0.XX`** | **`0.XX`** | **`0.XX`** | **`0.XX`** | **`0.XX`** | **`0.XX`** | **`0.XX`** | **`0.XX`** |
+| **卡玛比率 (Calmar)** | `0.XX` | `0.XX` | **`0.XX`** | **`0.XX`** | **`0.XX`** | **`0.XX`** | **`0.XX`** | **`0.XX`** | **`0.XX`** | **`0.XX`** | **`0.XX`** |
+
+> 表格列与 `data/analytics/macro_strategy/multi_strategy_comparison.md` 最新产物一致（产物共 9 策略 + 2 基准）；数字一律取自该产物，禁止引用本文档或 references 中的历史快照数字。ETF 版已按配置扣佣滑点与死区；Sharpe 口径为无风险利率 1.5%（与 `src/stock_strategy/macro/report.py` 一致）。
 
 ![多策略资金曲线全景对比](data/analytics/macro_strategy/multi_strategy_comparison.png)
 
@@ -208,5 +219,5 @@ flowchart TD
 ## 6. 专题进阶手册 (Deep-Dive References)
 
 * 📘 [macro_strategies_playbook.md](references/macro_strategies_playbook.md)：宏观风控多策略（V3/V4/V5/V6 及场内 ETF 代理版）状态机规则、T+1 回测语义、全市场排位对比、5 大实操铁律纪律与 4 大潜在盲区诊断。
-* 📘 [macro_regimes_playbook.md](references/macro_regimes_playbook.md)：A 股 14 年跨周期 6 大宏观范式特征、主导矛盾与最佳策略表现。
+* 📘 [macro_regimes_playbook.md](references/macro_regimes_playbook.md)：A 股跨周期（2015 年以来）6 大宏观范式特征、主导矛盾与最佳策略表现。
 * 📘 [cycle_windows_matrix.md](references/cycle_windows_matrix.md)：20日 (月度) vs 60日 (季度) 周期前向胜率、赔率实测矩阵与实战执行法则。

@@ -1,9 +1,9 @@
 """快速提取最新 20D / 60D 周期特征截面与风险雷达状态。"""
 
-import sys
 import duckdb
-import polars as pl
 import pandas as pd
+import polars as pl
+
 
 def main():
     risk_df = pl.read_parquet("data/analytics/macro_risk/latest/risk_factors.parquet").with_columns(pl.col("trade_date").cast(pl.Date))
@@ -27,17 +27,19 @@ def main():
     def _fmt(val):
         return f"{val:.1f}" if val is not None else "—"
 
-    print(f"\n[1. 双轨风控雷达最新状态]")
+    print("\n[1. 双轨风控雷达最新状态]")
     print(f"  - 狂热指数 (Overheat): {_fmt(latest.get('overheat_index'))}")
     print(f"  - 恐慌指数 (Panic)   : {_fmt(latest.get('panic_index'))}")
     print(f"  - 两融杠杆分位       : {_fmt(latest.get('dim_leverage'))}")
+    if latest.get("dim_leverage") is None:
+        print("    ⚠ 提示: 最新交易日两融数据缺失 (dim_leverage 为 null)，杠杆维度硬约束排查不可用，请先补数")
     print(f"  - 换手拥挤分位       : {_fmt(latest.get('dim_crowding'))}")
     print(f"  - 主力资金分位       : {_fmt(latest.get('dim_flow'))}")
     print(f"  - 国家队ETF托底分位  : {_fmt(latest.get('etf_flow_ratio_score'))}")
     print(f"  - 大盘估值分位       : {_fmt(latest.get('dim_valuation'))}")
 
     # 指数近 60 日与近 20 日涨跌
-    print(f"\n[2. 核心指数 20日 / 60日 区间涨跌幅与回撤]")
+    print("\n[2. 核心指数 20日 / 60日 区间涨跌幅与回撤]")
     res = []
     for sym, name in [("000985", "中证全指"), ("000300", "沪深300"), ("399006", "创业板指"), ("000922", "中证红利")]:
         sub = index_60.filter(pl.col("symbol") == sym).sort("trade_date")
