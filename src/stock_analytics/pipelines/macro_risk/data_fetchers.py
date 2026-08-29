@@ -355,6 +355,22 @@ def fetch_global_macro(ctx: FetchContext) -> pl.DataFrame:
     )
 
 
+@register_fetcher("smart_money")
+def fetch_smart_money(ctx: FetchContext) -> pl.DataFrame:
+    """获取聪明钱组合信号：产业资本增持 + 大宗折价接盘 + 国家队股东锚点。
+
+    信号由 ``smart_money_daily`` 领域 Mart 物化（构建入口
+    ``DomainMartBuilder.build_smart_money``），此处直接读取。
+    """
+    try:
+        sm = ctx.fs.get_domain_mart("smart_money_daily")
+    except Exception:
+        sm = pl.DataFrame()
+    if sm.is_empty() or "trade_date" not in sm.columns:
+        return pl.DataFrame(schema={"trade_date": pl.Date, "smart_money_score": pl.Float64})
+    return sm.select(["trade_date", "smart_money_score"]).sort("trade_date")
+
+
 # 底部导入：触发 corporate_fetchers 模块注册 corporate 提取器到 FETCHER_REGISTRY
 from stock_analytics.pipelines.macro_risk.corporate_fetchers import (  # noqa: E402, F401
     fetch_corporate,

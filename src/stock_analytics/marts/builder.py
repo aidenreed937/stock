@@ -41,6 +41,8 @@ from stock_analytics.marts.option_volatility import (
     DEFAULT_UNDERLYINGS,
     SETTLEMENT_IV_PROXY_MART_NAME,
 )
+from stock_analytics.marts.smart_money import SMART_MONEY_MART_NAME
+from stock_analytics.marts.smart_money_build import build_smart_money
 from stock_analytics.marts.unlock_pressure import UNLOCK_PRESSURE_MART_NAME
 from stock_core.config.analytics_industry_structure import (
     DEFAULT_CONFIG_PATH as DEFAULT_INDUSTRY_CONFIG_PATH,
@@ -300,6 +302,18 @@ class DomainMartBuilder:
             self.catalog, self.store, start_date=start_date, end_date=end_date, overwrite=overwrite
         )
 
+    def build_smart_money(
+        self,
+        *,
+        start_date: date | None = None,
+        end_date: date | None = None,
+        overwrite: bool = False,
+    ) -> pl.DataFrame:
+        """构建并保存聪明钱组合信号日频 Mart。"""
+        return build_smart_money(
+            self.catalog, self.store, start_date=start_date, end_date=end_date, overwrite=overwrite
+        )
+
     def build_all(
         self,
         *,
@@ -331,12 +345,6 @@ class DomainMartBuilder:
                 overwrite=overwrite,
                 dataset_cache=dataset_cache,
             ),
-            "market_temperature_derived_facts": self.build_market_temperature_derived_facts(
-                start_date=start_date,
-                end_date=end_date,
-                overwrite=overwrite,
-                dataset_cache=dataset_cache,
-            ),
             GLOBAL_MACRO_MART_NAME: self.build_global_macro(
                 start_date=start_date, end_date=end_date, overwrite=overwrite
             ),
@@ -356,6 +364,9 @@ class DomainMartBuilder:
                 start_date=start_date, end_date=end_date, overwrite=overwrite
             ),
             CAPITAL_GAME_MART_NAME: self.build_capital_game(
+                start_date=start_date, end_date=end_date, overwrite=overwrite
+            ),
+            SMART_MONEY_MART_NAME: self.build_smart_money(
                 start_date=start_date, end_date=end_date, overwrite=overwrite
             ),
         }

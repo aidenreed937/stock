@@ -75,6 +75,8 @@ def assemble_macro_panel(
             "dim_breadth",
             "dim_corporate",
             "dim_cross_asset",
+            "dim_smart_money",
+            "smart_money_score",
         ]
         if c in factors.columns
     ]

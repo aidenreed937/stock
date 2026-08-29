@@ -86,13 +86,17 @@ def build_smart_money_frame(
                 on="trade_date",
                 how="left",
             )
-            .with_columns(pl.col("block_trade_amount").fill_null(0.0))
+            .with_columns(pl.col("block_trade_amount").fill_null(0.0).alias("_amt"))
             .with_columns(
-                pl.when(pl.col("block_trade_discount_rate_median").is_not_null())
+                pl.when(
+                    (pl.col("_amt") > 0) & pl.col("block_trade_discount_rate_median").is_not_null()
+                )
                 .then(
-                    pl.col("block_trade_amount")
+                    pl.col("_amt")
                     * (-pl.col("block_trade_discount_rate_median")).clip(lower_bound=0.0)
                 )
+                .when(pl.col("_amt") == 0.0)
+                .then(0.0)
                 .otherwise(None)
                 .alias("_disc_depth")
             )

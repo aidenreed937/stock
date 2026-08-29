@@ -111,3 +111,42 @@ def test_builder_starts_iv_proxy_from_existing_mart_date(tmp_path: Path, monkeyp
 
     opt_start = next(start for dataset, start, _ in catalog.date_ranges if dataset == "opt_daily")
     assert opt_start == date(2026, 8, 1)
+
+
+def test_builder_build_all_excludes_market_temperature_derived_facts(
+    tmp_path: Path, monkeypatch
+) -> None:
+    catalog = _CatalogStub()
+    store = FeatureStore(mart_dir=tmp_path / "mart")
+    builder = DomainMartBuilder(catalog, store)
+
+    for attr in [
+        "build_convertible_bond",
+        "build_corporate_actions",
+        "build_settlement_iv_proxy",
+        "build_industry_daily",
+        "build_industry_panel_daily",
+        "build_global_macro",
+        "build_dragon_tiger",
+        "build_etf_flow",
+        "build_industry_l2",
+        "build_unlock_pressure",
+        "build_northbound_industry",
+        "capital_game",
+        "build_capital_game",
+        "build_smart_money",
+    ]:
+        if hasattr(builder, attr):
+            monkeypatch.setattr(builder, attr, lambda *_, name=attr, **__: pl.DataFrame())
+
+    monkeypatch.setattr(
+        builder,
+        "build_market_temperature_derived_facts",
+        lambda *_, **__: pl.DataFrame({"dummy": [1]}),
+    )
+
+    results = builder.build_all()
+
+    assert "market_temperature_derived_facts" not in results
+    assert "industry_daily" in results
+    assert "global_macro_daily" in results

@@ -132,6 +132,12 @@ macro_risk:
       window: 1250
       min_periods: 250
       direction: raw
+    smart_money:
+      series: smart_money
+      column: smart_money_score
+      window: 250
+      min_periods: 60
+      direction: raw
   dimensions:
     valuation:
     - erp
@@ -163,6 +169,8 @@ macro_risk:
     - cb_price
     - us_yield_curve
     - copper_gold
+    smart_money:
+    - smart_money
   indices:
     overheat_index:
       - dim: valuation

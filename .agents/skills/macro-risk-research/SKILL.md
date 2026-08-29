@@ -13,6 +13,7 @@ description: 宏观风控双轨雷达、A 股跨周期（2015 年以来，约 11
    - 严禁凭记忆臆造历史点位、指数分位或策略净值；外部宏观政策与新闻必须显式标注为【外部背景】。
    - **数据缺口披露**：两融数据（`dim_leverage`）为日终同步，最新交易日可能暂缺（缺失时该字段为 null，manifest 摘要亦不含该项）。涉及杠杆维度的硬约束排查前，先核对最新一日 `dim_leverage` 是否可用，缺失时需先补数或显式披露，不得静默跳过。
    - **时滞与复权口径披露**：① 两融原始序列按 T+1 交易日平移后入因子（T 日收盘仅使用 T-1 日两融值，消除发布时滞前视）；② ETF 版回测采用未复权场内收盘价，未计分红再投资（对高分红红利类持仓为保守低估）；③ 回测净值首日归一为 1.0（首日为建仓日）。
+   - **聪明钱维度（`smart_money_score` / `dim_smart_money`）**：由 `smart_money_daily` 领域 Mart 物化（产业资本增持 + 大宗折价接盘 + 国家队股东锚点等权组合，实证有效性见 `data/analytics/macro_strategy/smart_money_composite.md`）；仅作为独立维度供策略选用，**未加入 overheat/panic 指数**。ETF 份额托底代理（`etf_flow_ratio`）经四重证据证伪，不作为国家队识别与交易信号。
 2. **8 维全景风控画像金字塔 (8-Dimension Pyramid)**：
    - **3 大生存硬约束**：两融杠杆 (`dim_leverage`)、换手拥挤 (`dim_crowding`)、主力资金 (`dim_flow`)；
    - **2 大拐点快变量**：期权情绪 (`dim_sentiment`)、市场广度 (`dim_breadth`)；

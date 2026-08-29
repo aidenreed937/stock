@@ -7,8 +7,8 @@
   },
   "classes": {
     "src/stock_analytics/marts/builder.py::DomainMartBuilder": {
-      "lines": 300,
-      "methods": 16
+      "lines": 309,
+      "methods": 17
     },
     "src/stock_data/fetcher/lixinger/client.py::LixingerClient": {
       "lines": 228,
@@ -43,7 +43,7 @@
       "methods": 14
     },
     "src/stock_data/storage/raw_store.py::RawDataStorage": {
-      "lines": 293,
+      "lines": 292,
       "methods": 16
     }
   },
@@ -51,11 +51,8 @@
     "src/stock_analytics/marts/build_steps.py": {
       "lines": 757
     },
-    "src/stock_analytics/pipelines/industry_structure/scoring.py": {
-      "lines": 437
-    },
     "src/stock_data/core/task_registry.py": {
-      "lines": 794
+      "lines": 751
     },
     "src/stock_data/fetcher/lixinger/stock_fetcher.py": {
       "lines": 434
