@@ -1,0 +1,88 @@
+# 先进制造与新能源板块核心二级行业产业链细分图谱 (L2 Manufacturing)
+
+industries:
+  光伏设备:
+    code: "801735.SI"
+    level: "L2"
+    parent_code: "801730.SI"
+    parent_name: "电力设备"
+    category: "先进制造/新能源"
+    upstream:
+      - "多晶硅致密料/颗粒硅"
+      - "光伏高纯石英砂/石英坩埚"
+      - "EVA/POE 胶膜、光伏玻璃、银浆"
+    downstream:
+      - "国内大型地面集中式光伏电站与工商业分布式屋顶"
+      - "欧洲/中东/美国及东南亚海外光伏电站装机"
+    cost_sensitivity: "硅料暴跌带动组件价格全链条下行；全行业处于 TOPCon/HJT/BC 电池技术迭代与老产能出清期"
+    demand_drivers: "全球光伏年度新增装机容量 (GW)、电网消纳能力与配储政策、海外贸易壁垒与关税政策"
+    high_frequency_indicators:
+      - name: "InfoLink 周度多晶硅料、硅片、电池片与组件现货均价"
+        source: "InfoLink Consulting"
+      - name: "中国光伏组件月度出口量及主要出口国别金额"
+        source: "中国光伏行业协会 (CPIA)"
+      - name: "国家能源局月度全国光伏新增并网装机容量"
+        source: "国家能源局"
+
+  电池:
+    code: "801738.SI"
+    level: "L2"
+    parent_code: "801730.SI"
+    parent_name: "电力设备"
+    category: "先进制造/新能源"
+    upstream:
+      - "电池级碳酸锂/氢氧化锂"
+      - "正极材料 (磷酸铁锂/高镍三元)、人造负极石墨、隔膜、六氟磷酸锂电解液"
+    downstream:
+      - "新能源纯电动与插电混动乘用车 (动力电池包)"
+      - "电网源网荷储大储能与工商业/户用储能系统"
+    cost_sensitivity: "碳酸锂价格占电芯成本约 30%~40%；龙头凭借规模效应、制造良品率与海外高溢价保持超额毛利"
+    demand_drivers: "新能源汽车月度批发零售销量、大储招标量与储能电站 IRR 收益率"
+    high_frequency_indicators:
+      - name: "SMM 电池级碳酸锂与三元/铁锂电芯现货均价"
+        source: "上海有色网 (SMM)"
+      - name: "中国汽车动力电池产业创新联盟月度动力电池装车量及市占率"
+        source: "中国汽车动力电池创新联盟"
+      - name: "国内储能系统月度 EPC 与电芯中标价格趋势"
+        source: "高工储能 (GGII)"
+
+  电网设备:
+    code: "801732.SI"
+    level: "L2"
+    parent_code: "801730.SI"
+    parent_name: "电力设备"
+    category: "先进制造/出海"
+    upstream:
+      - "特种取向硅钢 (变压器铁芯)、电工铜材、变压器绝缘油"
+      - "电力电子功率器件 (高压晶闸管/IGBT)"
+    downstream:
+      - "国家电网与南方电网特高压交直流输电工程"
+      - "配电网智能化与新能源并网变电站"
+      - "海外电网改造与新能源配网出口 (欧美/中东/拉美)"
+    cost_sensitivity: "铜材与硅钢价格波动；电网招标主要为央企集采，交付周期长，出海直销毛利率远高于国内"
+    demand_drivers: "国家电网年度电网投资预算、特高压交直流线路核准开工节奏、海外电网缺电与变压器紧缺"
+    high_frequency_indicators:
+      - name: "国家电网特高压及输变电设备批次中标候选人与金额"
+        source: "国家电网新一代电子商务平台"
+      - name: "中国变压器与高压开关月度出口交货值"
+        source: "海关总署"
+
+  乘用车:
+    code: "801881.SI"
+    level: "L2"
+    parent_code: "801880.SI"
+    parent_name: "汽车"
+    category: "先进制造/消费"
+    upstream:
+      - "动力电池系统、驱动电机/电控系统"
+      - "汽车冲压模具、车身钢板、智能座舱芯片与域控"
+    downstream:
+      - "大众个人购车、置换更新消费、网约营运车队"
+      - "海外整车出口与当地 KD 组装厂"
+    cost_sensitivity: "单车制造成本高度依赖年产规模摊薄；国内价格战烈度决定单车扣非净利"
+    demand_drivers: "国家与各省市以旧换新置换补贴力度、自主品牌智能化高阶智驾体验渗透"
+    high_frequency_indicators:
+      - name: "乘联会周度乘用车厂家批发与终端零售销量数据"
+        source: "乘联会 (CPCA)"
+      - name: "中国汽车整车出口月度数量及同比增速"
+        source: "中国汽车工业协会"

@@ -28,6 +28,9 @@ from stock_analytics.pipelines.industry_diagnostics.types import (
     IndustryValuationSnapshot,
     IndustryValueChainSnapshot,
 )
+from stock_analytics.pipelines.industry_diagnostics.value_chain import (
+    load_value_chain_map,
+)
 
 __all__ = [
     "DEFAULT_CONFIG_PATH",
@@ -49,5 +52,6 @@ __all__ = [
     "VetoRulesConfig",
     "calculate_industry_scores",
     "load_industry_diagnostics_config",
+    "load_value_chain_map",
     "run_industry_diagnostics",
 ]

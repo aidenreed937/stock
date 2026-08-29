@@ -1,0 +1,65 @@
+# 周期资源与大宗商品板块核心二级行业产业链细分图谱 (L2 Cyclical)
+
+industries:
+  工业金属:
+    code: "801051.SI"
+    level: "L2"
+    parent_code: "801050.SI"
+    parent_name: "有色金属"
+    category: "周期/大宗"
+    upstream:
+      - "海外在产铜矿与铝土矿山"
+      - "电解铝冶炼电力供应 (云南枯水期限电与绿电铝比例)"
+    downstream:
+      - "国内电网配网变压器与新能源超高压输电 (铜线缆)"
+      - "汽车轻量化压铸铝合金与光伏组件边框 (用铝)"
+    cost_sensitivity: "铜精矿现货加工费 TC/RC 下滑挤压国内冶炼厂利润；电解铝成本 40% 取决于电价"
+    demand_drivers: "全球新能源与 AI 电网改造耗铜需求增长、海外矿山减产与地缘扰动"
+    high_frequency_indicators:
+      - name: "LME 与 SHFE 阴极铜/电解铝期货现货收盘价与库存"
+        source: "伦敦金属交易所 / 上海期货交易所"
+      - name: "进口铜精矿现货粗炼加工费 (TC，美元/干吨)"
+        source: "上海有色网 (SMM)"
+
+  贵金属:
+    code: "801053.SI"
+    level: "L2"
+    parent_code: "801050.SI"
+    parent_name: "有色金属"
+    category: "周期/避险"
+    upstream:
+      - "合质金矿石采选与黄金伴生矿"
+      - "氰化冶炼与精炼提纯"
+    downstream:
+      - "全球央行官方外汇储备购金"
+      - "黄金 ETF 机构持仓与民间金条金币投资"
+      - "金银珠宝首饰消费与工业电子触点"
+    cost_sensitivity: "克金开采综合维持成本 (AISC) 相对刚性 (约 1100~1300 美元/盎司)，金价上行直接转化为净利润"
+    demand_drivers: "美联储降息周期与美国实际利率 (10Y TIPS)、去美元化与全球央行持续净购金、地缘避险"
+    high_frequency_indicators:
+      - name: "COMEX 黄金期货连续收盘价与伦敦现货金价 (美元/盎司)"
+        source: "芝商所 (CME) / 伦敦金银市场协会 (LBMA)"
+      - name: "全球主要黄金 ETF (如 SPDR Gold Trust) 黄金总持仓量 (吨)"
+        source: "世界黄金协会 (WGC)"
+      - name: "中国央行月度官方黄金储备规模"
+        source: "国家外汇管理局"
+
+  普钢:
+    code: "801041.SI"
+    level: "L2"
+    parent_code: "801040.SI"
+    parent_name: "钢铁"
+    category: "强周期大宗"
+    upstream:
+      - "进口澳洲/巴西铁矿石粉矿 (PB粉/卡粉)"
+      - "主焦煤与准一级冶金焦"
+    downstream:
+      - "房地产建筑工程工地 (螺纹钢/盘螺)"
+      - "通用机械、集装箱与钢结构制造 (热轧卷板/中厚板)"
+    cost_sensitivity: "铁矿与双焦挤压钢厂利润空间，吨钢毛利长期在盈亏平衡线上下波动"
+    demand_drivers: "基建重大水利交通工程开工率、房地产新开工与施工回暖、粗钢控产政策"
+    high_frequency_indicators:
+      - name: "普氏 62% 铁矿石 CFR 指数与螺纹钢现货基准价"
+        source: "普氏能源 / Mysteel 我的钢铁网"
+      - name: "全国 247 家钢厂高炉开工率与全国螺纹钢社会总库存"
+        source: "Mysteel 我的钢铁网"

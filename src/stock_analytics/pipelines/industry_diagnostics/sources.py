@@ -4,17 +4,14 @@ from __future__ import annotations
 
 from dataclasses import dataclass
 from datetime import date
-from pathlib import Path
 from typing import TYPE_CHECKING, Any
 
 import polars as pl
-import yaml
 
 from stock_analytics.pipelines.industry_diagnostics.types import (
     IndustryConstituentsSnapshot,
     IndustryTechnicalsSnapshot,
     IndustryValuationSnapshot,
-    IndustryValueChainSnapshot,
 )
 from stock_analytics.primitives.indicators import (
     calculate_rsi,
@@ -200,33 +197,6 @@ def load_industry_constituents(
     except Exception as exc:
         logger.warning(f"加载行业成份股失败: {exc}")
         return IndustryConstituentsSnapshot(), None
-
-
-def load_value_chain_map(
-    industry_name: str, config_path: Path | str = "config/industry/value_chain_map.yaml"
-) -> IndustryValueChainSnapshot:
-    """从本地 YAML 配置中读取该行业的上下游传导图谱与高频监测指标。"""
-    cfg_path = Path(config_path)
-    if not cfg_path.exists():
-        return IndustryValueChainSnapshot()
-
-    try:
-        with open(cfg_path, encoding="utf-8") as f:
-            data = yaml.safe_load(f) or {}
-
-        ind_dict = data.get("industries", {})
-        for name_key, details in ind_dict.items():
-            if name_key in industry_name or industry_name in name_key:
-                return IndustryValueChainSnapshot(
-                    upstream=details.get("upstream", []),
-                    downstream=details.get("downstream", []),
-                    cost_sensitivity=details.get("cost_sensitivity", ""),
-                    high_frequency_indicators=details.get("high_frequency_indicators", []),
-                )
-    except Exception as exc:
-        logger.warning(f"读取产业链图谱失败: {exc}")
-
-    return IndustryValueChainSnapshot()
 
 
 def build_industry_technicals(

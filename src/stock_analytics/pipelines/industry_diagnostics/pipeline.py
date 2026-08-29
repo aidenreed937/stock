@@ -24,7 +24,6 @@ from stock_analytics.pipelines.industry_diagnostics.sources import (
     build_industry_technicals,
     build_industry_valuation,
     load_industry_constituents,
-    load_value_chain_map,
     resolve_industry_meta,
 )
 from stock_analytics.pipelines.industry_diagnostics.types import (
@@ -33,6 +32,9 @@ from stock_analytics.pipelines.industry_diagnostics.types import (
     IndustryFinancialsSnapshot,
     IndustryScoreBreakdown,
     IndustryValuationSnapshot,
+)
+from stock_analytics.pipelines.industry_diagnostics.value_chain import (
+    load_value_chain_map,
 )
 from stock_core.utils.logger import logger
 from stock_data.catalog import DataCatalog

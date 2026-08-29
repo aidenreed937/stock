@@ -1,0 +1,90 @@
+# 科技与 TMT 板块核心二级行业产业链细分图谱 (L2 TMT)
+
+industries:
+  半导体:
+    code: "801081.SI"
+    level: "L2"
+    parent_code: "801080.SI"
+    parent_name: "电子"
+    category: "科技/TMT"
+    upstream:
+      - "半导体大硅片 (12英寸/8英寸)"
+      - "电子级特气/光刻胶/抛光液 CMP/靶材"
+      - "半导体前道制造核心设备 (光刻机/刻蚀机/薄膜沉积/离子注入)"
+    downstream:
+      - "AI 训练与推理算力卡 (GPU/ASIC/HBM)"
+      - "智能手机/AI PC SoC 处理器与图像传感器 CIS"
+      - "车规级功率半导体 (IGBT 模块/SiC 碳化硅)"
+      - "工控自动化与物联网 MCU 芯片"
+    cost_sensitivity: "晶圆代工流片成本与良品率；晶圆厂重资产折旧占成本 40%~50%，对产能利用率极度敏感"
+    demand_drivers: "北美四大云厂商 CapEx、全球半导体销售额月度同比、半导体设备与材料国产化率"
+    high_frequency_indicators:
+      - name: "SIA 全球半导体月度销售额与各区域同比"
+        source: "半导体行业协会 (SIA)"
+      - name: "DXI 存储芯片价格综合指数"
+        source: "DRAMeXchange"
+      - name: "中芯国际/华虹半导体季度产能利用率与 8/12 英寸晶圆 ASP"
+        source: "企业财报与业绩交流会"
+
+  软件开发:
+    code: "801751.SI"
+    level: "L2"
+    parent_code: "801750.SI"
+    parent_name: "计算机"
+    category: "科技/TMT"
+    upstream:
+      - "基础大模型 API 与深度学习框架 (PyTorch/TensorFlow)"
+      - "公有云与智算算力基础设施 (IaaS/GPU算力)"
+    downstream:
+      - "金融证券与银行核心业务系统 (Core Banking)"
+      - "党政央国企安全可靠信创软件 (操作系统/数据库/ERP)"
+      - "工业设计与制造仿真软件 (CAD/CAE/EDA)"
+    cost_sensitivity: "以软件工程师人力研发薪酬为主；毛利率通常在 60%~80%，关键在于定制化交付向标准化产品转型的人效提升"
+    demand_drivers: "行业信创与央企数字化采购招标、AI 赋能垂直软件 ARPU 提升、企业级 IT 支出"
+    high_frequency_indicators:
+      - name: "全国政府采购网信创基础软件与应用软件中标公告"
+        source: "中国政府采购网"
+      - name: "工信部软件业月度业务收入与利润总额增速"
+        source: "工业和信息化部"
+
+  游戏:
+    code: "801761.SI"
+    level: "L2"
+    parent_code: "801760.SI"
+    parent_name: "传媒"
+    category: "科技/内容"
+    upstream:
+      - "原创文学/动漫头部 IP 授权"
+      - "游戏引擎 (Unity/Unreal) 与 AIGC 美术生成"
+    downstream:
+      - "国内安卓/iOS 移动端游戏玩家与微信/抖音小游戏用户"
+      - "海外 Steam/主机/移动端出海玩家 (美日韩及新兴市场)"
+    cost_sensitivity: "买量渠道成本占流水 30%~50%；爆款流水生命周期衰减决定边际利润"
+    demand_drivers: "国产/进口网络游戏版号发放节奏与数量、SLG/二次元/小游戏品类出海流水"
+    high_frequency_indicators:
+      - name: "国家新闻出版署月度网络游戏版号获批名单"
+        source: "国家新闻出版署"
+      - name: "Sensor Tower 中国手游海外收入与下载排行榜"
+        source: "Sensor Tower"
+      - name: "微信/抖音平台月度小游戏活跃度与买量消耗榜"
+        source: "DataEye"
+
+  通信设备:
+    code: "801771.SI"
+    level: "L2"
+    parent_code: "801770.SI"
+    parent_name: "通信"
+    category: "科技/TMT"
+    upstream:
+      - "高速光电芯片 (EML/CW光源/DSP 芯片)"
+      - "高多层高速 PCB 板/特种覆铜板 CCL"
+    downstream:
+      - "全球 AI 算力智算中心 (400G/800G/1.6T 光模块、白盒交换机)"
+      - "运营商 5G-A 基站无线主设备与全光承载网"
+    cost_sensitivity: "核心光电芯片受海外博通/Marvell等供应链制约；研发迭代快，新速率放量初期毛利极高"
+    demand_drivers: "全球 AI 智算中心光互联速率升级周期 (800G 向 1.6T 演进)、云厂商资本开支"
+    high_frequency_indicators:
+      - name: "800G/1.6T 光模块季度出货量与前五大云厂商采购份额"
+        source: "LightCounting / 供应链追踪"
+      - name: "北美四大云厂商季报资本开支 (CapEx) 指引"
+        source: "企业官方季报"

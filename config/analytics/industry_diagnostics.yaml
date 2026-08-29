@@ -96,8 +96,8 @@ industry_diagnostics:
     revenue_decay_threshold: -15.0   # 营收同比萎缩超 15%
     overheat_turnover_percentile: 90.0 # 换手过热分位数阈值 (90%)
 
-  # 5. 产业链图谱配置路径
-  value_chain_map_path: "config/industry/value_chain_map.yaml"
+  # 5. 产业链图谱配置路径 (支持单文件或多级目录)
+  value_chain_map_path: "config/industry/value_chain"
 
   # 6. 上游数据集依赖契约
   datasets:

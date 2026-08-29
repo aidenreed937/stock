@@ -31,8 +31,10 @@ from stock_analytics.pipelines.industry_diagnostics.scoring import (
     classify_pb_roe_quadrant,
 )
 from stock_analytics.pipelines.industry_diagnostics.sources import (
-    load_value_chain_map,
     resolve_industry_meta,
+)
+from stock_analytics.pipelines.industry_diagnostics.value_chain import (
+    load_value_chain_map,
 )
 from stock_reporting.templates.industry_diagnostics_report import (
     render_industry_diagnostics_report,
@@ -68,10 +70,27 @@ def test_resolve_industry_meta_mock() -> None:
 
 
 def test_load_value_chain_map() -> None:
-    vc = load_value_chain_map("食品饮料")
-    assert len(vc.upstream) > 0
-    assert "高粱/小麦/大麦等农产品" in vc.upstream[0]
-    assert len(vc.high_frequency_indicators) > 0
+    # 1. 测试 L1 宏观行业基线加载
+    vc_l1 = load_value_chain_map("食品饮料")
+    assert len(vc_l1.upstream) > 0
+    assert "高粱/小麦/大麦等农产品" in vc_l1.upstream[0]
+    assert len(vc_l1.high_frequency_indicators) > 0
+
+    # 2. 测试 L2 二级行业专属加载与父级级联继承合并 (白酒继承食品饮料)
+    vc_l2 = load_value_chain_map("白酒")
+    assert len(vc_l2.upstream) > 0
+    # 专属指标排在第一位
+    assert any("飞天茅台" in ind["name"] for ind in vc_l2.high_frequency_indicators)
+    # 父级通用指标也被级联继承合并
+    assert any("餐饮社零" in ind["name"] for ind in vc_l2.high_frequency_indicators)
+    # 上游环节合并
+    assert any("酿酒专用" in u for u in vc_l2.upstream)
+    assert any("包材" in u for u in vc_l2.upstream)
+
+    # 3. 测试 L2 半导体继承电子
+    vc_semi = load_value_chain_map("半导体")
+    assert any("SIA" in ind["name"] for ind in vc_semi.high_frequency_indicators)
+    assert any("DRAM" in ind["name"] for ind in vc_semi.high_frequency_indicators)
 
 
 def test_config_archetypes_loading() -> None:
