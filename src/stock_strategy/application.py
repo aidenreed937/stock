@@ -10,7 +10,8 @@ import polars as pl
 
 from stock_core.config.loader import load_data_config
 from stock_core.utils.logger import logger
-from stock_data import create_pipeline, data_settings
+from stock_data import data_settings
+from stock_data.catalog import DataCatalog
 from stock_strategy.config import load_strategy_config
 from stock_strategy.runner import SignalReport, StrategyRunner
 
@@ -54,23 +55,31 @@ def run_strategy_application(
     start_date = parse_config_date(data_config.backfill.default_start_date, today) or (
         end_date - timedelta(days=30)
     )
-    pipeline = create_pipeline(data_config.default_source_mode, endpoint="stock_daily_bar")
-    frames = [
-        pipeline.sync_daily_bars(symbol, start_date, end_date)
-        for symbol in strategy_config.universe.all_symbols
-    ]
-    bars_df = pl.concat(frames, how="diagonal_relaxed")
-    query_result = pipeline.store.query_history(
-        endpoint="stock_daily_bar",
-        symbols=strategy_config.universe.all_symbols,
-    )
-    logger.info(f"DuckDB SQL 查询结果: 共 {len(query_result)} 条缓存记录")
 
-    report = StrategyRunner(strategy_config, pipeline.data_source).run(bars_df)
+    catalog = DataCatalog(data_source=data_config.default_source_mode)
+    symbols = strategy_config.universe.all_symbols
+
+    frames: list[pl.DataFrame] = []
+    for symbol in symbols:
+        df = catalog.load_bars(
+            symbol=symbol,
+            dataset="stock_daily_bar",
+            start_date=start_date,
+            end_date=end_date,
+        )
+        if not df.is_empty():
+            if "symbol" not in df.columns:
+                df = df.with_columns(pl.lit(symbol).alias("symbol"))
+            frames.append(df)
+
+    bars_df = pl.concat(frames, how="diagonal_relaxed") if frames else pl.DataFrame()
+    logger.info(f"DataCatalog 加载行情记录: 共 {len(bars_df)} 条")
+
+    report = StrategyRunner(strategy_config, data_source=catalog.data_source).run(bars_df)
     return StrategyApplicationResult(
         strategy_name=strategy_config.name,
         strategy_version=strategy_config.version,
-        query_rows=len(query_result),
+        query_rows=len(bars_df),
         report=report,
     )
 

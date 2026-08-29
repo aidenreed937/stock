@@ -1,4 +1,6 @@
-"""研究阶段策略运行与风险约束。"""
+"""研究阶段策略运行与信号生成器。"""
+
+from __future__ import annotations
 
 from dataclasses import dataclass, field
 from datetime import datetime
@@ -6,7 +8,9 @@ from typing import Any
 
 import polars as pl
 
+from stock_strategy.base import BaseStrategy
 from stock_strategy.config import StrategyConfig
+from stock_strategy.pool import create_strategy
 from stock_strategy.pool.double_sma_rsi import DoubleSmaRsiStrategy
 from stock_strategy.signal import Signal
 
@@ -46,15 +50,37 @@ class SignalReport:
 class StrategyRunner:
     """按标的分组执行研究策略，不执行订单或成交。"""
 
-    def __init__(self, config: StrategyConfig, data_source: str) -> None:
-        """初始化策略运行器。"""
+    def __init__(
+        self,
+        config: StrategyConfig,
+        data_source: str = "tushare",
+        strategy_class: str | type[BaseStrategy] | None = None,
+    ) -> None:
+        """初始化通用策略运行器。"""
         self.config = config
         self.data_source = data_source
+        self.strategy_class = strategy_class
+
+    def _create_strategy(self) -> BaseStrategy:
+        """动态实例化策略类。"""
+        if self.strategy_class is not None:
+            if isinstance(self.strategy_class, str):
+                return create_strategy(self.strategy_class, config=self.config)
+            try:
+                return self.strategy_class(config=self.config)  # type: ignore[call-arg]
+            except TypeError:
+                return self.strategy_class()
+        try:
+            return create_strategy(self.config.name, config=self.config)
+        except ValueError:
+            return DoubleSmaRsiStrategy(self.config)
 
     def run(self, data: pl.DataFrame) -> SignalReport:
         """按标的执行策略并返回结构化信号报告。"""
-        strategy = DoubleSmaRsiStrategy(self.config)
+        strategy = self._create_strategy()
+        strategy.on_init()
         signals: list[Signal] = []
+
         if not data.is_empty() and "symbol" in data.columns:
             for symbol, group in (
                 data.sort(["symbol", "trade_date"]).partition_by("symbol", as_dict=True).items()
@@ -63,6 +89,7 @@ class StrategyRunner:
                 signals.extend(
                     strategy.on_bar(group.with_columns(pl.lit(symbol_value).alias("symbol")))
                 )
+
         return SignalReport(
             strategy_name=self.config.name,
             strategy_version=self.config.version,
@@ -71,3 +98,6 @@ class StrategyRunner:
             symbols=tuple(self.config.universe.all_symbols),
             signals=tuple(signals),
         )
+
+
+__all__ = ["SignalReport", "StrategyRunner"]

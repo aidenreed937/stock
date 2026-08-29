@@ -17,6 +17,18 @@ from stock_reporting.templates.investor_brief import (
 from stock_reporting.templates.investor_brief import (
     render_brief_markdown as render_investor_brief_markdown,
 )
+from stock_reporting.templates.macro_strategy_audit import (
+    render_audit_markdown as render_macro_strategy_audit_markdown,
+)
+from stock_reporting.templates.macro_strategy_audit import (
+    render_stability_charts as render_macro_strategy_stability_charts,
+)
+from stock_reporting.templates.macro_strategy_comparison import (
+    render_comparison_chart as render_macro_strategy_comparison_chart,
+)
+from stock_reporting.templates.macro_strategy_comparison import (
+    render_comparison_markdown as render_macro_strategy_comparison_markdown,
+)
 from stock_reporting.templates.market_aggregate import (
     build_quality_report as build_market_aggregate_quality_report,
 )
@@ -56,6 +68,10 @@ __all__ = [
     "render_industry_structure_human_report_markdown",
     "render_industry_structure_markdown",
     "render_investor_brief_markdown",
+    "render_macro_strategy_audit_markdown",
+    "render_macro_strategy_comparison_chart",
+    "render_macro_strategy_comparison_markdown",
+    "render_macro_strategy_stability_charts",
     "render_market_aggregate_human_report_markdown",
     "render_market_aggregate_markdown",
     "render_market_aggregate_quality_report_markdown",

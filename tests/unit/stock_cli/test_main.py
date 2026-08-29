@@ -25,7 +25,7 @@ def test_main_execution_flow():
         patch("stock_strategy.application.data_settings") as mock_data_settings,
         patch("stock_strategy.application.load_data_config") as mock_load_data_config,
         patch("stock_strategy.application.load_strategy_config") as mock_load_config,
-        patch("stock_strategy.application.create_pipeline") as mock_create_pipeline,
+        patch("stock_strategy.application.DataCatalog") as mock_catalog_cls,
         patch("stock_strategy.application.StrategyRunner") as mock_runner_cls,
     ):
         mock_settings.app_name = "StockApp"
@@ -43,11 +43,10 @@ def test_main_execution_flow():
         mock_config.universe.all_symbols = ["000001.SZ"]
         mock_load_config.return_value = mock_config
 
-        mock_pipeline_inst = MagicMock()
-        mock_pipeline_inst.data_source = "tushare"
-        mock_pipeline_inst.sync_daily_bars.return_value = mock_df
-        mock_pipeline_inst.store.query_history.return_value = mock_df
-        mock_create_pipeline.return_value = mock_pipeline_inst
+        mock_catalog_inst = MagicMock()
+        mock_catalog_inst.data_source = "tushare"
+        mock_catalog_inst.load_bars.return_value = mock_df
+        mock_catalog_cls.return_value = mock_catalog_inst
 
         mock_runner_inst = MagicMock()
         mock_report = MagicMock()
@@ -57,6 +56,5 @@ def test_main_execution_flow():
 
         main()
 
-        mock_create_pipeline.assert_called_once_with("tushare", endpoint="stock_daily_bar")
-        mock_pipeline_inst.sync_daily_bars.assert_called_once()
+        mock_catalog_cls.assert_called_once_with(data_source="tushare")
         mock_runner_inst.run.assert_called_once()
