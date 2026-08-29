@@ -1,13 +1,31 @@
-# 宏观风控多策略实战纪律与口径契约手册
+# 宏观风控多策略池与实战纪律手册
 
-> **文档定位**：本手册只保留"如何使用、实战纪律与盲区诊断"等指导性内容；
-> 各策略的**状态机转移规则**、**标的/权重/阈值/摩擦成本**、**回测执行语义**（T+1、首日归一、
-> 现金兜底）与**绩效指标计算**（CAGR / Sharpe / Calmar 等）均为工程实现，一律以工程为准：
+> **文档定位**：本手册维护宏观策略池清单（键名/类名/定位）与"如何使用、实战纪律、盲区诊断"
+> 等指导性内容；各策略的**状态机转移规则**、**标的/权重/阈值/摩擦成本**、**回测执行语义**
+> （T+1、首日归一、现金兜底）与**绩效指标计算**（CAGR / Sharpe / Calmar 等）均为工程实现，
+> 一律以工程为准：
 > - 状态机逻辑：`src/stock_strategy/pool/` 下对应策略类的 `on_bar` 实现；
-> - 标的、权重、阈值、摩擦：`config/strategy/macro_risk.yaml`；
+> - 标的、权重、阈值、摩擦：`config/strategy/macro_risk.yaml`（唯一真实源）；
 > - 回测语义与绩效公式：`src/stock_strategy/macro/runner.py`、`report.py`；
 > - 回测绩效对账：`data/analytics/macro_strategy/multi_strategy_comparison.md` 最新产物；
-> - 策略清单与 CLI 入口：见 `SKILL.md` 第 3 节与第 2 节步骤 4，本文档不重复。
+> - 策略池清单（下表）为本手册唯一维护点，新增/变更策略时同步本表。
+
+---
+
+## 〇、 宏观风控多策略池清单
+
+策略体系由 `config/strategy/macro_risk.yaml` 统一驱动，标的、权重、基准、阈值与摩擦均以该文件为准；下表仅记录"键名 → 类名 → 定位哲学"，便于路由与速查。
+
+| 策略键名 | 核心类名 | 定位说明（哲学） |
+| :--- | :--- | :--- |
+| **`macro_risk_v3` / `_etf`** | `MacroRiskV3Strategy` | 单宽基趋势防守压舱石：锚定大盘核心资产，破 MA20 减仓控损，冰点恐慌加仓博修复 |
+| **`macro_rotation_v4` / `_etf`** | `MacroRotationV4Strategy` | 双核哑铃风格轮动：牛市主升打满创业板弹性，存量熊市切换高股息红利托底避险 |
+| **`macro_rotation_v5` / `_etf`** 🌟 | `MacroRotationV5Strategy` | 资金博弈智能增强轮动：在 V4 基础上用 `smart_money_score` 做恐慌左侧确认过滤，未逆势接货判定假黄金坑不建仓 |
+| **`macro_rotation_v6` / `_etf`** | `MacroRotationV6Strategy` | 三核资产与风格动量自适应轮动：恐慌左侧以聪明钱确认过滤，左侧探底偏重大盘压舱、低估值超配红利、高估值打满成长 |
+| **`macro_meta_router` / `_etf`** | `MacroMetaRouterStrategy` | 宏观元策略动态路由器：融合聪明钱与产业资本双托底，动态切换 5 大宏观相态 |
+| **`macro_all_weather_etf`** 🌟 | `MacroAllWeatherStrategy` | 大类资产全天候自适应相态轮动：泡沫破裂期刚性转入国债 + 黄金避险 |
+
+> 各策略的全周期回测绩效（CAGR / 最大回撤 / 夏普 / 卡玛）以 `data/analytics/macro_strategy/multi_strategy_comparison.md` 最新产物为准；本表不维护绩效数字。
 
 ---
 
