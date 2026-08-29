@@ -68,3 +68,44 @@ def test_signal_repository_record_and_deduplicate(tmp_path: Path) -> None:
     assert latest is not None
     assert latest["signal_id"] == sig_id
     assert latest["has_rebalance"] == 1
+
+
+def test_signal_repository_multi_strategy_no_rebalance_independence(tmp_path: Path) -> None:
+    """验证多个策略在同日无调仓时，signal_id 独立生成且不发生唯一键冲突。"""
+    db_file = tmp_path / "test_state_multi.db"
+    engine = SQLiteEngine(db_path=db_file, auto_migrate=True)
+    repo = SignalRepository(engine)
+
+    res_v3 = LiveSignalInspectionResult(
+        strategy_key="macro_risk_v3_etf",
+        strategy_class="MacroRiskV3Strategy",
+        as_of_time=datetime(2026, 8, 29, 14, 50, 0, tzinfo=_SHANGHAI_TZ),
+        has_rebalance=False,
+        benchmark_symbol="000300.SH",
+        benchmark_price=4609.0,
+        benchmark_ma20=4640.0,
+        panic_index=32.9,
+        overheat_index=69.8,
+        instructions=[],
+        markdown_card="测试卡片 V3",
+    )
+    res_v5 = LiveSignalInspectionResult(
+        strategy_key="macro_rotation_v5_etf",
+        strategy_class="MacroRotationV5Strategy",
+        as_of_time=datetime(2026, 8, 29, 14, 50, 0, tzinfo=_SHANGHAI_TZ),
+        has_rebalance=False,
+        benchmark_symbol="000985.CSI",
+        benchmark_price=5935.0,
+        benchmark_ma20=5933.0,
+        panic_index=32.9,
+        overheat_index=69.8,
+        instructions=[],
+        markdown_card="测试卡片 V5",
+    )
+
+    sig_id_v3, is_new_v3 = repo.record_signal(res_v3)
+    sig_id_v5, is_new_v5 = repo.record_signal(res_v5)
+
+    assert is_new_v3 is True
+    assert is_new_v5 is True
+    assert sig_id_v3 != sig_id_v5

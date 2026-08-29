@@ -22,7 +22,7 @@ class SignalRepository:
         Returns:
             (signal_id, is_new): 信号唯一标识以及是否为首次记录的新信号
         """
-        # 计算指令内容的确定性哈希
+        # 计算指令内容与策略维度的确定性哈希
         inst_payload = [
             {
                 "symbol": inst.symbol,
@@ -33,7 +33,8 @@ class SignalRepository:
             for inst in res.instructions
         ]
         inst_json = json.dumps(inst_payload, sort_keys=True)
-        signal_hash = hashlib.sha256(inst_json.encode("utf-8")).hexdigest()[:16]
+        signal_content = f"{res.strategy_key}:{inst_json}"
+        signal_hash = hashlib.sha256(signal_content.encode("utf-8")).hexdigest()[:16]
 
         trade_d = res.as_of_time.date().isoformat()
         signal_id = f"SIG-{trade_d.replace('-', '')}-{signal_hash[:8]}"
