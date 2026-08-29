@@ -1,13 +1,12 @@
 """宏观风控 A+B+C 三核资产与风格动量自适应智能轮动策略 (V6 终极版)。
 
-在 V5 资金博弈增强轮动基础上进行系统性优化升级：
-1. 【标的对齐与左侧防踩踏】：在国家队宽基 ETF 大额托底 (etf_score >= 90) 时，
-   若大盘仍处于 MA20 之下（左侧探底中），优先配置国家队直接买入的沪深300压舱石 (50%)
-   与中证红利防守 (30%)，待右侧站上均线再打满高贝塔创业板，根治 2024 年初左侧接飞刀问题；
+在 V5 聪明钱增强轮动基础上进行系统性优化升级：
+1. 【聪明钱确认与左侧防踩踏】：在恐慌左侧区间 (panic 65~75)，引入聪明钱组合信号
+   (smart_money_score < 40) 拦截假黄金坑；若聪明钱确认接货且处于左侧 (Close < MA20)，
+   优先配置沪深300压舱石 (40%) 与红利防守 (30%)、创业板 (30%) 防踩踏，企稳后加大成长弹性；
 2. 【常态估值与风格自适应】：在常态非极值区间，结合大盘估值分位 (dim_valuation)，
    在极低估值大底战略加配红利与沪深300，避免单边价值牛市踏空；
-3. 【主力资金背离与均线共振逃顶】：Overheat > 65 时若跌破 MA20 或主力资金严重出逃背离坚决清仓，
-   均线完好时切换红利防守锁润。
+3. 【极值与均线共振逃顶】：Overheat > 65 时若跌破 MA20 坚决清仓，均线完好时切换红利防守锁润。
 """
 
 from __future__ import annotations
@@ -49,7 +48,7 @@ class MacroRotationV6Strategy(BaseStrategy):
         panic_threshold: float = 75.0,
         panic_entry_threshold: float = 65.0,
         overheat_threshold: float = 65.0,
-        etf_score_threshold: float = 90.0,
+        smart_filter_threshold: float = 40.0,
         valuation_threshold: float = 20.0,
     ) -> None:
         super().__init__(context)
@@ -63,7 +62,7 @@ class MacroRotationV6Strategy(BaseStrategy):
         self.panic_threshold = float(panic_threshold)
         self.panic_entry_threshold = float(panic_entry_threshold)
         self.overheat_threshold = float(overheat_threshold)
-        self.etf_score_threshold = float(etf_score_threshold)
+        self.smart_filter_threshold = float(smart_filter_threshold)
         self.valuation_threshold = float(valuation_threshold)
 
         self.initial_weights = (
@@ -110,8 +109,8 @@ class MacroRotationV6Strategy(BaseStrategy):
         panic = float(panic_val)
         overheat = float(overheat_val)
 
-        etf_score_val = latest.get("etf_flow_ratio_score")
-        etf_score = float(etf_score_val) if isinstance(etf_score_val, int | float) else None
+        smart_val = latest.get("smart_money_score")
+        smart = float(smart_val) if isinstance(smart_val, int | float) else None
 
         dim_val_raw = latest.get("dim_valuation")
         dim_val = float(dim_val_raw) if isinstance(dim_val_raw, int | float) else None
@@ -123,7 +122,7 @@ class MacroRotationV6Strategy(BaseStrategy):
         reason = ""
 
         # ==============================================================
-        # V6 核心状态机逻辑 (三核驱动 + 托底对齐 + 风格自适应)
+        # V6 核心状态机逻辑 (三核驱动 + 聪明钱确认 + 风格自适应)
         # ==============================================================
 
         # 1. 极端狂热逃顶区
@@ -149,33 +148,30 @@ class MacroRotationV6Strategy(BaseStrategy):
             target[self.sym_core] = 0.0
             reason = f"极度冰点全仓反击 (Panic={panic:.1f}, 100%创业板指)"
 
-        # 3. 恐慌左侧与国家队托底区
-        elif (
-            panic > self.panic_entry_threshold
-            and etf_score is not None
-            and etf_score >= self.etf_score_threshold
-        ):
-            if close < ma20:
-                # 关键升级：国家队买沪深300，左侧避免单边承受创业板流动性踩踏
-                target[self.sym_defensive] = 0.3
-                target[self.sym_growth] = 0.2
-                target[self.sym_core] = 0.5
-                reason = (
-                    f"国家队托底左侧防踩踏 (ETF分位={etf_score:.1f}, 50%沪深300+30%红利+20%创业板)"
-                )
-            else:
-                # 右侧企稳：拉满成长
-                target[self.sym_defensive] = 0.0
-                target[self.sym_growth] = 1.0
-                target[self.sym_core] = 0.0
-                reason = "国家队托底右侧确认全仓反击 (100%创业板指)"
-
+        # 3. 恐慌左侧与聪明钱确认区
         elif panic > self.panic_entry_threshold:
-            # 常规恐慌左侧分批建仓
-            target[self.sym_defensive] = 0.3
-            target[self.sym_growth] = 0.4
-            target[self.sym_core] = 0.3
-            reason = f"恐慌左侧均衡分批建仓 (Panic={panic:.1f})"
+            # 聪明钱确认过滤: smart_money_score < 40 判定假黄金坑不建仓
+            if smart is not None and smart < self.smart_filter_threshold:
+                return []
+
+            if close < ma20:
+                # 左侧探底：沪深300压舱防微盘踩踏 (40% 300 + 30% 红利 + 30% 创业板)
+                target[self.sym_defensive] = 0.3
+                target[self.sym_growth] = 0.3
+                target[self.sym_core] = 0.4
+                if smart is not None:
+                    reason = f"恐慌左侧聪明钱确认建仓 (Panic={panic:.1f}, SmartMoney={smart:.1f})"
+                else:
+                    reason = f"恐慌左侧分批建仓 (Panic={panic:.1f})"
+            else:
+                # 右侧企稳：加大成长弹性 (50% 创业板 + 30% 300 + 20% 红利)
+                target[self.sym_defensive] = 0.2
+                target[self.sym_growth] = 0.5
+                target[self.sym_core] = 0.3
+                if smart is not None:
+                    reason = f"恐慌右侧聪明钱确认进攻 (Panic={panic:.1f}, SmartMoney={smart:.1f})"
+                else:
+                    reason = f"恐慌右侧企稳进攻 (Panic={panic:.1f})"
 
         # 4. 常态估值驱动配置（极低估值大底超配价值红利与大盘）
         elif dim_val is not None and dim_val <= self.valuation_threshold:

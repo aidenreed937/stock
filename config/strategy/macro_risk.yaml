@@ -111,7 +111,9 @@ strategies:
     ma_window: 20
     thresholds:
       panic_threshold: 75.0
+      panic_entry_threshold: 65.0
       overheat_threshold: 65.0
+      smart_filter_threshold: 40.0
 
   macro_rotation_v4_etf:
     strategy_class: "MacroRotationV4Strategy"
@@ -145,7 +147,9 @@ strategies:
     ma_window: 20
     thresholds:
       panic_threshold: 75.0
+      panic_entry_threshold: 65.0
       overheat_threshold: 65.0
+      smart_filter_threshold: 40.0
     friction:
       commission_rate: 0.0001 # 万1券商佣金
       slippage_rate: 0.0005 # 0.05% 冲击滑点
@@ -167,7 +171,7 @@ strategies:
       panic_threshold: 75.0
       panic_entry_threshold: 65.0
       overheat_threshold: 65.0
-      etf_score_threshold: 90.0
+      smart_support_threshold: 80.0
       valuation_threshold: 15.0
 
   macro_meta_router_etf:
@@ -186,7 +190,7 @@ strategies:
       panic_threshold: 75.0
       panic_entry_threshold: 65.0
       overheat_threshold: 65.0
-      etf_score_threshold: 90.0
+      smart_support_threshold: 80.0
       valuation_threshold: 15.0
     friction:
       commission_rate: 0.0001 # 万1券商佣金
@@ -213,7 +217,7 @@ strategies:
       panic_threshold: 75.0
       panic_entry_threshold: 65.0
       overheat_threshold: 65.0
-      etf_score_threshold: 90.0
+      smart_support_threshold: 80.0
       repurchase_score_threshold: 80.0
       valuation_threshold: 15.0
     friction:

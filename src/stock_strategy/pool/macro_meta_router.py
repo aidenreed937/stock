@@ -1,10 +1,10 @@
 """宏观元策略自适应动态路由器 (MacroMetaRouterStrategy)。
 
-根据宏观风控双轨雷达 (Panic / Overheat)、国家队宽基 ETF 托底 (etf_score)、
+根据宏观风控双轨雷达 (Panic / Overheat)、聪明钱与产业资本托底 (smart_money / dim_corporate)、
 大盘估值 (dim_valuation) 与 20日均线 (MA20) 趋势，将全市场划分为 5 大宏观相态：
 1. 【相态 4：狂热泡沫破裂 (Overheat > 65 & Close < MA20)】-> 100% 刚性清仓空仓避险；
-2. 【相态 1：极度恐慌与国家队托底 (Panic > 75 或 Panic > 65 & ETF >= 90)】
-   - 左侧探底 (Close < MA20)：配置 50% 沪深300 + 30% 红利 + 20% 创业板 (对齐国家队大盘托底防踩踏)；
+2. 【相态 1：极度恐慌与聪明钱/产业资本托底 (Panic > 75 或 Panic > 65 & 聪明钱/产业共振 >= 80)】
+   - 左侧探底 (Close < MA20)：配置 50% 沪深300 + 30% 红利 + 20% 创业板 (防微盘踩踏)；
    - 右侧突破 (Close >= MA20)：打满 100% 创业板成长 (吃满弹性主升)；
 3. 【相态 3：狂热泡沫中继 (Overheat > 65 & Close >= MA20)】-> 50% 红利低波防御锁润；
 4. 【相态 2：估值大底与恐慌左侧 (Panic > 65 或 Valuation <= 15%)】-> 40% 红利 + 30% 沪深300 + 30% 创业板 锁仓；
@@ -52,7 +52,7 @@ class MacroMetaRouterStrategy(BaseStrategy):
         panic_threshold: float = 75.0,
         panic_entry_threshold: float = 65.0,
         overheat_threshold: float = 65.0,
-        etf_score_threshold: float = 90.0,
+        smart_support_threshold: float = 80.0,
         valuation_threshold: float = 15.0,
     ) -> None:
         super().__init__(context)
@@ -66,7 +66,7 @@ class MacroMetaRouterStrategy(BaseStrategy):
         self.panic_threshold = float(panic_threshold)
         self.panic_entry_threshold = float(panic_entry_threshold)
         self.overheat_threshold = float(overheat_threshold)
-        self.etf_score_threshold = float(etf_score_threshold)
+        self.smart_support_threshold = float(smart_support_threshold)
         self.valuation_threshold = float(valuation_threshold)
 
         self.initial_weights = (
@@ -113,8 +113,8 @@ class MacroMetaRouterStrategy(BaseStrategy):
         panic = float(panic_val)
         overheat = float(overheat_val)
 
-        etf_score_val = latest.get("etf_flow_ratio_score")
-        etf_score = float(etf_score_val) if isinstance(etf_score_val, int | float) else None
+        smart_score_val = latest.get("smart_money_score")
+        smart_score = float(smart_score_val) if isinstance(smart_score_val, int | float) else None
 
         rep_score_val = latest.get("repurchase_score")
         rep_score = float(rep_score_val) if isinstance(rep_score_val, int | float) else None
@@ -130,9 +130,9 @@ class MacroMetaRouterStrategy(BaseStrategy):
         target = self.weights.copy()
         reason = ""
 
-        # 是否触发政策/产业资本强托底共振 (国家队大额申购 ETF 或 企业大额回购潮)
+        # 是否触发聪明钱/产业资本强托底共振 (聪明钱组合高分位 或 产业资本大额增持/回购)
         has_support_resonance = (
-            (etf_score is not None and etf_score >= self.etf_score_threshold)
+            (smart_score is not None and smart_score >= self.smart_support_threshold)
             or (rep_score is not None and rep_score >= 80.0)
             or (dim_corp is not None and dim_corp >= 80.0)
         )
@@ -148,17 +148,17 @@ class MacroMetaRouterStrategy(BaseStrategy):
             target[self.sym_core] = 0.0
             reason = f"相态4: 泡沫破裂全额清仓 (Overheat={overheat:.1f}, 跌破MA{self.ma_window})"
 
-        # 相态 1：极度恐慌与国家队/产业资本托底抢跑
+        # 相态 1：极度恐慌与聪明钱/产业资本托底抢跑
         elif panic > self.panic_threshold or (
             panic > self.panic_entry_threshold and has_support_resonance
         ):
             if close < ma20:
-                # 左侧探底：对齐国家队大盘宽基托底，防微盘踩踏
+                # 左侧探底：沪深300压舱防微盘踩踏
                 target[self.sym_defensive] = 0.3
                 target[self.sym_growth] = 0.2
                 target[self.sym_core] = 0.5
-                etf_desc = f", ETF={etf_score:.1f}" if etf_score is not None else ""
-                reason = f"相态1: 政策与产业左侧托底防踩踏 (Panic={panic:.1f}{etf_desc})"
+                smart_desc = f", SmartMoney={smart_score:.1f}" if smart_score is not None else ""
+                reason = f"相态1: 聪明钱与产业左侧托底防踩踏 (Panic={panic:.1f}{smart_desc})"
             else:
                 # 右侧突破：全仓打满弹性成长
                 target[self.sym_defensive] = 0.0

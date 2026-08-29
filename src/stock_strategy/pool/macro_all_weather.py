@@ -1,10 +1,10 @@
 """宏观大类资产全天候自适应轮动策略 (MacroAllWeatherStrategy)。
 
-融合宏观风控双轨雷达 (Panic / Overheat)、国家队宽基 ETF 托底、企业回购潮 (dim_corporate)、
+融合宏观风控双轨雷达 (Panic / Overheat)、聪明钱与产业资本托底 (smart_money / dim_corporate)、
 跨资产估值 (dim_cross_asset) 与 20日均线 (MA20) 趋势，在 5 大类资产间全天候自适应动态切换：
 1. 【相态 4：狂热泡沫破裂 (Overheat > 65 & Close < MA20)】
    - 权益仓位降为 0%，配置 60% 国债 ETF + 40% 黄金 ETF 刚性避险与吃息；
-2. 【相态 1：极度恐慌与政策/产业底共振 (Panic > 75 或 Panic > 65 & (ETF>=90 或 回购>=80))】
+2. 【相态 1：极度恐慌与聪明钱/产业底共振 (Panic > 75 或 Panic > 65 & (聪明钱>=80 或 回购>=80))】
    - 固收与黄金仓位降为 0%；
    - 左侧探底 (Close < MA20)：配置 40% 沪深300 ETF + 30% 红利 ETF + 30% 创业板 ETF (对齐托底防踩踏)；
    - 右侧突破 (Close >= MA20)：配置 70% 创业板 ETF + 30% 沪深300 ETF (打满弹性主升)；
@@ -55,7 +55,7 @@ class MacroAllWeatherStrategy(BaseStrategy):
         panic_threshold: float = 75.0,
         panic_entry_threshold: float = 65.0,
         overheat_threshold: float = 65.0,
-        etf_score_threshold: float = 90.0,
+        smart_support_threshold: float = 80.0,
         repurchase_score_threshold: float = 80.0,
         valuation_threshold: float = 15.0,
     ) -> None:
@@ -73,7 +73,7 @@ class MacroAllWeatherStrategy(BaseStrategy):
         self.panic_threshold = float(panic_threshold)
         self.panic_entry_threshold = float(panic_entry_threshold)
         self.overheat_threshold = float(overheat_threshold)
-        self.etf_score_threshold = float(etf_score_threshold)
+        self.smart_support_threshold = float(smart_support_threshold)
         self.repurchase_score_threshold = float(repurchase_score_threshold)
         self.valuation_threshold = float(valuation_threshold)
 
@@ -123,8 +123,8 @@ class MacroAllWeatherStrategy(BaseStrategy):
         panic = float(panic_val)
         overheat = float(overheat_val)
 
-        etf_score_val = latest.get("etf_flow_ratio_score")
-        etf_score = float(etf_score_val) if isinstance(etf_score_val, int | float) else None
+        smart_score_val = latest.get("smart_money_score")
+        smart_score = float(smart_score_val) if isinstance(smart_score_val, int | float) else None
 
         rep_score_val = latest.get("repurchase_score")
         rep_score = float(rep_score_val) if isinstance(rep_score_val, int | float) else None
@@ -140,9 +140,9 @@ class MacroAllWeatherStrategy(BaseStrategy):
         target = self.weights.copy()
         reason = ""
 
-        # 是否触发政策/产业资本强托底共振
+        # 是否触发聪明钱/产业资本强托底共振
         has_support_resonance = (
-            (etf_score is not None and etf_score >= self.etf_score_threshold)
+            (smart_score is not None and smart_score >= self.smart_support_threshold)
             or (rep_score is not None and rep_score >= self.repurchase_score_threshold)
             or (dim_corp is not None and dim_corp >= self.repurchase_score_threshold)
         )
@@ -160,14 +160,14 @@ class MacroAllWeatherStrategy(BaseStrategy):
             target[self.sym_gold] = 0.4
             reason = f"相态4: 泡沫破裂转债金避险 (Overheat={overheat:.1f}, 跌破MA{self.ma_window})"
 
-        # 相态 1：极度恐慌与政策/产业共振 -> 清仓避险资产，打满权益弹性
+        # 相态 1：极度恐慌与聪明钱/产业共振 -> 清仓避险资产，打满权益弹性
         elif panic > self.panic_threshold or (
             panic > self.panic_entry_threshold and has_support_resonance
         ):
             target[self.sym_bond] = 0.0
             target[self.sym_gold] = 0.0
             if close < ma20:
-                # 左侧探底：对齐国家队与核心资产托底
+                # 左侧探底：沪深300与红利压舱托底
                 target[self.sym_core] = 0.4
                 target[self.sym_defensive] = 0.3
                 target[self.sym_growth] = 0.3

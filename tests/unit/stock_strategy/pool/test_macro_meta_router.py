@@ -63,7 +63,7 @@ def test_meta_router_phase_4_bubble_burst(base_df):
 
 
 def test_meta_router_phase_1_left_support(base_df):
-    """相态 1 左侧：极度恐慌/国家队托底 (Panic > 65 & ETF >= 90 & Close < MA20) -> 50% 300 + 30% 红利 + 20% 创业板。"""
+    """相态 1 左侧：恐慌与聪明钱强共振 (Panic > 65 & SmartMoney >= 80 & Close < MA20) -> 50% 300 + 30% 红利 + 20% 创业板。"""
     strat = MacroMetaRouterStrategy()
     df = base_df.with_columns(
         pl.when(pl.col("trade_date") == date(2024, 1, 25))
@@ -74,7 +74,7 @@ def test_meta_router_phase_1_left_support(base_df):
         .then(pl.lit(68.0))
         .otherwise(pl.col("panic_index"))
         .alias("panic_index"),
-        pl.lit(95.0).alias("etf_flow_ratio_score"),
+        pl.lit(85.0).alias("smart_money_score"),
     )
     signals = strat.on_bar(df)
     target_weights = {sig.symbol: sig.target_weight for sig in signals}

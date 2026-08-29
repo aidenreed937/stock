@@ -10,8 +10,7 @@ def _panel(
     close_last: float = 100.0,
     panic_last: float = 20.0,
     overheat_last: float = 40.0,
-    etf_score_last: float | None = None,
-    div_score_last: float | None = None,
+    smart_score_last: float | None = 50.0,
     dim_val_last: float | None = 50.0,
 ) -> pl.DataFrame:
     n = 25
@@ -21,8 +20,7 @@ def _panel(
             "close": [100.0] * (n - 1) + [close_last],
             "panic_index": [20.0] * (n - 1) + [panic_last],
             "overheat_index": [40.0] * (n - 1) + [overheat_last],
-            "etf_flow_ratio_score": [50.0] * (n - 1) + [etf_score_last],
-            "divergence_score_score": [50.0] * (n - 1) + [div_score_last],
+            "smart_money_score": [50.0] * (n - 1) + [smart_score_last],
             "dim_valuation": [50.0] * (n - 1) + [dim_val_last],
         }
     )
@@ -79,28 +77,36 @@ def test_v6_extreme_panic_goes_all_in_growth() -> None:
     assert sig_map["000300.SH"] == 0.0
 
 
-def test_v6_etf_support_left_side_allocates_core_index() -> None:
-    # Panic > 65, ETF >= 90, but close < MA20 (左侧探底) -> 50% 沪深300 + 30% 红利 + 20% 创业板
-    df = _panel(close_last=80.0, panic_last=68.0, etf_score_last=95.0)
+def test_v6_smart_filter_blocks_false_dip() -> None:
+    # Panic 65~75 但 smart_money_score < 40 -> 判定假黄金坑，不建仓
+    df = _panel(close_last=80.0, panic_last=68.0, smart_score_last=30.0)
+    strategy = MacroRotationV6Strategy()
+    signals = strategy.on_bar(df)
+    assert signals == []
+
+
+def test_v6_smart_confirmed_left_side_allocates_core_index() -> None:
+    # Panic 65~75, smart_money_score >= 40, close < MA20 (左侧探底) -> 40% 沪深300 + 30% 红利 + 30% 创业板
+    df = _panel(close_last=80.0, panic_last=68.0, smart_score_last=60.0)
     strategy = MacroRotationV6Strategy()
     signals = strategy.on_bar(df)
     assert len(signals) == 3
     sig_map = {s.symbol: s.target_weight for s in signals}
-    assert sig_map["000300.SH"] == 0.5
+    assert sig_map["000300.SH"] == 0.4
     assert sig_map["000922.CSI"] == 0.3
-    assert sig_map["399006.SZ"] == 0.2
+    assert sig_map["399006.SZ"] == 0.3
 
 
-def test_v6_etf_support_right_side_goes_full_growth() -> None:
-    # Panic > 65, ETF >= 90, close >= MA20 (右侧突破) -> 100% 创业板
-    df = _panel(close_last=105.0, panic_last=68.0, etf_score_last=95.0)
+def test_v6_smart_confirmed_right_side_increases_growth() -> None:
+    # Panic 65~75, smart_money_score >= 40, close >= MA20 (右侧企稳) -> 50% 创业板 + 30% 300 + 20% 红利
+    df = _panel(close_last=105.0, panic_last=68.0, smart_score_last=60.0)
     strategy = MacroRotationV6Strategy()
     signals = strategy.on_bar(df)
     assert len(signals) == 3
     sig_map = {s.symbol: s.target_weight for s in signals}
-    assert sig_map["399006.SZ"] == 1.0
-    assert sig_map["000922.CSI"] == 0.0
-    assert sig_map["000300.SH"] == 0.0
+    assert sig_map["399006.SZ"] == 0.5
+    assert sig_map["000300.SH"] == 0.3
+    assert sig_map["000922.CSI"] == 0.2
 
 
 def test_v6_low_valuation_regime_allocates_value_defense() -> None:

@@ -89,6 +89,28 @@ def test_all_weather_phase_1_left_support_resonance(base_df):
     assert strat.weights[strat.sym_gold] == 0.0
 
 
+def test_all_weather_phase_1_smart_money_resonance(base_df):
+    """相态 1 左侧：恐慌 + 聪明钱共振 (Panic > 65 & SmartMoney >= 80 & Close < MA20) -> 权益左侧托底。"""
+    strat = MacroAllWeatherStrategy()
+    df = base_df.with_columns(
+        pl.when(pl.col("trade_date") == date(2024, 1, 25))
+        .then(pl.lit(80.0))  # 跌破 MA20
+        .otherwise(pl.col("close"))
+        .alias("close"),
+        pl.when(pl.col("trade_date") == date(2024, 1, 25))
+        .then(pl.lit(68.0))
+        .otherwise(pl.col("panic_index"))
+        .alias("panic_index"),
+        pl.lit(85.0).alias("smart_money_score"),
+    )
+    signals = strat.on_bar(df)
+    target_weights = {sig.symbol: sig.target_weight for sig in signals}
+    assert target_weights[strat.sym_core] == 0.4
+    assert target_weights[strat.sym_bond] == 0.0
+    assert strat.weights[strat.sym_defensive] == 0.3
+    assert strat.weights[strat.sym_growth] == 0.3
+
+
 def test_all_weather_phase_1_right_breakout(base_df):
     """相态 1 右侧：极度恐慌右侧突破 (Panic > 75 & Close >= MA20) -> 70% 创业板 + 30% 300 ETF。"""
     strat = MacroAllWeatherStrategy()
