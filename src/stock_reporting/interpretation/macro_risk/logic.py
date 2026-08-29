@@ -1,4 +1,32 @@
+"""宏观风控双轨制雷达：研报评级分段、图标与定性建议业务逻辑。
+
+所有阈值分段、图标与话术均优先从 `config/reporting/macro_risk_thresholds.yaml` 加载，
+实现投研文案与 Python 代码层彻底解耦。
+"""
+
+from __future__ import annotations
+
+from pathlib import Path
 from typing import Any
+
+import yaml
+
+from stock_reporting.interpretation.macro_risk.fallback_config import FALLBACK_CONFIG
+
+_DEFAULT_CONFIG_PATH = Path("config/reporting/macro_risk_thresholds.yaml")
+
+
+def load_reporting_config(config_path: Path | str | None = None) -> dict[str, Any]:
+    """读取研报评级与定性话术配置文件。"""
+    cfg_p = Path(config_path) if config_path else _DEFAULT_CONFIG_PATH
+    if cfg_p.is_file():
+        try:
+            payload = yaml.safe_load(cfg_p.read_text(encoding="utf-8"))
+            if isinstance(payload, dict) and "dimensions" in payload:
+                return payload
+        except Exception:
+            pass
+    return FALLBACK_CONFIG
 
 
 def _safe_float(val: Any, default: float = 0.0) -> float:
@@ -10,83 +38,63 @@ def _safe_float(val: Any, default: float = 0.0) -> float:
         return default
 
 
-def _grade_leverage(val: float | None) -> tuple[str, str, str]:
-    if val is None:
-        return "数据暂缺", "⚪", "历史数据不足"
-    if val >= 85.0:
-        return "极度高危", "🔴", "存量杠杆触顶，严防连环多杀多强平"
-    if val >= 65.0:
-        return "偏高警惕", "🟡", "杠杆资金积聚，容错空间收窄"
-    if val <= 30.0:
-        return "杠杆健康", "🟢", "场内杠杆处于低位，无踩踏风险"
-    return "规模适中", "⚪", "杠杆水平处于正常区间"
-
-
-def _grade_crowding(val: float | None) -> tuple[str, str, str]:
-    if val is None:
-        return "数据暂缺", "⚪", "历史数据不足"
-    if val >= 85.0:
-        return "严重过热", "🔴", "换手极度亢奋，短线买力濒临透支"
-    if val >= 65.0:
-        return "偏热过载", "🟡", "交易活跃度高，面临动量失速"
-    if val <= 20.0:
-        return "地量冰点", "🟢", "交投极度低迷，常对应坚实地量底"
-    return "换手适中", "⚪", "交投活跃度处于正常区间"
-
-
-def _grade_flow(
-    val: float | None, etf_score: float | None = None, div_score: float | None = None
+def _grade_dim(
+    dim_key: str,
+    val: float | None,
+    cfg: dict[str, Any],
+    special_vars: dict[str, float | None] | None = None,
 ) -> tuple[str, str, str]:
+    """根据 YAML 分段配置打分并匹配话术。"""
+    dim_cfg = cfg.get("dimensions", {}).get(dim_key, {})
     if val is None:
-        return "数据暂缺", "⚪", "历史数据不足"
-    if etf_score is not None and etf_score >= 90.0:
-        return "国家队托底", "🟢", "宽基ETF获大额净申购托底，对冲现货抛压"
-    if div_score is not None and div_score >= 85.0 and val is not None and val >= 65.0:
-        return "主力派发", "🔴", "主力坚决流出且散户激进接盘，筹码严重背离"
-    if val >= 80.0:
-        return "坚决出逃", "🔴", "主力资金单向大幅净流出，防范真摔"
-    if val >= 60.0:
-        return "流出承压", "🟡", "主力资金持续净流出"
-    if val <= 30.0:
-        return "流入活跃", "🟢", "主力资金积极回流加仓"
-    return "流向平衡", "⚪", "主力资金流向未见明显倾斜"
+        missing = dim_cfg.get("missing", {})
+        return (
+            missing.get("grade", "数据暂缺"),
+            missing.get("icon", "⚪"),
+            missing.get("comment", "历史数据不足"),
+        )
+
+    special_cases = dim_cfg.get("special_cases", [])
+    if special_cases and special_vars:
+        for sc in special_cases:
+            cond = sc.get("condition")
+            if cond == "etf_score_gte_90":
+                etf_s = special_vars.get("etf_score")
+                if etf_s is not None and etf_s >= sc.get("etf_score_min", 90.0):
+                    return sc["grade"], sc["icon"], sc["comment"]
+            elif cond == "divergence_and_flow":
+                div_s = special_vars.get("div_score")
+                if (
+                    div_s is not None
+                    and div_s >= sc.get("div_score_min", 85.0)
+                    and val >= sc.get("val_min", 65.0)
+                ):
+                    return sc["grade"], sc["icon"], sc["comment"]
+
+    tiers = dim_cfg.get("tiers", [])
+    default_tier: dict[str, str] = {"grade": "正常", "icon": "⚪", "comment": "处于正常区间"}
+    for t in tiers:
+        if t.get("default"):
+            default_tier = t
+            continue
+        if "min" in t and val >= float(t["min"]):
+            return t["grade"], t["icon"], t["comment"]
+        if "max" in t and val <= float(t["max"]):
+            return t["grade"], t["icon"], t["comment"]
+
+    return (
+        default_tier.get("grade", "正常"),
+        default_tier.get("icon", "⚪"),
+        default_tier.get("comment", "处于正常区间"),
+    )
 
 
-def _grade_sentiment(val: float | None) -> tuple[str, str, str]:
-    if val is None:
-        return "数据暂缺", "⚪", "历史数据不足"
-    if val >= 80.0:
-        return "极度恐慌", "🟢", "期权抢买Put避险，反向做多胜率极高"
-    if val >= 60.0:
-        return "恐慌升温", "🟡", "避险情绪上升，波动率放大"
-    if val <= 20.0:
-        return "极度自满", "🔴", "波动率降至冰点，警惕突发利空杀伤"
-    return "情绪平稳", "⚪", "期权定价与避险情绪处于正常区间"
+def evaluate_macro_risk(
+    row: dict[str, Any], config_path: Path | str | None = None
+) -> dict[str, Any]:
+    """根据当日指标快照生成多维风险评级与投研建议。"""
+    cfg = load_reporting_config(config_path)
 
-
-def _grade_breadth(val: float | None) -> tuple[str, str, str]:
-    if val is None:
-        return "数据暂缺", "⚪", "历史数据不足"
-    if val >= 85.0:
-        return "全面普跌", "🟡", "个股大面积破位，短期情绪宣泄充分"
-    if val <= 20.0:
-        return "全线普涨", "⚪", "赚钱效应扩散，涨多后警惕分化"
-    return "结构均衡", "⚪", "涨跌家数与新高新低未现极端背离"
-
-
-def _grade_valuation(val: float | None) -> tuple[str, str, str]:
-    if val is None:
-        return "数据暂缺", "⚪", "历史数据不足"
-    if val >= 80.0:
-        return "估值昂贵", "🔴", "ERP与PB处于高位，中长线期望空间压缩"
-    if val >= 60.0:
-        return "估值偏高", "🟡", "安全边际收窄，需业绩消化"
-    if val <= 20.0:
-        return "极度低估", "🟢", "安全边际极高，长线配置价值突出"
-    return "估值合理", "⚪", "处于历史中位数水平"
-
-
-def evaluate_macro_risk(row: dict[str, Any]) -> dict[str, Any]:
     overheat = _safe_float(row.get("overheat_index"))
     panic = _safe_float(row.get("panic_index"))
     crowding = _safe_float(row.get("dim_crowding"))
@@ -119,15 +127,14 @@ def evaluate_macro_risk(row: dict[str, Any]) -> dict[str, Any]:
         else None
     )
 
-    # Tiers grading
-    s_lev, b_lev, d_lev = _grade_leverage(val_leverage)
-    s_crw, b_crw, d_crw = _grade_crowding(val_crowding)
-    s_flw, b_flw, d_flw = _grade_flow(val_flow, etf_score=val_etf_score, div_score=val_div_score)
+    special_flow = {"etf_score": val_etf_score, "div_score": val_div_score}
 
-    s_sen, b_sen, d_sen = _grade_sentiment(val_sentiment)
-    s_brd, b_brd, d_brd = _grade_breadth(val_breadth)
-
-    s_val, b_val, d_val = _grade_valuation(val_valuation)
+    s_lev, b_lev, d_lev = _grade_dim("leverage", val_leverage, cfg)
+    s_crw, b_crw, d_crw = _grade_dim("crowding", val_crowding, cfg)
+    s_flw, b_flw, d_flw = _grade_dim("flow", val_flow, cfg, special_flow)
+    s_sen, b_sen, d_sen = _grade_dim("sentiment", val_sentiment, cfg)
+    s_brd, b_brd, d_brd = _grade_dim("breadth", val_breadth, cfg)
+    s_val, b_val, d_val = _grade_dim("valuation", val_valuation, cfg)
 
     risk_tiers = [
         {
@@ -196,7 +203,6 @@ def evaluate_macro_risk(row: dict[str, Any]) -> dict[str, Any]:
     ]
 
     advice = ""
-    # 按照绝对偏离度 (严重程度) 排序判定
     if overheat > 65 and panic > 65:
         status = "双极值共振 —— 【高位杠杆踩踏 (严禁抄底)】"
         level = "danger"
@@ -279,3 +285,6 @@ def evaluate_macro_risk(row: dict[str, Any]) -> dict[str, Any]:
         "risk_tiers": risk_tiers,
         "advice": advice,
     }
+
+
+__all__ = ["evaluate_macro_risk", "load_reporting_config"]

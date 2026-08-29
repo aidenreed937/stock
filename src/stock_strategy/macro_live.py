@@ -155,8 +155,13 @@ def inspect_live_signal(
             "initial_weights",
             "benchmark_symbol",
             "friction",
+            "thresholds",
         }:
             strategy_kwargs[k] = v
+
+    if "thresholds" in spec and isinstance(spec["thresholds"], dict):
+        for tk, tv in spec["thresholds"].items():
+            strategy_kwargs[tk] = tv
 
     strategy = create_strategy(str(spec["strategy_class"]), **strategy_kwargs)
     strategy.on_init()

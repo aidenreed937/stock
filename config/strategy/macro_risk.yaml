@@ -1,5 +1,60 @@
-# 宏观风控策略配置（V3 单宽基 / V4 哑铃轮动）
-# 该文件仅作为 CLI 与研究的默认参数来源，不套用 StrategyConfig（选股策略 schema 不适用）。
+# 宏观风控策略配置（V3 单宽基 / V4 哑铃轮动 / V5 动量增强 / V6 三核自适应）
+# 该文件作为策略回测、跨周期审计与 14:50 生产实盘执行的统一配置信任源。
+
+# 1. 横向对比基准配置
+benchmarks:
+  - symbol: "000985.CSI"
+    name: "中证全指"
+  - symbol: "000300.SH"
+    name: "沪深300"
+
+# 2. 6 大跨周期历史宏观范式切片
+macro_regimes:
+  - name: "范式一：杠杆牛熊"
+    start_date: "2015-01-05"
+    end_date: "2015-12-31"
+    description: "配资杠杆狂热 -> 破位暴跌"
+  - name: "范式二：供给侧蓝筹"
+    start_date: "2016-01-04"
+    end_date: "2017-12-29"
+    description: "三去一降一补+白马价值风格"
+  - name: "范式三：去杠杆慢熊"
+    start_date: "2018-01-02"
+    end_date: "2018-12-28"
+    description: "中美贸易摩擦+信用收紧出清"
+  - name: "范式四：公募抱团牛"
+    start_date: "2019-01-02"
+    end_date: "2021-02-18"
+    description: "核心资产抱团+创业板主升"
+  - name: "范式五：存量红利防守"
+    start_date: "2021-02-19"
+    end_date: "2024-01-31"
+    description: "高估值泡沫出清+红利防御"
+  - name: "范式六：政策新质牛"
+    start_date: "2024-02-01"
+    end_date: "2026-08-28"
+    description: "政策底托底+科技弹性爆发"
+
+# 3. 历史极端危机压力测试情景
+stress_tests:
+  - name: "2015 杠杆股灾"
+    start_date: "2015-06-15"
+    end_date: "2015-08-26"
+    description: "千股跌停与去杠杆多杀多"
+  - name: "2018 慢熊主跌段"
+    start_date: "2018-01-29"
+    end_date: "2018-10-19"
+    description: "贸易摩擦升级与股权质押爆雷"
+  - name: "2020 疫情首波冲击"
+    start_date: "2020-01-23"
+    end_date: "2020-03-23"
+    description: "全球流动性危机与海外熔断"
+  - name: "2024 微盘流动性踩踏"
+    start_date: "2024-01-02"
+    end_date: "2024-02-05"
+    description: "量化DMA与微盘踩踏极端杀跌"
+
+# 4. 策略参数配置
 strategies:
   macro_risk_v3:
     strategy_class: "MacroRiskV3Strategy"
@@ -9,6 +64,10 @@ strategies:
     initial_weights:
       "000300.SH": 1.0
     ma_window: 20
+    thresholds:
+      panic_threshold: 75.0
+      panic_entry_threshold: 65.0
+      overheat_threshold: 65.0
 
   macro_rotation_v4:
     strategy_class: "MacroRotationV4Strategy"
@@ -20,6 +79,9 @@ strategies:
       "000922.CSI": 0.5
       "399006.SZ": 0.5
     ma_window: 20
+    thresholds:
+      panic_threshold: 75.0
+      overheat_threshold: 65.0
 
   macro_rotation_v5:
     strategy_class: "MacroRotationV5Strategy"
@@ -31,6 +93,9 @@ strategies:
       "000922.CSI": 0.5
       "399006.SZ": 0.5
     ma_window: 20
+    thresholds:
+      panic_threshold: 75.0
+      overheat_threshold: 65.0
 
   macro_rotation_v6:
     strategy_class: "MacroRotationV6Strategy"
@@ -44,6 +109,9 @@ strategies:
       "399006.SZ": 0.4
       "000300.SH": 0.2
     ma_window: 20
+    thresholds:
+      panic_threshold: 75.0
+      overheat_threshold: 65.0
 
   macro_rotation_v4_etf:
     strategy_class: "MacroRotationV4Strategy"
@@ -55,6 +123,9 @@ strategies:
       "510880.SH": 0.5
       "159915.SZ": 0.5
     ma_window: 20
+    thresholds:
+      panic_threshold: 75.0
+      overheat_threshold: 65.0
     friction:
       commission_rate: 0.0001 # 万1券商佣金
       slippage_rate: 0.0005 # 0.05% 冲击滑点
@@ -72,6 +143,9 @@ strategies:
       "159915.SZ": 0.4
       "510300.SH": 0.2
     ma_window: 20
+    thresholds:
+      panic_threshold: 75.0
+      overheat_threshold: 65.0
     friction:
       commission_rate: 0.0001 # 万1券商佣金
       slippage_rate: 0.0005 # 0.05% 冲击滑点
