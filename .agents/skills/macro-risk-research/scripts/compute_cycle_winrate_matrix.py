@@ -20,13 +20,24 @@ from pathlib import Path
 import duckdb
 import polars as pl
 
-# 信号情景定义: (名称, 过滤表达式, 列名) —— 表达式作用于 risk_factors 的列
+# 信号情景定义: (名称, 过滤表达式) —— 表达式作用于 risk_factors 的列
 SCENARIOS: list[tuple[str, str]] = [
     ("全样本基准", "1 == 1"),
     ("狂热区 (Overheat > 65)", "overheat_index > 65"),
     ("恐慌区 (Panic > 65)", "panic_index > 65"),
-    ("国家队托底 (ETF >= 90)", "etf_flow_ratio_score >= 90"),
     ("极度冰点 (Panic > 75)", "panic_index > 75"),
+    ("聪明钱逆势接货 (SmartMoney >= 80)", "smart_money_score >= 80"),
+    ("产业资本增持潮 (Insider >= 80)", "insider_net_score >= 80"),
+    ("真黄金坑 (Panic>65 & SmartMoney>=80)", "panic_index > 65 and smart_money_score >= 80"),
+]
+
+MACRO_REGIMES: list[tuple[str, str, str]] = [
+    ("范式一：杠杆牛熊", "2015-01-05", "2015-12-31"),
+    ("范式二：供给侧蓝筹", "2016-01-04", "2017-12-29"),
+    ("范式三：去杠杆慢熊", "2018-01-02", "2018-12-28"),
+    ("范式四：公募抱团牛", "2019-01-02", "2021-02-18"),
+    ("范式五：存量红利防守", "2021-02-19", "2024-01-31"),
+    ("范式六：政策新质牛", "2024-02-01", "2026-08-28"),
 ]
 
 WINDOWS = (20, 60)
@@ -40,7 +51,6 @@ def _forward_returns(index_close: pl.DataFrame) -> pl.DataFrame:
     frame = index_close.sort("trade_date")
     out = frame.select("trade_date")
     for w in WINDOWS:
-        # 未来第 w 个交易日的收盘价 (按行索引平移)
         shifted = frame.with_columns(pl.col("close").shift(-w).alias("fwd_close"))
         fwd = (
             frame.join(shifted.select(["trade_date", "fwd_close"]), on="trade_date", how="left")
@@ -95,28 +105,59 @@ def main() -> None:
     full_ret = _forward_returns(index_df.filter(pl.col("symbol") == "000985"))
     chi_ret = _forward_returns(index_df.filter(pl.col("symbol") == "399006"))
 
+    risk_cols = ["trade_date", "panic_index", "overheat_index"]
+    for opt_col in ("smart_money_score", "insider_net_score", "repurchase_score"):
+        if opt_col in risk_df.columns:
+            risk_cols.append(opt_col)
+
     merged = (
-        risk_df.select(["trade_date", "panic_index", "overheat_index", "etf_flow_ratio_score"])
+        risk_df.select(risk_cols)
         .join(full_ret, on="trade_date", how="left", suffix="_full")
         .join(chi_ret, on="trade_date", how="left", suffix="_chi")
     )
 
     latest = risk_df["trade_date"].max()
-    print(f"=== 20/60 日前向胜率矩阵复算 (样本区间 {risk_df['trade_date'].min()} ~ {latest}, "
+    print(f"=== 20/60 日前向胜率矩阵全样本复算 (样本区间 {risk_df['trade_date'].min()} ~ {latest}, "
           f"共 {len(risk_df)} 个因子日) ===")
-    print(f"{'信号情景':<32}{'样本':>6} | {'全指20D胜率':>12} {'均收益':>8} | "
+    print(f"{'信号情景':<36}{'样本':>6} | {'全指20D胜率':>12} {'均收益':>8} | "
           f"{'全指60D胜率':>12} {'均收益':>8} | {'创业20D胜率':>12} {'均收益':>8} | "
           f"{'创业60D胜率':>12} {'均收益':>8}")
-    print("-" * 150)
+    print("-" * 155)
 
     for name, cond in SCENARIOS:
-        sub = merged.filter(pl.sql_expr(cond))
+        try:
+            sub = merged.filter(pl.sql_expr(cond))
+        except Exception:
+            continue
         n20, wr20f, mr20f = _win_stats(sub, "fwd20")
         _, wr60f, mr60f = _win_stats(sub, "fwd60")
         _, wr20c, mr20c = _win_stats(sub, "fwd20_chi")
         _, wr60c, mr60c = _win_stats(sub, "fwd60_chi")
         print(
-            f"{name:<32}{n20:>6} | {wr20f:>10.1f}% {mr20f:>+7.2f}% | "
+            f"{name:<36}{n20:>6} | {wr20f:>10.1f}% {mr20f:>+7.2f}% | "
+            f"{wr60f:>10.1f}% {mr60f:>+7.2f}% | {wr20c:>10.1f}% {mr20c:>+7.2f}% | "
+            f"{wr60c:>10.1f}% {mr60c:>+7.2f}%"
+        )
+
+    print("\n" + "=" * 155)
+    print("=== 6 大宏观范式分段前向胜率对账矩阵 ===")
+    print(f"{'宏观范式':<24}{'起止区间':<25}{'样本':>6} | {'全指20D胜率':>12} {'均收益':>8} | "
+          f"{'全指60D胜率':>12} {'均收益':>8} | {'创业20D胜率':>12} {'均收益':>8} | "
+          f"{'创业60D胜率':>12} {'均收益':>8}")
+    print("-" * 155)
+
+    for r_name, start_d, end_d in MACRO_REGIMES:
+        sub = merged.filter(
+            (pl.col("trade_date") >= pl.lit(start_d).str.to_date())
+            & (pl.col("trade_date") <= pl.lit(end_d).str.to_date())
+        )
+        date_range_str = f"{start_d}~{end_d}"
+        n20, wr20f, mr20f = _win_stats(sub, "fwd20")
+        _, wr60f, mr60f = _win_stats(sub, "fwd60")
+        _, wr20c, mr20c = _win_stats(sub, "fwd20_chi")
+        _, wr60c, mr60c = _win_stats(sub, "fwd60_chi")
+        print(
+            f"{r_name:<24}{date_range_str:<25}{n20:>6} | {wr20f:>10.1f}% {mr20f:>+7.2f}% | "
             f"{wr60f:>10.1f}% {mr60f:>+7.2f}% | {wr20c:>10.1f}% {mr20c:>+7.2f}% | "
             f"{wr60c:>10.1f}% {mr60c:>+7.2f}%"
         )
