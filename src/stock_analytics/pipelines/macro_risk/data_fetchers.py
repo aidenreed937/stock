@@ -173,11 +173,10 @@ def fetch_leverage(ctx: FetchContext) -> pl.DataFrame:
 def fetch_main_flow(ctx: FetchContext) -> pl.DataFrame:
     """获取主力资金流多维数据：现货主力、国家队宽基ETF、散户博弈分歧与综合主力流向。
 
-    ETF 资金流由日终份额变动（Δ份额 × 收盘价）计算，T+1 早间才公布：
-    对 ``etf_flow_ratio`` 按交易日历平移至下一交易日，消除发布时滞前视。
-    复合列 ``composite_flow``（含 1.2×ETF 净流入分量）与 ``divergence_score``
-    （含龙虎榜/两融成分）为混合口径，经 1250 日滚动分位与维度均值平滑后
-    时滞影响有限，暂不平移。
+    PIT 严格对齐：
+    1. ETF 资金流由日终份额变动（Δ份额 × 收盘价）计算，T+1 早间公布；
+    2. 复合列 ``composite_flow``（含 ETF 净流入分量）与 ``divergence_score``（含龙虎榜/两融成分）均为混合/次晨披露口径；
+    对上述列按交易日历平移至下一交易日，彻底消除发布时滞前视偏差。
     """
     try:
         cg = ctx.fs.get_domain_mart("capital_game_daily")
@@ -209,12 +208,16 @@ def fetch_main_flow(ctx: FetchContext) -> pl.DataFrame:
             # 交易日历不可用时跳过平移（保留原始时序），仅在有完整日历时执行 PIT 修复
             if ctx.md.is_empty() or "trade_date" not in ctx.md.columns:
                 return frame
-            etf_shifted = _shift_to_next_trading_day(
-                frame.select(["trade_date", "etf_flow_ratio"]),
+            shifted = _shift_to_next_trading_day(
+                frame.select(
+                    ["trade_date", "etf_flow_ratio", "composite_flow", "divergence_score"]
+                ),
                 ctx.md.select("trade_date"),
-                shift_cols=["etf_flow_ratio"],
+                shift_cols=["etf_flow_ratio", "composite_flow", "divergence_score"],
             )
-            return frame.drop("etf_flow_ratio").join(etf_shifted, on="trade_date", how="left")
+            return frame.drop(["etf_flow_ratio", "composite_flow", "divergence_score"]).join(
+                shifted, on="trade_date", how="left"
+            )
 
     # Fallback to market_daily
     return ctx.md.select(

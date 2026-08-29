@@ -53,6 +53,11 @@ def _build_parser() -> argparse.ArgumentParser:
         help="运行 CI 策略防退化回归门禁断言，若核心指标退化则以非 0 退出",
     )
     parser.add_argument(
+        "--walk-forward",
+        action="store_true",
+        help="运行 Walk-Forward 滚动 3Y 样本内 -> 1Y 样本外检验",
+    )
+    parser.add_argument(
         "--no-charts",
         action="store_true",
         help="跳过 Matplotlib 图表生成",
@@ -89,6 +94,49 @@ def main() -> None:
     print(f"  - 范式对账 CSV: {Path(args.output_dir) / 'regime_comparison.csv'}")
     print(f"  - 压力测试 CSV: {Path(args.output_dir) / 'stress_test_comparison.csv'}")
     print(f"  - 滚动统计 CSV: {Path(args.output_dir) / 'rolling_stability_stats.csv'}")
+
+    if args.walk_forward:
+        print("\n正在执行 Walk-Forward 滚动样本外 (OOS) 检验...")
+        from stock_data.catalog import DataCatalog
+        from stock_strategy.macro.assembly import assemble_macro_panel, load_price_panel
+        from stock_strategy.macro.report import load_all_strategy_specs
+        from stock_strategy.macro.walk_forward import (
+            render_walk_forward_markdown,
+            run_walk_forward_analysis,
+        )
+
+        catalog = DataCatalog(data_source=args.data_source)
+        macro_panel = assemble_macro_panel(
+            catalog=catalog,
+            benchmark_symbol="000985.CSI",
+            risk_root=Path(args.risk_root),
+        )
+        specs = load_all_strategy_specs(config_path)
+
+        all_syms: set[str] = set()
+        for spec in specs.values():
+            all_syms.update(spec.get("symbols", []))
+        price_panel = load_price_panel(catalog=catalog, symbols=sorted(all_syms))
+
+        wf_results = []
+        for name, spec in specs.items():
+            wf_res = run_walk_forward_analysis(
+                strategy_name=name,
+                strategy_spec=spec,
+                macro_panel=macro_panel,
+                price_panel=price_panel,
+                train_years=3,
+                test_years=1,
+            )
+            if wf_res is not None:
+                wf_results.append(wf_res)
+
+        if wf_results:
+            wf_md = render_walk_forward_markdown(wf_results)
+            print("\n" + wf_md)
+            wf_path = Path(args.output_dir) / "walk_forward_report.md"
+            wf_path.write_text(wf_md, encoding="utf-8")
+            print(f"  - Walk-Forward 研报已落盘: {wf_path}")
 
     if args.assert_guardrails:
         print("\n正在执行策略防退化回归门禁断言 (CI Guardrails)...")

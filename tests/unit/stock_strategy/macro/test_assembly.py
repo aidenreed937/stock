@@ -97,3 +97,35 @@ def test_load_price_panel_concats_symbols() -> None:
     )
     assert sorted(panel["symbol"].to_list()) == ["000922.CSI", "399006.SZ"]
     assert sorted(panel["close"].to_list()) == [10.0, 20.0]
+
+
+def test_load_price_panel_etf_adjustment() -> None:
+    class _FakeETFCatalog(_FakeCatalog):
+        data_source = "tushare"
+        runtime = None
+
+        def load_dataset(self, dataset: str, symbols: list[str] | None = None) -> pl.DataFrame:
+            if dataset == "fund_adj":
+                return pl.DataFrame(
+                    {
+                        "trade_date": [date(2026, 1, 1), date(2026, 1, 2)],
+                        "adj_factor": [1.5, 1.5],
+                    }
+                )
+            return pl.DataFrame()
+
+    frames = {
+        "510880.SH": pl.DataFrame(
+            {
+                "trade_date": [date(2026, 1, 1), date(2026, 1, 2)],
+                "symbol": ["510880.SH", "510880.SH"],
+                "close": [10.0, 20.0],
+            }
+        ),
+    }
+    panel = assembly.load_price_panel(
+        catalog=_FakeETFCatalog(frames),
+        symbols=["510880.SH"],
+    )
+    assert panel["symbol"].to_list() == ["510880.SH", "510880.SH"]
+    assert panel["close"].to_list() == [15.0, 30.0]

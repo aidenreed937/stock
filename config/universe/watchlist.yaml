@@ -330,6 +330,10 @@ universe:
         name: "十年国债ETF"
         description: "长期无风险利率与固收资产 (国泰)"
         base_date: "2017-08-24"
+      - code: "511010.SH"
+        name: "国债ETF"
+        description: "5年期国债与中期固收避险标杆 (国泰)"
+        base_date: "2013-03-25"
 
   # 全球与美股核心资产 (yfinance)
   global:

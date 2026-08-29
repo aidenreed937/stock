@@ -116,6 +116,56 @@ def assemble_macro_panel(
     return panel.select(["trade_date", "close", "panic_index", "overheat_index", *extra_cols])
 
 
+def _adjust_etf_price(catalog: DataCatalog, bar: pl.DataFrame, sym: str) -> pl.DataFrame:
+    """若存在 fund_adj 复权因子，将 ETF 原始收盘价转换为后复权收盘价。"""
+    if bar.is_empty() or "close" not in bar.columns:
+        return bar
+    candidate_symbols = [sym]
+    if "." not in sym:
+        candidate_symbols.extend([f"{sym}.SH", f"{sym}.SZ"])
+    else:
+        candidate_symbols.append(sym.split(".")[0])
+
+    adj_df = pl.DataFrame()
+    try:
+        adj_df = catalog.load_dataset("fund_adj", symbols=candidate_symbols)
+    except Exception:
+        pass
+
+    if adj_df.is_empty() and catalog.data_source != "tushare":
+        try:
+            from stock_data.catalog import DataCatalog
+
+            ts_cat = DataCatalog(runtime=catalog.runtime, data_source="tushare")
+            adj_df = ts_cat.load_dataset("fund_adj", symbols=candidate_symbols)
+        except Exception:
+            pass
+
+    if not adj_df.is_empty() and "trade_date" in adj_df.columns and "adj_factor" in adj_df.columns:
+        adj_clean = (
+            adj_df.select(
+                [
+                    pl.col("trade_date").cast(pl.Date),
+                    pl.col("adj_factor").cast(pl.Float64, strict=False),
+                ]
+            )
+            .drop_nulls(subset=["trade_date", "adj_factor"])
+            .unique(subset=["trade_date"], keep="last")
+        )
+        bar = (
+            bar.with_columns(pl.col("trade_date").cast(pl.Date))
+            .join(adj_clean, on="trade_date", how="left")
+            .with_columns(
+                pl.when(pl.col("adj_factor").is_not_null() & (pl.col("adj_factor") > 0))
+                .then(pl.col("close") * pl.col("adj_factor"))
+                .otherwise(pl.col("close"))
+                .alias("close")
+            )
+            .drop("adj_factor")
+        )
+    return bar
+
+
 def load_price_panel(
     *,
     catalog: DataCatalog,
@@ -124,6 +174,8 @@ def load_price_panel(
     end_date: date | None = None,
 ) -> pl.DataFrame:
     """装配多标的指数日线价格面板（回测净值用）。
+
+    对 ETF 标的自动加载 ``fund_adj`` 复权因子并计算后复权价，消除分红除权带来的收益低估。
 
     Returns:
         ``trade_date / symbol / close`` 长表，按 (trade_date, symbol) 升序。
@@ -153,6 +205,8 @@ def load_price_panel(
                     columns=["trade_date", "symbol", "close"],
                 )
             if not bar.is_empty():
+                if is_etf and ds == "fund_daily":
+                    bar = _adjust_etf_price(catalog, bar, sym)
                 frames.append(bar)
                 break
     if not frames:

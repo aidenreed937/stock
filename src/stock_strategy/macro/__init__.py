@@ -36,6 +36,12 @@ from stock_strategy.macro.report import (
     nav_from_close,
 )
 from stock_strategy.macro.runner import MacroRiskRunner
+from stock_strategy.macro.walk_forward import (
+    WalkForwardResult,
+    WalkForwardSlice,
+    render_walk_forward_markdown,
+    run_walk_forward_analysis,
+)
 
 __all__ = [
     "MACRO_REGIMES",
@@ -44,6 +50,8 @@ __all__ = [
     "LiveSignalInspectionResult",
     "MacroRiskRunner",
     "StabilityAuditResult",
+    "WalkForwardResult",
+    "WalkForwardSlice",
     "assemble_macro_panel",
     "assert_stability_guardrails",
     "build_multi_strategy_comparison_report",
@@ -61,5 +69,7 @@ __all__ = [
     "load_strategy_spec",
     "load_stress_tests",
     "nav_from_close",
+    "render_walk_forward_markdown",
     "run_full_stability_audit",
+    "run_walk_forward_analysis",
 ]
