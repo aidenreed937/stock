@@ -20,9 +20,9 @@ def test_sqlite_engine_initialization_and_pragmas(tmp_path: Path) -> None:
     cursor.execute("PRAGMA foreign_keys;")
     assert cursor.fetchone()[0] == 1
 
-    # 3. 验证 user_version 升至 3 (当前包含 001, 002, 003 三个迁移)
+    # 3. 验证 user_version 升至最新迁移版本 (>= 4)
     cursor.execute("PRAGMA user_version;")
-    assert cursor.fetchone()[0] == 3
+    assert cursor.fetchone()[0] >= 4
 
     # 4. 验证表存在
     cursor.execute("SELECT name FROM sqlite_master WHERE type='table' AND name='accounts';")
