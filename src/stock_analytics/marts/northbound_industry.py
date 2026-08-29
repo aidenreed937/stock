@@ -127,6 +127,7 @@ def build_northbound_industry_frame(
         right_on="trade_date",
         by="symbol",
         strategy="backward",
+        check_sortedness=False,
     ).with_columns((pl.col("vol") * pl.col("close")).alias("_hold_value"))
 
     # 个股 -> 申万一级：按成分进出日期判定当日有效归属，并补齐行业码与名称

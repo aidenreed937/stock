@@ -5,6 +5,7 @@
 
 from __future__ import annotations
 
+from stock_reporting.core.matplotlib_config import configure_matplotlib
 from stock_reporting.core.quality import render_quality_report_markdown
 from stock_reporting.core.watermark import (
     human_watermark_issue_lines,
@@ -64,6 +65,7 @@ __all__ = [
     "build_market_aggregate_report_json",
     "build_market_temperature_report_json",
     "build_quant_brief_json",
+    "configure_matplotlib",
     "human_watermark_issue_lines",
     "human_watermark_latest_text",
     "render_industry_structure_human_report_markdown",

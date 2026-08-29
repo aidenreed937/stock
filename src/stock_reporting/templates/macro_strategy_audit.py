@@ -2,7 +2,6 @@
 
 from __future__ import annotations
 
-import os
 from datetime import date
 from pathlib import Path
 from typing import Any
@@ -19,23 +18,9 @@ def render_stability_charts(
     output_dir: Path,
 ) -> Path:
     """生成 4 合 1 高清对比图表。"""
-    if not os.environ.get("MPLCONFIGDIR"):
-        mpl_cache = Path("data/.mplconfig")
-        mpl_cache.mkdir(parents=True, exist_ok=True)
-        os.environ["MPLCONFIGDIR"] = str(mpl_cache.resolve())
+    from stock_reporting.core.matplotlib_config import configure_matplotlib
 
-    import matplotlib
-
-    matplotlib.use("Agg")
-    import matplotlib.pyplot as plt
-
-    plt.rcParams["font.sans-serif"] = [
-        "PingFang SC",
-        "Hiragino Sans GB",
-        "Arial Unicode MS",
-        "DejaVu Sans",
-    ]
-    plt.rcParams["axes.unicode_minus"] = False
+    matplotlib, plt = configure_matplotlib()
 
     fig = plt.figure(figsize=(16, 12))
 

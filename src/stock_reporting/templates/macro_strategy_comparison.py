@@ -2,7 +2,6 @@
 
 from __future__ import annotations
 
-import os
 from collections.abc import Callable
 from datetime import date
 from pathlib import Path
@@ -22,23 +21,9 @@ def render_comparison_chart(
     benchmarks_list: list[tuple[str, str]] | None = None,
 ) -> Path:
     """绘制所有策略与基准的资金曲线多合一对比图。"""
-    if not os.environ.get("MPLCONFIGDIR"):
-        cache_dir = Path("data/.mplconfig")
-        cache_dir.mkdir(parents=True, exist_ok=True)
-        os.environ["MPLCONFIGDIR"] = str(cache_dir.resolve())
+    from stock_reporting.core.matplotlib_config import configure_matplotlib
 
-    import matplotlib
-
-    matplotlib.use("Agg")
-    import matplotlib.pyplot as plt
-
-    plt.rcParams["font.sans-serif"] = [
-        "PingFang SC",
-        "Hiragino Sans GB",
-        "Arial Unicode MS",
-        "DejaVu Sans",
-    ]
-    plt.rcParams["axes.unicode_minus"] = False
+    _, plt = configure_matplotlib()
 
     b_list = benchmarks_list or _DEFAULT_BENCHMARKS
     fig, ax = plt.subplots(figsize=(12, 6), dpi=150)
@@ -54,7 +39,10 @@ def render_comparison_chart(
         ax.plot(pydates, navs, label=name, linewidth=lw, linestyle=ls, alpha=alpha)
 
     ax.set_title(
-        "宏观风控多策略全周期资金曲线横向对比 (2015-2026)", fontsize=14, fontweight="bold", pad=12
+        "宏观风控多策略全周期资金曲线横向对比 (2015-2026)",
+        fontsize=14,
+        fontweight="semibold",
+        pad=12,
     )
     ax.set_xlabel("交易日期", fontsize=11)
     ax.set_ylabel("复权净值 (首日归一为 1.0)", fontsize=11)

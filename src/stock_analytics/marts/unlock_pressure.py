@@ -90,6 +90,7 @@ def build_unlock_pressure_frame(
             right_on="trade_date",
             by="symbol",
             strategy="backward",
+            check_sortedness=False,
         )
 
     priced = priced.with_columns((pl.col("float_share") * pl.col("close")).alias("_amount"))
