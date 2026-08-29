@@ -1,0 +1,153 @@
+# 申万 31 行业轮动多策略配置（纯动量 / 反拥挤逆向 / 供需剪刀差 / 宏观相态元路由）
+# 作为行业策略回测、跨周期审计与 14:50 生产实盘执行的统一配置信任源。
+
+# 1. 横向对比基准配置
+benchmarks:
+  - symbol: "000985.CSI"
+    name: "中证全指"
+  - symbol: "000300.SH"
+    name: "沪深300"
+
+# 2. 6 大跨周期历史宏观范式切片
+macro_regimes:
+  - name: "范式一：杠杆牛熊"
+    start_date: "2015-01-05"
+    end_date: "2015-12-31"
+    description: "配资杠杆狂热 -> 破位暴跌"
+  - name: "范式二：供给侧蓝筹"
+    start_date: "2016-01-04"
+    end_date: "2017-12-29"
+    description: "三去一降一补+白马价值风格"
+  - name: "范式三：去杠杆慢熊"
+    start_date: "2018-01-02"
+    end_date: "2018-12-28"
+    description: "中美贸易摩擦+信用收紧出清"
+  - name: "范式四：公募抱团牛"
+    start_date: "2019-01-02"
+    end_date: "2021-02-18"
+    description: "核心资产抱团+创业板主升"
+  - name: "范式五：存量红利防守"
+    start_date: "2021-02-19"
+    end_date: "2024-01-31"
+    description: "高估值泡沫出清+红利防御"
+  - name: "范式六：政策新质牛"
+    start_date: "2024-02-01"
+    end_date: "2026-08-28"
+    description: "政策底托底+科技弹性爆发"
+
+# 3. 历史极端危机压力测试情景
+stress_tests:
+  - name: "2015 杠杆股灾"
+    start_date: "2015-06-15"
+    end_date: "2015-08-26"
+    description: "千股跌停与去杠杆多杀多"
+  - name: "2018 慢熊主跌段"
+    start_date: "2018-01-29"
+    end_date: "2018-10-19"
+    description: "贸易摩擦升级与股权质押爆雷"
+  - name: "2020 疫情首波冲击"
+    start_date: "2020-01-23"
+    end_date: "2020-03-23"
+    description: "全球流动性危机与海外熔断"
+  - name: "2024 微盘流动性踩踏"
+    start_date: "2024-01-02"
+    end_date: "2024-02-05"
+    description: "量化DMA与微盘踩踏极端杀跌"
+
+# 4. 申万 31 行业对应场内流动性最高行业 ETF 映射字典
+industry_etf_map:
+  "801010.SI": { symbol: "159825.SZ", name: "农业ETF" }
+  "801030.SI": { symbol: "516020.SH", name: "化工ETF" }
+  "801040.SI": { symbol: "515210.SH", name: "钢铁ETF" }
+  "801050.SI": { symbol: "512400.SH", name: "有色金属ETF" }
+  "801080.SI": { symbol: "512480.SH", name: "半导体芯片ETF" }
+  "801110.SI": { symbol: "159996.SZ", name: "家电ETF" }
+  "801120.SI": { symbol: "515170.SH", name: "食品饮料ETF" }
+  "801130.SI": { symbol: "159936.SZ", name: "可选消费ETF" }
+  "801140.SI": { symbol: "159936.SZ", name: "可选消费ETF" }
+  "801150.SI": { symbol: "512010.SH", name: "医药ETF" }
+  "801160.SI": { symbol: "561560.SH", name: "电力ETF" }
+  "801170.SI": { symbol: "159666.SZ", name: "运输ETF" }
+  "801180.SI": { symbol: "512200.SH", name: "房地产ETF" }
+  "801200.SI": { symbol: "515650.SH", name: "消费50ETF" }
+  "801210.SI": { symbol: "159766.SZ", name: "旅游ETF" }
+  "801230.SI": { symbol: "000985.CSI", name: "中证全指" }
+  "801710.SI": { symbol: "159745.SZ", name: "建材ETF" }
+  "801720.SI": { symbol: "516970.SH", name: "基建ETF" }
+  "801730.SI": { symbol: "516160.SH", name: "新能源ETF" }
+  "801740.SI": { symbol: "512660.SH", name: "军工ETF" }
+  "801750.SI": { symbol: "512720.SH", name: "计算机ETF" }
+  "801760.SI": { symbol: "512980.SH", name: "传媒ETF" }
+  "801770.SI": { symbol: "515880.SH", name: "通信ETF" }
+  "801780.SI": { symbol: "512800.SH", name: "银行ETF" }
+  "801790.SI": { symbol: "512880.SH", name: "证券ETF" }
+  "801880.SI": { symbol: "516110.SH", name: "汽车ETF" }
+  "801890.SI": { symbol: "516960.SH", name: "机械装备ETF" }
+  "801950.SI": { symbol: "515220.SH", name: "煤炭ETF" }
+  "801960.SI": { symbol: "561360.SH", name: "石油石化ETF" }
+  "801970.SI": { symbol: "512580.SH", name: "环保ETF" }
+  "801980.SI": { symbol: "159936.SZ", name: "可选消费ETF" }
+
+# 5. 策略参数配置
+strategies:
+  industry_momentum:
+    strategy_class: "IndustryMomentumRotationStrategy"
+    benchmark_symbol: "000985.CSI"
+    top_k: 3
+    rebalance_period: 20
+    score_column: "ind_momentum"
+    description: "纯高景气动量轮动：每月调仓，打满景气动量得分最高的 Top 3 行业"
+    friction:
+      commission_rate: 0.0001
+      slippage_rate: 0.0005
+      rebalance_deadband: 0.03
+
+  industry_reversal:
+    strategy_class: "IndustryCrowdingReversalStrategy"
+    benchmark_symbol: "000985.CSI"
+    top_k: 3
+    rebalance_period: 20
+    crowding_max: 85.0
+    valuation_min: 80.0
+    description: "反拥挤逆向低估值布局：拥挤度>85%坚决剔除，在低估值区买入动量初起行业"
+    friction:
+      commission_rate: 0.0001
+      slippage_rate: 0.0005
+      rebalance_deadband: 0.03
+
+  industry_scissors:
+    strategy_class: "IndustrySupplyDemandScissorsStrategy"
+    benchmark_symbol: "000985.CSI"
+    top_k: 3
+    rebalance_period: 20
+    scissors_min: 60.0
+    smart_flow_min: 50.0
+    description: "供需景气剪刀差策略：重仓毛利逆势扩张 + 聪明资金流净流入的真实定价权行业"
+    friction:
+      commission_rate: 0.0001
+      slippage_rate: 0.0005
+      rebalance_deadband: 0.03
+
+  industry_meta_router:
+    strategy_class: "IndustryMetaRouterStrategy"
+    benchmark_symbol: "000985.CSI"
+    top_k: 3
+    rebalance_period: 20
+    ma_window: 20
+    panic_threshold: 75.0
+    overheat_threshold: 65.0
+    defensive_industries:
+      - "801780.SI" # 银行
+      - "801950.SI" # 煤炭
+      - "801160.SI" # 公用事业
+      - "801120.SI" # 食品饮料
+    growth_industries:
+      - "801080.SI" # 电子
+      - "801730.SI" # 电力设备
+      - "801750.SI" # 计算机
+      - "801770.SI" # 通信
+    description: "宏观相态元自适应行业路由器：恐慌/破位切换红利防御，多头主升切换供需剪刀差与成长赛道"
+    friction:
+      commission_rate: 0.0001
+      slippage_rate: 0.0005
+      rebalance_deadband: 0.03
