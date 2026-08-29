@@ -169,6 +169,26 @@ class MacroRiskPipeline:
                     artifact_root=output_dir,
                     config_path="config/analytics/macro_risk.yaml",
                 )
+                # 提取当日核心指标快照至 manifest.summary
+                as_of_rows = score_frame.filter(pl.col("trade_date") == as_of).tail(1)
+                if len(as_of_rows) > 0:
+                    row_dict = as_of_rows.to_dicts()[0]
+                    summary_metrics = {}
+                    for k in (
+                        "overheat_index",
+                        "panic_index",
+                        "dim_crowding",
+                        "dim_sentiment",
+                        "dim_breadth",
+                        "dim_valuation",
+                        "dim_leverage",
+                        "dim_flow",
+                    ):
+                        val = row_dict.get(k)
+                        if isinstance(val, int | float) and val is not None:
+                            summary_metrics[k] = round(float(val), 2)
+                    manifest["summary"] = summary_metrics
+
                 session.write_json("manifest.json", manifest)
 
             logger.info(f"双轨制系统性风险指数已通过 ArtifactStore 落盘: {paths.run_dir}")

@@ -19,12 +19,12 @@ def render_stability_charts(
     output_dir: Path,
 ) -> Path:
     """生成 4 合 1 高清对比图表。"""
-    import matplotlib
-
     if not os.environ.get("MPLCONFIGDIR"):
         mpl_cache = Path("data/.mplconfig")
         mpl_cache.mkdir(parents=True, exist_ok=True)
         os.environ["MPLCONFIGDIR"] = str(mpl_cache.resolve())
+
+    import matplotlib
 
     matplotlib.use("Agg")
     import matplotlib.pyplot as plt

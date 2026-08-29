@@ -120,25 +120,31 @@ def load_price_panel(
     """
     frames = []
     for sym in symbols:
-        bar = catalog.load_bars(
-            symbol=sym,
-            dataset=_INDEX_DATASET,
-            columns=["trade_date", "symbol", "close"],
+        is_etf = any(sym.startswith(prefix) for prefix in ("51", "15", "56", "58"))
+        datasets = (
+            ["fund_daily", _INDEX_DATASET, "stock_daily_bar"]
+            if is_etf
+            else [_INDEX_DATASET, "fund_daily", "stock_daily_bar"]
         )
-        if bar.is_empty():
+        bar = pl.DataFrame()
+        for ds in datasets:
             bar = catalog.load_bars(
                 symbol=sym,
-                dataset="fund_daily",
+                dataset=ds,
                 columns=["trade_date", "symbol", "close"],
             )
-        if bar.is_empty():
-            bar = catalog.load_bars(
-                symbol=sym,
-                dataset="stock_daily_bar",
-                columns=["trade_date", "symbol", "close"],
-            )
-        if not bar.is_empty():
-            frames.append(bar)
+            if bar.is_empty() and catalog.data_source != "lixinger":
+                from stock_data.catalog import DataCatalog
+
+                lix_cat = DataCatalog(runtime=catalog.runtime, data_source="lixinger")
+                bar = lix_cat.load_bars(
+                    symbol=sym,
+                    dataset=ds,
+                    columns=["trade_date", "symbol", "close"],
+                )
+            if not bar.is_empty():
+                frames.append(bar)
+                break
     if not frames:
         return pl.DataFrame()
 
