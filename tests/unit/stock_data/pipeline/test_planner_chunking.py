@@ -117,3 +117,23 @@ def test_plan_tasks_per_symbol_no_chunking() -> None:
     assert tasks[0].start_date == date(2018, 1, 1)
     assert tasks[0].end_date == date(2021, 12, 31)
     assert tasks[0].symbol == "000001.SZ"
+
+
+def test_plan_tasks_lixinger_fund_holder_structure_watchlist() -> None:
+    """测试理杏仁 fund_holder_structure 自动按观察池 funds 展开并提取基准起始日。"""
+    from stock_core.config.loader import load_data_config
+
+    cfg = load_data_config()
+    tasks = BackfillPlanner.plan_tasks(
+        data_source="lixinger",
+        endpoints=["fund_holder_structure"],
+        symbol="watchlist",
+        start_date=date(2010, 1, 1),
+        end_date=date(2026, 8, 29),
+        start_specified=True,
+        data_cfg=cfg,
+    )
+    assert len(tasks) == 63
+    task_510300 = next(t for t in tasks if t.symbol == "510300.SH")
+    assert task_510300.start_date == date(2012, 5, 28)
+    assert task_510300.end_date == date(2026, 8, 29)

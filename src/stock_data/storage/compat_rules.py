@@ -330,6 +330,7 @@ _DATASET_OPTIONAL_COLUMNS: dict[str, frozenset[str]] = {
         {"l_pb_p", "l_al_p", "l_cu_p", "l_zn_p", "l_sn_p", "l_ni_p", "areaCode", "adjustment"}
     ),
     "pledge_info": frozenset({"ps", "ps_mc", "ps_shbt10sh_r", "ps_sc_r", "pc", "adjustment"}),
+    "fund_holder_structure": frozenset({"f_f_s", "f_f_s_r", "adjustment", "areaCode"}),
 }
 
 

@@ -79,7 +79,13 @@ _INDEX_ENDPOINTS = {
     "index_valuation",
     "index_fundamental",
 }
-_FUND_ENDPOINTS = {"fund_daily", "fund_adj", "fund_share", "etf_share_size"}
+_FUND_ENDPOINTS = {
+    "fund_daily",
+    "fund_adj",
+    "fund_share",
+    "etf_share_size",
+    "fund_holder_structure",
+}
 _YFINANCE_MACRO_SYMBOLS = ["^TNX", "^IRX", "DX-Y.NYB", "GC=F", "CL=F", "HG=F", "^VIX"]
 _LIXINGER_COMPANY_ENDPOINTS = {
     "company_fundamental",

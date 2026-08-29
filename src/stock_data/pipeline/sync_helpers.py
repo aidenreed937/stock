@@ -33,7 +33,7 @@ INDEX_ENDPOINTS = {
     "index_valuation",
     "index_fundamental",
 }
-FUND_ENDPOINTS = {"fund_daily", "fund_adj", "fund_share", "etf_share_size"}
+FUND_ENDPOINTS = {"fund_daily", "fund_adj", "fund_share", "etf_share_size", "fund_holder_structure"}
 YFINANCE_MACRO_SYMBOLS = ["^TNX", "^IRX", "DX-Y.NYB", "GC=F", "CL=F", "HG=F", "^VIX"]
 WATERMARK_DATE_COLUMNS = (
     "trade_date",

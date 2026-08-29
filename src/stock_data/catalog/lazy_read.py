@@ -134,7 +134,14 @@ def read_dataset_files_lazy(
             if end_date is not None:
                 scan = scan.filter(pl.col(common_date) <= end_date)
         if symbols and common_symbol:
-            scan = scan.filter(pl.col("symbol").is_in(symbols))
+            requested_symbols = set(symbols)
+            for s in symbols:
+                if "." in s:
+                    requested_symbols.add(s.split(".")[0])
+            scan = scan.filter(
+                pl.col("symbol").is_in(list(requested_symbols))
+                | pl.col("symbol").str.slice(0, 6).is_in(list(requested_symbols))
+            )
         scans.append(scan)
 
     try:
@@ -197,7 +204,14 @@ def finalize_dataset_frame(
             df = df.filter(pl.col("__catalog_date") <= end_date)
         df = df.drop("__catalog_date")
     if symbols and "symbol" in df.columns:
-        df = df.filter(pl.col("symbol").is_in(symbols))
+        requested_symbols = set(symbols)
+        for s in symbols:
+            if "." in s:
+                requested_symbols.add(s.split(".")[0])
+        df = df.filter(
+            pl.col("symbol").is_in(list(requested_symbols))
+            | pl.col("symbol").str.slice(0, 6).is_in(list(requested_symbols))
+        )
     if data_source == "tushare" and dataset == "margin":
         df = filter_complete_margin_dates(df, start_date=start_date, end_date=end_date)
     return df

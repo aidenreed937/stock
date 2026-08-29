@@ -165,18 +165,25 @@ def _align_optional_dataset_columns(
     existing: pl.DataFrame, incoming: list[pl.DataFrame], dataset_name: str
 ) -> tuple[pl.DataFrame, list[pl.DataFrame]]:
     """补齐已登记的业务可选列，避免历史迁移后的新回填被严格 Schema 阻断。"""
-    if existing.is_empty() or not incoming:
+    if not incoming:
         return existing, incoming
 
     optional_columns = optional_columns_for_dataset(dataset_name)
-    existing_columns = set(existing.columns)
+    if not optional_columns:
+        return existing, incoming
+
+    existing_columns = set(existing.columns) if not existing.is_empty() else set()
     incoming_columns = set().union(*(set(frame.columns) for frame in incoming))
-    for column in optional_columns & (existing_columns | incoming_columns):
-        if column not in existing_columns:
-            dtype = next(frame.schema[column] for frame in incoming if column in frame.columns)
+    target_columns = optional_columns & (existing_columns | incoming_columns)
+    if not target_columns:
+        return existing, incoming
+
+    all_frames = [existing, *incoming] if not existing.is_empty() else incoming
+    for column in target_columns:
+        dtype = next(frame.schema[column] for frame in all_frames if column in frame.columns)
+        if not existing.is_empty() and column not in existing.columns:
             existing = existing.with_columns(pl.lit(None, dtype=dtype).alias(column))
             existing_columns.add(column)
-        dtype = existing.schema[column]
         incoming = [
             frame
             if column in frame.columns
