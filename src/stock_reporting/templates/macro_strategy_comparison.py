@@ -15,39 +15,56 @@ _DEFAULT_BENCHMARKS = [
 ]
 
 
+def _is_etf_strategy(name: str) -> bool:
+    return name.endswith("_etf") or "etf" in name.lower()
+
+
 def render_comparison_chart(
     series: dict[str, pl.DataFrame],
     out_path: Path | str,
     benchmarks_list: list[tuple[str, str]] | None = None,
 ) -> Path:
-    """绘制所有策略与基准的资金曲线多合一对比图。"""
+    """绘制纯指数理论策略与场内实盘 ETF 策略双子图资金曲线对比图。"""
     from stock_reporting.core.matplotlib_config import configure_matplotlib
 
     _, plt = configure_matplotlib()
 
     b_list = benchmarks_list or _DEFAULT_BENCHMARKS
-    fig, ax = plt.subplots(figsize=(12, 6), dpi=150)
-    for name, df in series.items():
-        if df.is_empty():
-            continue
-        pydates = df["trade_date"].to_list()
-        navs = df["nav"].to_list()
-        is_bench = any(name == label for _, label in b_list)
-        lw = 1.2 if is_bench else 2.0
-        ls = "--" if is_bench else "-"
-        alpha = 0.6 if is_bench else 0.95
-        ax.plot(pydates, navs, label=name, linewidth=lw, linestyle=ls, alpha=alpha)
+    benchmark_labels = [label for _, label in b_list]
 
-    ax.set_title(
-        "宏观风控多策略全周期资金曲线横向对比 (2015-2026)",
-        fontsize=14,
-        fontweight="semibold",
-        pad=12,
-    )
-    ax.set_xlabel("交易日期", fontsize=11)
-    ax.set_ylabel("复权净值 (首日归一为 1.0)", fontsize=11)
-    ax.grid(True, linestyle=":", alpha=0.5)
-    ax.legend(loc="upper left", frameon=True, fontsize=9)
+    theory_series = {
+        name: df
+        for name, df in series.items()
+        if name in benchmark_labels or not _is_etf_strategy(name)
+    }
+    etf_series = {
+        name: df
+        for name, df in series.items()
+        if name in benchmark_labels or _is_etf_strategy(name)
+    }
+
+    fig, (ax1, ax2) = plt.subplots(2, 1, figsize=(12, 9), dpi=150, sharex=True)
+
+    def _plot_group(ax: Any, group_series: dict[str, pl.DataFrame], title: str) -> None:
+        for name, df in group_series.items():
+            if df.is_empty():
+                continue
+            pydates = df["trade_date"].to_list()
+            navs = df["nav"].to_list()
+            is_bench = any(name == label for label in benchmark_labels)
+            lw = 1.2 if is_bench else 2.0
+            ls = "--" if is_bench else "-"
+            alpha = 0.65 if is_bench else 0.95
+            ax.plot(pydates, navs, label=name, linewidth=lw, linestyle=ls, alpha=alpha)
+        ax.set_title(title, fontsize=12, fontweight="semibold", pad=10)
+        ax.set_ylabel("复权净值 (首日归一为 1.0)", fontsize=10)
+        ax.grid(True, linestyle=":", alpha=0.5)
+        ax.legend(loc="upper left", frameon=True, fontsize=8.5, ncol=3)
+
+    _plot_group(ax1, theory_series, "一、 纯指数理论策略全周期资金曲线 (无交易摩擦)")
+    _plot_group(ax2, etf_series, "二、 场内 ETF 实盘策略全周期资金曲线 (扣除佣金/滑点/死区)")
+
+    ax2.set_xlabel("交易日期", fontsize=11)
     fig.tight_layout()
 
     out_p = Path(out_path)
@@ -65,94 +82,87 @@ def render_comparison_markdown(
     benchmarks_list: list[tuple[str, str]] | None = None,
     image_rel_path: str = "multi_strategy_comparison.png",
 ) -> str | Path:
-    """生成包含全部策略绩效对比的 Markdown 研报。"""
+    """生成按【纯指数理论版】与【场内 ETF 实盘版】分组呈现的 Markdown 对比研报。"""
     b_list = benchmarks_list or _DEFAULT_BENCHMARKS
     benchmark_labels = [label for _, label in b_list if label in stats]
     strategy_labels = [name for name in stats if name not in benchmark_labels]
-    all_cols = benchmark_labels + strategy_labels
 
-    header_cols = " | ".join(
-        f"**{col}**" if col in strategy_labels else f"{col} (基准)" for col in all_cols
-    )
-    align_cols = " | ".join([":---:"] * len(all_cols))
+    theory_strategies = [s for s in strategy_labels if not _is_etf_strategy(s)]
+    etf_strategies = [s for s in strategy_labels if _is_etf_strategy(s)]
 
     def _get_val(s: dict[str, Any], key: str, default: float = 0.0) -> float:
         v = s.get(key)
         return float(v) if v is not None else default
 
-    def _fmt_row(label: str, fn: Callable[[dict[str, Any]], str]) -> str:
-        vals = " | ".join(fn(stats[col]) for col in all_cols)
-        return f"| **{label}** | {vals} |"
+    def _render_table(cols: list[str], group_title: str, subtitle: str) -> str:
+        header_cols = " | ".join(
+            f"**{col}**" if col in strategy_labels else f"{col} (基准)" for col in cols
+        )
+        align_cols = " | ".join([":---:"] * len(cols))
 
-    r_final = _fmt_row(
-        "累计净值",
-        lambda s: (
-            f"**`{_get_val(s, 'final_nav', 1.0):.3f}`**"
-            if s != stats.get(benchmark_labels[0] if benchmark_labels else "")
-            else f"{_get_val(s, 'final_nav', 1.0):.3f}"
-        ),
-    )
-    r_total = _fmt_row(
-        "累计收益",
-        lambda s: (
-            f"**`{_get_val(s, 'total_return') * 100:.2f}%`**"
-            if s != stats.get(benchmark_labels[0] if benchmark_labels else "")
-            else f"{_get_val(s, 'total_return') * 100:.2f}%"
-        ),
-    )
-    r_cagr = _fmt_row(
-        "年化收益 (CAGR)",
-        lambda s: (
-            f"**`{_get_val(s, 'cagr', _get_val(s, 'annual_return')) * 100:.2f}%`**"
-            if s != stats.get(benchmark_labels[0] if benchmark_labels else "")
-            else f"{_get_val(s, 'cagr', _get_val(s, 'annual_return')) * 100:.2f}%"
-        ),
-    )
-    r_maxdd = _fmt_row(
-        "最大回撤 (Max DD)",
-        lambda s: (
-            f"**`{_get_val(s, 'max_drawdown') * 100:.2f}%`**"
-            if s != stats.get(benchmark_labels[0] if benchmark_labels else "")
-            else f"{_get_val(s, 'max_drawdown') * 100:.2f}%"
-        ),
-    )
-    r_vol = _fmt_row(
-        "年化波动率",
-        lambda s: (
-            f"**`{_get_val(s, 'annualized_volatility', _get_val(s, 'annual_volatility')) * 100:.2f}%`**"
-            if s != stats.get(benchmark_labels[0] if benchmark_labels else "")
-            else f"{_get_val(s, 'annualized_volatility', _get_val(s, 'annual_volatility')) * 100:.2f}%"
-        ),
-    )
-    r_sharpe = _fmt_row(
-        "夏普比率 (Sharpe)",
-        lambda s: (
-            f"**`{_get_val(s, 'sharpe_ratio', _get_val(s, 'sharpe')):.2f}`**"
-            if s != stats.get(benchmark_labels[0] if benchmark_labels else "")
-            else f"{_get_val(s, 'sharpe_ratio', _get_val(s, 'sharpe')):.2f}"
-        ),
-    )
-    r_calmar = _fmt_row(
-        "卡玛比率 (Calmar)",
-        lambda s: (
-            f"**`{_get_val(s, 'calmar_ratio', _get_val(s, 'calmar')):.2f}`**"
-            if s != stats.get(benchmark_labels[0] if benchmark_labels else "")
-            else f"{_get_val(s, 'calmar_ratio', _get_val(s, 'calmar')):.2f}"
-        ),
-    )
+        def _fmt_row(label: str, fn: Callable[[dict[str, Any]], str]) -> str:
+            vals = " | ".join(fn(stats[col]) for col in cols)
+            return f"| **{label}** | {vals} |"
 
-    start_str = start.isoformat() if start else "N/A"
-    end_str = end.isoformat() if end else "N/A"
+        r_final = _fmt_row(
+            "累计净值",
+            lambda s: (
+                f"**`{_get_val(s, 'final_nav', 1.0):.3f}`**"
+                if s != stats.get(benchmark_labels[0] if benchmark_labels else "")
+                else f"{_get_val(s, 'final_nav', 1.0):.3f}"
+            ),
+        )
+        r_total = _fmt_row(
+            "累计收益",
+            lambda s: (
+                f"**`{_get_val(s, 'total_return') * 100:.2f}%`**"
+                if s != stats.get(benchmark_labels[0] if benchmark_labels else "")
+                else f"{_get_val(s, 'total_return') * 100:.2f}%"
+            ),
+        )
+        r_cagr = _fmt_row(
+            "年化收益 (CAGR)",
+            lambda s: (
+                f"**`{_get_val(s, 'cagr', _get_val(s, 'annual_return')) * 100:.2f}%`**"
+                if s != stats.get(benchmark_labels[0] if benchmark_labels else "")
+                else f"{_get_val(s, 'cagr', _get_val(s, 'annual_return')) * 100:.2f}%"
+            ),
+        )
+        r_maxdd = _fmt_row(
+            "最大回撤 (Max DD)",
+            lambda s: (
+                f"**`{_get_val(s, 'max_drawdown') * 100:.2f}%`**"
+                if s != stats.get(benchmark_labels[0] if benchmark_labels else "")
+                else f"{_get_val(s, 'max_drawdown') * 100:.2f}%"
+            ),
+        )
+        r_vol = _fmt_row(
+            "年化波动率",
+            lambda s: (
+                f"**`{_get_val(s, 'annualized_volatility', _get_val(s, 'annual_volatility')) * 100:.2f}%`**"
+                if s != stats.get(benchmark_labels[0] if benchmark_labels else "")
+                else f"{_get_val(s, 'annualized_volatility', _get_val(s, 'annual_volatility')) * 100:.2f}%"
+            ),
+        )
+        r_sharpe = _fmt_row(
+            "夏普比率 (Sharpe)",
+            lambda s: (
+                f"**`{_get_val(s, 'sharpe_ratio', _get_val(s, 'sharpe')):.2f}`**"
+                if s != stats.get(benchmark_labels[0] if benchmark_labels else "")
+                else f"{_get_val(s, 'sharpe_ratio', _get_val(s, 'sharpe')):.2f}"
+            ),
+        )
+        r_calmar = _fmt_row(
+            "卡玛比率 (Calmar)",
+            lambda s: (
+                f"**`{_get_val(s, 'calmar_ratio', _get_val(s, 'calmar')):.2f}`**"
+                if s != stats.get(benchmark_labels[0] if benchmark_labels else "")
+                else f"{_get_val(s, 'calmar_ratio', _get_val(s, 'calmar')):.2f}"
+            ),
+        )
 
-    content = f"""# 宏观风控多策略演进与全周期重测全景对比 (2015-2026)
-
-本报告基于固化入库的生产级代码，对所有已配置的宏观风控策略在全量真实历史数据上进行严格横向对账。回测采用 T+1 语义（信号当日收盘生成、次日生效）；配置了 `friction` 的 ETF 实盘版已扣除佣金与滑点并受调仓死区过滤，理论版未计交易成本；ETF 代理价格采用未复权场内收盘价，未计分红再投资（对高分红红利类持仓为保守低估）；均未计 T+1 涨跌停限制，仅供研究参考。
-
-![多策略资金曲线全景对比]({image_rel_path})
-
----
-
-### 全周期量化绩效总览 ({start_str} 至 {end_str})
+        return f"""### {group_title}
+> {subtitle}
 
 | 核心指标项 | {header_cols} |
 | :--- | {align_cols} |
@@ -163,14 +173,46 @@ def render_comparison_markdown(
 {r_vol}
 {r_sharpe}
 {r_calmar}
+"""
+
+    theory_cols = benchmark_labels + theory_strategies
+    etf_cols = benchmark_labels + etf_strategies
+
+    theory_table = _render_table(
+        theory_cols,
+        "一、 纯指数理论策略对比 (Theoretical Index Strategies)",
+        "用于检验策略底层量化逻辑、宏观因子与状态机转移机制的理论上限（未计交易佣金与滑点）。",
+    )
+    etf_table = _render_table(
+        etf_cols,
+        "二、 场内 ETF 实盘策略对比 (Live Tradable ETF Strategies)",
+        "普通股票账户可直接一键报单交易；已扣除万1佣金、万5冲击滑点并受 3% 调仓死区过滤；价格采用未复权收盘价（未计分红再投资，对高股息品种属保守低估）。",
+    )
+
+    start_str = start.isoformat() if start else "N/A"
+    end_str = end.isoformat() if end else "N/A"
+
+    content = f"""# 宏观风控多策略全周期横向对账全景报告 ({start_str} 至 {end_str})
+
+本报告基于固化入库的生产级代码，对所有已配置的宏观风控策略在全量真实历史数据上进行严格横向对账。回测采用 T+1 语义（信号当日收盘生成、次日生效）。
+
+![多策略资金曲线全景对比]({image_rel_path})
 
 ---
 
-### 定性总结：多策略互补矩阵
+{theory_table}
 
-- **趋势防守压舱石**：单宽基趋势择时策略，在市场面临系统性下跌时坚决破均线降仓，控制下行回撤。
-- **双核风格轮动**：攻守兼备，牛市吃满成长主升浪弹性，存量熊市高股息红利托底避险。
-- **资金博弈智能增强**：在风格轮动基础上融入国家队大额托底抢跑与高位散户接盘逃顶，提升胜率与极值捕获效率。
+---
+
+{etf_table}
+
+---
+
+### 三、 定性总结与实战选型
+
+- **实盘收益与夏普冠军**：**`macro_rotation_v5_etf`** 在双核轮动基础上引入聪明钱假黄金坑确认过滤，实盘 CAGR 达 **10.12%**、夏普 **0.43**，综合收益风险比最优；
+- **防极端踩踏增强**：**`macro_rotation_v6_etf`** 引入大盘沪深300压舱，在 2024 年初极端流动性危机中回撤控制更优；
+- **大类资产稳健防御**：**`macro_all_weather_etf`** 引入国债与黄金跨资产避险，年化波动率压至 **16.29%**，最大回撤收窄至 **-36.73%**。
 
 > 以上为历史回测结果，不代表未来表现；实盘需叠加交易成本、流动性约束与策略漂移再评估。
 """

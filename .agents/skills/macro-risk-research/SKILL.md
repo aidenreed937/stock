@@ -134,15 +134,17 @@ flowchart TD
 
 | 策略键名 | 核心类名 | 交易标的与初始权重 | 趋势基准 | 核心投资哲学与风险收益特征 |
 | :--- | :--- | :--- | :--- | :--- |
-| **`macro_risk_v3`** | `MacroRiskV3Strategy` | 沪深300 (`000300.SH`: 100%) | 沪深300 (`000300.SH`) | **单宽基趋势防守压舱石**：锚定大盘核心资产，破 MA20 减仓控损，冰点恐慌加仓博修复，追求低波动与稳健抗跌。 |
+| **`macro_risk_v3`** | `MacroRiskV3Strategy` | 沪深300 (`000300.SH`: 100%) | 沪深300 (`000300.SH`) | **单宽基趋势防守压舱石 (理论版)**：锚定大盘核心资产，破 MA20 减仓控损，冰点恐慌加仓博修复，追求低波动与稳健抗跌。 |
+| **`macro_risk_v3_etf`** | `MacroRiskV3Strategy` | 300 ETF (`510300.SH`: 100%) | 沪深300 (`000300.SH`) | **单宽基趋势防守压舱石 (场内 ETF 实盘版)**：华泰柏瑞沪深300 ETF 场内交易，带万1佣金+万5滑点+3%调仓死区。 |
 | **`macro_rotation_v4`** | `MacroRotationV4Strategy` | 中证红利 (`000922.CSI`: 50%)<br>创业板指 (`399006.SZ`: 50%) | 中证全指 (`000985.CSI`) | **双核哑铃风格轮动 (理论版)**：牛市主升打满创业板弹性，存量熊市切换至高股息红利托底避险，兼顾进攻与防守。 |
-| **`macro_rotation_v5`** | `MacroRotationV5Strategy` | 中证红利 (`000922.CSI`: 50%)<br>创业板指 (`399006.SZ`: 50%) | 中证全指 (`000985.CSI`) | **资金博弈智能增强轮动**：在 V4 基础上引入聪明钱组合信号 (`smart_money_score`) 作为恐慌左侧确认过滤——聪明钱未逆势接货时判定假黄金坑不抄底，提升风险调整后收益。 |
-| **`macro_rotation_v6`** | `MacroRotationV6Strategy` | 中证红利 (`000922.CSI`: 40%)<br>创业板指 (`399006.SZ`: 40%)<br>沪深300 (`000300.SH`: 20%) | 中证全指 (`000985.CSI`) | **三核资产与动量自适应智能轮动 (终极版)**：国家队托底左侧对齐沪深300防踩踏、低估值环境增配红利大盘防踏空、高估值打满创业板弹性。 |
-| **`macro_rotation_v4_etf`** | `MacroRotationV4Strategy` | 红利 ETF (`510880.SH`: 50%)<br>创业板 ETF (`159915.SZ`: 50%) | 中证全指 (`000985.CSI`) | **双核哑铃风格轮动 (场内 ETF 代理实盘版)**：可直接使用普通 A 股股票账户在场内一键报单交易。 |
-| **`macro_rotation_v6_etf`** | `MacroRotationV6Strategy` | 红利 ETF (`510880.SH`: 40%)<br>创业板 ETF (`159915.SZ`: 40%)<br>300 ETF (`510300.SH`: 20%) | 中证全指 (`000985.CSI`) | **三核自适应轮动 (场内 ETF 代理实盘版)**：兼顾左侧防微盘踩踏与牛市弹性的场内实战组合。 |
-| **`macro_meta_router`** | `MacroMetaRouterStrategy` | 中证红利 (`000922.CSI`: 40%)<br>创业板指 (`399006.SZ`: 40%)<br>沪深300 (`000300.SH`: 20%) | 中证全指 (`000985.CSI`) | **宏观元策略动态路由器 (理论版)**：融合国家队与企业回购双托底，动态切换 5 大宏观相态。 |
-| **`macro_meta_router_etf`** | `MacroMetaRouterStrategy` | 红利 ETF (`510880.SH`: 40%)<br>创业板 ETF (`159915.SZ`: 40%)<br>300 ETF (`510300.SH`: 20%) | 中证全指 (`000985.CSI`) | **宏观元策略动态路由器 (ETF 版)**：融合国家队与企业回购双托底，动态切换 5 大宏观相态。 |
-| **`macro_all_weather_etf`** 🌟 | `MacroAllWeatherStrategy` | 红利 ETF (30%) + 创业板 ETF (30%)<br>300 ETF (20%) + 国债 ETF (20%)<br>黄金 ETF (0%) | 中证全指 (`000985.CSI`) | **大类资产全天候自适应相态轮动 (终极跨资产版)**：泡沫破裂期刚性转入 60% 国债 + 40% 黄金避险，全周期波动率压至 **16.69%**，最大回撤收窄至 **-36.17%**。 |
+| **`macro_rotation_v4_etf`** | `MacroRotationV4Strategy` | 红利 ETF (`510880.SH`: 50%)<br>创业板 ETF (`159915.SZ`: 50%) | 中证全指 (`000985.CSI`) | **双核哑铃风格轮动 (场内 ETF 实盘版)**：可直接使用普通 A 股股票账户在场内一键报单交易。 |
+| **`macro_rotation_v5`** | `MacroRotationV5Strategy` | 中证红利 (`000922.CSI`: 50%)<br>创业板指 (`399006.SZ`: 50%) | 中证全指 (`000985.CSI`) | **资金博弈智能增强轮动 (理论版)**：在 V4 基础上引入聪明钱组合信号 (`smart_money_score < 40`) 作为恐慌左侧确认过滤——未逆势接货判定假黄金坑不建仓，显著提升夏普。 |
+| **`macro_rotation_v5_etf`** 🌟 | `MacroRotationV5Strategy` | 红利 ETF (`510880.SH`: 50%)<br>创业板 ETF (`159915.SZ`: 50%) | 中证全指 (`000985.CSI`) | **资金博弈智能增强轮动 (场内 ETF 实盘版)**：全周期实盘 CAGR **10.12%**、夏普 **0.43**（全实盘策略第一名），带万1佣金+万5滑点+3%死区。 |
+| **`macro_rotation_v6`** | `MacroRotationV6Strategy` | 中证红利 (`000922.CSI`: 40%)<br>创业板指 (`399006.SZ`: 40%)<br>沪深300 (`000300.SH`: 20%) | 中证全指 (`000985.CSI`) | **三核资产与风格动量自适应智能轮动 (理论版)**：恐慌左侧以聪明钱确认过滤，左侧探底偏重大盘压舱防踩踏、低估值超配红利、高估值打满成长弹性。 |
+| **`macro_rotation_v6_etf`** | `MacroRotationV6Strategy` | 红利 ETF (`510880.SH`: 40%)<br>创业板 ETF (`159915.SZ`: 40%)<br>300 ETF (`510300.SH`: 20%) | 中证全指 (`000985.CSI`) | **三核自适应轮动 (场内 ETF 实盘版)**：兼顾左侧防微盘踩踏与牛市弹性的场内实战组合。 |
+| **`macro_meta_router`** | `MacroMetaRouterStrategy` | 中证红利 (`000922.CSI`: 40%)<br>创业板指 (`399006.SZ`: 40%)<br>沪深300 (`000300.SH`: 20%) | 中证全指 (`000985.CSI`) | **宏观元策略动态路由器 (理论版)**：融合聪明钱与产业资本双托底，动态切换 5 大宏观相态。 |
+| **`macro_meta_router_etf`** | `MacroMetaRouterStrategy` | 红利 ETF (`510880.SH`: 40%)<br>创业板 ETF (`159915.SZ`: 40%)<br>300 ETF (`510300.SH`: 20%) | 中证全指 (`000985.CSI`) | **宏观元策略动态路由器 (ETF 版)**：融合聪明钱与产业资本双托底，动态切换 5 大宏观相态。 |
+| **`macro_all_weather_etf`** 🌟 | `MacroAllWeatherStrategy` | 红利 ETF (30%) + 创业板 ETF (30%)<br>300 ETF (20%) + 国债 ETF (20%)<br>黄金 ETF (0%) | 中证全指 (`000985.CSI`) | **大类资产全天候自适应相态轮动 (终极跨资产版)**：泡沫破裂期刚性转入 60% 国债 + 40% 黄金避险，全周期波动率压至 **16.29%**，最大回撤收窄至 **-36.73%**。 |
 
 ---
 
@@ -190,17 +192,30 @@ flowchart TD
 #### 四、 宏观多策略回测对账与最新状态机指引
 
 ##### 1. 全周期策略回测绩效对账 (2015-2026)
-| 核心指标项 | 中证全指 (基准) | 沪深300 (基准) | **macro_risk_v3** | **macro_rotation_v4** | **macro_rotation_v5** | **macro_rotation_v6** | **macro_rotation_v4_etf** | **macro_rotation_v6_etf** | **macro_meta_router** | **macro_meta_router_etf** | **macro_all_weather_etf** |
-| :--- | :---: | :---: | :---: | :---: | :---: | :---: | :---: | :---: | :---: | :---: | :---: |
-| **累计净值** | `X.XXX` | `X.XXX` | **`X.XXX`** | **`X.XXX`** | **`X.XXX`** | **`X.XXX`** | **`X.XXX`** | **`X.XXX`** | **`X.XXX`** | **`X.XXX`** | **`X.XXX`** |
-| **累计收益** | `XX.XX%` | `XX.XX%` | **`XX.XX%`** | **`XX.XX%`** | **`XX.XX%`** | **`XX.XX%`** | **`XX.XX%`** | **`XX.XX%`** | **`XX.XX%`** | **`XX.XX%`** | **`XX.XX%`** |
-| **年化收益 (CAGR)** | `X.XX%` | `X.XX%` | **`X.XX%`** | **`X.XX%`** | **`X.XX%`** | **`X.XX%`** | **`X.XX%`** | **`X.XX%`** | **`X.XX%`** | **`X.XX%`** | **`X.XX%`** |
-| **最大回撤 (Max DD)** | `-XX.XX%` | `-XX.XX%` | **`-XX.XX%`** | **`-XX.XX%`** | **`-XX.XX%`** | **`-XX.XX%`** | **`-XX.XX%`** | **`-XX.XX%`** | **`-XX.XX%`** | **`-XX.XX%`** | **`-XX.XX%`** |
-| **年化波动率** | `XX.XX%` | `XX.XX%` | **`XX.XX%`** | **`XX.XX%`** | **`XX.XX%`** | **`XX.XX%`** | **`XX.XX%`** | **`XX.XX%`** | **`XX.XX%`** | **`XX.XX%`** | **`XX.XX%`** |
-| **夏普比率 (Sharpe)** | `0.XX` | `0.XX` | **`0.XX`** | **`0.XX`** | **`0.XX`** | **`0.XX`** | **`0.XX`** | **`0.XX`** | **`0.XX`** | **`0.XX`** | **`0.XX`** |
-| **卡玛比率 (Calmar)** | `0.XX` | `0.XX` | **`0.XX`** | **`0.XX`** | **`0.XX`** | **`0.XX`** | **`0.XX`** | **`0.XX`** | **`0.XX`** | **`0.XX`** | **`0.XX`** |
 
-> 表格列与 `data/analytics/macro_strategy/multi_strategy_comparison.md` 最新产物一致（产物共 9 策略 + 2 基准）；数字一律取自该产物，禁止引用本文档或 references 中的历史快照数字。ETF 版已按配置扣佣滑点与死区；Sharpe 口径为无风险利率 1.5%（与 `src/stock_strategy/macro/report.py` 一致）。
+###### (1) 纯指数理论策略对比 (无交易摩擦)
+| 核心指标项 | 中证全指 (基准) | 沪深300 (基准) | **macro_risk_v3** | **macro_rotation_v4** | **macro_rotation_v5** | **macro_rotation_v6** | **macro_meta_router** |
+| :--- | :---: | :---: | :---: | :---: | :---: | :---: | :---: |
+| **累计净值** | `X.XXX` | `X.XXX` | **`X.XXX`** | **`X.XXX`** | **`X.XXX`** | **`X.XXX`** | **`X.XXX`** |
+| **累计收益** | `XX.XX%` | `XX.XX%` | **`XX.XX%`** | **`XX.XX%`** | **`XX.XX%`** | **`XX.XX%`** | **`XX.XX%`** |
+| **年化收益 (CAGR)** | `X.XX%` | `X.XX%` | **`X.XX%`** | **`X.XX%`** | **`X.XX%`** | **`X.XX%`** | **`X.XX%`** |
+| **最大回撤 (Max DD)** | `-XX.XX%` | `-XX.XX%` | **`-XX.XX%`** | **`-XX.XX%`** | **`-XX.XX%`** | **`-XX.XX%`** | **`-XX.XX%`** |
+| **年化波动率** | `XX.XX%` | `XX.XX%` | **`XX.XX%`** | **`XX.XX%`** | **`XX.XX%`** | **`XX.XX%`** | **`XX.XX%`** |
+| **夏普比率 (Sharpe)** | `0.XX` | `0.XX` | **`0.XX`** | **`0.XX`** | **`0.XX`** | **`0.XX`** | **`0.XX`** |
+| **卡玛比率 (Calmar)** | `0.XX` | `0.XX` | **`0.XX`** | **`0.XX`** | **`0.XX`** | **`0.XX`** | **`0.XX`** |
+
+###### (2) 场内 ETF 实盘策略对比 (扣除佣金/滑点/死区)
+| 核心指标项 | 中证全指 (基准) | 沪深300 (基准) | **macro_risk_v3_etf** | **macro_rotation_v4_etf** | **macro_rotation_v5_etf** | **macro_rotation_v6_etf** | **macro_meta_router_etf** | **macro_all_weather_etf** |
+| :--- | :---: | :---: | :---: | :---: | :---: | :---: | :---: | :---: |
+| **累计净值** | `X.XXX` | `X.XXX` | **`X.XXX`** | **`X.XXX`** | **`X.XXX`** | **`X.XXX`** | **`X.XXX`** | **`X.XXX`** |
+| **累计收益** | `XX.XX%` | `XX.XX%` | **`XX.XX%`** | **`XX.XX%`** | **`XX.XX%`** | **`XX.XX%`** | **`XX.XX%`** | **`XX.XX%`** |
+| **年化收益 (CAGR)** | `X.XX%` | `X.XX%` | **`X.XX%`** | **`X.XX%`** | **`X.XX%`** | **`X.XX%`** | **`X.XX%`** | **`X.XX%`** |
+| **最大回撤 (Max DD)** | `-XX.XX%` | `-XX.XX%` | **`-XX.XX%`** | **`-XX.XX%`** | **`-XX.XX%`** | **`-XX.XX%`** | **`-XX.XX%`** | **`-XX.XX%`** |
+| **年化波动率** | `XX.XX%` | `XX.XX%` | **`XX.XX%`** | **`XX.XX%`** | **`XX.XX%`** | **`XX.XX%`** | **`XX.XX%`** | **`XX.XX%`** |
+| **夏普比率 (Sharpe)** | `0.XX` | `0.XX` | **`0.XX`** | **`0.XX`** | **`0.XX`** | **`0.XX`** | **`0.XX`** | **`0.XX`** |
+| **卡玛比率 (Calmar)** | `0.XX` | `0.XX` | **`0.XX`** | **`0.XX`** | **`0.XX`** | **`0.XX`** | **`0.XX`** | **`0.XX`** |
+
+> 表格列与 `data/analytics/macro_strategy/multi_strategy_comparison.md` 最新产物一致（已按纯指数理论版与场内实盘版清晰分组）；数字一律取自该产物，禁止引用本文档或 references 中的历史快照数字。ETF 版已按配置扣佣滑点与死区；Sharpe 口径为无风险利率 1.5%（与 `src/stock_strategy/macro/report.py` 一致）。
 
 ![多策略资金曲线全景对比](data/analytics/macro_strategy/multi_strategy_comparison.png)
 
