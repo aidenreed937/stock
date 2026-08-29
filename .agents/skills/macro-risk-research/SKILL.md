@@ -21,23 +21,13 @@ description: 宏观风控双轨雷达与跨周期策略研究技能：狂热/恐
    - 摩擦成本：佣金率、滑点、调仓死区由 `config/strategy/macro_risk.yaml` 的 `friction` 节点驱动，策略本身不内置。
 5. **证伪口径清单**（不作为信号使用）：
    - ETF 份额托底代理（`etf_flow_ratio`）已证伪（与国家队真实增持行为无关、前瞻收益无预测力、V5 托底分支净值贡献为负），不作为国家队识别与交易信号；
-   - `smart_money_score` / `dim_smart_money` 为独立维度供策略选用，**未加入 overheat/panic 指数**；实证见 `data/analytics/macro_strategy/smart_money_composite.md`。
+   - `smart_money_score` / `dim_smart_money` 已接入宏观因子管线（`config/analytics/macro_risk.yaml`）与策略池供选用，但刻意**不加入 overheat/panic 指数**（保持双轨指数成分纯净）；实证见 `data/analytics/macro_strategy/smart_money_composite.md`。
 
 ---
 
 ## 2. 标准研究流程 SOP（流程层）
 
 > 按步骤顺序执行；每步只写"做什么 + 用什么命令/产物"，判定规则见 §3，命令入口见 §4。
-
-```mermaid
-flowchart TD
-    A["1. 确认研究目标与观测日期"] --> B["2. 检查/运行宏观风控管线<br>(macro_risk / latest)"]
-    B --> C["3. 穿透 8 维全景特征画像<br>(极值硬约束 + 产业资本/聪明钱共振)"]
-    C --> D["4. 检查多交易日连续维持状态<br>(1D脉冲 vs 3D/5D战略级确认)"]
-    D --> E["5. 20日 / 60日 短中周期胜率推演<br>(真假黄金坑鉴别 + 资产相态定位)"]
-    E --> F["6. 运行多策略状态机与回测对账<br>(全天候 / 元路由器 / 双核轮动)"]
-    F --> G["7. 生成并交付标准投研研报<br>(Markdown + 资金曲线 + 仓位指令)"]
-```
 
 ### 步骤 1：加载/刷新宏观风控产物
 - **Fast Path**：`uv run python .agents/skills/macro-risk-research/scripts/extract_cycle_snapshot.py`（极速截面提取，含两融缺失提示）；
@@ -50,7 +40,7 @@ flowchart TD
 
 ### 步骤 3：跨周期定位与胜率推演
 - 宏观范式速查：`references/macro_regimes_playbook.md`（6 大范式定性特征）；
-- 20日 vs 60日 胜率矩阵：`references/cycle_windows_matrix.md`（引用前用复算脚本核对）。
+- 20日 vs 60日 胜率矩阵：运行 `scripts/compute_cycle_winrate_matrix.py` 获取最新矩阵（筹码博弈背离与证据链见 `references/cycle_windows_matrix.md`）。
 
 ### 步骤 4：策略回测 / 审计 / 实盘推演
 - 查看全部策略：`uv run python -m stock_cli.macro_strategy --list`；
@@ -80,7 +70,7 @@ flowchart TD
 - **真黄金坑（产业托底强共振）**：恐慌区且产业资本/聪明钱/内部人增持高分位共振 → 产业托底成立，左侧重仓大盘宽基与红利；
 - **假黄金坑警示（纯情绪多杀多中继）**：恐慌区但产业与聪明钱均未逆势接货 → 严禁盲目加杠杆抄底，以 MA20 为刚性止损线；
 - **微观产业底抢跑**：恐慌区且聪明钱或内部人增持率先高分位 → 微观估值底先行，左侧跟随分批低吸；
-- 具体分位阈值见 `references/cycle_windows_matrix.md` 第 1 节（单日截面口径）。
+- 具体分位阈值见 `references/cycle_windows_matrix.md` 第 1 节（筹码博弈背离与证据链清单）；20/60 日胜率矩阵直接运行复算脚本获取。
 
 ### 3.4 聪明钱与产业资本连续性
 - `smart_money_score` 高分位（产业资本增持 + 大宗折价接盘 + 国家队股东锚点等权组合）且处于恐慌区间 → 聪明钱逆势接货，支持左侧分批布局（实证见 `smart_money_composite.md`）；
@@ -136,11 +126,39 @@ flowchart TD
   5. 跨周期审计：`uv run python -m stock_cli.macro_strategy_audit --assert-guardrails`；
   6. 实盘推演：`uv run python -m stock_cli.macro_strategy_live --strategy <新策略> --dry-run`。
 
+### 4.6 管线 → 策略端到端链路与变更流程
+
+数据流链路（从原始指标到策略信号）：
+
+```mermaid
+flowchart LR
+    A["原始指标<br>(lixinger/tushare 等)"] --> B["因子管线<br>config/analytics/macro_risk.yaml<br>+ data_fetchers.py"]
+    B --> C["风险因子产物<br>data/analytics/macro_risk/latest/<br>risk_factors.parquet"]
+    C --> D["策略面板装配<br>assembly.py assemble_macro_panel<br>(extra_cols 白名单透传)"]
+    D --> E["策略信号<br>src/stock_strategy/pool/<br>on_bar(data)"]
+    E --> F["回测/报告/审计/实盘<br>MacroRiskRunner + CLI"]
+```
+
+**接入新指标/因子（管线侧改动）**，按序完成：
+1. **数据源**：确认原始指标已落库（`data/curated/`）或可经 `stock_data` 接入；
+2. **注册提取器**：在 `data_fetchers.py` 用 `@register_fetcher("<series>")` 实现提取函数（PIT 时滞、T+1 平移按同文件既有模式）；
+3. **声明配置**：在 `config/analytics/macro_risk.yaml` 的 `factors:` 注册因子（series/column/window/direction），如需进维度或双轨指数再在 `dimensions:` / `indices:` 挂载；
+4. **重跑管线**：`uv run python -m stock_cli.macro_risk --last-n 60`，确认新列出现在 `risk_factors.parquet`；
+5. **透传到策略面板**：若策略需要消费该列，必须在 `assembly.py` 的 `assemble_macro_panel` `extra_cols` 白名单中加入列名（**关键耦合点：不在白名单则策略读不到**）；
+6. **策略消费**：在策略 `on_bar(data)` 中读取新列并生成信号；
+7. **验证**：跑受影响单测 + `macro_strategy_report` 对账 + `macro_strategy_audit --assert-guardrails`。
+
+**修正/调整策略（策略侧改动）**：
+- **只调阈值/权重/摩擦**（不动逻辑）：改 `config/strategy/macro_risk.yaml` 对应策略节点的 `thresholds` / `initial_weights` / `friction`，无需改代码；
+- **调整状态机逻辑**：改 `src/stock_strategy/pool/` 对应策略类的 `on_bar`，同步更新该策略单测；
+- **改完必跑**：受影响单测 → `macro_strategy_report` 全周期对账 → `macro_strategy_audit --assert-guardrails` 防退化 → `macro_strategy_live --dry-run` 验证报单；
+- 策略池清单（`references/macro_strategies_playbook.md` 第〇节）随新增/变更同步。
+
+> ⚠️ 两个易错耦合点：① 新因子不进 `extra_cols` 白名单 = 策略侧不可见；② 策略阈值/权重改了但 `config/strategy/macro_risk.yaml` 未同步 = 报告与实盘不一致。任何一侧改动后先看 `git diff` 确认双侧一致。
+
 ---
 
-## 5. 专题进阶手册 (Deep-Dive References)
-
 * 📘 [delivery_template.md](references/delivery_template.md)：研报交付章节结构参考；数字一律取自工程产物，不维护快照。
-* 📘 [macro_strategies_playbook.md](references/macro_strategies_playbook.md)：宏观策略池清单（键名/类名/定位）、场内 ETF 实操 5 大铁律、4 大潜在盲区诊断与系统升级路线图。
+* 📘 [macro_strategies_playbook.md](references/macro_strategies_playbook.md)：宏观策略池清单（键名/类名/定位）、场内 ETF 实操 5 大铁律与 4 大潜在盲区诊断。
 * 📘 [macro_regimes_playbook.md](references/macro_regimes_playbook.md)：6 大宏观范式定性特征（主导矛盾、占优风格与最佳策略机制）与四大不变物理常数硬约束规则。
-* 📘 [cycle_windows_matrix.md](references/cycle_windows_matrix.md)：20日 vs 60日 周期前向胜率、赔率实测矩阵与实战执行法则（可经 `scripts/compute_cycle_winrate_matrix.py` 复算）。
+* 📘 [cycle_windows_matrix.md](references/cycle_windows_matrix.md)：三方主体筹码博弈背离矩阵与见顶/见底证据链清单（历史研究快照）；20/60 日胜率矩阵以 `scripts/compute_cycle_winrate_matrix.py` 最新输出为准，本文档不维护。

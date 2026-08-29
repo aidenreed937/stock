@@ -27,16 +27,26 @@ def main():
     def _fmt(val):
         return f"{val:.1f}" if val is not None else "—"
 
-    print("\n[1. 双轨风控雷达最新状态]")
+    print("\n[1. 双轨风控雷达最新状态 (8 维全景画像)]")
     print(f"  - 狂热指数 (Overheat): {_fmt(latest.get('overheat_index'))}")
     print(f"  - 恐慌指数 (Panic)   : {_fmt(latest.get('panic_index'))}")
+    # 3 大生存硬约束
     print(f"  - 两融杠杆分位       : {_fmt(latest.get('dim_leverage'))}")
     if latest.get("dim_leverage") is None:
         print("    ⚠ 提示: 最新交易日两融数据缺失 (dim_leverage 为 null)，杠杆维度硬约束排查不可用，请先补数")
     print(f"  - 换手拥挤分位       : {_fmt(latest.get('dim_crowding'))}")
     print(f"  - 主力资金分位       : {_fmt(latest.get('dim_flow'))}")
-    print(f"  - 国家队ETF托底分位  : {_fmt(latest.get('etf_flow_ratio_score'))}")
+    # 2 大拐点快变量
+    print(f"  - 期权情绪分位       : {_fmt(latest.get('dim_sentiment'))}")
+    print(f"  - 市场广度分位       : {_fmt(latest.get('dim_breadth'))}")
+    # 1 个长线慢变量
     print(f"  - 大盘估值分位       : {_fmt(latest.get('dim_valuation'))}")
+    # 1 个微观基本面底
+    print(f"  - 产业资本分位       : {_fmt(latest.get('dim_corporate'))}")
+    # 1 个全谱系流动性
+    print(f"  - 跨资产宏观分位     : {_fmt(latest.get('dim_cross_asset'))}")
+    # 聪明钱独立维度（未加入双轨指数，供策略选用）
+    print(f"  - 聪明钱组合分位     : {_fmt(latest.get('smart_money_score'))}")
 
     # 指数近 60 日与近 20 日涨跌
     print("\n[2. 核心指数 20日 / 60日 区间涨跌幅与回撤]")
