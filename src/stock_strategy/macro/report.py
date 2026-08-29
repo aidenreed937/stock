@@ -16,12 +16,12 @@ import polars as pl
 import yaml
 
 from stock_data.catalog import DataCatalog
-from stock_strategy.macro_assembly import assemble_macro_panel, load_price_panel
-from stock_strategy.macro_report_render import (
+from stock_strategy.macro.assembly import assemble_macro_panel, load_price_panel
+from stock_strategy.macro.report_render import (
     render_comparison_chart,
     render_comparison_markdown,
 )
-from stock_strategy.macro_runner import MacroRiskRunner
+from stock_strategy.macro.runner import MacroRiskRunner
 from stock_strategy.pool import create_strategy
 
 _TRADING_DAYS_PER_YEAR = 252.0

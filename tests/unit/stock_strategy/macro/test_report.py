@@ -3,7 +3,7 @@ from datetime import date
 import polars as pl
 import pytest
 
-from stock_strategy.macro_report import compute_stats, nav_from_close
+from stock_strategy.macro.report import compute_stats, nav_from_close
 
 
 def test_nav_from_close_normalizes_first_day() -> None:
@@ -46,7 +46,7 @@ def test_compute_stats_monotonic_growth() -> None:
 
 
 def test_render_comparison_markdown_dynamic_columns() -> None:
-    from stock_strategy.macro_report import render_comparison_markdown
+    from stock_strategy.macro.report import render_comparison_markdown
 
     stats = {
         "中证全指": {

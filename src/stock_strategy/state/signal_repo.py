@@ -7,7 +7,7 @@ import json
 from typing import Any
 
 from stock_core.storage.sqlite_engine import SQLiteEngine, get_sqlite_engine
-from stock_strategy.macro_live import LiveSignalInspectionResult
+from stock_strategy.macro.live import LiveSignalInspectionResult
 
 
 class SignalRepository:

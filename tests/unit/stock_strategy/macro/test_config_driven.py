@@ -7,11 +7,11 @@ from pathlib import Path
 from stock_reporting.interpretation.macro_risk.logic import (
     evaluate_macro_risk,
 )
-from stock_strategy.macro_audit import (
+from stock_strategy.macro.audit import (
     load_macro_regimes,
     load_stress_tests,
 )
-from stock_strategy.macro_report import (
+from stock_strategy.macro.report import (
     _runner_for,
     load_benchmarks,
 )

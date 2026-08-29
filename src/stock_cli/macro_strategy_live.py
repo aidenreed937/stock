@@ -20,7 +20,7 @@ from pathlib import Path
 
 from stock_core.utils.logger import logger
 from stock_core.utils.webhook import send_webhook_alert
-from stock_strategy.macro_live import inspect_live_signal
+from stock_strategy.macro.live import inspect_live_signal
 from stock_strategy.state.signal_repo import SignalRepository
 
 

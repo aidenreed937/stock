@@ -4,7 +4,7 @@ from unittest.mock import MagicMock, patch
 import polars as pl
 import pytest
 
-from stock_strategy.macro_live import inspect_live_signal
+from stock_strategy.macro.live import inspect_live_signal
 
 
 def test_inspect_live_signal_invalid_strategy() -> None:
@@ -12,8 +12,8 @@ def test_inspect_live_signal_invalid_strategy() -> None:
         inspect_live_signal(strategy_key="non_existent_strategy")
 
 
-@patch("stock_strategy.macro_live.assemble_macro_panel")
-@patch("stock_strategy.macro_live.load_price_panel")
+@patch("stock_strategy.macro.live.assemble_macro_panel")
+@patch("stock_strategy.macro.live.load_price_panel")
 def test_inspect_live_signal_with_mock_quotes(
     mock_price_panel: MagicMock,
     mock_assemble: MagicMock,

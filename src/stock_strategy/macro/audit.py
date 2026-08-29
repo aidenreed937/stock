@@ -21,17 +21,17 @@ import yaml
 
 from stock_core.utils.logger import logger
 from stock_data.catalog import DataCatalog
-from stock_strategy.macro_assembly import assemble_macro_panel, load_price_panel
-from stock_strategy.macro_audit_calc import (
+from stock_strategy.macro.assembly import assemble_macro_panel, load_price_panel
+from stock_strategy.macro.audit_calc import (
     compute_rolling_stats,
     compute_slice_metrics,
     compute_stress_test,
 )
-from stock_strategy.macro_audit_render import (
+from stock_strategy.macro.audit_render import (
     render_audit_markdown,
     render_stability_charts,
 )
-from stock_strategy.macro_report import (
+from stock_strategy.macro.report import (
     _runner_for,
     load_all_strategy_specs,
     load_benchmarks,

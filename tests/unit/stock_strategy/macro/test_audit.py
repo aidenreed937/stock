@@ -5,9 +5,11 @@ import pandas as pd
 import polars as pl
 import pytest
 
-from stock_strategy.macro_audit import (
+from stock_strategy.macro.audit import (
     StabilityAuditResult,
     assert_stability_guardrails,
+)
+from stock_strategy.macro.audit_calc import (
     compute_rolling_stats,
     compute_slice_metrics,
 )

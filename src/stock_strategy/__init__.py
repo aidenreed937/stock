@@ -2,10 +2,6 @@
 
 from __future__ import annotations
 
-from stock_strategy.application import (
-    StrategyApplicationResult,
-    run_strategy_application,
-)
 from stock_strategy.base import BaseStrategy
 from stock_strategy.config import (
     IndicatorsConfig,
@@ -17,18 +13,32 @@ from stock_strategy.config import (
 )
 from stock_strategy.context import Context, Position
 from stock_strategy.exceptions import StrategyError
-from stock_strategy.macro_assembly import assemble_macro_panel, load_price_panel
-from stock_strategy.macro_audit import (
+from stock_strategy.macro import (
+    MACRO_REGIMES,
+    STRESS_TEST_PERIODS,
+    LiveOrderInstruction,
+    LiveSignalInspectionResult,
+    MacroRiskRunner,
     StabilityAuditResult,
+    assemble_macro_panel,
     assert_stability_guardrails,
+    build_multi_strategy_comparison_report,
+    build_v3_v4_comparison_report,
+    compute_metrics,
+    compute_rolling_stats,
+    compute_slice_metrics,
+    compute_stats,
+    compute_stress_test,
+    inspect_live_signal,
+    load_all_strategy_specs,
+    load_benchmarks,
+    load_macro_regimes,
+    load_price_panel,
+    load_strategy_spec,
+    load_stress_tests,
+    nav_from_close,
     run_full_stability_audit,
 )
-from stock_strategy.macro_live import inspect_live_signal
-from stock_strategy.macro_report import (
-    build_multi_strategy_comparison_report,
-    compute_metrics,
-)
-from stock_strategy.macro_runner import MacroRiskRunner
 from stock_strategy.pool import (
     STRATEGY_REGISTRY,
     DoubleSmaRsiStrategy,
@@ -49,13 +59,17 @@ from stock_strategy.runner import SignalReport, StrategyRunner
 from stock_strategy.signal import Signal, SignalDirection
 
 __all__ = [
+    "MACRO_REGIMES",
     "STRATEGY_REGISTRY",
+    "STRESS_TEST_PERIODS",
     "BacktestApplicationResult",
     "BacktestResult",
     "BaseStrategy",
     "Context",
     "DoubleSmaRsiStrategy",
     "IndicatorsConfig",
+    "LiveOrderInstruction",
+    "LiveSignalInspectionResult",
     "MACDCrossStrategy",
     "MacroRiskRunner",
     "MacroRiskV3Strategy",
@@ -70,20 +84,29 @@ __all__ = [
     "SignalDirection",
     "SignalReport",
     "StabilityAuditResult",
-    "StrategyApplicationResult",
     "StrategyConfig",
     "StrategyError",
     "StrategyRunner",
     "assemble_macro_panel",
     "assert_stability_guardrails",
     "build_multi_strategy_comparison_report",
+    "build_v3_v4_comparison_report",
     "compute_metrics",
+    "compute_rolling_stats",
+    "compute_slice_metrics",
+    "compute_stats",
+    "compute_stress_test",
     "create_strategy",
     "inspect_live_signal",
+    "load_all_strategy_specs",
+    "load_benchmarks",
+    "load_macro_regimes",
     "load_price_panel",
     "load_strategy_config",
+    "load_strategy_spec",
+    "load_stress_tests",
+    "nav_from_close",
     "run_backtest_application",
     "run_factor_backtest",
     "run_full_stability_audit",
-    "run_strategy_application",
 ]

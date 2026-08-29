@@ -5,7 +5,7 @@ from __future__ import annotations
 import argparse
 
 from stock_core.utils.logger import setup_logger
-from stock_strategy.macro_report import build_multi_strategy_comparison_report
+from stock_strategy.macro.report import build_multi_strategy_comparison_report
 
 
 def main() -> None:

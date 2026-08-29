@@ -13,8 +13,8 @@ import yaml
 
 from stock_core.utils.logger import logger, setup_logger
 from stock_data.catalog import DataCatalog
-from stock_strategy.macro_assembly import assemble_macro_panel, load_price_panel
-from stock_strategy.macro_runner import MacroRiskRunner
+from stock_strategy.macro.assembly import assemble_macro_panel, load_price_panel
+from stock_strategy.macro.runner import MacroRiskRunner
 from stock_strategy.pool import create_strategy
 
 DEFAULT_CONFIG_PATH = Path("config/strategy/macro_risk.yaml")

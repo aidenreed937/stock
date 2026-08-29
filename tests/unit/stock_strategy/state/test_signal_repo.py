@@ -3,7 +3,7 @@ from pathlib import Path
 from zoneinfo import ZoneInfo
 
 from stock_core.storage.sqlite_engine import SQLiteEngine
-from stock_strategy.macro_live import LiveOrderInstruction, LiveSignalInspectionResult
+from stock_strategy.macro.live import LiveOrderInstruction, LiveSignalInspectionResult
 from stock_strategy.state.signal_repo import SignalRepository
 
 _SHANGHAI_TZ = ZoneInfo("Asia/Shanghai")

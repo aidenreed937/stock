@@ -19,8 +19,8 @@ import polars as pl
 from stock_core.utils.logger import logger
 from stock_data.catalog import DataCatalog
 from stock_data.fetcher.realtime.tencent import TencentRealtimeFetcher
-from stock_strategy.macro_assembly import assemble_macro_panel, load_price_panel
-from stock_strategy.macro_report import load_all_strategy_specs
+from stock_strategy.macro.assembly import assemble_macro_panel, load_price_panel
+from stock_strategy.macro.report import load_all_strategy_specs
 from stock_strategy.pool import create_strategy
 
 _SHANGHAI_TZ = ZoneInfo("Asia/Shanghai")

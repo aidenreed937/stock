@@ -5,7 +5,7 @@ import polars as pl
 import pytest
 
 from stock_core.exceptions import DataValidationError
-from stock_strategy import macro_assembly
+from stock_strategy.macro import assembly
 
 
 class _FakeCatalog:
@@ -23,7 +23,7 @@ class _FakeCatalog:
 
 def _patch_factors(monkeypatch, factors: pl.DataFrame) -> None:
     monkeypatch.setattr(
-        macro_assembly,
+        assembly,
         "load_latest_risk_factors",
         lambda risk_root=None: (Path("."), factors, {}),
     )
@@ -44,7 +44,7 @@ def test_assemble_macro_panel_joins_and_forward_fills(monkeypatch) -> None:
         }
     )
     _patch_factors(monkeypatch, factors)
-    panel = macro_assembly.assemble_macro_panel(
+    panel = assembly.assemble_macro_panel(
         catalog=_FakeCatalog({"000985.CSI": close}),
         benchmark_symbol="000985.CSI",
     )
@@ -60,7 +60,7 @@ def test_assemble_macro_panel_missing_factor_cols_raises(monkeypatch) -> None:
     _patch_factors(monkeypatch, factors)
     close = pl.DataFrame({"trade_date": [date(2026, 1, 1)], "close": [100.0]})
     with pytest.raises(DataValidationError):
-        macro_assembly.assemble_macro_panel(
+        assembly.assemble_macro_panel(
             catalog=_FakeCatalog({"000985.CSI": close}),
             benchmark_symbol="000985.CSI",
         )
@@ -76,7 +76,7 @@ def test_assemble_macro_panel_empty_close_raises(monkeypatch) -> None:
     )
     _patch_factors(monkeypatch, factors)
     with pytest.raises(DataValidationError):
-        macro_assembly.assemble_macro_panel(
+        assembly.assemble_macro_panel(
             catalog=_FakeCatalog({}),
             benchmark_symbol="000985.CSI",
         )
@@ -91,7 +91,7 @@ def test_load_price_panel_concats_symbols() -> None:
             {"trade_date": [date(2026, 1, 1)], "symbol": ["399006.SZ"], "close": [20.0]}
         ),
     }
-    panel = macro_assembly.load_price_panel(
+    panel = assembly.load_price_panel(
         catalog=_FakeCatalog(frames),
         symbols=["000922.CSI", "399006.SZ"],
     )

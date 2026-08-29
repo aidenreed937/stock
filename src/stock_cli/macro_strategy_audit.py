@@ -13,7 +13,7 @@ import sys
 from pathlib import Path
 
 from stock_core.utils.logger import logger
-from stock_strategy.macro_audit import (
+from stock_strategy.macro.audit import (
     assert_stability_guardrails,
     run_full_stability_audit,
 )

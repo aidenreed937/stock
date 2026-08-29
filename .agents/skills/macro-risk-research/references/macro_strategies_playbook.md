@@ -6,7 +6,7 @@
 
 ## 一、 宏观策略池架构与配置矩阵
 
-所有宏观风控策略均由 [`config/strategy/macro_risk.yaml`](file:///Users/mac/workspace/personal/finance/stock/config/strategy/macro_risk.yaml) 统一配置，由 `stock_strategy.macro_runner.MacroRiskRunner` 执行回测，由 `stock_strategy.macro_report` 统一生成横向对账。
+所有宏观风控策略均由 [`config/strategy/macro_risk.yaml`](file:///Users/mac/workspace/personal/finance/stock/config/strategy/macro_risk.yaml) 统一配置，由 `stock_strategy.macro.runner.MacroRiskRunner` 执行回测，由 `stock_strategy.macro.report` 统一生成横向对账。
 
 | 策略键名 | 核心类名 | 交易标的与初始权重 | 趋势基准 | 核心投资哲学与风险收益特征 |
 | :--- | :--- | :--- | :--- | :--- |

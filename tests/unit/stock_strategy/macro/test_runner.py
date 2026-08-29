@@ -3,7 +3,7 @@ from datetime import date
 import polars as pl
 import pytest
 
-from stock_strategy.macro_runner import MacroRiskRunner
+from stock_strategy.macro.runner import MacroRiskRunner
 from stock_strategy.pool import MacroRiskV3Strategy
 
 
