@@ -102,8 +102,12 @@ class TuShareClient:
                         )
                         time.sleep(sleep_sec)
                         continue
-                elif attempt < max_retries and not (
-                    "token" in err_msg.lower() and ("无效" in err_msg or "不存在" in err_msg)
+                elif (
+                    attempt < max_retries
+                    and not (
+                        "token" in err_msg.lower() and ("无效" in err_msg or "不存在" in err_msg)
+                    )
+                    and "offset" not in err_msg.lower()
                 ):
                     sleep_sec = attempt * 2.0
                     logger.warning(
@@ -113,7 +117,6 @@ class TuShareClient:
                     continue
                 logger.error(f"TuShare API 请求失败 [{api_name}]: {e}")
                 raise DataFetchError(f"TuShare 接口 [{api_name}] 请求失败: {e}") from e
-        return pd.DataFrame()
         return pd.DataFrame()
 
     def query(
@@ -159,10 +162,24 @@ class TuShareClient:
             limit = len(df)
             offset = limit
             while True:
+                # TuShare 服务端对 offset 有 100,000 上限限制，超过该上限服务端会报错
+                if offset > 100000:
+                    logger.debug(
+                        f"TuShare 接口 [{api_name}] 分页已达服务端物理 offset 限制 (100000)，正常结束翻页。"
+                    )
+                    break
                 page_kwargs = dict(kwargs)
                 page_kwargs["limit"] = limit
                 page_kwargs["offset"] = offset
-                page_df = self._raw_query(api_name, **page_kwargs)
+                try:
+                    page_df = self._raw_query(api_name, **page_kwargs)
+                except Exception as exc:
+                    if "offset" in str(exc).lower():
+                        logger.debug(
+                            f"TuShare 接口 [{api_name}] 触发服务端 offset 校验边界 [{exc}]，正常结束翻页。"
+                        )
+                        break
+                    raise
                 if page_df.empty:
                     break
                 sig = (len(page_df), tuple(page_df.iloc[0].values), tuple(page_df.iloc[-1].values))
