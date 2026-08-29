@@ -601,17 +601,15 @@ def _derive_task_spec(provider_name: str, requested: str, meta: Any) -> TaskSpec
         partitioned = True
 
     # 3. 推导 is_single_sync (是否单表/宏观全量一次性同步)
-    if requested in PARTITIONED_EVENT_TASKS:
+    if requested in PARTITIONED_EVENT_TASKS or requested in _registry_helpers.PER_PERIOD_DATASETS:
         is_single_sync = False
     elif (
         requested in _EXPLICIT_SINGLE_SYNC
         or group in ("macro_data", "basic_info")
         or (
             frequency in ("monthly", "quarterly", "event", "static")
-            and group
-            not in ("financial_statements", "financial_indicator", "market_data", "fund_market")
-            and requested
-            not in ("income", "fina_indicator", "forecast", "express", "balancesheet", "cashflow")
+            and group not in _registry_helpers.NON_SINGLE_SYNC_GROUPS
+            and requested not in _registry_helpers.NON_SINGLE_SYNC_DATASETS
         )
     ):
         is_single_sync = True
