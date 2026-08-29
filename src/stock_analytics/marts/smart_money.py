@@ -37,6 +37,13 @@ def build_smart_money_frame(
     block_trade: pl.DataFrame,
     top10_holders: pl.DataFrame,
     calendar: pl.DataFrame,
+    *,
+    insider_window: int = 1250,
+    insider_min_periods: int = 500,
+    block_window: int = 250,
+    block_min_periods: int = 60,
+    nat_window: int = 500,
+    nat_min_periods: int = 20,
 ) -> pl.DataFrame:
     """构建聪明钱组合信号日频宽表。
 
@@ -45,6 +52,12 @@ def build_smart_money_frame(
         block_trade: ``block_trade_daily`` Mart（trade_date/block_trade_amount/...折价率）
         top10_holders: ``top10_floatholders`` 事实表（ann_date/holder_name/hold_change）
         calendar: 交易日历（trade_date, 升序）
+        insider_window: 产业资本增持滚动分位窗口（默认 1250 交易日）
+        insider_min_periods: 产业资本增持分位最小样本数（默认 500）
+        block_window: 大宗折价接盘滚动分位窗口（默认 250）
+        block_min_periods: 大宗折价分位最小样本数（默认 60）
+        nat_window: 国家队股东锚点滚动分位窗口（默认 500）
+        nat_min_periods: 国家队锚点分位最小样本数（默认 20）
 
     Returns:
         ``trade_date / insider_score / block_score / nat_score / smart_money_score``
@@ -67,7 +80,9 @@ def build_smart_money_frame(
                 pl.col("insider_net_buy_amount").rolling_sum(window_size=20).alias("_net20")
             )
             .with_columns(
-                rolling_percentile("_net20", 1250, min_samples=500).alias("insider_score")
+                rolling_percentile("_net20", insider_window, min_samples=insider_min_periods).alias(
+                    "insider_score"
+                )
             )
             .select(["trade_date", "insider_score"])
         )
@@ -101,7 +116,9 @@ def build_smart_money_frame(
                 .alias("_disc_depth")
             )
             .with_columns(
-                rolling_percentile("_disc_depth", 250, min_samples=60).alias("block_score")
+                rolling_percentile(
+                    "_disc_depth", block_window, min_samples=block_min_periods
+                ).alias("block_score")
             )
             .select(["trade_date", "block_score"])
         )
@@ -122,7 +139,11 @@ def build_smart_money_frame(
         )
         nat_score = (
             calendar.join_asof(agg, left_on="trade_date", right_on="ann_date", strategy="backward")
-            .with_columns(rolling_percentile("net_change", 500, min_samples=20).alias("nat_score"))
+            .with_columns(
+                rolling_percentile("net_change", nat_window, min_samples=nat_min_periods).alias(
+                    "nat_score"
+                )
+            )
             .select(["trade_date", "nat_score"])
         )
 
