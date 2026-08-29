@@ -11,8 +11,10 @@
 | **`stock_daily_bar`** | A 股全市场个股日 K 线 | 5,000+ A 股 (2013 至今) | `symbol`, `trade_date` | `open`, `high`, `low`, `close`, `volume(股)`, `amount(元)` |
 | **`index_daily_bar`** | A 股 10 大核心指数日 K 线 | 上证指数/沪深300/中证500等 (12年) | `symbol`, `trade_date` | `open`, `high`, `low`, `close`, `volume`, `amount(元)` |
 | **`adj_factor`** | A 股复权因子 | 5,000+ A 股全历史 | `symbol`, `trade_date` | `adj_factor` |
-| **`fund_daily`** | 场内基金与 ETF 日 K 线 | 26 只核心 ETF 全历史 | `symbol`, `trade_date` | `open`, `high`, `low`, `close`, `volume`, `amount` |
-| **`etf_share_size`** | 核心 ETF 份额与规模序列 | 26 只核心 ETF 全历史 | `symbol`, `trade_date` | `fd_share`, `n_shares` |
+| **`fund_daily`** | 场内基金与 ETF 日 K 线 | 全市场/核心 ETF 全历史 | `symbol`, `trade_date` | `open`, `high`, `low`, `close`, `volume`, `amount` |
+| **`fund_adj`** | 场内基金与 ETF 复权因子 | 全市场/核心 ETF 全历史 (含分红除权) | `symbol`, `trade_date` | `adj_factor` |
+| **`etf_share_size`** | 核心 ETF 份额与规模序列 | 核心 ETF 全历史 | `symbol`, `trade_date` | `fd_share`, `n_shares` |
+| **`fund_portfolio`** | 公募基金重仓持股明细 | 公募基金季度持仓股票明细 | `symbol`, `ann_date`, `end_date`, `symbol` | `mkv`, `amount`, `stk_mkv_ratio` |
 | **`moneyflow`** | 个股大单小单资金流向 | 全市场个股资金流 (2013 至今) | `symbol`, `trade_date` | `buy_sm_amount`, `buy_md_amount`, `buy_lg_amount`, `buy_elg_amount`, `net_mf_amount` (均为元) |
 | **`moneyflow_hsgt`** | 北向资金每日净流入 | 沪股通/深股通/北向合计 (2014 至今) | `trade_date` | `hgt(元)`, `sgt(元)`, `north_money(元)` |
 | **`margin`** | 全市场融资融券每日汇总 | SSE/SZSE/BSE 全历史 | `trade_date`, `exchange_id` | `rzye(元)`, `rzmre`, `rqye`, `rqyl`, `rzrqye` |
@@ -34,6 +36,7 @@
 | **`daily_basic`** | TuShare | A 股全市场每日估值与指标 | `symbol`, `trade_date` | `pe_ttm`, `pb`, `ps_ttm`, `dv_ttm`, `total_mv(元)`, `circ_mv(元)`, `turnover_rate` |
 | **`index_fundamental`** | 理杏仁 | 9 大核心指数基本面估值 | `symbol`, `trade_date` | `pe_ttm.mcw`, `pe_ttm.ew`, `pb.mcw`, `pb.ew`, `dyr.mcw`, `mc(元)` |
 | **`report_rc`** | TuShare | 卖方研报一致预期盈利预测 | `symbol`, `report_date`, `org_name` | `quarter`, `np(元)`, `eps`, `tp(目标价)`, `rating`, `org_name` |
+| **`fund_holder_structure`** | 理杏仁 | 大陆公募基金与 ETF 持有人结构 | `stockCode`, `date` | `h_a(户数)`, `h_s_a(户均份额)`, `ins_h_s(机构份额)`, `ins_h_s_r(机构占比)`, `ind_h_s(个人份额)`, `ind_h_s_r(个人占比)` |
 | **`forecast`** | TuShare | 上市公司业绩预告 (PIT) | `symbol`, `ann_date`, `end_date` | `type`, `p_change_min`, `p_change_max`, `net_profit_min`, `summary` |
 | **`express`** | TuShare | 上市公司业绩快报 (PIT) | `symbol`, `ann_date`, `end_date` | `revenue(元)`, `operate_profit`, `n_income`, `yoy_net_profit`, `diluted_roe` |
 

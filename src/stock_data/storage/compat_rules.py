@@ -252,6 +252,18 @@ _DATASET_FLOAT_COLUMNS: dict[str, frozenset[str]] = {
     "shibor_lpr": frozenset({"1y", "5y"}),
     "opt_basic": frozenset({"per_unit", "exercise_price", "list_price", "min_price_chg"}),
     "fund_basic": frozenset({"exp_return"}),
+    "fund_holder_structure": frozenset(
+        {
+            "h_a",
+            "h_s_a",
+            "ins_h_s",
+            "ins_h_s_r",
+            "ind_h_s",
+            "ind_h_s_r",
+            "f_f_s",
+            "f_f_s_r",
+        }
+    ),
     "unlock_summary": frozenset(
         {
             "srl_last",

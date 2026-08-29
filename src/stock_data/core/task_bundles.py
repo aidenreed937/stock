@@ -116,7 +116,12 @@ TASK_BUNDLE_ALIASES: dict[tuple[str, str], tuple[str, ...]] = {
     ("tushare", "industry_bundle"): ("sw_daily",),
     ("tushare", "index_bundle"): ("index_daily_bar", "index_dailybasic"),
     ("tushare", "index_weight_bundle"): ("index_weight",),
-    ("tushare", "fund_bundle"): ("fund_daily", "fund_adj", "fund_share", "etf_share_size"),
+    ("tushare", "fund_bundle"): (
+        "fund_daily",
+        "fund_adj",
+        "fund_share",
+        "etf_share_size",
+    ),
     ("tushare", "fund_share_bundle"): ("fund_share",),
     ("tushare", "moneyflow_bundle"): ("moneyflow",),
     ("tushare", "equity_flow_bundle"): ("moneyflow", "hk_hold", "margin_detail"),
@@ -158,6 +163,7 @@ TASK_BUNDLE_ALIASES: dict[tuple[str, str], tuple[str, ...]] = {
     ("fred", "macro_daily_bundle"): ("T10Y2Y",),
     ("fred", "macro_quarterly_bundle"): ("GDP",),
     ("fred", "macro_weekly_bundle"): ("WALCL",),
+    ("lixinger", "fund_bundle"): ("fund_holder_structure",),
 }
 
 TASK_BUNDLES: dict[tuple[str, str], TaskBundle] = {

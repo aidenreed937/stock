@@ -433,7 +433,7 @@ def test_task_bundles_cover_registered_tasks_except_explicit_aggregate_routes() 
             "cb_basic",
             "cb_daily",
         },
-        "lixinger": {"index_fundamental"},
+        "lixinger": {"index_fundamental", "fund_holder_structure"},
         "yfinance": {
             "macro_indicators",
             "index_valuation",
@@ -512,6 +512,13 @@ def test_registered_new_data_source_tasks_have_explicit_routes() -> None:
     assert fund_portfolio.fetch_mode == "per_period"
     assert fund_portfolio.frequency == "quarterly"
     assert fund_portfolio.partitioned is True
+
+    fund_holder_structure = resolve_task("lixinger", "fund_holder_structure")
+    assert fund_holder_structure.api_name == "cn/fund/shareholders-structure"
+    assert fund_holder_structure.dataset == "fund_holder_structure"
+    assert fund_holder_structure.fetch_mode == "per_symbol"
+    assert not fund_holder_structure.partitioned
+    assert fund_holder_structure.is_single_sync is True
 
     investor_accounts = resolve_task("lixinger", "investor_accounts")
     assert investor_accounts.api_name == "macro/investor"

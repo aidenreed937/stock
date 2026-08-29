@@ -276,3 +276,32 @@ def test_lixinger_stock_fetcher_chunking_for_long_range() -> None:
     )
     assert not df.is_empty()
     assert mock_client.query.call_count >= 2
+
+
+def test_lixinger_fund_holder_structure_fills_stock_code() -> None:
+    mock_client = MagicMock()
+    mock_client.query.return_value = pd.DataFrame(
+        {
+            "date": ["2024-12-31T00:00:00+08:00"],
+            "h_a": [792893],
+            "h_s_a": [112734],
+            "ins_h_s": [74243732479],
+            "ins_h_s_r": [0.8306],
+            "ind_h_s": [14587732446],
+            "ind_h_s_r": [0.1632],
+            "f_f_s": [555222765],
+            "f_f_s_r": [0.0062],
+        }
+    )
+    fetcher = LixingerStockFetcher(client=mock_client)
+    df = fetcher.fetch_daily_bars_df(
+        symbol="510300.SH",
+        start_date=date(2024, 1, 1),
+        end_date=date(2024, 12, 31),
+        endpoint="fund_holder_structure",
+    )
+    assert not df.is_empty()
+    assert df["stockCode"][0] == "510300"
+    assert "ins_h_s_r" in df.columns
+    assert mock_client.query.call_args.args[0] == "cn/fund/shareholders-structure"
+    assert mock_client.query.call_args.kwargs["stockCode"] == "510300"

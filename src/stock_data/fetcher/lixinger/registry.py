@@ -365,6 +365,18 @@ LIXINGER_API_REGISTRY: dict[str, EndpointMeta] = {
         default_metrics=["q.ps.toi.t", "q.ps.np.t", "q.ps.ep.t"],
         support_batch_prefetch=True,
     ),
+    "cn/fund/shareholders-structure": EndpointMeta(
+        api_name="cn/fund/shareholders-structure",
+        description="大陆公募基金与场内 ETF 持有人结构 (机构 vs 个人占比与户数)",
+        frequency="quarterly",
+        group="fund_holdings",
+        primary_keys=["stockCode", "date"],
+        date_columns=["date"],
+        required_columns=["stockCode", "date", "ins_h_s", "ins_h_s_r", "ind_h_s", "ind_h_s_r"],
+        update_time="18:00",
+        update_delay_days=0,
+        code_param_name="stockCode",
+    ),
 }
 
 for _api_name, _spec in LIXINGER_RISK_ENDPOINT_SPECS.items():

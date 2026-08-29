@@ -63,7 +63,7 @@ df_summary = DataCatalog().summary()
 | **指数基本面估值** | `index_fundamental`, `national_debt` | `lixinger` | `pe_ttm.mcw`, `pb.mcw`, `dyr.mcw`, `tcm_y10`(10年国债) |
 | **申万行业体系** | `sw_daily`, `sw_2021_fundamental`, `sw_2021_constituents` | `tushare` / `lixinger` | 31 行业行情、估值序列与 797 行业成份股图谱 |
 | **卖方预测与业绩** | `report_rc`, `forecast`, `express` | `tushare` | 一致预期盈利预测 (`np`, `tp`)、业绩预告与快报 |
-| **场内基金与 ETF** | `fund_daily`, `etf_share_size` | `tushare` | 26 只核心自选 ETF 历史日线与份额规模 |
+| **场内基金与 ETF** | `fund_daily`, `fund_adj`, `etf_share_size` | `tushare` | 63 只核心 ETF 全历史日线、复权因子(含分红)与份额规模 |
 | **可转债与期权** | `cb_basic`, `cb_daily`, `opt_basic`, `opt_daily` | `tushare` | 可转债静态/日行情、期权合约静态/日行情 |
 | **公司行为事件** | `stk_holdertrade`, `repurchase`, `block_trade` | `tushare` | 增减持、回购与大宗交易事件明细 |
 | **领域 Mart** | `market_daily`、`industry_daily`、`industry_panel_daily`、`market_temperature_derived_facts`、`convertible_bond_daily`、`insider_activity_daily`、`repurchase_daily`、`block_trade_daily`、`settlement_iv_proxy_daily` | `FeatureStore` | 市场、行业、温度、衍生品与公司行为聚合事实；不通过 `DataCatalog` 直接加载 |

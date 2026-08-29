@@ -44,6 +44,7 @@ def ensure_lixinger_stock_code(endpoint: str, frame: Any, stock_code: str) -> An
         not in {
             "cn/company/measures",
             "cn/company/inquiry",
+            "cn/fund/shareholders-structure",
         }
     ):
         return frame

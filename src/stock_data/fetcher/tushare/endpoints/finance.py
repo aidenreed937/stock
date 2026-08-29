@@ -365,9 +365,7 @@ FINANCE_ENDPOINTS: dict[str, EndpointMeta] = {
             "stk_float_ratio": "percent",
         },
         max_rows_per_request=5000,
-        request_fields=(
-            "ts_code,ann_date,end_date,symbol,mkv,amount,stk_mkv_ratio,stk_float_ratio"
-        ),
+        request_fields="ts_code,ann_date,end_date,symbol,mkv,amount,stk_mkv_ratio,stk_float_ratio",
     ),
 }
 
