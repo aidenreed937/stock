@@ -148,7 +148,6 @@ macro_risk:
     flow:
     - main_ratio
     - composite_flow
-    - etf_flow_ratio
     - divergence_score
     breadth:
     - adv_dec
@@ -161,7 +160,6 @@ macro_risk:
     crowding:
     - market_turnover
     corporate:
-    - repurchase
     - insider_net
     - insider_sell
     - unlock_amount

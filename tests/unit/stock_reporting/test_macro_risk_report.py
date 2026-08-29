@@ -89,20 +89,19 @@ def test_render_macro_risk_report_dual_extremes() -> None:
     assert "70.9" in md
 
 
-def test_evaluate_macro_risk_etf_support() -> None:
+def test_evaluate_macro_risk_flow_active_inflow() -> None:
     row = {
         "trade_date": date(2025, 4, 7),
         "overheat_index": 45.0,
         "panic_index": 80.0,
-        "dim_flow": 75.0,
-        "etf_flow_ratio_score": 95.0,
+        "dim_flow": 25.0,
         "dim_crowding": 60.0,
     }
     res = evaluate_macro_risk(row)
     flow_item = next(
         item for tier in res["risk_tiers"] for item in tier["metrics"] if item["code"] == "dim_flow"
     )
-    assert flow_item["status"] == "国家队托底"
+    assert flow_item["status"] == "流入活跃"
     assert "🟢" in flow_item["badge"]
 
 
@@ -153,19 +152,19 @@ def test_evaluate_macro_risk_false_gold_pit_warning() -> None:
 
 
 def test_evaluate_macro_risk_corporate_lead() -> None:
-    """测试独立产业底：国家队未买但上市公司率先大额回购。"""
+    """测试独立产业底：聪明钱观望但上市公司率先大额回购与增持。"""
     row = {
         "trade_date": date(2026, 2, 2),
         "overheat_index": 45.0,
         "panic_index": 72.0,
-        "etf_flow_ratio_score": 5.0,
+        "smart_money_score": 5.0,
         "dim_corporate": 80.0,
         "repurchase_score": 85.0,
     }
     res = evaluate_macro_risk(row)
     assert "微观产业底抢跑" in res["status"]
     assert res["level"] == "opportunity"
-    assert "上市公司回购潮已率先爆发" in res["advice"]
+    assert "上市公司增持与回购潮已率先爆发" in res["advice"]
 
 
 def test_evaluate_macro_risk_top_fund_corporate_divergence() -> None:

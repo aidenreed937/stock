@@ -58,11 +58,7 @@ def _grade_dim(
     if special_cases and special_vars:
         for sc in special_cases:
             cond = sc.get("condition")
-            if cond == "etf_score_gte_90":
-                etf_s = special_vars.get("etf_score")
-                if etf_s is not None and etf_s >= sc.get("etf_score_min", 90.0):
-                    return sc["grade"], sc["icon"], sc["comment"]
-            elif cond == "divergence_and_flow":
+            if cond == "divergence_and_flow":
                 div_s = special_vars.get("div_score")
                 if (
                     div_s is not None
@@ -108,12 +104,12 @@ def evaluate_macro_risk(
     val_flow = _get("dim_flow")
     val_sentiment = _get("dim_sentiment")
     val_breadth = _get("dim_breadth")
-    val_etf_score = _get("etf_flow_ratio_score")
+    val_smart_score = _get("smart_money_score")
     val_div_score = _get("divergence_score_score")
     val_corporate = _get("dim_corporate")
     val_cross_asset = _get("dim_cross_asset")
 
-    special_flow = {"etf_score": val_etf_score, "div_score": val_div_score}
+    special_flow = {"div_score": val_div_score}
 
     s_lev, b_lev, d_lev = _grade_dim("leverage", val_leverage, cfg)
     s_crw, b_crw, d_crw = _grade_dim("crowding", val_crowding, cfg)
@@ -266,8 +262,8 @@ def evaluate_macro_risk(
             val_rep_val is None or val_rep_val <= 30.0
         )
         is_corp_lead = (
-            val_etf_score is not None
-            and val_etf_score < 40.0
+            val_smart_score is not None
+            and val_smart_score < 40.0
             and (
                 (val_corporate is not None and val_corporate >= 65.0)
                 or (val_rep_val is not None and val_rep_val >= 70.0)
@@ -276,9 +272,9 @@ def evaluate_macro_risk(
 
         if is_corp_lead:
             corp_metric = val_corporate if val_corporate is not None else val_rep_val
-            status = "极度恐慌 —— 【微观产业底抢跑 (企业大额回购)】"
+            status = "极度恐慌 —— 【微观产业底抢跑 (企业增持/回购)】"
             advice = (
-                f"- **当前状态**：恐慌指数偏高 ({panic:.1f})，国家队 ETF 买盘尚不明显 ({val_etf_score:.1f})，但上市公司回购潮已率先爆发 ({corp_metric:.1f})。\n"
+                f"- **当前状态**：恐慌指数偏高 ({panic:.1f})，聪明钱组合尚在观望 ({val_smart_score:.1f})，但上市公司增持与回购潮已率先爆发 ({corp_metric:.1f})。\n"
                 "- **市场定性**：产业资本先行于宏观调令，对细分行业估值底线展开实质性投票。\n"
                 "- **后续推演**：微观企业自发展开托底，筑底周期开启，下行空间有限。\n"
                 "👉 **操作建议**：左侧跟随产业资本低吸被错杀的绩优蓝筹与红利资产，防范错过反弹行情。"

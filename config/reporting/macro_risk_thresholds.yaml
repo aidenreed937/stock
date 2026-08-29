@@ -60,11 +60,6 @@ dimensions:
       icon: "⚪"
       comment: "历史数据不足"
     special_cases:
-      - condition: "etf_score_gte_90"
-        etf_score_min: 90.0
-        grade: "国家队托底"
-        icon: "🟢"
-        comment: "宽基ETF获大额净申购托底，对冲现货抛压"
       - condition: "divergence_and_flow"
         div_score_min: 85.0
         val_min: 65.0
