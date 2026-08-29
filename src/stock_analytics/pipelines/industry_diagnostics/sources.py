@@ -190,6 +190,7 @@ def load_industry_constituents(
                 top_market_cap_leaders=top_5_mv,
                 top_roe_leaders=[],
                 cr5_concentration=cr5_val,
+                above_ma20_ratio=None,
             ),
             latest_turnover_p5y,
         )

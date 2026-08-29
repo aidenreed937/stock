@@ -41,6 +41,7 @@ class IndustryFinancialsSnapshot:
     roe_avg: float | None = None
     revenue_yoy: float | None = None
     netprofit_yoy: float | None = None
+    profit_scissors: float | None = None
     gross_margin: float | None = None
     cycle_stage: str = "成熟平稳期"
     veto_flag: bool = False
@@ -55,6 +56,7 @@ class IndustryConstituentsSnapshot:
     top_market_cap_leaders: list[dict[str, Any]] = field(default_factory=list)
     top_roe_leaders: list[dict[str, Any]] = field(default_factory=list)
     cr5_concentration: float | None = None
+    above_ma20_ratio: float | None = None
     leader_roe_spread: float | None = None
 
 
@@ -73,6 +75,7 @@ class IndustryValueChainSnapshot:
 class IndustryScoreBreakdown:
     """行业标准化量化得分与四象限拆解 (0~100 标准化分值)。"""
 
+    industry_type: str = "通用制造与消费"
     momentum_score: float = 50.0
     valuation_score: float = 50.0
     fundamental_score: float = 50.0

@@ -80,11 +80,16 @@ def _load_industry_financials(
     except Exception as exc:
         logger.warning(f"读取行业面板基本面数据失败: {exc}")
 
+    scissors = None
+    if np_yoy is not None and rev_yoy is not None:
+        scissors = round(float(np_yoy) - float(rev_yoy), 2)
+
     return IndustryFinancialsSnapshot(
         report_date=as_of_date_val,
         roe_avg=round(float(roe_val), 2) if roe_val is not None else None,
         revenue_yoy=round(float(rev_yoy), 2) if rev_yoy is not None else None,
         netprofit_yoy=round(float(np_yoy), 2) if np_yoy is not None else None,
+        profit_scissors=scissors,
         gross_margin=gm_val,
         cycle_stage="存量博弈与结构分化期" if not veto_flag else "下行去库与压力出清期",
         veto_flag=veto_flag,
@@ -163,8 +168,10 @@ def _write_industry_artifacts(
             "pe_percentile_5y": val_snapshot.pe_percentile_5y or 0.0,
             "pb_percentile_5y": val_snapshot.pb_percentile_5y or 0.0,
             "veto_flag": 1 if scores.veto_triggered else 0,
+            "profit_scissors": fin_snapshot.profit_scissors or 0.0,
         }
         manifest["quadrant"] = scores.quadrant
+        manifest["industry_type"] = scores.industry_type
         session.write_json("manifest.json", manifest)
 
     logger.info(f"中观产业量化诊断产物已通过 ArtifactStore 落盘: {paths.run_dir}")
@@ -238,6 +245,7 @@ class IndustryDiagnosticsPipeline:
 
         # 6. 多维打分与 PB-ROE 象限
         scores = calculate_industry_scores(
+            industry_name=std_name,
             technicals=tech_snapshot,
             valuation=val_snapshot,
             financials=fin_snapshot,
