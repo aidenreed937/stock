@@ -12,7 +12,7 @@ def evaluate_industry_technicals(
     rsi14: float | None,
 ) -> dict[str, Any]:
     """评估技术指标形态。"""
-    if ma20 is not None and ma60 is not None:
+    if ma20 is not None and ma60 is not None and close > 0:
         if close >= ma20 >= ma60:
             trend_desc = "多头排列 (站上MA20/MA60，动量偏强)"
             status = "bullish"
@@ -74,10 +74,41 @@ def evaluate_industry_valuation(
     }
 
 
+def evaluate_industry_scores_summary(scores: dict[str, Any]) -> dict[str, Any]:
+    """对多维打分与一票否决进行综合定调。"""
+    composite = float(scores.get("composite_score", 50.0))
+    veto = bool(scores.get("veto_triggered", False))
+
+    if veto:
+        stance = "一票否决预警 (基本面或拥挤度严重恶化)"
+        rating = "VETO"
+    elif composite >= 75.0:
+        stance = "强烈推荐超配 (动量与估值/基本面多维共振)"
+        rating = "STRONG_BUY"
+    elif composite >= 60.0:
+        stance = "结构性超配 (具备景气度或估值优势)"
+        rating = "OVERWEIGHT"
+    elif composite >= 40.0:
+        stance = "标配中性 (处于震荡中枢)"
+        rating = "NEUTRAL"
+    else:
+        stance = "建议低配/回避 (弱势动量或高估压力)"
+        rating = "UNDERWEIGHT"
+
+    return {
+        "composite_score": composite,
+        "investment_stance": stance,
+        "rating": rating,
+        "quadrant": str(scores.get("quadrant", "合理估值·平稳资产")),
+        "veto_reasons": scores.get("veto_reasons", []),
+    }
+
+
 def evaluate_industry_diagnostics(data: dict[str, Any]) -> dict[str, Any]:
     """对行业诊断全景快照进行综合业务解读。"""
     tech = data.get("technicals", {})
     val = data.get("valuation", {})
+    scores = data.get("scores", {})
 
     close = float(tech.get("close", 0.0))
     ma20 = tech.get("ma20")
@@ -86,8 +117,10 @@ def evaluate_industry_diagnostics(data: dict[str, Any]) -> dict[str, Any]:
 
     tech_eval = evaluate_industry_technicals(close, ma20, ma60, rsi14)
     val_eval = evaluate_industry_valuation(val.get("pe_percentile_5y"), val.get("pb_percentile_5y"))
+    scores_eval = evaluate_industry_scores_summary(scores)
 
     return {
         "technicals": tech_eval,
         "valuation": val_eval,
+        "scores": scores_eval,
     }

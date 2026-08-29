@@ -70,6 +70,24 @@ class IndustryValueChainSnapshot:
 
 
 @dataclass(frozen=True, slots=True)
+class IndustryScoreBreakdown:
+    """行业标准化量化得分与四象限拆解 (0~100 标准化分值)。"""
+
+    momentum_score: float = 50.0
+    valuation_score: float = 50.0
+    fundamental_score: float = 50.0
+    crowding_penalty: float = 0.0
+    composite_score: float = 50.0
+    quadrant: str = "合理估值·平稳资产"
+    veto_triggered: bool = False
+    veto_reasons: list[str] = field(default_factory=list)
+
+    def to_dict(self) -> dict[str, Any]:
+        """序列化为字典。"""
+        return asdict(self)
+
+
+@dataclass(frozen=True, slots=True)
 class IndustryDiagnosticsResult:
     """行业全景深度诊断聚合结果。"""
 
@@ -82,6 +100,7 @@ class IndustryDiagnosticsResult:
     financials: IndustryFinancialsSnapshot
     constituents: IndustryConstituentsSnapshot
     value_chain: IndustryValueChainSnapshot
+    scores: IndustryScoreBreakdown = field(default_factory=IndustryScoreBreakdown)
     veto_flag: bool = False
 
     def to_dict(self) -> dict[str, Any]:

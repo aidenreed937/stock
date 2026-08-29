@@ -1,0 +1,76 @@
+industry_diagnostics:
+  schema_version: 1
+  title: "中观产业与行业量化深度诊断"
+  artifact_root: "data/analytics/industry_diagnostics"
+
+  # 1. 时间窗口选型规范
+  windows:
+    technicals:
+      ma_short: 20
+      ma_medium: 60
+      rsi: 14
+    valuation:
+      window_5y: 1250     # 5 年行业产能/库存周期 (1250 交易日)
+      window_10y: 2500    # 10 年宏观信贷/资产配置周期 (2500 交易日)
+      min_periods: 500
+
+  # 2. 多维无量纲打分权重 (0~100 标准化)
+  score_weights:
+    momentum: 0.30        # 景气动量 (均线系统与 RSI)
+    valuation: 0.25       # 估值赔率 (100 - PE/PB 5Y分位)
+    fundamental: 0.25     # 基本面质量 (ROE + 利润/营收增长)
+    crowding: 0.20        # 拥挤度防范 (100 - CR5/换手分位)
+
+  # 3. 约束与一票否决门禁 (Veto Rules)
+  veto_rules:
+    profit_decay_threshold: -30.0    # 净利润同比下滑超 30%
+    revenue_decay_threshold: -15.0   # 营收同比萎缩超 15%
+    overheat_turnover_percentile: 90.0 # 换手过热分位数阈值 (90%)
+
+  # 4. 产业链图谱配置路径
+  value_chain_map_path: "config/industry/value_chain_map.yaml"
+
+  # 5. 上游数据集依赖契约
+  datasets:
+    - data_source: tushare
+      dataset: sw_daily
+      required: true
+      max_lag_days: 0
+      cadence: trading_daily
+      quality_tier: core
+      note: "申万行业指数日线行情，用于计算动量与估值分位"
+    - data_source: tushare
+      dataset: index_classify
+      required: true
+      static: true
+      cadence: static
+      quality_tier: core
+      note: "申万行业分类字典"
+    - data_source: tushare
+      dataset: index_member
+      required: true
+      static: true
+      cadence: static
+      quality_tier: core
+      note: "行业成份股清单"
+    - data_source: tushare
+      dataset: stock_basic
+      required: true
+      static: true
+      cadence: static
+      quality_tier: core
+      note: "股票基础信息"
+    - data_source: tushare
+      dataset: daily_basic
+      required: false
+      max_lag_days: 1
+      cadence: trading_daily
+      quality_tier: confirming
+      note: "个股市值与估值衍生数据，用于计算龙头梯队与 CR5"
+    - data_source: lixinger
+      dataset: national_debt
+      required: false
+      max_lag_days: 3
+      cadence: trading_daily
+      quality_tier: confirming
+      note: "中债 10 年期国债收益率，用于计算股息利差"

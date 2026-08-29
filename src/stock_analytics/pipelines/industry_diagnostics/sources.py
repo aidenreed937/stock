@@ -95,52 +95,71 @@ def resolve_industry_meta(catalog_tu: DataCatalog, input_str: str) -> tuple[str,
 
 
 def load_industry_constituents(
-    catalog_tu: DataCatalog, industry_code: str, target_date: date | None = None
-) -> IndustryConstituentsSnapshot:
-    """查询行业成份股清单并提取市值前 5 龙头梯队。"""
+    catalog_tu: DataCatalog,
+    industry_code: str,
+    target_date: date | None = None,
+) -> tuple[IndustryConstituentsSnapshot, float | None]:
+    """查询行业成份股清单并提取市值前 5 龙头梯队，返回成份股快照与最新换手分位。"""
     try:
         mem_df = catalog_tu.load_dataset("index_member")
         if mem_df.is_empty() or "index_code" not in mem_df.columns:
-            return IndustryConstituentsSnapshot()
+            return IndustryConstituentsSnapshot(), None
 
         matched_members = mem_df.filter(pl.col("index_code") == industry_code)
         if matched_members.is_empty():
-            return IndustryConstituentsSnapshot()
+            return IndustryConstituentsSnapshot(), None
 
-        if "out_date" in matched_members.columns:
-            matched_members = matched_members.filter(
-                pl.col("out_date").is_null() | (pl.col("out_date") >= date(2026, 1, 1))
-            )
+        # 动态根据 target_date 过滤有效成份股，严格消除前瞻偏差
+        if target_date is not None:
+            if "in_date" in matched_members.columns:
+                matched_members = matched_members.filter(
+                    pl.col("in_date").is_null() | (pl.col("in_date") <= target_date)
+                )
+            if "out_date" in matched_members.columns:
+                matched_members = matched_members.filter(
+                    pl.col("out_date").is_null() | (pl.col("out_date") > target_date)
+                )
+        elif "out_date" in matched_members.columns:
+            matched_members = matched_members.filter(pl.col("out_date").is_null())
 
         symbols = matched_members["con_code"].unique().to_list()
         total_count = len(symbols)
         if not symbols:
-            return IndustryConstituentsSnapshot(total_count=0)
+            return IndustryConstituentsSnapshot(total_count=0), None
 
         # 关联 stock_basic 获取股票名称
         stock_basic = catalog_tu.load_dataset("stock_basic")
         name_map: dict[str, str] = {}
-        if not stock_basic.is_empty():
+        if not stock_basic.is_empty() and "symbol" in stock_basic.columns:
             for row in stock_basic.select(["symbol", "name"]).to_dicts():
                 name_map[str(row["symbol"])] = str(row["name"])
 
-        # 关联 daily_basic 获取最新有效交易日市值与 PE
+        # 关联 daily_basic 获取有效交易日市值与估值
         db_df = catalog_tu.load_dataset("daily_basic", symbols=symbols[:120])
         leader_items: list[dict[str, Any]] = []
+        latest_turnover_p5y = None
+
         if not db_df.is_empty() and "trade_date" in db_df.columns:
             db_df = db_df.sort("trade_date")
             if target_date is not None:
                 db_df = db_df.filter(pl.col("trade_date") <= target_date)
-            latest_month_df = db_df.filter(pl.col("trade_date") >= date(2026, 7, 1))
-            if not latest_month_df.is_empty():
-                latest_db = latest_month_df.group_by("symbol").last()
+
+            if not db_df.is_empty():
+                # 动态取最后交易日截面
+                latest_trade_date = db_df["trade_date"].max()
+                latest_db = (
+                    db_df.filter(pl.col("trade_date") == latest_trade_date)
+                    if latest_trade_date is not None
+                    else db_df.group_by("symbol").last()
+                )
+
                 for row in latest_db.to_dicts():
                     sym = str(row.get("symbol", ""))
                     total_mv = row.get("total_mv")
                     mv_billion = (
                         yuan_to_yi(float(total_mv), precision=1)
                         if total_mv and float(total_mv) > 1e7
-                        else 0.0
+                        else (float(total_mv) if total_mv else 0.0)
                     )
                     leader_items.append(
                         {
@@ -165,15 +184,18 @@ def load_industry_constituents(
             else None
         )
 
-        return IndustryConstituentsSnapshot(
-            total_count=total_count,
-            top_market_cap_leaders=top_5_mv,
-            top_roe_leaders=[],
-            cr5_concentration=cr5_val,
+        return (
+            IndustryConstituentsSnapshot(
+                total_count=total_count,
+                top_market_cap_leaders=top_5_mv,
+                top_roe_leaders=[],
+                cr5_concentration=cr5_val,
+            ),
+            latest_turnover_p5y,
         )
     except Exception as exc:
         logger.warning(f"加载行业成份股失败: {exc}")
-        return IndustryConstituentsSnapshot()
+        return IndustryConstituentsSnapshot(), None
 
 
 def load_value_chain_map(
@@ -242,14 +264,19 @@ def build_industry_valuation(
     cfg: ValuationConfig,
     catalog_lx: DataCatalog,
 ) -> IndustryValuationSnapshot:
-    """计算行业估值分位数快照。"""
+    """计算行业估值分位数快照与股债利差。"""
     try:
         latest_bar = bars_df.tail(1).to_dicts()[0]
         pe_val = float(latest_bar["pe"]) if latest_bar.get("pe") is not None else None
         pb_val = float(latest_bar["pb"]) if latest_bar.get("pb") is not None else None
+        dv_val = (
+            float(latest_bar["dividend_ratio"])
+            if latest_bar.get("dividend_ratio") is not None
+            else (float(latest_bar["dv_ttm"]) if latest_bar.get("dv_ttm") is not None else None)
+        )
 
-        pe_series = bars_df["pe"].drop_nulls()
-        pb_series = bars_df["pb"].drop_nulls()
+        pe_series = bars_df["pe"].drop_nulls() if "pe" in bars_df.columns else pl.Series()
+        pb_series = bars_df["pb"].drop_nulls() if "pb" in bars_df.columns else pl.Series()
 
         pe_5y = (
             compute_percentile(pe_series.tail(cfg.percentile_5y_window), pe_val)
@@ -268,6 +295,10 @@ def build_industry_valuation(
         )
 
         treasury_10y = load_10y_treasury_yield(catalog_lx)
+        spread_10y = None
+        if dv_val is not None and treasury_10y is not None:
+            spread_10y = round(dv_val - treasury_10y, 2)
+
         eval_val = evaluate_industry_valuation(
             pe_5y,
             pb_5y,
@@ -282,9 +313,9 @@ def build_industry_valuation(
             pe_percentile_10y=pe_10y,
             pb=pb_val,
             pb_percentile_5y=pb_5y,
-            dv_ttm=None,
+            dv_ttm=dv_val,
             treasury_10y_yield=treasury_10y,
-            dividend_spread_10y=None,
+            dividend_spread_10y=spread_10y,
             valuation_status=eval_val["valuation_status"],
         )
     except Exception as exc:

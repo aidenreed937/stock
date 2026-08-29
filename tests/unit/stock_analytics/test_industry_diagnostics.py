@@ -12,10 +12,21 @@ from stock_analytics.pipelines.industry_diagnostics import (
     IndustryDiagnosticsPipeline,
     IndustryDiagnosticsResult,
     IndustryFinancialsSnapshot,
+    IndustryScoreBreakdown,
     IndustryTechnicalsSnapshot,
     IndustryValuationSnapshot,
     IndustryValueChainSnapshot,
+    ScoreWeightsConfig,
+    VetoRulesConfig,
+    calculate_industry_scores,
     run_industry_diagnostics,
+)
+from stock_analytics.pipelines.industry_diagnostics.scoring import (
+    calculate_crowding_penalty,
+    calculate_fundamental_score,
+    calculate_momentum_score,
+    calculate_valuation_score,
+    classify_pb_roe_quadrant,
 )
 from stock_analytics.pipelines.industry_diagnostics.sources import (
     load_value_chain_map,
@@ -61,6 +72,47 @@ def test_load_value_chain_map() -> None:
     assert len(vc.high_frequency_indicators) > 0
 
 
+def test_industry_scoring_logic() -> None:
+    # 1. 动量多头排列打分
+    tech_bull = IndustryTechnicalsSnapshot(close=100.0, ma20=95.0, ma60=90.0, rsi14=60.0)
+    mom_score = calculate_momentum_score(tech_bull)
+    assert mom_score >= 70.0
+
+    # 2. 估值低估赔率打分
+    val_cheap = IndustryValuationSnapshot(
+        pe_percentile_5y=15.0, pb_percentile_5y=20.0, dividend_spread_10y=1.5
+    )
+    val_score = calculate_valuation_score(val_cheap)
+    assert val_score >= 80.0
+
+    # 3. 基本面优质打分
+    fin_good = IndustryFinancialsSnapshot(roe_avg=18.5, revenue_yoy=15.0, netprofit_yoy=25.0)
+    fund_score = calculate_fundamental_score(fin_good)
+    assert fund_score >= 75.0
+
+    # 4. 拥挤度扣分
+    const_crowded = IndustryConstituentsSnapshot(cr5_concentration=85.0)
+    penalty = calculate_crowding_penalty(const_crowded, turnover_p5y=95.0, overheat_threshold=90.0)
+    assert penalty > 0.0
+
+    # 5. PB-ROE 象限划分
+    quadrant = classify_pb_roe_quadrant(roe=16.0, pb_p5y=25.0, pe_p5y=20.0)
+    assert "核心资产·高性价比" in quadrant
+
+    # 6. 一票否决门禁
+    fin_decay = IndustryFinancialsSnapshot(roe_avg=3.0, revenue_yoy=-20.0, netprofit_yoy=-40.0)
+    scores = calculate_industry_scores(
+        technicals=tech_bull,
+        valuation=val_cheap,
+        financials=fin_decay,
+        constituents=const_crowded,
+        weights=ScoreWeightsConfig(),
+        veto_rules=VetoRulesConfig(),
+    )
+    assert scores.veto_triggered is True
+    assert len(scores.veto_reasons) > 0
+
+
 def test_industry_diagnostics_serialization_and_reporting() -> None:
     res = IndustryDiagnosticsResult(
         industry_code="801120.SI",
@@ -75,19 +127,29 @@ def test_industry_diagnostics_serialization_and_reporting() -> None:
             top_market_cap_leaders=[
                 {"symbol": "600519.SH", "name": "贵州茅台", "total_mv_billion": 15911.4}
             ],
+            cr5_concentration=65.2,
         ),
         value_chain=IndustryValueChainSnapshot(upstream=["农产品"], downstream=["消费终端"]),
+        scores=IndustryScoreBreakdown(
+            composite_score=78.5,
+            momentum_score=80.0,
+            valuation_score=85.0,
+            fundamental_score=75.0,
+            quadrant="核心资产·高性价比 (高ROE/低估值)",
+        ),
     )
 
     d = res.to_dict()
     assert d["industry_code"] == "801120.SI"
     assert d["valuation"]["pe_ttm"] == 19.76
+    assert d["scores"]["composite_score"] == 78.5
 
     md = res.to_markdown()
     assert "食品饮料" in md
     assert "801120.SI" in md
     assert "13788.89" in md
-    assert "贵州茅台" in md
+    assert "78.5/100" in md
+    assert "核心资产·高性价比" in md
 
     rendered = render_industry_diagnostics_report(res)
     assert rendered == md
@@ -147,19 +209,24 @@ def test_industry_diagnostics_pipeline_and_artifacts(
     assert result.industry_name == "食品饮料"
     assert result.technicals.close == 10190.0
     assert result.valuation.pe_ttm is not None
+    assert result.scores.composite_score > 0
 
-    # 验证标准产物落盘
+    # 验证标准产物落盘 (文件系统与质量审计)
     as_of_dir = output_dir / "runs" / "as_of=2026-08-20"
     run_dirs = list(as_of_dir.glob("run_*"))
     assert len(run_dirs) == 1
     actual_run_dir = run_dirs[0]
 
     assert (actual_run_dir / "diagnostics.json").exists()
+    assert (actual_run_dir / "scores.json").exists()
     assert (actual_run_dir / "report.md").exists()
+    assert (actual_run_dir / "quality_report.md").exists()
+    assert (actual_run_dir / "quality_report.json").exists()
     assert (actual_run_dir / "manifest.json").exists()
 
     latest_dir = output_dir / "latest"
     assert (latest_dir / "diagnostics.json").exists()
+    assert (latest_dir / "scores.json").exists()
     assert (latest_dir / "report.md").exists()
     assert (latest_dir / "manifest.json").exists()
 
@@ -206,3 +273,4 @@ def test_run_industry_diagnostics_mock(monkeypatch: pytest.MonkeyPatch) -> None:
     assert result.industry_name == "食品饮料"
     assert result.technicals.close == 10190.0
     assert result.valuation.pe_ttm is not None
+    assert result.scores.composite_score > 0
