@@ -8,8 +8,8 @@ from stock_strategy.pool.macro_rotation_v5 import MacroRotationV5Strategy
 from stock_strategy.signal import SignalDirection
 
 
-def test_macro_rotation_v5_national_team_support() -> None:
-    """测试恐慌左侧国家队大额托底 (panic > 65 且 etf_score >= 90) 时提前全仓买入创业板指"""
+def test_macro_rotation_v5_smart_money_filter_blocks_fake_bottom() -> None:
+    """测试恐慌左侧且聪明钱低分位 (<40) 时判定假黄金坑，不左侧建仓"""
     prices = [100.0] * 25
     df = pl.DataFrame(
         {
@@ -17,21 +17,39 @@ def test_macro_rotation_v5_national_team_support() -> None:
             "close": prices,
             "panic_index": [50.0] * 24 + [68.0],  # 处于 65~75 恐慌区
             "overheat_index": [30.0] * 25,
-            "etf_flow_ratio_score": [20.0] * 24 + [95.0],  # 国家队狂买
-            "divergence_score_score": [30.0] * 25,
+            "smart_money_score": [30.0] * 24 + [25.0],  # 聪明钱未逆势接货
         }
     )
 
     strategy = MacroRotationV5Strategy()
     signals = strategy.on_bar(df)
 
-    assert len(signals) == 2
-    sym_map = {s.symbol: s for s in signals}
-    assert sym_map["000922.CSI"].target_weight == 0.0
-    assert sym_map["000922.CSI"].direction == SignalDirection.CLOSE
-    assert sym_map["399006.SZ"].target_weight == 1.0
-    assert sym_map["399006.SZ"].direction == SignalDirection.BUY
-    assert "国家队托底" in sym_map["399006.SZ"].reason
+    assert len(signals) == 0
+
+
+def test_macro_rotation_v5_smart_money_confirmed_build() -> None:
+    """测试恐慌左侧且聪明钱确认 (>=40) 时正常左侧建仓 50/20"""
+    prices = [100.0] * 25
+    df = pl.DataFrame(
+        {
+            "trade_date": [date(2026, 3, i + 1) for i in range(25)],
+            "close": prices,
+            "panic_index": [50.0] * 24 + [68.0],
+            "overheat_index": [30.0] * 25,
+            "smart_money_score": [50.0] * 24 + [60.0],  # 聪明钱活跃
+        }
+    )
+
+    strategy = MacroRotationV5Strategy()
+    signals = strategy.on_bar(df)
+
+    # 初始 50/50 -> 目标 20/50: 仅防守仓减仓 (成长仓不变不产生信号)
+    assert len(signals) == 1
+    sig = signals[0]
+    assert sig.symbol == "000922.CSI"
+    assert sig.target_weight == 0.2
+    assert sig.direction == SignalDirection.SELL
+    assert "恐慌左侧分批建仓" in sig.reason
 
 
 def test_macro_rotation_v5_overheat_broken() -> None:
@@ -43,8 +61,7 @@ def test_macro_rotation_v5_overheat_broken() -> None:
             "close": prices,
             "panic_index": [20.0] * 25,
             "overheat_index": [40.0] * 24 + [70.0],
-            "etf_flow_ratio_score": [10.0] * 25,
-            "divergence_score_score": [20.0] * 25,
+            "smart_money_score": [10.0] * 25,
         }
     )
 
@@ -67,8 +84,7 @@ def test_macro_rotation_v5_normal_fallback() -> None:
             "close": prices,
             "panic_index": [45.0] * 25,
             "overheat_index": [45.0] * 25,
-            "etf_flow_ratio_score": [50.0] * 25,
-            "divergence_score_score": [50.0] * 25,
+            "smart_money_score": [50.0] * 25,
         }
     )
     strategy = MacroRotationV5Strategy()

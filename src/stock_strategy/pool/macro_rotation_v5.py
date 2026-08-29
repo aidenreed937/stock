@@ -1,10 +1,17 @@
 """宏观风控 A+B 资金博弈多因子智能增强轮动策略 (V5 终极版)。
 
 在 V4 双核哑铃轮动（中证红利防守 + 创业板指进攻 + 闲钱固收增强）基础上，
-引入国家队宽基 ETF 战略托底感知：
-1. 【国家队托底提前反攻】：在恐慌区间，若监测到宽基 ETF 战略性大额净申购 (etf_score >= 90)，
-   提前拉满进攻仓位至 100% 创业板指，抢占 V 反最暴力第一波；
+引入聪明钱组合信号（产业资本增持 + 大宗折价接盘 + 国家队股东锚点等权组合）
+作为恐慌左侧的【确认过滤】：
+1. 【聪明钱确认过滤】：恐慌左侧区间 (panic 65~75) 若聪明钱信号低分位
+   (smart_money_score < 40，内部人/机构/国家队未逆势接货) 判定为假黄金坑，
+   不左侧建仓，等待真实资金确认；
 2. 【常规极值与均线趋势保护】：保持 V4 优良的双轨制极值确认与 MA20 趋势破位逃顶机制。
+
+注：原"ETF 份额托底提前全仓"分支经四重证据证伪后移除（与国家队真实增持无关、
+2024 危机回撤翻倍）；"恐慌区间提前全仓创业板"动作本身经对照回测亦损害风险调整收益，
+故以 smart_money_score 做过滤而非激进触发（实证见
+data/analytics/macro_strategy/smart_money_composite.md）。
 """
 
 from datetime import date, datetime
@@ -44,7 +51,7 @@ class MacroRotationV5Strategy(BaseStrategy):
         panic_threshold: float = 75.0,
         panic_entry_threshold: float = 65.0,
         overheat_threshold: float = 65.0,
-        etf_score_threshold: float = 90.0,
+        smart_filter_threshold: float = 40.0,
     ) -> None:
         super().__init__(context)
         self.ma_window = ma_window
@@ -56,7 +63,7 @@ class MacroRotationV5Strategy(BaseStrategy):
         self.panic_threshold = float(panic_threshold)
         self.panic_entry_threshold = float(panic_entry_threshold)
         self.overheat_threshold = float(overheat_threshold)
-        self.etf_score_threshold = float(etf_score_threshold)
+        self.smart_filter_threshold = float(smart_filter_threshold)
 
         self.initial_weights = (
             dict(initial_weights)
@@ -101,8 +108,8 @@ class MacroRotationV5Strategy(BaseStrategy):
         panic = float(panic_val)
         overheat = float(overheat_val)
 
-        etf_score_val = latest.get("etf_flow_ratio_score")
-        etf_score = float(etf_score_val) if isinstance(etf_score_val, int | float) else None
+        smart_val = latest.get("smart_money_score")
+        smart = float(smart_val) if isinstance(smart_val, int | float) else None
 
         timestamp = _coerce_timestamp(latest.get("trade_date"))
 
@@ -125,24 +132,24 @@ class MacroRotationV5Strategy(BaseStrategy):
             target[self.sym_growth] = 0.0
             reason = f"泡沫膨胀切防守 (Overheat={overheat:.1f}, 50%中证红利)"
 
-        elif panic > self.panic_threshold or (
-            panic > self.panic_entry_threshold
-            and etf_score is not None
-            and etf_score >= self.etf_score_threshold
-        ):
-            # 3. 极度恐慌冰点 或 恐慌左侧国家队大额托底：100% 满仓创业板反击
+        elif panic > self.panic_threshold:
+            # 3. 极度恐慌冰点：100% 满仓创业板反击
             target[self.sym_defensive] = 0.0
             target[self.sym_growth] = 1.0
-            if etf_score is not None and etf_score >= self.etf_score_threshold:
-                reason = f"国家队托底提前全仓反击 (Panic={panic:.1f}, ETF托底分位={etf_score:.1f})"
-            else:
-                reason = f"极度冰点全仓反击 (Panic={panic:.1f}, 100%创业板指)"
+            reason = f"极度冰点全仓反击 (Panic={panic:.1f}, 100%创业板指)"
 
         elif panic > self.panic_entry_threshold:
             # 4. 恐慌左侧分批建仓：50% 创业板 + 20% 红利
+            #    聪明钱确认过滤: smart_money_score < 40 表示内部人/机构/国家队未逆势
+            #    接货, 判定假黄金坑不建仓 (等待真实资金确认)
+            if smart is not None and smart < self.smart_filter_threshold:
+                return []
             target[self.sym_defensive] = 0.2
             target[self.sym_growth] = 0.5
-            reason = f"恐慌左侧分批建仓 (Panic={panic:.1f})"
+            if smart is not None:
+                reason = f"恐慌左侧分批建仓 (Panic={panic:.1f}, SmartMoney={smart:.1f})"
+            else:
+                reason = f"恐慌左侧分批建仓 (Panic={panic:.1f})"
 
         # 比较并生成信号
         signals: list[Signal] = []
