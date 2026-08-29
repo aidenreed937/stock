@@ -34,27 +34,41 @@ class MacroRotationV4Strategy(BaseStrategy):
       其中 close 为中证全指 (000985.CSI) 收盘。
     """
 
-    def __init__(self, context: Context | None = None, ma_window: int = 20) -> None:
+    def __init__(
+        self,
+        context: Context | None = None,
+        ma_window: int = 20,
+        symbols: tuple[str, ...] | list[str] | None = None,
+        initial_weights: dict[str, float] | None = None,
+        benchmark_symbol: str | None = None,
+        panic_threshold: float = 75.0,
+        panic_entry_threshold: float = 65.0,
+        overheat_threshold: float = 65.0,
+    ) -> None:
         super().__init__(context)
         self.ma_window = ma_window
 
-        # 宽基双核哑铃引擎
-        self.sym_defensive = "000922.CSI"  # 中证红利 (防守/高股息托底)
-        self.sym_growth = "399006.SZ"  # 创业板指 (进攻/高成长弹性)
-        self.benchmark_symbol = "000985.CSI"  # 趋势基准：中证全指
+        # 宽基双核哑铃引擎 (支持 ETF 代理映射)
+        self.sym_defensive = symbols[0] if symbols and len(symbols) > 0 else "000922.CSI"
+        self.sym_growth = symbols[1] if symbols and len(symbols) > 1 else "399006.SZ"
+        self.benchmark_symbol = benchmark_symbol or "000985.CSI"
+        self.panic_threshold = float(panic_threshold)
+        self.panic_entry_threshold = float(panic_entry_threshold)
+        self.overheat_threshold = float(overheat_threshold)
 
-        # 记录当前仓位 (初始默认各 50%)
-        self.weights: dict[str, float] = {
-            self.sym_defensive: 0.5,
-            self.sym_growth: 0.5,
-        }
+        self.initial_weights = (
+            dict(initial_weights)
+            if initial_weights
+            else {
+                self.sym_defensive: 0.5,
+                self.sym_growth: 0.5,
+            }
+        )
+        self.weights = dict(self.initial_weights)
 
     def on_init(self) -> None:
         """复位跨回测状态，避免多次运行间仓位残留。"""
-        self.weights = {
-            self.sym_defensive: 0.5,
-            self.sym_growth: 0.5,
-        }
+        self.weights = dict(self.initial_weights)
 
     def on_bar(self, data: pl.DataFrame) -> list[Signal]:
         """处理最新数据，生成多标的轮动交易信号"""
@@ -93,27 +107,27 @@ class MacroRotationV4Strategy(BaseStrategy):
         # ==========================
         # 终极哑铃 A+B 状态机逻辑
         # ==========================
-        if overheat > 65 and close < ma20:
+        if overheat > self.overheat_threshold and close < ma20:
             # 【泡沫破裂】右侧跌破：全部清仓 (闲置资金全额转入固收生息)
             target[self.sym_defensive] = 0.0
             target[self.sym_growth] = 0.0
-            reason = f"泡沫破裂逃顶 (Overheat={overheat:.1f}, 跌破MA20)"
+            reason = f"泡沫破裂逃顶 (Overheat={overheat:.1f}, 跌破MA{self.ma_window})"
 
-        elif overheat > 65 and close >= ma20:
+        elif overheat > self.overheat_threshold and close >= ma20:
             # 【泡沫膨胀】趋势完好：极度危险但还在涨。
             # 切防守：清仓高危成长股，保留 50% 中证红利防守，其余 50% 转固收
             target[self.sym_defensive] = 0.5
             target[self.sym_growth] = 0.0
             reason = f"泡沫膨胀切防守 (Overheat={overheat:.1f}, 50%中证红利)"
 
-        elif panic > 75:
+        elif panic > self.panic_threshold:
             # 【极度冰点】流动性崩溃，多杀多。
             # 极限进攻：100% 满仓创业板指，博取核心成长股的极强反弹
             target[self.sym_defensive] = 0.0
             target[self.sym_growth] = 1.0
             reason = f"极度冰点全仓反击 (Panic={panic:.1f}, 100%创业板指)"
 
-        elif panic > 65:
+        elif panic > self.panic_entry_threshold:
             # 【恐慌左侧】开始建仓。
             # 均衡偏进攻：50% 创业板指 + 20% 中证红利 + 30% 固收生息
             target[self.sym_defensive] = 0.2

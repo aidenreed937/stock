@@ -32,11 +32,25 @@ class MacroRiskV3Strategy(BaseStrategy):
     输入契约: 按 trade_date 升序的面板，需含 close / panic_index / overheat_index 列。
     """
 
-    def __init__(self, context: Context | None = None, ma_window: int = 20) -> None:
+    def __init__(
+        self,
+        context: Context | None = None,
+        ma_window: int = 20,
+        symbols: tuple[str, ...] | list[str] | None = None,
+        initial_weights: dict[str, float] | None = None,
+        benchmark_symbol: str | None = None,
+        symbol: str | None = None,
+        panic_threshold: float = 75.0,
+        panic_entry_threshold: float = 65.0,
+        overheat_threshold: float = 65.0,
+    ) -> None:
         super().__init__(context)
         self.ma_window = ma_window
-        self.symbol = "000300.SH"  # 交易标的：沪深300
-        self.benchmark_symbol = "000300.SH"  # 趋势基准：沪深300 收盘
+        self.symbol = symbol or (symbols[0] if symbols and len(symbols) > 0 else "000300.SH")
+        self.benchmark_symbol = benchmark_symbol or "000300.SH"
+        self.panic_threshold = float(panic_threshold)
+        self.panic_entry_threshold = float(panic_entry_threshold)
+        self.overheat_threshold = float(overheat_threshold)
         self.current_weight = 1.0  # 默认初始满仓
 
     def on_init(self) -> None:
@@ -80,17 +94,17 @@ class MacroRiskV3Strategy(BaseStrategy):
         # ==========================
         # V3 核心状态机逻辑 (沪深300)
         # ==========================
-        if overheat > 65 and close < ma20:
+        if overheat > self.overheat_threshold and close < ma20:
             target_weight = 0.0
-            reason = f"泡沫破裂逃顶 (Overheat={overheat:.1f}, 跌破MA20)"
-        elif overheat > 65 and close >= ma20:
+            reason = f"泡沫破裂逃顶 (Overheat={overheat:.1f}, 跌破MA{self.ma_window})"
+        elif overheat > self.overheat_threshold and close >= ma20:
             target_weight = 0.5
             reason = f"泡沫膨胀减仓锁润 (Overheat={overheat:.1f}, 均线完好)"
-        elif panic > 75:
+        elif panic > self.panic_threshold:
             target_weight = 1.0
             reason = f"极度冰点满仓抄底 (Panic={panic:.1f})"
-        elif panic > 65:
-            # 恐慌左侧：至少维持半仓托底，不主动减仓；真正加满仅在 panic > 75。
+        elif panic > self.panic_entry_threshold:
+            # 恐慌左侧：至少维持半仓托底，不主动减仓；真正加满仅在 panic > panic_threshold。
             target_weight = max(0.5, self.current_weight)
             reason = f"恐慌左侧分批建仓 (Panic={panic:.1f})"
 

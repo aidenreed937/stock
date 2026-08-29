@@ -62,6 +62,11 @@ def assemble_macro_panel(
             "divergence_score_score",
             "composite_flow_score",
             "dim_flow",
+            "dim_valuation",
+            "dim_leverage",
+            "dim_crowding",
+            "dim_sentiment",
+            "dim_breadth",
         ]
         if c in factors.columns
     ]
@@ -113,15 +118,27 @@ def load_price_panel(
     Returns:
         ``trade_date / symbol / close`` 长表，按 (trade_date, symbol) 升序。
     """
-    frames = [
-        catalog.load_bars(
+    frames = []
+    for sym in symbols:
+        bar = catalog.load_bars(
             symbol=sym,
             dataset=_INDEX_DATASET,
             columns=["trade_date", "symbol", "close"],
         )
-        for sym in symbols
-    ]
-    frames = [f for f in frames if not f.is_empty()]
+        if bar.is_empty():
+            bar = catalog.load_bars(
+                symbol=sym,
+                dataset="fund_daily",
+                columns=["trade_date", "symbol", "close"],
+            )
+        if bar.is_empty():
+            bar = catalog.load_bars(
+                symbol=sym,
+                dataset="stock_daily_bar",
+                columns=["trade_date", "symbol", "close"],
+            )
+        if not bar.is_empty():
+            frames.append(bar)
     if not frames:
         return pl.DataFrame()
 

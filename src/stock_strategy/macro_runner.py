@@ -43,7 +43,7 @@ def _daily_return(
 
 
 class MacroRiskRunner:
-    """宏观策略研究运行器（只生成信号与净值，不执行订单或成交）。"""
+    """宏观策略研究运行器（支持微观交易成本与死区过滤）。"""
 
     def __init__(
         self,
@@ -54,6 +54,9 @@ class MacroRiskRunner:
         strategy_name: str,
         strategy_version: str = "1.0.0",
         data_source: str = "tushare",
+        commission_rate: float = 0.0,
+        slippage_rate: float = 0.0,
+        rebalance_deadband: float = 0.0,
     ) -> None:
         self.strategy = strategy
         self.symbols = tuple(symbols)
@@ -61,6 +64,9 @@ class MacroRiskRunner:
         self.strategy_name = strategy_name
         self.strategy_version = strategy_version
         self.data_source = data_source
+        self.commission_rate = max(float(commission_rate), 0.0)
+        self.slippage_rate = max(float(slippage_rate), 0.0)
+        self.rebalance_deadband = max(float(rebalance_deadband), 0.0)
 
     def run(self, panel: pl.DataFrame) -> SignalReport:
         """逐日推进策略并返回信号报告。"""
@@ -79,7 +85,7 @@ class MacroRiskRunner:
         )
 
     def backtest(self, panel: pl.DataFrame, price_panel: pl.DataFrame) -> pl.DataFrame:
-        """按目标权重回测，返回 ``trade_date / nav`` 净值序列。"""
+        """按目标权重回测，返回 ``trade_date / nav`` 净值序列（扣除真实交易摩擦与死区过滤）。"""
         self.strategy.on_init()
         if price_panel.is_empty():
             price_wide = pl.DataFrame(schema={"trade_date": pl.Date})
@@ -96,13 +102,37 @@ class MacroRiskRunner:
         nav = 1.0
         records: list[float] = []
         days = _trading_days(panel)
+        fee_rate = self.commission_rate + self.slippage_rate
+
         for day in days:
-            # 先按当前持仓计算当日收益，再处理当日信号（目标权重次日生效，对齐 T+1）。
-            nav *= 1.0 + _daily_return(price_wide, price_rows, day, weights)
+            # 1. 先按当前持仓计算当日资产收益
+            daily_gain = _daily_return(price_wide, price_rows, day, weights)
+            nav *= 1.0 + daily_gain
+
+            # 2. 获取当日收盘信号（次日生效，T+1）
             window = panel.filter(pl.col("trade_date") <= day)
-            for sig in self.strategy.on_bar(window):
-                weights[sig.symbol] = float(sig.target_weight or 0.0)
+            new_signals = self.strategy.on_bar(window)
+            if new_signals:
+                tentative_weights = weights.copy()
+                for sig in new_signals:
+                    tentative_weights[sig.symbol] = float(sig.target_weight or 0.0)
+
+                # 计算总换手权重变化
+                all_syms = set(weights.keys()) | set(tentative_weights.keys())
+                turnover = sum(
+                    abs(tentative_weights.get(s, 0.0) - weights.get(s, 0.0)) for s in all_syms
+                )
+
+                # 死区过滤 (Deadband): 权重变动总和小于阈值时不触发真实调仓
+                if turnover >= self.rebalance_deadband:
+                    # 扣除换手交易摩擦 (佣金 + 冲击滑点)
+                    if fee_rate > 0.0 and turnover > 0.0:
+                        friction_cost = turnover * fee_rate
+                        nav *= max(1.0 - friction_cost, 0.0)
+                    weights = tentative_weights
+
             records.append(nav)
+
         return pl.DataFrame({"trade_date": days, "nav": records})
 
 

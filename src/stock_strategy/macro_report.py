@@ -113,18 +113,47 @@ def compute_stats(nav: pl.DataFrame) -> dict[str, float | None]:
 
 
 def _runner_for(spec: dict[str, Any]) -> tuple[MacroRiskRunner, str]:
+    symbols = tuple(spec["symbols"])
+    initial_weights = dict(spec.get("initial_weights", {}))
+    benchmark = str(spec["benchmark_symbol"])
+
+    friction = dict(spec.get("friction", {}))
+    commission_rate = float(friction.get("commission_rate", spec.get("commission_rate", 0.0)))
+    slippage_rate = float(friction.get("slippage_rate", spec.get("slippage_rate", 0.0)))
+    rebalance_deadband = float(
+        friction.get("rebalance_deadband", spec.get("rebalance_deadband", 0.0))
+    )
+
+    strategy_kwargs: dict[str, Any] = {
+        "symbols": symbols,
+        "initial_weights": initial_weights,
+        "benchmark_symbol": benchmark,
+    }
+    for k, v in spec.items():
+        if k not in {
+            "strategy_class",
+            "symbols",
+            "initial_weights",
+            "benchmark_symbol",
+            "friction",
+        }:
+            strategy_kwargs[k] = v
+
     strategy = create_strategy(
         str(spec["strategy_class"]),
-        ma_window=int(spec.get("ma_window", 20)),
+        **strategy_kwargs,
     )
     runner = MacroRiskRunner(
         strategy,
-        symbols=tuple(spec["symbols"]),
-        initial_weights=dict(spec.get("initial_weights", {})),
+        symbols=symbols,
+        initial_weights=initial_weights,
         strategy_name=spec["strategy_class"],
         data_source="tushare",
+        commission_rate=commission_rate,
+        slippage_rate=slippage_rate,
+        rebalance_deadband=rebalance_deadband,
     )
-    return runner, str(spec["benchmark_symbol"])
+    return runner, benchmark
 
 
 def build_multi_strategy_comparison_report(

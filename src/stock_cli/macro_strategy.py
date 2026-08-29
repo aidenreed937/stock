@@ -107,16 +107,40 @@ def main() -> None:
         sys.exit(1)
 
     cls_name = str(entry.get("strategy_class", ""))
-    ma_window = int(entry.get("ma_window", 20))
-    try:
-        strategy = create_strategy(cls_name, ma_window=ma_window)
-    except Exception as exc:
-        logger.error("创建策略实例失败: %s", exc)
-        sys.exit(1)
-
     symbols = tuple(entry["symbols"])
     initial_weights = entry.get("initial_weights", {})
     benchmark = entry["benchmark_symbol"]
+
+    friction = dict(entry.get("friction", {}))
+    commission_rate = float(friction.get("commission_rate", entry.get("commission_rate", 0.0)))
+    slippage_rate = float(friction.get("slippage_rate", entry.get("slippage_rate", 0.0)))
+    rebalance_deadband = float(
+        friction.get("rebalance_deadband", entry.get("rebalance_deadband", 0.0))
+    )
+
+    strategy_kwargs: dict[str, Any] = {
+        "symbols": symbols,
+        "initial_weights": initial_weights,
+        "benchmark_symbol": benchmark,
+    }
+    for k, v in entry.items():
+        if k not in {
+            "strategy_class",
+            "symbols",
+            "initial_weights",
+            "benchmark_symbol",
+            "friction",
+        }:
+            strategy_kwargs[k] = v
+
+    try:
+        strategy = create_strategy(
+            cls_name,
+            **strategy_kwargs,
+        )
+    except Exception as exc:
+        logger.error("创建策略实例失败: %s", exc)
+        sys.exit(1)
 
     start = _parse_date(args.start_date)
     end = _parse_date(args.end_date)
@@ -141,6 +165,9 @@ def main() -> None:
         initial_weights=initial_weights,
         strategy_name=args.strategy,
         data_source="tushare",
+        commission_rate=commission_rate,
+        slippage_rate=slippage_rate,
+        rebalance_deadband=rebalance_deadband,
     )
     report = runner.run(panel)
     nav_frame = runner.backtest(panel, price_panel)

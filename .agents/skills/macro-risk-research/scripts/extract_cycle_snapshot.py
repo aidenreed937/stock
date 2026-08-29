@@ -24,14 +24,17 @@ def main():
 
     # 最新一行风控
     latest = risk_60.tail(1).to_dicts()[0]
+    def _fmt(val):
+        return f"{val:.1f}" if val is not None else "—"
+
     print(f"\n[1. 双轨风控雷达最新状态]")
-    print(f"  - 狂热指数 (Overheat): {latest.get('overheat_index', 0):.1f}")
-    print(f"  - 恐慌指数 (Panic)   : {latest.get('panic_index', 0):.1f}")
-    print(f"  - 两融杠杆分位       : {latest.get('dim_leverage', 0):.1f}")
-    print(f"  - 换手拥挤分位       : {latest.get('dim_crowding', 0):.1f}")
-    print(f"  - 主力资金分位       : {latest.get('dim_flow', 0):.1f}")
-    print(f"  - 国家队ETF托底分位  : {latest.get('etf_flow_ratio_score', 0):.1f}")
-    print(f"  - 大盘估值分位       : {latest.get('dim_valuation', 0):.1f}")
+    print(f"  - 狂热指数 (Overheat): {_fmt(latest.get('overheat_index'))}")
+    print(f"  - 恐慌指数 (Panic)   : {_fmt(latest.get('panic_index'))}")
+    print(f"  - 两融杠杆分位       : {_fmt(latest.get('dim_leverage'))}")
+    print(f"  - 换手拥挤分位       : {_fmt(latest.get('dim_crowding'))}")
+    print(f"  - 主力资金分位       : {_fmt(latest.get('dim_flow'))}")
+    print(f"  - 国家队ETF托底分位  : {_fmt(latest.get('etf_flow_ratio_score'))}")
+    print(f"  - 大盘估值分位       : {_fmt(latest.get('dim_valuation'))}")
 
     # 指数近 60 日与近 20 日涨跌
     print(f"\n[2. 核心指数 20日 / 60日 区间涨跌幅与回撤]")

@@ -31,3 +31,48 @@ strategies:
       "000922.CSI": 0.5
       "399006.SZ": 0.5
     ma_window: 20
+
+  macro_rotation_v6:
+    strategy_class: "MacroRotationV6Strategy"
+    benchmark_symbol: "000985.CSI" # 趋势基准 = 中证全指
+    symbols:
+      - "000922.CSI" # 中证红利 (防守)
+      - "399006.SZ" # 创业板指 (进攻)
+      - "000300.SH" # 沪深300 (压舱/托底)
+    initial_weights:
+      "000922.CSI": 0.4
+      "399006.SZ": 0.4
+      "000300.SH": 0.2
+    ma_window: 20
+
+  macro_rotation_v4_etf:
+    strategy_class: "MacroRotationV4Strategy"
+    benchmark_symbol: "000985.CSI" # 趋势基准 = 中证全指
+    symbols:
+      - "510880.SH" # 华泰柏瑞红利 ETF (防守代理)
+      - "159915.SZ" # 易方达创业板 ETF (进攻代理)
+    initial_weights:
+      "510880.SH": 0.5
+      "159915.SZ": 0.5
+    ma_window: 20
+    friction:
+      commission_rate: 0.0001 # 万1券商佣金
+      slippage_rate: 0.0005 # 0.05% 冲击滑点
+      rebalance_deadband: 0.03 # 3% 调仓死区
+
+  macro_rotation_v6_etf:
+    strategy_class: "MacroRotationV6Strategy"
+    benchmark_symbol: "000985.CSI" # 趋势基准 = 中证全指
+    symbols:
+      - "510880.SH" # 华泰柏瑞红利 ETF (防守代理)
+      - "159915.SZ" # 易方达创业板 ETF (进攻代理)
+      - "510300.SH" # 华泰柏瑞沪深300 ETF (压舱代理)
+    initial_weights:
+      "510880.SH": 0.4
+      "159915.SZ": 0.4
+      "510300.SH": 0.2
+    ma_window: 20
+    friction:
+      commission_rate: 0.0001 # 万1券商佣金
+      slippage_rate: 0.0005 # 0.05% 冲击滑点
+      rebalance_deadband: 0.03 # 3% 调仓死区

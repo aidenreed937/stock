@@ -36,27 +36,43 @@ def _coerce_timestamp(value: object) -> date | datetime | None:
 class MacroRotationV5Strategy(BaseStrategy):
     """宏观风控 V5 资金博弈多因子智能增强双核轮动策略。"""
 
-    def __init__(self, context: Context | None = None, ma_window: int = 20) -> None:
+    def __init__(
+        self,
+        context: Context | None = None,
+        ma_window: int = 20,
+        symbols: tuple[str, ...] | list[str] | None = None,
+        initial_weights: dict[str, float] | None = None,
+        benchmark_symbol: str | None = None,
+        panic_threshold: float = 75.0,
+        panic_entry_threshold: float = 65.0,
+        overheat_threshold: float = 65.0,
+        etf_score_threshold: float = 90.0,
+    ) -> None:
         super().__init__(context)
         self.ma_window = ma_window
 
-        # 宽基双核哑铃标的
-        self.sym_defensive = "000922.CSI"  # 中证红利 (防守/高股息托底)
-        self.sym_growth = "399006.SZ"  # 创业板指 (进攻/高成长弹性)
-        self.benchmark_symbol = "000985.CSI"  # 趋势基准：中证全指
+        # 宽基双核哑铃标的 (支持 ETF 代理映射)
+        self.sym_defensive = symbols[0] if symbols and len(symbols) > 0 else "000922.CSI"
+        self.sym_growth = symbols[1] if symbols and len(symbols) > 1 else "399006.SZ"
+        self.benchmark_symbol = benchmark_symbol or "000985.CSI"
+        self.panic_threshold = float(panic_threshold)
+        self.panic_entry_threshold = float(panic_entry_threshold)
+        self.overheat_threshold = float(overheat_threshold)
+        self.etf_score_threshold = float(etf_score_threshold)
 
-        # 记录当前仓位 (初始默认各 50%)
-        self.weights: dict[str, float] = {
-            self.sym_defensive: 0.5,
-            self.sym_growth: 0.5,
-        }
+        self.initial_weights = (
+            dict(initial_weights)
+            if initial_weights
+            else {
+                self.sym_defensive: 0.5,
+                self.sym_growth: 0.5,
+            }
+        )
+        self.weights = dict(self.initial_weights)
 
     def on_init(self) -> None:
         """复位跨回测状态，避免多次运行间仓位残留。"""
-        self.weights = {
-            self.sym_defensive: 0.5,
-            self.sym_growth: 0.5,
-        }
+        self.weights = dict(self.initial_weights)
 
     def on_bar(self, data: pl.DataFrame) -> list[Signal]:
         """处理最新数据，生成资金博弈增强的多标的轮动交易信号。"""
@@ -99,28 +115,32 @@ class MacroRotationV5Strategy(BaseStrategy):
         # ==============================================================
         # V5 核心状态机逻辑 (资金博弈智能增强)
         # ==============================================================
-        if overheat > 65 and close < ma20:
+        if overheat > self.overheat_threshold and close < ma20:
             # 1. 泡沫破裂且跌破均线：全额清仓避险转固收
             target[self.sym_defensive] = 0.0
             target[self.sym_growth] = 0.0
-            reason = f"泡沫破裂逃顶 (Overheat={overheat:.1f}, 跌破MA20)"
+            reason = f"泡沫破裂逃顶 (Overheat={overheat:.1f}, 跌破MA{self.ma_window})"
 
-        elif overheat > 65 and close >= ma20:
+        elif overheat > self.overheat_threshold and close >= ma20:
             # 2. 泡沫膨胀但均线完好：切换至 50% 中证红利防守
             target[self.sym_defensive] = 0.5
             target[self.sym_growth] = 0.0
             reason = f"泡沫膨胀切防守 (Overheat={overheat:.1f}, 50%中证红利)"
 
-        elif panic > 75 or (panic > 65 and etf_score is not None and etf_score >= 90.0):
+        elif panic > self.panic_threshold or (
+            panic > self.panic_entry_threshold
+            and etf_score is not None
+            and etf_score >= self.etf_score_threshold
+        ):
             # 3. 极度恐慌冰点 或 恐慌左侧国家队大额托底：100% 满仓创业板反击
             target[self.sym_defensive] = 0.0
             target[self.sym_growth] = 1.0
-            if etf_score is not None and etf_score >= 90.0:
+            if etf_score is not None and etf_score >= self.etf_score_threshold:
                 reason = f"国家队托底提前全仓反击 (Panic={panic:.1f}, ETF托底分位={etf_score:.1f})"
             else:
                 reason = f"极度冰点全仓反击 (Panic={panic:.1f}, 100%创业板指)"
 
-        elif panic > 65:
+        elif panic > self.panic_entry_threshold:
             # 4. 恐慌左侧分批建仓：50% 创业板 + 20% 红利
             target[self.sym_defensive] = 0.2
             target[self.sym_growth] = 0.5
