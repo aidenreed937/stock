@@ -24,6 +24,7 @@ _TASK_BUNDLE_TASKS: dict[str, dict[str, tuple[str, ...]]] = {
             "moneyflow",
         ),
         "fund_daily_bundle": ("fund_daily", "fund_adj", "etf_share_size"),
+        "fund_portfolio_bundle": ("fund_portfolio",),
         "hsgt_flow_bundle": ("moneyflow_hsgt", "hsgt_top10"),
         "financial_statement_bundle": (
             "income",

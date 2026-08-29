@@ -6,6 +6,7 @@ PER_PERIOD_DATASETS: frozenset[str] = frozenset(
         "fina_indicator",
         "balancesheet",
         "cashflow",
+        "fund_portfolio",
         "top10_floatholders",
         "stk_holdernumber",
     }
@@ -13,6 +14,7 @@ PER_PERIOD_DATASETS: frozenset[str] = frozenset(
 EXPLICIT_ONLY_TASKS = frozenset(
     {
         ("fred", "macro_indicators"),
+        ("tushare", "fund_portfolio"),
         ("tushare", "pledge_detail"),
         ("tushare", "pledge_stat"),
         ("tushare", "stk_holdernumber"),

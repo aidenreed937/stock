@@ -44,7 +44,9 @@ TUSHARE_TASK_REGISTRY: dict[str, EndpointMeta] = {
     "fina_indicator": TUSHARE_API_REGISTRY["fina_indicator"],
     "balancesheet": TUSHARE_API_REGISTRY["balancesheet"],
     "cashflow": TUSHARE_API_REGISTRY["cashflow"],
+    "fund_portfolio": TUSHARE_API_REGISTRY["fund_portfolio"],
 }
+
 
 # 对已注册但尚未逐项声明的接口，至少从自然键生成结构化基础契约
 for _meta in TUSHARE_API_REGISTRY.values():
@@ -353,6 +355,16 @@ _TUSHARE_PROFILES: dict[str, tuple[list[str], dict[str, str], str]] = {
         ["ts_code", "report_date", "org_name"],
         {"predict_net_profit": "CNY10k", "predict_eps": "CNY/share"},
         "financial_indicator",
+    ),
+    "fund_portfolio": (
+        ["ts_code", "ann_date", "end_date", "symbol"],
+        {
+            "mkv": "CNY",
+            "amount": "share",
+            "stk_mkv_ratio": "percent",
+            "stk_float_ratio": "percent",
+        },
+        "fund_portfolio",
     ),
     "index_member": (["index_code", "con_code", "in_date"], {}, "constituent_weight"),
     "index_classify": (["index_code", "industry_name"], {}, "static"),

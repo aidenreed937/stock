@@ -349,6 +349,26 @@ FINANCE_ENDPOINTS: dict[str, EndpointMeta] = {
         required_columns=["date"],
         update_delay_days=1,
     ),
+    "fund_portfolio": EndpointMeta(
+        api_name="fund_portfolio",
+        description="公募基金持仓数据（季报 Top10 重仓股及全部持仓）",
+        frequency="quarterly",
+        query_mode="period",
+        group="fund_holdings",
+        primary_keys=["ts_code", "ann_date", "end_date", "symbol"],
+        date_columns=["ann_date", "end_date"],
+        required_columns=["ts_code", "ann_date", "end_date", "symbol"],
+        units={
+            "mkv": "CNY",
+            "amount": "share",
+            "stk_mkv_ratio": "percent",
+            "stk_float_ratio": "percent",
+        },
+        max_rows_per_request=5000,
+        request_fields=(
+            "ts_code,ann_date,end_date,symbol,mkv,amount,stk_mkv_ratio,stk_float_ratio"
+        ),
+    ),
 }
 
 

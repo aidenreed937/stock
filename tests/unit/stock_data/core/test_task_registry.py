@@ -249,6 +249,7 @@ def test_tushare_task_bundles() -> None:
     assert list_available_bundles("tushare") == [
         "daily_market_bundle",
         "fund_daily_bundle",
+        "fund_portfolio_bundle",
         "hsgt_flow_bundle",
         "financial_statement_bundle",
         "pit_bundle",
@@ -275,10 +276,12 @@ def test_tushare_task_bundles() -> None:
         "fund_adj",
         "etf_share_size",
     )
+    assert resolve_bundle("tushare", "fund_portfolio_bundle").tasks == ("fund_portfolio",)
     assert resolve_bundle("tushare", "hsgt_flow_bundle").tasks == (
         "moneyflow_hsgt",
         "hsgt_top10",
     )
+
     assert resolve_bundle("tushare", "financial_statement_bundle").tasks == (
         "income",
         "fina_indicator",
@@ -503,6 +506,12 @@ def test_registered_new_data_source_tasks_have_explicit_routes() -> None:
     assert opt_daily.api_name == "opt_daily"
     assert opt_daily.quality_profile == "options_daily"
     assert opt_daily.partitioned is True
+
+    fund_portfolio = resolve_task("tushare", "fund_portfolio")
+    assert fund_portfolio.api_name == "fund_portfolio"
+    assert fund_portfolio.fetch_mode == "per_period"
+    assert fund_portfolio.frequency == "quarterly"
+    assert fund_portfolio.partitioned is True
 
     investor_accounts = resolve_task("lixinger", "investor_accounts")
     assert investor_accounts.api_name == "macro/investor"
