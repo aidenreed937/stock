@@ -21,6 +21,10 @@ from stock_analytics.marts.industry_structure import (
     build_industry_daily_mart,
     build_industry_panel_daily_mart,
 )
+from stock_analytics.marts.insider_industry import (
+    INSIDER_INDUSTRY_MART_NAME,
+    build_insider_industry_frame,
+)
 from stock_analytics.marts.market_temperature import (
     build_market_temperature_derived_facts_mart,
 )
@@ -30,6 +34,7 @@ from stock_analytics.marts.unlock_pressure import build_unlock_pressure_frame
 
 __all__ = [
     "CAPITAL_GAME_MART_NAME",
+    "INSIDER_INDUSTRY_MART_NAME",
     "DomainMartBuilder",
     "build_block_trade_mart",
     "build_capital_game",
@@ -43,6 +48,7 @@ __all__ = [
     "build_industry_l2_frame",
     "build_industry_panel_daily_mart",
     "build_insider_activity_mart",
+    "build_insider_industry_frame",
     "build_market_temperature_derived_facts_mart",
     "build_northbound_industry_frame",
     "build_repurchase_mart",

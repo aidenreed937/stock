@@ -64,6 +64,7 @@ def build_industry_factor_panel(
     panel_daily_path = mart_dir / "industry_panel_daily.parquet"
     industry_daily_path = mart_dir / "industry_daily.parquet"
     northbound_path = mart_dir / "northbound_industry_daily.parquet"
+    insider_path = mart_dir / "insider_industry_daily.parquet"
 
     if not panel_daily_path.exists() or not industry_daily_path.exists():
         raise DataValidationError(
@@ -102,7 +103,19 @@ def build_industry_factor_panel(
     else:
         df = df.with_columns(pl.lit(None, dtype=pl.Float64).alias("hold_value_pct_chg"))
 
-    # 3. 构造各因子原始计算列
+    # 3. 产业资本增减持与回购因子提取 (若存在)
+    if insider_path.exists():
+        try:
+            ins_df = pl.read_parquet(insider_path).select(
+                ["trade_date", "industry_code", "insider_net_amount_yi_60d"]
+            )
+            df = df.join(ins_df, on=["trade_date", "industry_code"], how="left")
+        except Exception:
+            df = df.with_columns(pl.lit(None, dtype=pl.Float64).alias("insider_net_amount_yi_60d"))
+    else:
+        df = df.with_columns(pl.lit(None, dtype=pl.Float64).alias("insider_net_amount_yi_60d"))
+
+    # 4. 构造各因子原始计算列
     scissors_raw = pl.col("profit_growth_ttm").fill_null(0.0) - pl.col(
         "revenue_growth_ttm"
     ).fill_null(0.0)
@@ -118,10 +131,29 @@ def build_industry_factor_panel(
             _cs_percentile("large_money_net_inflow_share_20d").alias("flow_pct"),
             pl.col("tcr_percentile").fill_null(_cs_percentile("amount_yi")).alias("ind_crowding"),
             _cs_percentile("hold_value_pct_chg").alias("nb_flow_pct"),
+            _cs_percentile("insider_net_amount_yi_60d").alias("insider_flow_pct"),
         ]
     )
 
-    # 4. 聚合为 5 大标准化中观因子 (0~100)
+    # 5. 聚合为 5 大标准化中观因子 (0~100)
+    # ind_smart_flow 三维融合: 60% 机构大单 + 25% 北向资金 + 15% 产业资本 (自适应平滑降级)
+    smart_flow_expr = (
+        pl.when(
+            pl.col("hold_value_pct_chg").is_not_null()
+            & pl.col("insider_net_amount_yi_60d").is_not_null()
+        )
+        .then(
+            0.60 * pl.col("flow_pct")
+            + 0.25 * pl.col("nb_flow_pct")
+            + 0.15 * pl.col("insider_flow_pct")
+        )
+        .when(pl.col("insider_net_amount_yi_60d").is_not_null())
+        .then(0.75 * pl.col("flow_pct") + 0.25 * pl.col("insider_flow_pct"))
+        .when(pl.col("hold_value_pct_chg").is_not_null())
+        .then(0.65 * pl.col("flow_pct") + 0.35 * pl.col("nb_flow_pct"))
+        .otherwise(pl.col("flow_pct"))
+    )
+
     factors_df = computed.with_columns(
         [
             (
@@ -132,10 +164,7 @@ def build_industry_factor_panel(
             _cs_percentile("scissors_raw").alias("ind_scissors"),
             pl.col("ind_crowding").alias("ind_crowding"),
             _cs_percentile("val_raw").alias("ind_valuation"),
-            pl.when(pl.col("hold_value_pct_chg").is_not_null())
-            .then(0.5 * pl.col("flow_pct") + 0.5 * pl.col("nb_flow_pct"))
-            .otherwise(pl.col("flow_pct"))
-            .alias("ind_smart_flow"),
+            smart_flow_expr.alias("ind_smart_flow"),
         ]
     )
 

@@ -40,4 +40,8 @@ factors:
 
   ind_smart_flow:
     name: "聪明资金流因子"
-    description: "北向资金 20 日持仓变动与全市场机构大单 20 日净流入占比的横截面分位"
+    sub_weights:
+      large_money: 0.60
+      northbound: 0.25
+      insider_capital: 0.15
+    description: "机构主力大单 20D 净流入、北向资金持仓变动与产业资本 60D 净增减持回购比率的三维融合横截面分位"

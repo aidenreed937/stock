@@ -38,15 +38,19 @@ class IndustrySupplyDemandScissorsStrategy(BaseStrategy):
         *,
         top_k: int = 3,
         rebalance_period: int = 20,
-        scissors_weight: float = 0.60,
-        smart_flow_weight: float = 0.40,
+        scissors_min: float = 60.0,
+        scissors_weight: float = 0.40,
+        momentum_weight: float = 0.35,
+        smart_flow_weight: float = 0.25,
         benchmark_symbol: str | None = None,
         **kwargs: Any,
     ) -> None:
         super().__init__(context)
         self.top_k = max(int(top_k), 1)
         self.rebalance_period = max(int(rebalance_period), 1)
+        self.scissors_min = float(scissors_min)
         self.scissors_weight = float(scissors_weight)
+        self.momentum_weight = float(momentum_weight)
         self.smart_flow_weight = float(smart_flow_weight)
         self.benchmark_symbol = benchmark_symbol or "000985.CSI"
         self.current_weights: dict[str, float] = {}
@@ -72,10 +76,16 @@ class IndustrySupplyDemandScissorsStrategy(BaseStrategy):
         if latest_cross.is_empty():
             return []
 
-        # 计算剪刀差复合得分
-        scored = latest_cross.with_columns(
+        # 1. 过滤具备真实供需剪刀差 (毛利扩张) 的行业池
+        valid = latest_cross.filter(pl.col("ind_scissors") >= self.scissors_min)
+        if valid.is_empty():
+            valid = latest_cross
+
+        # 2. 计算复合得分 (剪刀差 + 景气动量确认 + 聪明资金流共振)
+        scored = valid.with_columns(
             (
                 self.scissors_weight * pl.col("ind_scissors").fill_null(50.0)
+                + self.momentum_weight * pl.col("ind_momentum").fill_null(50.0)
                 + self.smart_flow_weight * pl.col("ind_smart_flow").fill_null(50.0)
             ).alias("_scissors_score")
         ).sort("_scissors_score", descending=True)
