@@ -1,6 +1,6 @@
 ---
 name: macro-risk-research
-description: 宏观风控双轨雷达、A 股 14 年跨周期 6 大宏观范式定位、20日/60日短中周期推演与配置驱动多策略轮动研究技能。当用户询问宏观风控雷达水温、狂热/恐慌极值、两融杠杆与换手拥挤硬约束、国家队 ETF 托底、主力资金博弈背离、20日/60日短中周期胜率对账、多策略回测对比（V3/V4/V5资金曲线、CAGR、夏普比率、最大回撤、调仓信号）或跨周期资产配置建议时使用此技能。
+description: 宏观风控双轨雷达、A 股 14 年跨周期 6 大宏观范式定位、20日/60日短中周期推演与配置驱动多策略轮动研究技能。当用户询问宏观风控雷达水温、狂热/恐慌极值、两融杠杆与换手拥挤硬约束、国家队 ETF 托底、主力资金博弈背离、20日/60日短中周期胜率对账、多策略回测对比（V3/V4/V5/V6资金曲线、CAGR、夏普比率、最大回撤、调仓信号）、跨周期资产配置建议或新策略构建验证流程时使用此技能。
 ---
 
 # 宏观风控与跨周期策略研究技能 (Macro Risk & Strategy Research)
@@ -9,7 +9,7 @@ description: 宏观风控双轨雷达、A 股 14 年跨周期 6 大宏观范式�
 
 1. **Ground Truth First 铁律**：
    - 宏观风控因子、分位数与双轨制指数必须来自本地黄金产物 `data/analytics/macro_risk/latest/risk_factors.parquet` 或历史运行目录；
-   - 策略信号与回测净值必须来自 `MacroRiskRunner` 真实执行产物（`data/analytics/macro_strategy/multi_strategy_comparison.md` / `multi_strategy_nav.csv` / `multi_strategy_comparison.png`）；
+   - 策略信号与回测净值必须来自 `stock_strategy.macro` 真实执行产物（`data/analytics/macro_strategy/multi_strategy_comparison.md` / `multi_strategy_nav.csv` / `multi_strategy_comparison.png`）；
    - 严禁凭记忆臆造历史点位、指数分位或策略净值；外部宏观政策与新闻必须显式标注为【外部背景】。
 2. **3-2-1 金字塔 6 大核心风控画像**：
    - **3 大生存硬约束**：两融杠杆 (`dim_leverage`)、换手拥挤 (`dim_crowding`)、主力资金 (`dim_flow`)；
@@ -21,9 +21,9 @@ description: 宏观风控双轨雷达、A 股 14 年跨周期 6 大宏观范式�
    - **60 日季度窗口**：评估均值回归、胜率兑现与主升浪吃满（极度恐慌底 60 日胜率高达 88%）；
    - **20 日月度窗口**：依托 20 日均线 (MA20) 过滤短期情绪冲顶与洗盘震荡，执行逃顶与控损。
 4. **回测机制与基准对齐规范**：
-   - **执行语义**：T+1 规则（交易日 $t$ 收盘生成信号，目标权重于 $t+1$ 日生效计算复利）；
+   - **执行语义**：严格 T+1 规则（交易日 $t$ 收盘生成信号，目标权重于 $t+1$ 日生效计算复利）；
    - **基准对齐**：必须同步对比**中证全指 (`000985.CSI`)** 与 **沪深300 (`000300.SH`)** 的 Buy & Hold 基准净值；
-   - **成本与约束披露**：纯量化研究回测默认未计滑点与手续费，输出研报时必须显式标注研究假设。
+   - **真实摩擦成本**：策略支持佣金率 (`commission_rate`)、滑点 (`slippage_rate`) 与调仓死区 (`rebalance_deadband`) 配置。
 
 ---
 
@@ -34,7 +34,7 @@ flowchart TD
     A["1. 确认研究目标与观测日期"] --> B["2. 检查/运行宏观风控管线<br>(macro_risk / latest)"]
     B --> C["3. 穿透 3-2-1 金字塔六维特征<br>(极值硬约束 + 国家队ETF托底)"]
     C --> D["4. 20日 / 60日 短中周期胜率推演<br>(情绪惯性 vs 均值回归)"]
-    D --> E["5. 运行多策略状态机与回测对账<br>(V3 趋势择时 / V4 风格轮动 / V5 资金增强)"]
+    D --> E["5. 运行多策略状态机与回测对账<br>(V3/V4/V5/V6 资金曲线与审计)"]
     E --> F["6. 生成并交付标准投研研报<br>(Markdown + 资金曲线 + 仓位指令)"]
 ```
 
@@ -74,10 +74,12 @@ flowchart TD
   ```bash
   # 运行 V3 单宽基择时
   uv run python -m stock_cli.macro_strategy --strategy macro_risk_v3
-  # 运行 V4 哑铃双核轮动
+  # 运行 V4 哑铃双核轮动 (红利 50% + 创业板 50%)
   uv run python -m stock_cli.macro_strategy --strategy macro_rotation_v4
-  # 运行 V5 资金博弈增强
+  # 运行 V5 资金博弈增强 (国家队托底抢跑)
   uv run python -m stock_cli.macro_strategy --strategy macro_rotation_v5
+  # 运行 V6 三元资产自适应轮动 (红利 40% + 创业板 40% + 300 20%)
+  uv run python -m stock_cli.macro_strategy --strategy macro_rotation_v6
   ```
 - **生成全量多策略横向对账全景报告与资金曲线 (一键出图出表)**：
   ```bash
@@ -99,29 +101,37 @@ flowchart TD
   uv run python -m stock_cli.macro_strategy_live --strategy macro_rotation_v4_etf --webhook-type feishu --webhook-url "<FEISHU_URL>"
   ```
 
-
-
 ---
 
 ## 3. 配置驱动的宏观风控多策略池
 
-策略体系由 [`config/strategy/macro_risk.yaml`](file:///Users/mac/workspace/personal/finance/stock/config/strategy/macro_risk.yaml) 统一驱动。标的资产、初始权重、均线窗口与回测绩效指标以配置文件及 `macro_strategy_report` 运行产物为唯一真实源。
+策略体系由 [`config/strategy/macro_risk.yaml`](file:///Users/mac/workspace/personal/finance/stock/config/strategy/macro_risk.yaml) 统一驱动。标的资产、初始权重、摩擦成本与策略阈值以配置文件为唯一真实源。
 
 | 策略键名 | 核心类名 | 交易标的与初始权重 | 趋势基准 | 核心投资哲学与风险收益特征 |
 | :--- | :--- | :--- | :--- | :--- |
 | **`macro_risk_v3`** | `MacroRiskV3Strategy` | 沪深300 (`000300.SH`: 100%) | 沪深300 (`000300.SH`) | **单宽基趋势防守压舱石**：锚定大盘核心资产，破 MA20 减仓控损，冰点恐慌加仓博修复，追求低波动与稳健抗跌。 |
-| **`macro_rotation_v4`** | `MacroRotationV4Strategy` | 中证红利 (`000922.CSI`: 50%)<br>创业板指 (`399006.SZ`: 50%) | 中证全指 (`000985.CSI`) | **双核哑铃风格轮动 (终极版)**：牛市主升打满创业板弹性，存量熊市切换至高股息红利托底避险，兼顾进攻与防守。 |
+| **`macro_rotation_v4`** | `MacroRotationV4Strategy` | 中证红利 (`000922.CSI`: 50%)<br>创业板指 (`399006.SZ`: 50%) | 中证全指 (`000985.CSI`) | **双核哑铃风格轮动 (理论版)**：牛市主升打满创业板弹性，存量熊市切换至高股息红利托底避险，兼顾进攻与防守。 |
 | **`macro_rotation_v5`** | `MacroRotationV5Strategy` | 中证红利 (`000922.CSI`: 50%)<br>创业板指 (`399006.SZ`: 50%) | 中证全指 (`000985.CSI`) | **资金博弈智能增强轮动**：在 V4 基础上融入国家队宽基 ETF 战略托底感知 (`etf_score >= 90`) 提前全仓反击，提升极值捕获效率。 |
 | **`macro_rotation_v6`** | `MacroRotationV6Strategy` | 中证红利 (`000922.CSI`: 40%)<br>创业板指 (`399006.SZ`: 40%)<br>沪深300 (`000300.SH`: 20%) | 中证全指 (`000985.CSI`) | **三核资产与动量自适应智能轮动 (终极版)**：国家队托底左侧对齐沪深300防踩踏、低估值环境增配红利大盘防踏空、高估值打满创业板弹性。 |
-
-### 核心量化绩效评估维度：
-1. **收益能力**：累计收益率 (Total Return)、年化复合增长率 (CAGR)；
-2. **风险控制**：最大回撤 (Max Drawdown)、年化波动率 (Annual Volatility)；
-3. **风险调整后收益**：夏普比率 (Sharpe Ratio, $R_f=0$)、卡玛比率 (Calmar Ratio, $\text{CAGR} / |\text{MaxDD}|$)。
+| **`macro_rotation_v4_etf`** | `MacroRotationV4Strategy` | 红利 ETF (`510880.SH`: 50%)<br>创业板 ETF (`159915.SZ`: 50%) | 中证全指 (`000985.CSI`) | **双核哑铃风格轮动 (场内 ETF 代理实盘版)**：可直接使用普通 A 股股票账户在场内一键报单交易。 |
+| **`macro_rotation_v6_etf`** | `MacroRotationV6Strategy` | 红利 ETF (`510880.SH`: 40%)<br>创业板 ETF (`159915.SZ`: 40%)<br>300 ETF (`510300.SH`: 20%) | 中证全指 (`000985.CSI`) | **三核自适应轮动 (场内 ETF 代理实盘版)**：兼顾左侧防微盘踩踏与牛市弹性的场内实战组合。 |
 
 ---
 
-## 4. 标准投研交付报告规范 (Delivery Template)
+## 4. 构建与验证新策略标准流水线 (SOP)
+
+后续研发新策略，按以下 6 步流水线实施闭环验证：
+
+1. **策略编码**：在 `src/stock_strategy/pool/` 下新建策略类，继承 `BaseStrategy`，实现 `on_init()` 与 `on_bar(data) -> list[Signal]`，并注册至 `STRATEGY_REGISTRY`；
+2. **YAML 声明**：在 `config/strategy/macro_risk.yaml` 的 `strategies:` 节点下声明 `strategy_class`、`benchmark_symbol`、`symbols`、`initial_weights`、`friction` 与 `thresholds`；
+3. **编写单测**：在 `tests/unit/stock_strategy/pool/` 下编写针对新策略的极端行情分支与鲁棒性测试；
+4. **全周期对账**：运行 `uv run python -m stock_cli.macro_strategy_report`，自动生成与现有策略/基准并列的资金曲线与 CAGR/MaxDD/Sharpe 对账表；
+5. **跨周期审计**：运行 `uv run python -m stock_cli.macro_strategy_audit --assert-guardrails`，验证 6 大范式表现、4 大黑天鹅危机最深回撤及 3 年持有期胜率；
+6. **实盘推演**：运行 `uv run python -m stock_cli.macro_strategy_live --strategy <新策略> --dry-run` 验证盘中报单生成。
+
+---
+
+## 5. 标准投研交付报告规范 (Delivery Template)
 
 当用户请求进行“宏观风控复盘”、“周期定位”、“跨周期分析”、“宏观策略配置建议”或“多策略回测对比”时，必须严格按以下标准结构输出 Markdown 研报：
 
@@ -152,23 +162,24 @@ flowchart TD
 #### 四、 宏观多策略回测对账与最新状态机指引
 
 ##### 1. 全周期策略回测绩效对账 (2015-2026)
-| 核心指标项 | 中证全指 (基准) | 沪深300 (基准) | **macro_risk_v3** | **macro_rotation_v4** | **macro_rotation_v5** |
-| :--- | :---: | :---: | :---: | :---: | :---: |
-| **累计净值** | `X.XXX` | `X.XXX` | **`X.XXX`** | **`X.XXX`** | **`X.XXX`** |
-| **累计收益** | `XX.XX%` | `XX.XX%` | **`XX.XX%`** | **`XX.XX%`** | **`XX.XX%`** |
-| **年化收益 (CAGR)** | `X.XX%` | `X.XX%` | **`X.XX%`** | **`X.XX%`** | **`X.XX%`** |
-| **最大回撤 (Max DD)** | `-XX.XX%` | `-XX.XX%` | **`-XX.XX%`** | **`-XX.XX%`** | **`-XX.XX%`** |
-| **年化波动率** | `XX.XX%` | `XX.XX%` | **`XX.XX%`** | **`XX.XX%`** | **`XX.XX%`** |
-| **夏普比率 (Sharpe)** | `0.XX` | `0.XX` | **`0.XX`** | **`0.XX`** | **`0.XX`** |
-| **卡玛比率 (Calmar)** | `0.XX` | `0.XX` | **`0.XX`** | **`0.XX`** | **`0.XX`** |
+| 核心指标项 | 中证全指 (基准) | 沪深300 (基准) | **macro_risk_v3** | **macro_rotation_v4** | **macro_rotation_v5** | **macro_rotation_v6** |
+| :--- | :---: | :---: | :---: | :---: | :---: | :---: |
+| **累计净值** | `X.XXX` | `X.XXX` | **`X.XXX`** | **`X.XXX`** | **`X.XXX`** | **`X.XXX`** |
+| **累计收益** | `XX.XX%` | `XX.XX%` | **`XX.XX%`** | **`XX.XX%`** | **`XX.XX%`** | **`XX.XX%`** |
+| **年化收益 (CAGR)** | `X.XX%` | `X.XX%` | **`X.XX%`** | **`X.XX%`** | **`X.XX%`** | **`X.XX%`** |
+| **最大回撤 (Max DD)** | `-XX.XX%` | `-XX.XX%` | **`-XX.XX%`** | **`-XX.XX%`** | **`-XX.XX%`** | **`-XX.XX%`** |
+| **年化波动率** | `XX.XX%` | `XX.XX%` | **`XX.XX%`** | **`XX.XX%`** | **`XX.XX%`** | **`XX.XX%`** |
+| **夏普比率 (Sharpe)** | `0.XX` | `0.XX` | **`0.XX`** | **`0.XX`** | **`0.XX`** | **`0.XX`** |
+| **卡玛比率 (Calmar)** | `0.XX` | `0.XX` | **`0.XX`** | **`0.XX`** | **`0.XX`** | **`0.XX`** |
 
 ![多策略资金曲线全景对比](data/analytics/macro_strategy/multi_strategy_comparison.png)
 
 ##### 2. 当前交易日最新调仓信号与目标配置
-- **当前推荐策略**：【单宽基择时 / 双核风格轮动 / 资金博弈增强】
+- **当前推荐策略**：【单宽基择时 / 双核风格轮动 / 资金博弈增强 / 三核自适应轮动】
 - **目标持仓结构**：
-  - 价值防守仓（中证红利 `000922`）：`XX%`
-  - 成长进攻仓（创业板指 `399006`）：`XX%`
+  - 价值防守仓（红利 ETF `510880`）：`XX%`
+  - 成长进攻仓（创业板 ETF `159915`）：`XX%`
+  - 核心压舱仓（300 ETF `510300`）：`XX%`
   - 固收与现金（防守备用金）：`XX%`
 - **风控纪律与触发条件**：
   - 触发全额清仓的条件（如：Overheat > 65 且收盘跌破 MA20）；
@@ -178,7 +189,7 @@ flowchart TD
 
 ---
 
-## 5. 专题进阶手册 (Deep-Dive References)
+## 6. 专题进阶手册 (Deep-Dive References)
 
 * 📘 [macro_strategies_playbook.md](references/macro_strategies_playbook.md)：宏观风控多策略（V3/V4/V5/V6 及场内 ETF 代理版）状态机规则、T+1 回测语义、全市场排位对比、5 大实操铁律纪律与 4 大潜在盲区诊断。
 * 📘 [macro_regimes_playbook.md](references/macro_regimes_playbook.md)：A 股 14 年跨周期 6 大宏观范式特征、主导矛盾与最佳策略表现。
