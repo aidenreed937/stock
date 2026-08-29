@@ -11,15 +11,17 @@ description: 宏观风控双轨雷达、A 股 14 年跨周期 6 大宏观范式�
    - 宏观风控因子、分位数与双轨制指数必须来自本地黄金产物 `data/analytics/macro_risk/latest/risk_factors.parquet` 或历史运行目录；
    - 策略信号与回测净值必须来自 `stock_strategy.macro` 真实执行产物（`data/analytics/macro_strategy/multi_strategy_comparison.md` / `multi_strategy_nav.csv` / `multi_strategy_comparison.png`）；
    - 严禁凭记忆臆造历史点位、指数分位或策略净值；外部宏观政策与新闻必须显式标注为【外部背景】。
-2. **3-2-1 金字塔 6 大核心风控画像**：
+2. **8 维全景风控画像金字塔 (8-Dimension Pyramid)**：
    - **3 大生存硬约束**：两融杠杆 (`dim_leverage`)、换手拥挤 (`dim_crowding`)、主力资金 (`dim_flow`)；
    - **2 大拐点快变量**：期权情绪 (`dim_sentiment`)、市场广度 (`dim_breadth`)；
-   - **1 个长线慢变量**：大盘估值 (`dim_valuation`)。
-   - *(注：个股解禁压力 `dim_unlock` 属微观选股排雷，已从宏观风控雷达中剥离)*。
+   - **1 个长线慢变量**：大盘估值 (`dim_valuation`)；
+   - **1 个微观基本面底**：产业资本 (`dim_corporate`：回购 + 董监高增持)；
+   - **1 个全谱系流动性**：跨资产宏观 (`dim_cross_asset`：转债中位数 + 美债利差 + 铜金比)。
 3. **多时间窗口协同分析准则**：
    - **10~15 年跨周期全景**：识别当前处于 6 大宏观范式中的哪一类；
    - **60 日季度窗口**：评估均值回归、胜率兑现与主升浪吃满（极度恐慌底 60 日胜率高达 88%）；
-   - **20 日月度窗口**：依托 20 日均线 (MA20) 过滤短期情绪冲顶与洗盘震荡，执行逃顶与控损。
+   - **20 日月度窗口**：依托 20 日均线 (MA20) 过滤短期情绪冲顶与洗盘震荡，执行逃顶与控损；
+   - **多交易日连续性窗口**：跟踪国家队 ETF 申购（`etf_score >= 90`）与企业回购（`repurchase_score >= 80`）的连续维持天数（$\ge$ 1D vs $\ge$ 3D vs $\ge$ 5D）。
 4. **回测机制与基准对齐规范**：
    - **执行语义**：严格 T+1 规则（交易日 $t$ 收盘生成信号，目标权重于 $t+1$ 日生效计算复利）；
    - **基准对齐**：必须同步对比**中证全指 (`000985.CSI`)** 与 **沪深300 (`000300.SH`)** 的 Buy & Hold 基准净值；
@@ -32,10 +34,11 @@ description: 宏观风控双轨雷达、A 股 14 年跨周期 6 大宏观范式�
 ```mermaid
 flowchart TD
     A["1. 确认研究目标与观测日期"] --> B["2. 检查/运行宏观风控管线<br>(macro_risk / latest)"]
-    B --> C["3. 穿透 3-2-1 金字塔六维特征<br>(极值硬约束 + 国家队ETF托底)"]
-    C --> D["4. 20日 / 60日 短中周期胜率推演<br>(情绪惯性 vs 均值回归)"]
-    D --> E["5. 运行多策略状态机与回测对账<br>(V3/V4/V5/V6 资金曲线与审计)"]
-    E --> F["6. 生成并交付标准投研研报<br>(Markdown + 资金曲线 + 仓位指令)"]
+    B --> C["3. 穿透 8 维全景特征画像<br>(极值硬约束 + 国家队/企业回购共振)"]
+    C --> D["4. 检查多交易日连续维持状态<br>(1D脉冲 vs 3D/5D战略级确认)"]
+    D --> E["5. 20日 / 60日 短中周期胜率推演<br>(真假黄金坑鉴别 + 资产相态定位)"]
+    E --> F["6. 运行多策略状态机与回测对账<br>(全天候 / 元路由器 / 双核轮动)"]
+    F --> G["7. 生成并交付标准投研研报<br>(Markdown + 资金曲线 + 仓位指令)"]
 ```
 
 ### 步骤 1：确认日期并执行/加载宏观风控产物
@@ -53,13 +56,20 @@ flowchart TD
   uv run python -m stock_cli.macro_risk --last-n 60
   ```
 
-### 步骤 2：穿透六大核心维度与极端信号检测
+### 步骤 2：穿透 8 维核心画像与连续维持极值检测
 1. **生存硬约束排查**：
    - 若 `dim_leverage >= 85.0` 且 `overheat_index >= 65.0`：触发【高杠杆多杀多毁灭警报】（历史后验 60 日胜率 0%），坚决建议清仓降杠杆；
    - 若 `dim_crowding <= 20.0` 且 `dim_valuation <= 5.0` 且 `dim_leverage <= 20.0`：触发【地量估值双底大底】（历史后验 1 年胜率 100%），坚决满仓锁仓。
-2. **多主体资金博弈与国家队托底排查**：
-   - 查验 `etf_flow_ratio_score`：若 `panic_index > 65` 且 `etf_score >= 90.0`，判定为国家队宽基 ETF 战略性大额买入，确认黄金坑，触发左侧反攻抢跑；
-   - 查验 `divergence_score_score`：若狂热高位散户激进接盘而主力坚决出货（`div_score >= 85.0`），提前防范流动性断崖。
+2. **真假黄金坑与微观产业底抢跑排查 (连续维持胜率矩阵)**：
+   - **真黄金坑（产业托底强共振）**：`panic_index > 65` 且 `(dim_corporate >= 75 或 repurchase_score >= 80)`。
+     - 若回购高分位**连续维持 $\ge$ 2~3 天**：历史 60 日胜率达 **100%**（后60日均值 **+12.3%**），确认战略级历史大底，坚决在左侧重仓大盘宽基与红利；
+   - **假黄金坑警示（纯情绪多杀多中继）**：`panic_index > 65` 但 `(dim_corporate <= 25 且 repurchase_score <= 30)`。
+     - 警示实体企业尚未认可估值底线，**严禁盲目加杠杆抄底**，坚决以 20 日均线 (MA20) 为刚性止损线；
+   - **微观产业底抢跑**：`panic_index > 65` 且 `etf_score < 40` 但 `repurchase_score >= 80`。
+     - 判定产业资本先行于宏观调令，微观估值底率先形成，左侧跟随分批低吸。
+3. **国家队 ETF 托底连续性排查**：
+   - 若 `etf_score >= 90.0` 仅维持 1 天：胜率约 53.3%（警惕单日脉冲诱多）；
+   - 若 `etf_score >= 90.0` **连续维持 $\ge$ 5 天**：历史 20 日胜率达 **100.0%**（后20日均值 **+8.48%**），确认战略级资金持续扫货。
 
 ### 步骤 3：跨周期 6 大宏观范式定位与周期胜率对账
 - **宏观范式速查**：查阅 [`references/macro_regimes_playbook.md`](references/macro_regimes_playbook.md) 对齐 6 大历史范式；
@@ -80,6 +90,10 @@ flowchart TD
   uv run python -m stock_cli.macro_strategy --strategy macro_rotation_v5
   # 运行 V6 三元资产自适应轮动 (红利 40% + 创业板 40% + 300 20%)
   uv run python -m stock_cli.macro_strategy --strategy macro_rotation_v6
+  # 运行 MacroMetaRouter 元策略路由器
+  uv run python -m stock_cli.macro_strategy --strategy macro_meta_router_etf
+  # 运行 MacroAllWeather 全天候大类资产轮动 (红利/创业板/300/国债/黄金)
+  uv run python -m stock_cli.macro_strategy --strategy macro_all_weather_etf
   ```
 - **生成全量多策略横向对账全景报告与资金曲线 (一键出图出表)**：
   ```bash
@@ -96,9 +110,9 @@ flowchart TD
 - **盘尾 14:50 实时巡检推演与 Webhook 自动告警推送 (实盘自动化)**：
   ```bash
   # 本地 dry-run 预览巡检报单卡片
-  uv run python -m stock_cli.macro_strategy_live --strategy macro_rotation_v4_etf --dry-run
+  uv run python -m stock_cli.macro_strategy_live --strategy macro_all_weather_etf --dry-run
   # 真实推送飞书/企微机器人告警 (仅触发调仓时推送)
-  uv run python -m stock_cli.macro_strategy_live --strategy macro_rotation_v4_etf --webhook-type feishu --webhook-url "<FEISHU_URL>"
+  uv run python -m stock_cli.macro_strategy_live --strategy macro_all_weather_etf --webhook-type feishu --webhook-url "<FEISHU_URL>"
   ```
 
 ---
@@ -115,6 +129,8 @@ flowchart TD
 | **`macro_rotation_v6`** | `MacroRotationV6Strategy` | 中证红利 (`000922.CSI`: 40%)<br>创业板指 (`399006.SZ`: 40%)<br>沪深300 (`000300.SH`: 20%) | 中证全指 (`000985.CSI`) | **三核资产与动量自适应智能轮动 (终极版)**：国家队托底左侧对齐沪深300防踩踏、低估值环境增配红利大盘防踏空、高估值打满创业板弹性。 |
 | **`macro_rotation_v4_etf`** | `MacroRotationV4Strategy` | 红利 ETF (`510880.SH`: 50%)<br>创业板 ETF (`159915.SZ`: 50%) | 中证全指 (`000985.CSI`) | **双核哑铃风格轮动 (场内 ETF 代理实盘版)**：可直接使用普通 A 股股票账户在场内一键报单交易。 |
 | **`macro_rotation_v6_etf`** | `MacroRotationV6Strategy` | 红利 ETF (`510880.SH`: 40%)<br>创业板 ETF (`159915.SZ`: 40%)<br>300 ETF (`510300.SH`: 20%) | 中证全指 (`000985.CSI`) | **三核自适应轮动 (场内 ETF 代理实盘版)**：兼顾左侧防微盘踩踏与牛市弹性的场内实战组合。 |
+| **`macro_meta_router_etf`** | `MacroMetaRouterStrategy` | 红利 ETF (`510880.SH`: 40%)<br>创业板 ETF (`159915.SZ`: 40%)<br>300 ETF (`510300.SH`: 20%) | 中证全指 (`000985.CSI`) | **宏观元策略动态路由器 (ETF 版)**：融合国家队与企业回购双托底，动态切换 5 大宏观相态。 |
+| **`macro_all_weather_etf`** 🌟 | `MacroAllWeatherStrategy` | 红利 ETF (30%) + 创业板 ETF (30%)<br>300 ETF (20%) + 国债 ETF (20%)<br>黄金 ETF (0%) | 中证全指 (`000985.CSI`) | **大类资产全天候自适应相态轮动 (终极跨资产版)**：泡沫破裂期刚性转入 60% 国债 + 40% 黄金避险，全周期波动率压至 **16.69%**，最大回撤收窄至 **-36.17%**。 |
 
 ---
 
