@@ -46,7 +46,8 @@ def _summarize_nav(nav: list[float]) -> dict[str, float | None]:
         mean = sum(daily) / len(daily)
         variance = sum((d - mean) ** 2 for d in daily) / (len(daily) - 1)
         vol = sqrt(variance) * sqrt(_TRADING_DAYS_PER_YEAR)
-    sharpe = annual / vol if annual is not None and vol and vol > 0 else None
+    # 夏普口径与 report.py 保持一致: 无风险利率 1.5%
+    sharpe = (annual - 0.015) / vol if annual is not None and vol and vol > 0 else None
 
     peak = nav[0]
     max_dd = 0.0
