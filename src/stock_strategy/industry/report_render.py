@@ -104,14 +104,17 @@ def render_industry_comparison_markdown(
     start_str = str(start) if start else "起始"
     end_str = str(end) if end else "最新"
 
+    img_name = Path(image_rel_path).name if image_rel_path else "multi_strategy_comparison.png"
+
     md = f"""# 申万 31 行业轮动多策略全周期横向对账研报
 
 > **回测区间**: {start_str} 至 {end_str} (跨度 11 年、2,833 个交易日)
 > **数据底座**: 申万 31 行业日行情黄金表 + 5 大中观因子面板 + 宏观风控双轨雷达
 > **执行规则**: 严格 T+1 交易日调仓 + 真实交易摩擦成本 (佣金+滑点) + 3% 死区过滤
 
----
+![申万 31 行业轮动多策略资金曲线与动态回撤]({img_name})
 
+---
 
 ## 一、 全周期核心绩效横向对比表
 
@@ -127,13 +130,8 @@ def render_industry_comparison_markdown(
 
 ---
 
-## 二、 全周期资金曲线与动态回撤走势
+## 二、 四大行业轮动策略逻辑画像
 
-![申万行业多策略资金曲线与动态回撤]({image_rel_path})
-
----
-
-## 三、 四大行业轮动策略逻辑画像
 
 1. **纯高景气动量轮动 (`industry_momentum`)**：
    - 逻辑：每月调仓，打满 31 行业景气动量得分最高的 Top 3 行业 (20/60D 动量 + 净利润增速分位)；
