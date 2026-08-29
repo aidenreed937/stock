@@ -21,6 +21,7 @@ from pathlib import Path
 from stock_core.utils.logger import logger
 from stock_core.utils.webhook import send_webhook_alert
 from stock_strategy.macro_live import inspect_live_signal
+from stock_strategy.state.signal_repo import SignalRepository
 
 
 def _build_parser() -> argparse.ArgumentParser:
@@ -104,15 +105,32 @@ def main() -> None:
     # 控制台打印渲染卡片
     print(res.markdown_card)
 
+    # 记录信号至 SQLite 数据库
+    signal_repo = SignalRepository()
+    signal_id, is_new = signal_repo.record_signal(res)
+    if is_new:
+        logger.info("已持久化新信号记录至 SQLite: %s", signal_id)
+    else:
+        logger.debug("当前信号已存在于 SQLite (幂等去重): %s", signal_id)
+
+    # 解析 Webhook 配置
+    w_type = args.webhook_type.lower()
+    w_url = args.webhook_url
+
     # 确定是否需要发送通知
     should_send = res.has_rebalance or args.force_notify or args.dry_run
     if not should_send:
         print("💡 当前持仓正常且无调仓信号，静默跳过 Webhook 消息推送 (防止骚扰)。")
+        signal_repo.record_notification(
+            signal_id=signal_id,
+            channel=w_type if w_type != "none" else "console",
+            title="日常巡检",
+            content_md=res.markdown_card,
+            is_alert=False,
+            sent_status="SKIPPED",
+        )
         return
 
-    # 解析 Webhook URL
-    w_type = args.webhook_type.lower()
-    w_url = args.webhook_url
     if not w_url and w_type != "none":
         if w_type == "feishu":
             w_url = os.environ.get("FEISHU_WEBHOOK_URL")
@@ -136,8 +154,17 @@ def main() -> None:
             is_alert=res.has_rebalance,
             dry_run=args.dry_run or (w_url is None and w_type != "macos"),
         )
+        status_str = "SUCCESS" if sent else ("DRY_RUN" if args.dry_run else "FAILED")
+        signal_repo.record_notification(
+            signal_id=signal_id,
+            channel=w_type if w_type != "none" else "console",
+            title=title,
+            content_md=res.markdown_card,
+            is_alert=res.has_rebalance,
+            sent_status=status_str,
+        )
         if sent and not args.dry_run:
-            print(f"✅ Webhook 告警已成功推送至 [{w_type}]！")
+            print(f"✅ Webhook 告警已成功推送至 [{w_type}] 并记录审计日志！")
 
 
 if __name__ == "__main__":

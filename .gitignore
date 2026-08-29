@@ -40,6 +40,8 @@ target/
 # Local data, caches, databases, and logs
 data/
 *.db
+*.db-wal
+*.db-shm
 *.duckdb
 *.feather
 *.log

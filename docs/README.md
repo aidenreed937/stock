@@ -12,6 +12,7 @@
 
 ### 2. 📏 规范与质量控制 (`docs/standards/`)
 - [数据契约与 Schema v2 规范说明 (Schema v2 Spec)](standards/schema_v2_spec.md) — 强类型 Date、SI 计量单位、升序去重与数据血统元数据标准
+- [关系型数据库 (SQLite) 设计与一致性规范 (Relational DB Spec)](standards/relational_database_spec.md) — OLAP/OLTP 边界、Schema 独立迁移治理、WAL 并发调优与 ACID 事务保障
 - [代码编写规范 (Coding Guidelines)](standards/coding_guidelines.md) — 命名规范、Python 3.12 强类型约束与领域异常定义
 - [质量防护与工具门禁 (Quality Gates)](standards/quality_gates.md) — Ruff、Mypy、Pre-commit 与测试门禁
 
