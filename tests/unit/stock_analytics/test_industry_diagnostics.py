@@ -7,18 +7,20 @@ import polars as pl
 import pytest
 
 from stock_analytics.pipelines.industry_diagnostics import (
+    ArchetypeConfig,
     IndustryConstituentsSnapshot,
-    IndustryDiagnosticsConfig,
     IndustryDiagnosticsPipeline,
     IndustryDiagnosticsResult,
     IndustryFinancialsSnapshot,
     IndustryScoreBreakdown,
     IndustryTechnicalsSnapshot,
+    IndustryThresholdsConfig,
     IndustryValuationSnapshot,
     IndustryValueChainSnapshot,
-    ScoreWeightsConfig,
+    ValuationWeightsConfig,
     VetoRulesConfig,
     calculate_industry_scores,
+    load_industry_diagnostics_config,
     run_industry_diagnostics,
 )
 from stock_analytics.pipelines.industry_diagnostics.scoring import (
@@ -27,7 +29,6 @@ from stock_analytics.pipelines.industry_diagnostics.scoring import (
     calculate_momentum_score,
     calculate_valuation_score,
     classify_pb_roe_quadrant,
-    resolve_industry_type,
 )
 from stock_analytics.pipelines.industry_diagnostics.sources import (
     load_value_chain_map,
@@ -73,46 +74,84 @@ def test_load_value_chain_map() -> None:
     assert len(vc.high_frequency_indicators) > 0
 
 
-def test_industry_type_resolution() -> None:
-    assert resolve_industry_type("煤炭开采") == "强周期资源与大宗"
-    assert resolve_industry_type("有色金属") == "强周期资源与大宗"
-    assert resolve_industry_type("食品饮料") == "大消费与核心资产"
-    assert resolve_industry_type("半导体芯片") == "科技成长与创新"
-    assert resolve_industry_type("电力设备") == "先进制造与新能源"
-    assert resolve_industry_type("国有大型银行") == "稳定红利与大金融"
+def test_config_archetypes_loading() -> None:
+    cfg = load_industry_diagnostics_config()
+    assert "cyclical" in cfg.archetypes
+    assert "consumption" in cfg.archetypes
+    assert "growth" in cfg.archetypes
+    assert "dividend" in cfg.archetypes
+
+    # 测试原型匹配
+    arch_coal = cfg.resolve_archetype("煤炭开采")
+    assert arch_coal.title == "强周期资源与大宗"
+    assert arch_coal.valuation_weights.pb_weight == 0.80
+
+    arch_bev = cfg.resolve_archetype("食品饮料")
+    assert arch_bev.title == "大消费与核心资产"
+    assert arch_bev.valuation_weights.pe_weight == 0.70
+
+    arch_semi = cfg.resolve_archetype("半导体芯片")
+    assert arch_semi.title == "科技成长与创新"
+
+    arch_bank = cfg.resolve_archetype("国有大型银行")
+    assert arch_bank.title == "稳定红利与大金融"
 
 
-def test_industry_scoring_logic() -> None:
+def test_industry_scoring_logic_with_archetypes() -> None:
+    thresholds = IndustryThresholdsConfig(
+        momentum_bias_limit=10.0,
+        roe_high=18.0,
+        roe_mid=12.0,
+        roe_low=6.0,
+        scissors_positive=5.0,
+    )
+
     # 1. 动量多头排列打分
     tech_bull = IndustryTechnicalsSnapshot(close=100.0, ma20=95.0, ma60=90.0, rsi14=60.0)
-    mom_score = calculate_momentum_score(tech_bull)
+    mom_score = calculate_momentum_score(tech_bull, thresholds=thresholds)
     assert mom_score >= 70.0
 
-    # 2. 估值低估赔率打分 (周期品防低 PE 陷阱)
+    # 2. 周期品估值赔率 (PB 80% 高位自适应低分)
     val_cyclical = IndustryValuationSnapshot(pe_percentile_5y=5.0, pb_percentile_5y=80.0)
-    # 周期品以 PB 为主，PB 80% 高位应判定为赔率低
-    val_score_cyc = calculate_valuation_score(val_cyclical, industry_type="强周期资源与大宗")
+    cyclical_arch = ArchetypeConfig(
+        title="强周期资源与大宗",
+        valuation_weights=ValuationWeightsConfig(pb_weight=0.80, pe_weight=0.20),
+    )
+    val_score_cyc = calculate_valuation_score(val_cyclical, archetype=cyclical_arch)
     assert val_score_cyc < 50.0
 
-    # 3. 基本面优质与剪刀差打分
+    # 3. 消费核心资产估值赔率 (PE 15% 低位自适应高分)
+    consumption_arch = ArchetypeConfig(
+        title="大消费与核心资产",
+        valuation_weights=ValuationWeightsConfig(pb_weight=0.30, pe_weight=0.70),
+    )
+    val_bev = IndustryValuationSnapshot(pe_percentile_5y=15.0, pb_percentile_5y=60.0)
+    val_score_bev = calculate_valuation_score(val_bev, archetype=consumption_arch)
+    assert val_score_bev >= 70.0
+
+    # 4. 基本面优质与剪刀差打分
     fin_good = IndustryFinancialsSnapshot(
         roe_avg=18.5, revenue_yoy=15.0, netprofit_yoy=25.0, profit_scissors=10.0
     )
-    fund_score = calculate_fundamental_score(fin_good)
+    fund_score = calculate_fundamental_score(fin_good, thresholds=thresholds)
     assert fund_score >= 75.0
 
-    # 4. 拥挤度扣分 (含广度背离)
+    # 5. 拥挤度扣分 (含广度背离)
     const_crowded = IndustryConstituentsSnapshot(cr5_concentration=85.0, above_ma20_ratio=20.0)
     penalty = calculate_crowding_penalty(
-        const_crowded, turnover_p5y=95.0, overheat_threshold=90.0, momentum_score=80.0
+        const_crowded,
+        turnover_p5y=95.0,
+        overheat_threshold=90.0,
+        momentum_score=80.0,
+        thresholds=thresholds,
     )
     assert penalty > 10.0
 
-    # 5. PB-ROE 象限划分
+    # 6. PB-ROE 象限划分
     quadrant = classify_pb_roe_quadrant(roe=16.0, pb_p5y=25.0, pe_p5y=20.0)
     assert "核心资产·高性价比" in quadrant
 
-    # 6. 一票否决门禁
+    # 7. 一票否决门禁
     fin_decay = IndustryFinancialsSnapshot(roe_avg=3.0, revenue_yoy=-20.0, netprofit_yoy=-40.0)
     scores = calculate_industry_scores(
         industry_name="煤炭",
@@ -120,7 +159,8 @@ def test_industry_scoring_logic() -> None:
         valuation=val_cyclical,
         financials=fin_decay,
         constituents=const_crowded,
-        weights=ScoreWeightsConfig(),
+        archetype=cyclical_arch,
+        thresholds=thresholds,
         veto_rules=VetoRulesConfig(),
     )
     assert scores.veto_triggered is True
@@ -211,7 +251,7 @@ def test_industry_diagnostics_pipeline_and_artifacts(
     monkeypatch.setattr(pipeline, "DataCatalog", _MockCatalog)
 
     output_dir = tmp_path / "analytics" / "industry_diagnostics"
-    custom_cfg = IndustryDiagnosticsConfig(title="测试产业量化体检")
+    custom_cfg = load_industry_diagnostics_config()
     pipe = IndustryDiagnosticsPipeline(config=custom_cfg)
 
     result = pipe.run(

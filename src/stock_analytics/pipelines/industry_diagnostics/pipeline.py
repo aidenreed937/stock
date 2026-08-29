@@ -58,27 +58,27 @@ def _load_industry_financials(
     veto_reason = ""
 
     try:
-        p_daily_path = runtime.data_root / "curated" / "mart" / "industry_panel_daily.parquet"
-        if p_daily_path.exists():
-            p_df = pl.read_parquet(p_daily_path).filter(pl.col("industry_code") == std_code)
-            if not p_df.is_empty():
-                p_df = p_df.sort("as_of_date")
-                if target_date is not None:
-                    p_df = p_df.filter(pl.col("as_of_date") <= target_date)
-                if not p_df.is_empty():
-                    latest_p = p_df.tail(1).to_dicts()[0]
-                    roe_val = latest_p.get("roe_ttm")
-                    rev_yoy = latest_p.get("revenue_growth_ttm")
-                    np_yoy = latest_p.get("profit_growth_ttm")
-                    if np_yoy is not None and rev_yoy is not None:
-                        if (
-                            float(np_yoy) < config.veto_rules.profit_decay_threshold
-                            and float(rev_yoy) < config.veto_rules.revenue_decay_threshold
-                        ):
-                            veto_flag = True
-                            veto_reason = f"利润大幅下滑({np_yoy:.1f}%)且营收萎缩({rev_yoy:.1f}%)"
+        from stock_analytics.features.store import FeatureStore
+
+        fs = FeatureStore(runtime=runtime)
+        p_df = fs.get_industry_panel_daily(end_date=target_date)
+        if not p_df.is_empty() and "industry_code" in p_df.columns:
+            ind_p = p_df.filter(pl.col("industry_code") == std_code)
+            if not ind_p.is_empty():
+                ind_p = ind_p.sort("as_of_date")
+                latest_p = ind_p.tail(1).to_dicts()[0]
+                roe_val = latest_p.get("roe_ttm")
+                rev_yoy = latest_p.get("revenue_growth_ttm")
+                np_yoy = latest_p.get("profit_growth_ttm")
+                if np_yoy is not None and rev_yoy is not None:
+                    if (
+                        float(np_yoy) < config.veto_rules.profit_decay_threshold
+                        and float(rev_yoy) < config.veto_rules.revenue_decay_threshold
+                    ):
+                        veto_flag = True
+                        veto_reason = f"利润大幅下滑({np_yoy:.1f}%)且营收萎缩({rev_yoy:.1f}%)"
     except Exception as exc:
-        logger.warning(f"读取行业面板基本面数据失败: {exc}")
+        logger.warning(f"通过 FeatureStore 读取行业面板失败: {exc}")
 
     scissors = None
     if np_yoy is not None and rev_yoy is not None:
@@ -228,14 +228,19 @@ class IndustryDiagnosticsPipeline:
         # 2. 行业估值
         val_snapshot = build_industry_valuation(sw_df, self.config.valuation, self.cat_lx)
 
-        # 3. 行业基本面
+        # 3. 行业基本面 (通过 FeatureStore 规范加载 Mart 面板)
         fin_snapshot = _load_industry_financials(
             self.runtime, std_code, as_of_date_val, target_date, self.config
         )
 
-        # 4. 行业成份股与 CR5
+        # 4. 行业成份股与 CR5 (配置驱动 top_n 龙头数量)
+        t_cfg = self.config.thresholds
         const_snapshot, turnover_p5y = load_industry_constituents(
-            self.cat_tu, std_code, target_date=target_date
+            self.cat_tu,
+            std_code,
+            target_date=target_date,
+            top_n=t_cfg.top_leaders_count,
+            max_symbols=t_cfg.max_constituents_eval,
         )
 
         # 5. 产业链图谱
@@ -243,14 +248,16 @@ class IndustryDiagnosticsPipeline:
             std_name, config_path=self.config.value_chain_map_path
         )
 
-        # 6. 多维打分与 PB-ROE 象限
+        # 6. 原型匹配与自适应量化打分
+        archetype = self.config.resolve_archetype(std_name)
         scores = calculate_industry_scores(
             industry_name=std_name,
             technicals=tech_snapshot,
             valuation=val_snapshot,
             financials=fin_snapshot,
             constituents=const_snapshot,
-            weights=self.config.score_weights,
+            archetype=archetype,
+            thresholds=t_cfg,
             veto_rules=self.config.veto_rules,
             turnover_p5y=turnover_p5y,
         )

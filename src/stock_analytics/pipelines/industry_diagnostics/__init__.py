@@ -2,10 +2,13 @@
 
 from stock_analytics.pipelines.industry_diagnostics.config import (
     DEFAULT_CONFIG_PATH,
+    ArchetypeConfig,
     IndustryDiagnosticsConfig,
+    IndustryThresholdsConfig,
     ScoreWeightsConfig,
     TechnicalsConfig,
     ValuationConfig,
+    ValuationWeightsConfig,
     VetoRulesConfig,
     load_industry_diagnostics_config,
 )
@@ -28,6 +31,7 @@ from stock_analytics.pipelines.industry_diagnostics.types import (
 
 __all__ = [
     "DEFAULT_CONFIG_PATH",
+    "ArchetypeConfig",
     "IndustryConstituentsSnapshot",
     "IndustryDiagnosticsConfig",
     "IndustryDiagnosticsPipeline",
@@ -35,11 +39,13 @@ __all__ = [
     "IndustryFinancialsSnapshot",
     "IndustryScoreBreakdown",
     "IndustryTechnicalsSnapshot",
+    "IndustryThresholdsConfig",
     "IndustryValuationSnapshot",
     "IndustryValueChainSnapshot",
     "ScoreWeightsConfig",
     "TechnicalsConfig",
     "ValuationConfig",
+    "ValuationWeightsConfig",
     "VetoRulesConfig",
     "calculate_industry_scores",
     "load_industry_diagnostics_config",

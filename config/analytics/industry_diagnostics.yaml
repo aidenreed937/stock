@@ -3,7 +3,83 @@ industry_diagnostics:
   title: "中观产业与行业量化深度诊断"
   artifact_root: "data/analytics/industry_diagnostics"
 
-  # 1. 时间窗口选型规范
+  # 1. 行业商业模式原型配置 (Industry Archetypes)
+  archetypes:
+    cyclical:
+      title: "强周期资源与大宗"
+      keywords: ["煤炭", "钢铁", "有色", "化工", "建材", "石化", "航运", "水泥", "矿", "铝", "铜"]
+      valuation_weights:
+        pb_weight: 0.80   # 强周期品以 PB (重置成本/出清程度) 为主，防高景气低 PE 诱多
+        pe_weight: 0.20
+      score_weights:
+        momentum: 0.25
+        valuation: 0.35   # 周期品赔率更重要
+        fundamental: 0.25
+        crowding: 0.15
+    consumption:
+      title: "大消费与核心资产"
+      keywords: ["食品", "饮料", "白酒", "医药", "家电", "零售", "社服", "轻工", "美护", "纺织", "农业", "猪"]
+      valuation_weights:
+        pb_weight: 0.30
+        pe_weight: 0.70   # 消费核心资产以 PE-TTM 为主
+      score_weights:
+        momentum: 0.25
+        valuation: 0.25
+        fundamental: 0.35 # 消费更注重 ROE 稳定性与内生盈利
+        crowding: 0.15
+    growth:
+      title: "科技成长与创新"
+      keywords: ["电子", "半导体", "计算机", "通信", "传媒", "软件", "军工", "AI", "芯片"]
+      valuation_weights:
+        pb_weight: 0.40
+        pe_weight: 0.60
+      score_weights:
+        momentum: 0.40   # 科技成长更注重动量趋势与景气爆发
+        valuation: 0.15
+        fundamental: 0.30
+        crowding: 0.15
+    dividend:
+      title: "稳定红利与大金融"
+      keywords: ["银行", "证券", "保险", "非银", "公用", "电力", "交运", "港口", "铁路", "环保", "地产"]
+      valuation_weights:
+        pb_weight: 0.60   # 金融/公用事业以 PB 与股息利差为主
+        pe_weight: 0.40
+      score_weights:
+        momentum: 0.20
+        valuation: 0.35
+        fundamental: 0.30
+        crowding: 0.15
+    general:
+      title: "通用制造与消费"
+      keywords: []
+      valuation_weights:
+        pb_weight: 0.50
+        pe_weight: 0.50
+      score_weights:
+        momentum: 0.30
+        valuation: 0.25
+        fundamental: 0.25
+        crowding: 0.20
+
+  # 2. 全局算子可调阶梯阈值 (Thresholds)
+  thresholds:
+    top_leaders_count: 5           # 龙头成份股提取数量 (Top N)
+    max_constituents_eval: 200     # 成份股处理数量上限
+    momentum_bias_limit: 10.0      # 均线偏离度微调上限 (%)
+    rsi_overbought: 75.0           # RSI 超买阈值
+    rsi_oversold: 25.0             # RSI 超卖阈值
+    roe_high: 18.0                 # ROE 优秀阈值 (%)
+    roe_mid: 12.0                  # ROE 良好阈值 (%)
+    roe_low: 6.0                   # ROE 平庸阈值 (%)
+    growth_fast: 20.0              # 高增长阈值 (%)
+    growth_slump: -20.0            # 严重下滑阈值 (%)
+    scissors_positive: 5.0         # 供需剪刀差扩张阈值 (%)
+    scissors_negative: -10.0       # 供需剪刀差挤压阈值 (%)
+    cr5_crowded: 80.0              # CR5 极端集中阈值 (%)
+    breadth_severe_divergence: 30.0 # 广度严重背离阈值 (%成份股站上MA20)
+    breadth_mild_divergence: 45.0   # 广度轻度背离阈值 (%成份股站上MA20)
+
+  # 3. 时间窗口选型规范 (Windows)
   windows:
     technicals:
       ma_short: 20
@@ -14,23 +90,16 @@ industry_diagnostics:
       window_10y: 2500    # 10 年宏观信贷/资产配置周期 (2500 交易日)
       min_periods: 500
 
-  # 2. 多维无量纲打分权重 (0~100 标准化)
-  score_weights:
-    momentum: 0.30        # 景气动量 (均线系统与 RSI)
-    valuation: 0.25       # 估值赔率 (100 - PE/PB 5Y分位)
-    fundamental: 0.25     # 基本面质量 (ROE + 利润/营收增长)
-    crowding: 0.20        # 拥挤度防范 (100 - CR5/换手分位)
-
-  # 3. 约束与一票否决门禁 (Veto Rules)
+  # 4. 约束与一票否决门禁 (Veto Rules)
   veto_rules:
     profit_decay_threshold: -30.0    # 净利润同比下滑超 30%
     revenue_decay_threshold: -15.0   # 营收同比萎缩超 15%
     overheat_turnover_percentile: 90.0 # 换手过热分位数阈值 (90%)
 
-  # 4. 产业链图谱配置路径
+  # 5. 产业链图谱配置路径
   value_chain_map_path: "config/industry/value_chain_map.yaml"
 
-  # 5. 上游数据集依赖契约
+  # 6. 上游数据集依赖契约
   datasets:
     - data_source: tushare
       dataset: sw_daily

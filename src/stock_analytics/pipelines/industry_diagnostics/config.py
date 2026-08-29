@@ -68,6 +68,82 @@ class ScoreWeightsConfig:
 
 
 @dataclass(frozen=True)
+class ValuationWeightsConfig:
+    pb_weight: float = 0.50
+    pe_weight: float = 0.50
+
+    @classmethod
+    def from_mapping(cls, data: Mapping[str, Any]) -> ValuationWeightsConfig:
+        return cls(
+            pb_weight=float(data.get("pb_weight", 0.50)),
+            pe_weight=float(data.get("pe_weight", 0.50)),
+        )
+
+
+@dataclass(frozen=True)
+class ArchetypeConfig:
+    title: str = "通用制造与消费"
+    keywords: tuple[str, ...] = ()
+    valuation_weights: ValuationWeightsConfig = field(default_factory=ValuationWeightsConfig)
+    score_weights: ScoreWeightsConfig = field(default_factory=ScoreWeightsConfig)
+
+    @classmethod
+    def from_mapping(cls, data: Mapping[str, Any]) -> ArchetypeConfig:
+        vw = data.get("valuation_weights", {})
+        sw = data.get("score_weights", {})
+        kw = data.get("keywords", [])
+        return cls(
+            title=str(data.get("title", "通用制造与消费")),
+            keywords=tuple(str(k) for k in kw),
+            valuation_weights=ValuationWeightsConfig.from_mapping(vw)
+            if isinstance(vw, Mapping)
+            else ValuationWeightsConfig(),
+            score_weights=ScoreWeightsConfig.from_mapping(sw)
+            if isinstance(sw, Mapping)
+            else ScoreWeightsConfig(),
+        )
+
+
+@dataclass(frozen=True)
+class IndustryThresholdsConfig:
+    top_leaders_count: int = 5
+    max_constituents_eval: int = 200
+    momentum_bias_limit: float = 10.0
+    rsi_overbought: float = 75.0
+    rsi_oversold: float = 25.0
+    roe_high: float = 18.0
+    roe_mid: float = 12.0
+    roe_low: float = 6.0
+    growth_fast: float = 20.0
+    growth_slump: float = -20.0
+    scissors_positive: float = 5.0
+    scissors_negative: float = -10.0
+    cr5_crowded: float = 80.0
+    breadth_severe_divergence: float = 30.0
+    breadth_mild_divergence: float = 45.0
+
+    @classmethod
+    def from_mapping(cls, data: Mapping[str, Any]) -> IndustryThresholdsConfig:
+        return cls(
+            top_leaders_count=int(data.get("top_leaders_count", 5)),
+            max_constituents_eval=int(data.get("max_constituents_eval", 200)),
+            momentum_bias_limit=float(data.get("momentum_bias_limit", 10.0)),
+            rsi_overbought=float(data.get("rsi_overbought", 75.0)),
+            rsi_oversold=float(data.get("rsi_oversold", 25.0)),
+            roe_high=float(data.get("roe_high", 18.0)),
+            roe_mid=float(data.get("roe_mid", 12.0)),
+            roe_low=float(data.get("roe_low", 6.0)),
+            growth_fast=float(data.get("growth_fast", 20.0)),
+            growth_slump=float(data.get("growth_slump", -20.0)),
+            scissors_positive=float(data.get("scissors_positive", 5.0)),
+            scissors_negative=float(data.get("scissors_negative", -10.0)),
+            cr5_crowded=float(data.get("cr5_crowded", 80.0)),
+            breadth_severe_divergence=float(data.get("breadth_severe_divergence", 30.0)),
+            breadth_mild_divergence=float(data.get("breadth_mild_divergence", 45.0)),
+        )
+
+
+@dataclass(frozen=True)
 class VetoRulesConfig:
     profit_decay_threshold: float = -30.0
     revenue_decay_threshold: float = -15.0
@@ -87,6 +163,8 @@ class IndustryDiagnosticsConfig:
     technicals: TechnicalsConfig = field(default_factory=TechnicalsConfig)
     valuation: ValuationConfig = field(default_factory=ValuationConfig)
     score_weights: ScoreWeightsConfig = field(default_factory=ScoreWeightsConfig)
+    archetypes: dict[str, ArchetypeConfig] = field(default_factory=dict)
+    thresholds: IndustryThresholdsConfig = field(default_factory=IndustryThresholdsConfig)
     veto_rules: VetoRulesConfig = field(default_factory=VetoRulesConfig)
     value_chain_map_path: Path | str = "config/industry/value_chain_map.yaml"
     schema_version: int = 1
@@ -95,6 +173,18 @@ class IndustryDiagnosticsConfig:
     artifact_root: str = "data/analytics/industry_diagnostics"
     raw_datasets: list[dict[str, Any]] = field(default_factory=list)
 
+    def resolve_archetype(self, industry_name: str) -> ArchetypeConfig:
+        """根据行业名称匹配原型配置，无匹配时返回 general 或默认原型。"""
+        for key, arch in self.archetypes.items():
+            if key == "general":
+                continue
+            for kw in arch.keywords:
+                if kw in industry_name:
+                    return arch
+        if "general" in self.archetypes:
+            return self.archetypes["general"]
+        return ArchetypeConfig()
+
     @classmethod
     def from_mapping(cls, data: Mapping[str, Any]) -> IndustryDiagnosticsConfig:
         windows = data.get("windows", {})
@@ -102,7 +192,15 @@ class IndustryDiagnosticsConfig:
         val_data = windows.get("valuation", data.get("valuation", {}))
         weights_data = data.get("score_weights", {})
         veto_data = data.get("veto_rules", {})
+        thresh_data = data.get("thresholds", {})
+        raw_archetypes = data.get("archetypes", {})
         raw_datasets = data.get("datasets", [])
+
+        archetypes_map = {
+            str(k): ArchetypeConfig.from_mapping(v)
+            for k, v in raw_archetypes.items()
+            if isinstance(v, Mapping)
+        }
 
         return cls(
             technicals=TechnicalsConfig.from_mapping(tech_data)
@@ -114,6 +212,10 @@ class IndustryDiagnosticsConfig:
             score_weights=ScoreWeightsConfig.from_mapping(weights_data)
             if isinstance(weights_data, Mapping)
             else ScoreWeightsConfig(),
+            archetypes=archetypes_map,
+            thresholds=IndustryThresholdsConfig.from_mapping(thresh_data)
+            if isinstance(thresh_data, Mapping)
+            else IndustryThresholdsConfig(),
             veto_rules=VetoRulesConfig.from_mapping(veto_data)
             if isinstance(veto_data, Mapping)
             else VetoRulesConfig(),

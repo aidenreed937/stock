@@ -61,6 +61,7 @@ def load_10y_treasury_yield(catalog_lx: DataCatalog) -> float | None:
             val = df["tcm_y10"].tail(1).to_list()[0]
             if val is not None:
                 f_val = float(val)
+                # 若收益率以小数存储 (如 0.0215) 则换算为百分比 (2.15)
                 return round(f_val * 100.0 if f_val < 0.2 else f_val, 2)
     except Exception as exc:
         logger.warning(f"读取国债收益率失败: {exc}")
@@ -98,8 +99,10 @@ def load_industry_constituents(
     catalog_tu: DataCatalog,
     industry_code: str,
     target_date: date | None = None,
+    top_n: int = 5,
+    max_symbols: int = 200,
 ) -> tuple[IndustryConstituentsSnapshot, float | None]:
-    """查询行业成份股清单并提取市值前 5 龙头梯队，返回成份股快照与最新换手分位。"""
+    """查询行业成份股清单并提取市值前 Top N 龙头梯队，返回成份股快照与换手分位。"""
     try:
         mem_df = catalog_tu.load_dataset("index_member")
         if mem_df.is_empty() or "index_code" not in mem_df.columns:
@@ -135,7 +138,8 @@ def load_industry_constituents(
                 name_map[str(row["symbol"])] = str(row["name"])
 
         # 关联 daily_basic 获取有效交易日市值与估值
-        db_df = catalog_tu.load_dataset("daily_basic", symbols=symbols[:120])
+        eval_symbols = symbols[:max_symbols]
+        db_df = catalog_tu.load_dataset("daily_basic", symbols=eval_symbols)
         leader_items: list[dict[str, Any]] = []
         latest_turnover_p5y = None
 
@@ -145,7 +149,6 @@ def load_industry_constituents(
                 db_df = db_df.filter(pl.col("trade_date") <= target_date)
 
             if not db_df.is_empty():
-                # 动态取最后交易日截面
                 latest_trade_date = db_df["trade_date"].max()
                 latest_db = (
                     db_df.filter(pl.col("trade_date") == latest_trade_date)
@@ -176,10 +179,10 @@ def load_industry_constituents(
                     )
 
         leader_items.sort(key=lambda x: x["total_mv_billion"], reverse=True)
-        top_5_mv = leader_items[:5]
+        top_leaders = leader_items[:top_n]
         total_ind_mv = sum(x["total_mv_billion"] for x in leader_items)
         cr5_val = (
-            round(sum(x["total_mv_billion"] for x in top_5_mv) / total_ind_mv * 100.0, 1)
+            round(sum(x["total_mv_billion"] for x in top_leaders) / total_ind_mv * 100.0, 1)
             if total_ind_mv > 0
             else None
         )
@@ -187,7 +190,7 @@ def load_industry_constituents(
         return (
             IndustryConstituentsSnapshot(
                 total_count=total_count,
-                top_market_cap_leaders=top_5_mv,
+                top_market_cap_leaders=top_leaders,
                 top_roe_leaders=[],
                 cr5_concentration=cr5_val,
                 above_ma20_ratio=None,
