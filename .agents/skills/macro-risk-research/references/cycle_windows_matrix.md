@@ -4,6 +4,11 @@
 > [`scripts/compute_cycle_winrate_matrix.py`](../scripts/compute_cycle_winrate_matrix.py)。
 > 该脚本从本地黄金产物 (`risk_factors.parquet` + lixinger 指数日线) 复算同口径矩阵；
 > 若复算结果与下表不一致（因子数据或样本区间更新后），以脚本最新输出为准并同步更新本表。
+>
+> ⚠️ **ETF 份额托底口径已证伪（2026-08-29）**：本表"国家队托底 (ETF >= 90)"相关行
+> 基于已证伪的 `etf_flow_ratio_score` 代理（与国家队真实增持无关、无前瞻收益），
+> 实战执行法则作废；以聪明钱组合信号 (`smart_money_score`) 口径替代，
+> 实证见 `data/analytics/macro_strategy/smart_money_composite.md`。
 
 基于 A 股 2015 年以来（2,811 个样本日）全量黄金事实表实测统计：
 
