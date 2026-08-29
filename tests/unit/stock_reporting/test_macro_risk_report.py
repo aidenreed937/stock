@@ -166,3 +166,20 @@ def test_evaluate_macro_risk_corporate_lead() -> None:
     assert "微观产业底抢跑" in res["status"]
     assert res["level"] == "opportunity"
     assert "上市公司回购潮已率先爆发" in res["advice"]
+
+
+def test_evaluate_macro_risk_top_fund_corporate_divergence() -> None:
+    """测试牛市顶部背离：狂热高位 + 公募新发火爆 + 董监高大额减持出逃。"""
+    row = {
+        "trade_date": date(2015, 6, 12),
+        "overheat_index": 71.5,
+        "panic_index": 35.0,
+        "fund_issue_pct_score": 95.8,
+        "insider_sell_score": 98.7,
+        "unlock_amount_score": 85.7,
+    }
+    res = evaluate_macro_risk(row)
+    assert "高位公募接盘与产业资本出逃背离" in res["status"]
+    assert res["level"] == "danger"
+    assert "羊群资金高位狂热接盘" in res["advice"]
+    assert "MA20" in res["advice"]

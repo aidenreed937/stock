@@ -226,6 +226,22 @@ def evaluate_macro_risk(
         },
     ]
 
+    val_fund_issue = (
+        _safe_float(row.get("fund_issue_pct_score"))
+        if row.get("fund_issue_pct_score") is not None
+        else None
+    )
+    val_insider_sell = (
+        _safe_float(row.get("insider_sell_score"))
+        if row.get("insider_sell_score") is not None
+        else None
+    )
+    val_unlock = (
+        _safe_float(row.get("unlock_amount_score"))
+        if row.get("unlock_amount_score") is not None
+        else None
+    )
+
     advice = ""
     if overheat > 65 and panic > 65:
         status = "双极值共振 —— 【高位杠杆踩踏 (严禁抄底)】"
@@ -237,14 +253,27 @@ def evaluate_macro_risk(
             "👉 **操作建议**：坚决逢反弹减仓，严禁在杠杆出清前左侧盲目加杠杆抄底；以 20 日均线 (MA20) 作为刚性止损防线。"
         )
     elif overheat > 65:
-        status = "极度狂热 (极高回撤风险)"
-        level = "danger"
-        advice = (
-            f"- **当前状态**：狂热指数 ({overheat:.1f}) 已突破危险阈值。\n"
-            "- **市场定性**：全市场资金处于极度亢奋的“博傻”阶段。\n"
-            "- **后续推演**：无论当前是否处于护盘期，未来一季度的预期收益极大概率为负。\n"
-            "👉 **操作建议**：狂热区不盲目左侧猜顶，但严禁加杠杆追高；收紧止盈线，以 20 日均线 (MA20) 作为右侧刚性退出开关，一旦放量跌破 MA20 坚决清仓进攻端。"
+        has_top_divergence = (val_fund_issue is not None and val_fund_issue >= 75.0) and (
+            (val_insider_sell is not None and val_insider_sell >= 75.0)
+            or (val_unlock is not None and val_unlock >= 80.0)
         )
+        if has_top_divergence:
+            status = "极度狂热 —— 【高位公募接盘与产业资本出逃背离 (见顶预警)】"
+            advice = (
+                f"- **当前状态**：狂热指数 ({overheat:.1f}) 处于高位，公募新发火爆 ({val_fund_issue:.1f})，而董监高减持与解禁分位同步爆发 ({val_insider_sell if val_insider_sell is not None else val_unlock:.1f})。\n"
+                "- **市场定性**：典型的‘场外羊群资金高位狂热接盘、产业资本与大股东密集套现兑现’的大级别背离。\n"
+                "- **后续推演**：二级市场承接流动性正在被产业资本实质性抽干，主升浪已进入尾声，未来季度预期收益极大概率为负。\n"
+                "👉 **操作建议**：严禁加杠杆追高；全面收紧止盈线，严格以 20 日均线 (MA20) 作为右侧刚性退出开关，放量跌破 MA20 坚决清仓进攻端退守国债/黄金避险。"
+            )
+        else:
+            status = "极度狂热 (极高回撤风险)"
+            advice = (
+                f"- **当前状态**：狂热指数 ({overheat:.1f}) 已突破危险阈值。\n"
+                "- **市场定性**：全市场资金处于极度亢奋的“博傻”阶段。\n"
+                "- **后续推演**：无论当前是否处于护盘期，未来一季度的预期收益极大概率为负。\n"
+                "👉 **操作建议**：狂热区不盲目左侧猜顶，但严禁加杠杆追高；收紧止盈线，以 20 日均线 (MA20) 作为右侧刚性退出开关，一旦放量跌破 MA20 坚决清仓进攻端。"
+            )
+        level = "danger"
     elif panic > 65:
         val_rep_val = (
             _safe_float(row.get("repurchase_score"))
