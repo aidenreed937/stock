@@ -22,8 +22,10 @@ import polars as pl
 from stock_data.catalog.service import DataCatalog
 
 # 方向映射：申万行业 ← 全球景气代理腿
+# 新能源制造端信号（光伏装机/新能源车销量）直接对应电力设备（光伏设备/电池/电网设备）；
+# 有色金属仅"能源金属"子板块相关，用制造端信号映射整个有色一级行业不准确，故不映射。
 _AI_INDUSTRIES = ["801080.SI", "801770.SI", "801750.SI"]  # 电子/通信/计算机
-_NEW_ENERGY_INDUSTRIES = ["801730.SI", "801050.SI"]  # 电力设备/有色
+_NEW_ENERGY_INDUSTRIES = ["801730.SI"]  # 电力设备
 _OUTPUT = Path("data/curated/mart/global_resonance_map.parquet")
 
 
