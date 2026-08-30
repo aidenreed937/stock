@@ -14,6 +14,7 @@ from stock_strategy.pool.macro_rotation_fear import MacroRotationFearStrategy
 from stock_strategy.pool.macro_rotation_v4 import MacroRotationV4Strategy
 from stock_strategy.pool.macro_rotation_v5 import MacroRotationV5Strategy
 from stock_strategy.pool.macro_rotation_v5_rebalance import MacroRotationV5RebalanceStrategy
+from stock_strategy.pool.macro_rotation_v5_rebalance_dd import MacroRotationV5RebalanceDDStrategy
 from stock_strategy.pool.macro_rotation_v6 import MacroRotationV6Strategy
 
 STRATEGY_REGISTRY: dict[str, type[BaseStrategy]] = {
@@ -23,6 +24,7 @@ STRATEGY_REGISTRY: dict[str, type[BaseStrategy]] = {
     "MacroRotationFearStrategy": MacroRotationFearStrategy,
     "MacroRotationV4Strategy": MacroRotationV4Strategy,
     "MacroRotationV5Strategy": MacroRotationV5Strategy,
+    "MacroRotationV5RebalanceDDStrategy": MacroRotationV5RebalanceDDStrategy,
     "MacroRotationV5RebalanceStrategy": MacroRotationV5RebalanceStrategy,
     "MacroRotationV6Strategy": MacroRotationV6Strategy,
     "MacroMetaRouterStrategy": MacroMetaRouterStrategy,
@@ -55,6 +57,7 @@ __all__ = [
     "MacroRiskV3Strategy",
     "MacroRotationFearStrategy",
     "MacroRotationV4Strategy",
+    "MacroRotationV5RebalanceDDStrategy",
     "MacroRotationV5RebalanceStrategy",
     "MacroRotationV5Strategy",
     "MacroRotationV6Strategy",
