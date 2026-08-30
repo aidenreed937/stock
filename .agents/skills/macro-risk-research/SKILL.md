@@ -178,3 +178,4 @@ flowchart LR
 * 📘 [smart_money_factor.md](references/smart_money_factor.md)：聪明钱组合因子（smart_money）完整口径与使用手册（子信号合成 → 二次分位命名 → 策略消费 → 阈值语义）。
 * 📘 [v5_etf_fixed_income_rebalance.md](references/v5_etf_fixed_income_rebalance.md)：v5_etf 叠加固收再平衡的回撤压制评估（50/50 守 -20%、70/30 折中上限）研究留档。
 * 📘 [signal_log_and_data_flow.md](references/signal_log_and_data_flow.md)：宏观策略调仓动作日志查询（SQLite `signal_history`/`trade_orders`）与因子→数据源→策略的数据链路速查。
+* 📘 [macro_risk_data_sources.md](references/macro_risk_data_sources.md)：宏观风控管线数据源分级（黄金表直读 vs Mart）与数据准确性/完整性校验手册（分析前必查 checklist）。
