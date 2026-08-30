@@ -276,7 +276,7 @@ def assert_stability_guardrails(result: StabilityAuditResult) -> None:
     """执行策略防退化回归门禁断言 (CI Guardrails)。"""
     stress_df = result.stress_df
     if not stress_df.empty:
-        for strat in ["macro_rotation_v4", "macro_rotation_v4_etf", "macro_rotation_v6"]:
+        for strat in ["macro_rotation_v4", "macro_rotation_v4_etf"]:
             sub = stress_df[
                 (stress_df["压力测试情景"].str.contains("2024")) & (stress_df["标的/策略"] == strat)
             ]

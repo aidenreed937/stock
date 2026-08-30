@@ -60,7 +60,7 @@ def test_assert_stability_guardrails_pass() -> None:
     stress_df = pd.DataFrame(
         [
             {
-                "标的/策略": "macro_rotation_v6",
+                "标的/策略": "macro_rotation_v4",
                 "压力测试情景": "2024 微盘流动性踩踏",
                 "区间最深回撤": -0.06,
             }

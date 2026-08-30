@@ -8,7 +8,7 @@
     uv run python -m stock_cli.macro_strategy_live --strategy macro_rotation_v4_etf --webhook-type feishu --webhook-url "https://open.feishu.cn/open-apis/bot/v2/hook/xxx"
 
     # 强制发送心跳健康通知
-    uv run python -m stock_cli.macro_strategy_live --strategy macro_rotation_v6_etf --webhook-type feishu --webhook-url "https://..." --force-notify
+    uv run python -m stock_cli.macro_strategy_live --strategy macro_rotation_v5_etf --webhook-type feishu --webhook-url "https://..." --force-notify
 """
 
 from __future__ import annotations

@@ -145,7 +145,7 @@ def main() -> None:
         try:
             assert_stability_guardrails(result)
             print(
-                "  ✅ 所有稳定性回归断言全部通过 (V4 3Y跑赢全指概率 >= 80%, V6 2024踩踏回撤 >= -15%)！"
+                "  ✅ 所有稳定性回归断言全部通过 (V4 3Y跑赢全指概率 >= 80%, V4 2024踩踏回撤 >= -15%)！"
             )
         except AssertionError as err:
             logger.error("❌ 策略稳定性门禁断言失败: %s", err)
