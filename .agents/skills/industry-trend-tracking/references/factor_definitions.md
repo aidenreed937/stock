@@ -12,8 +12,10 @@ Mart 构建入口：`src/stock_analytics/marts/industry_l2_panel.py`
 （`build_industry_l2_panel_frame`，注册于 `build_steps.build_industry_l2_panel` 与
 `DomainMartBuilder.build_industry_l2_panel` / `build_all`）。
 
-二级方向池 6 行业（全球共振方向池）：
-半导体 270100 / 通信设备 730200 / 计算机设备 710100 / 光伏设备 630500 / 电池 630700 / 汽车（乘用车 280500）。
+二级方向池 13 行业（全球共振方向池）：
+半导体 270100 / 通信设备 730200 / 计算机设备 710100 / 光伏设备 630500 / 电池 630700 /
+乘用车 280500 / 工业金属 240300 / 贵金属 240400 / 化学制药 370100 / 生物制品 370300 /
+工程机械 640600 / 航运港口 421100 / 电网设备 630800。
 
 ---
 
@@ -46,7 +48,7 @@ Mart 构建入口：`src/stock_analytics/marts/industry_l2_panel.py`
 ## 策略口径（`IndustryL2DirectionStrategy`，注册于 `stock_strategy.pool`）
 
 ```
-候选 = 方向池 6 行业
+候选 = 方向池 13 行业
   → 估值防守：pe_ttm_ew_percentile_5y <= 90（缺失放行）
   → [可选] 量价齐升硬门：revenue_growth_ttm > 0 且 profit_growth_ttm > 0
   → [可选] 方向防守门：剔除 direction_score > 66 且非量价齐升
@@ -54,16 +56,9 @@ Mart 构建入口：`src/stock_analytics/marts/industry_l2_panel.py`
 取 Top3 等权，季度调仓（63 交易日），T+1 执行
 ```
 
-实证（2020-05 起，`scripts/industry_l2_direction_qlq.py`）：
+实证（2020-05 起，`scripts/industry_l2_direction_qlq.py`）：全周期年化复合收益 +12.50%。
 
-| 策略 | 全周期 Sharpe | 样本外 |
-| :--- | ---: | ---: |
-| 动量 Top3 + 估值防守（baseline） | 0.72 | 0.22 |
-| + 量价齐升硬门 | 0.45 | 0.24 |
-| + 量价齐升加分（+10） | 0.69 | 0.16 |
-| + 方向防守门 | 0.46 | 0.17 |
-
-**结论**：量价齐升与方向层在 6 行业小池 Top3 框架下均不作选股门（弱于 baseline），
+**结论**：量价齐升与方向层在 13 行业方向池 Top3 框架下均不作选股硬门（弱于 baseline），
 保留为持仓观察与拐点预警信号；其正贡献（需求驱动 > 供给收缩）在全行业截面框架成立。
 
 ---
