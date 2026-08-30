@@ -46,7 +46,7 @@ def main():
     # 1 个全谱系流动性
     print(f"  - 跨资产宏观分位     : {_fmt(latest.get('dim_cross_asset'))}")
     # 聪明钱独立维度（未加入双轨指数，供策略选用）
-    print(f"  - 聪明钱组合分位     : {_fmt(latest.get('smart_money_score'))}")
+    print(f"  - 聪明钱分位排名     : {_fmt(latest.get('smart_money_pct'))}")
 
     # 指数近 60 日与近 20 日涨跌
     print("\n[2. 核心指数 20日 / 60日 区间涨跌幅与回撤]")

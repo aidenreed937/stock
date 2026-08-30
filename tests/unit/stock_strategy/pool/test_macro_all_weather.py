@@ -101,7 +101,7 @@ def test_all_weather_phase_1_smart_money_resonance(base_df):
         .then(pl.lit(68.0))
         .otherwise(pl.col("panic_index"))
         .alias("panic_index"),
-        pl.lit(85.0).alias("smart_money_score"),
+        pl.lit(85.0).alias("smart_money_pct"),
     )
     signals = strat.on_bar(df)
     target_weights = {sig.symbol: sig.target_weight for sig in signals}

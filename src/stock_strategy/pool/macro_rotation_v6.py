@@ -2,7 +2,7 @@
 
 在 V5 聪明钱增强轮动基础上进行系统性优化升级：
 1. 【聪明钱确认与左侧防踩踏】：在恐慌左侧区间 (panic 65~75)，引入聪明钱组合信号
-   (smart_money_score < 40) 拦截假黄金坑；若聪明钱确认接货且处于左侧 (Close < MA20)，
+   (smart_money_pct < 40) 拦截假黄金坑；若聪明钱确认接货且处于左侧 (Close < MA20)，
    优先配置沪深300压舱石 (40%) 与红利防守 (30%)、创业板 (30%) 防踩踏，企稳后加大成长弹性；
 2. 【常态估值与风格自适应】：在常态非极值区间，结合大盘估值分位 (dim_valuation)，
    在极低估值大底战略加配红利与沪深300，避免单边价值牛市踏空；
@@ -109,7 +109,7 @@ class MacroRotationV6Strategy(BaseStrategy):
         panic = float(panic_val)
         overheat = float(overheat_val)
 
-        smart_val = latest.get("smart_money_score")
+        smart_val = latest.get("smart_money_pct")
         smart = float(smart_val) if isinstance(smart_val, int | float) else None
 
         dim_val_raw = latest.get("dim_valuation")
@@ -150,7 +150,7 @@ class MacroRotationV6Strategy(BaseStrategy):
 
         # 3. 恐慌左侧与聪明钱确认区
         elif panic > self.panic_entry_threshold:
-            # 聪明钱确认过滤: smart_money_score < 40 判定假黄金坑不建仓
+            # 聪明钱确认过滤: smart_money_pct < 40 判定假黄金坑不建仓
             if smart is not None and smart < self.smart_filter_threshold:
                 return []
 

@@ -79,6 +79,8 @@ class MacroRiskPipeline:
 
         score_frame = axis.select("trade_date")
         raw_cache: dict[str, pl.DataFrame] = {}
+        # 因子名 -> 产物 score 列名（默认 {factor_name}_score，可经 score_column 覆盖）
+        score_col_map: dict[str, str] = {}
 
         logger.info(f"开始生成系统性风险指数 (基准日: {as_of!s})")
 
@@ -86,6 +88,9 @@ class MacroRiskPipeline:
         for factor_name, f_cfg in self.config.factors.items():
             if f_cfg.series not in raw_cache:
                 raw_cache[f_cfg.series] = self._get_raw_series(f_cfg.series)
+
+            score_col = f_cfg.score_column or f"{factor_name}_score"
+            score_col_map[factor_name] = score_col
 
             s = (
                 raw_cache[f_cfg.series]
@@ -98,17 +103,15 @@ class MacroRiskPipeline:
             # 使用系统标准 primitives 算子计算历史分位
             s = s.with_columns(
                 rolling_percentile(f_cfg.column, f_cfg.window, min_samples=f_cfg.min_periods).alias(
-                    f"{factor_name}_score"
+                    score_col
                 )
             )
 
             # 反转逻辑处理
             if f_cfg.direction == "rev":
-                s = s.with_columns(
-                    (100.0 - pl.col(f"{factor_name}_score")).alias(f"{factor_name}_score")
-                )
+                s = s.with_columns((100.0 - pl.col(score_col)).alias(score_col))
 
-            scored = s.select(["trade_date", f"{factor_name}_score"])
+            scored = s.select(["trade_date", score_col])
 
             # 合并逻辑（海外/月度低频数据使用 backward asof 对齐）
             if f_cfg.series in ("vix", "global_macro", "fund_issuance"):
@@ -118,7 +121,7 @@ class MacroRiskPipeline:
             else:
                 score_frame = score_frame.join(scored, on="trade_date", how="left")
 
-        score_cols = [f"{n}_score" for n in self.config.factors]
+        score_cols = list(score_col_map.values())
         score_frame = score_frame.with_columns(
             [pl.col(c).fill_nan(None).alias(c) for c in score_cols]
         )
@@ -126,7 +129,7 @@ class MacroRiskPipeline:
         # 按照配置的维度聚合成多维评分
         for dim, names in self.config.dims.items():
             score_frame = score_frame.with_columns(
-                pl.mean_horizontal([pl.col(f"{n}_score").fill_nan(None) for n in names]).alias(
+                pl.mean_horizontal([pl.col(score_col_map[n]).fill_nan(None) for n in names]).alias(
                     f"dim_{dim}"
                 )
             )

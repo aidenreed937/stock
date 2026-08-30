@@ -104,7 +104,7 @@ def evaluate_macro_risk(
     val_flow = _get("dim_flow")
     val_sentiment = _get("dim_sentiment")
     val_breadth = _get("dim_breadth")
-    val_smart_score = _get("smart_money_score")
+    val_smart_score = _get("smart_money_pct")
     val_div_score = _get("divergence_score_score")
     val_corporate = _get("dim_corporate")
     val_cross_asset = _get("dim_cross_asset")

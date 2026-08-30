@@ -26,9 +26,9 @@ SCENARIOS: list[tuple[str, str]] = [
     ("狂热区 (Overheat > 65)", "overheat_index > 65"),
     ("恐慌区 (Panic > 65)", "panic_index > 65"),
     ("极度冰点 (Panic > 75)", "panic_index > 75"),
-    ("聪明钱逆势接货 (SmartMoney >= 80)", "smart_money_score >= 80"),
+    ("聪明钱逆势接货 (SmartMoney >= 80)", "smart_money_pct >= 80"),
     ("产业资本增持潮 (Insider >= 80)", "insider_net_score >= 80"),
-    ("真黄金坑 (Panic>65 & SmartMoney>=80)", "panic_index > 65 and smart_money_score >= 80"),
+    ("真黄金坑 (Panic>65 & SmartMoney>=80)", "panic_index > 65 and smart_money_pct >= 80"),
 ]
 
 MACRO_REGIMES: list[tuple[str, str, str]] = [
@@ -106,7 +106,7 @@ def main() -> None:
     chi_ret = _forward_returns(index_df.filter(pl.col("symbol") == "399006"))
 
     risk_cols = ["trade_date", "panic_index", "overheat_index"]
-    for opt_col in ("smart_money_score", "insider_net_score", "repurchase_score"):
+    for opt_col in ("smart_money_pct", "insider_net_score", "repurchase_score"):
         if opt_col in risk_df.columns:
             risk_cols.append(opt_col)
 

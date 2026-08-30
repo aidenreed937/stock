@@ -113,7 +113,7 @@ class MacroMetaRouterStrategy(BaseStrategy):
         panic = float(panic_val)
         overheat = float(overheat_val)
 
-        smart_score_val = latest.get("smart_money_score")
+        smart_score_val = latest.get("smart_money_pct")
         smart_score = float(smart_score_val) if isinstance(smart_score_val, int | float) else None
 
         rep_score_val = latest.get("repurchase_score")

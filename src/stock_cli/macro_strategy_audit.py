@@ -106,11 +106,6 @@ def main() -> None:
         )
 
         catalog = DataCatalog(data_source=args.data_source)
-        macro_panel = assemble_macro_panel(
-            catalog=catalog,
-            benchmark_symbol="000985.CSI",
-            risk_root=Path(args.risk_root),
-        )
         specs = load_all_strategy_specs(config_path)
 
         all_syms: set[str] = set()
@@ -120,6 +115,13 @@ def main() -> None:
 
         wf_results = []
         for name, spec in specs.items():
+            # 各策略用其自身 benchmark 组装信号面板，保证 MA20 趋势口径与主回测一致
+            benchmark = str(spec.get("benchmark_symbol", "000985.CSI"))
+            macro_panel = assemble_macro_panel(
+                catalog=catalog,
+                benchmark_symbol=benchmark,
+                risk_root=Path(args.risk_root),
+            )
             wf_res = run_walk_forward_analysis(
                 strategy_name=name,
                 strategy_spec=spec,

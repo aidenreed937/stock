@@ -14,7 +14,7 @@
 >
 > ⚠️ **ETF 份额托底口径已证伪（2026-08-29）**：原"国家队托底 (ETF >= 90)"相关行
 > 基于已证伪的 `etf_flow_ratio_score` 代理（与国家队真实增持无关、无前瞻收益），
-> 实战执行法则作废；以聪明钱组合信号 (`smart_money_score`) 及内部人增持 (`insider_net_score`) 口径替代，
+> 实战执行法则作废；以聪明钱组合信号 (`smart_money_pct`) 及内部人增持 (`insider_net_score`) 口径替代，
 > 实证见 `data/analytics/macro_strategy/smart_money_composite.md`。
 
 ---

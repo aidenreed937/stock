@@ -16,6 +16,7 @@ import polars as pl
 from stock_analytics.features import FeatureStore
 from stock_analytics.metrics.context import MetricContext
 from stock_analytics.metrics.engine import MetricEngine
+from stock_core.utils.logger import logger
 from stock_data.catalog import DataCatalog
 
 
@@ -219,13 +220,17 @@ def fetch_main_flow(ctx: FetchContext) -> pl.DataFrame:
                 shifted, on="trade_date", how="left"
             )
 
-    # Fallback to market_daily
+    # Fallback to market_daily（capital_game_daily Mart 缺失时的降级路径）
+    logger.warning(
+        "capital_game_daily Mart 缺失，main_flow 降级为 market_daily 主力净流入比；"
+        "etf_flow_ratio / divergence_score 置空，避免 0 值经分位反转污染 dim_flow/panic"
+    )
     return ctx.md.select(
         pl.col("trade_date").cast(pl.Date),
         pl.col("main_net_inflow_ratio").alias("main_ratio"),
         pl.col("main_net_inflow_ratio").alias("composite_flow"),
-        pl.lit(0.0).alias("etf_flow_ratio"),
-        pl.lit(0.0).alias("divergence_score"),
+        pl.lit(None, dtype=pl.Float64).alias("etf_flow_ratio"),
+        pl.lit(None, dtype=pl.Float64).alias("divergence_score"),
     ).sort("trade_date")
 
 

@@ -157,7 +157,7 @@ def test_evaluate_macro_risk_corporate_lead() -> None:
         "trade_date": date(2026, 2, 2),
         "overheat_index": 45.0,
         "panic_index": 72.0,
-        "smart_money_score": 5.0,
+        "smart_money_pct": 5.0,
         "dim_corporate": 80.0,
         "repurchase_score": 85.0,
     }

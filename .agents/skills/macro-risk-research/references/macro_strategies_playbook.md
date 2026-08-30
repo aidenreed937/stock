@@ -20,7 +20,7 @@
 | :--- | :--- | :--- |
 | **`macro_risk_v3` / `_etf`** | `MacroRiskV3Strategy` | 单宽基趋势防守压舱石：锚定大盘核心资产，破 MA20 减仓控损，冰点恐慌加仓博修复 |
 | **`macro_rotation_v4` / `_etf`** | `MacroRotationV4Strategy` | 双核哑铃风格轮动：牛市主升打满创业板弹性，存量熊市切换高股息红利托底避险 |
-| **`macro_rotation_v5` / `_etf`** 🌟 | `MacroRotationV5Strategy` | 资金博弈智能增强轮动：在 V4 基础上用 `smart_money_score` 做恐慌左侧确认过滤，未逆势接货判定假黄金坑不建仓 |
+| **`macro_rotation_v5` / `_etf`** 🌟 | `MacroRotationV5Strategy` | 资金博弈智能增强轮动：在 V4 基础上用 `smart_money_pct` 做恐慌左侧确认过滤，未逆势接货判定假黄金坑不建仓 |
 | **`macro_rotation_v6` / `_etf`** | `MacroRotationV6Strategy` | 三核资产与风格动量自适应轮动：恐慌左侧以聪明钱确认过滤，左侧探底偏重大盘压舱、低估值超配红利、高估值打满成长 |
 | **`macro_meta_router` / `_etf`** | `MacroMetaRouterStrategy` | 宏观元策略动态路由器：融合聪明钱与产业资本双托底，动态切换 5 大宏观相态 |
 | **`macro_all_weather_etf`** 🌟 | `MacroAllWeatherStrategy` | 大类资产全天候自适应相态轮动：泡沫破裂期刚性转入国债 + 黄金避险 |

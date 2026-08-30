@@ -17,6 +17,7 @@ class FactorConfig:
     window: int
     min_periods: int
     direction: str
+    score_column: str | None = None
 
     @classmethod
     def from_mapping(cls, data: Mapping[str, Any]) -> FactorConfig:
@@ -26,6 +27,7 @@ class FactorConfig:
             window=int(data["window"]),
             min_periods=int(data["min_periods"]),
             direction=str(data["direction"]),
+            score_column=data.get("score_column") or None,
         )
 
 

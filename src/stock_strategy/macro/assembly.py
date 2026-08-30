@@ -58,7 +58,6 @@ def assemble_macro_panel(
     extra_cols = [
         c
         for c in [
-            "etf_flow_ratio_score",
             "divergence_score_score",
             "composite_flow_score",
             "repurchase_score",
@@ -75,8 +74,7 @@ def assemble_macro_panel(
             "dim_breadth",
             "dim_corporate",
             "dim_cross_asset",
-            "dim_smart_money",
-            "smart_money_score",
+            "smart_money_pct",
         ]
         if c in factors.columns
     ]

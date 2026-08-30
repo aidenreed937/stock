@@ -32,6 +32,7 @@ flowchart LR
 ### 1.2 变更流程：修正/调整策略（策略侧改动）
 
 - **只调阈值/权重/摩擦**（不动逻辑）：改 `config/strategy/macro_risk.yaml` 对应策略节点的 `thresholds` / `initial_weights` / `friction`，无需改代码；
+  - ⚠️ 调 `overheat_threshold` 前先读 `references/overheat_threshold_robustness.md`：该阈值鲁棒性不对称（向下安全、向上 66+ 悬崖），65 贴悬崖、62 是已验证的防守备选；
 - **调整状态机逻辑**：改 `src/stock_strategy/pool/` 对应策略类的 `on_bar`，同步更新该策略单测；
 - **改完必跑**：受影响单测 → `macro_strategy_report` 全周期对账 → `macro_strategy_audit --assert-guardrails` 防退化 → `macro_strategy_live --dry-run` 验证报单；
 - 策略池清单（`references/macro_strategies_playbook.md` 第〇节）随新增/变更同步。
@@ -49,14 +50,15 @@ flowchart LR
    - 策略信号与回测净值必须来自 `stock_strategy.macro` 真实执行产物（`data/analytics/macro_strategy/multi_strategy_comparison.md` / `multi_strategy_nav.csv` / `multi_strategy_comparison.png`）；
    - 严禁凭记忆臆造历史点位、指数分位或策略净值；外部宏观政策与新闻必须显式标注为【外部背景】。
 2. **口径披露**：引用因子或回测产物时，沿用产物/manifest 声明的口径（两融 T+1 平移、ETF 价格口径、净值首日归一），具体机制以工程实现为准，不得凭记忆另述；口径不明时显式披露不确定性。
-3. **数据缺口处理**：两融数据（`dim_leverage`）为日终同步，最新交易日可能暂缺（缺失时该字段为 null，manifest 摘要亦不含该项）。涉及杠杆维度的硬约束排查前，先核对最新一日 `dim_leverage` 是否可用，缺失时需先补数或显式披露，不得静默跳过。
+3. **数据缺口处理**：两融数据（`dim_leverage`）为 T+1 早间发布，管线按交易日历平移滞后对齐（T 日收盘仅可用 T-1 日两融值），最新交易日可能暂缺或滞后一日（缺失时该字段为 null，manifest 摘要亦不含该项）。涉及杠杆维度的硬约束排查前，先核对最新一日 `dim_leverage` 是否可用，缺失时需先补数或显式披露，不得静默跳过。
 4. **回测机制契约**：
    - 执行语义：严格 T+1（交易日 $t$ 收盘生成信号，目标权重于 $t+1$ 日生效计算复利），由 `stock_strategy.macro.runner.MacroRiskRunner` 统一实现；
    - 基准对齐：报告必须同步对比**中证全指 (`000985.CSI`)** 与 **沪深300 (`000300.SH`)** 的 Buy & Hold 基准净值；
    - 摩擦成本：佣金率、滑点、调仓死区由 `config/strategy/macro_risk.yaml` 的 `friction` 节点驱动，策略本身不内置。
 5. **证伪口径清单**（不作为信号使用）：
    - ETF 份额托底代理（`etf_flow_ratio`）已证伪（与国家队真实增持行为无关、前瞻收益无预测力、V5 托底分支净值贡献为负），不作为国家队识别与交易信号；
-   - `smart_money_score` / `dim_smart_money` 已接入宏观因子管线（`config/analytics/macro_risk.yaml`）与策略池供选用，但刻意**不加入 overheat/panic 指数**（保持双轨指数成分纯净）；实证见 `data/analytics/macro_strategy/smart_money_composite.md`。
+   - `smart_money_pct` / `dim_smart_money` 已接入宏观因子管线（`config/analytics/macro_risk.yaml`）供选用，但刻意**不加入 overheat/panic 指数**（保持双轨指数成分纯净）；实证见 `data/analytics/macro_strategy/smart_money_composite.md`；完整口径见 `references/smart_money_factor.md`；
+   - ⚠️ 口径注意：管线产物的 `smart_money_pct` 是「Mart 0-100 组合分 `smart_money_score` 再经 250 日滚动分位后的**分位排名**」，与 Mart 原始组合分不同列不同义；策略阈值（`smart_filter_threshold=40` / `smart_support_threshold=80`）针对的是该「分位排名」口径。
 
 ---
 
@@ -94,8 +96,9 @@ flowchart LR
 
 > 分析时按需查阅；本节只保留**决策逻辑的一句话描述**，具体阈值/数字一律以产物、复算脚本或 references 为准。
 
-### 4.1 8 维全景画像
+### 4.1 8 维全景画像（+1 独立聪明钱维度）
 - 维度分类：**3 大生存硬约束**（两融杠杆/换手拥挤/主力资金）、**2 大拐点快变量**（期权情绪/市场广度）、**1 个长线慢变量**（大盘估值）、**1 个微观基本面底**（产业资本）、**1 个全谱系流动性**（跨资产宏观）；
+- 另有一个**第 9 个独立维度 `dim_smart_money`（聪明钱组合）**已接入因子管线，但刻意不加入 `overheat_index` / `panic_index` 双轨指数（见 §2.5）；策略消费的是其分位排名列 `smart_money_pct`（见 §4.4 / `references/smart_money_factor.md`）；
 - 各维度因子构成与 `overheat_index` / `panic_index` 聚合方式：以 `config/analytics/macro_risk.yaml` 的 `factors/dimensions/indices` 节点为唯一信任源。
 
 ### 4.2 生存硬约束（四大不变物理常数）
@@ -108,7 +111,7 @@ flowchart LR
 - 具体分位阈值见 `references/cycle_windows_matrix.md` 第 1 节（筹码博弈背离与证据链清单）；20/60 日胜率矩阵直接运行复算脚本获取。
 
 ### 4.4 聪明钱与产业资本连续性
-- `smart_money_score` 高分位（产业资本增持 + 大宗折价接盘 + 国家队股东锚点等权组合）且处于恐慌区间 → 聪明钱逆势接货，支持左侧分批布局（实证见 `smart_money_composite.md`）；
+- `smart_money_pct` 高分位（底层为产业资本增持 + 大宗折价接盘 + 国家队股东锚点等权组合；产物口径为组合分的 250 日分位排名，见 §2.5 / `references/smart_money_factor.md`）且处于恐慌区间 → 聪明钱逆势接货，支持左侧分批布局（实证见 `smart_money_composite.md`）；
 - 内部人增持高分位（`insider_net_score`）连续维持 → 确认内部人真金白银增持，左侧跟随低吸；
 - ⚠️ 连续维持天数（≥1D / ≥3D / ≥5D）仅作为信号确认强度参考；**"连续维持 N 天"胜率矩阵尚未固化**，如做连续性胜率分析需自行按窗口复算并披露口径。
 
@@ -150,6 +153,7 @@ flowchart LR
 | 多策略资金曲线 | `data/analytics/macro_strategy/multi_strategy_comparison.png` |
 | 稳定性审计报告 | `data/analytics/macro_strategy/audit/strategy_stability_report.md` |
 | 聪明钱实证 | `data/analytics/macro_strategy/smart_money_composite.md` |
+| overheat 阈值鲁棒性验证 | `data/analytics/macro_strategy/robustness/overheat_sensitivity_report.md`（细网格 `overheat_sweep.csv` / OOS `overheat_walkforward.json`） |
 
 ### 5.5 策略池清单与新策略构建
 - **策略池清单**（键名 → 类名 → 定位哲学）：维护在 `references/macro_strategies_playbook.md` 第〇节；新增/变更策略时同步该表，无需修改本 SKILL；
@@ -169,3 +173,5 @@ flowchart LR
 * 📘 [macro_strategies_playbook.md](references/macro_strategies_playbook.md)：宏观策略池清单（键名/类名/定位）、场内 ETF 实操 5 大铁律与 4 大潜在盲区诊断。
 * 📘 [macro_regimes_playbook.md](references/macro_regimes_playbook.md)：6 大宏观范式定性特征（主导矛盾、占优风格与最佳策略机制）与四大不变物理常数硬约束规则。
 * 📘 [cycle_windows_matrix.md](references/cycle_windows_matrix.md)：三方主体筹码博弈背离矩阵与见顶/见底证据链清单（历史研究快照）；20/60 日胜率矩阵以 `scripts/compute_cycle_winrate_matrix.py` 最新输出为准，本文档不维护。
+* 📘 [overheat_threshold_robustness.md](references/overheat_threshold_robustness.md)：overheat 逃顶阈值鲁棒性边界（不对称、65 贴悬崖、62 备选）与产物引用；调阈值前必读。
+* 📘 [smart_money_factor.md](references/smart_money_factor.md)：聪明钱组合因子（smart_money）完整口径与使用手册（子信号合成 → 二次分位命名 → 策略消费 → 阈值语义）。

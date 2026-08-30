@@ -20,7 +20,7 @@ def _panel(
             "close": [100.0] * (n - 1) + [close_last],
             "panic_index": [20.0] * (n - 1) + [panic_last],
             "overheat_index": [40.0] * (n - 1) + [overheat_last],
-            "smart_money_score": [50.0] * (n - 1) + [smart_score_last],
+            "smart_money_pct": [50.0] * (n - 1) + [smart_score_last],
             "dim_valuation": [50.0] * (n - 1) + [dim_val_last],
         }
     )
@@ -78,7 +78,7 @@ def test_v6_extreme_panic_goes_all_in_growth() -> None:
 
 
 def test_v6_smart_filter_blocks_false_dip() -> None:
-    # Panic 65~75 但 smart_money_score < 40 -> 判定假黄金坑，不建仓
+    # Panic 65~75 但 smart_money_pct < 40 -> 判定假黄金坑，不建仓
     df = _panel(close_last=80.0, panic_last=68.0, smart_score_last=30.0)
     strategy = MacroRotationV6Strategy()
     signals = strategy.on_bar(df)
@@ -86,7 +86,7 @@ def test_v6_smart_filter_blocks_false_dip() -> None:
 
 
 def test_v6_smart_confirmed_left_side_allocates_core_index() -> None:
-    # Panic 65~75, smart_money_score >= 40, close < MA20 (左侧探底) -> 40% 沪深300 + 30% 红利 + 30% 创业板
+    # Panic 65~75, smart_money_pct >= 40, close < MA20 (左侧探底) -> 40% 沪深300 + 30% 红利 + 30% 创业板
     df = _panel(close_last=80.0, panic_last=68.0, smart_score_last=60.0)
     strategy = MacroRotationV6Strategy()
     signals = strategy.on_bar(df)
@@ -98,7 +98,7 @@ def test_v6_smart_confirmed_left_side_allocates_core_index() -> None:
 
 
 def test_v6_smart_confirmed_right_side_increases_growth() -> None:
-    # Panic 65~75, smart_money_score >= 40, close >= MA20 (右侧企稳) -> 50% 创业板 + 30% 300 + 20% 红利
+    # Panic 65~75, smart_money_pct >= 40, close >= MA20 (右侧企稳) -> 50% 创业板 + 30% 300 + 20% 红利
     df = _panel(close_last=105.0, panic_last=68.0, smart_score_last=60.0)
     strategy = MacroRotationV6Strategy()
     signals = strategy.on_bar(df)

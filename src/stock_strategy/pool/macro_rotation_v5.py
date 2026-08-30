@@ -4,7 +4,7 @@
 引入聪明钱组合信号（产业资本增持 + 大宗折价接盘 + 国家队股东锚点等权组合）
 作为恐慌左侧的【确认过滤】：
 1. 【聪明钱确认过滤】：恐慌左侧区间 (panic 65~75) 若聪明钱信号低分位
-   (smart_money_score < 40，内部人/机构/国家队未逆势接货) 判定为假黄金坑，
+   (smart_money_pct < 40，内部人/机构/国家队未逆势接货) 判定为假黄金坑，
    不左侧建仓，等待真实资金确认；
 2. 【常规极值与均线趋势保护】：保持 V4 优良的双轨制极值确认与 MA20 趋势破位逃顶机制。
 3. 【极值乖离止盈】：基准 20 日乖离率 (Bias20) 过大时（如 924 式政策脉冲）清仓避险，
@@ -25,7 +25,7 @@ B. 恐慌区过滤——V5 特有：恐慌左侧分支要求 SmartMoney>=40 确�
 
 注：原"ETF 份额托底提前全仓"分支经四重证据证伪后移除（与国家队真实增持无关、
 2024 危机回撤翻倍）；"恐慌区间提前全仓创业板"动作本身经对照回测亦损害风险调整收益，
-故以 smart_money_score 做过滤而非激进触发（实证见
+故以 smart_money_pct 做过滤而非激进触发（实证见
 data/analytics/macro_strategy/smart_money_composite.md）。
 """
 
@@ -129,7 +129,7 @@ class MacroRotationV5Strategy(BaseStrategy):
         overheat = float(overheat_val)
         bias20 = (close / ma20 - 1.0) if ma20 > 0 else 0.0
 
-        smart_val = latest.get("smart_money_score")
+        smart_val = latest.get("smart_money_pct")
         smart = float(smart_val) if isinstance(smart_val, int | float) else None
 
         timestamp = _coerce_timestamp(latest.get("trade_date"))
@@ -179,7 +179,7 @@ class MacroRotationV5Strategy(BaseStrategy):
 
         elif panic > self.panic_entry_threshold:
             # 4. 恐慌左侧分批建仓：50% 创业板 + 20% 红利
-            #    聪明钱确认过滤: smart_money_score < 40 表示内部人/机构/国家队未逆势
+            #    聪明钱确认过滤: smart_money_pct < 40 表示内部人/机构/国家队未逆势
             #    接货, 判定假黄金坑不建仓 (等待真实资金确认)
             if smart is not None and smart < self.smart_filter_threshold:
                 return []

@@ -133,11 +133,18 @@ macro_risk:
       min_periods: 250
       direction: raw
     smart_money:
+      # 口径说明: smart_money_daily Mart 的 smart_money_score 已是 0-100 组合分
+      # (产业资本增持/大宗折价/国家队锚点三个子分位等权合成)。本因子再经 window=250
+      # 滚动分位，产物列经 score_column 命名为 smart_money_pct (组合分的分位排名,
+      # 0-100 均匀分位)，避免与 Mart 原始组合分 smart_money_score 同名混淆。
+      # 策略侧阈值 (smart_filter_threshold=40 / smart_support_threshold=80) 针对的是
+      # smart_money_pct 分位排名口径。详见 references/smart_money_factor.md。
       series: smart_money
       column: smart_money_score
       window: 250
       min_periods: 60
       direction: raw
+      score_column: smart_money_pct
   dimensions:
     valuation:
     - erp

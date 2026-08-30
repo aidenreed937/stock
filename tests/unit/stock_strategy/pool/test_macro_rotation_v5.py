@@ -17,7 +17,7 @@ def test_macro_rotation_v5_smart_money_filter_blocks_fake_bottom() -> None:
             "close": prices,
             "panic_index": [50.0] * 24 + [68.0],  # 处于 65~75 恐慌区
             "overheat_index": [30.0] * 25,
-            "smart_money_score": [30.0] * 24 + [25.0],  # 聪明钱未逆势接货
+            "smart_money_pct": [30.0] * 24 + [25.0],  # 聪明钱未逆势接货
         }
     )
 
@@ -36,7 +36,7 @@ def test_macro_rotation_v5_smart_money_confirmed_build() -> None:
             "close": prices,
             "panic_index": [50.0] * 24 + [68.0],
             "overheat_index": [30.0] * 25,
-            "smart_money_score": [50.0] * 24 + [60.0],  # 聪明钱活跃
+            "smart_money_pct": [50.0] * 24 + [60.0],  # 聪明钱活跃
         }
     )
 
@@ -61,7 +61,7 @@ def test_macro_rotation_v5_overheat_broken() -> None:
             "close": prices,
             "panic_index": [20.0] * 25,
             "overheat_index": [40.0] * 24 + [70.0],
-            "smart_money_score": [10.0] * 25,
+            "smart_money_pct": [10.0] * 25,
         }
     )
 
@@ -84,7 +84,7 @@ def test_macro_rotation_v5_normal_fallback() -> None:
             "close": prices,
             "panic_index": [45.0] * 25,
             "overheat_index": [45.0] * 25,
-            "smart_money_score": [50.0] * 25,
+            "smart_money_pct": [50.0] * 25,
         }
     )
     strategy = MacroRotationV5Strategy()
@@ -102,7 +102,7 @@ def test_macro_rotation_v5_bias_cut_clears_on_extreme_deviation() -> None:
             "close": prices,
             "panic_index": [30.0] * 25,  # 非恐慌区
             "overheat_index": [50.0] * 25,
-            "smart_money_score": [50.0] * 25,
+            "smart_money_pct": [50.0] * 25,
         }
     )
     strategy = MacroRotationV5Strategy()
@@ -126,7 +126,7 @@ def test_macro_rotation_v5_bias_recover_restores_dumbbell() -> None:
             "close": prices1,
             "panic_index": [30.0] * 25,
             "overheat_index": [50.0] * 25,
-            "smart_money_score": [50.0] * 25,
+            "smart_money_pct": [50.0] * 25,
         }
     )
     strategy = MacroRotationV5Strategy()
@@ -141,7 +141,7 @@ def test_macro_rotation_v5_bias_recover_restores_dumbbell() -> None:
             "close": prices2,
             "panic_index": [30.0] * 26,
             "overheat_index": [50.0] * 26,
-            "smart_money_score": [50.0] * 26,
+            "smart_money_pct": [50.0] * 26,
         }
     )
     signals = strategy.on_bar(df2)
@@ -164,7 +164,7 @@ def test_macro_rotation_v5_bias_cut_skipped_in_panic() -> None:
             "close": prices,
             "panic_index": [80.0] * 25,  # 极度恐慌
             "overheat_index": [30.0] * 25,
-            "smart_money_score": [60.0] * 25,
+            "smart_money_pct": [60.0] * 25,
         }
     )
     strategy = MacroRotationV5Strategy()
