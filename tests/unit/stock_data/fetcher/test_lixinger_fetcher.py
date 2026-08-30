@@ -89,6 +89,23 @@ def test_lixinger_risk_event_contracts(api_name: str) -> None:
     assert meta.nullable_primary_keys == ["linkUrl"]
 
 
+@pytest.mark.parametrize(
+    ("api_name", "expected_metric"),
+    [
+        ("macro/energy", "solar_ep"),
+        ("macro/price-index", "pmi_mfg"),
+    ],
+)
+def test_lixinger_macro_industry_contracts(api_name: str, expected_metric: str) -> None:
+    assert api_name in LIXINGER_API_REGISTRY
+    meta = LIXINGER_API_REGISTRY[api_name]
+    assert meta.primary_keys == ["date"]
+    assert meta.date_columns == ["date"]
+    assert meta.required_columns == ["date"]
+    assert meta.frequency == "monthly"
+    assert expected_metric in meta.default_metrics
+
+
 @pytest.mark.parametrize("endpoint", ["regulatory_measures", "exchange_inquiry"])
 def test_lixinger_risk_event_response_fills_requested_stock_code(endpoint: str) -> None:
     mock_client = MagicMock()

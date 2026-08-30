@@ -1,6 +1,7 @@
 from dataclasses import dataclass, field
 from typing import Any
 
+from stock_data.fetcher.lixinger.macro_registry import LIXINGER_MACRO_ENDPOINT_SPECS
 from stock_data.fetcher.lixinger.risk_registry import LIXINGER_RISK_ENDPOINT_SPECS
 
 
@@ -141,104 +142,6 @@ LIXINGER_API_REGISTRY: dict[str, EndpointMeta] = {
         default_metrics=["ps", "ps_mc", "ps_shbt10sh_r", "ps_sc_r", "pc"],
         support_batch_prefetch=True,
     ),
-    "macro/national-debt": EndpointMeta(
-        api_name="macro/national-debt",
-        description="国债收益率数据 (含中美国债 3M 至 30Y 期限结构)",
-        group="macro_data",
-        primary_keys=["areaCode", "date"],
-        date_columns=["date"],
-        required_columns=["areaCode", "date"],
-        update_time="18:00",
-        default_metrics=["tcm_y10", "tcm_y1", "tcm_y2", "tcm_y5", "tcm_y30"],
-        default_params={"areaCode": "cn"},
-    ),
-    "macro/interest-rates": EndpointMeta(
-        api_name="macro/interest-rates",
-        description="宏观利率数据 (含 Shibor/同业存单/MLF/LPR/回购定盘利率)",
-        group="macro_data",
-        primary_keys=["areaCode", "date"],
-        date_columns=["date"],
-        required_columns=["areaCode", "date"],
-        update_time="18:00",
-        default_metrics=[
-            "shibor_on",
-            "shibor_w1",
-            "shibor_y1",
-            "cdnaaa_y1",
-            "lpr_y1",
-            "lpr_y5",
-            "fdr_d7",
-        ],
-        default_params={"areaCode": "cn"},
-    ),
-    "macro/non-ferrous-metals": EndpointMeta(
-        api_name="macro/non-ferrous-metals",
-        description="全球有色金属现货价格数据 (伦敦铜/铝/锌/铅/镍/锡)",
-        group="macro_data",
-        primary_keys=["date"],
-        date_columns=["date"],
-        required_columns=["date"],
-        update_time="18:00",
-        default_metrics=["l_cu_p", "l_zn_p", "l_pb_p", "l_al_p", "l_ni_p", "l_sn_p"],
-        default_params={"areaCode": "us"},
-    ),
-    "macro/crude-oil": EndpointMeta(
-        api_name="macro/crude-oil",
-        description="国际原油现货价格数据 (WTI 与布伦特原油)",
-        group="macro_data",
-        primary_keys=["date"],
-        date_columns=["date"],
-        required_columns=["date"],
-        update_time="18:00",
-        default_metrics=["wti_co_sp", "brent_co_sp"],
-        default_params={"areaCode": "us"},
-    ),
-    "macro/investor": EndpointMeta(
-        api_name="macro/investor",
-        description="A 股投资者存量与新增账户数据",
-        frequency="monthly",
-        group="macro_data",
-        primary_keys=["date"],
-        date_columns=["date"],
-        required_columns=["date"],
-        update_time="18:00",
-        default_metrics=["ni", "non_ni", "nni_m", "n_non_ni_m"],
-        default_params={"areaCode": "cn"},
-        max_range_days=3650,
-    ),
-    "macro/money-supply": EndpointMeta(
-        api_name="macro/money-supply",
-        description="大陆 M0/M1/M2 月度货币供应量",
-        frequency="monthly",
-        group="macro_data",
-        primary_keys=["month"],
-        date_columns=["month"],
-        required_columns=["month"],
-        update_time="18:00",
-        default_metrics=[
-            "m.m0.t",
-            "m.m0.t_y2y",
-            "m.m1.t",
-            "m.m1.t_y2y",
-            "m.m2.t",
-            "m.m2.t_y2y",
-        ],
-        default_params={"areaCode": "cn"},
-        max_range_days=3650,
-    ),
-    "macro/social-financing": EndpointMeta(
-        api_name="macro/social-financing",
-        description="大陆社会融资规模存量及同比",
-        frequency="monthly",
-        group="macro_data",
-        primary_keys=["month"],
-        date_columns=["month"],
-        required_columns=["month"],
-        update_time="18:00",
-        default_metrics=["m.sf.t", "m.sf.t_y2y"],
-        default_params={"areaCode": "cn"},
-        max_range_days=3650,
-    ),
     "cn/industry/fs/sw_2021/non_financial": EndpointMeta(
         api_name="cn/industry/fs/sw_2021/non_financial",
         description="申万 2021 版非金融行业财务报表数据 (含营收/净利/毛利/ROE等多维指标)",
@@ -378,6 +281,9 @@ LIXINGER_API_REGISTRY: dict[str, EndpointMeta] = {
         code_param_name="stockCode",
     ),
 }
+
+for _api_name, _spec in LIXINGER_MACRO_ENDPOINT_SPECS.items():
+    LIXINGER_API_REGISTRY[_api_name] = EndpointMeta(api_name=_api_name, **_spec)
 
 for _api_name, _spec in LIXINGER_RISK_ENDPOINT_SPECS.items():
     LIXINGER_API_REGISTRY[_api_name] = EndpointMeta(api_name=_api_name, **_spec)
