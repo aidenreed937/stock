@@ -6,6 +6,7 @@ from stock_strategy.pool.industry_meta_router import IndustryMetaRouterStrategy
 from stock_strategy.pool.industry_momentum import IndustryMomentumRotationStrategy
 from stock_strategy.pool.industry_reversal import IndustryCrowdingReversalStrategy
 from stock_strategy.pool.industry_scissors import IndustrySupplyDemandScissorsStrategy
+from stock_strategy.pool.industry_trend_tracking import IndustryTrendTrackingStrategy
 from stock_strategy.pool.macd_cross import MACDCrossStrategy
 from stock_strategy.pool.macro_all_weather import MacroAllWeatherStrategy
 from stock_strategy.pool.macro_meta_router import MacroMetaRouterStrategy
@@ -33,6 +34,7 @@ STRATEGY_REGISTRY: dict[str, type[BaseStrategy]] = {
     "IndustryCrowdingReversalStrategy": IndustryCrowdingReversalStrategy,
     "IndustrySupplyDemandScissorsStrategy": IndustrySupplyDemandScissorsStrategy,
     "IndustryMetaRouterStrategy": IndustryMetaRouterStrategy,
+    "IndustryTrendTrackingStrategy": IndustryTrendTrackingStrategy,
 }
 
 
@@ -51,6 +53,7 @@ __all__ = [
     "IndustryMetaRouterStrategy",
     "IndustryMomentumRotationStrategy",
     "IndustrySupplyDemandScissorsStrategy",
+    "IndustryTrendTrackingStrategy",
     "MACDCrossStrategy",
     "MacroAllWeatherStrategy",
     "MacroMetaRouterStrategy",
