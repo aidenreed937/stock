@@ -17,7 +17,7 @@ strategies:
     rebalance_period: 63
     score_column: "return_60d"
     valuation_max: 90.0
-    description: "二级方向池基线：动量 Top3 + 估值防守（pe5y<=90），全球共振 6 行业（2020-05 起 Sharpe 0.72）"
+    description: "二级方向池基线：动量 Top3 + 估值防守（pe5y<=90），全球共振 13 行业（全周期年化 +12.50%）"
     friction:
       commission_rate: 0.0001
       slippage_rate: 0.0005
