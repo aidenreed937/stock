@@ -21,11 +21,12 @@ import polars as pl
 
 from stock_data.catalog.service import DataCatalog
 
-# 方向映射：申万行业 ← 全球景气代理腿
-# 新能源制造端信号（光伏装机/新能源车销量）直接对应电力设备（光伏设备/电池/电网设备）；
-# 有色金属仅"能源金属"子板块相关，用制造端信号映射整个有色一级行业不准确，故不映射。
+# 方向映射：申万行业 ← 全球景气代理腿（行业专属信号，不合成后复用）
+# - AI 算力：电子/通信/计算机 ← SOX（费半）
+# - 新能源-电力设备：光伏装机 ← 制造端（光伏设备/电池/电网设备）
+# - 新能源-汽车：新能源车销量 ← 整车需求端
+# 有色金属仅"能源金属"子板块相关，需能源金属价格信号，当前无对应数据故不映射。
 _AI_INDUSTRIES = ["801080.SI", "801770.SI", "801750.SI"]  # 电子/通信/计算机
-_NEW_ENERGY_INDUSTRIES = ["801730.SI"]  # 电力设备
 _OUTPUT = Path("data/curated/mart/global_resonance_map.parquet")
 
 
@@ -81,30 +82,26 @@ def _monthly_pct(df: pl.DataFrame, value_col: str, window_months: int = 36) -> p
     return out.with_columns(pct.alias("pct")).select(["trade_date", "pct"])
 
 
-def build_new_energy_direction() -> pl.DataFrame:
-    """新能源腿：光伏装机 + 新能源车销量 YoY 滚动分位合成（月频 → 日频前向填充）。"""
+def build_new_energy_direction() -> dict[str, pl.DataFrame]:
+    """新能源腿：行业专属信号（月频 → 日频前向填充）。
+
+    - 电力设备 ← 光伏装机 YoY 分位（制造端：光伏设备/电池/电网设备）
+    - 汽车 ← 新能源车销量 YoY 分位（整车需求端）
+    制造端信号不再合成后映射多个行业，按行业归属拆分。
+    """
     cat = DataCatalog(data_source="industry")
     solar = cat.load_dataset("solar_capacity")
     nev = cat.load_dataset("nev_monthly_sales")
 
-    # 光伏：月新增装机 YoY（3MMA 平滑可用时优先）
     solar_col = (
         "monthly_new_capacity_3mma"
         if "monthly_new_capacity_3mma" in solar.columns
         else "monthly_new_capacity_gw"
     )
-    solar_pct = _monthly_pct(solar, solar_col)
-    # 新能源车：批发销量 YoY
-    nev_pct = _monthly_pct(nev, "wholesale_volume_ten_thousand")
-
-    merged = (
-        solar_pct.rename({"pct": "solar_pct"})
-        .join(nev_pct.rename({"pct": "nev_pct"}), on="trade_date", how="full", coalesce=True)
-        .sort("trade_date")
-    )
-    direction = merged.with_columns(
-        pl.mean_horizontal([pl.col("solar_pct"), pl.col("nev_pct")]).alias("direction_score")
-    ).select(["trade_date", "direction_score"])
+    signals = {
+        "801730.SI": _monthly_pct(solar, solar_col),  # 电力设备 ← 光伏装机
+        "801880.SI": _monthly_pct(nev, "wholesale_volume_ten_thousand"),  # 汽车 ← 新能源车销量
+    }
 
     # 月频 → 日频：对齐到交易日（前向填充）
     gm = (
@@ -112,13 +109,17 @@ def build_new_energy_direction() -> pl.DataFrame:
         .select(["trade_date"])
         .sort("trade_date")
     )
-    daily = (
-        gm.join(direction, on="trade_date", how="left")
-        .sort("trade_date")
-        .with_columns(pl.col("direction_score").fill_null(strategy="forward"))
-        .drop_nulls()
-    )
-    return daily
+    result: dict[str, pl.DataFrame] = {}
+    for code, monthly in signals.items():
+        daily = (
+            gm.join(monthly, on="trade_date", how="left")
+            .sort("trade_date")
+            .with_columns(pl.col("pct").fill_null(strategy="forward").alias("direction_score"))
+            .select(["trade_date", "direction_score"])
+            .drop_nulls()
+        )
+        result[code] = daily
+    return result
 
 
 def build_global_resonance_map() -> pl.DataFrame:
@@ -129,8 +130,8 @@ def build_global_resonance_map() -> pl.DataFrame:
     rows = []
     for code in _AI_INDUSTRIES:
         rows.append(sox_dir.with_columns(pl.lit(code).alias("industry_code")))
-    for code in _NEW_ENERGY_INDUSTRIES:
-        rows.append(ne_dir.with_columns(pl.lit(code).alias("industry_code")))
+    for code, daily in ne_dir.items():
+        rows.append(daily.with_columns(pl.lit(code).alias("industry_code")))
     return pl.concat(rows).select(["trade_date", "industry_code", "direction_score"])
 
 
