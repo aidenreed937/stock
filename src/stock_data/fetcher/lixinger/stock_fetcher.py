@@ -116,30 +116,26 @@ def _resolve_sw_2021_industry_codes(
                 raise DataFetchError(f"理杏仁申万 2021 行业目录未找到匹配分类 [{endpoint}/{level}]")
             return codes
 
-        if "/bank" in endpoint:
-            mask = df_ind["name"].str.contains("银行", na=False) & (
-                df_ind["level"].isin(["one", "two"])
-            )
-            return select_codes(mask)
+        target_level = level or "one"
+        has_fs = "fsTableType" in df_ind.columns and df_ind["fsTableType"].notna().any()
+        name_map = {"bank": "银行", "security": "证券", "insurance": "保险"}
+        for key in ("bank", "security", "insurance", "non_financial"):
+            if f"/{key}" in endpoint:
+                if has_fs:
+                    mask = (df_ind["fsTableType"] == key) & (df_ind["level"] == target_level)
+                elif key == "non_financial":
+                    mask = ~df_ind["name"].str.contains(
+                        "银行|非银|证券|保险|多元金融", na=False
+                    ) & (df_ind["level"] == target_level)
+                else:
+                    mask = df_ind["name"].str.contains(name_map[key], na=False) & (
+                        df_ind["level"] == target_level
+                        if target_level == "two"
+                        else df_ind["level"].isin(["one", "two"])
+                    )
+                return select_codes(mask)
 
-        if "/security" in endpoint:
-            mask = df_ind["name"].str.contains("证券", na=False) & (
-                df_ind["level"].isin(["one", "two"])
-            )
-            return select_codes(mask)
-
-        if "/insurance" in endpoint:
-            mask = df_ind["name"].str.contains("保险", na=False) & (
-                df_ind["level"].isin(["one", "two"])
-            )
-            return select_codes(mask)
-
-        if "/non_financial" in endpoint:
-            mask = ~df_ind["name"].str.contains("银行|非银", na=False) & (df_ind["level"] == level)
-            return select_codes(mask)
-
-        mask = df_ind["level"] == level
-        return select_codes(mask)
+        return select_codes(df_ind["level"] == target_level)
 
     except DataFetchError:
         raise

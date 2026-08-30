@@ -138,6 +138,43 @@ def test_lixinger_stock_fetcher_batch_l2_query_uses_level_two_industries() -> No
     assert "endpoint_name" not in mock_client.query.call_args_list[1].kwargs
 
 
+def test_lixinger_stock_fetcher_batch_l2_fs_query_resolves_level_two_non_financial() -> None:
+    mock_client = MagicMock()
+
+    def query(api_name: str, **kwargs: Any) -> pd.DataFrame:
+        if api_name == "cn/industry":
+            return pd.DataFrame(
+                {
+                    "stockCode": ["110000", "110100", "480000", "480200"],
+                    "name": ["农林牧渔", "种植业", "银行", "国有大型银行"],
+                    "level": ["one", "two", "one", "two"],
+                    "fsTableType": ["non_financial", "non_financial", "bank", "bank"],
+                }
+            )
+        return pd.DataFrame(
+            {
+                "stockCode": kwargs["stockCodes"],
+                "date": ["2024-03-31"] * len(kwargs["stockCodes"]),
+                "q": [{"ps": {"toi": {"t": 100.0}}}] * len(kwargs["stockCodes"]),
+            }
+        )
+
+    mock_client.query.side_effect = query
+    fetcher = LixingerStockFetcher(client=mock_client)
+
+    with patch("stock_data.fetcher.lixinger.stock_fetcher._INDUSTRY_TABLE_CACHE", None):
+        df = fetcher.fetch_daily_bars_df(
+            symbol="",
+            start_date=date(2024, 3, 31),
+            end_date=date(2024, 3, 31),
+            endpoint="sw_2021_l2_fs_non_financial",
+        )
+
+    assert df["stockCode"].to_list() == ["110100"]
+    assert mock_client.query.call_args_list[1].kwargs["stockCodes"] == ["110100"]
+    assert mock_client.query.call_args_list[1].kwargs["date"] == "2024-03-31"
+
+
 def test_lixinger_industry_batch_propagates_data_fetch_error() -> None:
     mock_client = MagicMock()
 

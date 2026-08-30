@@ -61,12 +61,17 @@ def save_curated_fact(
     Returns:
         int: 落盘后的总有效行数
     """
-    if new_df.is_empty():
-        return 0
-
     p = Path(target_parquet_path)
     p.parent.mkdir(parents=True, exist_ok=True)
-    keys = primary_keys or ["report_month"]
+
+    if primary_keys:
+        keys = primary_keys
+    elif "report_month" in new_df.columns:
+        keys = ["report_month"]
+    elif "trade_date" in new_df.columns:
+        keys = ["trade_date"]
+    else:
+        keys = [new_df.columns[0]]
 
     if p.exists():
         existing_df = pl.read_parquet(p)

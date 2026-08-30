@@ -7,8 +7,8 @@
   },
   "classes": {
     "src/stock_analytics/marts/builder.py::DomainMartBuilder": {
-      "lines": 309,
-      "methods": 17
+      "lines": 329,
+      "methods": 18
     },
     "src/stock_data/fetcher/lixinger/client.py::LixingerClient": {
       "lines": 228,
@@ -49,13 +49,13 @@
   },
   "files": {
     "src/stock_analytics/marts/build_steps.py": {
-      "lines": 758
+      "lines": 840
     },
     "src/stock_data/core/task_registry.py": {
-      "lines": 700
+      "lines": 702
     },
     "src/stock_data/fetcher/lixinger/stock_fetcher.py": {
-      "lines": 434
+      "lines": 430
     },
     "src/stock_data/governance/audit/backfill_acceptance.py": {
       "lines": 493

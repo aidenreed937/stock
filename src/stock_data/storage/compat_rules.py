@@ -319,6 +319,10 @@ _DATASET_OPTIONAL_COLUMNS: dict[str, frozenset[str]] = {
     "sw_2021_fs_bank": _LIXINGER_FINANCIAL_STATEMENT_OPTIONAL_COLUMNS,
     "sw_2021_fs_security": _LIXINGER_FINANCIAL_STATEMENT_OPTIONAL_COLUMNS,
     "sw_2021_fs_insurance": _LIXINGER_FINANCIAL_STATEMENT_OPTIONAL_COLUMNS,
+    "sw_2021_l2_fs_non_financial": _LIXINGER_FINANCIAL_STATEMENT_OPTIONAL_COLUMNS,
+    "sw_2021_l2_fs_bank": _LIXINGER_FINANCIAL_STATEMENT_OPTIONAL_COLUMNS,
+    "sw_2021_l2_fs_security": _LIXINGER_FINANCIAL_STATEMENT_OPTIONAL_COLUMNS,
+    "sw_2021_l2_fs_insurance": _LIXINGER_FINANCIAL_STATEMENT_OPTIONAL_COLUMNS,
     "interest_rates": frozenset(
         {"cdnaaa_y1", "fdr_d7", "shibor_on", "shibor_w1", "shibor_y1", "adjustment", "areaCode"}
     ),

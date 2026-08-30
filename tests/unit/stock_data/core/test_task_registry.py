@@ -203,8 +203,12 @@ def test_alphavantage_fx_task_uses_registered_route_and_global_market() -> None:
 
 def test_lixinger_l2_task_uses_the_documented_shared_api_route() -> None:
     task = resolve_task("lixinger", "sw_2021_l2_fundamental")
-
     assert task.api_name == "cn/industry/fundamental/sw_2021"
+
+    for sec in ("non_financial", "bank", "security", "insurance"):
+        task_l2_fs = resolve_task("lixinger", f"sw_2021_l2_fs_{sec}")
+        assert task_l2_fs.api_name == f"cn/industry/fs/sw_2021/{sec}"
+        assert task_l2_fs.is_single_sync is True
 
 
 def test_lixinger_task_bundles() -> None:
@@ -226,6 +230,10 @@ def test_lixinger_task_bundles() -> None:
         "sw_2021_fs_bank",
         "sw_2021_fs_security",
         "sw_2021_fs_insurance",
+        "sw_2021_l2_fs_non_financial",
+        "sw_2021_l2_fs_bank",
+        "sw_2021_l2_fs_security",
+        "sw_2021_l2_fs_insurance",
     )
     assert "industry_bundle" not in list_available_tasks("lixinger")
     assert "index_fundamental" not in {
@@ -366,6 +374,10 @@ def test_expand_task_targets_keeps_atomic_tasks_and_deduplicates() -> None:
         "sw_2021_fs_bank",
         "sw_2021_fs_security",
         "sw_2021_fs_insurance",
+        "sw_2021_l2_fs_non_financial",
+        "sw_2021_l2_fs_bank",
+        "sw_2021_l2_fs_security",
+        "sw_2021_l2_fs_insurance",
     ]
 
     assert expand_task_targets("tushare", ["convertible_bond_bundle"]) == [

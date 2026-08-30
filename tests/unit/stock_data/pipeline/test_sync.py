@@ -513,6 +513,10 @@ def test_build_sync_plan_expands_task_bundle_into_atomic_tasks() -> None:
         "sw_2021_fs_bank",
         "sw_2021_fs_security",
         "sw_2021_fs_insurance",
+        "sw_2021_l2_fs_non_financial",
+        "sw_2021_l2_fs_bank",
+        "sw_2021_l2_fs_security",
+        "sw_2021_l2_fs_insurance",
     ]
 
     with (

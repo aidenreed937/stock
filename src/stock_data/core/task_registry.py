@@ -104,15 +104,14 @@ _EXPLICIT_NON_PARTITIONED: frozenset[str] = frozenset(
         "index_fundamental",
         "sw_2021_constituents",
         "sw_2021_fundamental",
-        "sw_2021_fs_non_financial",
-        "sw_2021_fs_bank",
-        "sw_2021_fs_security",
-        "sw_2021_fs_insurance",
+        "sw_2021_l2_fundamental",
+        *(
+            f"sw_2021_{pfx}fs_{sec}"
+            for pfx in ("", "l2_")
+            for sec in ("non_financial", "bank", "security", "insurance")
+        ),
         "company_fundamental",
-        "fs_non_financial",
-        "fs_bank",
-        "fs_security",
-        "fs_insurance",
+        *(f"fs_{sec}" for sec in ("non_financial", "bank", "security", "insurance")),
         "pledge_info",
         "national_debt",
         "interest_rates",
@@ -147,15 +146,14 @@ _EXPLICIT_SINGLE_SYNC: frozenset[str] = frozenset(
         "fund_basic",
         "sw_2021_constituents",
         "sw_2021_fundamental",
-        "sw_2021_fs_non_financial",
-        "sw_2021_fs_bank",
-        "sw_2021_fs_security",
-        "sw_2021_fs_insurance",
+        "sw_2021_l2_fundamental",
+        *(
+            f"sw_2021_{pfx}fs_{sec}"
+            for pfx in ("", "l2_")
+            for sec in ("non_financial", "bank", "security", "insurance")
+        ),
         "company_fundamental",
-        "fs_non_financial",
-        "fs_bank",
-        "fs_security",
-        "fs_insurance",
+        *(f"fs_{sec}" for sec in ("non_financial", "bank", "security", "insurance")),
         "pledge_info",
         "national_debt",
         "interest_rates",
@@ -194,6 +192,9 @@ def _make_spec(
         primary_keys=kwargs.get("primary_keys", ()),
         date_columns=kwargs.get("date_columns", ()),
         required_columns=kwargs.get("required_columns", ()),
+        update_delay_days=kwargs.get("update_delay_days", 0),
+        update_time=kwargs.get("update_time", "18:00"),
+        delay_in_trading_days=kwargs.get("delay_in_trading_days", False),
     )
 
 
@@ -361,15 +362,16 @@ _CUSTOM_TASKS: dict[tuple[str, str], TaskSpec] = {
         is_single_sync=True,
     ),
     **{
-        ("lixinger", f"sw_2021_fs_{sec}"): _make_spec(
-            f"sw_2021_fs_{sec}",
+        ("lixinger", f"sw_2021_{pfx}fs_{sec}"): _make_spec(
+            f"sw_2021_{pfx}fs_{sec}",
             "lixinger",
             f"cn/industry/fs/sw_2021/{sec}",
-            f"sw_2021_fs_{sec}",
+            f"sw_2021_{pfx}fs_{sec}",
             fetch_mode="per_symbol",
             partitioned=False,
             is_single_sync=True,
         )
+        for pfx in ("", "l2_")
         for sec in ("non_financial", "bank", "security", "insurance")
     },
     **{
