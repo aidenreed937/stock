@@ -125,3 +125,27 @@ strategies:
       commission_rate: 0.0001 # 万1券商佣金
       slippage_rate: 0.0005 # 0.05% 冲击滑点
       rebalance_deadband: 0.03 # 3% 调仓死区
+
+  macro_rotation_v5_rebalance_etf:
+    strategy_class: "MacroRotationV5RebalanceStrategy"
+    benchmark_symbol: "000985.CSI" # 趋势基准 = 中证全指
+    symbols:
+      - "510880.SH" # 华泰柏瑞红利 ETF (权益腿-防守)
+      - "159915.SZ" # 易方达创业板 ETF (权益腿-进攻)
+      - "511010.SH" # 国泰国债 ETF 5年期 (固收腿)
+    initial_weights:
+      "510880.SH": 0.35
+      "159915.SZ": 0.35
+      "511010.SH": 0.30
+    ma_window: 20
+    thresholds:
+      equity_cap: 0.7 # 权益总仓位封顶 70%，余量固收
+      panic_threshold: 75.0
+      panic_entry_threshold: 65.0
+      overheat_threshold: 65.0
+      smart_filter_threshold: 40.0
+      bias_threshold: 0.15 # 极值乖离止盈: 基准 20 日乖离率超过 15% 且非恐慌区时清仓
+    friction:
+      commission_rate: 0.0001 # 万1券商佣金
+      slippage_rate: 0.0005 # 0.05% 冲击滑点
+      rebalance_deadband: 0.03 # 3% 调仓死区

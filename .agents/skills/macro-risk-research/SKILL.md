@@ -176,3 +176,4 @@ flowchart LR
 * 📘 [cycle_windows_matrix.md](references/cycle_windows_matrix.md)：三方主体筹码博弈背离矩阵与见顶/见底证据链清单（历史研究快照）；20/60 日胜率矩阵以 `scripts/compute_cycle_winrate_matrix.py` 最新输出为准，本文档不维护。
 * 📘 [overheat_threshold_robustness.md](references/overheat_threshold_robustness.md)：overheat 逃顶阈值鲁棒性边界（不对称、65 贴悬崖、62 备选）与产物引用；调阈值前必读。
 * 📘 [smart_money_factor.md](references/smart_money_factor.md)：聪明钱组合因子（smart_money）完整口径与使用手册（子信号合成 → 二次分位命名 → 策略消费 → 阈值语义）。
+* 📘 [v5_etf_fixed_income_rebalance.md](references/v5_etf_fixed_income_rebalance.md)：v5_etf 叠加固收再平衡的回撤压制评估（50/50 守 -20%、70/30 折中上限）研究留档。

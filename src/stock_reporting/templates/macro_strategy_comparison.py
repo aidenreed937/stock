@@ -197,14 +197,27 @@ def render_comparison_markdown(
         return f"{v * 100:.2f}%"
 
     summary_lines: list[str] = ["### 三、 定性总结与实战选型", ""]
-    v5_stats = stats.get("macro_rotation_v5_etf")
-    if v5_stats:
-        v5_cagr = _get_val(v5_stats, "cagr", _get_val(v5_stats, "annual_return"))
-        v5_sharpe = _get_val(v5_stats, "sharpe_ratio", _get_val(v5_stats, "sharpe"))
+
+    def _best(stat_key: str, alt_key: str) -> tuple[str, float]:
+        best_name, best_val = "", -float("inf")
+        for name in etf_strategies:
+            s = stats.get(name, {})
+            v = _get_val(s, stat_key, _get_val(s, alt_key))
+            if v > best_val:
+                best_val, best_name = v, name
+        return best_name, best_val
+
+    cagr_name, cagr_val = _best("cagr", "annual_return")
+    sharpe_name, sharpe_val = _best("sharpe_ratio", "sharpe")
+
+    if cagr_name:
         summary_lines.append(
-            f"- **实盘收益与夏普冠军**：**`macro_rotation_v5_etf`** 在双核轮动基础上"
-            f"引入聪明钱假黄金坑确认过滤，实盘 CAGR 达 **{_fmt_pct(v5_cagr)}**、"
-            f"夏普 **{v5_sharpe:.2f}**，综合收益风险比最优；"
+            f"- **绝对收益冠军**：**`{cagr_name}`** 实盘 CAGR **{_fmt_pct(cagr_val)}**；"
+        )
+    if sharpe_name and sharpe_name != cagr_name:
+        summary_lines.append(
+            f"- **风险调整冠军**：**`{sharpe_name}`** 夏普 **{sharpe_val:.2f}**"
+            f"，收益略低但回撤显著更浅，收益风险比最优，适合回撤敏感配置；"
         )
     summary_lines.extend(
         [

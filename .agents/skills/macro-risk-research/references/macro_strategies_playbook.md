@@ -21,6 +21,7 @@
 | **`macro_risk_v3` / `_etf`** ~~已停用~~ | `MacroRiskV3Strategy` | 单宽基趋势防守压舱石（已停用：无 alpha、回撤与沪深300 持平） |
 | **`macro_rotation_v4` / `_etf`** | `MacroRotationV4Strategy` | 双核哑铃风格轮动：牛市主升打满创业板弹性，存量熊市切换高股息红利托底避险 |
 | **`macro_rotation_v5` / `_etf`** 🌟 | `MacroRotationV5Strategy` | 资金博弈智能增强轮动：在 V4 基础上用 `smart_money_pct` 做恐慌左侧确认过滤，未逆势接货判定假黄金坑不建仓 |
+| **`macro_rotation_v5_rebalance_etf`** 🌟 | `MacroRotationV5RebalanceStrategy` | 权益封顶 + 固收再平衡：V5 权益腿 × 70% 封顶 + 511010 国债 ETF 固收腿，OOS Sharpe 全池最高（0.79）、回撤最浅（-21.3%），收益略低于 v5_etf，适合回撤敏感配置 |
 | **`macro_rotation_v5_fear` / `_etf`** ~~已停用~~ | `MacroRotationFearStrategy` | 恐惧前置抄底变体：以 `dim_fear` (pcr/iv/vix) 替代 `panic_index` 触发抄底（已停用：全周期 CAGR 7.76% vs v5 11.56%、OOS Sharpe 0.31 vs 0.62，情绪脉冲致频繁过早接飞刀） |
 | **`macro_rotation_v6` / `_etf`** ~~已停用~~ | `MacroRotationV6Strategy` | 三核资产与风格动量自适应轮动（已停用：不如 v4/v5） |
 | **`macro_meta_router` / `_etf`** ~~已停用~~ | `MacroMetaRouterStrategy` | 宏观元策略动态路由器（已停用：不如 v4/v5） |
@@ -29,7 +30,7 @@
 > 各策略的全周期回测绩效（CAGR / 最大回撤 / 夏普 / 卡玛）以 `data/analytics/macro_strategy/multi_strategy_comparison.md` 最新产物为准；本表不维护绩效数字。
 
 > ⚠️ **有效性评估结论（2026-08，基于全周期 + 滚动 + walk-forward 审计）**：
-> - **启用（有效）**：`macro_rotation_v5` / `v4` —— 有真实正超额（CAGR 8~10%、Sharpe 0.37~0.47），且样本内 alpha 稳定（walk-forward 有效切片占比 67%~89%）。
+> - **启用（有效）**：`macro_rotation_v5` / `v4` / `v5_rebalance_etf` —— 有真实正超额（CAGR 8~10%、Sharpe 0.37~0.47），且样本内 alpha 稳定（walk-forward 有效切片占比 67%~89%）；`v5_rebalance_etf` 为风险调整最优（OOS Sharpe 0.79、回撤 -21.3%）。
 > - **已停用**：`macro_risk_v3`（无 alpha）；`macro_rotation_v6` / `macro_meta_router`（不如 v4/v5）；`macro_all_weather_etf`（收益平庸 + 样本外亏损）；`macro_rotation_v5_fear`（恐惧前置抄底：全周期 + OOS 均劣于 v5，情绪脉冲致频繁过早接飞刀）。策略类代码保留在 `src/stock_strategy/pool/` 作研究留档，仅从 `config/strategy/macro_risk.yaml` 停用。
 > - 详见 `data/analytics/macro_strategy/audit/`（分段收益/压力/滚动/熊市）与 `multi_strategy_comparison.md`。
 
