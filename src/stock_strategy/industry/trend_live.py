@@ -43,6 +43,7 @@ class TrendLiveInspectionResult:
     has_rebalance: bool
     latest_date: str
     candidate_direction: dict[str, float]  # 候选池行业 → 方向分
+    etf_direction: dict[str, tuple[str, float]]  # ETF 池：etf_symbol → (theme, direction_score)
     instructions: list[IndustryLiveOrderInstruction]
     markdown_card: str
 
@@ -99,6 +100,27 @@ def inspect_live_industry_trend_signal(
         )
         if not sub.is_empty():
             candidate_direction[code] = round(float(sub["direction_score"][-1]), 1)
+
+    # 3b. ETF 池方向状态（执行层参考：观察池方向层主题 ETF 的方向分）
+    etf_direction: dict[str, tuple[str, float]] = {}
+    etf_dir_path = Path("data/curated/mart/theme_etf_direction.parquet")
+    if etf_dir_path.exists():
+        try:
+            edf = pl.read_parquet(etf_dir_path)
+            for etf in edf["etf_symbol"].unique().to_list():
+                sub = (
+                    edf.filter(pl.col("etf_symbol") == etf)
+                    .sort("trade_date")
+                    .filter(pl.col("direction_score").is_not_null())
+                )
+                if not sub.is_empty():
+                    last = sub.tail(1).row(0, named=True)
+                    etf_direction[etf] = (
+                        str(last["theme"]),
+                        round(float(last["direction_score"]), 1),
+                    )
+        except Exception as exc:
+            logger.warning(f"读取 ETF 池方向分失败: {exc}")
 
     # 4. 参考现价：ETF 最新收盘
     catalog = DataCatalog(data_source=data_source)
@@ -165,6 +187,7 @@ def inspect_live_industry_trend_signal(
         latest_date=str(latest_date),
         has_rebalance=has_rebalance,
         candidate_direction=candidate_direction,
+        etf_direction=etf_direction,
         instructions=instructions,
         total_capital=total_capital,
     )
@@ -176,6 +199,7 @@ def inspect_live_industry_trend_signal(
         has_rebalance=has_rebalance,
         latest_date=str(latest_date),
         candidate_direction=candidate_direction,
+        etf_direction=etf_direction,
         instructions=instructions,
         markdown_card=card_md,
     )
@@ -188,6 +212,7 @@ def _render_trend_markdown_card(
     latest_date: str,
     has_rebalance: bool,
     candidate_direction: dict[str, float],
+    etf_direction: dict[str, tuple[str, float]],
     instructions: list[IndustryLiveOrderInstruction],
     total_capital: float,
 ) -> str:
@@ -204,6 +229,17 @@ def _render_trend_markdown_card(
         "| 全球共振候选行业 | 方向分 (0-100) |\n| :--- | :---: |\n" + "\n".join(dir_rows)
         if dir_rows
         else "候选池方向层数据缺失。"
+    )
+
+    # ETF 池方向状态（执行层参考）
+    etf_rows = [
+        f"| **{etf}** | {theme} | **{score:.1f}** |"
+        for etf, (theme, score) in sorted(etf_direction.items(), key=lambda x: -x[1][1])
+    ]
+    etf_table = (
+        "| ETF | 二级行业归属 | 方向分 (0-100) |\n| :--- | :--- | :---: |\n" + "\n".join(etf_rows)
+        if etf_rows
+        else "ETF 池方向分数据缺失。"
     )
 
     inst_rows = []
@@ -229,6 +265,12 @@ def _render_trend_markdown_card(
 ## 🌍 方向层状态（全球共振候选池）
 
 {dir_table}
+
+---
+
+## 📊 ETF 池方向状态（执行层参考）
+
+{etf_table}
 
 ---
 

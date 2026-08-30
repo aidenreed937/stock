@@ -135,6 +135,102 @@ def build_global_resonance_map() -> pl.DataFrame:
     return pl.concat(rows).select(["trade_date", "industry_code", "direction_score"])
 
 
+# 主题 → 方向信号（sw_level2 二级行业归属 → 全球景气代理）
+_THEME_SIGNAL: dict[str, str] = {
+    "半导体": "semi",  # SOX + 全球半导体销售额
+    "通信设备": "semi",
+    "计算机设备": "semi",
+    "光伏设备": "solar",  # 光伏装机
+    "新能源": "solar",
+    "电池": "nev",  # 新能源车销量
+    "汽车": "nev",
+    "有色": "",  # 待能源金属价格信号
+}
+
+
+def build_theme_signals() -> dict[str, pl.DataFrame]:
+    """主题方向信号（日频）：semi / solar / nev。"""
+    semi = build_sox_direction()  # trade_date, direction_score
+    cat = DataCatalog(data_source="industry")
+    solar = cat.load_dataset("solar_capacity")
+    nev = cat.load_dataset("nev_monthly_sales")
+    solar_col = (
+        "monthly_new_capacity_3mma"
+        if "monthly_new_capacity_3mma" in solar.columns
+        else "monthly_new_capacity_gw"
+    )
+    solar_monthly = _monthly_pct(solar, solar_col)
+    nev_monthly = _monthly_pct(nev, "wholesale_volume_ten_thousand")
+
+    gm = (
+        pl.read_parquet("data/curated/mart/global_macro_daily.parquet")
+        .select(["trade_date"])
+        .sort("trade_date")
+    )
+    out: dict[str, pl.DataFrame] = {"semi": semi}
+    for key, monthly in [("solar", solar_monthly), ("nev", nev_monthly)]:
+        daily = (
+            gm.join(monthly, on="trade_date", how="left")
+            .sort("trade_date")
+            .with_columns(pl.col("pct").fill_null(strategy="forward").alias("direction_score"))
+            .select(["trade_date", "direction_score"])
+            .drop_nulls()
+        )
+        out[key] = daily
+    return out
+
+
+def load_theme_etfs() -> dict[str, str]:
+    """从 watchlist 读取标记了 sw_level2 的 ETF（etf_symbol → 二级行业归属）。"""
+    from pathlib import Path as _Path
+
+    import yaml
+
+    cfg = yaml.safe_load(_Path("config/universe/watchlist.yaml").read_text(encoding="utf-8"))
+    funds = cfg["universe"]["a_shares"]["funds"]
+    return {
+        str(f["code"]): str(f["sw_level2"])
+        for f in funds
+        if isinstance(f, dict) and f.get("sw_level2")
+    }
+
+
+def build_theme_etf_direction() -> pl.DataFrame:
+    """ETF 级方向分：信号 → 主题 → 观察池内方向层主题 ETF。
+
+    输出列：trade_date, etf_symbol, theme（sw_level2）, direction_score。
+    """
+    theme_etfs = load_theme_etfs()
+    signals = build_theme_signals()
+    rows: list[pl.DataFrame] = []
+    skipped: list[str] = []
+    for etf, theme in sorted(theme_etfs.items()):
+        signal_key = _THEME_SIGNAL.get(theme, "")
+        if not signal_key or signal_key not in signals:
+            skipped.append(f"{etf}({theme})")
+            continue
+        rows.append(
+            signals[signal_key].with_columns(
+                pl.lit(etf).alias("etf_symbol"),
+                pl.lit(theme).alias("theme"),
+            )
+        )
+    print(f"无方向信号的主题 ETF（跳过）: {skipped or '无'}")
+    return pl.concat(rows).select(["trade_date", "etf_symbol", "theme", "direction_score"])
+
+
+def build_and_save_theme_etf_direction() -> pl.DataFrame:
+    """构建并保存 ETF 级方向分到 data/curated/mart/theme_etf_direction.parquet。"""
+    df = build_theme_etf_direction()
+    out = Path("data/curated/mart/theme_etf_direction.parquet")
+    out.parent.mkdir(parents=True, exist_ok=True)
+    df.write_parquet(out)
+    print(f"theme_etf_direction 已生成: {out}")
+    print(f"行数: {len(df)}, ETF: {sorted(df['etf_symbol'].unique().to_list())}")
+    print(f"日期: {df['trade_date'].min()} ~ {df['trade_date'].max()}")
+    return df
+
+
 def main() -> None:
     map_df = build_global_resonance_map()
     _OUTPUT.parent.mkdir(parents=True, exist_ok=True)
@@ -149,6 +245,7 @@ def main() -> None:
             f"min={sub['direction_score'].min():.1f} max={sub['direction_score'].max():.1f} "
             f"mean={sub['direction_score'].mean():.1f}"
         )
+    build_and_save_theme_etf_direction()
 
 
 if __name__ == "__main__":
