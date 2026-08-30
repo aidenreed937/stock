@@ -30,6 +30,11 @@ GLOBAL_MACRO_SCHEMA: dict[str, Any] = {
     "copper_price": pl.Float64,
     "copper_gold_ratio": pl.Float64,
     "vix_close": pl.Float64,
+    "sox_close": pl.Float64,
+    "us_ism_pmi": pl.Float64,
+    "oecd_cli": pl.Float64,
+    "us_durable_goods_orders": pl.Float64,
+    "us_manufacturing_shipments": pl.Float64,
     "shibor_on": pl.Float64,
     "shibor_3m": pl.Float64,
     "shibor_lpr_1y": pl.Float64,
@@ -110,7 +115,7 @@ def build_global_macro_daily_frame(
     主日历取全部输入日期的并集（交易日对齐由各源自身日期决定，不做跨市场
     时区重排）；CNH 20 日动量在合并后统一计算。
     """
-    # ---- YFinance：美债 10Y、VIX、黄金、原油、铜、CNH、美元指数 ----
+    # ---- YFinance：美债 10Y、VIX、黄金、原油、铜、CNH、美元指数、费半 SOX ----
     yf_symbols = {
         "^TNX": "us_10y_yield",
         "^VIX": "vix_close",
@@ -119,6 +124,7 @@ def build_global_macro_daily_frame(
         "HG=F": "copper_price",
         "CNH=X": "cnh_close",
         "DX-Y.NYB": "usd_index",
+        "^SOX": "sox_close",
     }
     frames: list[pl.DataFrame] = []
     if not yfinance_macro.is_empty():
@@ -136,12 +142,29 @@ def build_global_macro_daily_frame(
             "trade_date"
         )
 
-    # ---- FRED：10Y-2Y 利差（百分数，作为官方口径）----
-    fred_spread = pl.DataFrame()
+    # ---- FRED：利差、PMI、OECD 领先指标、耐用品订单与出货 ----
+    fred_symbols = {
+        "T10Y2Y": "us_yield_curve_10y_2y",
+        "NAPM": "us_ism_pmi",
+        "OECDLOLITOAASTSAM": "oecd_cli",
+        "DGORDER": "us_durable_goods_orders",
+        "AMTMVS": "us_manufacturing_shipments",
+    }
+    fred_frames: list[pl.DataFrame] = []
     if not fred_macro.is_empty():
-        sub = fred_macro.filter(pl.col("symbol") == "T10Y2Y")
-        if not sub.is_empty():
-            fred_spread = _clean_close(sub).rename({"close": "us_yield_curve_10y_2y"})
+        for symbol, target in fred_symbols.items():
+            sub = fred_macro.filter(pl.col("symbol") == symbol)
+            if sub.is_empty():
+                continue
+            series = _clean_close(sub)
+            if series.is_empty():
+                continue
+            fred_frames.append(series.rename({"close": target}))
+    fred_frame = fred_frames[0] if fred_frames else pl.DataFrame()
+    for frame in fred_frames[1:]:
+        fred_frame = fred_frame.join(frame, on="trade_date", how="full", coalesce=True).sort(
+            "trade_date"
+        )
 
     # ---- LiXinger：中债收益率（小数 -> 百分数）----
     cn_debt = pl.DataFrame()
@@ -171,7 +194,7 @@ def build_global_macro_daily_frame(
 
     # ---- 逐源合并到统一主日历 ----
     merged = yf_frame
-    for frame in (fred_spread, cn_debt, cn_money, lpr):
+    for frame in (fred_frame, cn_debt, cn_money, lpr):
         if frame.is_empty():
             continue
         merged = merged.join(frame, on="trade_date", how="full", coalesce=True)

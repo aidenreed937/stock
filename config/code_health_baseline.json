@@ -49,10 +49,10 @@
   },
   "files": {
     "src/stock_analytics/marts/build_steps.py": {
-      "lines": 757
+      "lines": 758
     },
     "src/stock_data/core/task_registry.py": {
-      "lines": 751
+      "lines": 694
     },
     "src/stock_data/fetcher/lixinger/stock_fetcher.py": {
       "lines": 434

@@ -383,17 +383,18 @@ def build_global_macro(
     cat_fred = _catalog_for(catalog, "fred", runtime=runtime)
     cat_lx = _catalog_for(catalog, "lixinger", runtime=runtime)
 
-    yf_macro = cat_yf.load_dataset(
-        "macro_indicators",
-        columns=["trade_date", "symbol", "close"],
-    )
-    fred_macro = cat_fred.load_dataset(
-        "macro_indicators",
-        columns=["trade_date", "symbol", "close"],
-    )
+    cols_3 = ["trade_date", "symbol", "close"]
+    yf_macro = cat_yf.load_dataset("macro_indicators", columns=cols_3)
+    yf_idx = cat_yf.load_dataset("index_daily_bar", columns=cols_3)
+    if not yf_idx.is_empty():
+        yf_macro = (
+            pl.concat([yf_macro, yf_idx], how="diagonal_relaxed")
+            if not yf_macro.is_empty()
+            else yf_idx
+        )
+    fred_macro = cat_fred.load_dataset("macro_indicators", columns=cols_3)
     cn_debt = cat_lx.load_dataset(
-        "national_debt",
-        columns=["trade_date", "tcm_y1", "tcm_y5", "tcm_y10", "tcm_y30"],
+        "national_debt", columns=["trade_date", "tcm_y1", "tcm_y5", "tcm_y10", "tcm_y30"]
     )
     shibor = cat_ts.load_dataset("shibor", columns=["trade_date", "on", "3m"])
     lpr = cat_ts.load_dataset("shibor_lpr", columns=["trade_date", "1y"])
