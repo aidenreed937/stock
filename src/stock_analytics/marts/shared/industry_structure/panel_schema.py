@@ -56,6 +56,11 @@ BASE_PANEL_SCHEMA: dict[str, Any] = {
     "report_rc_revision_ratio": pl.Float64,
     "report_rc_up_count": pl.Int64,
     "report_rc_down_count": pl.Int64,
+    "cip_yoy": pl.Float64,
+    "fix_assets_yoy": pl.Float64,
+    "cip_to_fa_ratio": pl.Float64,
+    "capex_growth_ttm": pl.Float64,
+    "inventory_scissors": pl.Float64,
 }
 
 

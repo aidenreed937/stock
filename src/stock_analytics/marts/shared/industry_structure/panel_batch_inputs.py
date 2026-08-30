@@ -8,6 +8,9 @@ from typing import TYPE_CHECKING
 
 import polars as pl
 
+from stock_analytics.marts.shared.industry_structure.industry_capex import (
+    industry_capex_panel_batch,
+)
 from stock_analytics.marts.shared.industry_structure.industry_mapping import (
     _is_current_industry_date,
     _stock_industry_map_from_lixinger_constituents,
@@ -50,6 +53,7 @@ class IndustryPanelBatchInputs:
     stock_industry_members: pl.DataFrame
     index_to_l1: dict[str, str]
     industry_to_l1: dict[str, str]
+    capex_by_date: dict[date, pl.DataFrame] = field(default_factory=dict)
     _stock_maps: dict[date, pl.DataFrame] = field(default_factory=dict)
     _current_lixinger_map: pl.DataFrame | None = None
 
@@ -116,6 +120,7 @@ class IndustryPanelBatchInputs:
             stock_industry_members=stock_industry_members,
             index_to_l1=index_to_l1,
             industry_to_l1=industry_to_l1,
+            capex_by_date=industry_capex_panel_batch(cat_ts, config, target_dates),
             valuation_by_date=valuation_panel_batch(
                 cat_lx,
                 target_dates,

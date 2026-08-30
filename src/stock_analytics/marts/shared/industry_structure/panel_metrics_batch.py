@@ -2,6 +2,7 @@
 
 from __future__ import annotations
 
+from bisect import bisect_left, bisect_right
 from datetime import date, timedelta
 from typing import TYPE_CHECKING, Any
 
@@ -71,38 +72,75 @@ def valuation_panel_batch(
         catalog=cat,
         classifier_catalog=classification_catalog,
     )
+
+    # 预先按行业分组并按日期升序提取各列时序，避免在 3000 个基准日中做 9 万次 DataFrame filter
+    industry_records: dict[str, list[dict[str, Any]]] = {}
+    industry_dates: dict[str, list[date]] = {}
+    for raw_code, part in (
+        base.sort("trade_date").partition_by("industry_code", as_dict=True).items()
+    ):
+        code = raw_code[0] if isinstance(raw_code, tuple) else str(raw_code)
+        dicts = part.to_dicts()
+        industry_records[code] = dicts
+        industry_dates[code] = [r["trade_date"] for r in dicts if isinstance(r["trade_date"], date)]
+
     results: dict[date, pl.DataFrame] = {}
     for as_of_date in as_of_dates:
-        history = base.filter(
-            (pl.col("trade_date") >= as_of_date - timedelta(days=365 * 5))
-            & (pl.col("trade_date") <= as_of_date)
-        ).sort(["industry_code", "trade_date"])
-        if history.is_empty():
-            continue
-        latest = history.group_by("industry_code").tail(1)
-        eval_date = history["trade_date"].max()
-        if not isinstance(eval_date, date):
-            continue
-        pbroe_by_l1 = _pb_roe_by_l1_frame(
-            raw_by_date.get(eval_date, pl.DataFrame()),
-            analyzer,
-            industry_to_l1,
-        )
         rows: list[dict[str, Any]] = []
-        for row in latest.to_dicts():
-            code = str(row["industry_code"])
-            industry_history = history.filter(pl.col("industry_code") == code)
-            row["valuation_date"] = row["trade_date"]
-            row["pe_percentile_5y"] = historical_percentile(
-                industry_history["pe_ttm"].to_list(), as_float(row.get("pe_ttm"))
+        eval_dates: list[date] = []
+        start_cutoff = as_of_date - timedelta(days=365 * 5)
+
+        for code, d_list in industry_dates.items():
+            idx = bisect_right(d_list, as_of_date)
+            if idx == 0:
+                continue
+            latest_row = industry_records[code][idx - 1]
+            t_date = latest_row["trade_date"]
+            if not isinstance(t_date, date) or t_date < start_cutoff:
+                continue
+            eval_dates.append(t_date)
+
+            start_idx = bisect_left(d_list, start_cutoff)
+            sub_records = industry_records[code][start_idx:idx]
+
+            pe_hist = [r.get("pe_ttm") for r in sub_records]
+            pb_hist = [r.get("pb") for r in sub_records]
+
+            rows.append(
+                {
+                    "industry_code": code,
+                    "industry_name_from_valuation": latest_row.get("industry_name_from_valuation"),
+                    "valuation_date": t_date,
+                    "pe_ttm": latest_row.get("pe_ttm"),
+                    "pb": latest_row.get("pb"),
+                    "dividend_yield": latest_row.get("dividend_yield"),
+                    "pe_percentile_5y": historical_percentile(
+                        pe_hist, as_float(latest_row.get("pe_ttm"))
+                    ),
+                    "pb_percentile_5y": historical_percentile(
+                        pb_hist, as_float(latest_row.get("pb"))
+                    ),
+                }
             )
-            row["pb_percentile_5y"] = historical_percentile(
-                industry_history["pb"].to_list(), as_float(row.get("pb"))
+
+        if not rows:
+            continue
+
+        eval_date = max(eval_dates) if eval_dates else None
+        pbroe_by_l1 = (
+            _pb_roe_by_l1_frame(
+                raw_by_date.get(eval_date, pl.DataFrame()),
+                analyzer,
+                industry_to_l1,
             )
-            pbroe = pbroe_by_l1.get(code, {})
-            row["pbroe_residual"] = as_float(pbroe.get("residual"))
-            row["pbroe_undervalued"] = bool(pbroe.get("is_undervalued", False))
-            rows.append(row)
+            if eval_date
+            else {}
+        )
+        for r in rows:
+            pbroe = pbroe_by_l1.get(r["industry_code"], {})
+            r["pbroe_residual"] = as_float(pbroe.get("residual"))
+            r["pbroe_undervalued"] = bool(pbroe.get("is_undervalued", False))
+
         results[as_of_date] = pl.DataFrame(rows).select(
             "industry_code",
             "industry_name_from_valuation",
@@ -142,32 +180,61 @@ def fundamental_panel_batch(
         frame,
         ("revenue_growth_ttm", "profit_growth_ttm", "roe_ttm"),
     )
+
+    # 预先按行业分组并按日期升序提取各列时序
+    industry_records: dict[str, list[dict[str, Any]]] = {}
+    industry_dates: dict[str, list[date]] = {}
+    for raw_code, part in (
+        frame.sort("trade_date").partition_by("industry_code", as_dict=True).items()
+    ):
+        code = raw_code[0] if isinstance(raw_code, tuple) else str(raw_code)
+        dicts = part.to_dicts()
+        industry_records[code] = dicts
+        industry_dates[code] = [r["trade_date"] for r in dicts if isinstance(r["trade_date"], date)]
+
     results: dict[date, pl.DataFrame] = {}
     for as_of_date in as_of_dates:
-        history = frame.filter(
-            (pl.col("trade_date") >= as_of_date - timedelta(days=365 * 6))
-            & (pl.col("trade_date") <= as_of_date)
-        ).sort(["industry_code", "trade_date"])
-        if history.is_empty():
-            continue
-        latest = history.group_by("industry_code").tail(1)
         rows: list[dict[str, Any]] = []
-        for row in latest.to_dicts():
-            code = str(row["industry_code"])
-            industry_history = history.filter(pl.col("industry_code") == code)
-            row["fundamental_date"] = row["trade_date"]
-            row["revenue_growth_percentile"] = historical_percentile(
-                industry_history["revenue_growth_ttm"].to_list(),
-                as_float(row.get("revenue_growth_ttm")),
+        start_cutoff = as_of_date - timedelta(days=365 * 6)
+
+        for code, d_list in industry_dates.items():
+            idx = bisect_right(d_list, as_of_date)
+            if idx == 0:
+                continue
+            latest_row = industry_records[code][idx - 1]
+            t_date = latest_row["trade_date"]
+            if not isinstance(t_date, date) or t_date < start_cutoff:
+                continue
+
+            start_idx = bisect_left(d_list, start_cutoff)
+            sub_records = industry_records[code][start_idx:idx]
+
+            rev_hist = [r.get("revenue_growth_ttm") for r in sub_records]
+            prof_hist = [r.get("profit_growth_ttm") for r in sub_records]
+            roe_hist = [r.get("roe_ttm") for r in sub_records]
+
+            rows.append(
+                {
+                    "industry_code": code,
+                    "fundamental_date": t_date,
+                    "revenue_growth_ttm": latest_row.get("revenue_growth_ttm"),
+                    "profit_growth_ttm": latest_row.get("profit_growth_ttm"),
+                    "roe_ttm": latest_row.get("roe_ttm"),
+                    "revenue_growth_percentile": historical_percentile(
+                        rev_hist, as_float(latest_row.get("revenue_growth_ttm"))
+                    ),
+                    "profit_growth_percentile": historical_percentile(
+                        prof_hist, as_float(latest_row.get("profit_growth_ttm"))
+                    ),
+                    "roe_percentile": historical_percentile(
+                        roe_hist, as_float(latest_row.get("roe_ttm"))
+                    ),
+                }
             )
-            row["profit_growth_percentile"] = historical_percentile(
-                industry_history["profit_growth_ttm"].to_list(),
-                as_float(row.get("profit_growth_ttm")),
-            )
-            row["roe_percentile"] = historical_percentile(
-                industry_history["roe_ttm"].to_list(), as_float(row.get("roe_ttm"))
-            )
-            rows.append(row)
+
+        if not rows:
+            continue
+
         results[as_of_date] = pl.DataFrame(rows).select(
             "industry_code",
             "fundamental_date",

@@ -12,9 +12,9 @@ from stock_strategy.industry.report import (
 
 
 def test_load_specs_and_benchmarks() -> None:
+    # 轮动策略池已于 2026-08-31 停用（industry_rotation.yaml strategies 为空）
     specs = load_all_industry_strategy_specs()
-    assert "industry_momentum" in specs
-    assert "industry_reversal" in specs
+    assert specs == {}
 
     benches = load_industry_benchmarks()
     assert len(benches) >= 1

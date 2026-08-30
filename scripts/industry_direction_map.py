@@ -74,35 +74,50 @@ def build_sox_direction() -> pl.DataFrame:
 
 
 def _monthly_pct(df: pl.DataFrame, value_col: str, window_months: int = 36) -> pl.DataFrame:
-    """月频序列 → YoY → 滚动分位（月频，trade_date 对齐）。"""
+    """月频序列 → YoY → 滚动分位（月频，trade_date 对齐）。
+
+    生效日语义（消除前视）：数据源含 release_date 时按**发布日**生效（月末数据在
+    发布日之后才可用，如海关出口滞后约 20 天）；无 release_date 时回退 trade_date。
+    """
+    eff_col = "release_date" if "release_date" in df.columns else "trade_date"
+    extra = [eff_col] if eff_col != "trade_date" else []
     out = (
-        df.select(["trade_date", value_col])
+        df.select(["trade_date", *extra, value_col])
         .sort("trade_date")
         .with_columns(pl.col(value_col).pct_change(12).alias("yoy"))
         .drop_nulls()
     )
     pct = _rolling_pct(out["yoy"].cast(pl.Float64), window=window_months)
-    return out.with_columns(pct.alias("pct")).select(["trade_date", "pct"])
+    return (
+        out.with_columns(pct.alias("pct")).select([eff_col, "pct"]).rename({eff_col: "trade_date"})
+    )
 
 
 def _quarterly_pct(df: pl.DataFrame, value_col: str, window_quarters: int = 12) -> pl.DataFrame:
-    """季频序列 → YoY → 滚动分位（季频，trade_date 对齐）。"""
+    """季频序列 → YoY → 滚动分位（季频，trade_date 对齐）。
+
+    生效日语义（消除前视）：数据源含 release_date 时按**发布日**生效，否则回退 trade_date。
+    """
+    eff_col = "release_date" if "release_date" in df.columns else "trade_date"
+    extra = [eff_col] if eff_col != "trade_date" else []
     if "yoy_growth" in df.columns and df["yoy_growth"].is_not_null().any():
         out = (
-            df.select(["trade_date", "yoy_growth"])
+            df.select(["trade_date", *extra, "yoy_growth"])
             .rename({"yoy_growth": "yoy"})
             .drop_nulls()
             .sort("trade_date")
         )
     else:
         out = (
-            df.select(["trade_date", value_col])
+            df.select(["trade_date", *extra, value_col])
             .sort("trade_date")
             .with_columns(pl.col(value_col).pct_change(4).alias("yoy"))
             .drop_nulls()
         )
     pct = _rolling_pct(out["yoy"].cast(pl.Float64), window=window_quarters)
-    return out.with_columns(pct.alias("pct")).select(["trade_date", "pct"])
+    return (
+        out.with_columns(pct.alias("pct")).select([eff_col, "pct"]).rename({eff_col: "trade_date"})
+    )
 
 
 def build_new_energy_direction() -> dict[str, pl.DataFrame]:
@@ -354,6 +369,110 @@ def build_optical_direction() -> pl.DataFrame:
     return build_sox_direction()
 
 
+def build_chemicals_direction() -> pl.DataFrame:
+    """化工品出口腿：钛白粉 + 聚合 MDI 出口金额 3MMA YoY → 滚动分位 → 日频方向得分。
+
+    数据源：data/curated/industry/chemicals_export.parquet（海关 GACC，product 长表）。
+    合成：各品种 3MMA 同比滚动分位取均值（对齐 optical 双腿合成）。数据缺失时返回空帧
+    （对应行业方向分回退中性 50，不阻塞其他行业）。
+    """
+    cat = DataCatalog(data_source="industry")
+    try:
+        chem = cat.load_dataset("chemicals_export")
+    except Exception:
+        return pl.DataFrame(schema={"trade_date": pl.Date, "direction_score": pl.Float64})
+    if chem.is_empty() or "product" not in chem.columns:
+        return pl.DataFrame(schema={"trade_date": pl.Date, "direction_score": pl.Float64})
+
+    gm = (
+        pl.read_parquet("data/curated/mart/global_macro_daily.parquet")
+        .select(["trade_date"])
+        .sort("trade_date")
+    )
+    scores: list[pl.DataFrame] = []
+    for product in sorted(chem["product"].unique().to_list()):
+        sub = chem.filter(pl.col("product") == product)
+        if sub.is_empty():
+            continue
+        col = "export_value_3mma" if "export_value_3mma" in sub.columns else "export_value_million_usd"
+        monthly = _monthly_pct(sub, col)
+        daily = (
+            gm.join(monthly, on="trade_date", how="left")
+            .sort("trade_date")
+            .with_columns(pl.col("pct").fill_null(strategy="forward").alias(f"{product}_score"))
+            .select(["trade_date", f"{product}_score"])
+            .drop_nulls()
+        )
+        scores.append(daily)
+    if not scores:
+        return pl.DataFrame(schema={"trade_date": pl.Date, "direction_score": pl.Float64})
+
+    merged = scores[0]
+    for s in scores[1:]:
+        merged = merged.join(s, on="trade_date", how="full", coalesce=True)
+    score_cols = [c for c in merged.columns if c.endswith("_score")]
+    merged = merged.with_columns(
+        [pl.col(c).fill_null(strategy="forward").fill_null(50.0) for c in score_cols]
+    )
+    return (
+        merged.with_columns(pl.mean_horizontal(score_cols).alias("direction_score"))
+        .select(["trade_date", "direction_score"])
+        .drop_nulls()
+    )
+
+
+def build_medical_device_direction() -> pl.DataFrame:
+    """医疗设备出口腿：医疗设备出口金额 3MMA YoY → 滚动分位 → 日频方向得分。
+
+    数据源：data/curated/industry/medical_device_export.parquet（海关 GACC，product 长表）。
+    合成：各品类 3MMA 同比滚动分位取均值（对齐 chemicals 双腿合成）。数据缺失时返回空帧
+    （对应行业方向分回退中性 50，不阻塞其他行业）。
+    """
+    cat = DataCatalog(data_source="industry")
+    try:
+        med = cat.load_dataset("medical_device_export")
+    except Exception:
+        return pl.DataFrame(schema={"trade_date": pl.Date, "direction_score": pl.Float64})
+    if med.is_empty() or "product" not in med.columns:
+        return pl.DataFrame(schema={"trade_date": pl.Date, "direction_score": pl.Float64})
+
+    gm = (
+        pl.read_parquet("data/curated/mart/global_macro_daily.parquet")
+        .select(["trade_date"])
+        .sort("trade_date")
+    )
+    scores: list[pl.DataFrame] = []
+    for product in sorted(med["product"].unique().to_list()):
+        sub = med.filter(pl.col("product") == product)
+        if sub.is_empty():
+            continue
+        col = "export_value_3mma" if "export_value_3mma" in sub.columns else "export_value_million_usd"
+        monthly = _monthly_pct(sub, col)
+        daily = (
+            gm.join(monthly, on="trade_date", how="left")
+            .sort("trade_date")
+            .with_columns(pl.col("pct").fill_null(strategy="forward").alias(f"{product}_score"))
+            .select(["trade_date", f"{product}_score"])
+            .drop_nulls()
+        )
+        scores.append(daily)
+    if not scores:
+        return pl.DataFrame(schema={"trade_date": pl.Date, "direction_score": pl.Float64})
+
+    merged = scores[0]
+    for s in scores[1:]:
+        merged = merged.join(s, on="trade_date", how="full", coalesce=True)
+    score_cols = [c for c in merged.columns if c.endswith("_score")]
+    merged = merged.with_columns(
+        [pl.col(c).fill_null(strategy="forward").fill_null(50.0) for c in score_cols]
+    )
+    return (
+        merged.with_columns(pl.mean_horizontal(score_cols).alias("direction_score"))
+        .select(["trade_date", "direction_score"])
+        .drop_nulls()
+    )
+
+
 def build_machinery_direction() -> pl.DataFrame:
     """工程机械月度产销 (3MMA) → 滚动分位数 → 日频方向得分。"""
     cat = DataCatalog(data_source="industry")
@@ -501,6 +620,7 @@ _THEME_SIGNAL: dict[str, str] = {
     "通信": "optical",
     "光模块": "optical",
     "计算机设备": "semi",
+    "计算机": "semi",  # watchlist sw_level2 标签（512720.SH 计算机 ETF）
     "光伏设备": "solar",  # 光伏装机
     "新能源": "solar",
     "电池": "nev",  # 新能源车销量
@@ -524,6 +644,16 @@ _THEME_SIGNAL: dict[str, str] = {
     "航运": "shipping",
     "交通运输": "shipping",
     "交运": "shipping",
+    "化工": "chemicals",  # 海关化工品出口（钛白粉 + 聚合 MDI）
+    "基础化工": "chemicals",
+    "化学原料": "chemicals",
+    "化学制品": "chemicals",
+    "化学纤维": "chemicals",
+    "农化制品": "chemicals",
+    "塑料": "chemicals",
+    "医疗服务": "medical_device",  # 海关医疗设备出口（CXO/医疗服务全球需求代理）
+    "医疗器械": "medical_device",
+    "医疗": "medical_device",
 }
 
 
@@ -543,16 +673,24 @@ _THEME_L2_CODE: dict[str, str] = {
     "生物制品": "370300",
     "工程机械": "640600",
     "航运港口": "421100",
+    "化学原料": "220200",
+    "化学制品": "220300",
+    "化学纤维": "220400",
+    "农化制品": "220800",
+    "塑料": "220500",
+    "医疗服务": "370600",
 }
 
 
 def build_theme_signals() -> dict[str, pl.DataFrame]:
-    """主题方向信号（日频）：semi / optical / solar / nev / metals / lithium / transformer / pharma_bd / machinery / shipping / gold。"""
+    """主题方向信号（日频）：semi / optical / solar / nev / metals / lithium / transformer / pharma_bd / machinery / shipping / gold / chemicals / medical_device。"""
     semi = build_sox_direction()  # trade_date, direction_score
     optical = build_optical_direction()
     machinery = build_machinery_direction()
     shipping = build_shipping_direction()
     gold = build_gold_direction()
+    chemicals = build_chemicals_direction()
+    medical_device = build_medical_device_direction()
     cat = DataCatalog(data_source="industry")
     solar = cat.load_dataset("solar_capacity")
     nev = cat.load_dataset("nev_monthly_sales")
@@ -600,6 +738,12 @@ def build_theme_signals() -> dict[str, pl.DataFrame]:
     pharma_dir = build_pharma_bd_direction()
     if not pharma_dir.is_empty():
         out["pharma_bd"] = pharma_dir
+
+    if not chemicals.is_empty():
+        out["chemicals"] = chemicals
+
+    if not medical_device.is_empty():
+        out["medical_device"] = medical_device
 
     return out
 

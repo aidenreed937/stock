@@ -53,10 +53,15 @@ def load_l2_panel() -> pl.DataFrame:
     panel = pl.read_parquet(_L2_PANEL_MART)
     if panel.is_empty() or "trade_date" not in panel.columns:
         raise ValueError("二级行业基本面面板为空或缺少 trade_date 列")
-    return panel.filter(
+    panel = panel.filter(
         (pl.col("trade_date") >= _L2_AVAILABLE_FROM)
         & (pl.col("industry_code").is_in(_L2_DIRECTION_POOL))
     ).sort(["trade_date", "industry_code"])
+    # 宏观恐慌指数（组合防守门 panic_scale 消费；risk_factors 缺失时回退中性 50）
+    rf = pl.read_parquet("data/analytics/macro_risk/latest/risk_factors.parquet").select(
+        ["trade_date", "panic_index"]
+    )
+    return panel.join(rf, on="trade_date", how="left")
 
 
 def load_l2_price_panel() -> pl.DataFrame:

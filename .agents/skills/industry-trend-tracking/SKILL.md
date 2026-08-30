@@ -164,8 +164,12 @@ uv run python -m stock_cli.industry_trend_strategy --list
 ```
 - 基线（`industry_l2_direction`）：动量 Top3 + 估值防守（return_60d + pe5y<=90），
   全周期年化收益 +12.50%；
-- 变体（`industry_l2_direction_qlq` / `industry_l2_direction_gate`）：量价齐升硬门 / 方向防守门
-  （实证弱于 baseline，参考对比）。
+- 变体（`industry_l2_direction_qlq`）：量价齐升硬门——全周期弱于 baseline，但样本外（2022 后）
+  Sharpe 0.32 vs 基线 0.15（CAGR 归一化口径），供需层唯一正例，保留参考；
+- 主推（`industry_l2_direction_guarded`）：capex 洪峰 + 拥挤度一票否决 + 恐慌降仓组合防守门，
+  全周期 +15.10% / 样本外 Sharpe 0.15→0.31（见 `industry_capex_combo.md`）；
+- 已停用（`industry_l2_direction_gate`）：方向防守门全周期/样本外双弱（IC 无预测力），
+  方向分定位为拐点预警信号不作策略门。
 
 ### Step 4: 验证样本外稳定性
 所有改进必须用 2022-01-01 之后样本外检验（对齐国泰海通拆分），不拿全样本刷参数。

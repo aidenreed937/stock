@@ -45,7 +45,11 @@ def _metrics(nav_df: pl.DataFrame) -> dict[str, float]:
     n = len(navs)
     final = navs[-1]
     years = n / _TRADING_DAYS_PER_YEAR
-    cagr = (final ** (1.0 / years) - 1.0) * 100.0 if years > 0 and final > 0 else 0.0
+    cagr = (
+        ((final / navs[0]) ** (1.0 / years) - 1.0) * 100.0
+        if years > 0 and final > 0 and navs[0] > 0
+        else 0.0
+    )
     peak = navs[0]
     max_dd = 0.0
     for v in navs:

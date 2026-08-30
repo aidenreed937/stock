@@ -9,6 +9,9 @@ from typing import TYPE_CHECKING
 import polars as pl
 
 from stock_analytics.features.dataset_cache import CachedCatalog, DatasetFrameCache
+from stock_analytics.marts.shared.industry_structure.industry_capex import (
+    industry_capex_panel_batch,
+)
 from stock_analytics.marts.shared.industry_structure.panel_aggregations import (
     FastFundamentalContext,
     IndustryMoneyflowContext,
@@ -131,6 +134,11 @@ def build_industry_panel(
     )
     if not moneyflow.is_empty():
         panel = panel.join(moneyflow, on="industry_code", how="left")
+    capex = industry_capex_panel_batch(cat_ts, config, (as_of_date,)).get(
+        as_of_date, pl.DataFrame()
+    )
+    if not capex.is_empty():
+        panel = panel.join(capex, on="industry_code", how="left")
     panel = _coalesce_industry_names(panel)
     return select_base_panel_columns(panel)
 
@@ -206,6 +214,15 @@ def build_industry_panel_from_daily(
     )
     if not moneyflow.is_empty():
         panel = panel.join(moneyflow, on="industry_code", how="left")
+    capex = (
+        batch_inputs.capex_by_date.get(as_of_date, pl.DataFrame())
+        if batch_inputs is not None
+        else industry_capex_panel_batch(cat_ts, config, (as_of_date,)).get(
+            as_of_date, pl.DataFrame()
+        )
+    )
+    if not capex.is_empty():
+        panel = panel.join(capex, on="industry_code", how="left")
     return select_base_panel_columns(_coalesce_industry_names(panel))
 
 

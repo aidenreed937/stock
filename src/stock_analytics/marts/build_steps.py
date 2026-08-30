@@ -34,7 +34,7 @@ from stock_analytics.marts.industry_l2_panel import (
     INDUSTRY_L2_PANEL_MART_NAME,
     build_industry_l2_panel_frame,
     empty_industry_l2_panel,
-    expand_l2_financial,
+    load_l2_financial_frame,
 )
 from stock_analytics.marts.northbound_industry import (
     NORTHBOUND_INDUSTRY_MART_NAME,
@@ -43,6 +43,9 @@ from stock_analytics.marts.northbound_industry import (
 from stock_analytics.marts.option_volatility import (
     SETTLEMENT_IV_PROXY_MART_NAME,
     build_settlement_iv_proxy_mart,
+)
+from stock_analytics.marts.shared.industry_structure.industry_capex import (
+    load_industry_l2_capex_facts,
 )
 from stock_analytics.marts.unlock_pressure import (
     UNLOCK_PRESSURE_MART_NAME,
@@ -661,20 +664,13 @@ def build_industry_l2_panel(
     if l2_daily.is_empty():
         return empty_industry_l2_panel()
 
-    # L2 财务黄金表：非金融 124 行业 + 银行/证券/保险（统一按发布日生效）。
-    # 各源 q 结构不同（gp_m 仅非金融有），先分别展开为统一事实列再合并。
+    # L2 财务黄金表：非金融 124 行业 + 银行/证券/保险（统一按发布日生效）
     cat_lx = _catalog_for(catalog, "lixinger", runtime=runtime)
-    expanded: list[pl.DataFrame] = []
-    for ds in (
-        "sw_2021_l2_fs_non_financial",
-        "sw_2021_l2_fs_bank",
-        "sw_2021_l2_fs_security",
-        "sw_2021_l2_fs_insurance",
-    ):
-        part = cat_lx.load_dataset(ds, columns=["reportDate", "symbol", "q"])
-        if not part.is_empty():
-            expanded.append(expand_l2_financial(part))
-    l2_financial = pl.concat(expanded) if expanded else pl.DataFrame()
+    l2_financial = load_l2_financial_frame(cat_lx)
+
+    # 二级行业资本开支与库存先导特征 (TuShare 底表自底向上聚合)
+    cat_ts = _catalog_for(catalog, "tushare", runtime=runtime)
+    l2_capex = load_industry_l2_capex_facts(cat_ts, cat_lx)
 
     # 二级行业方向层：global_resonance_l2_map（理杏仁码，缺失回退中性 50）
     direction_map: pl.DataFrame | None = None
@@ -686,6 +682,7 @@ def build_industry_l2_panel(
     result = build_industry_l2_panel_frame(
         l2_daily,
         l2_financial,
+        l2_capex=l2_capex,
         direction_map=direction_map,
         percentile_cutoff=effective_start,
     )

@@ -34,3 +34,9 @@ direction_neutral: 50.0
 direction_high_threshold: 66.0   # 方向分高位阈值（>66 视为过热）
 direction_risk_penalty: 20.0     # 高位 × 非量价齐升 的 composite 减分（因子层，默认关闭）
 direction_defensive_gate: false  # 因子层防守门开关（默认关闭，改由策略层象限过滤）
+
+# 资本开支朱格拉周期先导与库存剪刀差参数
+capex_leading:
+  cip_expansion_threshold: 20.0    # 在建工程同比 > 20% 视为产能扩张先导
+  cip_to_fa_high_ratio: 0.35       # 在建/固资比 > 35% 视为潜在产能投放高张力
+  capex_growth_expansion: 15.0     # 现金流 Capex TTM 增速 > 15% 视为实体投资扩张

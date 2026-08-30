@@ -16,6 +16,7 @@
 
 from __future__ import annotations
 
+import warnings
 from datetime import date
 from typing import Any
 
@@ -43,6 +44,11 @@ INDUSTRY_L2_PANEL_SCHEMA: dict[str, Any] = {
     "bargaining_score": pl.Float64,
     "crowding_score": pl.Float64,
     "direction_score": pl.Float64,
+    "cip_yoy": pl.Float64,
+    "fix_assets_yoy": pl.Float64,
+    "cip_to_fa_ratio": pl.Float64,
+    "capex_growth_ttm": pl.Float64,
+    "inventory_scissors": pl.Float64,
 }
 
 # 量价齐升质量分参数（对齐 config/analytics/industry_trend_tracking.yaml）
@@ -116,20 +122,38 @@ def expand_l2_financial(frame: pl.DataFrame) -> pl.DataFrame:
     )
 
 
+def load_l2_financial_frame(cat_lx: Any) -> pl.DataFrame:
+    """从理杏仁加载非金融与三大金融行业事实并合并展开。"""
+    expanded: list[pl.DataFrame] = []
+    for ds in (
+        "sw_2021_l2_fs_non_financial",
+        "sw_2021_l2_fs_bank",
+        "sw_2021_l2_fs_security",
+        "sw_2021_l2_fs_insurance",
+    ):
+        part = cat_lx.load_dataset(ds, columns=["reportDate", "symbol", "q"])
+        if not part.is_empty():
+            expanded.append(expand_l2_financial(part))
+    return pl.concat(expanded) if expanded else pl.DataFrame()
+
+
 def build_industry_l2_panel_frame(
     l2_daily: pl.DataFrame,
     l2_financial: pl.DataFrame,
     *,
+    l2_capex: pl.DataFrame | None = None,
     direction_map: pl.DataFrame | None = None,
     percentile_cutoff: date | None = None,
 ) -> pl.DataFrame:
-    """合并二级行业行情与 L2 财务黄金表，输出基本面面板。
+    """合并二级行业行情与 L2 财务黄金表及资本开支事实，输出基本面面板。
 
     ``l2_daily`` 为 ``industry_l2_daily`` Mart（含 ``trade_date``/``industry_code``/
     ``industry_name``/``parent_l1_code``/``parent_l1_name``/``close``/``amount_yi``/
     ``return_20d``/``return_60d``/``pe_ttm_ew_percentile_5y``/``pb_ew_percentile_5y``）；
     ``l2_financial`` 为 :func:`expand_l2_financial` 展开后的事实帧（``eff_date``/
     ``industry_code``/``revenue_growth_ttm``/``profit_growth_ttm``/``gross_margin_ttm``）。
+    ``l2_capex`` 为二级行业资本开支事实长表（``eff_date``/``industry_code``/``cip_yoy``/
+    ``fix_assets_yoy``/``cip_to_fa_ratio``/``capex_growth_ttm``/``inventory_scissors``）。
     ``direction_map`` 为二级行业方向分长表（``trade_date``/``industry_code``/
     ``direction_score``，来自 ``global_resonance_l2_map.parquet``），缺失回退中性 50；
     为 None 时方向层保持中性。
@@ -168,8 +192,30 @@ def build_industry_l2_panel_frame(
             pl.lit(_DIRECTION_NEUTRAL, dtype=pl.Float64).alias("direction_score")
         )
 
+    # 资本开支先导与库存特征 (PIT backward join)
+    if l2_capex is not None and not l2_capex.is_empty():
+        with warnings.catch_warnings():
+            warnings.filterwarnings("ignore", message=".*Sortedness of columns.*")
+            base = base.sort("trade_date").join_asof(
+                l2_capex.sort("eff_date"),
+                left_on="trade_date",
+                right_on="eff_date",
+                by="industry_code",
+                strategy="backward",
+            )
+    else:
+        base = base.with_columns(
+            [
+                pl.lit(None, dtype=pl.Float64).alias("cip_yoy"),
+                pl.lit(None, dtype=pl.Float64).alias("fix_assets_yoy"),
+                pl.lit(None, dtype=pl.Float64).alias("cip_to_fa_ratio"),
+                pl.lit(None, dtype=pl.Float64).alias("capex_growth_ttm"),
+                pl.lit(None, dtype=pl.Float64).alias("inventory_scissors"),
+            ]
+        )
+
     if l2_financial.is_empty():
-        # 无财务数据：供需/议价权中性，仅输出行情/动量/拥挤度
+        # 无财务数据：供需/议价权中性，仅输出行情/动量/拥挤度/资本开支
         return base.with_columns(
             [
                 pl.lit(None, dtype=pl.Float64).alias("revenue_growth_ttm"),
@@ -181,37 +227,16 @@ def build_industry_l2_panel_frame(
             ]
         ).select(list(INDUSTRY_L2_PANEL_SCHEMA))
 
-    # l2_financial 为已展开事实帧（eff_date/industry_code/三个财务列）
-    fin = l2_financial
-
     # 报告期滞后：每日取「已发布的最新报告期」（交易日 >= 发布日，按行业分组）
-    daily_dates = base.select("trade_date").unique().sort("trade_date")
-    fin_parts: list[pl.DataFrame] = []
-    for code in fin["industry_code"].unique().to_list():
-        fin_code = fin.filter(pl.col("industry_code") == code)
-        if fin_code.is_empty():
-            continue
-        fin_parts.append(
-            daily_dates.join_asof(
-                fin_code,
-                left_on="trade_date",
-                right_on="eff_date",
-                strategy="backward",
-            ).filter(pl.col("revenue_growth_ttm").is_not_null())
+    with warnings.catch_warnings():
+        warnings.filterwarnings("ignore", message=".*Sortedness of columns.*")
+        joined = base.sort("trade_date").join_asof(
+            l2_financial.sort("eff_date"),
+            left_on="trade_date",
+            right_on="eff_date",
+            by="industry_code",
+            strategy="backward",
         )
-    if not fin_parts:
-        return empty_industry_l2_panel()
-    fin_daily = pl.concat(fin_parts).select(
-        [
-            "trade_date",
-            "industry_code",
-            "revenue_growth_ttm",
-            "profit_growth_ttm",
-            "gross_margin_ttm",
-        ]
-    )
-
-    joined = base.join(fin_daily, on=["trade_date", "industry_code"], how="left")
 
     # 0. 中间列：营收/净利增速（空值视为 0）、量价齐升门、毛利率扩张代理
     rev = pl.col("revenue_growth_ttm").fill_null(0.0)
@@ -260,4 +285,5 @@ __all__ = [
     "build_industry_l2_panel_frame",
     "empty_industry_l2_panel",
     "expand_l2_financial",
+    "load_l2_financial_frame",
 ]

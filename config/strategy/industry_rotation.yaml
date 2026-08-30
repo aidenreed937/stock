@@ -88,65 +88,72 @@ industry_etf_map:
 # 不映射（避免错误复用可选消费ETF 与指数代码），live 巡检对选中这些行业时提示无对应 ETF。
 
 # 5. 策略参数配置
-strategies:
-  industry_momentum:
-    strategy_class: "IndustryMomentumRotationStrategy"
-    benchmark_symbol: "000985.CSI"
-    top_k: 3
-    rebalance_period: 20
-    score_column: "ind_momentum"
-    description: "纯高景气动量轮动：每月调仓，打满景气动量得分最高的 Top 3 行业"
-    friction:
-      commission_rate: 0.0001
-      slippage_rate: 0.0005
-      rebalance_deadband: 0.03
+# 【2026-08-31 停用】四大行业轮动策略（momentum/reversal/scissors/meta_router）经实证
+# 样本外 Sharpe 0.02~0.13 远低于产业趋势跟踪池（guarded 0.31 算术口径），且 scissors/meta_router
+# 依赖已证伪的 ind_scissors 因子（样本外 -0.19）。代码/CLI/测试保留，仅停用注册；如需恢复
+# 取消注释即可。后续轮动能力以 industry-trend-tracking（L2 方向池 + 组合防守门）为准。
+#
+# strategies:
+#   industry_momentum:
+#     strategy_class: "IndustryMomentumRotationStrategy"
+#     benchmark_symbol: "000985.CSI"
+#     top_k: 3
+#     rebalance_period: 20
+#     score_column: "ind_momentum"
+#     description: "纯高景气动量轮动：每月调仓，打满景气动量得分最高的 Top 3 行业"
+#     friction:
+#       commission_rate: 0.0001
+#       slippage_rate: 0.0005
+#       rebalance_deadband: 0.03
+#
+#   industry_reversal:
+#     strategy_class: "IndustryCrowdingReversalStrategy"
+#     benchmark_symbol: "000985.CSI"
+#     top_k: 3
+#     rebalance_period: 20
+#     crowding_max: 85.0
+#     valuation_min: 80.0
+#     description: "反拥挤逆向低估值布局：拥挤度>85%坚决剔除，在低估值区买入动量初起行业"
+#     friction:
+#       commission_rate: 0.0001
+#       slippage_rate: 0.0005
+#       rebalance_deadband: 0.03
+#
+#   industry_scissors:
+#     strategy_class: "IndustrySupplyDemandScissorsStrategy"
+#     benchmark_symbol: "000985.CSI"
+#     top_k: 3
+#     rebalance_period: 20
+#     scissors_min: 60.0
+#     smart_flow_min: 50.0
+#     description: "供需景气剪刀差策略：重仓毛利逆势扩张 + 聪明资金流净流入的真实定价权行业"
+#     friction:
+#       commission_rate: 0.0001
+#       slippage_rate: 0.0005
+#       rebalance_deadband: 0.03
+#
+#   industry_meta_router:
+#     strategy_class: "IndustryMetaRouterStrategy"
+#     benchmark_symbol: "000985.CSI"
+#     top_k: 3
+#     rebalance_period: 20
+#     ma_window: 20
+#     panic_threshold: 75.0
+#     overheat_threshold: 65.0
+#     defensive_industries:
+#       - "801780.SI" # 银行
+#       - "801950.SI" # 煤炭
+#       - "801160.SI" # 公用事业
+#       - "801120.SI" # 食品饮料
+#     growth_industries:
+#       - "801080.SI" # 电子
+#       - "801730.SI" # 电力设备
+#       - "801750.SI" # 计算机
+#       - "801770.SI" # 通信
+#     description: "宏观相态元自适应行业路由器：恐慌/破位切换红利防御，多头主升切换供需剪刀差与成长赛道"
+#     friction:
+#       commission_rate: 0.0001
+#       slippage_rate: 0.0005
+#       rebalance_deadband: 0.03
 
-  industry_reversal:
-    strategy_class: "IndustryCrowdingReversalStrategy"
-    benchmark_symbol: "000985.CSI"
-    top_k: 3
-    rebalance_period: 20
-    crowding_max: 85.0
-    valuation_min: 80.0
-    description: "反拥挤逆向低估值布局：拥挤度>85%坚决剔除，在低估值区买入动量初起行业"
-    friction:
-      commission_rate: 0.0001
-      slippage_rate: 0.0005
-      rebalance_deadband: 0.03
-
-  industry_scissors:
-    strategy_class: "IndustrySupplyDemandScissorsStrategy"
-    benchmark_symbol: "000985.CSI"
-    top_k: 3
-    rebalance_period: 20
-    scissors_min: 60.0
-    smart_flow_min: 50.0
-    description: "供需景气剪刀差策略：重仓毛利逆势扩张 + 聪明资金流净流入的真实定价权行业"
-    friction:
-      commission_rate: 0.0001
-      slippage_rate: 0.0005
-      rebalance_deadband: 0.03
-
-  industry_meta_router:
-    strategy_class: "IndustryMetaRouterStrategy"
-    benchmark_symbol: "000985.CSI"
-    top_k: 3
-    rebalance_period: 20
-    ma_window: 20
-    panic_threshold: 75.0
-    overheat_threshold: 65.0
-    defensive_industries:
-      - "801780.SI" # 银行
-      - "801950.SI" # 煤炭
-      - "801160.SI" # 公用事业
-      - "801120.SI" # 食品饮料
-    growth_industries:
-      - "801080.SI" # 电子
-      - "801730.SI" # 电力设备
-      - "801750.SI" # 计算机
-      - "801770.SI" # 通信
-    description: "宏观相态元自适应行业路由器：恐慌/破位切换红利防御，多头主升切换供需剪刀差与成长赛道"
-    friction:
-      commission_rate: 0.0001
-      slippage_rate: 0.0005
-      rebalance_deadband: 0.03
+strategies: {}

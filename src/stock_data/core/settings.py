@@ -131,6 +131,9 @@ class DataSettings(BaseSettings):
     alpha_vantage_url: str = "https://www.alphavantage.co/query"
     alpha_vantage_proxy: str = ""
 
+    # UN Comtrade 密钥 (Primary Subscription Key)
+    comtrade_subscription_key: str = ""
+
     # 代理配置
     akshare_proxy: str = ""
     yfinance_proxy: str = ""

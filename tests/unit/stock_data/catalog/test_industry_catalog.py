@@ -11,9 +11,8 @@ def test_industry_task_registry() -> None:
     assert "nev_monthly_sales" in tasks
     assert "solar_capacity" in tasks
     assert "non_ferrous_metals" in tasks
-    assert "transformer_export" in tasks
+    assert "customs_trade" in tasks
     assert "pharma_license_out" in tasks
-    assert "optical_module_export" in tasks
     assert "cloud_capex_quarterly" in tasks
     assert "construction_machinery" in tasks
     assert "shipping_indices" in tasks
@@ -33,20 +32,15 @@ def test_industry_task_registry() -> None:
     assert "shfe_copper_price" in spec_metals.required_columns
     assert spec_metals.update_delay_days == 0
 
-    spec_trans = resolve_task("industry", "transformer_export")
-    assert spec_trans.primary_keys == ("report_month",)
-    assert "export_value_million_usd" in spec_trans.required_columns
-    assert spec_trans.update_delay_days == 20
+    spec_customs = resolve_task("industry", "customs_trade")
+    assert spec_customs.primary_keys == ("product_key", "hs_code", "report_month")
+    assert "export_value_usd" in spec_customs.required_columns
+    assert spec_customs.update_delay_days == 20
 
     spec_pharma = resolve_task("industry", "pharma_license_out")
     assert spec_pharma.primary_keys == ("report_month",)
     assert "monthly_upfront_million_usd" in spec_pharma.required_columns
     assert spec_pharma.update_delay_days == 15
-
-    spec_opt = resolve_task("industry", "optical_module_export")
-    assert spec_opt.primary_keys == ("report_month",)
-    assert "export_value_million_usd" in spec_opt.required_columns
-    assert spec_opt.update_delay_days == 20
 
     spec_capex = resolve_task("industry", "cloud_capex_quarterly")
     assert spec_capex.primary_keys == ("report_quarter",)
@@ -73,9 +67,8 @@ def test_industry_task_bundle() -> None:
     assert "nev_monthly_sales" in bundle.tasks
     assert "solar_capacity" in bundle.tasks
     assert "non_ferrous_metals" in bundle.tasks
-    assert "transformer_export" in bundle.tasks
+    assert "customs_trade" in bundle.tasks
     assert "pharma_license_out" in bundle.tasks
-    assert "optical_module_export" in bundle.tasks
     assert "cloud_capex_quarterly" in bundle.tasks
     assert "construction_machinery" in bundle.tasks
     assert "shipping_indices" in bundle.tasks

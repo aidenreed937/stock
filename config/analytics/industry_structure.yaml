@@ -136,3 +136,17 @@ industry_structure:
       cadence: quarterly
       quality_tier: slow
       note: "申万2021保险行业季频财报"
+    - data_source: tushare
+      dataset: balancesheet
+      required: false
+      max_lag_days: 90
+      cadence: quarterly
+      quality_tier: core
+      note: "资产负债表，用于自底向上汇总在建工程与固定资产以计算资本开支先导指标"
+    - data_source: tushare
+      dataset: cashflow
+      required: false
+      max_lag_days: 90
+      cadence: quarterly
+      quality_tier: core
+      note: "现金流量表，用于自底向上汇总真实购建固资现金流以计算 Capex TTM 增速"

@@ -35,8 +35,51 @@ def _coerce_timestamp(value: object) -> date | datetime | None:
     return None
 
 
+def _qlq_expr() -> pl.Expr:
+    """量价齐升：营收 + 净利 TTM 同比双正。"""
+    return (pl.col("revenue_growth_ttm") > 0.0) & (pl.col("profit_growth_ttm") > 0.0)
+
+
+def _filter_defense_candidates(
+    candidates: pl.DataFrame,
+    valuation_max: float = 90.0,
+    require_qlq: bool = False,
+    direction_gate: bool = False,
+    direction_high_threshold: float = 66.0,
+    capex_gate: bool = False,
+    crowd_gate: bool = False,
+    crowd_max: float = 85.0,
+) -> pl.DataFrame:
+    """执行估值、量价齐升、方向、资本开支与拥挤度防守层过滤。"""
+    res = candidates
+    if "pe_ttm_ew_percentile_5y" in res.columns:
+        res = res.filter(
+            pl.col("pe_ttm_ew_percentile_5y").is_null()
+            | (pl.col("pe_ttm_ew_percentile_5y") <= valuation_max)
+        )
+    if require_qlq:
+        if "revenue_growth_ttm" not in res.columns:
+            return res.clear()
+        res = res.filter(_qlq_expr())
+    if direction_gate and "direction_score" in res.columns and "revenue_growth_ttm" in res.columns:
+        res = res.filter(~((pl.col("direction_score") > direction_high_threshold) & (~_qlq_expr())))
+    if capex_gate and "capex_growth_ttm" in res.columns:
+        res = res.filter(
+            pl.col("capex_growth_ttm").is_null()
+            | (
+                (pl.col("capex_growth_ttm") <= 60.0)
+                & (pl.col("fix_assets_yoy").is_null() | (pl.col("fix_assets_yoy") <= 40.0))
+            )
+        )
+    if crowd_gate and "crowding_score" in res.columns:
+        res = res.filter(
+            pl.col("crowding_score").is_null() | (pl.col("crowding_score") < crowd_max)
+        )
+    return res
+
+
 class IndustryL2DirectionStrategy(BaseStrategy):
-    """二级方向池策略：动量 Top3 + 估值防守，可选量价齐升门 / 方向防守门。"""
+    """二级方向池策略：动量 Top3 + 估值防守，可选量价齐升门 / 方向防守门 / 组合防守门。"""
 
     def __init__(
         self,
@@ -50,6 +93,11 @@ class IndustryL2DirectionStrategy(BaseStrategy):
         qlq_bonus: float = 0.0,
         direction_gate: bool = False,
         direction_high_threshold: float = 66.0,
+        capex_gate: bool = False,
+        crowd_gate: bool = False,
+        crowd_max: float = 85.0,
+        panic_scale: float = 0.0,
+        panic_thr: float = 65.0,
         benchmark_symbol: str | None = None,
         **kwargs: Any,
     ) -> None:
@@ -62,6 +110,11 @@ class IndustryL2DirectionStrategy(BaseStrategy):
         self.qlq_bonus = float(qlq_bonus)
         self.direction_gate = bool(direction_gate)
         self.direction_high_threshold = float(direction_high_threshold)
+        self.capex_gate = bool(capex_gate)
+        self.crowd_gate = bool(crowd_gate)
+        self.crowd_max = float(crowd_max)
+        self.panic_scale = float(panic_scale)
+        self.panic_thr = float(panic_thr)
         self.benchmark_symbol = benchmark_symbol or "000985.CSI"
         self.current_weights: dict[str, float] = {}
         self._bar_count = 0
@@ -71,9 +124,11 @@ class IndustryL2DirectionStrategy(BaseStrategy):
         self.current_weights = {}
         self._bar_count = 0
 
-    def _qlq_expr(self) -> pl.Expr:
-        """量价齐升：营收 + 净利 TTM 同比双正。"""
-        return (pl.col("revenue_growth_ttm") > 0.0) & (pl.col("profit_growth_ttm") > 0.0)
+    def _panic_index(self, latest: pl.DataFrame) -> float:
+        """当前截面恐慌指数（缺失回退 50）。"""
+        if "panic_index" in latest.columns and latest["panic_index"][0] is not None:
+            return float(latest["panic_index"][0])
+        return 50.0
 
     def on_bar(self, data: pl.DataFrame) -> list[Signal]:
         """处理最新截面数据并生成调仓信号。"""
@@ -87,34 +142,39 @@ class IndustryL2DirectionStrategy(BaseStrategy):
             return []
 
         self._bar_count += 1
-        # 季度调仓
         if self._bar_count > 1 and (self._bar_count - 1) % self.rebalance_period != 0:
             return []
 
-        candidates = latest
-        # 估值防守（pe5y 高位剔除，缺失放行）
-        if "pe_ttm_ew_percentile_5y" in candidates.columns:
-            candidates = candidates.filter(
-                pl.col("pe_ttm_ew_percentile_5y").is_null()
-                | (pl.col("pe_ttm_ew_percentile_5y") <= self.valuation_max)
-            )
-        # 量价齐升质量门（供需层，硬门）
-        if self.require_qlq:
-            if "revenue_growth_ttm" not in candidates.columns:
-                return []
-            candidates = candidates.filter(self._qlq_expr())
-        # 方向防守门：方向高位 × 非量价齐升 → 剔除
-        if self.direction_gate:
-            if (
-                "direction_score" in candidates.columns
-                and "revenue_growth_ttm" in candidates.columns
-            ):
-                candidates = candidates.filter(
-                    ~(
-                        (pl.col("direction_score") > self.direction_high_threshold)
-                        & (~self._qlq_expr())
-                    )
+        ts = _coerce_timestamp(latest_date)
+        if (
+            0.0 < self.panic_scale < 1.0
+            and self._panic_index(latest) > self.panic_thr
+            and self.current_weights
+        ):
+            panic_weights = {code: w * self.panic_scale for code, w in self.current_weights.items()}
+            panic_signals = [
+                Signal(
+                    symbol=code,
+                    direction=SignalDirection.BUY,
+                    target_weight=weight,
+                    reason=f"宏观恐慌降仓 (panic>{self.panic_thr:.0f})",
+                    timestamp=ts,
                 )
+                for code, weight in panic_weights.items()
+            ]
+            self.current_weights = panic_weights
+            return panic_signals
+
+        candidates = _filter_defense_candidates(
+            latest,
+            valuation_max=self.valuation_max,
+            require_qlq=self.require_qlq,
+            direction_gate=self.direction_gate,
+            direction_high_threshold=self.direction_high_threshold,
+            capex_gate=self.capex_gate,
+            crowd_gate=self.crowd_gate,
+            crowd_max=self.crowd_max,
+        )
 
         ranked = (
             candidates.select(
@@ -128,7 +188,7 @@ class IndustryL2DirectionStrategy(BaseStrategy):
             )
             .drop_nulls(subset=[self.score_column])
             .with_columns(
-                pl.when(self._qlq_expr())
+                pl.when(_qlq_expr())
                 .then(pl.col(self.score_column) + self.qlq_bonus)
                 .otherwise(pl.col(self.score_column))
                 .alias("score")

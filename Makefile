@@ -1,4 +1,4 @@
-.PHONY: help install lint lint-rust format test test-rust-plugins check run scan realtime market-aggregate market-temperature market-context industry-structure investor-brief quant-brief factor-research factor-combine factor-backtest multi-date screen-stocks report-consistency market-cycle-review artifact-index cleanup-analytics backfill baseline migrate-data migrate-curated cleanup-data backfill-accept repair-stock-daily-bar build-plugins industry-trend-factors industry-trend-strategy industry-trend-live
+.PHONY: help install lint lint-rust format test test-rust-plugins check run scan realtime market-aggregate market-temperature market-context industry-structure investor-brief quant-brief factor-research factor-combine factor-backtest multi-date screen-stocks report-consistency market-cycle-review artifact-index cleanup-analytics backfill baseline migrate-data migrate-curated cleanup-data backfill-accept repair-stock-daily-bar build-plugins industry-trend-factors industry-trend-strategy industry-trend-live backfill-customs sync-customs catalog-customs
 
 export UV_CACHE_DIR ?= .uv_cache
 export UV_PYTHON_INSTALL_DIR ?= .uv_python
@@ -40,6 +40,9 @@ help:
 	@echo "  make validate - Run offline data quality validator"
 	@echo "  make filter-universe - Generate filtered stock universe based on liquidity"
 	@echo "  make backfill-fundamental - Backfill fundamentals from lixinger based on universe"
+	@echo "  make backfill-customs [START_YEAR=2015] [END_YEAR=2024] [FORCE=1] - Backfill historical UN Comtrade customs trade data"
+	@echo "  make sync-customs PERIOD=YYYY-MM - Sync monthly customs trade data from UN Comtrade"
+	@echo "  make catalog-customs - View the 39 HS codes and SW industry mapping catalog"
 
 build-plugins:
 	uv run maturin develop --release --manifest-path crates/stock_plugins/Cargo.toml
@@ -227,3 +230,12 @@ industry-trend-strategy:
 
 industry-trend-live:
 	uv run python -m stock_cli.industry_trend_live $(if $(STRATEGY),--strategy $(STRATEGY)) $(if $(CAPITAL),--capital $(CAPITAL)) $(if $(DRY_RUN),--dry-run)
+
+backfill-customs:
+	uv run python -m stock_cli.customs backfill $(if $(START_YEAR),--start-year $(START_YEAR)) $(if $(END_YEAR),--end-year $(END_YEAR)) $(if $(CATALOG),--catalog $(CATALOG)) $(if $(filter 1 true yes,$(FORCE)),--force)
+
+sync-customs:
+	uv run python -m stock_cli.customs sync $(if $(PERIOD),--period $(PERIOD)) $(if $(CATALOG),--catalog $(CATALOG))
+
+catalog-customs:
+	uv run python -m stock_cli.customs catalog $(if $(CATALOG),--catalog $(CATALOG))

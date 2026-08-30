@@ -91,27 +91,6 @@ class NonFerrousMetalsRecord:
 
 
 @dataclass(frozen=True)
-class TransformerExportRecord:
-    """海关变压器月度出口金额、数量与均价记录 (HS 850421-850423等)。"""
-
-    report_month: str  # YYYY-MM
-    trade_date: date  # 月末自然日
-    export_value_million_usd: float  # 当月出口金额 (百万美元)
-    export_volume_units: float | None = None  # 出口台数 (台)
-    export_asp_usd: float | None = None  # 出口均价 (美元/台)
-    export_value_3mma: float | None = None  # 3个月移动平均出口金额 (平滑船期脉冲)
-    yoy_growth: float | None = None  # 当月出口金额同比增速
-    yoy_growth_3mma: float | None = None  # 3MMA 同比增速
-    mom_growth_3mma: float | None = None  # 3MMA 环比斜率
-    unit: str = "million_usd"  # 显式计量单位: 百万美元
-    source: str = "GACC"
-    source_url: str = "http://stats.customs.gov.cn/"
-    release_date: date | None = None
-    data_status: str = "actual"  # actual | derived | estimated | revised
-    collected_at: str = ""
-
-
-@dataclass(frozen=True)
 class PharmaLicenseOutRecord:
     """中国创新药海外 License-out (BD) 交易首付款与总交易金额月度记录。"""
 
@@ -126,27 +105,6 @@ class PharmaLicenseOutRecord:
     unit: str = "million_usd"  # 显式计量单位: 百万美元
     source: str = "PharmaCube/Announcements"
     source_url: str = ""
-    release_date: date | None = None
-    data_status: str = "actual"  # actual | derived | estimated | revised
-    collected_at: str = ""
-
-
-@dataclass(frozen=True)
-class OpticalModuleExportRecord:
-    """海关光通信收发模块出口金额、数量与均价月度记录 (HS 85176221/85176229等)。"""
-
-    report_month: str  # YYYY-MM
-    trade_date: date  # 月末自然日
-    export_value_million_usd: float  # 当月出口金额 (百万美元)
-    export_volume_ten_thousand: float | None = None  # 出口数量 (万个)
-    export_asp_usd: float | None = None  # 出口均价 (美元/个)
-    export_value_3mma: float | None = None  # 3个月移动平均出口金额 (平滑海运船期)
-    yoy_growth: float | None = None  # 当月出口额同比增速
-    yoy_growth_3mma: float | None = None  # 3MMA 同比增速
-    mom_growth_3mma: float | None = None  # 3MMA 环比斜率
-    unit: str = "million_usd"  # 显式计量单位: 百万美元
-    source: str = "GACC"
-    source_url: str = "http://stats.customs.gov.cn/"
     release_date: date | None = None
     data_status: str = "actual"  # actual | derived | estimated | revised
     collected_at: str = ""
@@ -212,5 +170,36 @@ class ShippingIndicesRecord:
     source: str = "BalticExchange/SSE"
     source_url: str = ""
     release_date: date | None = None
+    data_status: str = "actual"  # actual | derived | estimated | revised
+    collected_at: str = ""
+
+
+@dataclass(frozen=True)
+class CustomsTradeRecord:
+    """海关重点品类进出口月度标准化记录 (支持 GACC 与 UN Comtrade 双源)。"""
+
+    category_key: str  # 产业链大类标识 (如 power_and_new_energy, automotive)
+    category_name: str  # 产业链大类名称
+    product_key: str  # 细分品类标识 (如 transformer, bev)
+    product_name: str  # 细分品类名称
+    hs_code: str  # 8 位或 6 位海关商品编码
+    hs_name: str  # 商品官方中文名称
+    report_month: str  # 报告月度 (YYYY-MM)
+    trade_date: date  # 月末自然日
+    trade_direction: str  # 出口(export) / 进口(import)
+    export_value_usd: float  # 出口金额 (美元)
+    export_volume: float | None = None  # 出口数量
+    quantity_unit: str = ""  # 数量计量单位
+    export_asp_usd: float | None = None  # 出口均价 (美元/单位)
+    target_l1_code: str = ""  # 申万一级行业代码 (如 801730.SI)
+    target_l1_name: str = ""  # 申万一级行业名称 (如 电力设备)
+    target_l2_codes: str = ""  # 申万二级行业代码 (如 801737.SI)
+    target_l2_names: str = ""  # 申万二级行业名称 (如 电网设备)
+    export_value_3mma: float | None = None  # 3个月移动平均金额
+    yoy_growth_3mma: float | None = None  # 3MMA 同比增速
+    mom_growth_3mma: float | None = None  # 3MMA 环比斜率
+    source: str = "UN_Comtrade"  # 数据源标识 (UN_Comtrade / GACC)
+    source_url: str = ""
+    release_date: date | None = None  # 官方发布日期 (防前视生效关键)
     data_status: str = "actual"  # actual | derived | estimated | revised
     collected_at: str = ""

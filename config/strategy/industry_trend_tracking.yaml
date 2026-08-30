@@ -31,22 +31,43 @@ strategies:
     score_column: "return_60d"
     valuation_max: 90.0
     require_qlq: true
-    description: "二级方向池 + 量价齐升硬门：只买营收/净利 TTM 双正行业（实证小池拖累，参考对比）"
+    description: "二级方向池 + 量价齐升硬门：只买营收/净利 TTM 双正行业（全周期弱于基线，但样本外 2022 后 Sharpe 0.32 vs 基线 0.15，供需层唯一正例）"
     friction:
       commission_rate: 0.0001
       slippage_rate: 0.0005
       rebalance_deadband: 0.03
 
-  industry_l2_direction_gate:
+  # 【2026-08-31 停用】方向防守门（gate）：全周期 +8.34% / 样本外 0.14 均弱于基线，且方向分
+  # 因子实测 IC 仅 +0.99%（无预测力），修复月频腿前视后进一步走弱。SKILL 定位已明确方向分
+  # 作「拐点预警信号」不作策略门；如需恢复取消注释即可。
+  # industry_l2_direction_gate:
+  #   strategy_class: "IndustryL2DirectionStrategy"
+  #   benchmark_symbol: "000985.CSI"
+  #   top_k: 3
+  #   rebalance_period: 63
+  #   score_column: "return_60d"
+  #   valuation_max: 90.0
+  #   direction_gate: true
+  #   direction_high_threshold: 66.0
+  #   description: "二级方向池 + 方向防守门：方向高位×非量价齐升剔除（防守语义，实证弱于基线）"
+  #   friction:
+  #     commission_rate: 0.0001
+  #     slippage_rate: 0.0005
+  #     rebalance_deadband: 0.03
+
+  industry_l2_direction_guarded:
     strategy_class: "IndustryL2DirectionStrategy"
     benchmark_symbol: "000985.CSI"
     top_k: 3
     rebalance_period: 63
     score_column: "return_60d"
     valuation_max: 90.0
-    direction_gate: true
-    direction_high_threshold: 66.0
-    description: "二级方向池 + 方向防守门：方向高位×非量价齐升剔除（防守语义，实证弱于基线）"
+    capex_gate: true
+    crowd_gate: true
+    crowd_max: 85.0
+    panic_scale: 0.5
+    panic_thr: 65.0
+    description: "二级方向池 + 组合防守门（capex洪峰 + 拥挤度一票否决 + 恐慌降仓50%）：样本外 Sharpe 0.15→0.31（见 industry_capex_combo.md）"
     friction:
       commission_rate: 0.0001
       slippage_rate: 0.0005

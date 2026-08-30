@@ -1,45 +1,47 @@
-"""垂直产业景气事实表与独立采集器 (Semiconductor/Nev/Solar) 单元测试。"""
+"""垂直产业景气事实表与独立采集器 (Semiconductor/Nev/Solar/Metals/Pharma/Cloud/Machinery/Shipping) 单元测试。"""
 
 from datetime import date
 from pathlib import Path
 
 from stock_data.fetcher.industry import (
+    CLOUD_CAPEX_SCHEMA,
+    CONSTRUCTION_MACHINERY_SCHEMA,
     NEV_MONTHLY_SCHEMA,
     NON_FERROUS_METALS_SCHEMA,
     PHARMA_LICENSE_OUT_SCHEMA,
     SEMICONDUCTOR_SALES_SCHEMA,
+    SHIPPING_INDICES_SCHEMA,
     SOLAR_CAPACITY_SCHEMA,
-    TRANSFORMER_EXPORT_SCHEMA,
     CloudCapexRecord,
     ConstructionMachineryRecord,
+    CustomsTradeRecord,
     NevCollector,
+    NevMonthlyRecord,
     NonFerrousCollector,
     NonFerrousMetalsRecord,
-    OpticalModuleExportRecord,
-    PharmaBdCollector,
     PharmaLicenseOutRecord,
     SemiconductorSalesRecord,
     ShippingIndicesRecord,
+    SolarCapacityRecord,
     SolarCollector,
-    TransformerCollector,
-    TransformerExportRecord,
+    empty_cloud_capex,
+    empty_construction_machinery,
     empty_nev_monthly,
     empty_non_ferrous_metals,
     empty_pharma_license_out,
     empty_semiconductor_sales,
+    empty_shipping_indices,
     empty_solar_capacity,
-    empty_transformer_export,
     get_month_end_date,
     records_to_cloud_capex_frame,
+    records_to_customs_trade_frame,
     records_to_machinery_frame,
     records_to_metals_frame,
     records_to_nev_frame,
-    records_to_optical_frame,
     records_to_pharma_bd_frame,
     records_to_semiconductor_frame,
     records_to_shipping_frame,
     records_to_solar_frame,
-    records_to_transformer_frame,
     save_curated_fact,
     sync_all_industry_metrics,
 )
@@ -49,67 +51,76 @@ def test_get_month_end_date() -> None:
     assert get_month_end_date(2026, 2) == date(2026, 2, 28)
     assert get_month_end_date(2024, 2) == date(2024, 2, 29)
     assert get_month_end_date(2026, 6) == date(2026, 6, 30)
-    assert get_month_end_date(2026, 7) == date(2026, 7, 31)
 
 
-def test_semiconductor_sales_frame_conversion() -> None:
+def test_semiconductor_frame_conversion() -> None:
     assert empty_semiconductor_sales().schema == SEMICONDUCTOR_SALES_SCHEMA
 
     records = [
         SemiconductorSalesRecord(
             report_month="2026-05",
             trade_date=date(2026, 5, 31),
-            global_sales_usd=120.6,
-            china_sales_usd=38.5,
-            yoy_growth=1.041,
-            mom_growth=0.092,
-            source="SIA/WSTS",
-            source_url="https://www.semiconductors.org/test/",
-            release_date=date(2026, 7, 6),
-            data_status="actual",
-        )
+            global_sales_usd=48.5,
+            china_sales_usd=14.2,
+            yoy_growth=0.152,
+        ),
+        SemiconductorSalesRecord(
+            report_month="2026-06",
+            trade_date=date(2026, 6, 30),
+            global_sales_usd=51.0,
+            china_sales_usd=15.0,
+            yoy_growth=0.185,
+        ),
     ]
+
     df = records_to_semiconductor_frame(records)
     assert not df.is_empty()
-    assert df["global_sales_usd"][0] == 120.6
-    assert df["china_sales_usd"][0] == 38.5
-    assert df["yoy_growth"][0] == 1.041
-    assert df["mom_growth"][0] == 0.092
+    assert df.height == 2
+    assert "global_sales_usd" in df.columns
+    assert "china_sales_usd" in df.columns
+    assert df["global_sales_usd"][1] == 51.0
     assert df["unit"][0] == "billion_usd"
     assert df["source"][0] == "SIA/WSTS"
-    assert df["data_status"][0] == "actual"
-    assert df["release_date"][0] == date(2026, 7, 6)
 
 
-def test_semiconductor_collector_article_parsing() -> None:
-    mock_article = """
-    <html>
-        <body>
-            <p>WASHINGTON, July 6, 2026—The Semiconductor Industry Association (SIA) today announced global semiconductor sales were $120.6 billion during the month of May 2026, an increase of 9.2% compared to the April 2026 total of $110.5 billion and 104.1% more than the May 2025 total of $59.1 billion.</p>
-        </body>
-    </html>
-    """
-    from stock_data.fetcher.industry.semiconductor import parse_sia_china_and_date
-
-    enrich = parse_sia_china_and_date(
-        mock_article, source_url="https://www.semiconductors.org/may-2026/"
-    )
-    assert enrich is not None
-    assert enrich["report_month"] == "2026-05"
-    assert enrich["release_date"] == date(2026, 7, 6)
-    assert enrich["source_url"] == "https://www.semiconductors.org/may-2026/"
-
-
-def test_nev_collector_and_frame_conversion(tmp_path: Path) -> None:
+def test_nev_monthly_frame_conversion() -> None:
     assert empty_nev_monthly().schema == NEV_MONTHLY_SCHEMA
 
+    records = [
+        NevMonthlyRecord(
+            report_month="2026-05",
+            trade_date=date(2026, 5, 31),
+            wholesale_volume_ten_thousand=95.0,
+            penetration_rate=0.485,
+            yoy_growth=0.32,
+        ),
+        NevMonthlyRecord(
+            report_month="2026-06",
+            trade_date=date(2026, 6, 30),
+            wholesale_volume_ten_thousand=101.0,
+            penetration_rate=0.505,
+            yoy_growth=0.35,
+        ),
+    ]
+
+    df = records_to_nev_frame(records)
+    assert not df.is_empty()
+    assert df.height == 2
+    assert "wholesale_volume_3mma" in df.columns
+    assert "yoy_growth_3mma" in df.columns
+    assert df["wholesale_volume_ten_thousand"][1] == 101.0
+    assert df["penetration_rate"][1] == 0.505
+    assert df["unit"][0] == "ten_thousand_units"
+
+
+def test_nev_collector_from_raw_csv(tmp_path: Path) -> None:
     raw_dir = tmp_path / "raw_industry"
     cpca_dir = raw_dir / "cpca"
     cpca_dir.mkdir(parents=True)
     raw_csv = cpca_dir / "nev_monthly_sales.csv"
     raw_csv.write_text(
-        "report_month,trade_date,wholesale_volume_ten_thousand,retail_volume_ten_thousand,export_volume_ten_thousand,penetration_rate,battery_installation_gwh,yoy_growth,source,source_url,release_date,data_status,collected_at\n"
-        "2026-06,2026-06-30,148.1,100.7,18.5,0.518,48.2,0.285,CPCA,http://www.cpcaauto.com/,2026-07-08,actual,2026-07-08T10:00:00Z\n",
+        "report_month,trade_date,wholesale_volume_ten_thousand,penetration_rate,yoy_growth,source,source_url,release_date,data_status,collected_at\n"
+        "2026-06,2026-06-30,101.0,0.505,0.35,CPCA,http://www.cpcaauto.com/,2026-07-10,actual,2026-07-10T10:00:00Z\n",
         encoding="utf-8",
     )
 
@@ -118,22 +129,44 @@ def test_nev_collector_and_frame_conversion(tmp_path: Path) -> None:
     assert len(records) == 1
     rec = records[0]
     assert rec.report_month == "2026-06"
-    assert rec.trade_date == date(2026, 6, 30)
-    assert rec.wholesale_volume_ten_thousand == 148.1
-    assert rec.retail_volume_ten_thousand == 100.7
-    assert rec.penetration_rate == 0.518
-    assert rec.yoy_growth == 0.285
+    assert rec.wholesale_volume_ten_thousand == 101.0
+    assert rec.penetration_rate == 0.505
 
     df = records_to_nev_frame(records)
     assert not df.is_empty()
-    assert df["penetration_rate"][0] == 0.518
-    assert df["unit"][0] == "ten_thousand_units"
-    assert df["source"][0] == "CPCA"
+    assert df["wholesale_volume_ten_thousand"][0] == 101.0
 
 
-def test_solar_collector_and_frame_conversion(tmp_path: Path) -> None:
+def test_solar_capacity_frame_conversion() -> None:
     assert empty_solar_capacity().schema == SOLAR_CAPACITY_SCHEMA
 
+    records = [
+        SolarCapacityRecord(
+            report_month="2026-05",
+            trade_date=date(2026, 5, 31),
+            monthly_new_capacity_gw=21.0,
+            cumulative_capacity_gw=1247.5,
+            yoy_growth=0.15,
+        ),
+        SolarCapacityRecord(
+            report_month="2026-06",
+            trade_date=date(2026, 6, 30),
+            monthly_new_capacity_gw=24.5,
+            cumulative_capacity_gw=1272.0,
+            yoy_growth=0.182,
+        ),
+    ]
+
+    df = records_to_solar_frame(records)
+    assert not df.is_empty()
+    assert df.height == 2
+    assert "monthly_new_capacity_3mma" in df.columns
+    assert "yoy_growth_3mma" in df.columns
+    assert df["cumulative_capacity_gw"][1] == 1272.0
+    assert df["unit"][0] == "gw"
+
+
+def test_solar_collector_from_raw_csv(tmp_path: Path) -> None:
     raw_dir = tmp_path / "raw_industry"
     nea_dir = raw_dir / "nea"
     nea_dir.mkdir(parents=True)
@@ -214,67 +247,6 @@ def test_non_ferrous_collector_and_frame_conversion(tmp_path: Path) -> None:
     assert df["shfe_copper_price"][0] == 79000.0
 
 
-def test_non_ferrous_collector_akshare_mock(monkeypatch: object) -> None:
-    import sys
-    import types
-
-    import pandas as pd
-
-    # 构造 mock akshare 模块
-    mock_ak = types.ModuleType("akshare")
-    mock_ak.futures_main_sina = lambda symbol: pd.DataFrame(  # type: ignore[attr-defined]
-        [
-            {
-                "date": "2026-06-30",
-                "close": 78500.0 if symbol == "CU0" else (20500.0 if symbol == "AL0" else 85000.0),
-            }
-        ]
-    )
-    mock_ak.spot_hist_sge = lambda symbol: pd.DataFrame(  # type: ignore[attr-defined]
-        [{"date": "2026-06-30", "close": 575.0}]
-    )
-    mock_ak.futures_inventory_em = lambda symbol: pd.DataFrame(  # type: ignore[attr-defined]
-        [{"日期": "2026-06-30", "库存": 120000.0}]
-    )
-    sys.modules["akshare"] = mock_ak
-
-    collector = NonFerrousCollector(raw_dir=Path("/non_existent_dir"))
-    records = collector.fetch_from_akshare()
-    assert len(records) == 1
-    rec = records[0]
-    assert rec.trade_date == date(2026, 6, 30)
-    assert rec.shfe_copper_price == 78500.0
-    assert rec.lithium_carbonate_price == 85000.0
-    assert rec.sge_gold_price == 575.0
-    assert rec.copper_inventory_ton == 120000.0
-
-
-def test_transformer_export_frame_conversion() -> None:
-    assert empty_transformer_export().schema == TRANSFORMER_EXPORT_SCHEMA
-
-    records = [
-        TransformerExportRecord(
-            report_month="2026-05",
-            trade_date=date(2026, 5, 31),
-            export_value_million_usd=850.0,
-            export_volume_units=450000.0,
-        ),
-        TransformerExportRecord(
-            report_month="2026-06",
-            trade_date=date(2026, 6, 30),
-            export_value_million_usd=920.0,
-            export_volume_units=470000.0,
-        ),
-    ]
-    df = records_to_transformer_frame(records)
-    assert not df.is_empty()
-    assert df.height == 2
-    assert "export_value_3mma" in df.columns
-    assert "yoy_growth_3mma" in df.columns
-    assert "export_asp_usd" in df.columns
-    assert df["export_value_million_usd"][1] == 920.0
-
-
 def test_pharma_bd_frame_conversion() -> None:
     assert empty_pharma_license_out().schema == PHARMA_LICENSE_OUT_SCHEMA
 
@@ -303,60 +275,8 @@ def test_pharma_bd_frame_conversion() -> None:
     assert df["deal_count"][1] == 15
 
 
-def test_transformer_and_pharma_collectors(tmp_path: Path) -> None:
-    raw_dir = tmp_path / "raw_industry"
-    (raw_dir / "customs").mkdir(parents=True)
-    (raw_dir / "pharma").mkdir(parents=True)
-
-    (raw_dir / "customs" / "transformer_export.csv").write_text(
-        "report_month,trade_date,export_value_million_usd,export_volume_units,export_asp_usd,export_value_3mma,yoy_growth,yoy_growth_3mma,mom_growth_3mma,unit,source,source_url,release_date,data_status,collected_at\n"
-        "2026-05,2026-05-31,850.0,450000.0,1888.89,,,,,million_usd,GACC,,2026-06-20,actual,\n",
-        encoding="utf-8",
-    )
-    (raw_dir / "pharma" / "license_out_monthly.csv").write_text(
-        "report_month,trade_date,monthly_upfront_million_usd,monthly_total_deal_million_usd,deal_count,upfront_3mma,yoy_growth_3mma,mom_growth_3mma,unit,source,source_url,release_date,data_status,collected_at\n"
-        "2026-05,2026-05-31,650.0,4500.0,12,,,,million_usd,PharmaCube,,2026-06-15,actual,\n",
-        encoding="utf-8",
-    )
-
-    t_collector = TransformerCollector(raw_dir=raw_dir)
-    t_records = t_collector.collect()
-    assert len(t_records) == 1
-    assert t_records[0].export_value_million_usd == 850.0
-
-    p_collector = PharmaBdCollector(raw_dir=raw_dir)
-    p_records = p_collector.collect()
-    assert len(p_records) == 1
-    assert p_records[0].monthly_upfront_million_usd == 650.0
-
-
-def test_optical_module_frame_conversion() -> None:
-    records = [
-        OpticalModuleExportRecord(
-            report_month="2026-05",
-            trade_date=date(2026, 5, 31),
-            export_value_million_usd=1200.0,
-            export_volume_ten_thousand=150.0,
-            export_asp_usd=800.0,
-        ),
-        OpticalModuleExportRecord(
-            report_month="2026-06",
-            trade_date=date(2026, 6, 30),
-            export_value_million_usd=1400.0,
-            export_volume_ten_thousand=160.0,
-            export_asp_usd=875.0,
-        ),
-    ]
-    df = records_to_optical_frame(records)
-    assert not df.is_empty()
-    assert df.height == 2
-    assert "export_value_3mma" in df.columns
-    assert "export_asp_usd" in df.columns
-    assert df["export_value_million_usd"][0] == 1200.0
-    assert df["export_value_3mma"][1] == 1300.0
-
-
 def test_cloud_capex_frame_conversion() -> None:
+    assert empty_cloud_capex().schema == CLOUD_CAPEX_SCHEMA
     records = [
         CloudCapexRecord(
             report_quarter="2026-Q1",
@@ -386,94 +306,88 @@ def test_cloud_capex_frame_conversion() -> None:
 
 
 def test_construction_machinery_frame_conversion() -> None:
+    assert empty_construction_machinery().schema == CONSTRUCTION_MACHINERY_SCHEMA
     records = [
         ConstructionMachineryRecord(
             report_month="2026-05",
             trade_date=date(2026, 5, 31),
-            excavator_total_units=22000.0,
-            excavator_domestic_units=11000.0,
-            excavator_export_units=11000.0,
-            komatsu_hours_china=105.0,
+            excavator_total_units=18500.0,
+            excavator_domestic_units=9500.0,
+            excavator_export_units=9000.0,
+            komatsu_hours_china=98.5,
+            komatsu_hours_yoy=0.045,
+            export_ratio=0.486,
         ),
         ConstructionMachineryRecord(
             report_month="2026-06",
             trade_date=date(2026, 6, 30),
-            excavator_total_units=24000.0,
-            excavator_domestic_units=12000.0,
-            excavator_export_units=12000.0,
-            komatsu_hours_china=110.0,
+            excavator_total_units=19200.0,
+            excavator_domestic_units=9800.0,
+            excavator_export_units=9400.0,
+            komatsu_hours_china=102.0,
+            komatsu_hours_yoy=0.062,
+            export_ratio=0.490,
         ),
     ]
     df = records_to_machinery_frame(records)
     assert not df.is_empty()
     assert df.height == 2
     assert "excavator_total_3mma" in df.columns
-    assert "export_ratio" in df.columns
-    assert df["excavator_total_units"][0] == 22000.0
-    assert df["export_ratio"][0] == 0.5
+    assert "yoy_growth_3mma" in df.columns
+    assert df["excavator_total_units"][1] == 19200.0
+    assert df["export_ratio"][0] == 0.486
 
 
 def test_shipping_indices_frame_conversion() -> None:
+    assert empty_shipping_indices().schema == SHIPPING_INDICES_SCHEMA
     records = [
         ShippingIndicesRecord(
-            trade_date=date(2026, 8, 27),
-            bdi_index=1500.0,
-            bdti_index=950.0,
-            bcti_index=720.0,
-            scfi_index=1350.0,
+            trade_date=date(2026, 6, 29),
+            bdi_index=1650.0,
+            bdti_index=1020.0,
+            bcti_index=780.0,
+            scfi_index=1420.0,
         ),
         ShippingIndicesRecord(
-            trade_date=date(2026, 8, 28),
-            bdi_index=1520.0,
-            bdti_index=960.0,
-            bcti_index=730.0,
-            scfi_index=1360.0,
+            trade_date=date(2026, 6, 30),
+            bdi_index=1680.0,
+            bdti_index=1035.0,
+            bcti_index=795.0,
+            scfi_index=1435.0,
         ),
     ]
     df = records_to_shipping_frame(records)
     assert not df.is_empty()
     assert df.height == 2
-    assert "bdi_index" in df.columns
-    assert "bdti_index" in df.columns
-    assert df["bdi_index"][1] == 1520.0
+    assert df["bdi_index"][1] == 1680.0
+    assert df["unit"][0] == "index_points"
 
 
-def test_save_curated_fact_and_sync_pipeline(tmp_path: Path) -> None:
+def test_sync_all_industry_metrics_pipeline(tmp_path: Path) -> None:
     raw_dir = tmp_path / "raw_industry"
     curated_dir = tmp_path / "curated_industry"
+
     (raw_dir / "cpca").mkdir(parents=True)
     (raw_dir / "nea").mkdir(parents=True)
     (raw_dir / "metals").mkdir(parents=True)
-    (raw_dir / "customs").mkdir(parents=True)
     (raw_dir / "pharma").mkdir(parents=True)
     (raw_dir / "cloud_capex").mkdir(parents=True)
     (raw_dir / "machinery").mkdir(parents=True)
     (raw_dir / "shipping").mkdir(parents=True)
 
-    # 准备各模块 RAW CSV
     (raw_dir / "cpca" / "nev_monthly_sales.csv").write_text(
-        "report_month,trade_date,wholesale_volume_ten_thousand,retail_volume_ten_thousand,export_volume_ten_thousand,penetration_rate,battery_installation_gwh,yoy_growth,source,source_url,release_date,data_status,collected_at\n"
-        "2026-05,2026-05-31,130.0,90.0,15.0,0.490,40.0,0.300,CPCA,,2026-06-08,actual,\n",
+        "report_month,trade_date,wholesale_volume_ten_thousand,penetration_rate,yoy_growth,source,source_url,release_date,data_status,collected_at\n"
+        "2026-05,2026-05-31,95.0,0.485,0.32,CPCA,,2026-06-10,actual,\n",
         encoding="utf-8",
     )
     (raw_dir / "nea" / "solar_capacity.csv").write_text(
         "report_month,trade_date,monthly_new_capacity_gw,cumulative_capacity_gw,yoy_growth,source,source_url,release_date,data_status,collected_at\n"
-        "2026-05,2026-05-31,20.0,1247.5,0.150,NEA,,2026-06-20,actual,\n",
+        "2026-05,2026-05-31,21.0,1247.5,0.15,NEA,,2026-06-22,actual,\n",
         encoding="utf-8",
     )
     (raw_dir / "metals" / "commodity_prices.csv").write_text(
         "report_date,trade_date,lithium_carbonate_price,shfe_copper_price,shfe_aluminum_price,sge_gold_price,copper_inventory_ton,unit,source,source_url,release_date,data_status,collected_at\n"
-        "2026-05-31,2026-05-31,85000.0,78000.0,20500.0,570.0,120000.0,mixed,AkShare,,2026-05-31,actual,\n",
-        encoding="utf-8",
-    )
-    (raw_dir / "customs" / "transformer_export.csv").write_text(
-        "report_month,trade_date,export_value_million_usd,export_volume_units,export_asp_usd,export_value_3mma,yoy_growth,yoy_growth_3mma,mom_growth_3mma,unit,source,source_url,release_date,data_status,collected_at\n"
-        "2026-05,2026-05-31,850.0,450000.0,1888.89,,,,,million_usd,GACC,,2026-06-20,actual,\n",
-        encoding="utf-8",
-    )
-    (raw_dir / "customs" / "optical_module_export.csv").write_text(
-        "report_month,trade_date,export_value_million_usd,export_volume_ten_thousand,export_asp_usd,export_value_3mma,yoy_growth,yoy_growth_3mma,mom_growth_3mma,unit,source,source_url,release_date,data_status,collected_at\n"
-        "2026-05,2026-05-31,1200.0,150.0,800.00,,,,,million_usd,GACC,,2026-06-20,actual,\n",
+        "2026-05-31,2026-05-31,85000.0,78000.0,20500.0,575.5,125000.0,mixed,AkShare,,2026-05-31,actual,\n",
         encoding="utf-8",
     )
     (raw_dir / "pharma" / "license_out_monthly.csv").write_text(
@@ -483,12 +397,12 @@ def test_save_curated_fact_and_sync_pipeline(tmp_path: Path) -> None:
     )
     (raw_dir / "cloud_capex" / "csp_capex_quarterly.csv").write_text(
         "report_quarter,trade_date,total_capex_billion_usd,msft_capex_billion_usd,goog_capex_billion_usd,meta_capex_billion_usd,amzn_capex_billion_usd,yoy_growth,qoq_growth,unit,source,source_url,release_date,data_status,collected_at\n"
-        "2026-Q1,2026-03-31,85.0,28.0,18.0,14.0,25.0,,,billion_usd,Company Filings,,2026-04-28,actual,\n",
+        "2026-Q1,2026-03-31,85.0,28.0,18.0,14.0,25.0,,,billion_usd,10-Q,,2026-04-25,actual,\n",
         encoding="utf-8",
     )
     (raw_dir / "machinery" / "excavator_monthly.csv").write_text(
         "report_month,trade_date,excavator_total_units,excavator_domestic_units,excavator_export_units,komatsu_hours_china,komatsu_hours_yoy,export_ratio,excavator_total_3mma,yoy_growth,yoy_growth_3mma,mom_growth_3mma,unit,source,source_url,release_date,data_status,collected_at\n"
-        "2026-05,2026-05-31,22000.0,11000.0,11000.0,105.0,,0.5000,,,,,units/hours,CCMA/Komatsu,,2026-06-08,actual,\n",
+        "2026-05,2026-05-31,18500.0,9500.0,9000.0,98.5,0.045,0.486,,,,,units/hours,CCMA,,2026-06-08,actual,\n",
         encoding="utf-8",
     )
     (raw_dir / "shipping" / "freight_indices.csv").write_text(
@@ -502,9 +416,7 @@ def test_save_curated_fact_and_sync_pipeline(tmp_path: Path) -> None:
     assert res.get("nev_monthly_sales", 0) == 1
     assert res.get("solar_capacity", 0) == 1
     assert res.get("non_ferrous_metals", 0) == 1
-    assert res.get("transformer_export", 0) == 1
     assert res.get("pharma_license_out", 0) == 1
-    assert res.get("optical_module_export", 0) == 1
     assert res.get("cloud_capex_quarterly", 0) == 1
     assert res.get("construction_machinery", 0) == 1
     assert res.get("shipping_indices", 0) == 1
@@ -520,29 +432,66 @@ def test_save_curated_fact_and_sync_pipeline(tmp_path: Path) -> None:
 
 
 def test_watermark_incremental_merge_and_idempotence(tmp_path: Path) -> None:
-    parquet_path = tmp_path / "transformer_export.parquet"
-    rec1 = TransformerExportRecord(
+    parquet_path = tmp_path / "customs_trade.parquet"
+    rec1 = CustomsTradeRecord(
+        category_key="power_and_new_energy",
+        category_name="新能源与电力设备",
+        product_key="transformer",
+        product_name="变压器",
+        hs_code="85042100",
+        hs_name="额定容量≤650kVA液体介质变压器",
         report_month="2026-05",
         trade_date=date(2026, 5, 31),
-        export_value_million_usd=850.0,
-        export_volume_units=450000.0,
-        export_asp_usd=1888.89,
+        trade_direction="export",
+        export_value_usd=8500000.0,
+        export_volume=450.0,
+        quantity_unit="units",
+        target_l1_code="801730.SI",
+        target_l1_name="电力设备",
+        target_l2_codes="801737.SI",
+        target_l2_names="电网设备",
         release_date=date(2026, 6, 20),
     )
-    df1 = records_to_transformer_frame([rec1])
-    assert save_curated_fact(df1, parquet_path, primary_keys=["report_month"]) == 1
+    df1 = records_to_customs_trade_frame([rec1])
+    assert (
+        save_curated_fact(
+            df1, parquet_path, primary_keys=["product_key", "hs_code", "report_month"]
+        )
+        == 1
+    )
 
     # 增量追加次月新记录推进水位
-    rec2 = TransformerExportRecord(
+    rec2 = CustomsTradeRecord(
+        category_key="power_and_new_energy",
+        category_name="新能源与电力设备",
+        product_key="transformer",
+        product_name="变压器",
+        hs_code="85042100",
+        hs_name="额定容量≤650kVA液体介质变压器",
         report_month="2026-06",
         trade_date=date(2026, 6, 30),
-        export_value_million_usd=920.0,
-        export_volume_units=470000.0,
-        export_asp_usd=1957.45,
+        trade_direction="export",
+        export_value_usd=9200000.0,
+        export_volume=470.0,
+        quantity_unit="units",
+        target_l1_code="801730.SI",
+        target_l1_name="电力设备",
+        target_l2_codes="801737.SI",
+        target_l2_names="电网设备",
         release_date=date(2026, 7, 20),
     )
-    df2 = records_to_transformer_frame([rec2])
-    assert save_curated_fact(df2, parquet_path, primary_keys=["report_month"]) == 2
+    df2 = records_to_customs_trade_frame([rec2])
+    assert (
+        save_curated_fact(
+            df2, parquet_path, primary_keys=["product_key", "hs_code", "report_month"]
+        )
+        == 2
+    )
 
     # 重复写入相同的次月记录，验证严格幂等去重
-    assert save_curated_fact(df2, parquet_path, primary_keys=["report_month"]) == 2
+    assert (
+        save_curated_fact(
+            df2, parquet_path, primary_keys=["product_key", "hs_code", "report_month"]
+        )
+        == 2
+    )

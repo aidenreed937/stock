@@ -159,6 +159,14 @@ def inspect_live_industry_trend_signal(
         )
         .sort(["trade_date", "industry_code"])
     )
+    # 宏观恐慌指数（组合防守门 panic_scale 消费；缺失回退中性 50）
+    rf_path = Path("data/analytics/macro_risk/latest/risk_factors.parquet")
+    if rf_path.exists():
+        panel = panel.join(
+            pl.read_parquet(rf_path).select(["trade_date", "panic_index"]),
+            on="trade_date",
+            how="left",
+        )
     if panel.is_empty():
         raise RuntimeError("二级行业基本面面板为空，无法推演信号")
     latest_date = panel["trade_date"].max()
