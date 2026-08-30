@@ -4,6 +4,7 @@ from dataclasses import dataclass, field
 from typing import Any, cast
 
 from stock_data.core import task_registry_helpers as _registry_helpers
+from stock_data.core.lixinger_macro_tasks import build_lixinger_macro_tasks
 from stock_data.core.lixinger_risk_tasks import build_lixinger_risk_tasks
 from stock_data.core.public_tasks import (
     expand_public_task_targets as _expand_public_task_targets,
@@ -116,6 +117,8 @@ _EXPLICIT_NON_PARTITIONED: frozenset[str] = frozenset(
         "interest_rates",
         "non_ferrous_metals",
         "crude_oil",
+        "energy",
+        "price_index",
     }
 )
 
@@ -157,6 +160,8 @@ _EXPLICIT_SINGLE_SYNC: frozenset[str] = frozenset(
         "interest_rates",
         "non_ferrous_metals",
         "crude_oil",
+        "energy",
+        "price_index",
     }
 )
 
@@ -383,71 +388,6 @@ _CUSTOM_TASKS: dict[tuple[str, str], TaskSpec] = {
         partitioned=False,
         is_single_sync=True,
     ),
-    ("lixinger", "national_debt"): _make_spec(
-        "national_debt",
-        "lixinger",
-        "macro/national-debt",
-        "national_debt",
-        fetch_mode="per_symbol",
-        partitioned=False,
-        is_single_sync=True,
-    ),
-    ("lixinger", "interest_rates"): _make_spec(
-        "interest_rates",
-        "lixinger",
-        "macro/interest-rates",
-        "interest_rates",
-        fetch_mode="per_symbol",
-        partitioned=False,
-        is_single_sync=True,
-    ),
-    ("lixinger", "non_ferrous_metals"): _make_spec(
-        "non_ferrous_metals",
-        "lixinger",
-        "macro/non-ferrous-metals",
-        "non_ferrous_metals",
-        fetch_mode="per_symbol",
-        partitioned=False,
-        is_single_sync=True,
-    ),
-    ("lixinger", "crude_oil"): _make_spec(
-        "crude_oil",
-        "lixinger",
-        "macro/crude-oil",
-        "crude_oil",
-        fetch_mode="per_symbol",
-        partitioned=False,
-        is_single_sync=True,
-    ),
-    ("lixinger", "investor_accounts"): _make_spec(
-        "investor_accounts",
-        "lixinger",
-        "macro/investor",
-        "investor_accounts",
-        frequency="monthly",
-        partitioned=False,
-        is_single_sync=True,
-    ),
-    ("lixinger", "cn_m"): _make_spec(
-        "cn_m",
-        "lixinger",
-        "macro/money-supply",
-        "cn_m",
-        qp="macro_monthly",
-        frequency="monthly",
-        partitioned=False,
-        is_single_sync=True,
-    ),
-    ("lixinger", "sf_month"): _make_spec(
-        "sf_month",
-        "lixinger",
-        "macro/social-financing",
-        "sf_month",
-        qp="macro_monthly",
-        frequency="monthly",
-        partitioned=False,
-        is_single_sync=True,
-    ),
     ("lixinger", "fund_holder_structure"): _make_spec(
         "fund_holder_structure",
         "lixinger",
@@ -458,6 +398,7 @@ _CUSTOM_TASKS: dict[tuple[str, str], TaskSpec] = {
         is_single_sync=True,
     ),
 }
+_CUSTOM_TASKS.update(build_lixinger_macro_tasks(_make_spec))
 _CUSTOM_TASKS.update(build_lixinger_risk_tasks(_make_spec))
 _ALIASES: dict[tuple[str, str], str] = {
     ("tushare", "daily"): "stock_daily_bar",
@@ -483,6 +424,8 @@ _ALIASES: dict[tuple[str, str], str] = {
     ("lixinger", "macro/investor"): "investor_accounts",
     ("lixinger", "macro/money-supply"): "cn_m",
     ("lixinger", "macro/social-financing"): "sf_month",
+    ("lixinger", "macro/energy"): "energy",
+    ("lixinger", "macro/price-index"): "price_index",
 }
 
 _DISABLED_TASKS = {"bak_daily", "stk_account"}

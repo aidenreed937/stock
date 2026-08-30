@@ -90,7 +90,13 @@ _TASK_BUNDLE_TASKS: dict[str, dict[str, tuple[str, ...]]] = {
             "non_ferrous_metals",
             "crude_oil",
         ),
-        "macro_monthly_bundle": ("investor_accounts", "cn_m", "sf_month"),
+        "macro_monthly_bundle": (
+            "investor_accounts",
+            "cn_m",
+            "sf_month",
+            "energy",
+            "price_index",
+        ),
     },
     "yfinance": {
         "fundamental_bundle": ("financials", "balance_sheet"),
@@ -99,7 +105,19 @@ _TASK_BUNDLE_TASKS: dict[str, dict[str, tuple[str, ...]]] = {
         "research_event_bundle": ("recommendations", "insider_transactions"),
     },
     "fred": {
-        "macro_monthly_bundle": ("FEDFUNDS", "CPIAUCSL", "UNRATE", "PAYEMS"),
+        "macro_monthly_bundle": (
+            "FEDFUNDS",
+            "CPIAUCSL",
+            "UNRATE",
+            "PAYEMS",
+            "NAPM",
+            "MANEMP",
+            "OECDLOLITOAASTSAM",
+            "USALOLITOAASTSAM",
+            "CHNLOLITOAASTSAM",
+            "DGORDER",
+            "AMTMVS",
+        ),
     },
 }
 

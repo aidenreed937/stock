@@ -238,6 +238,8 @@ def test_lixinger_task_bundles() -> None:
         "investor_accounts",
         "cn_m",
         "sf_month",
+        "energy",
+        "price_index",
     ]
     assert resolve_bundle("lixinger", "company_risk_event_bundle").tasks == (
         "regulatory_measures",
@@ -396,6 +398,13 @@ def test_fred_task_bundles_do_not_duplicate_aggregate_task() -> None:
         "CPIAUCSL",
         "UNRATE",
         "PAYEMS",
+        "NAPM",
+        "MANEMP",
+        "OECDLOLITOAASTSAM",
+        "USALOLITOAASTSAM",
+        "CHNLOLITOAASTSAM",
+        "DGORDER",
+        "AMTMVS",
     )
     assert "macro_indicators" not in expand_task_targets(
         "fred", ["macro_monthly_bundle", "macro_daily_bundle"]
@@ -405,7 +414,22 @@ def test_fred_task_bundles_do_not_duplicate_aggregate_task() -> None:
 
 
 def test_fred_series_tasks_share_the_aggregate_curated_dataset() -> None:
-    for series_id in ("FEDFUNDS", "CPIAUCSL", "UNRATE", "PAYEMS", "GDP", "T10Y2Y", "WALCL"):
+    for series_id in (
+        "FEDFUNDS",
+        "CPIAUCSL",
+        "UNRATE",
+        "PAYEMS",
+        "GDP",
+        "T10Y2Y",
+        "WALCL",
+        "NAPM",
+        "MANEMP",
+        "OECDLOLITOAASTSAM",
+        "USALOLITOAASTSAM",
+        "CHNLOLITOAASTSAM",
+        "DGORDER",
+        "AMTMVS",
+    ):
         task = resolve_task("fred", series_id)
         assert task.dataset == "macro_indicators"
 
