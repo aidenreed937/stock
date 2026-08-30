@@ -10,6 +10,7 @@ from stock_strategy.pool.macd_cross import MACDCrossStrategy
 from stock_strategy.pool.macro_all_weather import MacroAllWeatherStrategy
 from stock_strategy.pool.macro_meta_router import MacroMetaRouterStrategy
 from stock_strategy.pool.macro_risk_v3 import MacroRiskV3Strategy
+from stock_strategy.pool.macro_rotation_fear import MacroRotationFearStrategy
 from stock_strategy.pool.macro_rotation_v4 import MacroRotationV4Strategy
 from stock_strategy.pool.macro_rotation_v5 import MacroRotationV5Strategy
 from stock_strategy.pool.macro_rotation_v6 import MacroRotationV6Strategy
@@ -18,6 +19,7 @@ STRATEGY_REGISTRY: dict[str, type[BaseStrategy]] = {
     "DoubleSmaRsiStrategy": DoubleSmaRsiStrategy,
     "MACDCrossStrategy": MACDCrossStrategy,
     "MacroRiskV3Strategy": MacroRiskV3Strategy,
+    "MacroRotationFearStrategy": MacroRotationFearStrategy,
     "MacroRotationV4Strategy": MacroRotationV4Strategy,
     "MacroRotationV5Strategy": MacroRotationV5Strategy,
     "MacroRotationV6Strategy": MacroRotationV6Strategy,
@@ -49,6 +51,7 @@ __all__ = [
     "MacroAllWeatherStrategy",
     "MacroMetaRouterStrategy",
     "MacroRiskV3Strategy",
+    "MacroRotationFearStrategy",
     "MacroRotationV4Strategy",
     "MacroRotationV5Strategy",
     "MacroRotationV6Strategy",
