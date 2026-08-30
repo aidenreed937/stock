@@ -366,6 +366,9 @@ def evaluate_macro_risk(
     }
     top_dim = max(dims.items(), key=lambda x: x[1]) if dims else ("未知", 0.0)
 
+    # 排版：操作建议从列表项中独立成段（前加空行），避免与「后续推演」挤在一行
+    advice = advice.replace("\n👉 **操作建议**", "\n\n👉 **操作建议**")
+
     return {
         "status": status,
         "level": level,

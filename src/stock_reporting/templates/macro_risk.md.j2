@@ -14,7 +14,7 @@
 {% for tier in eval_result.risk_tiers %}
 ### {{ loop.index }}. {{ tier.name }}
 {% for item in tier.metrics %}
-- **{{ item.name }} (`{{ item.code }}`)**: `{{ "%.1f"|format(item.val) if item.val is not none else "N/A" }}` {{ item.badge }} 【{{ item.status }}】({{ item.desc }})
+- **{{ item.name }}**: `{{ "%.1f"|format(item.val) if item.val is not none else "N/A" }}` {{ item.badge }} 【{{ item.status }}】({{ item.desc }})
 {% endfor %}
 
 {% endfor %}
