@@ -21,6 +21,11 @@ from stock_analytics.marts.industry_l2 import (
     build_industry_l2_frame,
     empty_industry_l2,
 )
+from stock_analytics.marts.industry_l2_panel import (
+    build_industry_l2_panel_frame,
+    empty_industry_l2_panel,
+    expand_l2_financial,
+)
 from stock_analytics.marts.northbound_industry import (
     build_northbound_industry_frame,
     empty_northbound_industry,
@@ -322,6 +327,244 @@ def test_industry_l2_empty() -> None:
     assert build_industry_l2_frame(pl.DataFrame(), pl.DataFrame()).columns == list(
         empty_industry_l2().columns
     )
+
+
+# --------------------------------------------------------------------------- #
+# industry_l2_panel（量价齐升供需层接入）
+# --------------------------------------------------------------------------- #
+
+
+def _l2_daily_panel_input() -> pl.DataFrame:
+    """构造 industry_l2_daily 面板输入（3 行业 × 3 交易日，截面分位有意义）。"""
+    return pl.DataFrame(
+        {
+            "trade_date": [
+                date(2026, 8, 3),
+                date(2026, 8, 3),
+                date(2026, 8, 3),
+                date(2026, 8, 4),
+                date(2026, 8, 4),
+                date(2026, 8, 4),
+                date(2026, 8, 5),
+                date(2026, 8, 5),
+                date(2026, 8, 5),
+            ],
+            "industry_code": [
+                "270100",
+                "630500",
+                "710100",
+                "270100",
+                "630500",
+                "710100",
+                "270100",
+                "630500",
+                "710100",
+            ],
+            "industry_name": [
+                "半导体",
+                "光伏设备",
+                "计算机设备",
+                "半导体",
+                "光伏设备",
+                "计算机设备",
+                "半导体",
+                "光伏设备",
+                "计算机设备",
+            ],
+            "parent_l1_code": [
+                "270000",
+                "630000",
+                "710000",
+                "270000",
+                "630000",
+                "710000",
+                "270000",
+                "630000",
+                "710000",
+            ],
+            "parent_l1_name": [
+                "电子",
+                "电力设备",
+                "计算机",
+                "电子",
+                "电力设备",
+                "计算机",
+                "电子",
+                "电力设备",
+                "计算机",
+            ],
+            "close": [100.0, 50.0, 80.0, 101.0, 49.0, 82.0, 102.0, 48.0, 84.0],
+            "amount_yi": [20.0, 5.0, 10.0, 22.0, 6.0, 11.0, 18.0, 7.0, 12.0],
+            "return_20d": [5.0, -2.0, 3.0, 6.0, -3.0, 4.0, 7.0, -4.0, 5.0],
+            "return_60d": [10.0, -8.0, 6.0, 11.0, -9.0, 7.0, 12.0, -10.0, 8.0],
+            "pe_ttm_ew_percentile_5y": [40.0, 60.0, 50.0, 41.0, 61.0, 51.0, 42.0, 62.0, 52.0],
+            "pb_ew_percentile_5y": [30.0, 50.0, 40.0, 31.0, 51.0, 41.0, 32.0, 52.0, 42.0],
+        }
+    )
+
+
+def _l2_financial_input() -> pl.DataFrame:
+    """构造已展开的 L2 财务事实帧（expand_l2_financial 输出口径）。"""
+    return pl.DataFrame(
+        {
+            "eff_date": [
+                date(2026, 4, 30),
+                date(2026, 4, 30),
+                date(2026, 4, 30),
+                date(2026, 8, 14),
+                date(2026, 8, 14),
+                date(2026, 8, 14),
+            ],
+            "industry_code": ["270100", "630500", "710100", "270100", "630500", "710100"],
+            "revenue_growth_ttm": [0.15, -0.05, 0.08, 0.18, -0.08, 0.10],
+            "profit_growth_ttm": [0.12, 0.02, 0.05, 0.20, -0.10, 0.06],
+            "gross_margin_ttm": [0.35, 0.18, 0.28, 0.36, 0.17, 0.29],
+        }
+    )
+
+
+def test_expand_l2_financial_nested_fields() -> None:
+    """嵌套 q 结构应展开为营收/净利 TTM 同比与毛利率（含非金融 gp_m 与非金融缺失容错）。"""
+    # 非金融源：含 gp_m
+    non_fin = pl.DataFrame(
+        {
+            "reportDate": [date(2026, 4, 30)],
+            "symbol": ["270100"],
+            "q": [
+                {
+                    "ps": {
+                        "toi": {"ttm_y2y": 0.15, "c_y2y": 0.1},
+                        "gp_m": {"ttm": 0.35},
+                        "np": {"ttm_y2y": 0.12, "c_y2y": 0.08},
+                    },
+                    "m": {"roe": {"ttm": 0.15}},
+                }
+            ],
+        }
+    )
+    out = expand_l2_financial(non_fin)
+    assert not out.is_empty()
+    assert out.columns == [
+        "eff_date",
+        "industry_code",
+        "revenue_growth_ttm",
+        "profit_growth_ttm",
+        "gross_margin_ttm",
+    ]
+    row = out.to_pandas().iloc[0]
+    assert abs(row["revenue_growth_ttm"] - 0.15) < 1e-9
+    assert abs(row["profit_growth_ttm"] - 0.12) < 1e-9
+    assert abs(row["gross_margin_ttm"] - 0.35) < 1e-9
+
+    # 银行源：无 gp_m → 毛利率 null，不报错
+    bank = pl.DataFrame(
+        {
+            "reportDate": [date(2026, 4, 30)],
+            "symbol": ["480200"],
+            "q": [
+                {
+                    "ps": {
+                        "toi": {"ttm_y2y": 0.05, "c_y2y": 0.03},
+                        "np": {"ttm_y2y": 0.04, "c_y2y": 0.02},
+                    },
+                    "m": {"roe": {"ttm": 0.10}},
+                }
+            ],
+        }
+    )
+    out_bank = expand_l2_financial(bank)
+    assert out_bank["gross_margin_ttm"].null_count() == 1
+    assert abs(out_bank["revenue_growth_ttm"][0] - 0.05) < 1e-9
+
+
+def test_industry_l2_panel_qlq_and_bargaining() -> None:
+    """量价齐升（双正）供需层 + 议价权分应按 skill 口径计算，报告期按发布日生效。"""
+    frame = build_industry_l2_panel_frame(_l2_daily_panel_input(), _l2_financial_input())
+    assert not frame.is_empty()
+    assert frame.columns == list(empty_industry_l2_panel().columns)
+
+    # 08-03：2026-04-30 报告期生效 → 半导体/计算机量价齐升，光伏供给收缩（-0.05/0.02）
+    d3 = frame.filter(pl.col("trade_date") == date(2026, 8, 3)).to_pandas()
+    semi3 = d3[d3["industry_code"] == "270100"].iloc[0]
+    pv3 = d3[d3["industry_code"] == "630500"].iloc[0]
+    comp3 = d3[d3["industry_code"] == "710100"].iloc[0]
+    # 量价齐升门内：双增速之和横截面分位（全截面 3 行业：-0.03/0.13/0.27 → 0/50/100）
+    assert semi3["supply_demand_score"] == 100.0  # 半导体 0.27 最高
+    assert comp3["supply_demand_score"] == 50.0  # 计算机 0.13 居中
+    # 供给收缩惩罚分 20
+    assert pv3["supply_demand_score"] == 20.0
+    # 议价权：量价齐升门内 (净利−营收) 分位；半导体 +0.12-0.15=-0.03，计算机 +0.05-0.08=-0.03 相同 → 中性 50
+    assert 0.0 <= semi3["bargaining_score"] <= 100.0
+    assert pv3["bargaining_score"] == 30.0  # 门外中性分
+    # 半导体营收同比最高 → 双增速分位最高
+    assert semi3["revenue_growth_ttm"] > comp3["revenue_growth_ttm"]
+
+    # 08-05：2026-08-14 报告期尚未发布 → 仍用 04-30 报告期（滞后生效，无前视）
+    d5 = frame.filter(pl.col("trade_date") == date(2026, 8, 5)).to_pandas()
+    semi5 = d5[d5["industry_code"] == "270100"].iloc[0]
+    assert abs(semi5["revenue_growth_ttm"] - 0.15) < 1e-9  # 仍是 04-30 期
+    assert semi5["profit_growth_ttm"] == 0.12
+
+    # 财务事实与方向中性（未传 direction_map → 全 50）
+    assert frame["direction_score"].unique().to_list() == [50.0]
+    assert frame["revenue_growth_ttm"].is_not_null().any()
+    # 拥挤度：成交额截面分位（3 行业非空）
+    assert frame["crowding_score"].is_not_null().all()
+
+
+def test_industry_l2_panel_direction_map() -> None:
+    """传入 direction_map（global_resonance_l2_map）时方向层应替换中性 50，缺失回退中性。"""
+    direction_map = pl.DataFrame(
+        {
+            "trade_date": [date(2026, 8, 3), date(2026, 8, 3), date(2026, 8, 4), date(2026, 8, 4)],
+            "industry_code": ["270100", "710100", "270100", "710100"],
+            "direction_score": [80.0, 60.0, 85.0, 55.0],
+        }
+    )
+    frame = build_industry_l2_panel_frame(
+        _l2_daily_panel_input(), _l2_financial_input(), direction_map=direction_map
+    )
+    assert not frame.is_empty()
+    assert frame["direction_score"].unique().to_list() != [50.0]
+
+    # 08-03：270100 → 80（映射），710100 → 60（映射），630500 无映射 → 中性 50
+    d3 = frame.filter(pl.col("trade_date") == date(2026, 8, 3)).to_pandas()
+
+    def get_score(code: str) -> float:
+        return float(d3[d3["industry_code"] == code].iloc[0]["direction_score"])
+
+    assert get_score("270100") == 80.0
+    assert get_score("710100") == 60.0
+    assert get_score("630500") == 50.0  # 缺失回退中性
+
+    # 08-05：direction_map 无该日 → 全部回退中性 50
+    d5 = frame.filter(pl.col("trade_date") == date(2026, 8, 5))
+    assert d5["direction_score"].unique().to_list() == [50.0]
+
+
+def test_industry_l2_panel_cutoff_and_empty() -> None:
+    """增量 cutoff 只输出指定日期之后；空输入返回空面板。"""
+    frame = build_industry_l2_panel_frame(
+        _l2_daily_panel_input(), _l2_financial_input(), percentile_cutoff=date(2026, 8, 4)
+    )
+    assert not frame.is_empty()
+    assert frame["trade_date"].min() == date(2026, 8, 4)
+
+    assert build_industry_l2_panel_frame(pl.DataFrame(), _l2_financial_input()).is_empty()
+    assert build_industry_l2_panel_frame(pl.DataFrame(), pl.DataFrame()).columns == list(
+        empty_industry_l2_panel().columns
+    )
+
+
+def test_industry_l2_panel_no_financial_neutral() -> None:
+    """无财务数据时供需/议价权中性、方向中性，仅输出行情/动量/拥挤度。"""
+    frame = build_industry_l2_panel_frame(_l2_daily_panel_input(), pl.DataFrame())
+    assert not frame.is_empty()
+    assert frame.columns == list(empty_industry_l2_panel().columns)
+    assert frame["supply_demand_score"].unique().to_list() == [50.0]
+    assert frame["bargaining_score"].unique().to_list() == [30.0]
+    assert frame["direction_score"].unique().to_list() == [50.0]
+    assert frame["revenue_growth_ttm"].null_count() == frame.height
 
 
 # --------------------------------------------------------------------------- #

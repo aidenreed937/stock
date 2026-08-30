@@ -30,6 +30,12 @@ from stock_analytics.marts.industry_l2 import (
     INDUSTRY_L2_MART_NAME,
     build_industry_l2_frame,
 )
+from stock_analytics.marts.industry_l2_panel import (
+    INDUSTRY_L2_PANEL_MART_NAME,
+    build_industry_l2_panel_frame,
+    empty_industry_l2_panel,
+    expand_l2_financial,
+)
 from stock_analytics.marts.northbound_industry import (
     NORTHBOUND_INDUSTRY_MART_NAME,
     build_northbound_industry_frame,
@@ -58,21 +64,14 @@ def _incremental_start_date(
     overwrite: bool,
 ) -> date | None:
     """非覆盖构建时从已有 Mart 最新日期继续计算。"""
-    if overwrite:
-        return requested_start
-    existing = store.get_domain_mart(
-        mart_name,
-        date_column=date_column,
-        columns=[date_column],
-    )
-    if existing.is_empty() or date_column not in existing.columns:
-        return requested_start
-    latest_value = existing[date_column].drop_nulls().max()
-    latest = latest_value if isinstance(latest_value, date) else None
-    if latest is None or (end_date is not None and latest > end_date):
-        return requested_start
-    if requested_start is None or requested_start <= latest:
-        return latest
+    if not overwrite:
+        existing = store.get_domain_mart(mart_name, date_column=date_column, columns=[date_column])
+        if not existing.is_empty() and date_column in existing.columns:
+            latest_val = existing[date_column].drop_nulls().max()
+            latest = latest_val if isinstance(latest_val, date) else None
+            if latest is not None and (end_date is None or latest <= end_date):
+                if requested_start is None or requested_start <= latest:
+                    return latest
     return requested_start
 
 
@@ -617,6 +616,93 @@ def build_industry_l2(
     return result
 
 
+def build_industry_l2_panel(
+    catalog: DataCatalog,
+    store: FeatureStore,
+    *,
+    runtime: DataRuntimeContext | None,
+    start_date: date | None,
+    end_date: date | None,
+    overwrite: bool,
+) -> pl.DataFrame:
+    """加载二级行业行情/估值 Mart 与理杏仁 L2 财务黄金表并物化基本面面板 Mart。
+
+    按 `.agents/skills/industry-trend-tracking` 的因子定义合并：
+    ``industry_l2_daily``（行情/估值/动量） + ``sw_2021_l2_fs_*``（25 报告期
+    营收/净利 TTM 同比、毛利率，按 ``reportDate`` 发布日生效），输出
+    ``industry_l2_panel_daily``（量价齐升供需层 + 议价权 + 拥挤度 + 方向中性）。
+    """
+    effective_start = _incremental_start_date(
+        store,
+        INDUSTRY_L2_PANEL_MART_NAME,
+        date_column="trade_date",
+        requested_start=start_date,
+        end_date=end_date,
+        overwrite=overwrite,
+    )
+    # 依赖：industry_l2_daily Mart（行情/估值/动量）
+    l2_daily = store.get_domain_mart(
+        INDUSTRY_L2_MART_NAME,
+        date_column="trade_date",
+        columns=[
+            "trade_date",
+            "industry_code",
+            "industry_name",
+            "parent_l1_code",
+            "parent_l1_name",
+            "close",
+            "amount_yi",
+            "return_20d",
+            "return_60d",
+            "pe_ttm_ew_percentile_5y",
+            "pb_ew_percentile_5y",
+        ],
+    )
+    if l2_daily.is_empty():
+        return empty_industry_l2_panel()
+
+    # L2 财务黄金表：非金融 124 行业 + 银行/证券/保险（统一按发布日生效）。
+    # 各源 q 结构不同（gp_m 仅非金融有），先分别展开为统一事实列再合并。
+    cat_lx = _catalog_for(catalog, "lixinger", runtime=runtime)
+    expanded: list[pl.DataFrame] = []
+    for ds in (
+        "sw_2021_l2_fs_non_financial",
+        "sw_2021_l2_fs_bank",
+        "sw_2021_l2_fs_security",
+        "sw_2021_l2_fs_insurance",
+    ):
+        part = cat_lx.load_dataset(ds, columns=["reportDate", "symbol", "q"])
+        if not part.is_empty():
+            expanded.append(expand_l2_financial(part))
+    l2_financial = pl.concat(expanded) if expanded else pl.DataFrame()
+
+    # 二级行业方向层：global_resonance_l2_map（理杏仁码，缺失回退中性 50）
+    direction_map: pl.DataFrame | None = None
+    if runtime is not None:
+        l2_map_path = runtime.data_root / "curated" / "mart" / "global_resonance_l2_map.parquet"
+        if l2_map_path.exists():
+            direction_map = pl.read_parquet(l2_map_path)
+
+    result = build_industry_l2_panel_frame(
+        l2_daily,
+        l2_financial,
+        direction_map=direction_map,
+        percentile_cutoff=effective_start,
+    )
+    if result.is_empty():
+        return result
+    sliced = _slice_frame(result, start_date=effective_start, end_date=end_date)
+    if not sliced.is_empty():
+        store.save_domain_mart(
+            INDUSTRY_L2_PANEL_MART_NAME,
+            sliced,
+            keys=["trade_date", "industry_code"],
+            date_column="trade_date",
+            overwrite=overwrite,
+        )
+    return result
+
+
 def build_unlock_pressure(
     catalog: DataCatalog,
     store: FeatureStore,
@@ -728,12 +814,7 @@ def build_northbound_industry(
         end_date=hk_max,
         columns=["trade_date", "symbol", "name", "industry_level", "industry_code"],
     ).filter(pl.col("industry_level") == "L1")
-    result = build_northbound_industry_frame(
-        hk_hold,
-        constituents,
-        sw_l1,
-        daily_close,
-    )
+    result = build_northbound_industry_frame(hk_hold, constituents, sw_l1, daily_close)
     if not result.is_empty():
         store.save_domain_mart(
             NORTHBOUND_INDUSTRY_MART_NAME,
@@ -752,6 +833,7 @@ __all__ = [
     "build_etf_flow",
     "build_global_macro",
     "build_industry_l2",
+    "build_industry_l2_panel",
     "build_northbound_industry",
     "build_settlement_iv_proxy",
     "build_unlock_pressure",

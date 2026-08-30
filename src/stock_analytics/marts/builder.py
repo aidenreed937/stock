@@ -18,6 +18,7 @@ from stock_analytics.marts.build_steps import (
     build_etf_flow,
     build_global_macro,
     build_industry_l2,
+    build_industry_l2_panel,
     build_northbound_industry,
     build_settlement_iv_proxy,
     build_unlock_pressure,
@@ -29,6 +30,7 @@ from stock_analytics.marts.dragon_tiger import DRAGON_TIGER_MART_NAME
 from stock_analytics.marts.etf_flow import ETF_FLOW_MART_NAME
 from stock_analytics.marts.global_macro import GLOBAL_MACRO_MART_NAME
 from stock_analytics.marts.industry_l2 import INDUSTRY_L2_MART_NAME
+from stock_analytics.marts.industry_l2_panel import INDUSTRY_L2_PANEL_MART_NAME
 from stock_analytics.marts.industry_structure import (
     build_industry_daily_mart,
     build_industry_panel_daily_mart,
@@ -266,6 +268,23 @@ class DomainMartBuilder:
             overwrite=overwrite,
         )
 
+    def build_industry_l2_panel(
+        self,
+        *,
+        start_date: date | None = None,
+        end_date: date | None = None,
+        overwrite: bool = False,
+    ) -> pl.DataFrame:
+        """构建并保存申万二级行业基本面面板 Mart（量价齐升供需层接入）。"""
+        return build_industry_l2_panel(
+            self.catalog,
+            self.store,
+            runtime=self.runtime,
+            start_date=start_date,
+            end_date=end_date,
+            overwrite=overwrite,
+        )
+
     def build_unlock_pressure(
         self,
         *,
@@ -355,6 +374,9 @@ class DomainMartBuilder:
                 start_date=start_date, end_date=end_date, overwrite=overwrite
             ),
             INDUSTRY_L2_MART_NAME: self.build_industry_l2(
+                start_date=start_date, end_date=end_date, overwrite=overwrite
+            ),
+            INDUSTRY_L2_PANEL_MART_NAME: self.build_industry_l2_panel(
                 start_date=start_date, end_date=end_date, overwrite=overwrite
             ),
             UNLOCK_PRESSURE_MART_NAME: self.build_unlock_pressure(
