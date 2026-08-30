@@ -67,9 +67,7 @@ def build_sox_direction() -> pl.DataFrame:
     )
 
 
-def _monthly_pct(
-    df: pl.DataFrame, value_col: str, window_months: int = 36
-) -> pl.DataFrame:
+def _monthly_pct(df: pl.DataFrame, value_col: str, window_months: int = 36) -> pl.DataFrame:
     """月频序列 → YoY → 滚动分位（月频，trade_date 对齐）。"""
     out = (
         df.select(["trade_date", value_col])
@@ -88,7 +86,11 @@ def build_new_energy_direction() -> pl.DataFrame:
     nev = cat.load_dataset("nev_monthly_sales")
 
     # 光伏：月新增装机 YoY（3MMA 平滑可用时优先）
-    solar_col = "monthly_new_capacity_3mma" if "monthly_new_capacity_3mma" in solar.columns else "monthly_new_capacity_gw"
+    solar_col = (
+        "monthly_new_capacity_3mma"
+        if "monthly_new_capacity_3mma" in solar.columns
+        else "monthly_new_capacity_gw"
+    )
     solar_pct = _monthly_pct(solar, solar_col)
     # 新能源车：批发销量 YoY
     nev_pct = _monthly_pct(nev, "wholesale_volume_ten_thousand")
