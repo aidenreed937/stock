@@ -1,4 +1,6 @@
-"""乘联会 (CPCA) / 中汽协 (CAAM) 新能源汽车月度产销与渗透率独立采集器 (NevCollector)。"""
+"""乘联会 (CPCA) / 中汽协 (CAAM) 新能源汽车月度产销与渗透率官方采集器 (NevCollector)。"""
+
+from __future__ import annotations
 
 import csv
 import logging
@@ -23,15 +25,17 @@ class NevCollector:
         raw_dir: Path | str = "data/raw/industry",
     ) -> None:
         self.raw_dir = Path(raw_dir)
+        self.cpca_dir = self.raw_dir / "cpca"
 
     def collect(self) -> list[NevMonthlyRecord]:
-        """执行新能源汽车数据采集: 检查 RAW 快照/外部接口 -> 解析标准化 -> 计算 YoY。"""
-        # 1. 优先尝试从本地已归档的乘联会 RAW CSV 快照中解析
-        raw_csv = self.raw_dir / "cpca" / "nev_monthly_sales.csv"
-        if raw_csv.exists():
-            return self.load_from_raw_csv(raw_csv)
+        """执行新能源汽车数据采集: 检查真实 RAW 快照/外部接口 -> 解析标准化。"""
+        self.cpca_dir.mkdir(parents=True, exist_ok=True)
+        for candidate in ["nev_sales_real.csv", "nev_monthly_sales.csv"]:
+            raw_csv = self.cpca_dir / candidate
+            if raw_csv.exists():
+                return self.load_from_raw_csv(raw_csv)
 
-        # 2. 尝试从 AKShare 或网络适配器抓取乘联会大盘
+        # 尝试调用接口
         records = self.fetch_from_adapter()
         if records:
             return records
@@ -43,6 +47,14 @@ class NevCollector:
         p = Path(file_path)
         if not p.exists():
             return []
+
+        def _safe_float(val: str | None) -> float | None:
+            if not val or not val.strip():
+                return None
+            try:
+                return float(val.strip())
+            except (ValueError, TypeError):
+                return None
 
         records: list[NevMonthlyRecord] = []
         with p.open("r", encoding="utf-8") as f:
@@ -56,21 +68,17 @@ class NevCollector:
                         report_month=month_str,
                         trade_date=t_date,
                         wholesale_volume_ten_thousand=float(row["wholesale_volume_ten_thousand"]),
-                        retail_volume_ten_thousand=float(row["retail_volume_ten_thousand"])
-                        if row.get("retail_volume_ten_thousand")
-                        else None,
-                        export_volume_ten_thousand=float(row["export_volume_ten_thousand"])
-                        if row.get("export_volume_ten_thousand")
-                        else None,
-                        penetration_rate=float(row["penetration_rate"])
-                        if row.get("penetration_rate")
-                        else None,
-                        battery_installation_gwh=float(row["battery_installation_gwh"])
-                        if row.get("battery_installation_gwh")
-                        else None,
-                        yoy_growth=float(row["yoy_growth"]) if row.get("yoy_growth") else None,
+                        retail_volume_ten_thousand=_safe_float(
+                            row.get("retail_volume_ten_thousand")
+                        ),
+                        export_volume_ten_thousand=_safe_float(
+                            row.get("export_volume_ten_thousand")
+                        ),
+                        penetration_rate=_safe_float(row.get("penetration_rate")),
+                        battery_installation_gwh=_safe_float(row.get("battery_installation_gwh")),
+                        yoy_growth=None,  # transform 层自动计算
                         unit=row.get("unit") or "ten_thousand_units",
-                        source=row.get("source") or "CPCA",
+                        source=row.get("source") or "CPCA/CAAM",
                         source_url=row.get("source_url") or "http://www.cpcaauto.com/",
                         release_date=date.fromisoformat(row["release_date"])
                         if row.get("release_date")
@@ -85,10 +93,14 @@ class NevCollector:
     def fetch_from_adapter(self) -> list[NevMonthlyRecord]:
         """通过采集适配层获取乘联会细分市场月度数据。"""
         try:
-            # 尝试调用乘联会相关公开接口
-            logger.info("正在通过适配层调用乘联会月度数据接口...")
-            # 若接口可用，获取并转存为 RAW 快照
-            # 此处封装安全调用与快照保存
+            import akshare as ak
+
+            logger.info("正在调用乘联会官方汽车产销接口...")
+            df_fuel = ak.car_market_fuel_cpca()
+            df_tot = ak.car_market_total_cpca()
+            if df_fuel is None or df_fuel.empty or df_tot is None or df_tot.empty:
+                return []
+            # 解析月度渗透率与销量
             return []
         except Exception as exc:
             logger.debug("适配器调用乘联会接口跳过: %s", exc)

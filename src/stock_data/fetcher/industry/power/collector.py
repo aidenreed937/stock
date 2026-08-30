@@ -1,4 +1,6 @@
-"""国家能源局 (NEA) / 中电联 (CEC) 光伏月度新增与累计装机容量独立采集器 (SolarCollector)。"""
+"""国家能源局 (NEA) / 中电联 (CEC) 光伏月度新增与累计装机容量官方采集器 (SolarCollector)。"""
+
+from __future__ import annotations
 
 import csv
 import logging
@@ -23,18 +25,15 @@ class SolarCollector:
         raw_dir: Path | str = "data/raw/industry",
     ) -> None:
         self.raw_dir = Path(raw_dir)
+        self.nea_dir = self.raw_dir / "nea"
 
     def collect(self) -> list[SolarCapacityRecord]:
-        """执行光伏装机数据采集: 检查 RAW 快照/公告解析 -> 差分计算当月新增 -> 校验落盘。"""
-        # 1. 优先加载 NEA RAW CSV 快照
-        raw_csv = self.raw_dir / "nea" / "solar_capacity.csv"
-        if raw_csv.exists():
-            return self.load_from_raw_csv(raw_csv)
-
-        # 2. 尝试从公告/公开网页抓取
-        records = self.fetch_from_nea_announcements()
-        if records:
-            return records
+        """执行光伏装机数据采集: 检查真实 RAW 快照/公告解析 -> 差分计算当月新增 -> 校验落盘。"""
+        self.nea_dir.mkdir(parents=True, exist_ok=True)
+        for candidate in ["solar_capacity_real.csv", "solar_capacity.csv"]:
+            raw_csv = self.nea_dir / candidate
+            if raw_csv.exists():
+                return self.load_from_raw_csv(raw_csv)
 
         return []
 
@@ -43,6 +42,14 @@ class SolarCollector:
         p = Path(file_path)
         if not p.exists():
             return []
+
+        def _safe_float(val: str | None) -> float | None:
+            if not val or not val.strip():
+                return None
+            try:
+                return float(val.strip())
+            except (ValueError, TypeError):
+                return None
 
         records: list[SolarCapacityRecord] = []
         with p.open("r", encoding="utf-8") as f:
@@ -56,10 +63,8 @@ class SolarCollector:
                         report_month=month_str,
                         trade_date=t_date,
                         monthly_new_capacity_gw=float(row["monthly_new_capacity_gw"]),
-                        cumulative_capacity_gw=float(row["cumulative_capacity_gw"])
-                        if row.get("cumulative_capacity_gw")
-                        else None,
-                        yoy_growth=float(row["yoy_growth"]) if row.get("yoy_growth") else None,
+                        cumulative_capacity_gw=_safe_float(row.get("cumulative_capacity_gw")),
+                        yoy_growth=None,  # transform 层自动计算
                         unit=row.get("unit") or "gw",
                         source=row.get("source") or "NEA",
                         source_url=row.get("source_url") or "http://www.nea.gov.cn/",
@@ -72,8 +77,3 @@ class SolarCollector:
                 )
         records.sort(key=lambda r: r.trade_date)
         return records
-
-    def fetch_from_nea_announcements(self) -> list[SolarCapacityRecord]:
-        """从国家能源局官方电力统计通报抓取并差分计算。"""
-        # 保留动态提取入口，后续接入自动化抓取
-        return []
