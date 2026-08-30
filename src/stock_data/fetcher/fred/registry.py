@@ -62,17 +62,11 @@ FRED_API_REGISTRY: dict[str, FREDEndpointMeta] = {
         frequency="weekly",
         units="millions_usd",
     ),
-    "NAPM": FREDEndpointMeta(
-        series_id="NAPM",
-        description="美国 ISM 制造业采购经理人指数 (ISM Manufacturing PMI)",
-        frequency="monthly",
-        units="index",
-    ),
     "MANEMP": FREDEndpointMeta(
         series_id="MANEMP",
-        description="美国 ISM 制造业就业指数 (ISM Manufacturing: Employment Index)",
+        description="美国制造业就业人数 (BLS: All Employees, Manufacturing)",
         frequency="monthly",
-        units="index",
+        units="thousands",
     ),
     "OECDLOLITOAASTSAM": FREDEndpointMeta(
         series_id="OECDLOLITOAASTSAM",

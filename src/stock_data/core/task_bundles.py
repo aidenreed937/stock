@@ -110,7 +110,6 @@ _TASK_BUNDLE_TASKS: dict[str, dict[str, tuple[str, ...]]] = {
             "CPIAUCSL",
             "UNRATE",
             "PAYEMS",
-            "NAPM",
             "MANEMP",
             "OECDLOLITOAASTSAM",
             "USALOLITOAASTSAM",

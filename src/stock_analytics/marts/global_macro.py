@@ -31,7 +31,6 @@ GLOBAL_MACRO_SCHEMA: dict[str, Any] = {
     "copper_gold_ratio": pl.Float64,
     "vix_close": pl.Float64,
     "sox_close": pl.Float64,
-    "us_ism_pmi": pl.Float64,
     "oecd_cli": pl.Float64,
     "us_durable_goods_orders": pl.Float64,
     "us_manufacturing_shipments": pl.Float64,
@@ -145,7 +144,6 @@ def build_global_macro_daily_frame(
     # ---- FRED：利差、PMI、OECD 领先指标、耐用品订单与出货 ----
     fred_symbols = {
         "T10Y2Y": "us_yield_curve_10y_2y",
-        "NAPM": "us_ism_pmi",
         "OECDLOLITOAASTSAM": "oecd_cli",
         "DGORDER": "us_durable_goods_orders",
         "AMTMVS": "us_manufacturing_shipments",
