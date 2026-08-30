@@ -1,9 +1,42 @@
 ---
 name: macro-risk-research
-description: 宏观风控双轨雷达与跨周期策略研究技能：狂热/恐慌双轨指数、8 维风控画像、6 大宏观范式定位、20日/60日短中周期胜率推演，以及配置驱动的多策略轮动回测与资产配置建议。当用户询问宏观风控雷达水温、市场过热/恐慌/冰点极值、两融杠杆与换手拥挤硬约束、聪明钱与产业资本资金博弈、真假黄金坑、20日/60日胜率对账、多策略回测对比（资金曲线、CAGR、夏普、最大回撤、调仓信号）、跨周期资产配置建议或新宏观策略构建验证流程时使用此技能。
+description: 宏观风控双轨雷达与跨周期策略研究技能：狂热/恐慌双轨指数、8 维风控画像、6 大宏观范式定位、20日/60日短中周期胜率推演、配置驱动的多策略轮动回测与资产配置建议、宏观日报（普通投资者版/专业版）、调仓日志与数据完整性校验。当用户询问宏观风控雷达水温、市场过热/恐慌/冰点极值、两融杠杆与换手拥挤硬约束、聪明钱与产业资本资金博弈、真假黄金坑、20日/60日胜率对账、多策略回测对比（资金曲线、CAGR、夏普、最大回撤、调仓信号）、跨周期资产配置建议、宏观日报解读或新宏观策略构建验证流程时使用此技能。
 ---
 
 # 宏观风控与跨周期策略研究技能 (Macro Risk & Strategy Research)
+
+## 0. 能力边界（做什么 / 不做什么）
+
+> 使用本 skill 前先确认任务落在 In Scope；落在 Out of Scope 的移交对应 skill/模块，不要在本 skill 内越界执行。
+
+### 0.1 In Scope（本 skill 负责）
+
+| # | 能力 | 入口 |
+| :--- | :--- | :--- |
+| 1 | 宏观风控因子管线：因子配置/提取/分位/双轨指数生成 | `config/analytics/macro_risk.yaml` + `data_fetchers.py` + `stock_cli.macro_risk` |
+| 2 | 8 维风控画像 + 双轨雷达解读（宏观日报） | `macro_risk/latest/report.md`（普通投资者版默认，专业版 `template="pro"`） |
+| 3 | 6 大宏观范式定位 + 20/60 日胜率矩阵复算 | `references/macro_regimes_playbook.md` + `scripts/compute_cycle_winrate_matrix.py` |
+| 4 | 多策略轮动回测 / 对账 / 跨周期审计 / 实盘推演 | `stock_cli.macro_strategy*`（启用策略见 §5.5） |
+| 5 | 新宏观策略构建 6 步流水线 + 样本外验证（含「被否定 → 停用留档」惯例） | §5.5 + `references/macro_strategies_playbook.md` |
+| 6 | 调仓日志查询、数据源分级与完整性校验 | `references/signal_log_and_data_flow.md` + `macro_risk_data_sources.md` |
+
+### 0.2 Out of Scope（本 skill 不负责，移交对应 skill）
+
+| 领域 | 移交 |
+| :--- | :--- |
+| 申万行业轮动策略 / 中观因子 | `industry-rotation-strategy` skill |
+| 个股基本面 / 估值深度研究 | `stock-deep-research` skill |
+| 数据源接入 / 回填 / 同步 / 清洗 | `data-pipeline` skill |
+| 量化指标计算标准 / 分位选型 / 范式漂移自检 | `quant-metric-standards` skill |
+| 全市场聚合 / 涨跌家数监控 | `market-aggregate-monitor` skill |
+| 每日全景复盘总入口（串联本 skill 与其他） | `daily-market-review` skill |
+
+### 0.3 已证伪 / 已否定（不使用，仅留档）
+
+- **信号层**：`etf_flow_ratio`（国家队 ETF 托底代理，四重证据证伪，不作国家队识别与交易信号）；
+- **策略层**：`macro_risk_v3` / `macro_rotation_v6` / `macro_meta_router` / `macro_all_weather_etf`（无 alpha 或样本外亏损）、`macro_rotation_v5_fear`（恐惧前置抄底）、`macro_rotation_v5_rebalance_dd` / `_dd20`（回撤深度确认抄底）——代码/测试保留在 `src/stock_strategy/pool/` 与 `tests/` 作研究留档，`config` 不启用；完整清单与否定理由见 `references/macro_strategies_playbook.md` 第〇节。
+
+---
 
 ## 1. 管线 → 策略端到端链路（架构总览）
 
@@ -52,6 +85,7 @@ flowchart LR
 2. **口径披露**：引用因子或回测产物时，沿用产物/manifest 声明的口径（两融 T+1 平移、ETF 价格口径、净值首日归一），具体机制以工程实现为准，不得凭记忆另述；口径不明时显式披露不确定性。
 3. **数据缺口处理**：两融数据（`dim_leverage`）为 T+1 早间发布，管线按交易日历平移滞后对齐（T 日收盘仅可用 T-1 日两融值），最新交易日可能暂缺或滞后一日（缺失时该字段为 null，manifest 摘要亦不含该项）。涉及杠杆维度的硬约束排查前，先核对最新一日 `dim_leverage` 是否可用，缺失时需先补数或显式披露，不得静默跳过。
    - **估值维度冷启动边界**：理杏仁 `index_fundamental`（中证全指 PE/PB）最早仅 2011-08-02，而 `erp`/`pb` 因子 `min_periods=1250`（5 年），导致 `erp_score`/`pb_score` 及 `dim_valuation` 在 **2015-01 ~ 2016-08 期间全为 null**，`overheat_index` 在该区间实际按 **4 维（缺估值）**计算，与 2016-09 起的 5 维口径不同。引用该区间 overheat 时必须披露「缺估值维度」，不得与后续年份直接横向比较。
+   - **完整性自动检测**：管线每次生成产物时自动检测 as_of 日核心字段（`overheat_index` / `panic_index` + 6 个构成维度）缺失，写入 `manifest.json` 的 `data_completeness`（`total/available/missing_fields/complete`），缺失时运行日志告警。引用产物前先看该字段；`complete: false` 需核验是「已知口径缺口」（如估值冷启动）还是「上游缺数异常」。详见 `references/macro_risk_data_sources.md` §5。
 4. **回测机制契约**：
    - 执行语义：严格 T+1（交易日 $t$ 收盘生成信号，目标权重于 $t+1$ 日生效计算复利），由 `stock_strategy.macro.runner.MacroRiskRunner` 统一实现；
    - 基准对齐：报告必须同步对比**中证全指 (`000985.CSI`)** 与 **沪深300 (`000300.SH`)** 的 Buy & Hold 基准净值；
@@ -128,6 +162,7 @@ flowchart LR
 | 生成风险因子与雷达报告 | `uv run python -m stock_cli.macro_risk --last-n 60`（或 `--as-of`） |
 | 产物位置 | `data/analytics/macro_risk/latest/`（`risk_factors.parquet` / `report.md` / `manifest.json`） |
 | 因子构成配置 | `config/analytics/macro_risk.yaml` |
+| 日报模板版本 | `report.md` 为普通投资者版（红绿灯 + 生命线 + 三选一操作指引）；专业版（全维度穿透 + 深度归因）经 `render_macro_risk_report(template="pro")` 生成 |
 
 ### 5.2 策略回测
 | 用途 | 命令 / 入口 |
