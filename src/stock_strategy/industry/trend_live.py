@@ -34,8 +34,69 @@ _THEME_ETF_DIRECTION_MART = Path("data/curated/mart/theme_etf_direction.parquet"
 _WATCHLIST_CONFIG = Path("config/universe/watchlist.yaml")
 # L2 财务黄金表 2020Q1 起，巡检窗口对齐实证起点
 _L2_AVAILABLE_FROM = date(2020, 5, 1)
-# 全球共振方向池 6 个申万二级行业（理杏仁码）
-_L2_DIRECTION_POOL = ("270100", "730200", "710100", "630500", "630700", "280500")
+# 全球共振方向池 13 个申万二级行业（理杏仁码）
+_L2_DIRECTION_POOL = (
+    "270100",  # 半导体
+    "730200",  # 通信设备
+    "710100",  # 计算机设备
+    "630500",  # 光伏设备
+    "630700",  # 电池
+    "630800",  # 电网设备
+    "280500",  # 乘用车(汽车)
+    "240300",  # 工业金属
+    "240400",  # 贵金属
+    "370100",  # 化学制药
+    "370300",  # 生物制品
+    "640600",  # 工程机械
+    "421100",  # 航运港口
+)
+
+# 申万二级行业标准 1:1 ETF 映射基准与代理属性定义: (symbol, name, match_type, note)
+_CANONICAL_L2_ETF_MAP: dict[str, tuple[str, str, str, str]] = {
+    "270100": ("512480.SH", "半导体ETF", "pure_l2", "申万二级半导体纯正对标"),
+    "730200": ("515880.SH", "通信ETF", "pure_l2", "申万二级通信设备纯正对标"),
+    "630500": ("515790.SH", "光伏ETF", "pure_l2", "申万二级光伏设备纯正对标"),
+    "630700": ("159755.SZ", "电池ETF", "pure_l2", "申万二级电池纯正对标"),
+    "630800": ("159326.SZ", "电网设备ETF", "pure_l2", "申万二级电网设备纯正对标"),
+    "240400": (
+        "159562.SZ",
+        "黄金股ETF",
+        "pure_l2",
+        "申万二级贵金属股票纯正对标 (亦可选用 518880.SH 黄金ETF)",
+    ),
+    "370300": ("512290.SH", "生物医药ETF", "pure_l2", "申万二级生物制品/疫苗纯正对标"),
+    "370100": ("159992.SZ", "创新药ETF", "pure_l2", "申万二级化学制药/创新药出海对标"),
+    "240300": (
+        "512400.SH",
+        "有色金属ETF",
+        "proxy_l1",
+        "申万一级有色金属全指代理 (含工业金属与稀土)",
+    ),
+    "710100": (
+        "512720.SH",
+        "计算机ETF",
+        "proxy_l1",
+        "申万一级计算机全指代理 (混合硬件整机与软件IT服务)",
+    ),
+    "280500": (
+        "516110.SH",
+        "汽车ETF",
+        "proxy_l1",
+        "申万一级汽车全指代理 (混合整车制造与汽车零部件)",
+    ),
+    "640600": (
+        "560280.SH",
+        "工程机械主题ETF",
+        "pure_l2",
+        "申万二级工程机械纯正对标 (三一/徐工/中联/恒立)",
+    ),
+    "421100": (
+        "159666.SZ",
+        "交通运输ETF",
+        "proxy_l1",
+        "申万一级交通运输全指代理 (含铁路航空物流，非纯航运港口)",
+    ),
+}
 
 
 @dataclass(frozen=True)
@@ -54,57 +115,18 @@ class TrendLiveInspectionResult:
 
 
 def load_l2_etf_map() -> dict[str, dict[str, str]]:
-    """构建二级行业 → 场内 ETF 映射（方向池 6 行业）。
+    """构建二级行业 → 场内 ETF 映射（方向池 13 行业）。
 
-    以 theme_etf_direction.parquet 的最新 ETF→主题归属为准（该表由
-    scripts/industry_direction_map.py 从 watchlist 的 sw_level2 标签生成），
-    再用方向池行业名反查主题对应 ETF。
+    以 _CANONICAL_L2_ETF_MAP 为权威基准：
+    - 对具备纯正场内 ETF 的二级行业（半导体、通信设备、光伏设备、电池、电网设备、贵金属、生物制品、化学制药）
+      实现精确 1:1 对标；
+    - 对尚无纯二级 ETF 的行业（工业金属、计算机设备、乘用车、工程机械、航运港口）
+      采用对应所属申万一级行业全指 ETF 进行代理，并显式标注代理属性及跟踪偏差说明。
     """
-    import yaml
-
-    # 方向池行业名（theme_etf_direction 的 theme 口径）
-    pool_names = {
-        "270100": "半导体",
-        "730200": "通信设备",
-        "710100": "计算机设备",
-        "630500": "光伏设备",
-        "630700": "电池",
-        "280500": "汽车",
+    return {
+        code: {"symbol": sym, "name": name, "match_type": m_type, "note": note}
+        for code, (sym, name, m_type, note) in _CANONICAL_L2_ETF_MAP.items()
     }
-    # 读取 theme_etf_direction 最新归属：theme → etf_symbol（同一主题多 ETF 取最后写入者）
-    if _THEME_ETF_DIRECTION_MART.exists():
-        try:
-            edf = pl.read_parquet(_THEME_ETF_DIRECTION_MART)
-            theme_etf: dict[str, str] = {}
-            for r in (
-                edf.sort("trade_date")
-                .group_by("theme")
-                .agg(pl.col("etf_symbol").last().alias("etf"))
-                .to_dicts()
-            ):
-                theme_etf[str(r["theme"])] = str(r["etf"])
-        except Exception as exc:
-            logger.warning(f"读取 theme_etf_direction 失败，回退 watchlist: {exc}")
-            theme_etf = {}
-    else:
-        theme_etf = {}
-
-    # 回退：watchlist 中 sw_level2 标签 → ETF（取第一个）
-    if not theme_etf and _WATCHLIST_CONFIG.exists():
-        try:
-            cfg = yaml.safe_load(_WATCHLIST_CONFIG.read_text(encoding="utf-8"))
-            for f in cfg["universe"]["a_shares"]["funds"]:
-                if isinstance(f, dict) and f.get("sw_level2"):
-                    theme_etf.setdefault(str(f["sw_level2"]), str(f["code"]))
-        except Exception as exc:
-            logger.warning(f"读取 watchlist 失败: {exc}")
-
-    result: dict[str, dict[str, str]] = {}
-    for code, name in pool_names.items():
-        etf = theme_etf.get(name)
-        if etf:
-            result[code] = {"symbol": etf, "name": f"{name}ETF"}
-    return result
 
 
 def inspect_live_industry_trend_signal(
@@ -218,15 +240,18 @@ def inspect_live_industry_trend_signal(
 
         if etf_info is not None:
             etf_code = etf_info["symbol"]
-            etf_name = etf_info["name"]
+            match_type = etf_info.get("match_type", "pure_l2")
+            match_badge = "🎯 纯二级对标" if match_type == "pure_l2" else "⚠️ L1泛行业代理"
+            etf_name = f"{etf_info['name']} [{match_badge}]"
             ref_price = latest_prices.get(etf_code, 1.0)
             lots = int(t_amount / (ref_price * 100)) if ref_price > 0 and t_amount > 0 else 0
+            reason_str = f"{sig.reason} | {etf_info.get('note', '')}"
         else:
-            # 无对应场内 ETF：不生成可执行报单
             etf_code = "—"
             etf_name = "无对应场内ETF"
             ref_price = None
             lots = None
+            reason_str = sig.reason
 
         instructions.append(
             IndustryLiveOrderInstruction(
@@ -241,7 +266,7 @@ def inspect_live_industry_trend_signal(
                 latest_price=ref_price,
                 target_amount=round(t_amount, 2),
                 recommended_lots=lots,
-                reason=sig.reason,
+                reason=reason_str,
             )
         )
 
@@ -315,7 +340,7 @@ def _render_trend_markdown_card(
             f"| `{inst.industry_code}` ({inst.industry_name}) | **{inst.etf_symbol}** ({inst.etf_name}) | **{inst.direction}** | {inst.target_weight * 100:.1f}% | ¥{inst.target_amount:,.0f} | {lots_str} | {inst.reason} |"
         )
     inst_table = (
-        "| 申万二级行业 | 对应场内 ETF | 调仓方向 | 目标权重 | 目标金额 | 建议下单手数 | 调仓理由 |\n"
+        "| 申万二级行业 | 对应场内 ETF | 调仓方向 | 目标权重 | 目标金额 | 建议下单手数 | 调仓理由与跟踪说明 |\n"
         "| :--- | :--- | :---: | :---: | :---: | :---: | :--- |\n" + "\n".join(inst_rows)
         if inst_rows
         else "今日无调仓指令，保持当前产业配置。"
@@ -346,8 +371,10 @@ def _render_trend_markdown_card(
 
 ---
 
-💡 **执行提示**：产业趋势跟踪为季度尺度，调仓指令在季度确认日盘尾通过对应场内 ETF 申报；
-注意规避 ETF 盘中大幅折溢价 (>0.3%)。方向层防守：全球方向高位 × 非量价齐升行业已被策略过滤。
+💡 **执行与标的对标提示**：
+1. **🎯 纯二级对标**：标的 ETF 与所选二级行业成份高度吻合（如半导体、通信设备、光伏设备、电池、电网设备、生物医药、创新药、黄金股等）；
+2. **⚠️ L1泛行业代理**：A股暂无纯正二级 ETF，采用所属申万一级行业全指 ETF 替代执行（如交通运输替代航运港口、机械设备替代工程机械、汽车替代乘用车、计算机替代计算机设备），实际持仓存在成分稀释与跟踪偏差；
+3. **申报规范**：产业趋势跟踪为季度尺度，调仓指令在季度确认日盘尾通过对应场内 ETF 申报；注意规避 ETF 盘中大幅折溢价 (>0.3%)。
 """
 
 

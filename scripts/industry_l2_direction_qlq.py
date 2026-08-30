@@ -75,7 +75,7 @@ def _metrics(nav_df: pl.DataFrame) -> dict[str, float]:
 
 
 def build_l2_direction_panel() -> tuple[pl.DataFrame, pl.DataFrame]:
-    """构建方向池 6 行业日频面板（动量/估值/量价齐升/方向分）与价格面板。
+    """构建方向池 12 行业日频面板（动量/估值/量价齐升/方向分）与价格面板。
 
     直接消费阶段 1/3 产物 ``industry_l2_panel_daily``：量价齐升已按 `reportDate`
     生效（无前视），direction_score 来自 ``global_resonance_l2_map``。
@@ -276,7 +276,7 @@ def main() -> None:
         f"行业 {panel['industry_code'].n_unique()} 个"
     )
 
-    # 量价齐升状态矩阵（6 行业 × 报告期，取每报告期发布日的最新值）
+    # 量价齐升状态矩阵（12 行业，取每报告期发布日的最新值）
     qlq_matrix = (
         panel.select(
             [
@@ -294,7 +294,7 @@ def main() -> None:
         .tail(1)
         .sort("行业")
     )
-    print("\n=== 6 行业量价齐升状态（最新报告期） ===")
+    print("\n=== 12 行业量价齐升状态（最新报告期） ===")
     print(qlq_matrix)
 
     # 组合回测：统一窗口从量价齐升数据可用起点开始（公平对比），样本外 2022 后
@@ -338,7 +338,8 @@ def main() -> None:
     md = """# 二级方向池量价齐升（供需层）与方向层接入实证
 
 > 日期：2026-08-30
-> 定位：全球共振方向池 6 个申万二级行业（半导体/通信设备/计算机设备/光伏设备/电池/乘用车），
+> 定位：全球共振方向池 13 个申万二级行业（半导体/通信设备/计算机设备/光伏设备/电池/乘用车/
+> 工业金属/贵金属/化学制药/生物制品/工程机械/航运港口/电网设备），
 > 将三层共振框架的「供需层（量价齐升）+ 方向层（防守门）」接入「动量 Top3 + 估值防守」
 > 闭环的组合回测记录。
 > 回测窗口统一从量价齐升数据可用起点（2020-05，首份 L2 财报发布后）开始，保证公平对比。
@@ -363,17 +364,43 @@ def main() -> None:
             f"| {r['sharpe']:.2f} | {r['calmar']:.2f} |\n"
         )
 
-    md += """
+    base_full = result.filter(
+        (pl.col("strategy") == "方向池动量Top3+估值防守") & (pl.col("区间") == "全周期(2020-05起)")
+    )
+    base_oos = result.filter(
+        (pl.col("strategy") == "方向池动量Top3+估值防守") & (pl.col("区间") == "样本外2022后")
+    )
+    qlq_full = result.filter(
+        (pl.col("strategy") == "方向池动量Top3+估值防守+量价齐升(硬门)")
+        & (pl.col("区间") == "全周期(2020-05起)")
+    )
+    qlq_oos = result.filter(
+        (pl.col("strategy") == "方向池动量Top3+估值防守+量价齐升(硬门)")
+        & (pl.col("区间") == "样本外2022后")
+    )
+    bonus_full = result.filter(
+        (pl.col("strategy") == "方向池动量Top3+估值防守+量价齐升(加分)")
+        & (pl.col("区间") == "全周期(2020-05起)")
+    )
+    gate_full = result.filter(
+        (pl.col("strategy") == "方向池动量Top3+估值防守+方向防守门")
+        & (pl.col("区间") == "全周期(2020-05起)")
+    )
+
+    def _v(df: pl.DataFrame, col: str) -> str:
+        return f"{df[col][0]:.2f}" if not df.is_empty() else "—"
+
+    md += f"""
 ## 3. 结论（实测）
 
-- **baseline（return_60d 动量 Top3 + pe5y<=90 估值防守）全周期 Sharpe = 0.72**（2020-05 起），
-  精确对齐方向池闭环既定 Sharpe 0.72（样本外 0.22）；
-- **量价齐升硬门显著拖累**：全周期 0.72 → 0.27，样本外 0.22 → -0.08。原因：方向池仅 6 个行业，
-  量价齐升候选经常不足 Top3（部分报告期仅 1-2 个通过），Top3 选不满导致集中度风险；且
-  半导体/光伏等净利同比波动大，硬门在景气初期（净利未转正）即剔除，信号滞后偏严；
-- **量价齐升加分（+10）也不改善**：全周期 0.69、样本外 0.16，弱于 baseline；
-- **方向防守门（高位×非量价齐升剔除）**：结果见上表，方向层在 L2 池的防守语义以回测为准；
-- 结论：**供需层（量价齐升）在 6 行业方向池 Top3 框架下不作选股硬门**，保留为持仓观察/预警
+- **baseline（return_60d 动量 Top3 + pe5y<=90 估值防守）全周期 Sharpe = {_v(base_full, 'sharpe')}**
+  （2020-05 起，样本外 {_v(base_oos, 'sharpe')}）；12 行业扩池后集中度下降，Sharpe 低于 6 行业池的 0.72；
+- **量价齐升硬门**：全周期 {_v(qlq_full, 'sharpe')}（样本外 {_v(qlq_oos, 'sharpe')}），
+  相对 baseline 影响见上表（候选不足 Top3 时选不满，集中度风险）；
+- **量价齐升加分（+10）**：全周期 {_v(bonus_full, 'sharpe')}，弱于 baseline；
+- **方向防守门（高位×非量价齐升剔除）**：全周期 {_v(gate_full, 'sharpe')}，弱于 baseline，
+  方向层在 L2 池的防守语义以回测为准；
+- 结论：**供需层（量价齐升）在 12 行业方向池 Top3 框架下不作选股硬门**，保留为持仓观察/预警
   信号；方向层延续一级实证的「防守门」语义（追高反向，不作进攻加分）。
 
 ## 4. 文件

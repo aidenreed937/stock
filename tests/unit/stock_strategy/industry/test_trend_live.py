@@ -47,20 +47,24 @@ def _make_theme_etf_direction() -> pl.DataFrame:
 
 
 def test_load_l2_etf_map_from_theme_direction(monkeypatch, tmp_path: Path) -> None:
-    """方向池 6 行业应通过 theme_etf_direction 映射到对应 ETF。"""
-    import stock_strategy.industry.trend_live as tl
-
-    mart = tmp_path / "theme_etf_direction.parquet"
-    _make_theme_etf_direction().write_parquet(mart)
-    monkeypatch.setattr(tl, "_THEME_ETF_DIRECTION_MART", mart)
-
+    """方向池 13 行业应具备标准 1:1 ETF 映射及代理属性。"""
     etf_map = load_l2_etf_map()
     assert etf_map["270100"]["symbol"] == "512480.SH"  # 半导体
     assert etf_map["730200"]["symbol"] == "515880.SH"  # 通信设备
     assert etf_map["710100"]["symbol"] == "512720.SH"  # 计算机设备
     assert etf_map["630500"]["symbol"] == "515790.SH"  # 光伏设备
     assert etf_map["630700"]["symbol"] == "159755.SZ"  # 电池
+    assert etf_map["630800"]["symbol"] == "159326.SZ"  # 电网设备
     assert etf_map["280500"]["symbol"] == "516110.SH"  # 汽车
+    assert etf_map["240400"]["symbol"] == "159562.SZ"  # 贵金属 (黄金股)
+    assert etf_map["370300"]["symbol"] == "512290.SH"  # 生物制品
+    assert etf_map["240300"]["symbol"] == "512400.SH"  # 工业金属 (有色)
+    assert etf_map["640600"]["symbol"] == "560280.SH"  # 工程机械 (工程机械主题ETF)
+    assert etf_map["421100"]["symbol"] == "159666.SZ"  # 航运港口 (交通运输ETF)
+
+    assert etf_map["630800"]["match_type"] == "pure_l2"
+    assert etf_map["640600"]["match_type"] == "pure_l2"
+    assert etf_map["421100"]["match_type"] == "proxy_l1"
 
 
 def test_inspect_live_industry_trend_signal(monkeypatch, tmp_path: Path) -> None:
@@ -120,7 +124,7 @@ def test_inspect_live_industry_trend_signal(monkeypatch, tmp_path: Path) -> None
 
 
 def test_inspect_live_with_unmapped_industry(monkeypatch, tmp_path: Path) -> None:
-    """面板中出现无 ETF 映射的行业（不在 theme_etf_direction）→ 不生成可执行报单。"""
+    """面板中出现未配置的未知行业编码 → 过滤或优雅处理。"""
     import stock_strategy.industry.trend_live as tl
 
     d = date(2026, 8, 28)
@@ -160,7 +164,7 @@ def test_inspect_live_with_unmapped_industry(monkeypatch, tmp_path: Path) -> Non
         strategy_key="industry_l2_direction", total_capital=100_000.0
     )
     by_code = {inst.industry_code: inst for inst in res.instructions}
-    # 999999 不在方向池 6 行业（面板过滤后仅 270100 进入候选）→ 仅 1 条指令
+    # 999999 不在方向池 13 行业（面板过滤后仅 270100 进入候选）→ 仅 1 条指令
     assert set(by_code.keys()) == {"270100"}
     assert by_code["270100"].etf_symbol == "512480.SH"
     assert by_code["270100"].recommended_lots is not None
