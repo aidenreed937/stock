@@ -180,19 +180,58 @@ def build_theme_signals() -> dict[str, pl.DataFrame]:
     return out
 
 
+def _avg_amount_by_etf(etf_codes: list[str]) -> dict[str, float]:
+    """近 60 日日均成交额（元）作为 ETF 规模/流动性代理。"""
+    from stock_data.catalog import DataCatalog
+
+    try:
+        fund = DataCatalog(data_source="tushare").load_dataset(
+            "fund_daily", symbols=etf_codes, columns=["symbol", "trade_date", "amount"]
+        )
+        if fund.is_empty():
+            return {}
+        return {
+            str(r["symbol"]): float(r["amount"])
+            for r in fund.sort("trade_date")
+            .group_by("symbol")
+            .tail(60)
+            .group_by("symbol")
+            .agg(pl.col("amount").mean())
+            .to_dicts()
+        }
+    except Exception:
+        return {}
+
+
 def load_theme_etfs() -> dict[str, str]:
-    """从 watchlist 读取标记了 sw_level2 的 ETF（etf_symbol → 二级行业归属）。"""
+    """从 watchlist 读取标记了 sw_level2 的 ETF（etf_symbol → 二级行业归属）。
+
+    同一二级行业多只 ETF 时，优先选 base_date 早（历史长）、规模大（日均成交额）的代表。
+    """
     from pathlib import Path as _Path
 
     import yaml
 
     cfg = yaml.safe_load(_Path("config/universe/watchlist.yaml").read_text(encoding="utf-8"))
     funds = cfg["universe"]["a_shares"]["funds"]
-    return {
-        str(f["code"]): str(f["sw_level2"])
+    tagged = [
+        (str(f["code"]), str(f["sw_level2"]), str(f.get("base_date", "9999-99-99")))
         for f in funds
         if isinstance(f, dict) and f.get("sw_level2")
-    }
+    ]
+    if not tagged:
+        return {}
+
+    scale = _avg_amount_by_etf([t[0] for t in tagged])
+    groups: dict[str, list[tuple[str, str]]] = {}
+    for code, theme, base_date in tagged:
+        groups.setdefault(theme, []).append((code, base_date))
+
+    result: dict[str, str] = {}
+    for theme, items in sorted(groups.items()):
+        items.sort(key=lambda x: (x[1], -scale.get(x[0], 0.0)))
+        result[items[0][0]] = theme
+    return result
 
 
 def build_theme_etf_direction() -> pl.DataFrame:
