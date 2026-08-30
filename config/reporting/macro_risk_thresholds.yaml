@@ -208,3 +208,6 @@ indices:
     threshold_warning: 60.0
     title_critical: "极度恐慌 (超跌反弹机会)"
     title_warning: "恐慌升温 (关注左侧建仓)"
+    # 恐慌极值时的市场位置风险判定（基准距前120交易日高点回撤，负值）
+    dd_confirm_deep: -0.20 # 回撤 ≤ -20%：深底确认，真冰点概率高
+    dd_warn_shallow: -0.10 # 回撤 > -10%：高位/中继恐慌，假冰点预警（接飞刀风险高）

@@ -182,3 +182,60 @@ def test_evaluate_macro_risk_top_fund_corporate_divergence() -> None:
     assert res["level"] == "danger"
     assert "羊群资金高位狂热接盘" in res["advice"]
     assert "MA20" in res["advice"]
+
+
+def test_evaluate_macro_risk_panic_dd_deep_confirm() -> None:
+    """恐慌极值 + 距前120日高点回撤 ≥20% → 深底确认提示。"""
+    row = {
+        "trade_date": date(2018, 10, 18),
+        "overheat_index": 30.0,
+        "panic_index": 83.5,
+        "dim_crowding": 20.0,
+    }
+    res = evaluate_macro_risk(row, dd_from_high=-0.29)
+    assert res["level"] == "opportunity"
+    assert "深底确认" in res["advice"]
+    assert "真冰点" in res["advice"]
+
+
+def test_evaluate_macro_risk_panic_dd_midterm_warn() -> None:
+    """恐慌极值 + 回撤 10%~20% → 中继风险提示。"""
+    row = {
+        "trade_date": date(2026, 7, 13),
+        "overheat_index": 45.0,
+        "panic_index": 78.0,
+        "dim_crowding": 70.0,
+    }
+    res = evaluate_macro_risk(row, dd_from_high=-0.10)
+    assert res["level"] == "opportunity"
+    assert "中继风险" in res["advice"]
+    assert "分批建仓优于一次性满仓" in res["advice"]
+
+
+def test_evaluate_macro_risk_panic_dd_shallow_fake_bottom() -> None:
+    """恐慌极值 + 回撤 <10% → 假冰点预警。"""
+    row = {
+        "trade_date": date(2026, 7, 7),
+        "overheat_index": 45.0,
+        "panic_index": 77.2,
+        "dim_crowding": 75.0,
+    }
+    res = evaluate_macro_risk(row, dd_from_high=-0.07)
+    assert res["level"] == "opportunity"
+    assert "假冰点预警" in res["advice"]
+    assert "接飞刀风险" in res["advice"]
+
+
+def test_evaluate_macro_risk_panic_no_dd_no_position_hint() -> None:
+    """dd_from_high 缺失（数据不足）时，恐慌分支不追加位置提示。"""
+    row = {
+        "trade_date": date(2020, 3, 23),
+        "overheat_index": 30.0,
+        "panic_index": 86.7,
+        "dim_crowding": 67.9,
+    }
+    res = evaluate_macro_risk(row, dd_from_high=None)
+    assert res["level"] == "opportunity"
+    assert "深底确认" not in res["advice"]
+    assert "中继风险" not in res["advice"]
+    assert "假冰点预警" not in res["advice"]

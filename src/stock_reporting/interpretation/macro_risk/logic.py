@@ -12,6 +12,7 @@ from typing import Any
 import yaml
 
 from stock_reporting.interpretation.macro_risk.fallback_config import FALLBACK_CONFIG
+from stock_reporting.interpretation.macro_risk.position_hint import dd_position_hint
 
 _DEFAULT_CONFIG_PATH = Path("config/reporting/macro_risk_thresholds.yaml")
 
@@ -86,9 +87,18 @@ def _grade_dim(
 
 
 def evaluate_macro_risk(
-    row: dict[str, Any], config_path: Path | str | None = None
+    row: dict[str, Any],
+    config_path: Path | str | None = None,
+    dd_from_high: float | None = None,
 ) -> dict[str, Any]:
-    """根据当日指标快照生成多维风险评级与投研建议。"""
+    """根据当日指标快照生成多维风险评级与投研建议。
+
+    Args:
+        row: 当日因子快照（含 overheat_index / panic_index / dim_* 等）。
+        config_path: 研报阈值配置路径。
+        dd_from_high: 基准距前 120 交易日高点回撤（负值，如 -0.08 = 距高点跌 8%）。
+            用于在恐慌极值时提示「市场位置」风险（深底/中继/高位假冰点）。
+    """
     cfg = load_reporting_config(config_path)
 
     overheat = _safe_float(row.get("overheat_index"))
@@ -314,6 +324,11 @@ def evaluate_macro_risk(
                 "👉 **操作建议**：果断重仓配置宽基，无需精准择时，耐心锁仓。"
             )
         level = "opportunity"
+
+        # 恐慌极值的位置风险提示（识别「假冰点」）：见 position_hint.dd_position_hint
+        if dd_from_high is not None:
+            advice += dd_position_hint(dd_from_high, cfg)
+
     elif overheat > 55:
         status = "局部过热 (随时可能见顶)"
         level = "warning"

@@ -7,6 +7,34 @@ from stock_reporting.engine.renderer import ReportRenderer
 from stock_reporting.interpretation.macro_risk.logic import evaluate_macro_risk
 
 
+def _compute_dd_from_high(target_date: date | None) -> float | None:
+    """计算基准（中证全指）截至目标日的「距前 120 交易日高点回撤」。
+
+    用于判定 Panic 极值触发的市场位置（深底 / 中继 / 高位），识别「假冰点」风险。
+    数据缺失或不足 121 个交易日时返回 None（报告不显示位置提示）。
+    """
+    if target_date is None:
+        return None
+    try:
+        from stock_data.catalog import DataCatalog
+
+        cat = DataCatalog(data_source="lixinger")
+        bars = cat.load_bars(
+            symbol="000985.CSI",
+            dataset="index_daily_bar",
+            columns=["trade_date", "close"],
+        )
+        hist = bars.filter(pl.col("trade_date") <= target_date).sort("trade_date").select("close")
+        closes = hist["close"].to_list()
+        if len(closes) >= 121:
+            hi120 = max(closes[-121:-1])  # 不含当日的前 120 日高点
+            if hi120 > 0:
+                return float(closes[-1]) / float(hi120) - 1.0
+    except Exception:
+        pass
+    return None
+
+
 def render_macro_risk_report(df: pl.DataFrame, target_date: date | None = None) -> str:
     """生成宏观风控日报 Markdown。"""
     row_df = df.filter(pl.col("trade_date") == target_date) if target_date else df.tail(1)
@@ -15,7 +43,8 @@ def render_macro_risk_report(df: pl.DataFrame, target_date: date | None = None) 
         return f"未找到日期 {target_date} 的风险数据。"
 
     row_dict = row_df.to_dicts()[0]
-    eval_result = evaluate_macro_risk(row_dict)
+    dd_from_high = _compute_dd_from_high(target_date)
+    eval_result = evaluate_macro_risk(row_dict, dd_from_high=dd_from_high)
 
     # 渲染模板
     renderer = ReportRenderer()

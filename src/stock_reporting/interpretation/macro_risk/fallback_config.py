@@ -186,5 +186,21 @@ FALLBACK_CONFIG: dict[str, Any] = {
                 },
             ],
         },
-    }
+    },
+    "indices": {
+        "overheat": {
+            "threshold_critical": 65.0,
+            "threshold_warning": 60.0,
+            "title_critical": "极度狂热 (极高回撤风险)",
+            "title_warning": "偏热过载 (进入预警区间)",
+        },
+        "panic": {
+            "threshold_critical": 70.0,
+            "threshold_warning": 60.0,
+            "title_critical": "极度恐慌 (超跌反弹机会)",
+            "title_warning": "恐慌升温 (关注左侧建仓)",
+            "dd_confirm_deep": -0.20,
+            "dd_warn_shallow": -0.10,
+        },
+    },
 }
