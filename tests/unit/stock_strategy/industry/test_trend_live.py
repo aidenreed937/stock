@@ -67,3 +67,49 @@ def test_inspect_live_industry_trend_signal(monkeypatch) -> None:
     assert set(res.candidate_direction.keys()) == {"801080.SI", "801050.SI"}
     assert res.candidate_direction["801080.SI"] == 80.0
     assert res.candidate_direction["801050.SI"] == 20.0
+
+
+def test_inspect_live_with_unmapped_industry(monkeypatch) -> None:
+    """无对应 ETF 的行业（如纺织服饰）→ 提示无映射，不生成可执行手数。"""
+    d = date(2026, 8, 28)
+    panel = pl.DataFrame(
+        {
+            "trade_date": [d, d],
+            "industry_code": ["801080.SI", "801130.SI"],
+            "industry_name": ["电子", "纺织服饰"],
+            "trend_momentum": [15.8, 14.8],
+            "supply_demand_score": [80.0, 70.0],
+            "crowding_score": [30.0, 20.0],
+            "direction_score": [80.0, 50.0],
+            "prosperity_score": [70.0, 60.0],
+            "composite_trend_score": [60.0, 55.0],
+        }
+    )
+    monkeypatch.setattr(
+        "stock_strategy.industry.trend_live.load_latest_industry_trend_panel",
+        lambda factor_root: (Path("."), panel, {}),
+    )
+
+    class FakeCatalog:
+        def __init__(self, data_source: str) -> None:
+            self.data_source = data_source
+
+        def load_dataset(self, dataset: str, symbols=None):
+            return pl.DataFrame(
+                [
+                    {"symbol": "512480.SH", "trade_date": d, "close": 1.05},
+                ]
+            )
+
+    monkeypatch.setattr("stock_strategy.industry.trend_live.DataCatalog", FakeCatalog)
+
+    res = inspect_live_industry_trend_signal(
+        strategy_key="industry_trend_momentum", total_capital=100_000.0
+    )
+    by_code = {inst.industry_code: inst for inst in res.instructions}
+    assert by_code["801080.SI"].etf_symbol == "512480.SH"
+    assert by_code["801080.SI"].recommended_lots is not None
+    # 纺织服饰无映射：不产生可执行手数
+    assert by_code["801130.SI"].etf_symbol == "—"
+    assert by_code["801130.SI"].recommended_lots is None
+    assert by_code["801130.SI"].latest_price is None

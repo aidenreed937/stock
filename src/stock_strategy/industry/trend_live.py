@@ -124,14 +124,21 @@ def inspect_live_industry_trend_signal(
     for sig in signals:
         code = sig.symbol
         ind_name = ind_names.get(code, code)
-        etf_info = etf_map.get(code, {"symbol": code, "name": ind_name})
-        etf_code = etf_info.get("symbol", code)
-        etf_name = etf_info.get("name", ind_name)
-
+        etf_info = etf_map.get(code)
         t_weight = float(sig.target_weight or 0.0)
         t_amount = total_capital * t_weight
-        ref_price = latest_prices.get(etf_code, 1.0)
-        lots = int(t_amount / (ref_price * 100)) if ref_price > 0 and t_amount > 0 else 0
+
+        if etf_info is not None:
+            etf_code = etf_info["symbol"]
+            etf_name = etf_info["name"]
+            ref_price = latest_prices.get(etf_code, 1.0)
+            lots = int(t_amount / (ref_price * 100)) if ref_price > 0 and t_amount > 0 else 0
+        else:
+            # 无对应场内 ETF（如纺织服饰/轻工制造/美容护理/综合）：不生成可执行报单
+            etf_code = "—"
+            etf_name = "无对应场内ETF"
+            ref_price = None
+            lots = None
 
         instructions.append(
             IndustryLiveOrderInstruction(
@@ -201,8 +208,9 @@ def _render_trend_markdown_card(
 
     inst_rows = []
     for inst in instructions:
+        lots_str = "—" if inst.recommended_lots is None else f"**{inst.recommended_lots} 手**"
         inst_rows.append(
-            f"| `{inst.industry_code}` ({inst.industry_name}) | **{inst.etf_symbol}** ({inst.etf_name}) | **{inst.direction}** | {inst.target_weight * 100:.1f}% | ¥{inst.target_amount:,.0f} | **{inst.recommended_lots} 手** | {inst.reason} |"
+            f"| `{inst.industry_code}` ({inst.industry_name}) | **{inst.etf_symbol}** ({inst.etf_name}) | **{inst.direction}** | {inst.target_weight * 100:.1f}% | ¥{inst.target_amount:,.0f} | {lots_str} | {inst.reason} |"
         )
     inst_table = (
         "| 申万行业 | 对应场内 ETF | 调仓方向 | 目标权重 | 目标金额 | 建议下单手数 | 调仓理由 |\n"

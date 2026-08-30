@@ -63,15 +63,12 @@ industry_etf_map:
   "801080.SI": { symbol: "512480.SH", name: "半导体芯片ETF" }
   "801110.SI": { symbol: "159996.SZ", name: "家电ETF" }
   "801120.SI": { symbol: "515170.SH", name: "食品饮料ETF" }
-  "801130.SI": { symbol: "159936.SZ", name: "可选消费ETF" }
-  "801140.SI": { symbol: "159936.SZ", name: "可选消费ETF" }
   "801150.SI": { symbol: "512010.SH", name: "医药ETF" }
   "801160.SI": { symbol: "561560.SH", name: "电力ETF" }
   "801170.SI": { symbol: "159666.SZ", name: "运输ETF" }
   "801180.SI": { symbol: "512200.SH", name: "房地产ETF" }
   "801200.SI": { symbol: "515650.SH", name: "消费50ETF" }
   "801210.SI": { symbol: "159766.SZ", name: "旅游ETF" }
-  "801230.SI": { symbol: "000985.CSI", name: "中证全指" }
   "801710.SI": { symbol: "159745.SZ", name: "建材ETF" }
   "801720.SI": { symbol: "516970.SH", name: "基建ETF" }
   "801730.SI": { symbol: "516160.SH", name: "新能源ETF" }
@@ -86,7 +83,9 @@ industry_etf_map:
   "801950.SI": { symbol: "515220.SH", name: "煤炭ETF" }
   "801960.SI": { symbol: "561360.SH", name: "石油石化ETF" }
   "801970.SI": { symbol: "512580.SH", name: "环保ETF" }
-  "801980.SI": { symbol: "159936.SZ", name: "可选消费ETF" }
+
+# 注：纺织服饰(801130)/轻工制造(801140)/美容护理(801980)/综合(801230) 无对应场内行业 ETF，
+# 不映射（避免错误复用可选消费ETF 与指数代码），live 巡检对选中这些行业时提示无对应 ETF。
 
 # 5. 策略参数配置
 strategies:
