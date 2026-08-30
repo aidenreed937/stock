@@ -75,7 +75,11 @@ class ComtradeCollector:
         """将 API 返回的字典列表转换为标准 CustomsTradeRecord。"""
         return parse_comtrade_items(items, self._catalog_map)
 
-    def fetch_api(self, period: str | list[str]) -> list[dict[str, Any]]:
+    def fetch_api(
+        self,
+        period: str | list[str],
+        output_name: str | None = None,
+    ) -> list[dict[str, Any]]:
         """调用 UN Comtrade 官方 SDK 批量拉取数据并保存本地 RAW Gzip 压缩快照。"""
         try:
             import comtradeapicall
@@ -90,7 +94,7 @@ class ComtradeCollector:
 
         period_param = ",".join(period) if isinstance(period, list | tuple) else str(period)
         cmd_param = ",".join(hs_codes)
-        period_clean = period_param.replace(",", "_")
+        save_stem = output_name or period_param.replace(",", "_")
 
         logger.info(
             "正在请求 UN Comtrade 官方 API: periods=%s, cmdCodes=%d 个",
@@ -113,7 +117,6 @@ class ComtradeCollector:
                 motCode="0",
                 maxRecords=250000,
                 format_output="JSON",
-                break_on_max=True,
             )
             if df is None or df.empty:
                 logger.warning("Comtrade API 返回空数据: period=%s", period)
@@ -124,7 +127,7 @@ class ComtradeCollector:
             )
             logger.info("Comtrade API 查询成功: period=%s, records=%d", period, len(records_dict))
             self.raw_dir.mkdir(parents=True, exist_ok=True)
-            snapshot_file = self.raw_dir / f"{period_clean}.json.gz"
+            snapshot_file = self.raw_dir / f"{save_stem}.json.gz"
             with gzip.open(snapshot_file, "wt", encoding="utf-8") as f:
                 json.dump({"data": records_dict}, f, ensure_ascii=False)
             return records_dict
@@ -162,10 +165,8 @@ class ComtradeCollector:
                 continue
 
             logger.info("=== 正在回填 %d 年 (12个月合并请求) ===", year)
-            api_records = self.fetch_api(period=year_period_str)
+            api_records = self.fetch_api(period=year_period_str, output_name=f"{year}_full")
             if api_records:
-                with gzip.open(snapshot_gz, "wt", encoding="utf-8") as f:
-                    json.dump({"data": api_records}, f, ensure_ascii=False)
                 logger.info("年份 %d 快照压缩保存完成: %d 条记录", year, len(api_records))
             time.sleep(1.0)
 
