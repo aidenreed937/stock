@@ -126,3 +126,41 @@ def test_comtrade_collector_load_raw_json(tmp_path: Path) -> None:
     assert rec.export_value_usd == 8500000.0
     assert rec.export_volume == 450.0
     assert rec.target_l2_codes == "801737.SI"
+
+
+def test_comtrade_collector_load_raw_json_gz(tmp_path: Path) -> None:
+    """测试从 RAW JSON.GZ 压缩快照加载。"""
+    import gzip
+
+    catalog_file = tmp_path / "catalog.csv"
+    catalog_file.write_text(
+        "category_key,category_name,product_key,product_name,hs_code,hs_name,quantity_unit,target_l1_code,target_l1_name,target_l2_codes,target_l2_names,description\n"
+        "power,新能源,transformer,变压器,85042100,变压器,units,801730.SI,电力设备,801737.SI,电网设备,出海\n",
+        encoding="utf-8-sig",
+    )
+
+    raw_dir = tmp_path / "raw"
+    raw_dir.mkdir(parents=True)
+    gz_file = raw_dir / "2026-07.json.gz"
+    mock_payload = {
+        "data": [
+            {
+                "period": "202607",
+                "reporterCode": 156,
+                "cmdCode": "85042100",
+                "cmdDesc": "液体介质变压器",
+                "flowDesc": "Exports",
+                "primaryValue": 9200000.0,
+                "qty": 500.0,
+                "qtyUnitAbbr": "units",
+            }
+        ]
+    }
+    with gzip.open(gz_file, "wt", encoding="utf-8") as f:
+        json.dump(mock_payload, f)
+
+    collector = ComtradeCollector(raw_dir=raw_dir, catalog_path=catalog_file)
+    records = collector.collect()
+    assert len(records) == 1
+    assert records[0].export_value_usd == 9200000.0
+    assert records[0].report_month == "2026-07"

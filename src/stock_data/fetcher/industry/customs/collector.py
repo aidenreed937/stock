@@ -3,6 +3,7 @@
 from __future__ import annotations
 
 import csv
+import gzip
 import json
 import logging
 import os
@@ -28,7 +29,7 @@ _DEFAULT_CURATED_PARQUET = "data/curated/industry/customs_trade.parquet"
 
 
 class ComtradeCollector:
-    """UN Comtrade 官方贸易数据采集适配器。"""
+    """UN Comtrade 官方贸易数据采集适配器 (支持 gzip 紧凑压缩快照)。"""
 
     def __init__(
         self,
@@ -50,11 +51,21 @@ class ComtradeCollector:
         return get_hs6_query_list(self.catalog_path)
 
     def collect(self) -> list[CustomsTradeRecord]:
-        """执行数据采集: 扫描本地 RAW 快照 -> 标准化为 CustomsTradeRecord 列表。"""
+        """执行数据采集: 扫描本地 RAW 快照 (*.json.gz / *.json) -> 标准化为 CustomsTradeRecord 列表。"""
         records: list[CustomsTradeRecord] = []
         if self.raw_dir.exists():
-            for json_file in sorted(self.raw_dir.glob("*.json")):
-                records.extend(self.load_from_raw_json(json_file))
+            # 优先收集 *.json.gz 与 *.json (去重同名基础名)
+            seen_stems: set[str] = set()
+            all_files = sorted(
+                list(self.raw_dir.glob("*.json.gz")) + list(self.raw_dir.glob("*.json"))
+            )
+            for file_path in all_files:
+                base_stem = file_path.name.replace(".json.gz", "").replace(".json", "")
+                if base_stem in seen_stems:
+                    continue
+                seen_stems.add(base_stem)
+                records.extend(self.load_from_raw_json(file_path))
+
             if not records:
                 for csv_file in sorted(self.raw_dir.glob("*.csv")):
                     records.extend(self.load_from_raw_csv(csv_file))
@@ -65,7 +76,7 @@ class ComtradeCollector:
         return parse_comtrade_items(items, self._catalog_map)
 
     def fetch_api(self, period: str | list[str]) -> list[dict[str, Any]]:
-        """调用 UN Comtrade 官方 SDK 批量拉取数据并保存本地 RAW 快照。"""
+        """调用 UN Comtrade 官方 SDK 批量拉取数据并保存本地 RAW Gzip 压缩快照。"""
         try:
             import comtradeapicall
         except ImportError:
@@ -113,9 +124,9 @@ class ComtradeCollector:
             )
             logger.info("Comtrade API 查询成功: period=%s, records=%d", period, len(records_dict))
             self.raw_dir.mkdir(parents=True, exist_ok=True)
-            snapshot_file = self.raw_dir / f"{period_clean}.json"
-            with snapshot_file.open("w", encoding="utf-8") as f:
-                json.dump({"data": records_dict}, f, ensure_ascii=False, indent=2)
+            snapshot_file = self.raw_dir / f"{period_clean}.json.gz"
+            with gzip.open(snapshot_file, "wt", encoding="utf-8") as f:
+                json.dump({"data": records_dict}, f, ensure_ascii=False)
             return records_dict
         except Exception as e:
             logger.error("Comtrade API 请求失败: %s", e)
@@ -135,19 +146,27 @@ class ComtradeCollector:
         for year in range(start_year, end_year + 1):
             year_months = [f"{year}{m:02d}" for m in range(1, 13)]
             year_period_str = ",".join(year_months)
-            year_snapshot_name = f"{year}_full.json"
-            snapshot_file = self.raw_dir / year_snapshot_name
+            snapshot_gz = self.raw_dir / f"{year}_full.json.gz"
+            snapshot_json = self.raw_dir / f"{year}_full.json"
+            snapshot_legacy = self.raw_dir / f"{year}.json"
+            snapshot_legacy_gz = self.raw_dir / f"{year}.json.gz"
 
-            if snapshot_file.exists() and not force:
+            exists = (
+                snapshot_gz.exists()
+                or snapshot_json.exists()
+                or snapshot_legacy.exists()
+                or snapshot_legacy_gz.exists()
+            )
+            if exists and not force:
                 logger.info("年份 %d 本地 RAW 快照已存在，跳过网络请求", year)
                 continue
 
             logger.info("=== 正在回填 %d 年 (12个月合并请求) ===", year)
             api_records = self.fetch_api(period=year_period_str)
             if api_records:
-                with snapshot_file.open("w", encoding="utf-8") as f:
-                    json.dump({"data": api_records}, f, ensure_ascii=False, indent=2)
-                logger.info("年份 %d 快照保存完成: %d 条记录", year, len(api_records))
+                with gzip.open(snapshot_gz, "wt", encoding="utf-8") as f:
+                    json.dump({"data": api_records}, f, ensure_ascii=False)
+                logger.info("年份 %d 快照压缩保存完成: %d 条记录", year, len(api_records))
             time.sleep(1.0)
 
         all_records = self.collect()
@@ -165,15 +184,19 @@ class ComtradeCollector:
         return count
 
     def load_from_raw_json(self, file_path: Path | str) -> list[CustomsTradeRecord]:
-        """从本地 RAW JSON 文件中加载并标准化。"""
+        """从本地 RAW JSON / JSON.GZ 文件中加载并标准化。"""
         p = Path(file_path)
         if not p.exists():
             return []
         try:
-            with p.open("r", encoding="utf-8") as f:
-                data = json.load(f)
-                items = data.get("data", []) if isinstance(data, dict) else data
-                return self.parse_api_records(items)
+            if str(p).endswith(".gz"):
+                with gzip.open(p, "rt", encoding="utf-8") as f:
+                    data = json.load(f)
+            else:
+                with p.open("r", encoding="utf-8") as f:
+                    data = json.load(f)
+            items = data.get("data", []) if isinstance(data, dict) else data
+            return self.parse_api_records(items)
         except Exception as e:
             logger.error("加载 RAW JSON 快照失败 [%s]: %s", p, e)
             return []

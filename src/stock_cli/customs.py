@@ -43,9 +43,12 @@ def _build_parser() -> argparse.ArgumentParser:
     p_backfill.add_argument("--force", action="store_true", help="强制重新拉取已存在的年份快照")
 
     # 2. 增量同步子命令: sync
-    p_sync = subparsers.add_parser("sync", help="单月增量数据拉取与事实表刷新")
+    p_sync = subparsers.add_parser("sync", help="增量数据拉取或全量本地快照刷新")
     p_sync.add_argument(
-        "-p", "--period", required=True, help="指定月份 (格式: YYYY-MM, 如 2024-12)"
+        "-p",
+        "--period",
+        default=None,
+        help="指定月份拉取 (格式: YYYY-MM，缺省时刷新本地所有 RAW 快照)",
     )
     p_sync.add_argument(
         "--catalog",
@@ -81,14 +84,16 @@ def handle_backfill(args: argparse.Namespace) -> int:
 
 
 def handle_sync(args: argparse.Namespace) -> int:
-    """处理单月增量同步任务。"""
+    """处理增量同步或本地快照重算任务。"""
     collector = ComtradeCollector(catalog_path=args.catalog)
-    period = args.period.strip()
-    logger.info(f"🚀 开始同步海关贸易月度数据: {period}")
-
-    raw_items = collector.fetch_api(period=period)
-    if not raw_items:
-        logger.warning(f"⚠️ 未拉取到 {period} 的有效数据，尝试从本地已有快照重新刷新")
+    if args.period:
+        period = args.period.strip().replace("-", "")
+        logger.info(f"🚀 开始同步海关贸易月度数据: {args.period}")
+        raw_items = collector.fetch_api(period=period)
+        if not raw_items:
+            logger.warning(f"⚠️ 未拉取到 {args.period} 的有效数据，尝试从本地已有快照重新刷新")
+    else:
+        logger.info("🚀 未指定 -p/--period 参数，正在从本地已有 RAW 快照重新计算并刷新事实表")
 
     all_records = collector.collect()
     if not all_records:
