@@ -1,15 +1,22 @@
-"""申万行业产业趋势跟踪策略回测 CLI。"""
+"""申万二级行业产业趋势跟踪策略回测 CLI。
+
+策略全部为申万二级方向池（全球共振 6 行业），数据源：
+- 基本面面板：``data/curated/mart/industry_l2_panel_daily.parquet``（阶段 1/3 产物，
+  含动量/估值分位/量价齐升/方向分）；
+- 价格面板：``data/curated/mart/industry_l2_daily.parquet``（方向池 6 行业收盘价）。
+回测窗口从 L2 财务黄金表可用起点（2020-05）开始。
+"""
 
 from __future__ import annotations
 
 import argparse
 import sys
+from datetime import date
 from pathlib import Path
 
-from stock_analytics.pipelines.industry_trend import load_latest_industry_trend_panel
+import polars as pl
+
 from stock_core.utils.logger import logger, setup_logger
-from stock_data.catalog import DataCatalog
-from stock_strategy.industry.assembly import load_industry_price_panel
 from stock_strategy.industry.report import (
     compute_metrics,
     load_all_industry_strategy_specs,
@@ -17,10 +24,63 @@ from stock_strategy.industry.report import (
 from stock_strategy.industry.runner import IndustryStrategyRunner
 from stock_strategy.pool import create_strategy
 
+_L2_PANEL_MART = Path("data/curated/mart/industry_l2_panel_daily.parquet")
+_L2_PRICE_MART = Path("data/curated/mart/industry_l2_daily.parquet")
+# L2 财务黄金表 2020Q1 起，实证回测统一从首份 L2 财报发布后开始（公平对比）
+_L2_AVAILABLE_FROM = date(2020, 5, 1)
+# 全球共振方向池 12 个申万二级行业（与 scripts/industry_l2_direction_qlq.py 对齐；
+# 电网设备 630800 因无场内 ETF 不在策略池）
+_L2_DIRECTION_POOL = (
+    "270100",
+    "730200",
+    "710100",
+    "630500",
+    "630700",
+    "280500",
+    "240300",
+    "240400",
+    "370100",
+    "370300",
+    "640600",
+    "421100",
+)
+
+
+def load_l2_panel() -> pl.DataFrame:
+    """加载申万二级方向池基本面面板（industry_l2_panel_daily），对齐实证窗口。"""
+    if not _L2_PANEL_MART.exists():
+        raise FileNotFoundError(f"缺少二级行业基本面面板: {_L2_PANEL_MART}")
+    panel = pl.read_parquet(_L2_PANEL_MART)
+    if panel.is_empty() or "trade_date" not in panel.columns:
+        raise ValueError("二级行业基本面面板为空或缺少 trade_date 列")
+    return panel.filter(
+        (pl.col("trade_date") >= _L2_AVAILABLE_FROM)
+        & (pl.col("industry_code").is_in(_L2_DIRECTION_POOL))
+    ).sort(["trade_date", "industry_code"])
+
+
+def load_l2_price_panel() -> pl.DataFrame:
+    """加载申万二级方向池历史日收盘价格长表（trade_date x symbol x close）。"""
+    if not _L2_PRICE_MART.exists():
+        raise FileNotFoundError(f"缺少二级行业行情 Mart: {_L2_PRICE_MART}")
+    return (
+        pl.read_parquet(_L2_PRICE_MART)
+        .filter(pl.col("industry_code").is_in(_L2_DIRECTION_POOL))
+        .select(
+            [
+                pl.col("trade_date").cast(pl.Date),
+                pl.col("industry_code").cast(pl.Utf8).alias("symbol"),
+                pl.col("close").cast(pl.Float64, strict=False),
+            ]
+        )
+        .filter(pl.col("trade_date") >= _L2_AVAILABLE_FROM)
+        .sort(["trade_date", "symbol"])
+    )
+
 
 def _build_parser() -> argparse.ArgumentParser:
     parser = argparse.ArgumentParser(
-        description="申万行业产业趋势跟踪策略运行与回测工具",
+        description="申万二级行业产业趋势跟踪策略运行与回测工具",
         formatter_class=argparse.ArgumentDefaultsHelpFormatter,
     )
     parser.add_argument(
@@ -33,7 +93,7 @@ def _build_parser() -> argparse.ArgumentParser:
         "--strategy",
         "-s",
         dest="strategy_name",
-        default="industry_trend_momentum",
+        default="industry_l2_direction",
         help="指定运行的策略名称",
     )
     parser.add_argument(
@@ -41,12 +101,6 @@ def _build_parser() -> argparse.ArgumentParser:
         dest="config_path",
         default="config/strategy/industry_trend_tracking.yaml",
         help="策略配置文件路径",
-    )
-    parser.add_argument(
-        "--factor-root",
-        dest="factor_root",
-        default="data/analytics/industry_trend",
-        help="产业趋势因子面板产物根目录",
     )
     return parser
 
@@ -61,7 +115,7 @@ def main() -> None:
     specs = load_all_industry_strategy_specs(cfg_path)
 
     if args.list_strategies:
-        print("已注册的申万行业产业趋势跟踪策略列表:")
+        print("已注册的申万二级行业产业趋势跟踪策略列表:")
         for name, spec in specs.items():
             print(f"  - {name}: {spec.get('description', '')} ({spec.get('strategy_class')})")
         return
@@ -74,9 +128,8 @@ def main() -> None:
     cls_name = str(spec.get("strategy_class", ""))
 
     try:
-        catalog = DataCatalog(data_source="tushare")
-        _run_dir, panel, _manifest = load_latest_industry_trend_panel(args.factor_root)
-        price_panel = load_industry_price_panel(catalog=catalog)
+        panel = load_l2_panel()
+        price_panel = load_l2_price_panel()
 
         friction = spec.get("friction", {})
         comm = float(friction.get("commission_rate", 0.0001))
@@ -101,7 +154,7 @@ def main() -> None:
         metrics = compute_metrics(nav_df)
 
         print("\n==================================================")
-        print(f"策略: {args.strategy_name} ({cls_name}) 回测结果")
+        print(f"策略: {args.strategy_name} ({cls_name}) 回测结果 [申万二级方向池]")
         print("==================================================")
         print(f"累计净值:     {metrics['final_nav']:.4f}")
         print(f"总收益率:     {metrics['total_return']:+.2f}%")

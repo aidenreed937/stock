@@ -1,4 +1,4 @@
-"""产业趋势跟踪盘尾实时巡检与 ETF 报单 CLI。"""
+"""产业趋势跟踪盘尾实时巡检与 ETF 报单 CLI（申万二级方向池）。"""
 
 from __future__ import annotations
 
@@ -11,32 +11,20 @@ from stock_strategy.industry.trend_live import inspect_live_industry_trend_signa
 
 def main() -> None:
     parser = argparse.ArgumentParser(
-        description="产业趋势跟踪策略盘尾实盘信号推演与行业 ETF 报单指令生成"
+        description="产业趋势跟踪策略盘尾实盘信号推演与二级行业 ETF 报单指令生成"
     )
     parser.add_argument(
         "--strategy",
         "-s",
         type=str,
-        default="industry_trend_momentum",
-        help="指定巡检的产业趋势策略标识 (如 industry_trend_momentum / industry_trend_quality)",
+        default="industry_l2_direction",
+        help="指定巡检的产业趋势策略标识 (如 industry_l2_direction / industry_l2_direction_qlq)",
     )
     parser.add_argument(
         "--config",
         type=str,
         default="config/strategy/industry_trend_tracking.yaml",
         help="产业趋势策略配置文件路径",
-    )
-    parser.add_argument(
-        "--etf-map-config",
-        type=str,
-        default="config/strategy/industry_rotation.yaml",
-        help="行业 ETF 映射配置文件路径",
-    )
-    parser.add_argument(
-        "--factor-root",
-        type=str,
-        default="data/analytics/industry_trend",
-        help="产业趋势因子面板产物根目录",
     )
     parser.add_argument(
         "--capital",
@@ -56,8 +44,6 @@ def main() -> None:
         res = inspect_live_industry_trend_signal(
             strategy_key=args.strategy,
             config_path=args.config,
-            etf_map_config=args.etf_map_config,
-            factor_root=args.factor_root,
             total_capital=args.capital,
         )
         print(res.markdown_card)
