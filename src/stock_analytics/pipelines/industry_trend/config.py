@@ -44,6 +44,8 @@ class IndustryTrendConfig:
     double_negative_penalty: float = 10.0  # 双负（营收负、净利负）质量分
     bargaining_neutral: float = 30.0  # 量价齐升门外议价权中性分
     direction_neutral: float = 50.0  # 全球方向数据缺口时的中性分
+    direction_high_threshold: float = 66.0  # 方向高位阈值（触发防守门）
+    direction_risk_penalty: float = 20.0  # 方向高位 × 非量价齐升 的防守减分
 
     @property
     def weight_sum(self) -> float:
@@ -97,6 +99,8 @@ def load_industry_trend_config(
         double_negative_penalty=_number("double_negative_penalty", 10.0),
         bargaining_neutral=_number("bargaining_neutral", 30.0),
         direction_neutral=_number("direction_neutral", 50.0),
+        direction_high_threshold=_number("direction_high_threshold", 66.0),
+        direction_risk_penalty=_number("direction_risk_penalty", 20.0),
     )
 
 

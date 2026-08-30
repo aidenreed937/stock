@@ -27,3 +27,7 @@ bargaining_neutral: 30.0
 
 # 方向层中性分（全球共振数据缺失时的默认值）
 direction_neutral: 50.0
+
+# 方向层防守门（实证：SOX 高位 × 非量价齐升 是风险象限，未来 60 日 -1.61% vs 量价齐升 +3.13%）
+direction_high_threshold: 66.0   # 方向分高位阈值（>66 视为过热）
+direction_risk_penalty: 20.0     # 高位 × 非量价齐升 的 composite 减分

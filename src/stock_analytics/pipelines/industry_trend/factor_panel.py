@@ -31,6 +31,7 @@ from stock_analytics.pipelines.artifacts import (
 )
 from stock_analytics.pipelines.industry_trend.config import (
     DEFAULT_CONFIG_PATH,
+    IndustryTrendConfig,
     load_industry_trend_config,
 )
 from stock_core.exceptions import DataValidationError
@@ -173,7 +174,7 @@ def build_industry_trend_panel(
         ((pl.col("_fc") + pl.col("_ex")) / 2.0).alias("prosperity_score"),
     )
     result = result.with_columns(
-        _composite_expr(config.weights, config.weight_sum).alias("composite_trend_score"),
+        _composite_expr(config).alias("composite_trend_score"),
     )
 
     # 6. 环比趋势确认：复合得分相对上一季度的变化（趋势跟踪而非追高）
@@ -187,17 +188,32 @@ def build_industry_trend_panel(
     return result.select(_PANEL_COLUMNS).sort(["trade_date", "industry_code"])
 
 
-def _composite_expr(weights: dict[str, float], total: float) -> pl.Expr:
-    """三层共振 + 现实景气 − 拥挤度的加权合成表达式。"""
+def _composite_expr(config: IndustryTrendConfig) -> pl.Expr:
+    """三层共振 + 现实景气 − 拥挤度，方向层作防守门而非进攻加分。
+
+    实证（data/analytics/industry_strategy/industry_direction_layer.md）：
+    direction 与科技行业未来 60 日收益显著负相关（追高反向），方向高 × 非量价齐升
+    是最差象限（-1.61% vs 量价齐升 +3.13%）。故 direction 不再加分，
+    仅在高位 × 非量价齐升时减分（防守门）。
+    """
+    weights = config.weights
+    total = config.weight_sum
     if total <= 0:
         return pl.lit(50.0)
-    return (
-        weights["direction"] * pl.col("direction_score")
-        + weights["supply_demand"] * pl.col("supply_demand_score")
+    base = (
+        weights["supply_demand"] * pl.col("supply_demand_score")
         + weights["bargaining"] * pl.col("bargaining_score")
         + weights["prosperity"] * pl.col("prosperity_score")
         + weights["crowding"] * (100.0 - pl.col("crowding_score"))
-    ) / total
+    )
+    defensive = (
+        pl.when(
+            (pl.col("direction_score") > config.direction_high_threshold) & (~pl.col("_quality"))
+        )
+        .then(pl.lit(config.direction_risk_penalty))
+        .otherwise(0.0)
+    )
+    return (base - defensive) / total
 
 
 def save_industry_trend_panel(
@@ -228,7 +244,7 @@ def save_industry_trend_panel(
         config_path=config_path,
     )
     manifest["methodology"] = {
-        "framework": "方向(全球) × 供需(量价齐升) × 议价权(毛利率扩张) + 现实景气 − 拥挤度",
+        "framework": "方向层(防守门:高位×非量价齐升减分) + 供需(量价齐升) + 议价权(毛利率扩张) + 现实景气 − 拥挤度",
         "trend_lookback": load_industry_trend_config(config_path).trend_lookback,
     }
 

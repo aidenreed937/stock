@@ -88,6 +88,55 @@ def test_build_industry_trend_panel_runs_on_real_mart() -> None:
     assert panel["industry_code"].n_unique() >= 10
 
 
+def test_direction_defensive_gate_penalizes_risk_quadrant(tmp_path: Path) -> None:
+    """方向高位 × 非量价齐升 → composite 防守减分；方向中性时不减分。"""
+    mart_dir = tmp_path / "curated" / "mart"
+    mart_dir.mkdir(parents=True, exist_ok=True)
+    d = date(2026, 8, 25)
+    # 供给收缩行业（营收负、净利正 = 非量价齐升）
+    pl.DataFrame(
+        {
+            "as_of_date": [d],
+            "industry_code": ["801050.SI"],
+            "industry_name": ["有色金属"],
+            "forecast_positive_share": [0.6],
+            "express_profit_growth_median": [20.0],
+            "revenue_growth_ttm": [-5.0],
+            "profit_growth_ttm": [10.0],
+            "tcr_percentile": [30.0],
+            "amount_yi": [100.0],
+        }
+    ).write_parquet(mart_dir / "industry_panel_daily.parquet")
+
+    # 方向高位映射
+    pl.DataFrame(
+        {
+            "trade_date": [d],
+            "industry_code": ["801050.SI"],
+            "direction_score": [90.0],
+        }
+    ).write_parquet(mart_dir / "global_resonance_map.parquet")
+
+    panel = build_industry_trend_panel(runtime=DataRuntimeContext.from_root(tmp_path))
+    row = panel.row(0, named=True)
+    assert row["direction_score"] == 90.0
+    # 单行业横截面分位为空 → fc/ex 中性 50，prosperity=50
+    baseline = 2.0 / 3.0 * row["prosperity_score"] + 1.0 / 3.0 * (100.0 - row["crowding_score"])
+    assert row["composite_trend_score"] <= baseline - 10.0  # 防守减分约 20
+
+    # 对照：direction 中性（50 < 66）→ 不减分
+    pl.DataFrame(
+        {
+            "trade_date": [d],
+            "industry_code": ["801050.SI"],
+            "direction_score": [50.0],
+        }
+    ).write_parquet(mart_dir / "global_resonance_map.parquet")
+    panel2 = build_industry_trend_panel(runtime=DataRuntimeContext.from_root(tmp_path))
+    row2 = panel2.row(0, named=True)
+    assert row2["composite_trend_score"] > row["composite_trend_score"]
+
+
 def test_save_and_load_industry_trend_panel(tmp_path: Path) -> None:
     panel = pl.DataFrame(
         {

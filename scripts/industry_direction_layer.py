@@ -81,7 +81,7 @@ def main() -> None:
         _rolling_pct(semi_pct["yoy"].cast(pl.Float64), window=60).alias("semi_yoy_pct")
     ).select(["trade_date", "semi_yoy_pct"])
 
-    # 5. 行业组合未来 20 日收益（等权）
+    # 5. 行业组合未来 20/60 日收益（等权）
     ind_wide = ind.pivot(on="industry_code", index="trade_date", values="close").sort("trade_date")
     combo = ind_wide.with_columns(
         pl.mean_horizontal(
@@ -89,7 +89,8 @@ def main() -> None:
         ).alias("combo")
     ).select(["trade_date", "combo"])
     combo = combo.with_columns(
-        (pl.col("combo").shift(-20) / pl.col("combo") - 1.0).alias("fwd20")
+        (pl.col("combo").shift(-20) / pl.col("combo") - 1.0).alias("fwd20"),
+        (pl.col("combo").shift(-60) / pl.col("combo") - 1.0).alias("fwd60"),
     ).drop_nulls()
 
     # 6. 合并（月频指标前向填充到日频）
@@ -101,23 +102,40 @@ def main() -> None:
         .drop_nulls()
     )
     merged = merged.with_columns(
-        pl.mean_horizontal(["sox_ma_bias", "sox_mom20", "semi_yoy_pct"]).alias("composite")
+        pl.mean_horizontal(["sox_ma_bias", "sox_mom20", "sox_chg60", "semi_yoy_pct"]).alias(
+            "composite"
+        )
+    )
+    # 方向变化口径：composite 的 60 日环比（景气改善/恶化）
+    merged = merged.sort("trade_date").with_columns(
+        (pl.col("composite") - pl.col("composite").shift(60)).alias("composite_chg60")
     )
 
     print(
         f"样本: {len(merged)} 交易日, {merged['trade_date'].min()} ~ {merged['trade_date'].max()}"
     )
 
-    # 7. 时间序列 Spearman IC
+    # 7. 时间序列 Spearman IC（未来 20 日 / 60 日）
     from scipy.stats import spearmanr
 
-    print("\n=== 方向分 vs 科技组合未来 20 日收益 (Spearman) ===")
-    for col in ["sox_ma_bias", "sox_mom20", "semi_yoy_pct", "composite"]:
-        rho, p = spearmanr(merged[col], merged["fwd20"])
-        print(f"  {col}: rho={rho:.4f}, p={p:.4f}")
+    for horizon in ["fwd20", "fwd60"]:
+        print(f"\n=== 方向分 vs 科技组合未来 {horizon[-2:]} 日收益 (Spearman) ===")
+        for col in [
+            "sox_ma_bias",
+            "sox_mom20",
+            "sox_chg60",
+            "semi_yoy_pct",
+            "composite",
+            "composite_chg60",
+        ]:
+            rho, p = spearmanr(
+                merged.select([col, horizon]).drop_nulls()[col],
+                merged.select([col, horizon]).drop_nulls()[horizon],
+            )
+            print(f"  {col}: rho={rho:.4f}, p={p:.4f}")
 
-    # 8. 方向分高/低分组的未来收益（按 composite 分 5 组）
-    print("\n=== composite 方向分 5 分组未来 20 日收益 ===")
+    # 8. 方向分高/低分组的未来 60 日收益（按 composite 分 5 组）
+    print("\n=== composite 方向分 5 分组未来 60 日收益 ===")
     groups = merged.with_columns(
         (pl.col("composite").rank() / pl.col("composite").count() * 5)
         .cast(pl.Int32)
@@ -128,7 +146,7 @@ def main() -> None:
         sub = groups.filter(pl.col("g") == g)
         if not sub.is_empty():
             print(
-                f"  组{g} (最低): n={len(sub)}, 未来20日收益均值={sub['fwd20'].mean() * 100:.2f}%"
+                f"  组{g} (最低): n={len(sub)}, 未来60日收益均值={sub['fwd60'].mean() * 100:.2f}%"
             )
 
 

@@ -33,6 +33,7 @@
 | 10 | 全球共振是 A 股真景气来源 | 数据缺口（见 §3），逻辑推断 | ⚠️ 待补数据 |
 | 11 | 趋势跟踪 > 轮动追高 | 季度+环比改善样本外 0.22 → 0.39（+77%） | ✅ |
 | 12 | 拐点预警 A 股内部信号做不出来 | 拥挤度滞后、环比噪声大，退出全劣于不退出 | ✅ |
+| 13 | 方向层（SOX 价格）进攻证伪，作防守门 | direction 与科技行业未来60日收益显著负相关（rho -0.10），方向高×非量价齐升是最差象限（-1.61%），量价齐升门 +4.7pp | ✅ |
 
 ---
 
@@ -130,8 +131,8 @@ composite = 全球共振的供需景气（进攻）
    - 策略：`src/stock_strategy/pool/industry_trend_tracking.py`（`IndustryTrendTrackingStrategy`，
      季度调仓追 `trend_momentum`，可选 `supply_demand_min`/`crowding_max` 过滤）；
    - CLI：`make industry-trend-factors` / `make industry-trend-strategy`。
-   - 方向层 `direction_score` 由 `global_resonance_map.parquet` 提供，缺失时中性 50；
-     数据补齐后激活 `weights.direction` 即可。
+   - **方向层（AI 算力腿）已接入**：`global_resonance_map.parquet`（SOX 方向 → 电子/通信/计算机），
+     实证为防守门语义（高位×非量价齐升减分，见判断 13）；新能源/机器人腿待装机/出货历史数据补齐。
 
 > 验收：接全球指标后，样本外（2022 后）Sharpe ≥ 0.45，且拐点预警能降回撤。
 
