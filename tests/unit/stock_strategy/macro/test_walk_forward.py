@@ -55,6 +55,7 @@ def test_render_walk_forward_markdown() -> None:
         full_oos_max_dd=14.2,
         full_oos_sharpe=0.75,
         avg_wfe=0.82,
+        positive_is_ratio=1.0,
     )
     md = render_walk_forward_markdown([res])
     assert "Walk-Forward 滚动样本外检验" in md

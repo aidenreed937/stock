@@ -186,7 +186,7 @@ def render_comparison_markdown(
     etf_table = _render_table(
         etf_cols,
         "二、 场内 ETF 实盘策略对比 (Live Tradable ETF Strategies)",
-        "普通股票账户可直接一键报单交易；已扣除万1佣金、万5冲击滑点并受 3% 调仓死区过滤；价格采用未复权收盘价（未计分红再投资，对高股息品种属保守低估）。",
+        "普通股票账户可直接一键报单交易；已扣除万1佣金、万5冲击滑点并受 3% 调仓死区过滤；价格采用后复权收盘价（含分红再投资），故相对不含分红的指数基准，本组超额含分红口径差、被系统性高估（高股息标的高估更明显），需与第一组理论版对照看纯择时 alpha。",
     )
 
     start_str = start.isoformat() if start else "N/A"
@@ -206,19 +206,10 @@ def render_comparison_markdown(
             f"引入聪明钱假黄金坑确认过滤，实盘 CAGR 达 **{_fmt_pct(v5_cagr)}**、"
             f"夏普 **{v5_sharpe:.2f}**，综合收益风险比最优；"
         )
-    aw_stats = stats.get("macro_all_weather_etf")
-    if aw_stats:
-        aw_vol = _get_val(
-            aw_stats, "annualized_volatility", _get_val(aw_stats, "annual_volatility")
-        )
-        aw_dd = _get_val(aw_stats, "max_drawdown")
-        summary_lines.append(
-            f"- **大类资产稳健防御**：**`macro_all_weather_etf`** 引入国债与黄金跨资产避险，"
-            f"年化波动率压至 **{_fmt_pct(aw_vol)}**，最大回撤收窄至 **{_fmt_pct(aw_dd)}**。"
-        )
     summary_lines.extend(
         [
             "",
+            "> ⚠️ 口径提示：第二组 ETF 版采用后复权（含分红再投资），第一组理论版与指数基准均不含分红，两组超额不可直接横向比较；ETF 版相对理论版的差值主要来自分红口径与摩擦成本，而非择时 alpha。",
             "> 以上为历史回测结果，不代表未来表现；实盘需叠加交易成本、流动性约束与策略漂移再评估。",
         ]
     )

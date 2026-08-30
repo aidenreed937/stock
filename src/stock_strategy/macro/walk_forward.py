@@ -34,7 +34,7 @@ class WalkForwardSlice:
     oos_cagr: float
     oos_max_dd: float
     oos_sharpe: float
-    wfe_ratio: float  # oos_cagr / max(is_cagr, 0.01)
+    wfe_ratio: float  # oos_cagr / is_cagr（is_cagr<=0 时为 0）
 
 
 @dataclass(frozen=True)
@@ -48,6 +48,7 @@ class WalkForwardResult:
     full_oos_max_dd: float
     full_oos_sharpe: float
     avg_wfe: float
+    positive_is_ratio: float  # 样本内 CAGR > 0 的切片占比
 
 
 def _extract_metric(slice_df: pl.DataFrame, col: str = "nav") -> tuple[float, float, float]:
@@ -122,8 +123,8 @@ def run_walk_forward_analysis(
         is_cagr, is_dd, is_sh = _extract_metric(is_sub)
         oos_cagr, oos_dd, oos_sh = _extract_metric(oos_sub)
 
-        denom = is_cagr if is_cagr > 0 else 0.01
-        wfe = oos_cagr / denom
+        # 样本内年化为负或零：无正 alpha 可外推，效率记 0，避免 denom 兜底 0.01 虚高
+        wfe = oos_cagr / is_cagr if is_cagr > 0 else 0.0
 
         slices.append(
             WalkForwardSlice(
@@ -172,6 +173,7 @@ def run_walk_forward_analysis(
     )
     full_cagr, full_dd, full_sh = _extract_metric(stitched_df)
     avg_wfe = sum(s.wfe_ratio for s in slices) / len(slices)
+    positive_is_ratio = sum(1 for s in slices if s.is_cagr > 0) / len(slices)
 
     return WalkForwardResult(
         strategy_name=strategy_name,
@@ -181,6 +183,7 @@ def run_walk_forward_analysis(
         full_oos_max_dd=full_dd,
         full_oos_sharpe=full_sh,
         avg_wfe=avg_wfe,
+        positive_is_ratio=positive_is_ratio,
     )
 
 
@@ -191,23 +194,24 @@ def render_walk_forward_markdown(results: list[WalkForwardResult]) -> str:
         "",
         "验证协议：滚动 3 年样本内 (In-Sample, 756D) -> 滚动 1 年样本外 (Out-of-Sample, 252D) 连续步进拼接。",
         "",
-        "| 策略名称 | 拼接 OOS CAGR | 拼接 OOS 最大回撤 | 拼接 OOS 夏普比率 | 平均 WFE 效率比 | 样本外有效性评级 |",
-        "| :--- | :---: | :---: | :---: | :---: | :--- |",
+        "| 策略名称 | 拼接 OOS CAGR | 拼接 OOS 最大回撤 | 拼接 OOS 夏普比率 | 平均 WFE 效率比 | 样本内有效切片占比 | 样本外有效性评级 |",
+        "| :--- | :---: | :---: | :---: | :---: | :---: | :--- |",
     ]
 
     for r in results:
         wfe_str = f"{r.avg_wfe:.2f}"
-        if r.avg_wfe >= 0.7:
-            grade = "🟢 极强抗过拟合 (WFE >= 0.7)"
-        elif r.avg_wfe >= 0.4:
-            grade = "🟡 稳健可用 (0.4 <= WFE < 0.7)"
+        pos_str = f"{r.positive_is_ratio:.0%}"
+        if r.avg_wfe >= 0.7 and r.positive_is_ratio >= 0.5:
+            grade = "🟢 极强抗过拟合 (WFE >= 0.7 且样本内有效切片 >= 50%)"
+        elif r.avg_wfe >= 0.4 and r.positive_is_ratio >= 0.5:
+            grade = "🟡 稳健可用"
         else:
-            grade = "🔴 参数衰减明显 (WFE < 0.4)"
+            grade = "🔴 参数衰减或样本内 alpha 不稳定"
 
         lines.append(
             f"| **`{r.strategy_name}`** | **`{r.full_oos_cagr:+.2f}%`** | "
             f"**`{r.full_oos_max_dd:.2f}%`** | **`{r.full_oos_sharpe:.2f}`** | "
-            f"`{wfe_str}` | {grade} |"
+            f"`{wfe_str}` | `{pos_str}` | {grade} |"
         )
 
     lines.append("")
