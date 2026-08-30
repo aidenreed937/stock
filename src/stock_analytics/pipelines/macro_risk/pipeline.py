@@ -22,6 +22,35 @@ from stock_reporting.templates.macro_risk_report import render_macro_risk_report
 
 logger = logging.getLogger(__name__)
 
+# 完整性检测字段：双轨指数本身 + 其构成的 6 个维度
+# （overheat: valuation/leverage/fear/flow/crowding；panic: breadth/fear/flow）
+_COMPLETENESS_FIELDS: tuple[str, ...] = (
+    "overheat_index",
+    "panic_index",
+    "dim_valuation",
+    "dim_leverage",
+    "dim_fear",
+    "dim_flow",
+    "dim_crowding",
+    "dim_breadth",
+)
+
+
+def _check_data_completeness(row_dict: dict[str, object]) -> dict[str, object]:
+    """检测 as_of 日核心字段缺失，返回完整性报告。
+
+    缺失可能来自上游黄金表/Mart 缺数或已知口径缺口（如估值冷启动期 dim_valuation
+    为 null）；调用方结合业务判断是「已知缺口」还是「异常缺失」。
+    """
+    missing = [k for k in _COMPLETENESS_FIELDS if not isinstance(row_dict.get(k), int | float)]
+    return {
+        "checked_fields": list(_COMPLETENESS_FIELDS),
+        "total": len(_COMPLETENESS_FIELDS),
+        "available": len(_COMPLETENESS_FIELDS) - len(missing),
+        "missing_fields": missing,
+        "complete": not missing,
+    }
+
 
 class MacroRiskPipeline:
     def __init__(
@@ -191,6 +220,19 @@ class MacroRiskPipeline:
                         if isinstance(val, int | float) and val is not None:
                             summary_metrics[k] = round(float(val), 2)
                     manifest["summary"] = summary_metrics
+
+                    # 数据完整性检测：核心字段缺失写入 manifest + 运行告警
+                    completeness = _check_data_completeness(row_dict)
+                    manifest["data_completeness"] = completeness
+                    if completeness["missing_fields"]:
+                        logger.warning(
+                            "宏观风控产物数据不完整 (as_of=%s)：缺失字段 %s（完整度 %d/%d），"
+                            "可能来自上游缺数或已知口径缺口（如估值冷启动），引用前需核验",
+                            as_of,
+                            completeness["missing_fields"],
+                            completeness["available"],
+                            completeness["total"],
+                        )
 
                 session.write_json("manifest.json", manifest)
 
