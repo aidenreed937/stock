@@ -83,10 +83,31 @@ def test_render_macro_risk_report_dual_extremes() -> None:
         }
     )
     md = render_macro_risk_report(df, date(2015, 6, 26))
-    assert "宏观风控双轨制雷达日报" in md
+    assert "雷达日报" in md
     assert "双极值共振" in md
-    assert "69.5" in md
-    assert "70.9" in md
+    assert "今日信号" in md
+    assert "操作指引" in md
+
+
+def test_render_macro_risk_report_pro_template() -> None:
+    """专业版模板保留全维度穿透与深度归因。"""
+    df = pl.DataFrame(
+        {
+            "trade_date": [date(2026, 8, 28)],
+            "overheat_index": [69.2],
+            "panic_index": [33.9],
+            "dim_valuation": [47.2],
+            "dim_leverage": [84.9],
+            "dim_fear": [28.8],
+            "dim_crowding": [78.4],
+            "dim_breadth": [37.0],
+            "dim_flow": [35.7],
+        }
+    )
+    md = render_macro_risk_report(df, date(2026, 8, 28), template="pro")
+    assert "宏观风控双轨制雷达日报" in md
+    assert "全维度系统性风险穿透" in md
+    assert "深度归因与操作建议" in md
 
 
 def test_evaluate_macro_risk_flow_active_inflow() -> None:
@@ -181,7 +202,7 @@ def test_evaluate_macro_risk_top_fund_corporate_divergence() -> None:
     assert "高位公募接盘与产业资本出逃背离" in res["status"]
     assert res["level"] == "danger"
     assert "羊群资金高位狂热接盘" in res["advice"]
-    assert "MA20" in res["advice"]
+    assert "生命线" in res["advice"]
 
 
 def test_evaluate_macro_risk_panic_dd_deep_confirm() -> None:

@@ -6,6 +6,9 @@
 
 - **🔥 狂热指数 (Overheat Index)**: `{{ "%.1f"|format(eval_result.overheat_value) }}` (当前数值越大，发生毁灭性回撤的概率越高)
 - **🥶 恐慌指数 (Panic Index)**: `{{ "%.1f"|format(eval_result.panic_value) }}` (当前数值越大，发生报复性反弹的概率越高)
+{% if eval_result.ma20_status %}
+- **生命线 (20日均线)**: 收盘 `{{ "%.0f"|format(eval_result.ma20_status.close) }}` / MA20 `{{ "%.0f"|format(eval_result.ma20_status.ma20) }}` {% if eval_result.ma20_status.broken %}🔴 **已跌破**（右侧退出开关触发，进攻端应清仓）{% else %}🟢 **未跌破**（趋势完好）{% endif %}
+{% endif %}
 
 ---
 

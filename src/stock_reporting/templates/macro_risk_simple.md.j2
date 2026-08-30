@@ -1,0 +1,44 @@
+# 📅 宏观风控雷达日报 ({{ trade_date }})
+
+## 🚦 今日信号：{{ signal_badge }} — {{ eval_result.status }}
+
+---
+
+## 📈 市场位置
+
+{% if eval_result.market_position %}
+- **中证全指**：`{{ "%.0f"|format(eval_result.market_position.close) }}`（近20日 `{{ "%+.1f"|format(eval_result.market_position.ret20 * 100) }}%`，近60日 `{{ "%+.1f"|format(eval_result.market_position.ret60 * 100) }}%`）
+{% endif %}
+{% if eval_result.ma20_status %}
+- **生命线 (20日均线)**：`{{ "%.0f"|format(eval_result.ma20_status.ma20) }}` {% if eval_result.ma20_status.broken %}🔴 **已跌破**（趋势走坏，进攻端应清仓）{% else %}🟢 **未跌破**（趋势完好）{% endif %}
+{% endif %}
+
+---
+
+## 🔑 关键看板
+
+{% for item in key_metrics %}
+- **{{ item.name }}**：`{{ "%.1f"|format(item.val) if item.val is not none else "N/A" }}` {{ item.badge }} — {{ item.plain }}
+{% endfor %}
+
+---
+
+## 📋 完整维度一览（供参考）
+
+| 指标 | 分位 | 状态 | 说明 |
+| :--- | :---: | :---: | :--- |
+{% for tier in eval_result.risk_tiers %}
+{% for item in tier.metrics %}
+| {{ item.name }} | `{{ "%.1f"|format(item.val) if item.val is not none else "N/A" }}` | {{ item.badge }} {{ item.status }} | {{ item.desc }} |
+{% endfor %}
+{% endfor %}
+
+---
+
+## 👉 操作指引
+
+{{ action_guide | safe }}
+
+---
+
+> 本报告由量化模型自动生成，仅供风险参考，不构成投资建议；市场有风险，决策需谨慎。
