@@ -37,7 +37,7 @@ def main():
     print(f"  - 换手拥挤分位       : {_fmt(latest.get('dim_crowding'))}")
     print(f"  - 主力资金分位       : {_fmt(latest.get('dim_flow'))}")
     # 2 大拐点快变量
-    print(f"  - 期权情绪分位       : {_fmt(latest.get('dim_sentiment'))}")
+    print(f"  - 恐慌情绪分位       : {_fmt(latest.get('dim_fear'))}")
     print(f"  - 市场广度分位       : {_fmt(latest.get('dim_breadth'))}")
     # 1 个长线慢变量
     print(f"  - 大盘估值分位       : {_fmt(latest.get('dim_valuation'))}")

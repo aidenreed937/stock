@@ -181,7 +181,7 @@ class MacroRiskPipeline:
                         "overheat_index",
                         "panic_index",
                         "dim_crowding",
-                        "dim_sentiment",
+                        "dim_fear",
                         "dim_breadth",
                         "dim_valuation",
                         "dim_leverage",

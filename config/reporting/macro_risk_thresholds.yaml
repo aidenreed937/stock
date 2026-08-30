@@ -84,7 +84,7 @@ dimensions:
         icon: "⚪"
         comment: "主力资金流向未见明显倾斜"
 
-  sentiment:
+  fear:
     name: "期权情绪"
     category: "拐点与博弈级信号 (快变量 / 情绪与超跌)"
     missing:

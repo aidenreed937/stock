@@ -99,7 +99,7 @@ FALLBACK_CONFIG: dict[str, Any] = {
                 },
             ],
         },
-        "sentiment": {
+        "fear": {
             "name": "期权情绪",
             "category": "拐点与博弈级信号 (快变量 / 情绪与超跌)",
             "missing": {"grade": "数据暂缺", "icon": "⚪", "comment": "历史数据不足"},

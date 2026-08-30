@@ -159,10 +159,11 @@ macro_risk:
     breadth:
     - adv_dec
     - newhigh60_ratio
-    sentiment:
+    fear:
     - pcr
     - iv
     - vix
+    euphoria:
     - fund_issue_pct
     crowding:
     - market_turnover
@@ -182,7 +183,7 @@ macro_risk:
         direction: raw
       - dim: leverage
         direction: raw
-      - dim: sentiment
+      - dim: fear
         direction: rev
       - dim: flow
         direction: rev
@@ -191,7 +192,7 @@ macro_risk:
     panic_index:
       - dim: breadth
         direction: raw
-      - dim: sentiment
+      - dim: fear
         direction: raw
       - dim: flow
         direction: raw

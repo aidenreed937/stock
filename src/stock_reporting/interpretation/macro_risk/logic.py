@@ -102,7 +102,7 @@ def evaluate_macro_risk(
     val_leverage = _get("dim_leverage")
     val_crowding = _get("dim_crowding")
     val_flow = _get("dim_flow")
-    val_sentiment = _get("dim_sentiment")
+    val_sentiment = _get("dim_fear")
     val_breadth = _get("dim_breadth")
     val_smart_score = _get("smart_money_pct")
     val_div_score = _get("divergence_score_score")
@@ -114,7 +114,7 @@ def evaluate_macro_risk(
     s_lev, b_lev, d_lev = _grade_dim("leverage", val_leverage, cfg)
     s_crw, b_crw, d_crw = _grade_dim("crowding", val_crowding, cfg)
     s_flw, b_flw, d_flw = _grade_dim("flow", val_flow, cfg, special_flow)
-    s_sen, b_sen, d_sen = _grade_dim("sentiment", val_sentiment, cfg)
+    s_sen, b_sen, d_sen = _grade_dim("fear", val_sentiment, cfg)
     s_brd, b_brd, d_brd = _grade_dim("breadth", val_breadth, cfg)
     s_val, b_val, d_val = _grade_dim("valuation", val_valuation, cfg)
     s_corp, b_corp, d_corp = _grade_dim("corporate", val_corporate, cfg)
@@ -155,7 +155,7 @@ def evaluate_macro_risk(
             "metrics": [
                 {
                     "name": "期权情绪",
-                    "code": "dim_sentiment",
+                    "code": "dim_fear",
                     "val": val_sentiment,
                     "status": s_sen,
                     "badge": b_sen,

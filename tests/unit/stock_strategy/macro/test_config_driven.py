@@ -112,7 +112,7 @@ def test_reporting_config_driven_evaluation() -> None:
         "panic_index": 30.0,
         "dim_crowding": 88.0,  # 严重过热 >= 85
         "dim_leverage": 25.0,  # 杠杆健康 <= 30
-        "dim_sentiment": 15.0,  # 极度自满 <= 20
+        "dim_fear": 15.0,  # 极度自满 <= 20
         "dim_valuation": 45.0,  # 估值合理 default
         "dim_breadth": 35.0,
         "dim_flow": 50.0,

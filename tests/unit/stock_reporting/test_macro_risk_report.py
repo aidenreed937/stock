@@ -16,7 +16,7 @@ def test_evaluate_macro_risk_dual_extremes() -> None:
         "dim_leverage": 100.0,
         "dim_crowding": 95.9,
         "dim_valuation": 60.0,
-        "dim_sentiment": 27.7,
+        "dim_fear": 27.7,
         "dim_breadth": 95.0,
         "dim_flow": 90.2,
     }
@@ -35,7 +35,7 @@ def test_evaluate_macro_risk_extreme_overheat() -> None:
         "dim_leverage": 95.0,
         "dim_crowding": 70.0,
         "dim_valuation": 50.0,
-        "dim_sentiment": 30.0,
+        "dim_fear": 30.0,
     }
     res = evaluate_macro_risk(row)
     assert "极度狂热" in res["status"]
@@ -76,7 +76,7 @@ def test_render_macro_risk_report_dual_extremes() -> None:
             "panic_index": [70.9],
             "dim_valuation": [60.0],
             "dim_leverage": [100.0],
-            "dim_sentiment": [27.7],
+            "dim_fear": [27.7],
             "dim_crowding": [95.9],
             "dim_breadth": [95.0],
             "dim_flow": [90.2],
