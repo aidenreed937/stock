@@ -1,4 +1,4 @@
-.PHONY: help install lint lint-rust format test test-rust-plugins check run scan realtime market-aggregate market-temperature market-context industry-structure investor-brief quant-brief factor-research factor-combine factor-backtest multi-date screen-stocks report-consistency market-cycle-review artifact-index cleanup-analytics backfill baseline migrate-data migrate-curated cleanup-data backfill-accept repair-stock-daily-bar build-plugins industry-trend-factors industry-trend-strategy
+.PHONY: help install lint lint-rust format test test-rust-plugins check run scan realtime market-aggregate market-temperature market-context industry-structure investor-brief quant-brief factor-research factor-combine factor-backtest multi-date screen-stocks report-consistency market-cycle-review artifact-index cleanup-analytics backfill baseline migrate-data migrate-curated cleanup-data backfill-accept repair-stock-daily-bar build-plugins industry-trend-factors industry-trend-strategy industry-trend-live
 
 export UV_CACHE_DIR ?= .uv_cache
 export UV_PYTHON_INSTALL_DIR ?= .uv_python
@@ -224,3 +224,6 @@ industry-trend-factors:
 
 industry-trend-strategy:
 	uv run python -m stock_cli.industry_trend_strategy $(if $(STRATEGY),--strategy $(STRATEGY)) $(if $(LIST),--list)
+
+industry-trend-live:
+	uv run python -m stock_cli.industry_trend_live $(if $(STRATEGY),--strategy $(STRATEGY)) $(if $(CAPITAL),--capital $(CAPITAL)) $(if $(DRY_RUN),--dry-run)

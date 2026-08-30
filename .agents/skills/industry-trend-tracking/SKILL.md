@@ -67,6 +67,10 @@ uv run python -m stock_cli.industry_trend_factors --as-of 2026-08-28 --output-di
 make industry-trend-strategy STRATEGY=industry_trend_momentum
 uv run python -m stock_cli.industry_trend_strategy --strategy industry_trend_quality
 uv run python -m stock_cli.industry_trend_strategy --list
+
+# 3. 盘尾实盘巡检：生成 ETF 报单卡片（行业 → 场内 ETF 映射）
+make industry-trend-live
+uv run python -m stock_cli.industry_trend_live --strategy industry_trend_momentum --dry-run
 ```
 
 ---
