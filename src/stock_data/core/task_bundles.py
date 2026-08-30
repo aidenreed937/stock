@@ -118,10 +118,22 @@ _TASK_BUNDLE_TASKS: dict[str, dict[str, tuple[str, ...]]] = {
             "AMTMVS",
         ),
     },
+    "industry": {
+        "industry_monthly_bundle": (
+            "semiconductor_sales",
+            "nev_monthly_sales",
+            "solar_capacity",
+        ),
+    },
 }
 
 # 历史 bundle 名称继续可展开，但不出现在推荐列表中。
 TASK_BUNDLE_ALIASES: dict[tuple[str, str], tuple[str, ...]] = {
+    ("industry", "industry_bundle"): (
+        "semiconductor_sales",
+        "nev_monthly_sales",
+        "solar_capacity",
+    ),
     ("tushare", "market_bundle"): (
         "stock_daily_bar",
         "daily_basic",

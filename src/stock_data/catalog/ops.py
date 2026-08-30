@@ -95,6 +95,18 @@ def dataset_name(path: Path) -> str:
             return parts[i - 2]
         if parts[i].startswith("year=") and i >= 1:
             return parts[i - 1]
+    if path.parent.name in {
+        "industry",
+        "curated",
+        "raw",
+        "mart",
+        "tushare",
+        "lixinger",
+        "fred",
+        "yfinance",
+        "alphavantage",
+    }:
+        return path.stem.split(".", 1)[0]
     if not path.parent.name.startswith("market=") and not path.parent.name.startswith("year="):
         return path.parent.name
     return path.stem.split(".", 1)[0]

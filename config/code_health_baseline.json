@@ -52,7 +52,7 @@
       "lines": 758
     },
     "src/stock_data/core/task_registry.py": {
-      "lines": 694
+      "lines": 700
     },
     "src/stock_data/fetcher/lixinger/stock_fetcher.py": {
       "lines": 434

@@ -4,6 +4,7 @@ from dataclasses import dataclass, field
 from typing import Any, cast
 
 from stock_data.core import task_registry_helpers as _registry_helpers
+from stock_data.core.industry_tasks import build_industry_tasks
 from stock_data.core.lixinger_macro_tasks import build_lixinger_macro_tasks
 from stock_data.core.lixinger_risk_tasks import build_lixinger_risk_tasks
 from stock_data.core.public_tasks import (
@@ -177,6 +178,7 @@ def _make_spec(
     is_single_sync: bool = False,
     required_pool: str | None = None,
     frequency: str = "daily",
+    **kwargs: Any,
 ) -> TaskSpec:
     return TaskSpec(
         task_name=task,
@@ -189,6 +191,9 @@ def _make_spec(
         partitioned=partitioned,
         is_single_sync=is_single_sync,
         required_pool=required_pool,
+        primary_keys=kwargs.get("primary_keys", ()),
+        date_columns=kwargs.get("date_columns", ()),
+        required_columns=kwargs.get("required_columns", ()),
     )
 
 
@@ -398,6 +403,7 @@ _CUSTOM_TASKS: dict[tuple[str, str], TaskSpec] = {
         is_single_sync=True,
     ),
 }
+_CUSTOM_TASKS.update(build_industry_tasks(_make_spec))
 _CUSTOM_TASKS.update(build_lixinger_macro_tasks(_make_spec))
 _CUSTOM_TASKS.update(build_lixinger_risk_tasks(_make_spec))
 _ALIASES: dict[tuple[str, str], str] = {

@@ -133,7 +133,7 @@ def test_plan_tasks_lixinger_fund_holder_structure_watchlist() -> None:
         start_specified=True,
         data_cfg=cfg,
     )
-    assert len(tasks) == 63
+    assert len(tasks) == len(cfg.watchlists.lixinger.funds)
     task_510300 = next(t for t in tasks if t.symbol == "510300.SH")
     assert task_510300.start_date == date(2012, 5, 28)
     assert task_510300.end_date == date(2026, 8, 29)
