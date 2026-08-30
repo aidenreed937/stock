@@ -1,36 +1,41 @@
-"""产业趋势跟踪盘尾实时信号推演与 ETF 报单指令生成引擎。
+"""产业趋势跟踪盘尾实时信号推演与 ETF 报单指令生成引擎（申万二级方向池）。
 
-面向周期尺度全球产业趋势（AI 算力 / 新能源）的实盘巡检：
-1. 加载产业趋势因子面板（三层共振 + 现实景气 + 拥挤度 + 环比趋势确认）；
-2. 执行产业趋势跟踪策略（季度调仓追趋势确认，方向层象限过滤）；
-3. 目标行业映射为场内 ETF（复用 industry_rotation 的 industry_etf_map）；
+面向周期尺度全球产业趋势（AI 算力 / 新能源 / 电网 / 创新药 等）的实盘巡检：
+1. 加载二级方向池基本面面板（industry_l2_panel_daily：动量/估值/量价齐升/方向分）；
+2. 执行二级方向池策略（动量 Top3 + 估值防守，可选量价齐升门/方向防守门）；
+3. 目标二级行业映射为场内 ETF（theme_etf_direction 主题 → 方向池 6 行业精确映射）；
 4. 输出报单卡片（含方向层状态：全球共振候选池的方向分）。
 
-与行业轮动 live（industry/live.py）的区别：
-- 数据源：产业趋势因子面板（industry_trend_panel）而非 5 大中观因子面板；
-- 方向层状态展示：候选池（电子/通信/计算机/电力设备/有色）的 direction_score；
+数据源：
+- 面板：`data/curated/mart/industry_l2_panel_daily.parquet`（阶段 1/3 产物）；
+- 方向分：`data/curated/mart/global_resonance_l2_map.parquet`（理杏仁码）；
 - 参考现价：从 fund_daily 最新收盘读取（非 mock）。
 """
 
 from __future__ import annotations
 
 from dataclasses import dataclass
-from datetime import datetime
+from datetime import date, datetime
 from pathlib import Path
 from zoneinfo import ZoneInfo
 
 import polars as pl
 
-from stock_analytics.pipelines.industry_trend import load_latest_industry_trend_panel
 from stock_core.utils.logger import logger
 from stock_data.catalog import DataCatalog
-from stock_strategy.industry.live import IndustryLiveOrderInstruction, load_industry_etf_map
+from stock_strategy.industry.live import IndustryLiveOrderInstruction
 from stock_strategy.industry.report import load_all_industry_strategy_specs
 from stock_strategy.pool import create_strategy
 
 _SHANGHAI_TZ = ZoneInfo("Asia/Shanghai")
 _TREND_CONFIG = Path("config/strategy/industry_trend_tracking.yaml")
-_ETF_MAP_CONFIG = Path("config/strategy/industry_rotation.yaml")
+_L2_PANEL_MART = Path("data/curated/mart/industry_l2_panel_daily.parquet")
+_THEME_ETF_DIRECTION_MART = Path("data/curated/mart/theme_etf_direction.parquet")
+_WATCHLIST_CONFIG = Path("config/universe/watchlist.yaml")
+# L2 财务黄金表 2020Q1 起，巡检窗口对齐实证起点
+_L2_AVAILABLE_FROM = date(2020, 5, 1)
+# 全球共振方向池 6 个申万二级行业（理杏仁码）
+_L2_DIRECTION_POOL = ("270100", "730200", "710100", "630500", "630700", "280500")
 
 
 @dataclass(frozen=True)
@@ -48,16 +53,70 @@ class TrendLiveInspectionResult:
     markdown_card: str
 
 
+def load_l2_etf_map() -> dict[str, dict[str, str]]:
+    """构建二级行业 → 场内 ETF 映射（方向池 6 行业）。
+
+    以 theme_etf_direction.parquet 的最新 ETF→主题归属为准（该表由
+    scripts/industry_direction_map.py 从 watchlist 的 sw_level2 标签生成），
+    再用方向池行业名反查主题对应 ETF。
+    """
+    import yaml
+
+    # 方向池行业名（theme_etf_direction 的 theme 口径）
+    pool_names = {
+        "270100": "半导体",
+        "730200": "通信设备",
+        "710100": "计算机设备",
+        "630500": "光伏设备",
+        "630700": "电池",
+        "280500": "汽车",
+    }
+    # 读取 theme_etf_direction 最新归属：theme → etf_symbol（同一主题多 ETF 取最后写入者）
+    if _THEME_ETF_DIRECTION_MART.exists():
+        try:
+            edf = pl.read_parquet(_THEME_ETF_DIRECTION_MART)
+            theme_etf: dict[str, str] = {}
+            for r in (
+                edf.sort("trade_date")
+                .group_by("theme")
+                .agg(pl.col("etf_symbol").last().alias("etf"))
+                .to_dicts()
+            ):
+                theme_etf[str(r["theme"])] = str(r["etf"])
+        except Exception as exc:
+            logger.warning(f"读取 theme_etf_direction 失败，回退 watchlist: {exc}")
+            theme_etf = {}
+    else:
+        theme_etf = {}
+
+    # 回退：watchlist 中 sw_level2 标签 → ETF（取第一个）
+    if not theme_etf and _WATCHLIST_CONFIG.exists():
+        try:
+            cfg = yaml.safe_load(_WATCHLIST_CONFIG.read_text(encoding="utf-8"))
+            for f in cfg["universe"]["a_shares"]["funds"]:
+                if isinstance(f, dict) and f.get("sw_level2"):
+                    theme_etf.setdefault(str(f["sw_level2"]), str(f["code"]))
+        except Exception as exc:
+            logger.warning(f"读取 watchlist 失败: {exc}")
+
+    result: dict[str, dict[str, str]] = {}
+    for code, name in pool_names.items():
+        etf = theme_etf.get(name)
+        if etf:
+            result[code] = {"symbol": etf, "name": f"{name}ETF"}
+    return result
+
+
 def inspect_live_industry_trend_signal(
     *,
-    strategy_key: str = "industry_trend_momentum",
+    strategy_key: str = "industry_l2_direction",
     config_path: Path | str = _TREND_CONFIG,
-    etf_map_config: Path | str = _ETF_MAP_CONFIG,
+    etf_map_config: Path | str = "config/strategy/industry_rotation.yaml",
     factor_root: Path | str = "data/analytics/industry_trend",
     total_capital: float = 100_000.0,
     data_source: str = "tushare",
 ) -> TrendLiveInspectionResult:
-    """执行产业趋势跟踪盘尾信号推演与 ETF 报单指令生成。"""
+    """执行产业趋势跟踪盘尾信号推演与 ETF 报单指令生成（申万二级方向池）。"""
     cfg_p = Path(config_path)
     specs = load_all_industry_strategy_specs(cfg_p)
     if strategy_key not in specs:
@@ -65,13 +124,21 @@ def inspect_live_industry_trend_signal(
 
     spec = specs[strategy_key]
     cls_name = str(spec["strategy_class"])
-    etf_map = load_industry_etf_map(etf_map_config)
+    etf_map = load_l2_etf_map()
 
-    # 1. 加载产业趋势因子面板
-    _run_dir, panel, _manifest = load_latest_industry_trend_panel(factor_root)
+    # 1. 加载二级方向池基本面面板
+    if not _L2_PANEL_MART.exists():
+        raise RuntimeError(f"缺少二级行业基本面面板: {_L2_PANEL_MART}")
+    panel = (
+        pl.read_parquet(_L2_PANEL_MART)
+        .filter(
+            (pl.col("trade_date") >= _L2_AVAILABLE_FROM)
+            & (pl.col("industry_code").is_in(_L2_DIRECTION_POOL))
+        )
+        .sort(["trade_date", "industry_code"])
+    )
     if panel.is_empty():
-        raise RuntimeError("产业趋势因子面板为空，无法推演信号")
-    panel = panel.sort(["trade_date", "industry_code"])
+        raise RuntimeError("二级行业基本面面板为空，无法推演信号")
     latest_date = panel["trade_date"].max()
 
     # 2. 实例化策略并推演
@@ -103,10 +170,9 @@ def inspect_live_industry_trend_signal(
 
     # 3b. ETF 池方向状态（执行层参考：观察池方向层主题 ETF 的方向分）
     etf_direction: dict[str, tuple[str, float]] = {}
-    etf_dir_path = Path("data/curated/mart/theme_etf_direction.parquet")
-    if etf_dir_path.exists():
+    if _THEME_ETF_DIRECTION_MART.exists():
         try:
-            edf = pl.read_parquet(etf_dir_path)
+            edf = pl.read_parquet(_THEME_ETF_DIRECTION_MART)
             for etf in edf["etf_symbol"].unique().to_list():
                 sub = (
                     edf.filter(pl.col("etf_symbol") == etf)
@@ -156,7 +222,7 @@ def inspect_live_industry_trend_signal(
             ref_price = latest_prices.get(etf_code, 1.0)
             lots = int(t_amount / (ref_price * 100)) if ref_price > 0 and t_amount > 0 else 0
         else:
-            # 无对应场内 ETF（如纺织服饰/轻工制造/美容护理/综合）：不生成可执行报单
+            # 无对应场内 ETF：不生成可执行报单
             etf_code = "—"
             etf_name = "无对应场内ETF"
             ref_price = None
@@ -249,13 +315,13 @@ def _render_trend_markdown_card(
             f"| `{inst.industry_code}` ({inst.industry_name}) | **{inst.etf_symbol}** ({inst.etf_name}) | **{inst.direction}** | {inst.target_weight * 100:.1f}% | ¥{inst.target_amount:,.0f} | {lots_str} | {inst.reason} |"
         )
     inst_table = (
-        "| 申万行业 | 对应场内 ETF | 调仓方向 | 目标权重 | 目标金额 | 建议下单手数 | 调仓理由 |\n"
+        "| 申万二级行业 | 对应场内 ETF | 调仓方向 | 目标权重 | 目标金额 | 建议下单手数 | 调仓理由 |\n"
         "| :--- | :--- | :---: | :---: | :---: | :---: | :--- |\n" + "\n".join(inst_rows)
         if inst_rows
         else "今日无调仓指令，保持当前产业配置。"
     )
 
-    return f"""# 产业趋势跟踪 盘尾实盘巡检卡片
+    return f"""# 产业趋势跟踪 盘尾实盘巡检卡片（申万二级方向池）
 
 > **巡检时间**: `{time_str}` | **因子基准日**: `{latest_date}` | **总资金规模**: `¥{total_capital:,.2f}`
 > **策略标识**: `{strategy_key}` (`{strategy_class}`) | **调仓状态**: **{status}**
@@ -279,6 +345,7 @@ def _render_trend_markdown_card(
 {inst_table}
 
 ---
+
 💡 **执行提示**：产业趋势跟踪为季度尺度，调仓指令在季度确认日盘尾通过对应场内 ETF 申报；
 注意规避 ETF 盘中大幅折溢价 (>0.3%)。方向层防守：全球方向高位 × 非量价齐升行业已被策略过滤。
 """
@@ -287,4 +354,5 @@ def _render_trend_markdown_card(
 __all__ = [
     "TrendLiveInspectionResult",
     "inspect_live_industry_trend_signal",
+    "load_l2_etf_map",
 ]

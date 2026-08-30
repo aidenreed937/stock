@@ -2,6 +2,7 @@
 
 from stock_strategy.base import BaseStrategy
 from stock_strategy.pool.double_sma_rsi import DoubleSmaRsiStrategy
+from stock_strategy.pool.industry_l2_direction import IndustryL2DirectionStrategy
 from stock_strategy.pool.industry_meta_router import IndustryMetaRouterStrategy
 from stock_strategy.pool.industry_momentum import IndustryMomentumRotationStrategy
 from stock_strategy.pool.industry_reversal import IndustryCrowdingReversalStrategy
@@ -35,6 +36,7 @@ STRATEGY_REGISTRY: dict[str, type[BaseStrategy]] = {
     "IndustrySupplyDemandScissorsStrategy": IndustrySupplyDemandScissorsStrategy,
     "IndustryMetaRouterStrategy": IndustryMetaRouterStrategy,
     "IndustryTrendTrackingStrategy": IndustryTrendTrackingStrategy,
+    "IndustryL2DirectionStrategy": IndustryL2DirectionStrategy,
 }
 
 
@@ -50,6 +52,7 @@ __all__ = [
     "STRATEGY_REGISTRY",
     "DoubleSmaRsiStrategy",
     "IndustryCrowdingReversalStrategy",
+    "IndustryL2DirectionStrategy",
     "IndustryMetaRouterStrategy",
     "IndustryMomentumRotationStrategy",
     "IndustrySupplyDemandScissorsStrategy",

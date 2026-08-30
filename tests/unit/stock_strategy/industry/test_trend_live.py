@@ -3,33 +3,76 @@ from pathlib import Path
 
 import polars as pl
 
-from stock_strategy.industry.trend_live import inspect_live_industry_trend_signal
+from stock_strategy.industry.trend_live import (
+    inspect_live_industry_trend_signal,
+    load_l2_etf_map,
+)
 
 
 def _make_panel() -> pl.DataFrame:
-    """方向层产业池（默认 candidate_pool=direction 的候选行业）。"""
+    """方向池 6 个申万二级行业截面（industry_l2_panel_daily 口径）。"""
     d = date(2026, 8, 28)
     return pl.DataFrame(
         {
-            "trade_date": [d, d, d],
-            "industry_code": ["801080.SI", "801770.SI", "801750.SI"],
-            "industry_name": ["电子", "通信", "计算机"],
-            "trend_momentum": [15.8, 14.8, 13.9],
-            "supply_demand_score": [80.0, 70.0, 60.0],
-            "crowding_score": [30.0, 20.0, 10.0],
-            "direction_score": [80.0, 50.0, 20.0],
-            "prosperity_score": [70.0, 60.0, 50.0],
-            "composite_trend_score": [60.0, 55.0, 50.0],
+            "trade_date": [d] * 6,
+            "industry_code": ["270100", "730200", "710100", "630500", "630700", "280500"],
+            "industry_name": ["半导体", "通信设备", "计算机设备", "光伏设备", "电池", "乘用车"],
+            "return_60d": [15.8, 14.8, 13.9, 3.0, 5.0, -2.0],
+            "pe_ttm_ew_percentile_5y": [40.0, 50.0, 60.0, 95.0, 30.0, 20.0],
+            "revenue_growth_ttm": [0.15, 0.18, 0.05, -0.10, 0.27, 0.03],
+            "profit_growth_ttm": [0.29, 0.72, 0.22, -0.20, 0.74, -0.32],
+            "direction_score": [80.0, 44.0, 20.0, 2.8, 8.3, 8.3],
         }
     )
 
 
-def test_inspect_live_industry_trend_signal(monkeypatch) -> None:
-    # mock 因子面板
-    monkeypatch.setattr(
-        "stock_strategy.industry.trend_live.load_latest_industry_trend_panel",
-        lambda factor_root: (Path("."), _make_panel(), {}),
+def _make_theme_etf_direction() -> pl.DataFrame:
+    """theme_etf_direction 最新归属（方向池 6 行业 → ETF）。"""
+    d = date(2026, 8, 28)
+    return pl.DataFrame(
+        {
+            "trade_date": [d] * 6,
+            "etf_symbol": [
+                "512480.SH",
+                "515880.SH",
+                "512720.SH",
+                "515790.SH",
+                "159755.SZ",
+                "516110.SH",
+            ],
+            "theme": ["半导体", "通信设备", "计算机设备", "光伏设备", "电池", "汽车"],
+            "direction_score": [80.0, 44.0, 20.0, 2.8, 8.3, 8.3],
+        }
     )
+
+
+def test_load_l2_etf_map_from_theme_direction(monkeypatch, tmp_path: Path) -> None:
+    """方向池 6 行业应通过 theme_etf_direction 映射到对应 ETF。"""
+    import stock_strategy.industry.trend_live as tl
+
+    mart = tmp_path / "theme_etf_direction.parquet"
+    _make_theme_etf_direction().write_parquet(mart)
+    monkeypatch.setattr(tl, "_THEME_ETF_DIRECTION_MART", mart)
+
+    etf_map = load_l2_etf_map()
+    assert etf_map["270100"]["symbol"] == "512480.SH"  # 半导体
+    assert etf_map["730200"]["symbol"] == "515880.SH"  # 通信设备
+    assert etf_map["710100"]["symbol"] == "512720.SH"  # 计算机设备
+    assert etf_map["630500"]["symbol"] == "515790.SH"  # 光伏设备
+    assert etf_map["630700"]["symbol"] == "159755.SZ"  # 电池
+    assert etf_map["280500"]["symbol"] == "516110.SH"  # 汽车
+
+
+def test_inspect_live_industry_trend_signal(monkeypatch, tmp_path: Path) -> None:
+    # mock 二级基本面面板与 theme_etf_direction
+    import stock_strategy.industry.trend_live as tl
+
+    panel_mart = tmp_path / "industry_l2_panel_daily.parquet"
+    _make_panel().write_parquet(panel_mart)
+    theme_mart = tmp_path / "theme_etf_direction.parquet"
+    _make_theme_etf_direction().write_parquet(theme_mart)
+    monkeypatch.setattr(tl, "_L2_PANEL_MART", panel_mart)
+    monkeypatch.setattr(tl, "_THEME_ETF_DIRECTION_MART", theme_mart)
 
     # mock DataCatalog（fund_daily 最新价）
     class FakeCatalog:
@@ -47,10 +90,10 @@ def test_inspect_live_industry_trend_signal(monkeypatch) -> None:
     monkeypatch.setattr("stock_strategy.industry.trend_live.DataCatalog", FakeCatalog)
 
     res = inspect_live_industry_trend_signal(
-        strategy_key="industry_trend_momentum", total_capital=100_000.0
+        strategy_key="industry_l2_direction", total_capital=100_000.0
     )
 
-    # 3 个行业 trend_momentum 均 > 0，Top3 全选
+    # Top3 动量（return_60d）：270100/730200/710100（pe5y<=90），630500 因 pe5y=95 剔除
     assert res.has_rebalance
     assert len(res.instructions) == 3
     assert "产业趋势跟踪" in res.markdown_card
@@ -58,38 +101,47 @@ def test_inspect_live_industry_trend_signal(monkeypatch) -> None:
 
     # ETF 映射正确
     by_code = {inst.industry_code: inst for inst in res.instructions}
-    assert by_code["801080.SI"].etf_symbol == "512480.SH"  # 电子→半导体芯片ETF
-    assert by_code["801770.SI"].etf_symbol == "515880.SH"  # 通信→通信ETF
-    assert by_code["801750.SI"].etf_symbol == "512720.SH"  # 计算机→计算机ETF
+    assert by_code["270100"].etf_symbol == "512480.SH"  # 半导体→半导体ETF
+    assert by_code["730200"].etf_symbol == "515880.SH"  # 通信设备→通信ETF
+    assert by_code["710100"].etf_symbol == "512720.SH"  # 计算机设备→计算机ETF
     # 参考价来自 mock fund_daily（非占位 1.0）
-    assert abs(by_code["801080.SI"].latest_price - 1.05) < 1e-9
+    assert abs(by_code["270100"].latest_price - 1.05) < 1e-9
 
-    # 方向层状态：仅展示非中性 50 的行业（电子 80 / 计算机 20），通信（中性 50）不展示
-    assert set(res.candidate_direction.keys()) == {"801080.SI", "801750.SI"}
-    assert res.candidate_direction["801080.SI"] == 80.0
-    assert res.candidate_direction["801750.SI"] == 20.0
+    # 方向层状态：仅展示非中性 50 的行业（6 行业方向分均非 50）
+    assert set(res.candidate_direction.keys()) == {
+        "270100",
+        "730200",
+        "710100",
+        "630500",
+        "630700",
+        "280500",
+    }
+    assert res.candidate_direction["270100"] == 80.0
 
 
-def test_inspect_live_with_unmapped_industry(monkeypatch) -> None:
-    """无对应 ETF 的行业（如纺织服饰）→ 提示无映射，不生成可执行手数。"""
+def test_inspect_live_with_unmapped_industry(monkeypatch, tmp_path: Path) -> None:
+    """面板中出现无 ETF 映射的行业（不在 theme_etf_direction）→ 不生成可执行报单。"""
+    import stock_strategy.industry.trend_live as tl
+
     d = date(2026, 8, 28)
     panel = pl.DataFrame(
         {
-            "trade_date": [d, d],
-            "industry_code": ["801080.SI", "801130.SI"],
-            "industry_name": ["电子", "纺织服饰"],
-            "trend_momentum": [15.8, 14.8],
-            "supply_demand_score": [80.0, 70.0],
-            "crowding_score": [30.0, 20.0],
+            "trade_date": [d] * 2,
+            "industry_code": ["270100", "999999"],
+            "industry_name": ["半导体", "未知行业"],
+            "return_60d": [15.8, 14.8],
+            "pe_ttm_ew_percentile_5y": [40.0, 50.0],
+            "revenue_growth_ttm": [0.15, 0.18],
+            "profit_growth_ttm": [0.29, 0.72],
             "direction_score": [80.0, 50.0],
-            "prosperity_score": [70.0, 60.0],
-            "composite_trend_score": [60.0, 55.0],
         }
     )
-    monkeypatch.setattr(
-        "stock_strategy.industry.trend_live.load_latest_industry_trend_panel",
-        lambda factor_root: (Path("."), panel, {}),
-    )
+    panel_mart = tmp_path / "industry_l2_panel_daily.parquet"
+    panel.write_parquet(panel_mart)
+    theme_mart = tmp_path / "theme_etf_direction.parquet"
+    _make_theme_etf_direction().write_parquet(theme_mart)
+    monkeypatch.setattr(tl, "_L2_PANEL_MART", panel_mart)
+    monkeypatch.setattr(tl, "_THEME_ETF_DIRECTION_MART", theme_mart)
 
     class FakeCatalog:
         def __init__(self, data_source: str) -> None:
@@ -105,10 +157,10 @@ def test_inspect_live_with_unmapped_industry(monkeypatch) -> None:
     monkeypatch.setattr("stock_strategy.industry.trend_live.DataCatalog", FakeCatalog)
 
     res = inspect_live_industry_trend_signal(
-        strategy_key="industry_trend_momentum", total_capital=100_000.0
+        strategy_key="industry_l2_direction", total_capital=100_000.0
     )
     by_code = {inst.industry_code: inst for inst in res.instructions}
-    # 纺织服饰不在方向层池 → 只剩电子 1 条指令（candidate_pool 默认 direction）
-    assert set(by_code.keys()) == {"801080.SI"}
-    assert by_code["801080.SI"].etf_symbol == "512480.SH"
-    assert by_code["801080.SI"].recommended_lots is not None
+    # 999999 不在方向池 6 行业（面板过滤后仅 270100 进入候选）→ 仅 1 条指令
+    assert set(by_code.keys()) == {"270100"}
+    assert by_code["270100"].etf_symbol == "512480.SH"
+    assert by_code["270100"].recommended_lots is not None

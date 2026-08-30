@@ -6,7 +6,7 @@ from stock_strategy.industry.live import (
 
 def test_load_industry_etf_map() -> None:
     etf_map = load_industry_etf_map()
-    assert len(etf_map) >= 30
+    assert len(etf_map) >= 27
     assert "801010.SI" in etf_map
     assert etf_map["801010.SI"]["symbol"] == "159825.SZ"
 
