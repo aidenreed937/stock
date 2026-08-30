@@ -376,8 +376,15 @@ universe:
   macro:
     - "FEDFUNDS" # 联邦基金利率
     - "CPIAUCSL" # 美国 CPI
-    - "UNRATE"   # 失业率
-    - "PAYEMS"   # 非农就业人数
-    - "GDP"      # 美国 GDP
-    - "T10Y2Y"   # 10年-2年美债利差
-    - "WALCL"    # 美联储资产负债表规模
+    - "UNRATE" # 失业率
+    - "PAYEMS" # 非农就业人数
+    - "GDP" # 美国 GDP
+    - "T10Y2Y" # 10年-2年美债利差
+    - "WALCL" # 美联储资产负债表规模
+    - "NAPM" # 美国 ISM 制造业采购经理人指数
+    - "MANEMP" # 美国 ISM 制造业就业指数
+    - "OECDLOLITOAASTSAM" # OECD 全球综合领先指标
+    - "USALOLITOAASTSAM" # 美国 OECD 领先指标
+    - "CHNLOLITOAASTSAM" # 中国 OECD 领先指标
+    - "DGORDER" # 美国耐用品新增订单
+    - "AMTMVS" # 美国制造业出货额

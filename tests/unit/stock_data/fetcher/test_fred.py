@@ -11,12 +11,13 @@ from stock_data.fetcher.fred.registry import FRED_API_REGISTRY
 
 
 def test_fred_registry_declares_pipeline_contract() -> None:
-    meta = FRED_API_REGISTRY["FEDFUNDS"]
-
-    assert meta.primary_keys == ["symbol", "trade_date"]
-    assert meta.date_columns == ["trade_date"]
-    assert meta.required_columns == ["symbol", "trade_date"]
-    assert meta.max_range_days is None
+    for sid in ["FEDFUNDS", "NAPM", "OECDLOLITOAASTSAM", "DGORDER", "AMTMVS"]:
+        assert sid in FRED_API_REGISTRY
+        meta = FRED_API_REGISTRY[sid]
+        assert meta.primary_keys == ["symbol", "trade_date"]
+        assert meta.date_columns == ["trade_date"]
+        assert meta.required_columns == ["symbol", "trade_date"]
+        assert meta.max_range_days is None
 
 
 def test_fred_client() -> None:
