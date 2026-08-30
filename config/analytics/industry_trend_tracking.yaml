@@ -29,5 +29,8 @@ bargaining_neutral: 30.0
 direction_neutral: 50.0
 
 # 方向层防守门（实证：SOX 高位 × 非量价齐升 是风险象限，未来 60 日 -1.61% vs 量价齐升 +3.13%）
+# 对比实验（2026-08-30）：因子层减分伤样本外（0.35 vs baseline 0.39），
+# 策略层象限过滤更优（全周期 0.46 / 样本外 0.39）→ 因子层防守门默认关闭，由策略层过滤承担。
 direction_high_threshold: 66.0   # 方向分高位阈值（>66 视为过热）
-direction_risk_penalty: 20.0     # 高位 × 非量价齐升 的 composite 减分
+direction_risk_penalty: 20.0     # 高位 × 非量价齐升 的 composite 减分（因子层，默认关闭）
+direction_defensive_gate: false  # 因子层防守门开关（默认关闭，改由策略层象限过滤）

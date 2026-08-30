@@ -90,6 +90,16 @@ def test_build_industry_trend_panel_runs_on_real_mart() -> None:
 
 def test_direction_defensive_gate_penalizes_risk_quadrant(tmp_path: Path) -> None:
     """方向高位 × 非量价齐升 → composite 防守减分；方向中性时不减分。"""
+    # 因子层防守门默认关闭（改由策略层过滤），此测试显式开启
+    import yaml
+
+    cfg_payload = yaml.safe_load(
+        Path("config/analytics/industry_trend_tracking.yaml").read_text(encoding="utf-8")
+    )
+    cfg_payload["direction_defensive_gate"] = True
+    cfg_tmp = tmp_path / "gate_on.yaml"
+    cfg_tmp.write_text(yaml.dump(cfg_payload, allow_unicode=True), encoding="utf-8")
+
     mart_dir = tmp_path / "curated" / "mart"
     mart_dir.mkdir(parents=True, exist_ok=True)
     d = date(2026, 8, 25)
@@ -117,7 +127,9 @@ def test_direction_defensive_gate_penalizes_risk_quadrant(tmp_path: Path) -> Non
         }
     ).write_parquet(mart_dir / "global_resonance_map.parquet")
 
-    panel = build_industry_trend_panel(runtime=DataRuntimeContext.from_root(tmp_path))
+    panel = build_industry_trend_panel(
+        config_path=cfg_tmp, runtime=DataRuntimeContext.from_root(tmp_path)
+    )
     row = panel.row(0, named=True)
     assert row["direction_score"] == 90.0
     # 单行业横截面分位为空 → fc/ex 中性 50，prosperity=50
@@ -132,7 +144,9 @@ def test_direction_defensive_gate_penalizes_risk_quadrant(tmp_path: Path) -> Non
             "direction_score": [50.0],
         }
     ).write_parquet(mart_dir / "global_resonance_map.parquet")
-    panel2 = build_industry_trend_panel(runtime=DataRuntimeContext.from_root(tmp_path))
+    panel2 = build_industry_trend_panel(
+        config_path=cfg_tmp, runtime=DataRuntimeContext.from_root(tmp_path)
+    )
     row2 = panel2.row(0, named=True)
     assert row2["composite_trend_score"] > row["composite_trend_score"]
 

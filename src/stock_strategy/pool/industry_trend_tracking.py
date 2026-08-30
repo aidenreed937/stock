@@ -46,6 +46,8 @@ class IndustryTrendTrackingStrategy(BaseStrategy):
         score_column: str = "trend_momentum",
         supply_demand_min: float | None = None,
         crowding_max: float | None = None,
+        direction_high_threshold: float | None = None,
+        direction_quality_min: float = 50.0,
         benchmark_symbol: str | None = None,
         **kwargs: Any,
     ) -> None:
@@ -55,6 +57,11 @@ class IndustryTrendTrackingStrategy(BaseStrategy):
         self.score_column = score_column
         self.supply_demand_min = float(supply_demand_min) if supply_demand_min is not None else None
         self.crowding_max = float(crowding_max) if crowding_max is not None else None
+        # 方向层象限过滤：方向高位 × 低供需质量（非量价齐升）→ 排除候选
+        self.direction_high_threshold = (
+            float(direction_high_threshold) if direction_high_threshold is not None else None
+        )
+        self.direction_quality_min = float(direction_quality_min)
         self.benchmark_symbol = benchmark_symbol or "000985.CSI"
         self.current_weights: dict[str, float] = {}
         self._bar_count = 0
@@ -82,12 +89,23 @@ class IndustryTrendTrackingStrategy(BaseStrategy):
         if latest_cross.is_empty() or self.score_column not in latest_cross.columns:
             return []
 
-        # 可选过滤：供需质量门（量价齐升）+ 拥挤度一票否决
+        # 可选过滤：供需质量门（量价齐升）+ 拥挤度一票否决 + 方向层象限过滤
         candidates = latest_cross
         if self.supply_demand_min is not None and "supply_demand_score" in candidates.columns:
             candidates = candidates.filter(pl.col("supply_demand_score") >= self.supply_demand_min)
         if self.crowding_max is not None and "crowding_score" in candidates.columns:
             candidates = candidates.filter(pl.col("crowding_score") <= self.crowding_max)
+        if (
+            self.direction_high_threshold is not None
+            and "direction_score" in candidates.columns
+            and "supply_demand_score" in candidates.columns
+        ):
+            candidates = candidates.filter(
+                ~(
+                    (pl.col("direction_score") > self.direction_high_threshold)
+                    & (pl.col("supply_demand_score") < self.direction_quality_min)
+                )
+            )
 
         ranked = (
             candidates.select(["industry_code", "industry_name", self.score_column])

@@ -54,3 +54,26 @@ def test_crowding_filter_excludes_overheated() -> None:
     # 基础化工 crowding_score=95 > 85 被剔除
     assert "801030.SI" not in syms
     assert syms == {"801010.SI", "801780.SI", "801080.SI"}
+
+
+def test_direction_quadrant_filter_excludes_risk_quadrant() -> None:
+    """方向高位 × 非量价齐升（supply_demand 低）→ 排除候选。"""
+    d = date(2026, 8, 25)
+    df = pl.DataFrame(
+        {
+            "trade_date": [d] * 4,
+            "industry_code": ["801010.SI", "801030.SI", "801780.SI", "801080.SI"],
+            "industry_name": ["农林牧渔", "基础化工", "银行", "电子"],
+            "trend_momentum": [8.0, 6.0, 4.0, 2.0],
+            "direction_score": [80.0, 70.0, 30.0, 20.0],
+            "supply_demand_score": [90.0, 30.0, 80.0, 20.0],
+        }
+    )
+    s = IndustryTrendTrackingStrategy(
+        top_k=3, rebalance_period=1, direction_high_threshold=66.0, direction_quality_min=50.0
+    )
+    signals = s.on_bar(df)
+    syms = {sig.symbol for sig in signals}
+    # 801030: direction 70>66 且 supply_demand 30<50 → 风险象限被排除
+    assert "801030.SI" not in syms
+    assert syms == {"801010.SI", "801780.SI", "801080.SI"}

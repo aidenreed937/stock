@@ -206,13 +206,18 @@ def _composite_expr(config: IndustryTrendConfig) -> pl.Expr:
         + weights["prosperity"] * pl.col("prosperity_score")
         + weights["crowding"] * (100.0 - pl.col("crowding_score"))
     )
-    defensive = (
-        pl.when(
-            (pl.col("direction_score") > config.direction_high_threshold) & (~pl.col("_quality"))
+    # 防守门（可开关，对比实验用）：方向高位 × 非量价齐升 → 减分
+    if config.direction_defensive_gate:
+        defensive = (
+            pl.when(
+                (pl.col("direction_score") > config.direction_high_threshold)
+                & (~pl.col("_quality"))
+            )
+            .then(pl.lit(config.direction_risk_penalty))
+            .otherwise(0.0)
         )
-        .then(pl.lit(config.direction_risk_penalty))
-        .otherwise(0.0)
-    )
+    else:
+        defensive = pl.lit(0.0)
     return (base - defensive) / total
 
 

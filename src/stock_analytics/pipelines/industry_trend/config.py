@@ -46,6 +46,7 @@ class IndustryTrendConfig:
     direction_neutral: float = 50.0  # 全球方向数据缺口时的中性分
     direction_high_threshold: float = 66.0  # 方向高位阈值（触发防守门）
     direction_risk_penalty: float = 20.0  # 方向高位 × 非量价齐升 的防守减分
+    direction_defensive_gate: bool = True  # 因子层防守门开关（对比实验用）
 
     @property
     def weight_sum(self) -> float:
@@ -101,6 +102,7 @@ def load_industry_trend_config(
         direction_neutral=_number("direction_neutral", 50.0),
         direction_high_threshold=_number("direction_high_threshold", 66.0),
         direction_risk_penalty=_number("direction_risk_penalty", 20.0),
+        direction_defensive_gate=bool(payload.get("direction_defensive_gate", True)),
     )
 
 
