@@ -1,71 +1,74 @@
-# 产业趋势跟踪因子计算定义
+# 产业趋势跟踪因子计算定义（申万二级方向池）
 
-输入：`data/curated/mart/industry_panel_daily.parquet`（49 字段 Mart）。
-方向层输入：`data/curated/mart/global_resonance_map.parquet`（数据缺口，缺失时中性 50）。
-输出：`data/analytics/industry_trend/latest/industry_trend_panel.parquet`。
+## 输入（阶段 1/3 产物）
 
-权重信任源：`config/analytics/industry_trend_tracking.yaml`。
+- **二级行业基本面面板**：`data/curated/mart/industry_l2_panel_daily.parquet`
+  （18 字段，2014-01 ~ 2026-08 全历史），由 `industry_l2_daily`（行情/估值/动量）+
+  理杏仁 L2 财务黄金表 `sw_2021_l2_fs_*` 按 `reportDate` 发布日合并生成；
+- **二级方向分**：`data/curated/mart/global_resonance_l2_map.parquet`
+  （阶段 3，理杏仁码二级行业方向分，缺失时中性 50）。
 
----
+Mart 构建入口：`src/stock_analytics/marts/industry_l2_panel.py`
+（`build_industry_l2_panel_frame`，注册于 `build_steps.build_industry_l2_panel` 与
+`DomainMartBuilder.build_industry_l2_panel` / `build_all`）。
 
-## 面板字段
-
-| 字段 | 含义 | 0-100 方向 | 计算 |
-| :--- | :--- | :--- | :--- |
-| `direction_score` | 全球资本开支方向 | 越高越景气 | 全球共振映射（缺口→中性 50） |
-| `supply_demand_score` | 量价齐升质量 | 越高越好 | 量价齐升→双增速分位；供给收缩→20；双负→10 |
-| `bargaining_score` | 议价权（毛利率扩张） | 越高越好 | 量价齐升门内→(净利−营收增速)分位；门外→30 |
-| `prosperity_score` | 现实景气 | 越高越好 | (业绩预告向好占比分位 + 快报利润增速中位数分位) / 2 |
-| `crowding_score` | 拥挤度 | 越高越危险 | 成交额占比 5Y 滚动分位（缺失用成交额截面分位） |
-| `composite_trend_score` | 复合趋势得分 | 越高越好 | 三层共振 + 现实景气 − 拥挤度的加权合成 |
-| `trend_momentum` | 环比趋势确认 | 越高越好 | `composite_trend_score − shift(63)` |
+二级方向池 6 行业（全球共振方向池）：
+半导体 270100 / 通信设备 730200 / 计算机设备 710100 / 光伏设备 630500 / 电池 630700 / 汽车（乘用车 280500）。
 
 ---
 
-## 复合趋势得分合成
+## 面板字段（`industry_l2_panel_daily`，18 列）
 
-```
-composite_trend_score = (
-      w_direction × direction_score
-    + w_supply_demand × supply_demand_score
-    + w_bargaining × bargaining_score
-    + w_prosperity × prosperity_score
-    + w_crowding × (100 − crowding_score)
-) / Σw
-```
-
-**默认权重**（精确对齐已验证 milestone，样本外 Sharpe ≈ 0.39）：
-
-| 因子 | 默认权重 | 说明 |
+| 字段 | 含义 | 计算 |
 | :--- | :--- | :--- |
-| `direction` | 0.0 | 全球方向，数据缺口未激活 |
-| `supply_demand` | 0.0 | 量价齐升，待验证激活 |
-| `bargaining` | 0.0 | 议价权，待验证激活 |
-| `prosperity` | 2/3 | 现实景气（业绩预告/快报），主驱动 |
-| `crowding` | 1/3 | 拥挤度防守（减分项） |
+| `trade_date` / `industry_code` / `industry_name` / `parent_l1_code` / `parent_l1_name` | 交易日与申万二级行业标识 | 来自 `industry_l2_daily` |
+| `close` / `amount_yi` | 收盘价 / 成交额（亿元） | 来自 `industry_l2_daily` |
+| `return_20d` / `return_60d` | 20/60 日动量（%） | 来自 `industry_l2_daily` |
+| `pe_ttm_ew_percentile_5y` / `pb_ew_percentile_5y` | 5Y 滚动估值分位 | 来自 `industry_l2_daily` |
+| `revenue_growth_ttm` / `profit_growth_ttm` | 营收/净利 TTM 同比 | `q.ps.toi.ttm_y2y` / `q.ps.np.ttm_y2y` |
+| `gross_margin_ttm` | 毛利率 TTM | `q.ps.gp_m.ttm`（非金融；银行/证券/保险为 null） |
+| `supply_demand_score` | 量价齐升质量（0-100） | 量价齐升→双增速分位；供给收缩→20；双负→10 |
+| `bargaining_score` | 议价权（0-100） | 量价齐升门内→(净利−营收)增速分位；门外→30 |
+| `crowding_score` | 拥挤度（0-100） | 成交额截面分位 |
+| `direction_score` | 全球方向（0-100） | `global_resonance_l2_map`，缺口→中性 50 |
 
-默认权重下：`composite_trend_score = (2 × prosperity_score + (100 − crowding_score)) / 3`
-= 已验证的「现实景气 + 拥挤度防守」复合分。
+**量价齐升判定（供需层，L2 财务黄金表）**：
+```
+量价齐升 = (toi.ttm_y2y > 0) 且 (np.ttm_y2y > 0)      # 营收 + 净利 TTM 同比双正
+供给收缩 = (toi.ttm_y2y ≤ 0) 且 (np.ttm_y2y > 0)      # 假繁荣：压缩成本
+双负     = (toi.ttm_y2y ≤ 0) 且 (np.ttm_y2y ≤ 0)
+```
+报告期滞后处理：报告期 `trade_date`（季度末）数据以 `reportDate`（发布日）为可用起点，
+回测中按发布日生效，避免前视偏差。
 
 ---
 
-## 环比趋势确认（关键机制）
+## 策略口径（`IndustryL2DirectionStrategy`，注册于 `stock_strategy.pool`）
 
 ```
-trend_momentum = composite_trend_score(t) − composite_trend_score(t − 63)
+候选 = 方向池 6 行业
+  → 估值防守：pe_ttm_ew_percentile_5y <= 90（缺失放行）
+  → [可选] 量价齐升硬门：revenue_growth_ttm > 0 且 profit_growth_ttm > 0
+  → [可选] 方向防守门：剔除 direction_score > 66 且非量价齐升
+排序：return_60d（动量，[可选] 量价齐升加分 +10）
+取 Top3 等权，季度调仓（63 交易日），T+1 执行
 ```
 
-季度调仓按 `trend_momentum` 排序追「景气方向」而非「景气高低」。已验证：把样本外 Sharpe
-从 0.22（追绝对水平）提升到 0.39（追环比改善）。
+实证（2020-05 起，`scripts/industry_l2_direction_qlq.py`）：
+
+| 策略 | 全周期 Sharpe | 样本外 |
+| :--- | ---: | ---: |
+| 动量 Top3 + 估值防守（baseline） | 0.72 | 0.22 |
+| + 量价齐升硬门 | 0.45 | 0.24 |
+| + 量价齐升加分（+10） | 0.69 | 0.16 |
+| + 方向防守门 | 0.46 | 0.17 |
+
+**结论**：量价齐升与方向层在 6 行业小池 Top3 框架下均不作选股门（弱于 baseline），
+保留为持仓观察与拐点预警信号；其正贡献（需求驱动 > 供给收缩）在全行业截面框架成立。
 
 ---
 
-## 现实景气来源（样本外走强）
+## 权重信任源
 
-| 字段 | 来源 | 样本外 IC |
-| :--- | :--- | :--- |
-| `forecast_positive_share` | 业绩预告向好占比 | +1.68% → +3.63% |
-| `express_profit_growth_median` | 快报利润增速中位数 | +1.40% → +2.94% |
-| `report_rc_revision_ratio` | 分析师一致预期修正（反例） | +6.98% → +2.01% |
-
-注意：分析师预期样本外衰减，不作主信号。
+`config/analytics/industry_trend_tracking.yaml`（三层共振权重，当前三层因子权重 0、
+不作为 composite 加分——L2 主战场为动量 Top3 + 估值防守 + 门控）。

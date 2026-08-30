@@ -1,5 +1,5 @@
-# 申万行业产业趋势跟踪策略配置
-# 面向周期尺度全球产业趋势的确认与跟踪，季度调仓追「景气方向」而非「景气高低」。
+# 申万二级行业产业趋势跟踪策略配置
+# 面向周期尺度全球产业趋势的确认与跟踪，季度调仓追「动量 + 估值防守」，方向池限定全球共振二级行业。
 
 # 1. 横向对比基准配置
 benchmarks:
@@ -8,32 +8,45 @@ benchmarks:
   - symbol: "000300.SH"
     name: "沪深300"
 
-# 2. 策略参数配置
+# 2. 策略参数配置（全部为申万二级方向池策略，数据源 industry_l2_panel_daily）
 strategies:
-  industry_trend_momentum:
-    strategy_class: "IndustryTrendTrackingStrategy"
+  industry_l2_direction:
+    strategy_class: "IndustryL2DirectionStrategy"
     benchmark_symbol: "000985.CSI"
     top_k: 3
     rebalance_period: 63
-    score_column: "trend_momentum"
-    candidate_pool: "direction"
-    direction_high_threshold: 66.0
-    direction_quality_min: 50.0
-    description: "产业趋势跟踪基线：季度调仓追环比改善，候选池限定全球共振产业（2021 后 Sharpe 0.48 vs 全行业 -0.04），叠加方向层象限过滤"
+    score_column: "return_60d"
+    valuation_max: 90.0
+    description: "二级方向池基线：动量 Top3 + 估值防守（pe5y<=90），全球共振 6 行业（2020-05 起 Sharpe 0.72）"
     friction:
       commission_rate: 0.0001
       slippage_rate: 0.0005
       rebalance_deadband: 0.03
 
-  industry_trend_quality:
-    strategy_class: "IndustryTrendTrackingStrategy"
+  industry_l2_direction_qlq:
+    strategy_class: "IndustryL2DirectionStrategy"
     benchmark_symbol: "000985.CSI"
     top_k: 3
     rebalance_period: 63
-    score_column: "trend_momentum"
-    supply_demand_min: 60.0
-    crowding_max: 85.0
-    description: "产业趋势跟踪 + 供需质量门（量价齐升）+ 拥挤度防守：只买真需求驱动、剔除过热"
+    score_column: "return_60d"
+    valuation_max: 90.0
+    require_qlq: true
+    description: "二级方向池 + 量价齐升硬门：只买营收/净利 TTM 双正行业（实证小池拖累，参考对比）"
+    friction:
+      commission_rate: 0.0001
+      slippage_rate: 0.0005
+      rebalance_deadband: 0.03
+
+  industry_l2_direction_gate:
+    strategy_class: "IndustryL2DirectionStrategy"
+    benchmark_symbol: "000985.CSI"
+    top_k: 3
+    rebalance_period: 63
+    score_column: "return_60d"
+    valuation_max: 90.0
+    direction_gate: true
+    direction_high_threshold: 66.0
+    description: "二级方向池 + 方向防守门：方向高位×非量价齐升剔除（防守语义，实证弱于基线）"
     friction:
       commission_rate: 0.0001
       slippage_rate: 0.0005

@@ -52,10 +52,14 @@
 | **`sw_2021_constituents`** | 理杏仁 | 申万 2021 行业成份股图谱 | `symbol` | `symbol(行业代码)`, `constituents(成份股列表)` |
 | **`sw_2021_fundamental`** | 理杏仁 | 申万 31 一级行业日度估值 | `symbol`, `trade_date` | `pe_ttm.ew`, `pb.ew`, `ps_ttm.ew`, `dyr.ew`, `mc(元)` |
 | **`sw_2021_l2_fundamental`** | 理杏仁 | 申万 162 二级行业日度估值 | `symbol`, `trade_date` | `pe_ttm.ew`, `pb.ew`, `ps_ttm.ew`, `dyr.ew`, `mc(元)` |
-| **`sw_2021_fs_non_financial`** | 理杏仁 | 29 个非金融行业合并财报 | `symbol`, `report_date` | `ps.toi.c_y2y`, `ps.np.c_y2y`, `ps.gp_m.ttm`, `m.roe.ttm` |
-| **`sw_2021_fs_bank`** | 理杏仁 | 商业银行行业合并财报 | `symbol`, `report_date` | `ps.nii.c_y2y`, `ps.np.c_y2y`, `ps.cir.ttm`, `m.roe.ttm` |
+| **`sw_2021_fs_non_financial`** | 理杏仁 | 29 个非金融一级行业合并财报 | `symbol`, `report_date` | `ps.toi.c_y2y`, `ps.np.c_y2y`, `ps.gp_m.ttm`, `m.roe.ttm` |
+| **`sw_2021_fs_bank`** | 理杏仁 | 商业银行一级行业合并财报 | `symbol`, `report_date` | `ps.nii.c_y2y`, `ps.np.c_y2y`, `ps.cir.ttm`, `m.roe.ttm` |
 | **`sw_2021_fs_security`** | 理杏仁 | 证券公司行业合并财报 | `symbol`, `report_date` | `ps.ib_n_inc.c_y2y`, `ps.np.c_y2y`, `m.roe.ttm` |
 | **`sw_2021_fs_insurance`** | 理杏仁 | 保险公司行业合并财报 | `symbol`, `report_date` | `ps.ep.c_y2y`, `ps.np.c_y2y`, `m.roe.ttm` |
+| **`sw_2021_l2_fs_non_financial`** | 理杏仁 | 127 个非金融二级行业合并财报 | `symbol`, `report_date` | `ps.toi.c_y2y`, `ps.np.c_y2y`, `ps.gp_m.ttm`, `m.roe.ttm` |
+| **`sw_2021_l2_fs_bank`** | 理杏仁 | 4 个银行二级行业合并财报 | `symbol`, `report_date` | `ps.nii.c_y2y`, `ps.np.c_y2y`, `ps.cir.ttm`, `m.roe.ttm` |
+| **`sw_2021_l2_fs_security`** | 理杏仁 | 证券二级行业合并财报 | `symbol`, `report_date` | `ps.ib_n_inc.c_y2y`, `ps.np.c_y2y`, `m.roe.ttm` |
+| **`sw_2021_l2_fs_insurance`** | 理杏仁 | 保险二级行业合并财报 | `symbol`, `report_date` | `ps.ep.c_y2y`, `ps.np.c_y2y`, `m.roe.ttm` |
 
 ---
 
