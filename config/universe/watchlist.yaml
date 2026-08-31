@@ -632,3 +632,4 @@ universe:
     - "CHNLOLITOAASTSAM" # 中国 OECD 领先指标
     - "DGORDER" # 美国耐用品新增订单
     - "AMTMVS" # 美国制造业出货额
+    - "DEXTAUS" # 美元兑新台币即期汇率 (H.10 日频)

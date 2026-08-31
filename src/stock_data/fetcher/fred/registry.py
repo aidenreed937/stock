@@ -98,4 +98,11 @@ FRED_API_REGISTRY: dict[str, FREDEndpointMeta] = {
         frequency="monthly",
         units="millions_usd",
     ),
+    "DEXTAUS": FREDEndpointMeta(
+        series_id="DEXTAUS",
+        description="美元兑新台币即期汇率 (Taiwan Dollars to U.S. Dollar Spot Exchange Rate, H.10 日频)",
+        frequency="daily",
+        units="twd_per_usd",
+        max_range_days=3650,
+    ),
 }

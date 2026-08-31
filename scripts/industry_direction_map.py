@@ -62,7 +62,11 @@ def build_semi_lead_direction() -> pl.DataFrame:
     if lead.is_empty():
         return pl.DataFrame(schema={"trade_date": pl.Date, "direction_score": pl.Float64})
 
-    col = "tsmc_revenue_3mma_usd" if "tsmc_revenue_3mma_usd" in lead.columns else "tsmc_revenue_usd_million"
+    col = (
+        "tsmc_revenue_3mma_usd"
+        if "tsmc_revenue_3mma_usd" in lead.columns
+        else "tsmc_revenue_usd_million"
+    )
     monthly = _monthly_pct(lead, col)
     gm = (
         pl.read_parquet("data/curated/mart/global_macro_daily.parquet")
@@ -402,9 +406,7 @@ def build_pharma_bd_direction() -> pl.DataFrame:
         return pl.DataFrame(schema={"trade_date": pl.Date, "direction_score": pl.Float64})
 
     # 生效日推到次月（release_date 原为月末，+1 月 → 次月同日；_monthly_pct 用 release_date 生效）
-    pharma = pharma.with_columns(
-        pl.col("release_date").dt.offset_by("1mo").alias("release_date")
-    )
+    pharma = pharma.with_columns(pl.col("release_date").dt.offset_by("1mo").alias("release_date"))
     col = "upfront_3mma" if "upfront_3mma" in pharma.columns else "monthly_upfront_million_usd"
     monthly = _monthly_pct(pharma, col)
     gm = (
@@ -683,9 +685,7 @@ def build_global_resonance_l2_map() -> pl.DataFrame:
                 "leg_type": pl.Utf8,
             }
         )
-    return pl.concat(rows).select(
-        ["trade_date", "industry_code", "direction_score", "leg_type"]
-    )
+    return pl.concat(rows).select(["trade_date", "industry_code", "direction_score", "leg_type"])
 
 
 # 主题 → 方向信号（sw_level2 二级行业归属 → 全球景气代理）
@@ -785,7 +785,9 @@ def build_theme_signals() -> dict[str, pl.DataFrame]:
     semi_lead = build_semi_lead_direction()  # 台积电月营收（半导体领先腿）
     if not semi_lead.is_empty():
         # 合成：SOX（日频）均值 台积电（月频，前向填充）→ 领先+同步双确认
-        merged = semi.join(semi_lead.rename({"direction_score": "lead"}), on="trade_date", how="left")
+        merged = semi.join(
+            semi_lead.rename({"direction_score": "lead"}), on="trade_date", how="left"
+        )
         semi = (
             merged.sort("trade_date")
             .with_columns(pl.col("lead").fill_null(strategy="forward"))

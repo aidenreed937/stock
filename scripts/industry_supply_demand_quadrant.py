@@ -27,8 +27,21 @@ _PRICE = Path("data/curated/mart/industry_l2_daily.parquet")
 
 # 15 行业去重方向池
 _POOL = [
-    "270100", "730200", "710100", "630700", "630800", "280500", "240300", "240400",
-    "370100", "370600", "220200", "220400", "220800", "640600", "421100",
+    "270100",
+    "730200",
+    "710100",
+    "630700",
+    "630800",
+    "280500",
+    "240300",
+    "240400",
+    "370100",
+    "370600",
+    "220200",
+    "220400",
+    "220800",
+    "640600",
+    "421100",
 ]
 _OOS_FROM = date(2022, 1, 1)
 
@@ -39,9 +52,20 @@ _CAPEX_HIGH = 30.0  # capex_growth_ttm > 30 = 供给扩张
 
 def _load_panel_with_future() -> pl.DataFrame:
     """面板 + 未来 20/60 日收益（行业指数收盘计算，无前视）。"""
-    panel = pl.read_parquet(_PANEL).filter(pl.col("industry_code").is_in(_POOL)).select(
-        ["trade_date", "industry_code", "direction_score", "capex_growth_ttm",
-         "revenue_growth_ttm", "profit_growth_ttm", "supply_demand_score"]
+    panel = (
+        pl.read_parquet(_PANEL)
+        .filter(pl.col("industry_code").is_in(_POOL))
+        .select(
+            [
+                "trade_date",
+                "industry_code",
+                "direction_score",
+                "capex_growth_ttm",
+                "revenue_growth_ttm",
+                "profit_growth_ttm",
+                "supply_demand_score",
+            ]
+        )
     )
     price = pl.read_parquet(_PRICE).select(["trade_date", "industry_code", "close"])
     fut = (
@@ -53,7 +77,8 @@ def _load_panel_with_future() -> pl.DataFrame:
     )
     return panel.join(
         fut.select(["trade_date", "industry_code", "fut20", "fut60"]),
-        on=["trade_date", "industry_code"], how="left",
+        on=["trade_date", "industry_code"],
+        how="left",
     ).drop_nulls(subset=["fut60", "direction_score"])
 
 
@@ -62,16 +87,22 @@ def _tag_quadrants(df: pl.DataFrame) -> pl.DataFrame:
     return df.with_columns(
         [
             pl.when(pl.col("direction_score") > _D_HIGH)
-            .then(pl.lit("需求扩张")).otherwise(pl.lit("需求收缩")).alias("d_state"),
+            .then(pl.lit("需求扩张"))
+            .otherwise(pl.lit("需求收缩"))
+            .alias("d_state"),
             pl.when(pl.col("capex_growth_ttm") > _CAPEX_HIGH)
-            .then(pl.lit("供给扩张")).otherwise(pl.lit("供给平稳")).alias("s_state"),
+            .then(pl.lit("供给扩张"))
+            .otherwise(pl.lit("供给平稳"))
+            .alias("s_state"),
             (pl.col("direction_score") - pl.col("direction_score").mean()).alias("d_dm"),
             (pl.col("capex_growth_ttm") - pl.col("capex_growth_ttm").mean()).alias("s_dm"),
         ]
     ).with_columns(
         [
-            pl.when(pl.col("capex_growth_ttm").is_null()).then(pl.lit("供给未知"))
-            .otherwise(pl.col("s_state")).alias("s_state"),
+            pl.when(pl.col("capex_growth_ttm").is_null())
+            .then(pl.lit("供给未知"))
+            .otherwise(pl.col("s_state"))
+            .alias("s_state"),
             (pl.col("d_state") + "|" + pl.col("s_state")).alias("quadrant"),
         ]
     )
@@ -101,8 +132,15 @@ def _interaction(df: pl.DataFrame) -> pl.DataFrame:
         hi_v = round(hi, 2) if not isnan(hi) else None
         lo_v = round(lo, 2) if not isnan(lo) else None
         gap_v = round(hi - lo, 2) if (not isnan(hi) and not isnan(lo)) else None
-        rows.append({"s_state": s_state, "n": sub.height,
-                     "需求扩张_fut60": hi_v, "需求收缩_fut60": lo_v, "需求溢价_pp": gap_v})
+        rows.append(
+            {
+                "s_state": s_state,
+                "n": sub.height,
+                "需求扩张_fut60": hi_v,
+                "需求收缩_fut60": lo_v,
+                "需求溢价_pp": gap_v,
+            }
+        )
     return pl.DataFrame(rows)
 
 
@@ -121,7 +159,9 @@ def _gap_factor(df: pl.DataFrame) -> pl.DataFrame:
         .sort("gap_q")
     )
     # IC（Spearman 秩相关近似：Pearson on ranks）
-    g2 = g.with_columns(pl.col("gap").rank().alias("gap_rank"), pl.col("fut60").rank().alias("fut60_rank"))
+    g2 = g.with_columns(
+        pl.col("gap").rank().alias("gap_rank"), pl.col("fut60").rank().alias("fut60_rank")
+    )
     ic = g2.select(pl.corr(pl.col("gap_rank"), pl.col("fut60_rank")))[0, 0]
     return q_table, ic
 

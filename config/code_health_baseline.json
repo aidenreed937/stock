@@ -10,16 +10,12 @@
       "lines": 329,
       "methods": 18
     },
-    "src/stock_data/fetcher/industry/automotive/collector.py::NevCollector": {
-      "lines": 282,
-      "methods": 6
-    },
     "src/stock_data/fetcher/industry/customs/collector.py::ComtradeCollector": {
       "lines": 205,
       "methods": 8
     },
     "src/stock_data/fetcher/industry/machinery/collector.py::MachineryCollector": {
-      "lines": 237,
+      "lines": 235,
       "methods": 4
     },
     "src/stock_data/fetcher/lixinger/client.py::LixingerClient": {
