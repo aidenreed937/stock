@@ -77,4 +77,15 @@ def records_to_nev_frame(records: Sequence[NevMonthlyRecord]) -> pl.DataFrame:
                 pl.col("wholesale_volume_3mma") / pl.col("wholesale_volume_3mma").shift(1) - 1.0
             ).alias("mom_growth_3mma"),
         )
+    if df["yoy_growth"].null_count() > 0 and "wholesale_volume_ten_thousand" in df.columns:
+        df = df.with_columns(
+            pl.when(pl.col("yoy_growth").is_null())
+            .then(
+                pl.col("wholesale_volume_ten_thousand")
+                / pl.col("wholesale_volume_ten_thousand").shift(12)
+                - 1.0
+            )
+            .otherwise(pl.col("yoy_growth"))
+            .alias("yoy_growth")
+        )
     return df

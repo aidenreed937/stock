@@ -217,10 +217,19 @@ class ComtradeCollector:
             return []
 
     def load_from_raw_csv(self, file_path: Path | str) -> list[CustomsTradeRecord]:
-        """从本地 RAW CSV 文件中加载并标准化。"""
+        """从本地 RAW CSV 文件中加载并标准化 (兼容 UTF-8 与 GBK/GB18030 编码)。"""
         p = Path(file_path)
         if not p.exists():
             return []
-        with p.open("r", encoding="utf-8-sig") as f:
-            reader = csv.DictReader(f)
-            return parse_raw_csv_rows(list(reader), self._catalog_map)
+        for enc in ["utf-8-sig", "gb18030", "gbk", "utf-8"]:
+            try:
+                with p.open("r", encoding=enc) as f:
+                    reader = csv.DictReader(f)
+                    return parse_raw_csv_rows(list(reader), self._catalog_map)
+            except UnicodeDecodeError:
+                continue
+            except Exception as e:
+                logger.error("加载 RAW CSV 快照失败 [%s]: %s", p, e)
+                return []
+        logger.error("无法使用支持的编码加载 RAW CSV 快照: %s", p)
+        return []

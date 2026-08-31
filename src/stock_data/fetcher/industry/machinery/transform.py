@@ -84,6 +84,14 @@ def records_to_machinery_frame(records: Sequence[ConstructionMachineryRecord]) -
             .alias("excavator_total_3mma")
         )
 
+    # 衍生小松开工小时同比
+    if df["komatsu_hours_yoy"].null_count() == len(df):
+        df = df.with_columns(
+            (pl.col("komatsu_hours_china") / pl.col("komatsu_hours_china").shift(12) - 1.0).alias(
+                "komatsu_hours_yoy"
+            )
+        )
+
     # 衍生同比与环比斜率
     if df["yoy_growth"].null_count() == len(df):
         df = df.with_columns(

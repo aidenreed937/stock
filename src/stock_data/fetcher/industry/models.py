@@ -3,28 +3,57 @@
 from dataclasses import dataclass
 from datetime import date
 
+from stock_data.fetcher.industry.pharma.models import (
+    PharmaBdAssetRecord,
+    PharmaBdDealRecord,
+    PharmaBdEventRecord,
+    PharmaLicenseOutRecord,
+)
+
+__all__ = [
+    "AgriculturePorkRecord",
+    "ChemicalMarketRecord",
+    "CloudCapexRecord",
+    "CoalMarketRecord",
+    "ConstructionMachineryRecord",
+    "ConsumerElectronicsRecord",
+    "CustomsTradeRecord",
+    "LiquorWholesaleRecord",
+    "NevMonthlyRecord",
+    "NonFerrousMetalsRecord",
+    "PharmaBdAssetRecord",
+    "PharmaBdDealRecord",
+    "PharmaBdEventRecord",
+    "PharmaLicenseOutRecord",
+    "SemiconductorLeadRecord",
+    "SemiconductorSalesRecord",
+    "ShippingIndicesRecord",
+    "SolarCapacityRecord",
+    "SolarPriceChainRecord",
+]
+
 
 @dataclass(frozen=True)
 class SemiconductorSalesRecord:
     """SIA / WSTS 全球半导体月度销售额记录。"""
 
-    report_month: str  # YYYY-MM
-    trade_date: date  # 月末自然日
-    global_sales_usd: float  # 全球销售额 (3MMA)
-    china_sales_usd: float | None = None  # 中国区销售额
-    china_yoy_growth: float | None = None  # 中国区同比增速 (小数，如 0.234 记 23.4%)
-    china_mom_growth: float | None = None  # 中国区月环比增速
+    report_month: str
+    trade_date: date
+    global_sales_usd: float
+    china_sales_usd: float | None = None
+    china_yoy_growth: float | None = None
+    china_mom_growth: float | None = None
     americas_sales_usd: float | None = None
     europe_sales_usd: float | None = None
     japan_sales_usd: float | None = None
     asia_pacific_other_sales_usd: float | None = None
-    yoy_growth: float | None = None  # 全球同比增速 (小数，如 0.15 记 15%)
-    mom_growth: float | None = None  # 全球环比增速
-    unit: str = "billion_usd"  # 显式计量单位: 十亿美元 (Billions USD)
+    yoy_growth: float | None = None
+    mom_growth: float | None = None
+    unit: str = "billion_usd"
     source: str = "SIA/WSTS"
     source_url: str = ""
     release_date: date | None = None
-    data_status: str = "actual"  # actual | derived | estimated | revised
+    data_status: str = "actual"
     collected_at: str = ""
 
 
@@ -32,22 +61,22 @@ class SemiconductorSalesRecord:
 class NevMonthlyRecord:
     """乘联会 / 中汽协新能源汽车月度产销与渗透率记录。"""
 
-    report_month: str  # YYYY-MM
-    trade_date: date  # 月末自然日
-    wholesale_volume_ten_thousand: float  # 批发销量 (车企出货与产业链需求)
-    wholesale_volume_3mma: float | None = None  # 3个月移动平均销量 (平滑季节性与春节脉冲)
-    retail_volume_ten_thousand: float | None = None  # 零售销量
-    export_volume_ten_thousand: float | None = None  # 出口销量
-    penetration_rate: float | None = None  # 新能源乘用车零售渗透率 (消费端需求景气度)
-    battery_installation_gwh: float | None = None  # 动力电池装车量 (GWh)
-    yoy_growth: float | None = None  # 批发销量同比增速
-    yoy_growth_3mma: float | None = None  # 3MMA 同比增速 (与半导体 3MMA 同频可比)
-    mom_growth_3mma: float | None = None  # 3MMA 环比增速 / 斜率
-    unit: str = "ten_thousand_units"  # 显式计量单位: 万辆
+    report_month: str
+    trade_date: date
+    wholesale_volume_ten_thousand: float
+    wholesale_volume_3mma: float | None = None
+    retail_volume_ten_thousand: float | None = None
+    export_volume_ten_thousand: float | None = None
+    penetration_rate: float | None = None
+    battery_installation_gwh: float | None = None
+    yoy_growth: float | None = None
+    yoy_growth_3mma: float | None = None
+    mom_growth_3mma: float | None = None
+    unit: str = "ten_thousand_units"
     source: str = "CPCA"
     source_url: str = ""
     release_date: date | None = None
-    data_status: str = "actual"  # actual | derived | estimated | revised
+    data_status: str = "actual"
     collected_at: str = ""
 
 
@@ -55,19 +84,19 @@ class NevMonthlyRecord:
 class SolarCapacityRecord:
     """国家能源局 (NEA) 全国光伏新增与累计装机容量记录。"""
 
-    report_month: str  # YYYY-MM
-    trade_date: date  # 月末自然日
-    monthly_new_capacity_gw: float  # 当月新增装机容量 (月度差分)
-    monthly_new_capacity_3mma: float | None = None  # 3个月移动平均新增装机 (平滑年底抢装脉冲)
-    cumulative_capacity_gw: float | None = None  # 累计装机容量
-    yoy_growth: float | None = None  # 当月新增同比增速
-    yoy_growth_3mma: float | None = None  # 3MMA 同比增速 (与半导体 3MMA 同频可比)
-    mom_growth_3mma: float | None = None  # 3MMA 环比增速 / 斜率
-    unit: str = "gw"  # 显式计量单位: 吉瓦 (GW / 百万千瓦)
+    report_month: str
+    trade_date: date
+    monthly_new_capacity_gw: float
+    monthly_new_capacity_3mma: float | None = None
+    cumulative_capacity_gw: float | None = None
+    yoy_growth: float | None = None
+    yoy_growth_3mma: float | None = None
+    mom_growth_3mma: float | None = None
+    unit: str = "gw"
     source: str = "NEA"
     source_url: str = ""
     release_date: date | None = None
-    data_status: str = "actual"  # actual | derived | estimated | revised
+    data_status: str = "actual"
     collected_at: str = ""
 
 
@@ -75,38 +104,18 @@ class SolarCapacityRecord:
 class NonFerrousMetalsRecord:
     """有色大宗金属价格与显性库存记录 (含碳酸锂/铜/铝/金/库存)。"""
 
-    report_date: str  # YYYY-MM-DD
-    trade_date: date  # 交易日
-    lithium_carbonate_price: float | None = None  # 碳酸锂期货主力结算价 (元/吨)
-    shfe_copper_price: float | None = None  # 沪铜期货主力结算价 (元/吨)
-    shfe_aluminum_price: float | None = None  # 沪铝期货主力结算价 (元/吨)
-    sge_gold_price: float | None = None  # 上海黄金交易所 Au99.99 现货收盘价 (元/克)
-    copper_inventory_ton: float | None = None  # 上期所铜显性库存 (吨)
-    unit: str = "mixed"  # 显式计量单位说明
+    report_date: str
+    trade_date: date
+    lithium_carbonate_price: float | None = None
+    shfe_copper_price: float | None = None
+    shfe_aluminum_price: float | None = None
+    sge_gold_price: float | None = None
+    copper_inventory_ton: float | None = None
+    unit: str = "mixed"
     source: str = "AkShare"
     source_url: str = ""
     release_date: date | None = None
-    data_status: str = "actual"  # actual | derived | estimated | revised
-    collected_at: str = ""
-
-
-@dataclass(frozen=True)
-class PharmaLicenseOutRecord:
-    """中国创新药海外 License-out (BD) 交易首付款与总交易金额月度记录。"""
-
-    report_month: str  # YYYY-MM
-    trade_date: date  # 月末自然日
-    monthly_upfront_million_usd: float  # 当月出海首付款总额 (百万美元)
-    monthly_total_deal_million_usd: float  # 当月总交易金额 (百万美元)
-    deal_count: int  # 当月交易起数
-    upfront_3mma: float | None = None  # 3个月移动平均首付款 (平滑大单脉冲)
-    yoy_growth_3mma: float | None = None  # 3MMA 首付款同比增速
-    mom_growth_3mma: float | None = None  # 3MMA 首付款环比斜率
-    unit: str = "million_usd"  # 显式计量单位: 百万美元
-    source: str = "PharmaCube/Announcements"
-    source_url: str = ""
-    release_date: date | None = None
-    data_status: str = "actual"  # actual | derived | estimated | revised
+    data_status: str = "actual"
     collected_at: str = ""
 
 
@@ -114,20 +123,20 @@ class PharmaLicenseOutRecord:
 class CloudCapexRecord:
     """北美四大云厂商 (MSFT/GOOG/META/AMZN) 季度 AI 资本开支记录。"""
 
-    report_quarter: str  # YYYY-Q1/Q2/Q3/Q4
-    trade_date: date  # 季度末自然日
-    total_capex_billion_usd: float  # 四大云厂商合计 CapEx (十亿美元)
-    msft_capex_billion_usd: float | None = None  # 微软 CapEx
-    goog_capex_billion_usd: float | None = None  # 谷歌 CapEx
-    meta_capex_billion_usd: float | None = None  # Meta CapEx
-    amzn_capex_billion_usd: float | None = None  # 亚马逊 CapEx
-    yoy_growth: float | None = None  # 合计 CapEx 同比增速
-    qoq_growth: float | None = None  # 合计 CapEx 环比增速
-    unit: str = "billion_usd"  # 显式计量单位: 十亿美元
+    report_quarter: str
+    trade_date: date
+    total_capex_billion_usd: float
+    msft_capex_billion_usd: float | None = None
+    goog_capex_billion_usd: float | None = None
+    meta_capex_billion_usd: float | None = None
+    amzn_capex_billion_usd: float | None = None
+    yoy_growth: float | None = None
+    qoq_growth: float | None = None
+    unit: str = "billion_usd"
     source: str = "Company Filings (10-Q/10-K)"
     source_url: str = ""
     release_date: date | None = None
-    data_status: str = "actual"  # actual | derived | estimated | revised
+    data_status: str = "actual"
     collected_at: str = ""
 
 
@@ -135,23 +144,23 @@ class CloudCapexRecord:
 class ConstructionMachineryRecord:
     """工程机械行业月度产销与小松挖掘机开工小时数记录 (CCMA/Komatsu)。"""
 
-    report_month: str  # YYYY-MM
-    trade_date: date  # 月末自然日
-    excavator_total_units: float  # 挖掘机总销量 (台)
-    excavator_domestic_units: float  # 挖掘机国内销量 (台)
-    excavator_export_units: float  # 挖掘机出口销量 (台)
-    komatsu_hours_china: float | None = None  # 小松中国区挖掘机月度开工小时数 (小时/月)
-    komatsu_hours_yoy: float | None = None  # 小松工时同比增速
-    export_ratio: float | None = None  # 出口销量占比 (export / total)
-    excavator_total_3mma: float | None = None  # 3个月移动平均总销量
-    yoy_growth: float | None = None  # 当月总销量同比增速
-    yoy_growth_3mma: float | None = None  # 3MMA 总销量同比增速
-    mom_growth_3mma: float | None = None  # 3MMA 环比斜率
-    unit: str = "units/hours"  # 显式计量单位
+    report_month: str
+    trade_date: date
+    excavator_total_units: float
+    excavator_domestic_units: float
+    excavator_export_units: float
+    komatsu_hours_china: float | None = None
+    komatsu_hours_yoy: float | None = None
+    export_ratio: float | None = None
+    excavator_total_3mma: float | None = None
+    yoy_growth: float | None = None
+    yoy_growth_3mma: float | None = None
+    mom_growth_3mma: float | None = None
+    unit: str = "units/hours"
     source: str = "CCMA/Komatsu"
     source_url: str = ""
     release_date: date | None = None
-    data_status: str = "actual"  # actual | derived | estimated | revised
+    data_status: str = "actual"
     collected_at: str = ""
 
 
@@ -159,18 +168,18 @@ class ConstructionMachineryRecord:
 class ShippingIndicesRecord:
     """全球海运与油运日频运价指数记录 (BDI/BDTI/BCTI/SCFI)。"""
 
-    trade_date: date  # 交易日
-    bdi_index: float  # 波罗的海干散货运价指数 (Baltic Dry Index)
-    bdti_index: float | None = None  # 波罗的海原油运输指数 (Baltic Dirty Tanker Index)
-    bcti_index: float | None = None  # 波罗的海成品油运输指数 (Baltic Clean Tanker Index)
-    scfi_index: float | None = None  # 上海出口集装箱运价指数 (SCFI)
-    bdi_ma200_bias: float | None = None  # BDI 相对 200 日均线偏离度 (%)
-    bdti_ma200_bias: float | None = None  # BDTI 相对 200 日均线偏离度 (%)
-    unit: str = "index_points"  # 点位
+    trade_date: date
+    bdi_index: float
+    bdti_index: float | None = None
+    bcti_index: float | None = None
+    scfi_index: float | None = None
+    bdi_ma200_bias: float | None = None
+    bdti_ma200_bias: float | None = None
+    unit: str = "index_points"
     source: str = "BalticExchange/SSE"
     source_url: str = ""
     release_date: date | None = None
-    data_status: str = "actual"  # actual | derived | estimated | revised
+    data_status: str = "actual"
     collected_at: str = ""
 
 
@@ -178,28 +187,177 @@ class ShippingIndicesRecord:
 class CustomsTradeRecord:
     """海关重点品类进出口月度标准化记录 (支持 GACC 与 UN Comtrade 双源)。"""
 
-    category_key: str  # 产业链大类标识 (如 power_and_new_energy, automotive)
-    category_name: str  # 产业链大类名称
-    product_key: str  # 细分品类标识 (如 transformer, bev)
-    product_name: str  # 细分品类名称
-    hs_code: str  # 8 位或 6 位海关商品编码
-    hs_name: str  # 商品官方中文名称
-    report_month: str  # 报告月度 (YYYY-MM)
-    trade_date: date  # 月末自然日
-    trade_direction: str  # 出口(export) / 进口(import)
-    export_value_usd: float  # 出口金额 (美元)
-    export_volume: float | None = None  # 出口数量
-    quantity_unit: str = ""  # 数量计量单位
-    export_asp_usd: float | None = None  # 出口均价 (美元/单位)
-    target_l1_code: str = ""  # 申万一级行业代码 (如 801730.SI)
-    target_l1_name: str = ""  # 申万一级行业名称 (如 电力设备)
-    target_l2_codes: str = ""  # 申万二级行业代码 (如 801737.SI)
-    target_l2_names: str = ""  # 申万二级行业名称 (如 电网设备)
-    export_value_3mma: float | None = None  # 3个月移动平均金额
-    yoy_growth_3mma: float | None = None  # 3MMA 同比增速
-    mom_growth_3mma: float | None = None  # 3MMA 环比斜率
-    source: str = "UN_Comtrade"  # 数据源标识 (UN_Comtrade / GACC)
+    category_key: str
+    category_name: str
+    product_key: str
+    product_name: str
+    hs_code: str
+    hs_name: str
+    report_month: str
+    trade_date: date
+    trade_direction: str
+    export_value_usd: float
+    export_volume: float | None = None
+    quantity_unit: str = ""
+    export_asp_usd: float | None = None
+    target_l1_code: str = ""
+    target_l1_name: str = ""
+    target_l2_codes: str = ""
+    target_l2_names: str = ""
+    export_value_3mma: float | None = None
+    yoy_growth_3mma: float | None = None
+    mom_growth_3mma: float | None = None
+    source: str = "UN_Comtrade"
     source_url: str = ""
-    release_date: date | None = None  # 官方发布日期 (防前视生效关键)
-    data_status: str = "actual"  # actual | derived | estimated | revised
+    release_date: date | None = None
+    data_status: str = "actual"
+    collected_at: str = ""
+
+
+@dataclass(frozen=True)
+class SemiconductorLeadRecord:
+    """半导体高频先导指标记录 (台积电月度营运营收与 DRAM 现货价格)。"""
+
+    report_month: str
+    trade_date: date
+    tsmc_revenue_ntd_million: float
+    tsmc_revenue_usd_million: float | None = None
+    tsmc_revenue_yoy: float | None = None
+    tsmc_revenue_mom: float | None = None
+    tsmc_revenue_3mma_usd: float | None = None
+    dram_dxi_index: float | None = None
+    dram_spot_price_usd: float | None = None
+    unit: str = "million_ntd/usd"
+    source: str = "TSMC/DRAMeXchange"
+    source_url: str = "https://investor.tsmc.com/chinese/monthly-revenue"
+    release_date: date | None = None
+    data_status: str = "actual"
+    collected_at: str = ""
+
+
+@dataclass(frozen=True)
+class ChemicalMarketRecord:
+    """基础化工重点大宗品供需开工率、库存与价差记录。"""
+
+    report_month: str
+    trade_date: date
+    mdi_operating_rate: float | None = None
+    tio2_operating_rate: float | None = None
+    refrigerant_r32_operating_rate: float | None = None
+    mdi_gross_spread_cny: float | None = None
+    tio2_spread_cny: float | None = None
+    refrigerant_r32_price_cny: float | None = None
+    chemical_inventory_days: float | None = None
+    unit: str = "percent/cny_per_ton"
+    source: str = "Baichuan/Zhuochuang"
+    source_url: str = ""
+    release_date: date | None = None
+    data_status: str = "actual"
+    collected_at: str = ""
+
+
+@dataclass(frozen=True)
+class SolarPriceChainRecord:
+    """光伏产业链中微观价格链条与周期状态记录 (周频/旬频)。"""
+
+    report_date: str
+    trade_date: date
+    polysilicon_price_cny_kg: float | None = None
+    wafer_price_cny_piece: float | None = None
+    cell_price_cny_watt: float | None = None
+    module_price_cny_watt: float | None = None
+    module_price_yoy: float | None = None
+    module_price_mom: float | None = None
+    price_cycle_stage: str = "bottom_rebound"
+    unit: str = "cny_per_unit"
+    source: str = "PVInfoLink/SMM"
+    source_url: str = ""
+    release_date: date | None = None
+    data_status: str = "actual"
+    collected_at: str = ""
+
+
+@dataclass(frozen=True)
+class AgriculturePorkRecord:
+    """农业农村部生猪产能月报、出栏价格与猪粮比记录。"""
+
+    report_month: str
+    trade_date: date
+    sow_stock_million_heads: float | None = None
+    sow_stock_yoy: float | None = None
+    sow_stock_mom: float | None = None
+    pig_price_cny_per_kg: float | None = None
+    pig_price_yoy: float | None = None
+    hog_to_grain_ratio: float | None = None
+    pig_farming_profit_cny_head: float | None = None
+    unit: str = "million_heads/cny_per_kg"
+    source: str = "MARA"
+    source_url: str = "http://www.moa.gov.cn/"
+    release_date: date | None = None
+    data_status: str = "actual"
+    collected_at: str = ""
+
+
+@dataclass(frozen=True)
+class LiquorWholesaleRecord:
+    """高端名优白酒周度一批价与动销监测记录。"""
+
+    report_date: str
+    trade_date: date
+    moutai_loose_price_cny: float | None = None
+    moutai_boxed_price_cny: float | None = None
+    wuliangye_puwu_price_cny: float | None = None
+    guojiao1573_price_cny: float | None = None
+    moutai_loose_price_yoy: float | None = None
+    moutai_loose_price_mom: float | None = None
+    unit: str = "cny_per_bottle"
+    source: str = "TodayLiquorPrice"
+    source_url: str = ""
+    release_date: date | None = None
+    data_status: str = "actual"
+    collected_at: str = ""
+
+
+@dataclass(frozen=True)
+class ConsumerElectronicsRecord:
+    """消费电子终端 (智能手机 / PC / 平板) 季度出货与 AI 渗透率记录 (IDC / Canalys)。"""
+
+    report_quarter: str
+    trade_date: date
+    global_smartphone_shipments_million: float | None = None
+    china_smartphone_shipments_million: float | None = None
+    global_pc_shipments_million: float | None = None
+    ai_phone_penetration_rate: float | None = None
+    ai_pc_penetration_rate: float | None = None
+    smartphone_yoy_growth: float | None = None
+    pc_yoy_growth: float | None = None
+    apple_shipments_million: float | None = None
+    transsion_shipments_million: float | None = None
+    unit: str = "million_units/percent"
+    source: str = "IDC/Canalys"
+    source_url: str = ""
+    release_date: date | None = None
+    data_status: str = "actual"
+    collected_at: str = ""
+
+
+@dataclass(frozen=True)
+class CoalMarketRecord:
+    """煤炭行业动力煤港口平仓价与重点电厂存煤可用天数记录 (CCTD/Sxcoal)。"""
+
+    report_date: str  # YYYY-MM-DD
+    trade_date: date  # 对齐交易日
+    q5500_fob_price_cny: float | None = None  # 秦皇岛港 Q5500 动力煤平仓价 (元/吨)
+    coking_coal_price_cny: float | None = None  # 京唐港主焦煤库提价 (元/吨)
+    power_plant_inventory_million_ton: float | None = None  # 沿海八省电厂存煤量 (百万吨)
+    power_plant_daily_burn_ten_thousand_ton: float | None = None  # 沿海八省电厂日耗 (万吨/日)
+    power_plant_available_days: float | None = None  # 重点电厂存煤可用天数 (天)
+    qinhuangdao_inventory_million_ton: float | None = None  # 秦皇岛港煤炭库存 (百万吨)
+    q5500_price_yoy: float | None = None
+    q5500_price_mom: float | None = None
+    unit: str = "cny_per_ton/million_tons/days"
+    source: str = "CCTD/Sxcoal"
+    source_url: str = "https://www.cctd.com.cn/"
+    release_date: date | None = None
+    data_status: str = "actual"
     collected_at: str = ""

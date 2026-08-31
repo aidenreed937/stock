@@ -3,17 +3,44 @@
 import logging
 from pathlib import Path
 
+from stock_data.fetcher.industry.agriculture import (
+    AgriculturePorkCollector,
+    records_to_agriculture_pork_frame,
+)
 from stock_data.fetcher.industry.automotive import NevCollector, records_to_nev_frame
+from stock_data.fetcher.industry.chemicals import (
+    ChemicalsCollector,
+    records_to_chemical_market_frame,
+)
 from stock_data.fetcher.industry.cloud import CloudCapexCollector, records_to_cloud_capex_frame
+from stock_data.fetcher.industry.coal import (
+    CoalMarketCollector,
+    records_to_coal_market_frame,
+)
 from stock_data.fetcher.industry.common import save_curated_fact
+from stock_data.fetcher.industry.consumer import (
+    LiquorWholesaleCollector,
+    records_to_liquor_wholesale_frame,
+)
 from stock_data.fetcher.industry.customs import ComtradeCollector, records_to_customs_trade_frame
+from stock_data.fetcher.industry.electronics import (
+    ConsumerElectronicsCollector,
+    records_to_consumer_electronics_frame,
+)
 from stock_data.fetcher.industry.machinery import MachineryCollector, records_to_machinery_frame
 from stock_data.fetcher.industry.metals import NonFerrousCollector, records_to_metals_frame
 from stock_data.fetcher.industry.pharma import PharmaBdCollector, records_to_pharma_bd_frame
-from stock_data.fetcher.industry.power import SolarCollector, records_to_solar_frame
+from stock_data.fetcher.industry.power import (
+    PvPriceChainCollector,
+    SolarCollector,
+    records_to_solar_frame,
+    records_to_solar_price_chain_frame,
+)
 from stock_data.fetcher.industry.semiconductor import (
     SemiconductorCollector,
+    TsmcLeadCollector,
     records_to_semiconductor_frame,
+    records_to_semiconductor_lead_frame,
 )
 from stock_data.fetcher.industry.shipping import ShippingCollector, records_to_shipping_frame
 
@@ -37,6 +64,13 @@ def sync_all_industry_metrics(
     7. MachineryCollector -> construction_machinery.parquet
     8. ShippingCollector -> shipping_indices.parquet
     9. ComtradeCollector -> customs_trade.parquet
+    10. TsmcLeadCollector -> semiconductor_lead.parquet
+    11. ChemicalsCollector -> chemical_market.parquet
+    12. PvPriceChainCollector -> solar_price_chain.parquet
+    13. AgriculturePorkCollector -> agriculture_pork.parquet
+    14. LiquorWholesaleCollector -> liquor_wholesale.parquet
+    15. ConsumerElectronicsCollector -> consumer_electronics.parquet
+    16. CoalMarketCollector -> coal_market.parquet
     """
     raw_path = Path(raw_dir)
     curated_path = Path(curated_dir)
@@ -149,5 +183,96 @@ def sync_all_industry_metrics(
                 primary_keys=["product_key", "hs_code", "report_month"],
             )
             results["customs_trade"] = count
+
+    # 10. 台积电月度营运与 DRAM 现货先导指标
+    if target_metrics is None or "semiconductor_lead" in target_metrics:
+        tsmc_collector = TsmcLeadCollector(raw_dir=raw_path)
+        tsmc_records = tsmc_collector.collect()
+        if tsmc_records:
+            df_tsmc = records_to_semiconductor_lead_frame(tsmc_records)
+            count = save_curated_fact(
+                df_tsmc,
+                curated_path / "semiconductor_lead.parquet",
+                primary_keys=["report_month"],
+            )
+            results["semiconductor_lead"] = count
+
+    # 11. 基础化工重点大宗品供需开工率与价差
+    if target_metrics is None or "chemical_market" in target_metrics:
+        chem_collector = ChemicalsCollector(raw_dir=raw_path)
+        chem_records = chem_collector.collect()
+        if chem_records:
+            df_chem = records_to_chemical_market_frame(chem_records)
+            count = save_curated_fact(
+                df_chem,
+                curated_path / "chemical_market.parquet",
+                primary_keys=["report_month"],
+            )
+            results["chemical_market"] = count
+
+    # 12. 光伏产业链价格链条 (硅料/硅片/电池片/组件)
+    if target_metrics is None or "solar_price_chain" in target_metrics:
+        pv_collector = PvPriceChainCollector(raw_dir=raw_path)
+        pv_records = pv_collector.collect()
+        if pv_records:
+            df_pv = records_to_solar_price_chain_frame(pv_records)
+            count = save_curated_fact(
+                df_pv,
+                curated_path / "solar_price_chain.parquet",
+                primary_keys=["report_date"],
+            )
+            results["solar_price_chain"] = count
+
+    # 13. 农业农村部生猪产能与出栏价格
+    if target_metrics is None or "agriculture_pork" in target_metrics:
+        pork_collector = AgriculturePorkCollector(raw_dir=raw_path)
+        pork_records = pork_collector.collect()
+        if pork_records:
+            df_pork = records_to_agriculture_pork_frame(pork_records)
+            count = save_curated_fact(
+                df_pork,
+                curated_path / "agriculture_pork.parquet",
+                primary_keys=["report_month"],
+            )
+            results["agriculture_pork"] = count
+
+    # 14. 名优白酒周度一批价与动销
+    if target_metrics is None or "liquor_wholesale" in target_metrics:
+        liquor_collector = LiquorWholesaleCollector(raw_dir=raw_path)
+        liquor_records = liquor_collector.collect()
+        if liquor_records:
+            df_liquor = records_to_liquor_wholesale_frame(liquor_records)
+            count = save_curated_fact(
+                df_liquor,
+                curated_path / "liquor_wholesale.parquet",
+                primary_keys=["report_date"],
+            )
+            results["liquor_wholesale"] = count
+
+    # 15. 消费电子终端 (智能手机 / PC / AI 渗透率) 季度出货
+    if target_metrics is None or "consumer_electronics" in target_metrics:
+        elec_collector = ConsumerElectronicsCollector(raw_dir=raw_path)
+        elec_records = elec_collector.collect()
+        if elec_records:
+            df_elec = records_to_consumer_electronics_frame(elec_records)
+            count = save_curated_fact(
+                df_elec,
+                curated_path / "consumer_electronics.parquet",
+                primary_keys=["report_quarter"],
+            )
+            results["consumer_electronics"] = count
+
+    # 16. 煤炭行业动力煤港口平仓价与电厂日耗库存天数
+    if target_metrics is None or "coal_market" in target_metrics:
+        coal_collector = CoalMarketCollector(raw_dir=raw_path)
+        coal_records = coal_collector.collect()
+        if coal_records:
+            df_coal = records_to_coal_market_frame(coal_records)
+            count = save_curated_fact(
+                df_coal,
+                curated_path / "coal_market.parquet",
+                primary_keys=["report_date"],
+            )
+            results["coal_market"] = count
 
     return results

@@ -12,11 +12,23 @@
 - shipping: 全球海运与油运日频运价指数 (Baltic Exchange / SCFI)
 """
 
+from stock_data.fetcher.industry.agriculture import (
+    AGRICULTURE_PORK_SCHEMA,
+    AgriculturePorkCollector,
+    empty_agriculture_pork,
+    records_to_agriculture_pork_frame,
+)
 from stock_data.fetcher.industry.automotive import (
     NEV_MONTHLY_SCHEMA,
     NevCollector,
     empty_nev_monthly,
     records_to_nev_frame,
+)
+from stock_data.fetcher.industry.chemicals import (
+    CHEMICAL_MARKET_SCHEMA,
+    ChemicalsCollector,
+    empty_chemical_market,
+    records_to_chemical_market_frame,
 )
 from stock_data.fetcher.industry.cloud import (
     CLOUD_CAPEX_SCHEMA,
@@ -24,11 +36,23 @@ from stock_data.fetcher.industry.cloud import (
     empty_cloud_capex,
     records_to_cloud_capex_frame,
 )
+from stock_data.fetcher.industry.coal import (
+    COAL_MARKET_SCHEMA,
+    CoalMarketCollector,
+    empty_coal_market,
+    records_to_coal_market_frame,
+)
 from stock_data.fetcher.industry.common import (
     get_month_end_date,
     read_raw_text,
     save_curated_fact,
     save_raw_snapshot,
+)
+from stock_data.fetcher.industry.consumer import (
+    LIQUOR_WHOLESALE_SCHEMA,
+    LiquorWholesaleCollector,
+    empty_liquor_wholesale,
+    records_to_liquor_wholesale_frame,
 )
 from stock_data.fetcher.industry.customs import (
     CUSTOMS_TRADE_SCHEMA,
@@ -39,6 +63,12 @@ from stock_data.fetcher.industry.customs import (
     parse_comtrade_items,
     parse_raw_csv_rows,
     records_to_customs_trade_frame,
+)
+from stock_data.fetcher.industry.electronics import (
+    CONSUMER_ELECTRONICS_SCHEMA,
+    ConsumerElectronicsCollector,
+    empty_consumer_electronics,
+    records_to_consumer_electronics_frame,
 )
 from stock_data.fetcher.industry.machinery import (
     CONSTRUCTION_MACHINERY_SCHEMA,
@@ -53,15 +83,22 @@ from stock_data.fetcher.industry.metals import (
     records_to_metals_frame,
 )
 from stock_data.fetcher.industry.models import (
+    AgriculturePorkRecord,
+    ChemicalMarketRecord,
     CloudCapexRecord,
+    CoalMarketRecord,
     ConstructionMachineryRecord,
+    ConsumerElectronicsRecord,
     CustomsTradeRecord,
+    LiquorWholesaleRecord,
     NevMonthlyRecord,
     NonFerrousMetalsRecord,
     PharmaLicenseOutRecord,
+    SemiconductorLeadRecord,
     SemiconductorSalesRecord,
     ShippingIndicesRecord,
     SolarCapacityRecord,
+    SolarPriceChainRecord,
 )
 from stock_data.fetcher.industry.pharma import (
     PHARMA_LICENSE_OUT_SCHEMA,
@@ -72,15 +109,23 @@ from stock_data.fetcher.industry.pharma import (
 from stock_data.fetcher.industry.pipeline import sync_all_industry_metrics
 from stock_data.fetcher.industry.power import (
     SOLAR_CAPACITY_SCHEMA,
+    SOLAR_PRICE_CHAIN_SCHEMA,
+    PvPriceChainCollector,
     SolarCollector,
     empty_solar_capacity,
+    empty_solar_price_chain,
     records_to_solar_frame,
+    records_to_solar_price_chain_frame,
 )
 from stock_data.fetcher.industry.semiconductor import (
+    SEMICONDUCTOR_LEAD_SCHEMA,
     SEMICONDUCTOR_SALES_SCHEMA,
     SemiconductorCollector,
+    TsmcLeadCollector,
+    empty_semiconductor_lead,
     empty_semiconductor_sales,
     records_to_semiconductor_frame,
+    records_to_semiconductor_lead_frame,
 )
 from stock_data.fetcher.industry.shipping import (
     SHIPPING_INDICES_SCHEMA,
@@ -90,20 +135,37 @@ from stock_data.fetcher.industry.shipping import (
 )
 
 __all__ = [
+    "AGRICULTURE_PORK_SCHEMA",
+    "CHEMICAL_MARKET_SCHEMA",
     "CLOUD_CAPEX_SCHEMA",
+    "COAL_MARKET_SCHEMA",
     "CONSTRUCTION_MACHINERY_SCHEMA",
+    "CONSUMER_ELECTRONICS_SCHEMA",
     "CUSTOMS_TRADE_SCHEMA",
+    "LIQUOR_WHOLESALE_SCHEMA",
     "NEV_MONTHLY_SCHEMA",
     "NON_FERROUS_METALS_SCHEMA",
     "PHARMA_LICENSE_OUT_SCHEMA",
+    "SEMICONDUCTOR_LEAD_SCHEMA",
     "SEMICONDUCTOR_SALES_SCHEMA",
     "SHIPPING_INDICES_SCHEMA",
     "SOLAR_CAPACITY_SCHEMA",
+    "SOLAR_PRICE_CHAIN_SCHEMA",
+    "AgriculturePorkCollector",
+    "AgriculturePorkRecord",
+    "ChemicalMarketRecord",
+    "ChemicalsCollector",
     "CloudCapexCollector",
     "CloudCapexRecord",
+    "CoalMarketCollector",
+    "CoalMarketRecord",
     "ComtradeCollector",
     "ConstructionMachineryRecord",
+    "ConsumerElectronicsCollector",
+    "ConsumerElectronicsRecord",
     "CustomsTradeRecord",
+    "LiquorWholesaleCollector",
+    "LiquorWholesaleRecord",
     "MachineryCollector",
     "NevCollector",
     "NevMonthlyRecord",
@@ -111,36 +173,54 @@ __all__ = [
     "NonFerrousMetalsRecord",
     "PharmaBdCollector",
     "PharmaLicenseOutRecord",
+    "PvPriceChainCollector",
     "SemiconductorCollector",
+    "SemiconductorLeadRecord",
     "SemiconductorSalesRecord",
     "ShippingCollector",
     "ShippingIndicesRecord",
     "SolarCapacityRecord",
     "SolarCollector",
+    "SolarPriceChainRecord",
+    "TsmcLeadCollector",
+    "empty_agriculture_pork",
+    "empty_chemical_market",
     "empty_cloud_capex",
+    "empty_coal_market",
     "empty_construction_machinery",
+    "empty_consumer_electronics",
     "empty_customs_trade",
+    "empty_liquor_wholesale",
     "empty_nev_monthly",
     "empty_non_ferrous_metals",
     "empty_pharma_license_out",
+    "empty_semiconductor_lead",
     "empty_semiconductor_sales",
     "empty_shipping_indices",
     "empty_solar_capacity",
+    "empty_solar_price_chain",
     "get_hs6_query_list",
     "get_month_end_date",
     "load_hs_catalog",
     "parse_comtrade_items",
     "parse_raw_csv_rows",
     "read_raw_text",
+    "records_to_agriculture_pork_frame",
+    "records_to_chemical_market_frame",
     "records_to_cloud_capex_frame",
+    "records_to_coal_market_frame",
+    "records_to_consumer_electronics_frame",
     "records_to_customs_trade_frame",
+    "records_to_liquor_wholesale_frame",
     "records_to_machinery_frame",
     "records_to_metals_frame",
     "records_to_nev_frame",
     "records_to_pharma_bd_frame",
     "records_to_semiconductor_frame",
+    "records_to_semiconductor_lead_frame",
     "records_to_shipping_frame",
     "records_to_solar_frame",
+    "records_to_solar_price_chain_frame",
     "save_curated_fact",
     "save_raw_snapshot",
     "sync_all_industry_metrics",

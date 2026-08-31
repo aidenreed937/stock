@@ -94,14 +94,20 @@ def test_nev_monthly_frame_conversion() -> None:
             report_month="2026-05",
             trade_date=date(2026, 5, 31),
             wholesale_volume_ten_thousand=95.0,
+            retail_volume_ten_thousand=89.6,
+            export_volume_ten_thousand=14.5,
             penetration_rate=0.485,
+            battery_installation_gwh=58.9,
             yoy_growth=0.32,
         ),
         NevMonthlyRecord(
             report_month="2026-06",
             trade_date=date(2026, 6, 30),
             wholesale_volume_ten_thousand=101.0,
+            retail_volume_ten_thousand=94.8,
+            export_volume_ten_thousand=15.2,
             penetration_rate=0.505,
+            battery_installation_gwh=63.4,
             yoy_growth=0.35,
         ),
     ]
@@ -112,6 +118,9 @@ def test_nev_monthly_frame_conversion() -> None:
     assert "wholesale_volume_3mma" in df.columns
     assert "yoy_growth_3mma" in df.columns
     assert df["wholesale_volume_ten_thousand"][1] == 101.0
+    assert df["retail_volume_ten_thousand"][1] == 94.8
+    assert df["export_volume_ten_thousand"][1] == 15.2
+    assert df["battery_installation_gwh"][1] == 63.4
     assert df["penetration_rate"][1] == 0.505
     assert df["unit"][0] == "ten_thousand_units"
 
@@ -122,8 +131,8 @@ def test_nev_collector_from_raw_csv(tmp_path: Path) -> None:
     cpca_dir.mkdir(parents=True)
     raw_csv = cpca_dir / "nev_monthly_sales.csv"
     raw_csv.write_text(
-        "report_month,trade_date,wholesale_volume_ten_thousand,penetration_rate,yoy_growth,source,source_url,release_date,data_status,collected_at\n"
-        "2026-06,2026-06-30,101.0,0.505,0.35,CPCA,http://www.cpcaauto.com/,2026-07-10,actual,2026-07-10T10:00:00Z\n",
+        "report_month,trade_date,wholesale_volume_ten_thousand,retail_volume_ten_thousand,export_volume_ten_thousand,penetration_rate,battery_installation_gwh,yoy_growth,source,source_url,release_date,data_status,collected_at\n"
+        "2026-06,2026-06-30,101.0,94.8,15.2,0.505,63.4,0.35,CPCA,http://www.cpcaauto.com/,2026-07-10,actual,2026-07-10T10:00:00Z\n",
         encoding="utf-8",
     )
 
@@ -133,11 +142,46 @@ def test_nev_collector_from_raw_csv(tmp_path: Path) -> None:
     rec = records[0]
     assert rec.report_month == "2026-06"
     assert rec.wholesale_volume_ten_thousand == 101.0
+    assert rec.retail_volume_ten_thousand == 94.8
+    assert rec.export_volume_ten_thousand == 15.2
+    assert rec.battery_installation_gwh == 63.4
     assert rec.penetration_rate == 0.505
 
     df = records_to_nev_frame(records)
     assert not df.is_empty()
     assert df["wholesale_volume_ten_thousand"][0] == 101.0
+    assert df["battery_installation_gwh"][0] == 63.4
+
+
+def test_automotive_bulletin_parsers() -> None:
+    from stock_data.fetcher.industry.automotive.crawler import (
+        parse_cabia_battery_article,
+        parse_cpca_bulletin_article,
+    )
+
+    # 1. 验证 CABIA 电池装机通报解析
+    cabia_text = (
+        "2026年7月，我国动力电池装车量59.8GWh，同比增长18.5%。"
+        "其中三元电池装车量18.2GWh，占总装车量30.4%；磷酸铁锂电池装车量41.6GWh，占总装车量69.6%。"
+    )
+    cabia_res = parse_cabia_battery_article(cabia_text)
+    assert cabia_res is not None
+    assert cabia_res["report_month"] == "2026-07"
+    assert cabia_res["battery_installation_gwh"] == 59.8
+    assert cabia_res["yoy_growth"] == 0.185
+
+    # 2. 验证 CPCA 乘联会月报解析
+    cpca_text = (
+        "2026年7月新能源乘用车批发销量达到95.13万辆，同比增长15.2%；"
+        "7月新能源乘用车国内零售销量达到89.2万辆，同比增长14.8%；"
+        "7月新能源乘用车出口14.8万辆，同比增长16.5%。新能源车国内零售渗透率达到48.2%。"
+    )
+    cpca_res = parse_cpca_bulletin_article(cpca_text)
+    assert cpca_res is not None
+    assert cpca_res["report_month"] == "2026-07"
+    assert cpca_res["wholesale_volume_ten_thousand"] == 95.13
+    assert cpca_res["retail_volume_ten_thousand"] == 89.2
+    assert cpca_res["export_volume_ten_thousand"] == 14.8
 
 
 def test_solar_capacity_frame_conversion() -> None:
@@ -171,7 +215,7 @@ def test_solar_capacity_frame_conversion() -> None:
 
 def test_solar_collector_from_raw_csv(tmp_path: Path) -> None:
     raw_dir = tmp_path / "raw_industry"
-    nea_dir = raw_dir / "nea"
+    nea_dir = raw_dir / "energy" / "cn_nea"
     nea_dir.mkdir(parents=True)
     raw_csv = nea_dir / "solar_capacity.csv"
     raw_csv.write_text(
@@ -383,7 +427,8 @@ def test_sync_all_industry_metrics_pipeline(tmp_path: Path) -> None:
         "2026-05,2026-05-31,95.0,0.485,0.32,CPCA,,2026-06-10,actual,\n",
         encoding="utf-8",
     )
-    (raw_dir / "nea" / "solar_capacity.csv").write_text(
+    (raw_dir / "energy" / "cn_nea").mkdir(parents=True, exist_ok=True)
+    (raw_dir / "energy" / "cn_nea" / "solar_capacity.csv").write_text(
         "report_month,trade_date,monthly_new_capacity_gw,cumulative_capacity_gw,yoy_growth,source,source_url,release_date,data_status,collected_at\n"
         "2026-05,2026-05-31,21.0,1247.5,0.15,NEA,,2026-06-22,actual,\n",
         encoding="utf-8",

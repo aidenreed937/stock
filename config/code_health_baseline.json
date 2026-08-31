@@ -10,6 +10,18 @@
       "lines": 329,
       "methods": 18
     },
+    "src/stock_data/fetcher/industry/automotive/collector.py::NevCollector": {
+      "lines": 282,
+      "methods": 6
+    },
+    "src/stock_data/fetcher/industry/customs/collector.py::ComtradeCollector": {
+      "lines": 205,
+      "methods": 8
+    },
+    "src/stock_data/fetcher/industry/machinery/collector.py::MachineryCollector": {
+      "lines": 237,
+      "methods": 4
+    },
     "src/stock_data/fetcher/lixinger/client.py::LixingerClient": {
       "lines": 228,
       "methods": 5
@@ -49,10 +61,16 @@
   },
   "files": {
     "src/stock_analytics/marts/build_steps.py": {
-      "lines": 840
+      "lines": 846
+    },
+    "src/stock_analytics/marts/industry_l2_panel.py": {
+      "lines": 405
     },
     "src/stock_data/core/task_registry.py": {
       "lines": 702
+    },
+    "src/stock_data/fetcher/industry/pharma/collector.py": {
+      "lines": 452
     },
     "src/stock_data/fetcher/lixinger/stock_fetcher.py": {
       "lines": 430
@@ -77,6 +95,9 @@
     },
     "src/stock_reporting/templates/market_temperature.py": {
       "lines": 636
+    },
+    "src/stock_strategy/industry/trend_live.py": {
+      "lines": 473
     }
   }
 }

@@ -64,8 +64,13 @@ class NeaBulletinCrawler:
 
     def __init__(self, raw_dir: Path | str = "data/raw/industry") -> None:
         self.raw_dir = Path(raw_dir)
-        self.nea_dir = self.raw_dir / "nea"
-        self.cache_file = self.nea_dir / "nea_bulletins.json.gz"
+        if (self.raw_dir / "energy" / "cn_nea").exists():
+            self.nea_dir = self.raw_dir / "energy" / "cn_nea"
+        elif (self.raw_dir / "cn_nea").exists():
+            self.nea_dir = self.raw_dir / "cn_nea"
+        else:
+            self.nea_dir = self.raw_dir / "energy" / "cn_nea"
+        self.cache_file = self.nea_dir / "bulletins_manifest.json.gz"
 
     def fetch_latest_bulletins(self) -> dict[str, dict[str, Any]]:
         """从国家能源局官网克制抓取最新电力统计通报并合并本地缓存。"""

@@ -5,7 +5,10 @@ from datetime import UTC, datetime
 
 import polars as pl
 
-from stock_data.fetcher.industry.models import SemiconductorSalesRecord
+from stock_data.fetcher.industry.models import (
+    SemiconductorLeadRecord,
+    SemiconductorSalesRecord,
+)
 
 SEMICONDUCTOR_SALES_SCHEMA = {
     "report_month": pl.String,
@@ -67,3 +70,73 @@ def records_to_semiconductor_frame(
         .unique(subset=["report_month"], keep="last")
         .sort("trade_date")
     )
+
+
+SEMICONDUCTOR_LEAD_SCHEMA = {
+    "report_month": pl.String,
+    "trade_date": pl.Date,
+    "tsmc_revenue_ntd_million": pl.Float64,
+    "tsmc_revenue_usd_million": pl.Float64,
+    "tsmc_revenue_yoy": pl.Float64,
+    "tsmc_revenue_mom": pl.Float64,
+    "tsmc_revenue_3mma_usd": pl.Float64,
+    "dram_dxi_index": pl.Float64,
+    "dram_spot_price_usd": pl.Float64,
+    "unit": pl.String,
+    "source": pl.String,
+    "source_url": pl.String,
+    "release_date": pl.Date,
+    "data_status": pl.String,
+    "collected_at": pl.String,
+}
+
+
+def empty_semiconductor_lead() -> pl.DataFrame:
+    """构造半导体先导指标空事实表骨架。"""
+    return pl.DataFrame(schema=SEMICONDUCTOR_LEAD_SCHEMA)
+
+
+def records_to_semiconductor_lead_frame(
+    records: Sequence[SemiconductorLeadRecord],
+) -> pl.DataFrame:
+    """将半导体先导指标记录转换为强类型 Polars DataFrame，并计算 3MMA。"""
+    if not records:
+        return empty_semiconductor_lead()
+
+    now_iso = datetime.now(UTC).isoformat()
+    data = {
+        "report_month": [r.report_month for r in records],
+        "trade_date": [r.trade_date for r in records],
+        "tsmc_revenue_ntd_million": [r.tsmc_revenue_ntd_million for r in records],
+        "tsmc_revenue_usd_million": [r.tsmc_revenue_usd_million for r in records],
+        "tsmc_revenue_yoy": [r.tsmc_revenue_yoy for r in records],
+        "tsmc_revenue_mom": [r.tsmc_revenue_mom for r in records],
+        "tsmc_revenue_3mma_usd": [r.tsmc_revenue_3mma_usd for r in records],
+        "dram_dxi_index": [r.dram_dxi_index for r in records],
+        "dram_spot_price_usd": [r.dram_spot_price_usd for r in records],
+        "unit": [r.unit or "million_ntd/usd" for r in records],
+        "source": [r.source or "TSMC/DRAMeXchange" for r in records],
+        "source_url": [r.source_url or "" for r in records],
+        "release_date": [r.release_date for r in records],
+        "data_status": [r.data_status or "actual" for r in records],
+        "collected_at": [r.collected_at or now_iso for r in records],
+    }
+
+    df = (
+        pl.DataFrame(data, schema=SEMICONDUCTOR_LEAD_SCHEMA)
+        .unique(subset=["report_month"], keep="last")
+        .sort("trade_date")
+    )
+
+    if (
+        df["tsmc_revenue_3mma_usd"].is_null().all()
+        and df["tsmc_revenue_usd_million"].is_not_null().any()
+    ):
+        df = df.with_columns(
+            pl.col("tsmc_revenue_usd_million")
+            .rolling_mean(window_size=3, min_samples=1)
+            .round(2)
+            .alias("tsmc_revenue_3mma_usd")
+        )
+
+    return df

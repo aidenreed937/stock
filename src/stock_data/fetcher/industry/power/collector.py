@@ -26,7 +26,14 @@ class SolarCollector:
         raw_dir: Path | str = "data/raw/industry",
     ) -> None:
         self.raw_dir = Path(raw_dir)
-        self.nea_dir = self.raw_dir / "nea"
+        if (self.raw_dir / "energy" / "cn_nea").exists():
+            self.nea_dir = self.raw_dir / "energy" / "cn_nea"
+        elif (self.raw_dir / "cn_nea").exists():
+            self.nea_dir = self.raw_dir / "cn_nea"
+        elif (self.raw_dir / "nea").exists():
+            self.nea_dir = self.raw_dir / "nea"
+        else:
+            self.nea_dir = self.raw_dir / "energy" / "cn_nea"
         self.crawler = NeaBulletinCrawler(raw_dir=self.raw_dir)
 
     def collect(self) -> list[SolarCapacityRecord]:
