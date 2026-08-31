@@ -134,6 +134,10 @@ class DataSettings(BaseSettings):
     # UN Comtrade 密钥 (Primary Subscription Key)
     comtrade_subscription_key: str = ""
 
+    # Mouser 芯片分销商 API 密钥
+    mouser_search_api_key: str = ""
+    mouser_api_key: str = ""
+
     # 代理配置
     akshare_proxy: str = ""
     yfinance_proxy: str = ""

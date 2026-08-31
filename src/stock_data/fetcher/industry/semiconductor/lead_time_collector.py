@@ -58,13 +58,13 @@ def _determine_lead_time_status(avg_weeks: float) -> str:
 
 
 def _parse_lead_time_string_to_weeks(lead_time_str: str) -> float | None:
-    """将分销商返回的 '18 Weeks' 或 '120 Days' 字符串解析为标准周数。"""
+    """将分销商返回的 '18 Weeks'、'280 天数' 或 '120 Days' 字符串解析为标准周数。"""
     if not lead_time_str:
         return None
-    match_weeks = re.search(r"(\d+(?:\.\d+)?)\s*(?:weeks?|周)", lead_time_str, re.IGNORECASE)
+    match_weeks = re.search(r"(\d+(?:\.\d+)?)\s*(?:weeks?|周数|周)", lead_time_str, re.IGNORECASE)
     if match_weeks:
         return float(match_weeks.group(1))
-    match_days = re.search(r"(\d+(?:\.\d+)?)\s*(?:days?|天)", lead_time_str, re.IGNORECASE)
+    match_days = re.search(r"(\d+(?:\.\d+)?)\s*(?:days?|天数|天)", lead_time_str, re.IGNORECASE)
     if match_days:
         return round(float(match_days.group(1)) / 7.0, 1)
     return None
@@ -98,7 +98,14 @@ class ChipLeadTimeCollector:
 
     def _fetch_live_distributor_data(self) -> list[ChipLeadTimeRecord]:
         """从 Mouser API 在线轮询标杆芯片交期并构建当前月度记录。"""
-        api_key = os.getenv("MOUSER_SEARCH_API_KEY") or os.getenv("MOUSER_API_KEY")
+        from stock_data.core.settings import data_settings
+
+        api_key = (
+            data_settings.mouser_search_api_key
+            or data_settings.mouser_api_key
+            or os.getenv("MOUSER_SEARCH_API_KEY")
+            or os.getenv("MOUSER_API_KEY")
+        )
         if not api_key:
             return []
 
