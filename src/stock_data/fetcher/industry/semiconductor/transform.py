@@ -195,8 +195,18 @@ def records_to_chip_lead_time_frame(
         "collected_at": [r.collected_at or now_iso for r in records],
     }
 
-    return (
+    df = (
         pl.DataFrame(data, schema=CHIP_LEAD_TIME_SCHEMA)
         .unique(subset=["report_month"], keep="last")
         .sort("trade_date")
     )
+    if len(df) > 1:
+        df = df.with_columns(
+            (pl.col("avg_lead_time_weeks") - pl.col("avg_lead_time_weeks").shift(1))
+            .round(2)
+            .alias("lead_time_mom_weeks"),
+            (pl.col("avg_lead_time_weeks") - pl.col("avg_lead_time_weeks").shift(12))
+            .round(2)
+            .alias("lead_time_yoy_weeks"),
+        )
+    return df
