@@ -35,19 +35,37 @@ SEMI_SALES_PATH = Path("data/curated/industry/semiconductor_sales.parquet")
 
 
 def backfill_semiconductor_sales(series: pl.DataFrame) -> int:
-    """将推算的 china_sales_usd 回填到 semiconductor_sales 黄金表。"""
+    """将推算的 china_sales_usd 及同比/环比回填到 semiconductor_sales 黄金表。"""
     if series.is_empty():
         logger.warning("推算序列为空, 跳过回填")
         return 0
 
     sales = pl.read_parquet(SEMI_SALES_PATH)
-    china_map = series.select(["report_month", "china_sales_usd"]).rename(
-        {"china_sales_usd": "china_sales_usd_calc"}
+    china_map = series.select(
+        ["report_month", "china_sales_usd", "china_yoy_growth", "china_mom_growth"]
+    ).rename(
+        {
+            "china_sales_usd": "_c_sales",
+            "china_yoy_growth": "_c_yoy",
+            "china_mom_growth": "_c_mom",
+        }
     )
-    merged = sales.join(china_map, on="report_month", how="left")
-    # 用推算值填充原 china_sales_usd (原列当前全 null), 其余字段保持不变
-    merged = merged.with_columns(pl.col("china_sales_usd_calc").alias("china_sales_usd")).drop(
-        "china_sales_usd_calc"
+    merged = (
+        sales.join(china_map, on="report_month", how="left")
+        .with_columns(
+            [
+                pl.coalesce([pl.col("_c_sales"), pl.col("china_sales_usd")]).alias(
+                    "china_sales_usd"
+                ),
+                pl.coalesce([pl.col("_c_yoy"), pl.col("china_yoy_growth")]).alias(
+                    "china_yoy_growth"
+                ),
+                pl.coalesce([pl.col("_c_mom"), pl.col("china_mom_growth")]).alias(
+                    "china_mom_growth"
+                ),
+            ]
+        )
+        .drop(["_c_sales", "_c_yoy", "_c_mom"])
     )
 
     merged.write_parquet(SEMI_SALES_PATH)

@@ -53,7 +53,7 @@ def _to_china_series_frame(records: list[dict[str, object]]) -> pl.DataFrame:
 
 
 def _backfill_china_into_sales(curated_root: Path, series_path: Path, dry_run: bool = False) -> int:
-    """将推算的 china_sales_usd 回填到 semiconductor_sales 黄金表。"""
+    """将推算的 china_sales_usd 与增速回填到 semiconductor_sales 黄金表。"""
     sales_path = Path(curated_root) / "semiconductor_sales.parquet"
     if not series_path.exists() or not sales_path.exists():
         logger.info("[semiconductor_china_series] 依赖表缺失, 跳过回填")
@@ -62,13 +62,31 @@ def _backfill_china_into_sales(curated_root: Path, series_path: Path, dry_run: b
     if series.is_empty():
         return 0
     sales = pl.read_parquet(sales_path)
-    china_map = series.select(["report_month", "china_sales_usd"]).rename(
-        {"china_sales_usd": "_china_calc"}
+    china_map = series.select(
+        ["report_month", "china_sales_usd", "china_yoy_growth", "china_mom_growth"]
+    ).rename(
+        {
+            "china_sales_usd": "_c_sales",
+            "china_yoy_growth": "_c_yoy",
+            "china_mom_growth": "_c_mom",
+        }
     )
     merged = (
         sales.join(china_map, on="report_month", how="left")
-        .with_columns(pl.col("_china_calc").alias("china_sales_usd"))
-        .drop("_china_calc")
+        .with_columns(
+            [
+                pl.coalesce([pl.col("_c_sales"), pl.col("china_sales_usd")]).alias(
+                    "china_sales_usd"
+                ),
+                pl.coalesce([pl.col("_c_yoy"), pl.col("china_yoy_growth")]).alias(
+                    "china_yoy_growth"
+                ),
+                pl.coalesce([pl.col("_c_mom"), pl.col("china_mom_growth")]).alias(
+                    "china_mom_growth"
+                ),
+            ]
+        )
+        .drop(["_c_sales", "_c_yoy", "_c_mom"])
     )
     if dry_run:
         filled = merged["china_sales_usd"].is_not_null().sum()

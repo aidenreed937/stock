@@ -293,7 +293,7 @@ def sync_all_industry_metrics(
 
 
 def _backfill_semiconductor_china(curated_path: Path) -> int:
-    """从 SIA raw 新闻重建 China 月度序列并回填 semiconductor_sales.china_sales_usd。
+    """从 SIA raw 新闻重建 China 月度序列并回填 semiconductor_sales 黄金表。
 
     独立于主半导体采集 (WSTS 不含中国独立列): 失败仅告警, 不阻塞 pipeline。
     """
@@ -301,6 +301,7 @@ def _backfill_semiconductor_china(curated_path: Path) -> int:
         from stock_data.fetcher.industry.semiconductor.china_series import (
             build_china_series,
             parse_sia_raw_dir,
+            save_china_series,
         )
 
         raw_sia = curated_path.parent.parent / "raw" / "industry" / "sia"
@@ -310,15 +311,38 @@ def _backfill_semiconductor_china(curated_path: Path) -> int:
         series = build_china_series(records)
         if series.is_empty():
             return 0
+
+        # 1. 保存独立的 semiconductor_china_series.parquet 黄金表
+        save_china_series(series, curated_path / "semiconductor_china_series.parquet")
+
+        # 2. 联合回填主表 semiconductor_sales.parquet
         sales_path = curated_path / "semiconductor_sales.parquet"
         sales = pl.read_parquet(sales_path)
-        china_map = series.select(["report_month", "china_sales_usd"]).rename(
-            {"china_sales_usd": "_china_calc"}
+        china_map = series.select(
+            ["report_month", "china_sales_usd", "china_yoy_growth", "china_mom_growth"]
+        ).rename(
+            {
+                "china_sales_usd": "_c_sales",
+                "china_yoy_growth": "_c_yoy",
+                "china_mom_growth": "_c_mom",
+            }
         )
         merged = (
             sales.join(china_map, on="report_month", how="left")
-            .with_columns(pl.col("_china_calc").alias("china_sales_usd"))
-            .drop("_china_calc")
+            .with_columns(
+                [
+                    pl.coalesce([pl.col("_c_sales"), pl.col("china_sales_usd")]).alias(
+                        "china_sales_usd"
+                    ),
+                    pl.coalesce([pl.col("_c_yoy"), pl.col("china_yoy_growth")]).alias(
+                        "china_yoy_growth"
+                    ),
+                    pl.coalesce([pl.col("_c_mom"), pl.col("china_mom_growth")]).alias(
+                        "china_mom_growth"
+                    ),
+                ]
+            )
+            .drop(["_c_sales", "_c_yoy", "_c_mom"])
         )
         merged.write_parquet(sales_path)
         filled = int(merged["china_sales_usd"].is_not_null().sum())
