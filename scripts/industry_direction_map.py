@@ -47,6 +47,37 @@ def _rolling_pct(series: pl.Series, window: int = 756) -> pl.Series:
     )
 
 
+def build_semi_lead_direction() -> pl.DataFrame:
+    """半导体领先腿：台积电月营收 (3MMA YoY) → 滚动分位 → 日频方向得分。
+
+    数据源：data/curated/industry/semiconductor_lead.parquet（台积电月度营收，
+    半导体景气**领先指标**——晶圆代工订单先行于下游销售）。
+    月频腿 release_date 生效（次月 10 日披露），无前视。
+    """
+    cat = DataCatalog(data_source="industry")
+    try:
+        lead = cat.load_dataset("semiconductor_lead")
+    except Exception:
+        return pl.DataFrame(schema={"trade_date": pl.Date, "direction_score": pl.Float64})
+    if lead.is_empty():
+        return pl.DataFrame(schema={"trade_date": pl.Date, "direction_score": pl.Float64})
+
+    col = "tsmc_revenue_3mma_usd" if "tsmc_revenue_3mma_usd" in lead.columns else "tsmc_revenue_usd_million"
+    monthly = _monthly_pct(lead, col)
+    gm = (
+        pl.read_parquet("data/curated/mart/global_macro_daily.parquet")
+        .select(["trade_date"])
+        .sort("trade_date")
+    )
+    return (
+        gm.join(monthly, on="trade_date", how="left")
+        .sort("trade_date")
+        .with_columns(pl.col("pct").fill_null(strategy="forward").alias("direction_score"))
+        .select(["trade_date", "direction_score"])
+        .drop_nulls()
+    )
+
+
 def build_sox_direction() -> pl.DataFrame:
     """AI 算力腿：SOX 相对 200 日均线偏离 / 20 日动量 / 60 日变化 的滚动分位合成（日频）。"""
     gm = (
@@ -68,6 +99,67 @@ def build_sox_direction() -> pl.DataFrame:
         )
         .select(["trade_date", "d1", "d2", "d3"])
         .with_columns(pl.mean_horizontal(["d1", "d2", "d3"]).alias("direction_score"))
+        .select(["trade_date", "direction_score"])
+        .drop_nulls()
+    )
+
+
+def _compose_customs_leg(
+    product_keys: list[str],
+    gm: pl.DataFrame,
+    fallback: pl.DataFrame | None = None,
+) -> pl.DataFrame:
+    """海关品类出口腿公共合成：多品类 3MMA YoY 滚动分位取均值 → 日频前向填充。
+
+    ``product_keys`` 为 customs_trade 中要合成的品类；``gm`` 为交易日历；
+    数据缺失/空帧时返回 ``fallback``（默认空帧，调用方据此回退中性 50）。
+    """
+    if fallback is None:
+        fallback = pl.DataFrame(schema={"trade_date": pl.Date, "direction_score": pl.Float64})
+    cat = DataCatalog(data_source="industry")
+    try:
+        customs = cat.load_dataset("customs_trade", dedup=False)
+    except Exception:
+        return fallback
+    if customs.is_empty() or "product_key" not in customs.columns:
+        return fallback
+
+    sub = (
+        customs.filter(pl.col("product_key").is_in(product_keys))
+        .group_by(["product_key", "trade_date"])
+        .agg(
+            pl.col("export_value_3mma").max().alias("export_value_3mma"),
+            pl.col("release_date").max().alias("release_date"),
+        )
+        .sort(["product_key", "trade_date"])
+    )
+    if sub.is_empty():
+        return fallback
+
+    scores: list[pl.DataFrame] = []
+    for product in sorted(sub["product_key"].unique().to_list()):
+        p_sub = sub.filter(pl.col("product_key") == product)
+        monthly = _monthly_pct(p_sub, "export_value_3mma")
+        daily = (
+            gm.join(monthly, on="trade_date", how="left")
+            .sort("trade_date")
+            .with_columns(pl.col("pct").fill_null(strategy="forward").alias(f"{product}_score"))
+            .select(["trade_date", f"{product}_score"])
+            .drop_nulls()
+        )
+        scores.append(daily)
+    if not scores:
+        return fallback
+
+    merged = scores[0]
+    for s in scores[1:]:
+        merged = merged.join(s, on="trade_date", how="full", coalesce=True)
+    score_cols = [c for c in merged.columns if c.endswith("_score")]
+    merged = merged.with_columns(
+        [pl.col(c).fill_null(strategy="forward").fill_null(50.0) for c in score_cols]
+    )
+    return (
+        merged.with_columns(pl.mean_horizontal(score_cols).alias("direction_score"))
         .select(["trade_date", "direction_score"])
         .drop_nulls()
     )
@@ -252,7 +344,19 @@ def build_transformer_direction() -> pl.DataFrame:
     """海关变压器月度出口金额 (3MMA) → 滚动分位数 → 日频方向得分。"""
     cat = DataCatalog(data_source="industry")
     try:
-        transformer = cat.load_dataset("transformer_export")
+        customs = cat.load_dataset("customs_trade", dedup=False)
+        if not customs.is_empty() and "product_key" in customs.columns:
+            transformer = (
+                customs.filter(pl.col("product_key") == "transformer")
+                .group_by(["report_month", "trade_date"])
+                .agg(
+                    pl.col("export_value_3mma").sum().alias("export_value_3mma"),
+                    pl.col("export_value_usd").sum().alias("export_value_usd"),
+                )
+                .sort("trade_date")
+            )
+        else:
+            transformer = cat.load_dataset("transformer_export")
     except Exception:
         return pl.DataFrame(schema={"trade_date": pl.Date, "direction_score": pl.Float64})
     if transformer.is_empty():
@@ -261,7 +365,11 @@ def build_transformer_direction() -> pl.DataFrame:
     col = (
         "export_value_3mma"
         if "export_value_3mma" in transformer.columns
-        else "export_value_million_usd"
+        else (
+            "export_value_usd"
+            if "export_value_usd" in transformer.columns
+            else "export_value_million_usd"
+        )
     )
     monthly = _monthly_pct(transformer, col)
     gm = (
@@ -279,7 +387,12 @@ def build_transformer_direction() -> pl.DataFrame:
 
 
 def build_pharma_bd_direction() -> pl.DataFrame:
-    """中国创新药海外 License-out (BD) 首付款 (3MMA) → 滚动分位数 → 日频方向得分。"""
+    """中国创新药海外 License-out (BD) 首付款 (3MMA) → 滚动分位数 → 日频方向得分。
+
+    数据源：data/curated/industry/pharma_license_out.parquet（月度 BD 汇总）。
+    前视处理：月度 BD 交易在当月才公告/披露，全月汇总次月才完整可用——把 release_date
+    推到**次月**生效（当月数据最早次月可消费），与海关月频腿（次月 20 日）同语义。
+    """
     cat = DataCatalog(data_source="industry")
     try:
         pharma = cat.load_dataset("pharma_license_out")
@@ -288,6 +401,10 @@ def build_pharma_bd_direction() -> pl.DataFrame:
     if pharma.is_empty():
         return pl.DataFrame(schema={"trade_date": pl.Date, "direction_score": pl.Float64})
 
+    # 生效日推到次月（release_date 原为月末，+1 月 → 次月同日；_monthly_pct 用 release_date 生效）
+    pharma = pharma.with_columns(
+        pl.col("release_date").dt.offset_by("1mo").alias("release_date")
+    )
     col = "upfront_3mma" if "upfront_3mma" in pharma.columns else "monthly_upfront_million_usd"
     monthly = _monthly_pct(pharma, col)
     gm = (
@@ -314,12 +431,20 @@ def build_optical_direction() -> pl.DataFrame:
     )
     optical_daily = None
     try:
-        optical = cat.load_dataset("optical_module_export")
+        customs = cat.load_dataset("customs_trade", dedup=False)
+        if not customs.is_empty() and "product_key" in customs.columns:
+            optical = customs.filter(pl.col("product_key") == "optical_module")
+        else:
+            optical = cat.load_dataset("optical_module_export")
         if not optical.is_empty():
             col = (
                 "export_value_3mma"
                 if "export_value_3mma" in optical.columns
-                else "export_value_million_usd"
+                else (
+                    "export_value_usd"
+                    if "export_value_usd" in optical.columns
+                    else "export_value_million_usd"
+                )
             )
             opt_monthly = _monthly_pct(optical, col)
             optical_daily = (
@@ -377,58 +502,12 @@ def build_chemicals_direction() -> pl.DataFrame:
     合成：各品种 3MMA 同比滚动分位取均值（对齐 optical 双腿合成）。数据缺失时返回空帧
     （对应行业方向分回退中性 50，不阻塞其他行业）。
     """
-    cat = DataCatalog(data_source="industry")
-    try:
-        customs = cat.load_dataset("customs_trade", dedup=False)
-    except Exception:
-        return pl.DataFrame(schema={"trade_date": pl.Date, "direction_score": pl.Float64})
-    if customs.is_empty() or "product_key" not in customs.columns:
-        return pl.DataFrame(schema={"trade_date": pl.Date, "direction_score": pl.Float64})
-
-    chem = (
-        customs.filter(pl.col("product_key").is_in(["tio2", "mdi"]))
-        .group_by(["product_key", "trade_date"])
-        .agg(
-            pl.col("export_value_3mma").max().alias("export_value_3mma"),
-            pl.col("release_date").max().alias("release_date"),
-        )
-        .sort(["product_key", "trade_date"])
-    )
-    if chem.is_empty():
-        return pl.DataFrame(schema={"trade_date": pl.Date, "direction_score": pl.Float64})
-
     gm = (
         pl.read_parquet("data/curated/mart/global_macro_daily.parquet")
         .select(["trade_date"])
         .sort("trade_date")
     )
-    scores: list[pl.DataFrame] = []
-    for product in sorted(chem["product_key"].unique().to_list()):
-        sub = chem.filter(pl.col("product_key") == product)
-        monthly = _monthly_pct(sub, "export_value_3mma")
-        daily = (
-            gm.join(monthly, on="trade_date", how="left")
-            .sort("trade_date")
-            .with_columns(pl.col("pct").fill_null(strategy="forward").alias(f"{product}_score"))
-            .select(["trade_date", f"{product}_score"])
-            .drop_nulls()
-        )
-        scores.append(daily)
-    if not scores:
-        return pl.DataFrame(schema={"trade_date": pl.Date, "direction_score": pl.Float64})
-
-    merged = scores[0]
-    for s in scores[1:]:
-        merged = merged.join(s, on="trade_date", how="full", coalesce=True)
-    score_cols = [c for c in merged.columns if c.endswith("_score")]
-    merged = merged.with_columns(
-        [pl.col(c).fill_null(strategy="forward").fill_null(50.0) for c in score_cols]
-    )
-    return (
-        merged.with_columns(pl.mean_horizontal(score_cols).alias("direction_score"))
-        .select(["trade_date", "direction_score"])
-        .drop_nulls()
-    )
+    return _compose_customs_leg(["tio2", "mdi"], gm)
 
 
 def build_medical_device_direction() -> pl.DataFrame:
@@ -439,58 +518,28 @@ def build_medical_device_direction() -> pl.DataFrame:
     合成：各品类 3MMA 同比滚动分位取均值（对齐 chemicals 双腿合成）。数据缺失时返回空帧
     （对应行业方向分回退中性 50，不阻塞其他行业）。
     """
-    cat = DataCatalog(data_source="industry")
-    try:
-        customs = cat.load_dataset("customs_trade", dedup=False)
-    except Exception:
-        return pl.DataFrame(schema={"trade_date": pl.Date, "direction_score": pl.Float64})
-    if customs.is_empty() or "product_key" not in customs.columns:
-        return pl.DataFrame(schema={"trade_date": pl.Date, "direction_score": pl.Float64})
-
-    med = (
-        customs.filter(pl.col("product_key") == "medical_device")
-        .group_by(["product_key", "trade_date"])
-        .agg(
-            pl.col("export_value_3mma").max().alias("export_value_3mma"),
-            pl.col("release_date").max().alias("release_date"),
-        )
-        .sort(["product_key", "trade_date"])
-    )
-    if med.is_empty():
-        return pl.DataFrame(schema={"trade_date": pl.Date, "direction_score": pl.Float64})
-
     gm = (
         pl.read_parquet("data/curated/mart/global_macro_daily.parquet")
         .select(["trade_date"])
         .sort("trade_date")
     )
-    scores: list[pl.DataFrame] = []
-    for product in sorted(med["product_key"].unique().to_list()):
-        sub = med.filter(pl.col("product_key") == product)
-        monthly = _monthly_pct(sub, "export_value_3mma")
-        daily = (
-            gm.join(monthly, on="trade_date", how="left")
-            .sort("trade_date")
-            .with_columns(pl.col("pct").fill_null(strategy="forward").alias(f"{product}_score"))
-            .select(["trade_date", f"{product}_score"])
-            .drop_nulls()
-        )
-        scores.append(daily)
-    if not scores:
-        return pl.DataFrame(schema={"trade_date": pl.Date, "direction_score": pl.Float64})
+    return _compose_customs_leg(["medical_device"], gm)
 
-    merged = scores[0]
-    for s in scores[1:]:
-        merged = merged.join(s, on="trade_date", how="full", coalesce=True)
-    score_cols = [c for c in merged.columns if c.endswith("_score")]
-    merged = merged.with_columns(
-        [pl.col(c).fill_null(strategy="forward").fill_null(50.0) for c in score_cols]
+
+def build_pharma_export_direction() -> pl.DataFrame:
+    """药品出口腿：化学药制剂 + 疫苗出口金额 3MMA YoY → 滚动分位 → 日频方向得分。
+
+    数据源：data/curated/industry/customs_trade.parquet（UN Comtrade + GACC 双源，
+    product_key ∈ {pharma_chemicals, pharma_vaccines}，HS30 章药品出口外需代理）。
+    合成：各品类 3MMA 同比滚动分位取均值（对齐 chemicals 双腿合成）。数据缺失时返回空帧
+    （对应行业方向分回退中性 50，不阻塞其他行业）。
+    """
+    gm = (
+        pl.read_parquet("data/curated/mart/global_macro_daily.parquet")
+        .select(["trade_date"])
+        .sort("trade_date")
     )
-    return (
-        merged.with_columns(pl.mean_horizontal(score_cols).alias("direction_score"))
-        .select(["trade_date", "direction_score"])
-        .drop_nulls()
-    )
+    return _compose_customs_leg(["pharma_chemicals", "pharma_vaccines"], gm)
 
 
 def build_machinery_direction() -> pl.DataFrame:
@@ -606,7 +655,9 @@ def build_global_resonance_l2_map() -> pl.DataFrame:
     与一级 ``global_resonance_map``（申万官方 801xxx.SI 码）并行，输出**理杏仁 6 位码**
     口径（对齐 ``industry_l2_daily`` / ``industry_l2_panel_daily``），支持二级行业与
     主题 ETF 穿透。信号腿缺失（如 machinery/shipping 数据未落盘）自动跳过，不阻塞
-    其他行业；输出列：``trade_date`` / ``industry_code`` / ``direction_score``。
+    其他行业；输出列：``trade_date`` / ``industry_code`` / ``direction_score`` /
+    ``leg_type``（信号腿供需属性：demand/supply/price/finance，来自
+    ``_SIGNAL_LEG_SUPPLY_DEMAND``，供供需象限因子与数据审计消费）。
     """
     signals = build_theme_signals()
     rows: list[pl.DataFrame] = []
@@ -619,6 +670,7 @@ def build_global_resonance_l2_map() -> pl.DataFrame:
         rows.append(
             signals[signal_key].with_columns(
                 pl.lit(code).alias("industry_code"),
+                pl.lit(_SIGNAL_LEG_SUPPLY_DEMAND.get(signal_key, "demand")).alias("leg_type"),
             )
         )
     print(f"无方向信号的二级行业（跳过）: {skipped or '无'}")
@@ -628,9 +680,12 @@ def build_global_resonance_l2_map() -> pl.DataFrame:
                 "trade_date": pl.Date,
                 "industry_code": pl.Utf8,
                 "direction_score": pl.Float64,
+                "leg_type": pl.Utf8,
             }
         )
-    return pl.concat(rows).select(["trade_date", "industry_code", "direction_score"])
+    return pl.concat(rows).select(
+        ["trade_date", "industry_code", "direction_score", "leg_type"]
+    )
 
 
 # 主题 → 方向信号（sw_level2 二级行业归属 → 全球景气代理）
@@ -655,7 +710,7 @@ _THEME_SIGNAL: dict[str, str] = {
     "电网": "transformer",
     "医药生物": "pharma_bd",  # 创新药出海 BD
     "创新药": "pharma_bd",
-    "化学制药": "pharma_bd",
+    "化学制药": "pharma_bd",  # 创新药出海 License-out BD 首付款（台账已采集）
     "生物制品": "pharma_bd",
     "工程机械": "machinery",  # CCMA 挖机产销与小松工时
     "机械设备": "machinery",
@@ -701,16 +756,53 @@ _THEME_L2_CODE: dict[str, str] = {
     "医疗服务": "370600",
 }
 
+# 信号腿供需属性注册表（结构化元数据，替代散在注释中的语义）：
+#   demand  = 全球需求景气代理（订单/销量/装机/出口等外需方向）
+#   supply  = 供给/产能扩张信号（capex 等，供象限因子供给态消费）
+#   price   = 全球价格/运价（供需平衡的价格反映）
+#   finance = A 股财务口径（量价齐升/议价权，供需结果的财务确认）
+_SIGNAL_LEG_SUPPLY_DEMAND: dict[str, str] = {
+    "semi": "demand",  # SOX/全球半导体销售额（全球算力需求）
+    "optical": "demand",  # 光模块出口 + 北美云厂 Capex（采购需求）
+    "solar": "demand",  # 光伏装机（装机端需求，非产能）
+    "nev": "demand",  # 新能源车销量（终端需求）
+    "metals": "price",  # 铜价（全球工业需求 + 金融属性）
+    "lithium": "price",  # 碳酸锂价格
+    "gold": "price",  # COMEX 黄金期货（避险需求 + 金融属性）
+    "transformer": "demand",  # 海关变压器出口（海外电网采购）
+    "pharma_bd": "demand",  # 创新药出海 BD（跨国药企采购）
+    "machinery": "demand",  # 挖机产销/小松工时（基建矿山活动）
+    "shipping": "price",  # BDI/BDTI 运价（贸易活跃度价格反映）
+    "chemicals": "demand",  # 海关化工品出口（海外化工需求）
+    "medical_device": "demand",  # 海关医疗设备出口（海外采购）
+    "pharma_export": "demand",  # HS30 章药品出口（化学药制剂/疫苗，海外采购）
+}
+
 
 def build_theme_signals() -> dict[str, pl.DataFrame]:
     """主题方向信号（日频）：semi / optical / solar / nev / metals / lithium / transformer / pharma_bd / machinery / shipping / gold / chemicals / medical_device。"""
     semi = build_sox_direction()  # trade_date, direction_score
+    semi_lead = build_semi_lead_direction()  # 台积电月营收（半导体领先腿）
+    if not semi_lead.is_empty():
+        # 合成：SOX（日频）均值 台积电（月频，前向填充）→ 领先+同步双确认
+        merged = semi.join(semi_lead.rename({"direction_score": "lead"}), on="trade_date", how="left")
+        semi = (
+            merged.sort("trade_date")
+            .with_columns(pl.col("lead").fill_null(strategy="forward"))
+            .drop_nulls(subset=["lead"])
+            .with_columns(
+                ((pl.col("direction_score") + pl.col("lead")) / 2.0).alias("direction_score")
+            )
+            .select(["trade_date", "direction_score"])
+            .drop_nulls()
+        )
     optical = build_optical_direction()
     machinery = build_machinery_direction()
     shipping = build_shipping_direction()
     gold = build_gold_direction()
     chemicals = build_chemicals_direction()
     medical_device = build_medical_device_direction()
+    pharma_export = build_pharma_export_direction()
     cat = DataCatalog(data_source="industry")
     solar = cat.load_dataset("solar_capacity")
     nev = cat.load_dataset("nev_monthly_sales")
@@ -764,6 +856,9 @@ def build_theme_signals() -> dict[str, pl.DataFrame]:
 
     if not medical_device.is_empty():
         out["medical_device"] = medical_device
+
+    if not pharma_export.is_empty():
+        out["pharma_export"] = pharma_export
 
     return out
 

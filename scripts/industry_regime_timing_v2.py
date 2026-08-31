@@ -141,15 +141,25 @@ class RegimeGatedV2(BaseStrategy):
                 new_weights = {c: w * self.scale for c, w in self.current_weights.items()}
                 for old in self.current_weights:
                     signals.append(
-                        Signal(symbol=old, direction=SignalDirection.BUY,
-                               target_weight=new_weights[old], reason="相态触发降仓", timestamp=ts)
+                        Signal(
+                            symbol=old,
+                            direction=SignalDirection.BUY,
+                            target_weight=new_weights[old],
+                            reason="相态触发降仓",
+                            timestamp=ts,
+                        )
                     )
                 self.current_weights = new_weights
                 return signals
             for old in self.current_weights:
                 signals.append(
-                    Signal(symbol=old, direction=SignalDirection.CLOSE, target_weight=0.0,
-                           reason="相态触发空仓", timestamp=ts)
+                    Signal(
+                        symbol=old,
+                        direction=SignalDirection.CLOSE,
+                        target_weight=0.0,
+                        reason="相态触发空仓",
+                        timestamp=ts,
+                    )
                 )
             self.current_weights = {}
             return signals
@@ -169,14 +179,24 @@ class RegimeGatedV2(BaseStrategy):
             new_weights[code] = round(1.0 / len(top), 4)
             if code not in self.current_weights or self.current_weights[code] != new_weights[code]:
                 signals.append(
-                    Signal(symbol=code, direction=SignalDirection.BUY, target_weight=new_weights[code],
-                           reason=f"动量Top{self.top_k}: {row['industry_name']}", timestamp=ts)
+                    Signal(
+                        symbol=code,
+                        direction=SignalDirection.BUY,
+                        target_weight=new_weights[code],
+                        reason=f"动量Top{self.top_k}: {row['industry_name']}",
+                        timestamp=ts,
+                    )
                 )
         for old in self.current_weights:
             if old not in new_weights:
                 signals.append(
-                    Signal(symbol=old, direction=SignalDirection.CLOSE, target_weight=0.0,
-                           reason="动量调仓剔除", timestamp=ts)
+                    Signal(
+                        symbol=old,
+                        direction=SignalDirection.CLOSE,
+                        target_weight=0.0,
+                        reason="动量调仓剔除",
+                        timestamp=ts,
+                    )
                 )
         self.current_weights = new_weights
         return signals
@@ -197,13 +217,16 @@ def main() -> None:
     panel = panel.join(rf, on="trade_date", how="left")
 
     # 大盘 close/MA20（000985.CSI）→ 每个交易日一行，join 后广播到行业截面
-    bars = catalog.load_bars(symbol="000985.CSI", dataset="index_daily_bar").select(
-        ["trade_date", "close"]
-    ).sort("trade_date")
+    bars = (
+        catalog.load_bars(symbol="000985.CSI", dataset="index_daily_bar")
+        .select(["trade_date", "close"])
+        .sort("trade_date")
+    )
     bench = bars.with_columns(pl.col("close").rolling_mean(window_size=20).alias("ma20"))
     panel = panel.join(
         bench.rename({"close": "benchmark_close", "ma20": "benchmark_ma20"}),
-        on="trade_date", how="left",
+        on="trade_date",
+        how="left",
     )
 
     variants = [
@@ -223,7 +246,10 @@ def main() -> None:
     for name, kw in variants:
         strat = RegimeGatedV2(rebalance_period=10, score_column="ind_momentum", **kw)
         runner = IndustryStrategyRunner(
-            strat, strategy_name=name, commission_rate=0.0001, slippage_rate=0.0005,
+            strat,
+            strategy_name=name,
+            commission_rate=0.0001,
+            slippage_rate=0.0005,
             rebalance_deadband=0.03,
         )
         nav = runner.backtest(panel, price_panel)
@@ -236,8 +262,14 @@ def main() -> None:
     result.write_csv(_OUT_DIR / "industry_regime_timing_v2.csv")
     print(
         result.select(
-            ["strategy", "区间", pl.col("cagr").round(2), pl.col("max_drawdown").round(2),
-             pl.col("sharpe").round(2), pl.col("calmar").round(2)]
+            [
+                "strategy",
+                "区间",
+                pl.col("cagr").round(2),
+                pl.col("max_drawdown").round(2),
+                pl.col("sharpe").round(2),
+                pl.col("calmar").round(2),
+            ]
         )
     )
 
@@ -253,7 +285,9 @@ def main() -> None:
 | 策略 | 区间 | CAGR% | MaxDD% | Sharpe | Calmar |
 | :--- | :--- | ---: | ---: | ---: | ---: |
 """
-    for r in result.select(["strategy", "区间", "cagr", "max_drawdown", "sharpe", "calmar"]).to_dicts():
+    for r in result.select(
+        ["strategy", "区间", "cagr", "max_drawdown", "sharpe", "calmar"]
+    ).to_dicts():
         md += (
             f"| {r['strategy']} | {r['区间']} | {r['cagr']:.2f} | {r['max_drawdown']:.2f} "
             f"| {r['sharpe']:.2f} | {r['calmar']:.2f} |\n"

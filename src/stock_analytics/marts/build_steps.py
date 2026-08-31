@@ -679,11 +679,20 @@ def build_industry_l2_panel(
         if l2_map_path.exists():
             direction_map = pl.read_parquet(l2_map_path)
 
+    # 化工实体供给指标（chemical_market：MDI/TiO2 开工率 + 库存天数）
+    chemical_market: pl.DataFrame | None = None
+    try:
+        cat_ind = _catalog_for(catalog, "industry", runtime=runtime)
+        chemical_market = cat_ind.load_dataset("chemical_market")
+    except Exception:
+        chemical_market = None
+
     result = build_industry_l2_panel_frame(
         l2_daily,
         l2_financial,
         l2_capex=l2_capex,
         direction_map=direction_map,
+        chemical_market=chemical_market,
         percentile_cutoff=effective_start,
     )
     if result.is_empty():

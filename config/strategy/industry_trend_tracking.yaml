@@ -17,7 +17,7 @@ strategies:
     rebalance_period: 63
     score_column: "return_60d"
     valuation_max: 90.0
-    description: "二级方向池基线：动量 Top3 + 估值防守（pe5y<=90），全球共振 13 行业（全周期年化 +12.50%）"
+    description: "二级方向池基线：动量 Top3 + 估值防守（pe5y<=90），全球共振 15 行业去重池（全周期年化 +5.43%；13 行业 12.50%→19 行业 4.36%→15 去重 5.43%）"
     friction:
       commission_rate: 0.0001
       slippage_rate: 0.0005
@@ -31,7 +31,7 @@ strategies:
     score_column: "return_60d"
     valuation_max: 90.0
     require_qlq: true
-    description: "二级方向池 + 量价齐升硬门：只买营收/净利 TTM 双正行业（全周期弱于基线，但样本外 2022 后 Sharpe 0.32 vs 基线 0.15，供需层唯一正例）"
+    description: "二级方向池 + 量价齐升硬门：只买营收/净利 TTM 双正行业（15 行业全周期 +12.23%，样本外 2022 后 Sharpe 0.36 vs 基线 0.18，供需层唯一正例）"
     friction:
       commission_rate: 0.0001
       slippage_rate: 0.0005
@@ -65,9 +65,10 @@ strategies:
     capex_gate: true
     crowd_gate: true
     crowd_max: 85.0
+    quadrant_bonus: true
     panic_scale: 0.5
     panic_thr: 65.0
-    description: "二级方向池 + 组合防守门（capex洪峰 + 拥挤度一票否决 + 恐慌降仓50%）：样本外 Sharpe 0.15→0.31（见 industry_capex_combo.md）"
+    description: "二级方向池 + 组合防守门（capex洪峰 + 拥挤度一票否决 + 供需象限动量加成 + 恐慌降仓50%）：15 行业全周期 +15.10%，样本外 Sharpe 0.18→0.42（见 industry_supply_demand_quadrant.md）"
     friction:
       commission_rate: 0.0001
       slippage_rate: 0.0005

@@ -17,6 +17,7 @@ from __future__ import annotations
 from dataclasses import dataclass
 from datetime import date, datetime
 from pathlib import Path
+from typing import Any
 from zoneinfo import ZoneInfo
 
 import polars as pl
@@ -34,67 +35,103 @@ _THEME_ETF_DIRECTION_MART = Path("data/curated/mart/theme_etf_direction.parquet"
 _WATCHLIST_CONFIG = Path("config/universe/watchlist.yaml")
 # L2 财务黄金表 2020Q1 起，巡检窗口对齐实证起点
 _L2_AVAILABLE_FROM = date(2020, 5, 1)
-# 全球共振方向池 13 个申万二级行业（理杏仁码）
+# 全球共振方向池 15 个申万二级行业（理杏仁码；去重版剔除高相关成员 光伏/生物制品/化学制品/塑料）
 _L2_DIRECTION_POOL = (
     "270100",  # 半导体
     "730200",  # 通信设备
     "710100",  # 计算机设备
-    "630500",  # 光伏设备
     "630700",  # 电池
     "630800",  # 电网设备
     "280500",  # 乘用车(汽车)
     "240300",  # 工业金属
     "240400",  # 贵金属
     "370100",  # 化学制药
-    "370300",  # 生物制品
+    "370600",  # 医疗服务
+    "220200",  # 化学原料
+    "220400",  # 化学纤维
+    "220800",  # 农化制品
     "640600",  # 工程机械
     "421100",  # 航运港口
 )
 
-# 申万二级行业标准 1:1 ETF 映射基准与代理属性定义: (symbol, name, match_type, note)
-_CANONICAL_L2_ETF_MAP: dict[str, tuple[str, str, str, str]] = {
-    "270100": ("512480.SH", "半导体ETF", "pure_l2", "申万二级半导体纯正对标"),
-    "730200": ("515880.SH", "通信ETF", "pure_l2", "申万二级通信设备纯正对标"),
-    "630500": ("515790.SH", "光伏ETF", "pure_l2", "申万二级光伏设备纯正对标"),
-    "630700": ("159755.SZ", "电池ETF", "pure_l2", "申万二级电池纯正对标"),
-    "630800": ("159326.SZ", "电网设备ETF", "pure_l2", "申万二级电网设备纯正对标"),
+# 申万二级行业标准 1:1 ETF 映射基准与代理属性定义: (symbol, name, match_type, note, tracking_gap)
+# tracking_gap: 实测年化跟踪差 %（ETF 复权收益 − 申万二级行业指数收益，对齐区间见 industry_trend_etf_gap.md；
+# proxy 类型为负值时执行层按比例降权并转现金，避免实盘兑现度打折）。
+_CANONICAL_L2_ETF_MAP: dict[str, tuple[str, str, str, str, float]] = {
+    "270100": ("512480.SH", "半导体ETF", "pure_l2", "申万二级半导体纯正对标", -4.0),
+    "730200": ("515880.SH", "通信ETF", "pure_l2", "申万二级通信设备纯正对标", -1.8),
+    "630700": ("159755.SZ", "电池ETF", "pure_l2", "申万二级电池纯正对标", -1.0),
+    "630800": ("159326.SZ", "电网设备ETF", "pure_l2", "申万二级电网设备纯正对标", 8.1),
     "240400": (
         "159562.SZ",
         "黄金股ETF",
         "pure_l2",
         "申万二级贵金属股票纯正对标 (亦可选用 518880.SH 黄金ETF)",
+        -3.0,
     ),
-    "370300": ("512290.SH", "生物医药ETF", "pure_l2", "申万二级生物制品/疫苗纯正对标"),
-    "370100": ("159992.SZ", "创新药ETF", "pure_l2", "申万二级化学制药/创新药出海对标"),
+    "370100": ("159992.SZ", "创新药ETF", "pure_l2", "申万二级化学制药/创新药出海对标", -3.4),
+    "370600": (
+        "512170.SH",
+        "医疗ETF",
+        "proxy_l2",
+        "中证医疗指数代理 (含医疗服务/医疗器械/CXO，无纯医疗服务二级ETF)",
+        -6.9,
+    ),
     "240300": (
         "512400.SH",
         "有色金属ETF",
         "proxy_l1",
         "申万一级有色金属全指代理 (含工业金属与稀土)",
+        0.6,
     ),
     "710100": (
         "512720.SH",
         "计算机ETF",
         "proxy_l1",
         "申万一级计算机全指代理 (混合硬件整机与软件IT服务)",
+        2.4,
     ),
     "280500": (
         "516110.SH",
         "汽车ETF",
         "proxy_l1",
         "申万一级汽车全指代理 (混合整车制造与汽车零部件)",
+        1.3,
+    ),
+    "220200": (
+        "516020.SH",
+        "细分化工ETF",
+        "proxy_l2",
+        "中证细分化工产业主题代理 (覆盖基础化工全链，化学原料为主)",
+        -5.0,
+    ),
+    "220400": (
+        "516020.SH",
+        "细分化工ETF",
+        "proxy_l2",
+        "中证细分化工产业主题代理 (化学纤维为子链，成分稀释)",
+        2.5,
+    ),
+    "220800": (
+        "516020.SH",
+        "细分化工ETF",
+        "proxy_l2",
+        "中证细分化工产业主题代理 (农化制品为子链，成分稀释)",
+        -6.2,
     ),
     "640600": (
         "560280.SH",
         "工程机械主题ETF",
         "pure_l2",
         "申万二级工程机械纯正对标 (三一/徐工/中联/恒立)",
+        5.2,
     ),
     "421100": (
         "159666.SZ",
         "交通运输ETF",
         "proxy_l1",
         "申万一级交通运输全指代理 (含铁路航空物流，非纯航运港口)",
+        -8.7,
     ),
 }
 
@@ -114,18 +151,30 @@ class TrendLiveInspectionResult:
     markdown_card: str
 
 
-def load_l2_etf_map() -> dict[str, dict[str, str]]:
-    """构建二级行业 → 场内 ETF 映射（方向池 13 行业）。
+def load_l2_etf_map() -> dict[str, dict[str, Any]]:
+    """构建二级行业 → 场内 ETF 映射（方向池 14 行业）。
 
     以 _CANONICAL_L2_ETF_MAP 为权威基准：
     - 对具备纯正场内 ETF 的二级行业（半导体、通信设备、光伏设备、电池、电网设备、贵金属、生物制品、化学制药）
       实现精确 1:1 对标；
     - 对尚无纯二级 ETF 的行业（工业金属、计算机设备、乘用车、工程机械、航运港口）
-      采用对应所属申万一级行业全指 ETF 进行代理，并显式标注代理属性及跟踪偏差说明。
+      采用对应所属申万一级行业全指 ETF 进行代理，并显式标注代理属性及跟踪偏差说明；
+    - 医疗服务采用中证医疗指数 ETF（512170.SH）代理：该指数成份含医疗服务/医疗器械/CXO，
+      为场内最贴近的医疗服务主题标的（无纯医疗服务二级 ETF）。
+
+    每个条目附带实测年化跟踪差 tracking_gap（ETF 复权收益 − 申万二级行业指数收益，%）：
+    proxy 类型为负值时，执行层按 proxy_discount 降权并转现金（避免实盘兑现度打折）。
     """
     return {
-        code: {"symbol": sym, "name": name, "match_type": m_type, "note": note}
-        for code, (sym, name, m_type, note) in _CANONICAL_L2_ETF_MAP.items()
+        code: {
+            "symbol": sym,
+            "name": name,
+            "match_type": m_type,
+            "note": note,
+            "tracking_gap": gap,
+            "proxy_discount": max(-gap, 0.0) if m_type.startswith("proxy") else 0.0,
+        }
+        for code, (sym, name, m_type, note, gap) in _CANONICAL_L2_ETF_MAP.items()
     }
 
 
@@ -237,8 +286,9 @@ def inspect_live_industry_trend_signal(
     except Exception as exc:
         logger.warning(f"读取 ETF 最新价格失败，使用占位价: {exc}")
 
-    # 5. 生成报单指令
+    # 5. 生成报单指令（proxy 代理行业按实测跟踪差降权，释放仓位转现金）
     instructions: list[IndustryLiveOrderInstruction] = []
+    proxy_cash: float = 0.0
     for sig in signals:
         code = sig.symbol
         ind_name = ind_names.get(code, code)
@@ -249,11 +299,29 @@ def inspect_live_industry_trend_signal(
         if etf_info is not None:
             etf_code = etf_info["symbol"]
             match_type = etf_info.get("match_type", "pure_l2")
-            match_badge = "🎯 纯二级对标" if match_type == "pure_l2" else "⚠️ L1泛行业代理"
+            discount = float(etf_info.get("proxy_discount", 0.0))
+            # 代理行业：负跟踪差按比例降权（仅 proxy 类型生效），降权部分转现金
+            applied_weight = t_weight
+            if discount > 0 and t_weight > 0:
+                applied_weight = round(t_weight * (1.0 - discount / 100.0), 4)
+                proxy_cash += total_capital * (t_weight - applied_weight)
+            t_amount = total_capital * applied_weight
+            if match_type == "pure_l2":
+                match_badge = "🎯 纯二级对标"
+            elif match_type == "proxy_l2":
+                match_badge = "⚠️ 二级主题代理"
+            else:
+                match_badge = "⚠️ L1泛行业代理"
             etf_name = f"{etf_info['name']} [{match_badge}]"
             ref_price = latest_prices.get(etf_code, 1.0)
             lots = int(t_amount / (ref_price * 100)) if ref_price > 0 and t_amount > 0 else 0
-            reason_str = f"{sig.reason} | {etf_info.get('note', '')}"
+            gap = float(etf_info.get("tracking_gap", 0.0))
+            gap_note = (
+                f" | 代理折扣 {discount:.1f}% (实测跟踪差 {gap:+.1f}%/年，已降权)"
+                if discount > 0
+                else ""
+            )
+            reason_str = f"{sig.reason} | {etf_info.get('note', '')}{gap_note}"
         else:
             etf_code = "—"
             etf_name = "无对应场内ETF"
@@ -267,10 +335,10 @@ def inspect_live_industry_trend_signal(
                 industry_name=ind_name,
                 etf_symbol=etf_code,
                 etf_name=etf_name,
-                direction="BUY" if t_weight > 0 else "CLOSE",
-                target_weight=round(t_weight, 4),
+                direction="BUY" if applied_weight > 0 else "CLOSE",
+                target_weight=applied_weight,
                 current_weight=0.0,
-                delta_weight=round(t_weight, 4),
+                delta_weight=applied_weight,
                 latest_price=ref_price,
                 target_amount=round(t_amount, 2),
                 recommended_lots=lots,
@@ -289,6 +357,7 @@ def inspect_live_industry_trend_signal(
         etf_direction=etf_direction,
         instructions=instructions,
         total_capital=total_capital,
+        proxy_cash=proxy_cash,
     )
 
     return TrendLiveInspectionResult(
@@ -314,6 +383,7 @@ def _render_trend_markdown_card(
     etf_direction: dict[str, tuple[str, float]],
     instructions: list[IndustryLiveOrderInstruction],
     total_capital: float,
+    proxy_cash: float = 0.0,
 ) -> str:
     """生成产业趋势跟踪盘尾实盘调仓指令卡片。"""
     time_str = as_of_time.strftime("%Y-%m-%d %H:%M:%S")
@@ -353,6 +423,12 @@ def _render_trend_markdown_card(
         if inst_rows
         else "今日无调仓指令，保持当前产业配置。"
     )
+    proxy_note = ""
+    if proxy_cash > 0:
+        proxy_note = (
+            f"\n\n> ⚠️ **代理折扣说明**：代理 ETF（无纯二级标的）实测年化跟踪差为负，"
+            f"已按比例降权，释放 **¥{proxy_cash:,.0f}** 转现金（详见各行 reason 中的代理折扣标注）。"
+        )
 
     return f"""# 产业趋势跟踪 盘尾实盘巡检卡片（申万二级方向池）
 
@@ -377,12 +453,16 @@ def _render_trend_markdown_card(
 
 {inst_table}
 
+{proxy_note}
+
 ---
 
 💡 **执行与标的对标提示**：
 1. **🎯 纯二级对标**：标的 ETF 与所选二级行业成份高度吻合（如半导体、通信设备、光伏设备、电池、电网设备、生物医药、创新药、黄金股等）；
 2. **⚠️ L1泛行业代理**：A股暂无纯正二级 ETF，采用所属申万一级行业全指 ETF 替代执行（如交通运输替代航运港口、机械设备替代工程机械、汽车替代乘用车、计算机替代计算机设备），实际持仓存在成分稀释与跟踪偏差；
-3. **申报规范**：产业趋势跟踪为季度尺度，调仓指令在季度确认日盘尾通过对应场内 ETF 申报；注意规避 ETF 盘中大幅折溢价 (>0.3%)。
+3. **⚠️ 二级主题代理**：医疗服务采用中证医疗指数 ETF（512170.SH），指数成份含医疗服务/医疗器械/CXO，为场内最贴近的医疗服务主题标的，仍存在器械/CXO 成分稀释；
+4. **代理折扣**：proxy 类型 ETF 按实测年化跟踪差（ETF 复权收益 − 申万二级行业指数收益）负值降权、释放仓位转现金；数值来源见 `data/analytics/industry_strategy/industry_trend_etf_gap.md`（本地实测）；
+5. **申报规范**：产业趋势跟踪为季度尺度，调仓指令在季度确认日盘尾通过对应场内 ETF 申报；注意规避 ETF 盘中大幅折溢价 (>0.3%)。
 """
 
 

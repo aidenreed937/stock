@@ -150,10 +150,20 @@ class ParadigmRotation(BaseStrategy):
             cand = cand.filter(pl.col("industry_code").is_in(list(pool)))
 
         # 过热 + anti_crowd：动量与反拥挤加权
-        if state == "overheat" and self.overheat_map == "anti_crowd" and "tcr_percentile" in cand.columns:
+        if (
+            state == "overheat"
+            and self.overheat_map == "anti_crowd"
+            and "tcr_percentile" in cand.columns
+        ):
             ranked = (
                 cand.select(
-                    ["trade_date", "industry_code", "industry_name", self.score_column, "tcr_percentile"]
+                    [
+                        "trade_date",
+                        "industry_code",
+                        "industry_name",
+                        self.score_column,
+                        "tcr_percentile",
+                    ]
                 )
                 .drop_nulls(subset=[self.score_column])
                 .with_columns(
@@ -189,14 +199,24 @@ class ParadigmRotation(BaseStrategy):
             new_weights[code] = round(1.0 / len(top), 4)
             if code not in self.current_weights or self.current_weights[code] != new_weights[code]:
                 signals.append(
-                    Signal(symbol=code, direction=SignalDirection.BUY, target_weight=new_weights[code],
-                           reason=f"{state}态Top{self.top_k}: {row['industry_name']}", timestamp=ts)
+                    Signal(
+                        symbol=code,
+                        direction=SignalDirection.BUY,
+                        target_weight=new_weights[code],
+                        reason=f"{state}态Top{self.top_k}: {row['industry_name']}",
+                        timestamp=ts,
+                    )
                 )
         for old in self.current_weights:
             if old not in new_weights:
                 signals.append(
-                    Signal(symbol=old, direction=SignalDirection.CLOSE, target_weight=0.0,
-                           reason="范式调仓剔除", timestamp=ts)
+                    Signal(
+                        symbol=old,
+                        direction=SignalDirection.CLOSE,
+                        target_weight=0.0,
+                        reason="范式调仓剔除",
+                        timestamp=ts,
+                    )
                 )
         self.current_weights = new_weights
         return signals
@@ -223,9 +243,18 @@ def main() -> None:
     variants = [
         ("baseline_全池动量", dict(panic_thr=99.0, overheat_thr=99.0)),
         ("范式A_恐慌切防御", dict(panic_thr=65.0, overheat_thr=99.0)),
-        ("范式B_恐慌+过热都切防御", dict(panic_thr=65.0, overheat_thr=65.0, overheat_map="defensive")),
-        ("范式C_恐慌防御+过热周期", dict(panic_thr=65.0, overheat_thr=65.0, overheat_map="cyclical")),
-        ("范式D_恐慌防御+过热反拥挤", dict(panic_thr=65.0, overheat_thr=65.0, overheat_map="anti_crowd")),
+        (
+            "范式B_恐慌+过热都切防御",
+            dict(panic_thr=65.0, overheat_thr=65.0, overheat_map="defensive"),
+        ),
+        (
+            "范式C_恐慌防御+过热周期",
+            dict(panic_thr=65.0, overheat_thr=65.0, overheat_map="cyclical"),
+        ),
+        (
+            "范式D_恐慌防御+过热反拥挤",
+            dict(panic_thr=65.0, overheat_thr=65.0, overheat_map="anti_crowd"),
+        ),
     ]
     rows: list[dict] = []
     nav_map: dict[str, pl.DataFrame] = {}
@@ -233,7 +262,10 @@ def main() -> None:
     for name, kw in variants:
         strat = ParadigmRotation(rebalance_period=10, score_column="ind_momentum", **kw)
         runner = IndustryStrategyRunner(
-            strat, strategy_name=name, commission_rate=0.0001, slippage_rate=0.0005,
+            strat,
+            strategy_name=name,
+            commission_rate=0.0001,
+            slippage_rate=0.0005,
             rebalance_deadband=0.03,
         )
         nav = runner.backtest(panel, price_panel)
@@ -248,8 +280,14 @@ def main() -> None:
     result.write_csv(_OUT_DIR / "industry_paradigm_rotation.csv")
     print(
         result.select(
-            ["strategy", "区间", pl.col("cagr").round(2), pl.col("max_drawdown").round(2),
-             pl.col("sharpe").round(2), pl.col("calmar").round(2)]
+            [
+                "strategy",
+                "区间",
+                pl.col("cagr").round(2),
+                pl.col("max_drawdown").round(2),
+                pl.col("sharpe").round(2),
+                pl.col("calmar").round(2),
+            ]
         )
     )
     print("\n状态分布（调仓日计数）:")
@@ -270,7 +308,9 @@ def main() -> None:
 | 策略 | 区间 | CAGR% | MaxDD% | Sharpe | Calmar |
 | :--- | :--- | ---: | ---: | ---: | ---: |
 """
-    for r in result.select(["strategy", "区间", "cagr", "max_drawdown", "sharpe", "calmar"]).to_dicts():
+    for r in result.select(
+        ["strategy", "区间", "cagr", "max_drawdown", "sharpe", "calmar"]
+    ).to_dicts():
         md += (
             f"| {r['strategy']} | {r['区间']} | {r['cagr']:.2f} | {r['max_drawdown']:.2f} "
             f"| {r['sharpe']:.2f} | {r['calmar']:.2f} |\n"

@@ -40,6 +40,26 @@ def _qlq_expr() -> pl.Expr:
     return (pl.col("revenue_growth_ttm") > 0.0) & (pl.col("profit_growth_ttm") > 0.0)
 
 
+# 供需象限动量加成（实证 scripts/industry_supply_demand_quadrant.py：
+# 最优象限需求高×供给平稳未来 60d +4.96%，最差需求低×供给扩张 −0.55%；象限缺失不加分）
+QUADRANT_SCORE_BONUS: dict[str, float] = {
+    "需求高|供给平稳": 5.0,
+    "需求高|供给收缩": 3.0,
+    "需求中|供给收缩": 1.0,
+    "需求中|供给平稳": 0.0,
+    "需求低|供给平稳": -2.0,
+    "需求高|供给扩张": -5.0,
+    "需求中|供给扩张": -5.0,
+    "需求低|供给收缩": -3.0,
+    "需求低|供给扩张": -10.0,
+}
+
+
+def _quadrant_bonus_expr(score_col: str) -> pl.Expr:
+    """按供需象限对动量分加成（无 quadrant 列或不匹配时保持原分）。"""
+    return pl.col(score_col) + pl.col("quadrant").replace_strict(QUADRANT_SCORE_BONUS, default=0.0)
+
+
 def _filter_defense_candidates(
     candidates: pl.DataFrame,
     valuation_max: float = 90.0,
@@ -49,8 +69,14 @@ def _filter_defense_candidates(
     capex_gate: bool = False,
     crowd_gate: bool = False,
     crowd_max: float = 85.0,
+    quadrant_gate: bool = False,
 ) -> pl.DataFrame:
-    """执行估值、量价齐升、方向、资本开支与拥挤度防守层过滤。"""
+    """执行估值、量价齐升、方向、资本开支、拥挤度与供需象限防守层过滤。
+
+    quadrant_gate：剔除供需最差象限「需求低|供给扩张」（需求收缩 × 供给扩张，
+    实证未来 60d 中位数 −2.59%，见 scripts/industry_supply_demand_quadrant.py），
+    象限缺失（d_state/s_state 为未知）时放行。
+    """
     res = candidates
     if "pe_ttm_ew_percentile_5y" in res.columns:
         res = res.filter(
@@ -75,6 +101,8 @@ def _filter_defense_candidates(
         res = res.filter(
             pl.col("crowding_score").is_null() | (pl.col("crowding_score") < crowd_max)
         )
+    if quadrant_gate and "quadrant" in res.columns:
+        res = res.filter(pl.col("quadrant").is_null() | (pl.col("quadrant") != "需求低|供给扩张"))
     return res
 
 
@@ -96,6 +124,8 @@ class IndustryL2DirectionStrategy(BaseStrategy):
         capex_gate: bool = False,
         crowd_gate: bool = False,
         crowd_max: float = 85.0,
+        quadrant_gate: bool = False,
+        quadrant_bonus: bool = False,
         panic_scale: float = 0.0,
         panic_thr: float = 65.0,
         benchmark_symbol: str | None = None,
@@ -113,6 +143,8 @@ class IndustryL2DirectionStrategy(BaseStrategy):
         self.capex_gate = bool(capex_gate)
         self.crowd_gate = bool(crowd_gate)
         self.crowd_max = float(crowd_max)
+        self.quadrant_gate = bool(quadrant_gate)
+        self.quadrant_bonus = bool(quadrant_bonus)
         self.panic_scale = float(panic_scale)
         self.panic_thr = float(panic_thr)
         self.benchmark_symbol = benchmark_symbol or "000985.CSI"
@@ -174,6 +206,7 @@ class IndustryL2DirectionStrategy(BaseStrategy):
             capex_gate=self.capex_gate,
             crowd_gate=self.crowd_gate,
             crowd_max=self.crowd_max,
+            quadrant_gate=self.quadrant_gate,
         )
 
         ranked = (
@@ -184,6 +217,11 @@ class IndustryL2DirectionStrategy(BaseStrategy):
                     self.score_column,
                     "revenue_growth_ttm",
                     "profit_growth_ttm",
+                    *(
+                        ["quadrant"]
+                        if self.quadrant_bonus and "quadrant" in candidates.columns
+                        else []
+                    ),
                 ]
             )
             .drop_nulls(subset=[self.score_column])
@@ -195,6 +233,10 @@ class IndustryL2DirectionStrategy(BaseStrategy):
             )
             .sort("score", descending=True)
         )
+        if self.quadrant_bonus and "quadrant" in ranked.columns:
+            ranked = ranked.with_columns(_quadrant_bonus_expr("score").alias("score")).sort(
+                "score", descending=True
+            )
         if ranked.is_empty():
             return []
 
@@ -208,7 +250,8 @@ class IndustryL2DirectionStrategy(BaseStrategy):
         for row in top_rows:
             code = str(row["industry_code"])
             name = str(row.get("industry_name", code))
-            score = float(row[self.score_column])
+            score = float(row["score"])
+            quad = str(row.get("quadrant", "")) if self.quadrant_bonus else ""
             new_weights[code] = weight_per_ind
             signals.append(
                 Signal(
@@ -219,6 +262,7 @@ class IndustryL2DirectionStrategy(BaseStrategy):
                         f"二级方向池Top{self.top_k}: {name} ({self.score_column}={score:.1f})"
                         + (" [量价齐升]" if self.require_qlq else "")
                         + (" [方向防守]" if self.direction_gate else "")
+                        + (f" [象限:{quad}]" if quad else "")
                     ),
                     timestamp=ts,
                 )

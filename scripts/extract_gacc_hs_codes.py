@@ -18,7 +18,9 @@ from pathlib import Path
 import pandas as pd
 
 
-def get_gacc_hs_codes(raw_csv_path: Path | str = "data/raw/industry/customs/comtrade/gacc_2025.csv") -> list[str]:
+def get_gacc_hs_codes(
+    raw_csv_path: Path | str = "data/raw/industry/customs/comtrade/gacc_2025.csv",
+) -> list[str]:
     """从已验证的 2025 GACC 原始快照中提取去重后的 54 个末级子税号。"""
     p = Path(raw_csv_path)
     if not p.exists():
@@ -65,7 +67,11 @@ def main() -> int:
             print()
     elif args.format == "table":
         df = pd.read_csv(args.source, encoding="utf-8-sig")
-        sub_df = df[["商品编码", "商品名称", "第一计量单位"]].drop_duplicates(subset=["商品编码"]).sort_values(by="商品编码")
+        sub_df = (
+            df[["商品编码", "商品名称", "第一计量单位"]]
+            .drop_duplicates(subset=["商品编码"])
+            .sort_values(by="商品编码")
+        )
         print(f"\n=== GACC 54 个子税号明细表 (共 {len(sub_df)} 个) ===\n")
         print(sub_df.to_string(index=False))
 

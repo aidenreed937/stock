@@ -64,13 +64,13 @@
       "lines": 846
     },
     "src/stock_analytics/marts/industry_l2_panel.py": {
-      "lines": 405
+      "lines": 423
     },
     "src/stock_data/core/task_registry.py": {
       "lines": 702
     },
     "src/stock_data/fetcher/industry/pharma/collector.py": {
-      "lines": 452
+      "lines": 450
     },
     "src/stock_data/fetcher/lixinger/stock_fetcher.py": {
       "lines": 430

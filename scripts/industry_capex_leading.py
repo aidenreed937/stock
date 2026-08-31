@@ -142,14 +142,24 @@ class L2CapexGateStrategy(BaseStrategy):
             new_weights[code] = round(1.0 / len(top), 4)
             if code not in self.current_weights:
                 signals.append(
-                    Signal(symbol=code, direction=SignalDirection.BUY, target_weight=new_weights[code],
-                           reason=f"Top{self.top_k}: {row['industry_name']}", timestamp=ts)
+                    Signal(
+                        symbol=code,
+                        direction=SignalDirection.BUY,
+                        target_weight=new_weights[code],
+                        reason=f"Top{self.top_k}: {row['industry_name']}",
+                        timestamp=ts,
+                    )
                 )
         for old in self.current_weights:
             if old not in new_weights:
                 signals.append(
-                    Signal(symbol=old, direction=SignalDirection.CLOSE, target_weight=0.0,
-                           reason="调仓剔除", timestamp=ts)
+                    Signal(
+                        symbol=old,
+                        direction=SignalDirection.CLOSE,
+                        target_weight=0.0,
+                        reason="调仓剔除",
+                        timestamp=ts,
+                    )
                 )
         self.current_weights = new_weights
         return signals
@@ -171,7 +181,10 @@ def main() -> None:
     for name, gate in variants:
         strat = L2CapexGateStrategy(rebalance_period=63, score_column="return_60d", capex_gate=gate)
         runner = IndustryStrategyRunner(
-            strat, strategy_name=name, commission_rate=0.0001, slippage_rate=0.0005,
+            strat,
+            strategy_name=name,
+            commission_rate=0.0001,
+            slippage_rate=0.0005,
             rebalance_deadband=0.03,
         )
         nav = runner.backtest(panel, price)
@@ -185,8 +198,14 @@ def main() -> None:
     result.write_csv(_OUT_DIR / "industry_capex_leading.csv")
     print(
         result.select(
-            ["strategy", "区间", pl.col("cagr").round(2), pl.col("max_drawdown").round(2),
-             pl.col("sharpe").round(2), pl.col("calmar").round(2)]
+            [
+                "strategy",
+                "区间",
+                pl.col("cagr").round(2),
+                pl.col("max_drawdown").round(2),
+                pl.col("sharpe").round(2),
+                pl.col("calmar").round(2),
+            ]
         )
     )
 
@@ -213,7 +232,9 @@ def main() -> None:
 | 策略 | 区间 | CAGR% | MaxDD% | Sharpe | Calmar |
 | :--- | :--- | ---: | ---: | ---: | ---: |
 """
-    for r in result.select(["strategy", "区间", "cagr", "max_drawdown", "sharpe", "calmar"]).to_dicts():
+    for r in result.select(
+        ["strategy", "区间", "cagr", "max_drawdown", "sharpe", "calmar"]
+    ).to_dicts():
         md += (
             f"| {r['strategy']} | {r['区间']} | {r['cagr']:.2f} | {r['max_drawdown']:.2f} "
             f"| {r['sharpe']:.2f} | {r['calmar']:.2f} |\n"

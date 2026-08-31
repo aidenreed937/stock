@@ -10,13 +10,13 @@ from stock_strategy.industry.trend_live import (
 
 
 def _make_panel() -> pl.DataFrame:
-    """方向池 6 个申万二级行业截面（industry_l2_panel_daily 口径）。"""
+    """方向池 6 个申万二级行业截面（industry_l2_panel_daily 口径，含池内去重后成员）。"""
     d = date(2026, 8, 28)
     return pl.DataFrame(
         {
             "trade_date": [d] * 6,
-            "industry_code": ["270100", "730200", "710100", "630500", "630700", "280500"],
-            "industry_name": ["半导体", "通信设备", "计算机设备", "光伏设备", "电池", "乘用车"],
+            "industry_code": ["270100", "730200", "710100", "220200", "630700", "280500"],
+            "industry_name": ["半导体", "通信设备", "计算机设备", "化学原料", "电池", "乘用车"],
             "return_60d": [15.8, 14.8, 13.9, 3.0, 5.0, -2.0],
             "pe_ttm_ew_percentile_5y": [40.0, 50.0, 60.0, 95.0, 30.0, 20.0],
             "revenue_growth_ttm": [0.15, 0.18, 0.05, -0.10, 0.27, 0.03],
@@ -36,35 +36,42 @@ def _make_theme_etf_direction() -> pl.DataFrame:
                 "512480.SH",
                 "515880.SH",
                 "512720.SH",
-                "515790.SH",
+                "516020.SH",
                 "159755.SZ",
                 "516110.SH",
             ],
-            "theme": ["半导体", "通信设备", "计算机设备", "光伏设备", "电池", "汽车"],
+            "theme": ["半导体", "通信设备", "计算机设备", "化学原料", "电池", "汽车"],
             "direction_score": [80.0, 44.0, 20.0, 2.8, 8.3, 8.3],
         }
     )
 
 
 def test_load_l2_etf_map_from_theme_direction(monkeypatch, tmp_path: Path) -> None:
-    """方向池 13 行业应具备标准 1:1 ETF 映射及代理属性。"""
+    """方向池 15 行业应具备标准 1:1 ETF 映射及代理属性（去重后）。"""
     etf_map = load_l2_etf_map()
     assert etf_map["270100"]["symbol"] == "512480.SH"  # 半导体
     assert etf_map["730200"]["symbol"] == "515880.SH"  # 通信设备
     assert etf_map["710100"]["symbol"] == "512720.SH"  # 计算机设备
-    assert etf_map["630500"]["symbol"] == "515790.SH"  # 光伏设备
     assert etf_map["630700"]["symbol"] == "159755.SZ"  # 电池
     assert etf_map["630800"]["symbol"] == "159326.SZ"  # 电网设备
     assert etf_map["280500"]["symbol"] == "516110.SH"  # 汽车
     assert etf_map["240400"]["symbol"] == "159562.SZ"  # 贵金属 (黄金股)
-    assert etf_map["370300"]["symbol"] == "512290.SH"  # 生物制品
     assert etf_map["240300"]["symbol"] == "512400.SH"  # 工业金属 (有色)
     assert etf_map["640600"]["symbol"] == "560280.SH"  # 工程机械 (工程机械主题ETF)
     assert etf_map["421100"]["symbol"] == "159666.SZ"  # 航运港口 (交通运输ETF)
+    assert etf_map["370600"]["symbol"] == "512170.SH"  # 医疗服务 (医疗ETF 主题代理)
+    assert etf_map["220200"]["symbol"] == "516020.SH"  # 化学原料 (细分化工ETF 代理)
+
+    # 去重出池行业不应再在映射基准中
+    assert "630500" not in etf_map  # 光伏设备（去重剔除）
+    assert "370300" not in etf_map  # 生物制品（去重剔除）
+    assert "220300" not in etf_map  # 化学制品（去重剔除）
+    assert "220500" not in etf_map  # 塑料（去重剔除）
 
     assert etf_map["630800"]["match_type"] == "pure_l2"
     assert etf_map["640600"]["match_type"] == "pure_l2"
     assert etf_map["421100"]["match_type"] == "proxy_l1"
+    assert etf_map["220200"]["match_type"] == "proxy_l2"
 
 
 def test_inspect_live_industry_trend_signal(monkeypatch, tmp_path: Path) -> None:
@@ -116,7 +123,7 @@ def test_inspect_live_industry_trend_signal(monkeypatch, tmp_path: Path) -> None
         "270100",
         "730200",
         "710100",
-        "630500",
+        "220200",
         "630700",
         "280500",
     }
