@@ -42,6 +42,10 @@ def _resolve_dedup_keys(
             meta = YFINANCE_API_REGISTRY.get(api_name)
         if meta and getattr(meta, "primary_keys", None):
             meta_keys = list(meta.primary_keys)
+        elif task.primary_keys:
+            # 无上游 API 注册表的源 (如 industry) 采用任务契约声明的真实主键,
+            # 避免退化到仅按日期列去重导致多序列明细被折叠。
+            meta_keys = list(task.primary_keys)
     except Exception:
         pass
 
