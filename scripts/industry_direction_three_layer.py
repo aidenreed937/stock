@@ -38,18 +38,26 @@ def main() -> None:
     cat = DataCatalog(data_source="industry")
     tech = ["801080.SI", "801770.SI", "801750.SI"]
 
-    # 1. 方向层（跨行业同值，日频）
+    # 1. 方向层（跨行业同值，日频）: 融合美股定价 (SOX) 与 全球需求总量 (SIA Global Sales)
     gm = (
         pl.read_parquet("data/curated/mart/global_macro_daily.parquet")
         .select(["trade_date", "sox_close"])
         .drop_nulls()
-    )
-    _semi = (
-        cat.load_dataset("semiconductor_sales")
-        .select(["trade_date", "global_sales_usd"])
         .sort("trade_date")
     )
-    sox = gm.with_columns(
+    semi_sales = (
+        cat.load_dataset("semiconductor_sales")
+        .select(["release_date", "global_sales_usd", "yoy_growth", "china_yoy_growth"])
+        .sort("release_date")
+    )
+    # 按 release_date 防未来函数广播至日频交易日
+    gm_semi = gm.join_asof(
+        semi_sales,
+        left_on="trade_date",
+        right_on="release_date",
+        strategy="backward",
+    )
+    sox = gm_semi.with_columns(
         pl.col("sox_close").rolling_mean(window_size=200).alias("ma200"),
         pl.col("sox_close").log().diff(20).alias("mom20"),
         pl.col("sox_close").log().diff(60).alias("chg60"),
@@ -59,9 +67,10 @@ def main() -> None:
             _rolling_pct(sox["ma_bias"].cast(pl.Float64)).alias("d1"),
             _rolling_pct(sox["mom20"].cast(pl.Float64)).alias("d2"),
             _rolling_pct(sox["chg60"].cast(pl.Float64)).alias("d3"),
+            _rolling_pct(sox["yoy_growth"].cast(pl.Float64)).alias("d4"),
         )
-        .select(["trade_date", "d1", "d2", "d3"])
-        .with_columns(pl.mean_horizontal(["d1", "d2", "d3"]).alias("direction"))
+        .select(["trade_date", "d1", "d2", "d3", "d4"])
+        .with_columns(pl.mean_horizontal(["d1", "d2", "d3", "d4"]).alias("direction"))
         .select(["trade_date", "direction"])
     )
 

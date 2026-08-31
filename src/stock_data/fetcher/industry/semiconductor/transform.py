@@ -1,7 +1,8 @@
 """全球半导体月度销售额 (SIA/WSTS) Schema 定义与转换器。"""
 
+import calendar
 from collections.abc import Sequence
-from datetime import UTC, datetime
+from datetime import UTC, date, datetime
 
 import polars as pl
 
@@ -33,6 +34,20 @@ SEMICONDUCTOR_SALES_SCHEMA = {
 }
 
 
+def compute_next_month_end(t_date: date) -> date:
+    """计算次月最后一个自然日作为官方数据发布生效日 (release_date)。"""
+    year = t_date.year
+    month = t_date.month
+    if month == 12:
+        next_year = year + 1
+        next_month = 1
+    else:
+        next_year = year
+        next_month = month + 1
+    _, last_day = calendar.monthrange(next_year, next_month)
+    return date(next_year, next_month, last_day)
+
+
 def empty_semiconductor_sales() -> pl.DataFrame:
     """构造空事实表骨架。"""
     return pl.DataFrame(schema=SEMICONDUCTOR_SALES_SCHEMA)
@@ -62,7 +77,10 @@ def records_to_semiconductor_frame(
         "unit": [r.unit or "billion_usd" for r in records],
         "source": [r.source or "SIA/WSTS" for r in records],
         "source_url": [r.source_url or "" for r in records],
-        "release_date": [r.release_date for r in records],
+        "release_date": [
+            r.release_date if r.release_date is not None else compute_next_month_end(r.trade_date)
+            for r in records
+        ],
         "data_status": [r.data_status or "actual" for r in records],
         "collected_at": [r.collected_at or now_iso for r in records],
     }

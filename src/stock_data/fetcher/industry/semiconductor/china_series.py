@@ -24,6 +24,7 @@ logger = logging.getLogger(__name__)
 CHINA_SERIES_SCHEMA = {
     "report_month": pl.String,
     "trade_date": pl.Date,
+    "release_date": pl.Date,
     "china_sales_usd": pl.Float64,
     "china_yoy_growth": pl.Float64,
     "china_mom_growth": pl.Float64,
@@ -107,16 +108,7 @@ def build_china_series(
     start_month: str = "2012-01",
     end_month: str | None = None,
 ) -> pl.DataFrame:
-    """从 SIA 解析记录构建连续月度 China 销售额序列。
-
-    Args:
-        records: parse_sia_china_enriched 的输出列表 (可含月度增速与年度锚点)。
-        start_month: 推算区间起始月 (YYYY-MM, 默认 2012-01)。
-        end_month: 推算区间结束月 (YYYY-MM, 默认取记录中最新月份)。
-
-    Returns:
-        pl.DataFrame: CHINA_SERIES_SCHEMA 结构的推算序列。
-    """
+    """从 SIA 解析记录构建连续月度 China 销售额序列。"""
     # ---- 1. 聚合月度 YoY/MoM (同月多条新闻取有 YoY 者) ----
     monthly: dict[str, dict[str, object]] = {}
     for r in records:
@@ -347,10 +339,15 @@ def build_china_series(
                 # 校准反馈回链值, 使后续月份 MoM 前推基于校准值 (保持链条连续)
                 chain_values[mk] = val
 
+        t_date = date(y, m, calendar.monthrange(y, m)[1])
+        next_y = y + 1 if m == 12 else y
+        next_m = 1 if m == 12 else m + 1
+        rel_date = date(next_y, next_m, calendar.monthrange(next_y, next_m)[1])
         rows.append(
             {
                 "report_month": mk,
-                "trade_date": date(y, m, calendar.monthrange(y, m)[1]),
+                "trade_date": t_date,
+                "release_date": rel_date,
                 "china_sales_usd": round(val, 2) if val is not None else None,
                 "china_yoy_growth": yoy,
                 "china_mom_growth": mom,
