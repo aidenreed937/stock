@@ -372,16 +372,29 @@ def build_optical_direction() -> pl.DataFrame:
 def build_chemicals_direction() -> pl.DataFrame:
     """化工品出口腿：钛白粉 + 聚合 MDI 出口金额 3MMA YoY → 滚动分位 → 日频方向得分。
 
-    数据源：data/curated/industry/chemicals_export.parquet（海关 GACC，product 长表）。
+    数据源：data/curated/industry/customs_trade.parquet（UN Comtrade + GACC 双源，
+    product_key ∈ {tio2, mdi}，品类级 3MMA/YoY 已按多税号聚合，跨 HS 版本连续）。
     合成：各品种 3MMA 同比滚动分位取均值（对齐 optical 双腿合成）。数据缺失时返回空帧
     （对应行业方向分回退中性 50，不阻塞其他行业）。
     """
     cat = DataCatalog(data_source="industry")
     try:
-        chem = cat.load_dataset("chemicals_export")
+        customs = cat.load_dataset("customs_trade", dedup=False)
     except Exception:
         return pl.DataFrame(schema={"trade_date": pl.Date, "direction_score": pl.Float64})
-    if chem.is_empty() or "product" not in chem.columns:
+    if customs.is_empty() or "product_key" not in customs.columns:
+        return pl.DataFrame(schema={"trade_date": pl.Date, "direction_score": pl.Float64})
+
+    chem = (
+        customs.filter(pl.col("product_key").is_in(["tio2", "mdi"]))
+        .group_by(["product_key", "trade_date"])
+        .agg(
+            pl.col("export_value_3mma").max().alias("export_value_3mma"),
+            pl.col("release_date").max().alias("release_date"),
+        )
+        .sort(["product_key", "trade_date"])
+    )
+    if chem.is_empty():
         return pl.DataFrame(schema={"trade_date": pl.Date, "direction_score": pl.Float64})
 
     gm = (
@@ -390,12 +403,9 @@ def build_chemicals_direction() -> pl.DataFrame:
         .sort("trade_date")
     )
     scores: list[pl.DataFrame] = []
-    for product in sorted(chem["product"].unique().to_list()):
-        sub = chem.filter(pl.col("product") == product)
-        if sub.is_empty():
-            continue
-        col = "export_value_3mma" if "export_value_3mma" in sub.columns else "export_value_million_usd"
-        monthly = _monthly_pct(sub, col)
+    for product in sorted(chem["product_key"].unique().to_list()):
+        sub = chem.filter(pl.col("product_key") == product)
+        monthly = _monthly_pct(sub, "export_value_3mma")
         daily = (
             gm.join(monthly, on="trade_date", how="left")
             .sort("trade_date")
@@ -424,16 +434,29 @@ def build_chemicals_direction() -> pl.DataFrame:
 def build_medical_device_direction() -> pl.DataFrame:
     """医疗设备出口腿：医疗设备出口金额 3MMA YoY → 滚动分位 → 日频方向得分。
 
-    数据源：data/curated/industry/medical_device_export.parquet（海关 GACC，product 长表）。
+    数据源：data/curated/industry/customs_trade.parquet（UN Comtrade + GACC 双源，
+    product_key ∈ {medical_device}，品类级 3MMA/YoY 已按多税号聚合）。
     合成：各品类 3MMA 同比滚动分位取均值（对齐 chemicals 双腿合成）。数据缺失时返回空帧
     （对应行业方向分回退中性 50，不阻塞其他行业）。
     """
     cat = DataCatalog(data_source="industry")
     try:
-        med = cat.load_dataset("medical_device_export")
+        customs = cat.load_dataset("customs_trade", dedup=False)
     except Exception:
         return pl.DataFrame(schema={"trade_date": pl.Date, "direction_score": pl.Float64})
-    if med.is_empty() or "product" not in med.columns:
+    if customs.is_empty() or "product_key" not in customs.columns:
+        return pl.DataFrame(schema={"trade_date": pl.Date, "direction_score": pl.Float64})
+
+    med = (
+        customs.filter(pl.col("product_key") == "medical_device")
+        .group_by(["product_key", "trade_date"])
+        .agg(
+            pl.col("export_value_3mma").max().alias("export_value_3mma"),
+            pl.col("release_date").max().alias("release_date"),
+        )
+        .sort(["product_key", "trade_date"])
+    )
+    if med.is_empty():
         return pl.DataFrame(schema={"trade_date": pl.Date, "direction_score": pl.Float64})
 
     gm = (
@@ -442,12 +465,9 @@ def build_medical_device_direction() -> pl.DataFrame:
         .sort("trade_date")
     )
     scores: list[pl.DataFrame] = []
-    for product in sorted(med["product"].unique().to_list()):
-        sub = med.filter(pl.col("product") == product)
-        if sub.is_empty():
-            continue
-        col = "export_value_3mma" if "export_value_3mma" in sub.columns else "export_value_million_usd"
-        monthly = _monthly_pct(sub, col)
+    for product in sorted(med["product_key"].unique().to_list()):
+        sub = med.filter(pl.col("product_key") == product)
+        monthly = _monthly_pct(sub, "export_value_3mma")
         daily = (
             gm.join(monthly, on="trade_date", how="left")
             .sort("trade_date")

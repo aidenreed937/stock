@@ -91,7 +91,7 @@ def test_partition_writer_serializes_cross_instance_writes_to_same_file(tmp_path
 
 def test_partition_writer_file_lock_serializes_across_processes(tmp_path: Path) -> None:
     path = tmp_path / "market=CN" / "stock_daily_bar" / "data.parquet"
-    context = multiprocessing.get_context("fork")
+    context = multiprocessing.get_context("spawn")
     ready = context.Event()
     release = context.Event()
     acquired = context.Event()
