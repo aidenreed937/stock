@@ -74,7 +74,6 @@ def init_energy_curated_store(
                 target_parquet_path=file_path,
                 primary_keys=keys,
                 sort_keys=sort_keys,
-                export_csv=False,
             )
         result_paths[key] = file_path
 

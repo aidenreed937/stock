@@ -80,9 +80,8 @@ def save_curated_fact(
     new_df: pl.DataFrame,
     target_parquet_path: Path | str,
     primary_keys: list[str] | None = None,
-    export_csv: bool = False,
 ) -> int:
-    """将清洗后的黄金事实 DataFrame 执行增量去重并持久化为 Parquet (可附带 CSV)。
+    """将清洗后的黄金事实 DataFrame 执行增量去重并持久化为 Parquet。
 
     Returns:
         int: 落盘后的总有效行数
@@ -112,10 +111,6 @@ def save_curated_fact(
         merged_df = new_df.unique(subset=keys, keep="last").sort("trade_date")
 
     merged_df.write_parquet(p)
-    if export_csv:
-        csv_path = p.with_suffix(".csv")
-        merged_df.write_csv(csv_path)
-
     logger.info("Curated 事实表落盘成功 [%s]: 共 %d 行", p.name, merged_df.height)
     return merged_df.height
 

@@ -210,7 +210,6 @@ def test_save_raw_and_curated_facts(tmp_path: Path) -> None:
     )
     assert count1 == 1
     assert target_parquet.exists()
-    assert target_parquet.with_suffix(".csv").exists()
 
     # 第二次增量落盘 (含重复 key 和新 key)
     rec1_updated = GlobalOilGasBalanceRecord(
@@ -254,6 +253,5 @@ def test_init_energy_curated_store(tmp_path: Path) -> None:
     ]
     for filename in expected_files:
         assert (curated_dir / filename).exists()
-        assert (curated_dir / filename.replace(".parquet", ".csv")).exists()
 
     assert len(paths) == 5

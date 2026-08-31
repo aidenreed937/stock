@@ -70,7 +70,6 @@ def save_curated_energy_fact(
     target_parquet_path: Path | str,
     primary_keys: list[str] | None = None,
     sort_keys: list[str] | None = None,
-    export_csv: bool = False,
 ) -> int:
     """将规范化后的全球能源黄金事实持久化为 Parquet 并支持增量主键去重。
 
@@ -98,10 +97,6 @@ def save_curated_energy_fact(
         merged_df = new_df.unique(subset=keys, keep="last").sort(order_keys)
 
     merged_df.write_parquet(p)
-    if export_csv:
-        csv_path = p.with_suffix(".csv")
-        merged_df.write_csv(csv_path)
-
     logger.info("Curated 能源事实表落盘成功 [%s]: 共 %d 行", p.name, merged_df.height)
     return merged_df.height
 
