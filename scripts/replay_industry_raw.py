@@ -352,7 +352,9 @@ def _build_metric_plan() -> dict[str, dict[str, Any]]:
             "primary_keys": ["report_date"],
         },
         "chip_lead_time": {
-            "loader": lambda raw_root: ChipLeadTimeCollector(raw_dir=raw_root).collect(),
+            "loader": lambda raw_root: ChipLeadTimeCollector(
+                raw_dir=raw_root
+            ).load_from_raw_snapshots(),
             "to_frame": records_to_chip_lead_time_frame,
             "curated": "chip_lead_time.parquet",
             "primary_keys": ["report_month"],
