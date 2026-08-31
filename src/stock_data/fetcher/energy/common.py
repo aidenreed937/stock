@@ -70,7 +70,7 @@ def save_curated_energy_fact(
     target_parquet_path: Path | str,
     primary_keys: list[str] | None = None,
     sort_keys: list[str] | None = None,
-    export_csv: bool = True,
+    export_csv: bool = False,
 ) -> int:
     """将规范化后的全球能源黄金事实持久化为 Parquet 并支持增量主键去重。
 
