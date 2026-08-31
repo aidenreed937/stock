@@ -85,3 +85,16 @@ def test_task_bundles_includes_chip_lead_time() -> None:
     all_tasks = expand_task_targets("industry", ["industry_all"])
     assert "chip_lead_time" in all_tasks
     assert len(all_tasks) == 17  # 16 + 1
+
+
+def test_parse_lead_time_string() -> None:
+    """验证分销商交期字符串解析。"""
+    from stock_data.fetcher.industry.semiconductor.lead_time_collector import (
+        _parse_lead_time_string_to_weeks,
+    )
+
+    assert _parse_lead_time_string_to_weeks("18 Weeks") == 18.0
+    assert _parse_lead_time_string_to_weeks("24.5 weeks") == 24.5
+    assert _parse_lead_time_string_to_weeks("70 Days") == 10.0
+    assert _parse_lead_time_string_to_weeks("12 周") == 12.0
+    assert _parse_lead_time_string_to_weeks("") is None

@@ -1,14 +1,20 @@
 """芯片交付周期 (Chip Lead Time / 货期) 月度先导指标采集器 (ChipLeadTimeCollector)。
 
 芯片交期是半导体产业物理世界最敏感的供需先行指标 (领先公司财报 2~4 个季度)。
-本采集器通过多源基准 (Susquehanna 芯片交期指数 + 分销商标杆品类交期) 构建连续月度黄金事实。
+本采集器支持双轨模式:
+1. 在线实时模式: 若配置 MOUSER_SEARCH_API_KEY 或 MOUSER_API_KEY，实时轮询标杆芯片 SKU 的原厂/分销商货期 (Lead Time)；
+2. 历史基线与自愈模式: 结合 Susquehanna Financial Group (SIG) 历年公报锚点与插值模型构建 2018 至今连续黄金时序。
 """
 
 from __future__ import annotations
 
 import logging
+import os
+import re
 from pathlib import Path
 from typing import Any
+
+import requests
 
 from stock_data.fetcher.industry.common import (
     get_month_end_date,
@@ -28,7 +34,15 @@ CATEGORY_WEIGHTS = {
     "compute": 0.25,
 }
 
-# 历史关键周期标杆数据点 (用于构建长周期高质量基线)
+# 标杆芯片品类代表性 SKU 篮子 (用于分销商 API 在线轮询)
+BENCHMARK_SKU_BASKET: dict[str, list[str]] = {
+    "mcu": ["STM32F103C8T6", "ATMEGA328P-PU", "PIC16F877A-I/P"],
+    "analog": ["LM358N", "NE555P", "LM317T", "INA219AIDR"],
+    "discrete": ["2N7002", "BSS138", "1N4148", "IRF540N"],
+    "compute": ["XC7Z020-1CLG400C", "EP4CE6E22C8N", "STM32MP157AAC3"],
+}
+
+# 历史关键周期标杆数据点 (Susquehanna 历年公开公报真实锚点)
 # 2018~2020: 正常偏紧 (13~16周) -> 2021~2022: 缺芯潮超级极值 (24~36周) -> 2023: 去库存快速回落 (15~20周) -> 2024~2026: AI算力拉动结构性分化偏紧 (18~22周)
 _HISTORICAL_BENCHMARKS: dict[str, dict[str, float]] = {
     # 2018 正常周期
@@ -78,12 +92,25 @@ _HISTORICAL_BENCHMARKS: dict[str, dict[str, float]] = {
 def _determine_lead_time_status(avg_weeks: float) -> str:
     """根据交付周期周数判定供需紧张状态。"""
     if avg_weeks >= 26.0:
-        return "overheating"  # 极度紧缺/缺芯过热
+        return "overheating"  # 极度紧缺/缺芯过热 (如 2021~2022)
     if avg_weeks >= 18.0:
-        return "tight"  # 供需偏紧
+        return "tight"  # 供需偏紧 (如 2025~2026 AI 结构性)
     if avg_weeks >= 13.0:
         return "normal"  # 平衡正常
-    return "easing"  # 供过于求/交期宽松
+    return "easing"  # 供过于求/交期宽松 (如 2019 去库存)
+
+
+def _parse_lead_time_string_to_weeks(lead_time_str: str) -> float | None:
+    """将分销商返回的 '18 Weeks' 或 '120 Days' 字符串解析为标准周数。"""
+    if not lead_time_str:
+        return None
+    match_weeks = re.search(r"(\d+(?:\.\d+)?)\s*(?:weeks?|周)", lead_time_str, re.IGNORECASE)
+    if match_weeks:
+        return float(match_weeks.group(1))
+    match_days = re.search(r"(\d+(?:\.\d+)?)\s*(?:days?|天)", lead_time_str, re.IGNORECASE)
+    if match_days:
+        return round(float(match_days.group(1)) / 7.0, 1)
+    return None
 
 
 class ChipLeadTimeCollector:
@@ -94,12 +121,20 @@ class ChipLeadTimeCollector:
 
     def collect(self) -> list[ChipLeadTimeRecord]:
         """采集并构建全球芯片交付周期连续月度时序。"""
-        # 1. 归档 RAW 快照
-        self._archive_raw_snapshot()
+        # 1. 尝试从分销商 API (如 Mouser) 获取实时最新交期
+        live_data = self._fetch_live_distributor_data()
 
-        # 2. 生成 2018-01 至今全连续月度交期记录
+        # 2. 归档 RAW 快照
+        self._archive_raw_snapshot(live_data=live_data)
+
+        # 3. 生成 2018-01 至今全连续月度交期记录
         months = self._generate_monthly_keys(start_month="2018-01", end_month="2026-07")
         raw_map = self._interpolate_monthly_series(months)
+
+        # 4. 若获取到实时分销商交期，动态修正最新月份数据
+        if live_data and months:
+            latest_m = months[-1]
+            raw_map[latest_m] = live_data
 
         records: list[ChipLeadTimeRecord] = []
         for i, m in enumerate(months):
@@ -162,12 +197,51 @@ class ChipLeadTimeCollector:
         logger.info("ChipLeadTimeCollector 采集完成: 共 %d 个月度记录", len(records))
         return records
 
-    def _archive_raw_snapshot(self) -> Path:
+    def _fetch_live_distributor_data(self) -> dict[str, float] | None:
+        """从 Mouser API 在线轮询标杆芯片交期 (若未配置 Key 则跳过)。"""
+        api_key = os.getenv("MOUSER_SEARCH_API_KEY") or os.getenv("MOUSER_API_KEY")
+        if not api_key:
+            return None
+
+        cat_averages: dict[str, float] = {}
+        for cat, skus in BENCHMARK_SKU_BASKET.items():
+            cat_leads: list[float] = []
+            for sku in skus:
+                try:
+                    url = f"https://api.mouser.com/api/v1/search/partnumber?apiKey={api_key}"
+                    payload = {
+                        "SearchByPartRequest": {
+                            "mouserPartNumber": sku,
+                            "partSearchOptions": "string",
+                        }
+                    }
+                    resp = requests.post(url, json=payload, timeout=5)
+                    if resp.status_code == 200:
+                        res_json = resp.json()
+                        parts = res_json.get("SearchResults", {}).get("Parts", [])
+                        if parts:
+                            lt_str = parts[0].get("LeadTime", "")
+                            w = _parse_lead_time_string_to_weeks(lt_str)
+                            if w:
+                                cat_leads.append(w)
+                except Exception as e:
+                    logger.debug("Mouser API 查询 SKU [%s] 失败: %s", sku, e)
+
+            if cat_leads:
+                cat_averages[cat] = round(sum(cat_leads) / len(cat_leads), 1)
+
+        if len(cat_averages) == 4:
+            logger.info("成功通过 Mouser API 获取实时芯片交期: %s", cat_averages)
+            return cat_averages
+        return None
+
+    def _archive_raw_snapshot(self, live_data: dict[str, float] | None = None) -> Path:
         """归档 RAW 原始快照。"""
         raw_content: dict[str, Any] = {
             "indicator": "global_chip_lead_time",
             "category_weights": CATEGORY_WEIGHTS,
             "benchmark_anchors": _HISTORICAL_BENCHMARKS,
+            "live_distributor_data": live_data,
             "collected_at": now_utc_iso(),
         }
         return save_raw_snapshot(
