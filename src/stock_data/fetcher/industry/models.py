@@ -46,7 +46,7 @@ class SemiconductorSalesRecord:
     americas_sales_usd: float | None = None
     europe_sales_usd: float | None = None
     japan_sales_usd: float | None = None
-    asia_pacific_other_sales_usd: float | None = None
+    asia_pacific_sales_usd: float | None = None
     yoy_growth: float | None = None
     mom_growth: float | None = None
     unit: str = "billion_usd"

@@ -62,7 +62,7 @@ class _WstsParsedItem:
     americas_sales_usd: float | None
     europe_sales_usd: float | None
     japan_sales_usd: float | None
-    asia_pacific_other_sales_usd: float | None
+    asia_pacific_sales_usd: float | None  # WSTS "Asia Pacific" 区域含中国
 
 
 def parse_wsts_excel_file(excel_path: Path) -> list[SemiconductorSalesRecord]:
@@ -135,7 +135,7 @@ def parse_wsts_excel_file(excel_path: Path) -> list[SemiconductorSalesRecord]:
                             americas_sales_usd=am_b,
                             europe_sales_usd=eu_b,
                             japan_sales_usd=jp_b,
-                            asia_pacific_other_sales_usd=as_b,
+                            asia_pacific_sales_usd=as_b,
                         )
                     )
         i += 6
@@ -166,7 +166,7 @@ def parse_wsts_excel_file(excel_path: Path) -> list[SemiconductorSalesRecord]:
                 americas_sales_usd=r.americas_sales_usd,
                 europe_sales_usd=r.europe_sales_usd,
                 japan_sales_usd=r.japan_sales_usd,
-                asia_pacific_other_sales_usd=r.asia_pacific_other_sales_usd,
+                asia_pacific_sales_usd=r.asia_pacific_sales_usd,
                 yoy_growth=yoy,
                 mom_growth=mom,
                 unit="billion_usd",
@@ -290,7 +290,7 @@ class SemiconductorCollector:
                     americas_sales_usd=r.americas_sales_usd,
                     europe_sales_usd=r.europe_sales_usd,
                     japan_sales_usd=r.japan_sales_usd,
-                    asia_pacific_other_sales_usd=r.asia_pacific_other_sales_usd,
+                    asia_pacific_sales_usd=r.asia_pacific_sales_usd,
                     yoy_growth=r.yoy_growth,
                     mom_growth=r.mom_growth,
                     unit="billion_usd",

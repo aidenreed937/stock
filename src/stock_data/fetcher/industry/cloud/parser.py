@@ -5,10 +5,10 @@ from __future__ import annotations
 from datetime import date
 from typing import Any
 
-# 常见 CapEx 概念候选列表
+# 常见 CapEx 概念候选列表 (按优先级排序)
 CAPEX_XBRL_CONCEPTS: tuple[str, ...] = (
-    "PaymentsToAcquirePropertyPlantAndEquipment",
     "PaymentsToAcquireProductiveAssets",
+    "PaymentsToAcquirePropertyPlantAndEquipment",
     "PaymentsForPropertyPlantAndEquipment",
 )
 
@@ -16,33 +16,37 @@ CAPEX_XBRL_CONCEPTS: tuple[str, ...] = (
 def extract_sec_quarterly_capex(facts: dict[str, Any], ticker: str) -> dict[str, float]:
     """从 SEC XBRL CompanyFacts 中提取真实单季度资本开支 (10 亿美元)。"""
     us_gaap = facts.get("facts", {}).get("us-gaap", {})
-    capex_concept = None
-    for cand in CAPEX_XBRL_CONCEPTS:
-        if cand in us_gaap:
-            capex_concept = cand
-            break
-
-    if not capex_concept:
-        return {}
-
-    units = us_gaap[capex_concept].get("units", {}).get("USD", [])
     periods: list[tuple[date, date, int, float, str]] = []
-    for row in units:
-        form = row.get("form")
-        if form not in ("10-Q", "10-K"):
+    seen_keys: set[tuple[date, date]] = set()
+
+    # 遍历所有存在的 CapEx 概念并合并期间 (按概念优先级去重)
+    for cand in CAPEX_XBRL_CONCEPTS:
+        if cand not in us_gaap:
             continue
-        start_str = row.get("start")
-        end_str = row.get("end")
-        val = float(row.get("val", 0))
-        if not start_str or not end_str or val <= 0:
-            continue
-        try:
-            d_start = date.fromisoformat(start_str)
-            d_end = date.fromisoformat(end_str)
-        except ValueError:
-            continue
-        days = (d_end - d_start).days
-        periods.append((d_start, d_end, days, val, form))
+        units = us_gaap[cand].get("units", {}).get("USD", [])
+        for row in units:
+            form = row.get("form")
+            if form not in ("10-Q", "10-K"):
+                continue
+            start_str = row.get("start")
+            end_str = row.get("end")
+            val = float(row.get("val", 0))
+            if not start_str or not end_str or val <= 0:
+                continue
+            try:
+                d_start = date.fromisoformat(start_str)
+                d_end = date.fromisoformat(end_str)
+            except ValueError:
+                continue
+            key = (d_start, d_end)
+            if key in seen_keys:
+                continue
+            seen_keys.add(key)
+            days = (d_end - d_start).days
+            periods.append((d_start, d_end, days, val, form))
+
+    if not periods:
+        return {}
 
     quarterly_map: dict[str, float] = {}
 
@@ -60,14 +64,14 @@ def extract_sec_quarterly_capex(facts: dict[str, Any], ticker: str) -> dict[str,
         q3_key = f"{yr}-Q3"
         q4_key = f"{yr}-Q4"
 
-        # Q1
+        # Q1: 直接发生额或 <= 115 天
         if q1_key not in quarterly_map:
             for _, d_end, days, val, _ in periods:
                 if d_end.year == yr and d_end.month in (3, 4) and days <= 115:
                     quarterly_map[q1_key] = val / 1e9
                     break
 
-        # Q2: 半年累计 (~180天) - Q1
+        # Q2 (自然年财年): 半年累计 (~180天) - Q1
         if q2_key not in quarterly_map and q1_key in quarterly_map:
             for _, d_end, days, val, _ in periods:
                 if d_end.year == yr and d_end.month in (6, 7) and 150 <= days <= 210:
@@ -75,6 +79,20 @@ def extract_sec_quarterly_capex(facts: dict[str, Any], ticker: str) -> dict[str,
                     if q2_val > 0:
                         quarterly_map[q2_key] = q2_val
                     break
+
+        # Q2 (6月30日结财年, 如 MSFT): 12个月全年 (10-K) - 前9个月累计 (Q3 10-Q)
+        if q2_key not in quarterly_map:
+            fy_12m = None
+            ytd_9m = None
+            for _, d_end, days, val, _ in periods:
+                if d_end.year == yr and d_end.month in (6, 7) and 330 <= days <= 390:
+                    fy_12m = val / 1e9
+                if d_end.year == yr and d_end.month in (3, 4) and 240 <= days <= 300:
+                    ytd_9m = val / 1e9
+            if fy_12m is not None and ytd_9m is not None:
+                q2_val = fy_12m - ytd_9m
+                if q2_val > 0:
+                    quarterly_map[q2_key] = q2_val
 
         # Q3: 9个月累计 (~270天) - (Q1+Q2)
         if q3_key not in quarterly_map and q1_key in quarterly_map and q2_key in quarterly_map:
@@ -85,7 +103,7 @@ def extract_sec_quarterly_capex(facts: dict[str, Any], ticker: str) -> dict[str,
                         quarterly_map[q3_key] = q3_val
                     break
 
-        # Q4: 全年累计 (~365天) - (Q1+Q2+Q3)
+        # Q4 (12月31日结财年): 全年累计 (~365天) - (Q1+Q2+Q3)
         if (
             q4_key not in quarterly_map
             and q1_key in quarterly_map

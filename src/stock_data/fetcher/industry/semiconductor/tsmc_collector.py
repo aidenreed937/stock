@@ -9,8 +9,9 @@ import csv
 import logging
 from datetime import date
 from pathlib import Path
-from typing import Any
+from typing import Any, cast
 
+import polars as pl
 from curl_cffi import requests
 
 from stock_data.fetcher.industry.common import (
@@ -23,7 +24,59 @@ from stock_data.fetcher.industry.models import SemiconductorLeadRecord
 logger = logging.getLogger(__name__)
 
 # TSMC 月度营收基准汇率 (USD/NTD 约 31.5)
+# 注意: 固定汇率口径仅作离线回退; 正常路径优先使用 FRED DEXTAUS 当月真实平均汇率折算。
 _NTD_PER_USD = 31.5
+
+_FRED_FALLBACK_WARNED = False
+
+
+def monthly_usdtwd_rate(report_month: str) -> float | None:
+    """取指定月份 (YYYY-MM) 美元兑新台币月均汇率 (TWD/USD)。
+
+    数据源: FRED H.10 日频即期汇率 DEXTAUS (data/curated/fred/market=US/macro_indicators)。
+    取当月所有交易日收盘价均值; 当月数据缺失时回退最近可用月份, 均不可用返回 None (由调用方回退固定汇率)。
+    """
+    global _FRED_FALLBACK_WARNED
+    try:
+        from stock_data.catalog import DataCatalog
+        from stock_data.core.runtime import DataRuntimeContext
+
+        cat = DataCatalog(data_source="fred", runtime=DataRuntimeContext.from_root("data"))
+        df = cat.load_dataset("macro_indicators", symbols=["DEXTAUS"])
+        if df.is_empty():
+            return None
+        df = df.filter(pl.col("symbol") == "DEXTAUS")
+        if df.is_empty():
+            return None
+
+        yr, mo = parse_month_string(report_month)
+        target = f"{yr:04d}-{mo:02d}"
+        df = df.with_columns(pl.col("trade_date").dt.strftime("%Y-%m").alias("ym"))
+        sub = df.filter(pl.col("ym") == target)
+        if sub.is_empty():
+            # 回退最近可用月份
+            avail = df.filter(pl.col("ym") < target).sort("trade_date")
+            if avail.is_empty():
+                return None
+        mean_val = sub["close"].mean()
+        if mean_val is None:
+            return None
+        rate = cast("float", mean_val)
+        return round(rate, 4)
+    except Exception as exc:  # noqa: BLE001
+        if not _FRED_FALLBACK_WARNED:
+            logger.warning("读取 FRED DEXTAUS 汇率失败, 回退固定汇率 31.5: %s", exc)
+            _FRED_FALLBACK_WARNED = True
+        return None
+
+
+def convert_ntd_to_usd(rev_ntd_million: float, report_month: str) -> float:
+    """按当月真实汇率折算 NTD 营收为 USD 百万 (FRED DEXTAUS 月均; 缺失时回退固定 31.5)。"""
+    rate = monthly_usdtwd_rate(report_month)
+    if rate is None or rate <= 0:
+        rate = _NTD_PER_USD
+    return round(rev_ntd_million / rate, 2)
+
 
 TWSE_OPENAPI_MONTHLY_REVENUE_URL = "https://openapi.twse.com.tw/v1/opendata/t187ap05_L"
 TWSE_HEADERS = {
@@ -96,7 +149,7 @@ class TsmcMonthlyRevenueCrawler:
                     # 营收千元 -> 百万元新台币
                     raw_rev = float(str(row.get("營業收入-當月營收", "0")).replace(",", ""))
                     rev_ntd_million = round(raw_rev / 1000.0, 2)
-                    rev_usd_million = round(rev_ntd_million / _NTD_PER_USD, 2)
+                    rev_usd_million = convert_ntd_to_usd(rev_ntd_million, month_key)
 
                     yoy_str = str(row.get("營業收入-去年同月增減(%)", "")).strip()
                     mom_str = str(row.get("營業收入-上月比較增減(%)", "")).strip()
@@ -185,9 +238,8 @@ def load_tsmc_raw_csv(file_path: Path | str) -> list[SemiconductorLeadRecord]:
             yr, mo = parse_month_string(month_str)
             t_date = get_month_end_date(yr, mo)
             ntd = _safe_float(row.get("tsmc_revenue_ntd_million")) or 0.0
-            usd = _safe_float(row.get("tsmc_revenue_usd_million"))
-            if usd is None and ntd > 0:
-                usd = round(ntd / _NTD_PER_USD, 2)
+            # 始终用 FRED 当月真实汇率重算 USD (raw 快照中的 usd 为旧固定汇率口径)
+            usd = convert_ntd_to_usd(ntd, month_str) if ntd > 0 else None
 
             rel_d = None
             if row.get("release_date"):

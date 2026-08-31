@@ -101,6 +101,8 @@ def save_curated_fact(
 
     if p.exists():
         existing_df = pl.read_parquet(p)
+        # Schema 演进: 以新数据列集为准, 剔除旧 parquet 中已废弃的列 (避免旧列名永久残留)
+        existing_df = existing_df.select([c for c in new_df.columns if c in existing_df.columns])
         merged_df = (
             pl.concat([existing_df, new_df], how="diagonal_relaxed")
             .unique(subset=keys, keep="last")

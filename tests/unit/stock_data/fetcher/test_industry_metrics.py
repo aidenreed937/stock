@@ -266,6 +266,84 @@ def test_cloud_capex_frame_conversion() -> None:
     assert df["total_capex_billion_usd"][1] == 95.0
 
 
+def test_extract_sec_quarterly_capex_multi_concept() -> None:
+    from stock_data.fetcher.industry.cloud.parser import extract_sec_quarterly_capex
+
+    # 模拟 AMZN 跨概念披露：旧概念覆盖 2016，新概念覆盖 2024
+    sample_facts = {
+        "facts": {
+            "us-gaap": {
+                "PaymentsToAcquirePropertyPlantAndEquipment": {
+                    "units": {
+                        "USD": [
+                            {
+                                "form": "10-Q",
+                                "start": "2016-01-01",
+                                "end": "2016-03-31",
+                                "val": 1_179_000_000,
+                            }
+                        ]
+                    }
+                },
+                "PaymentsToAcquireProductiveAssets": {
+                    "units": {
+                        "USD": [
+                            {
+                                "form": "10-Q",
+                                "start": "2024-01-01",
+                                "end": "2024-03-31",
+                                "val": 14_925_000_000,
+                            }
+                        ]
+                    }
+                },
+            }
+        }
+    }
+    res = extract_sec_quarterly_capex(sample_facts, "AMZN")
+    assert res.get("2016-Q1") == 1.179
+    assert res.get("2024-Q1") == 14.925
+
+
+def test_extract_sec_quarterly_capex_june_fiscal_year() -> None:
+    from stock_data.fetcher.industry.cloud.parser import extract_sec_quarterly_capex
+
+    # 模拟 MSFT 6月30日结财年：10-K 全年 44.477B - 前9个月累计 30.604B -> Q2 发生额 13.873B
+    sample_facts = {
+        "facts": {
+            "us-gaap": {
+                "PaymentsToAcquirePropertyPlantAndEquipment": {
+                    "units": {
+                        "USD": [
+                            {
+                                "form": "10-Q",
+                                "start": "2024-01-01",
+                                "end": "2024-03-31",
+                                "val": 10_952_000_000,
+                            },
+                            {
+                                "form": "10-Q",
+                                "start": "2023-07-01",
+                                "end": "2024-03-31",
+                                "val": 30_604_000_000,
+                            },
+                            {
+                                "form": "10-K",
+                                "start": "2023-07-01",
+                                "end": "2024-06-30",
+                                "val": 44_477_000_000,
+                            },
+                        ]
+                    }
+                }
+            }
+        }
+    }
+    res = extract_sec_quarterly_capex(sample_facts, "MSFT")
+    assert res.get("2024-Q1") == 10.952
+    assert abs(res.get("2024-Q2", 0.0) - 13.873) < 1e-3
+
+
 def test_construction_machinery_frame_conversion() -> None:
     assert empty_construction_machinery().schema == CONSTRUCTION_MACHINERY_SCHEMA
     records = [
