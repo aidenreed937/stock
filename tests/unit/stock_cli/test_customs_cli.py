@@ -43,4 +43,4 @@ def test_customs_cli_sync() -> None:
 
         exit_code = main(["sync", "-p", "2024-12"])
         assert exit_code == 0
-        mock_instance.fetch_api.assert_called_once_with(period="2024-12")
+        mock_instance.fetch_api.assert_called_once_with(period="202412")

@@ -51,25 +51,39 @@ class ComtradeCollector:
         return get_hs6_query_list(self.catalog_path)
 
     def collect(self) -> list[CustomsTradeRecord]:
-        """执行数据采集: 扫描本地 RAW 快照 (*.json.gz / *.json) -> 标准化为 CustomsTradeRecord 列表。"""
+        """执行数据采集: 扫描本地 RAW 快照 (*.json.gz / *.json 与 *.csv) -> 标准化为 CustomsTradeRecord 列表。"""
         records: list[CustomsTradeRecord] = []
-        if self.raw_dir.exists():
-            # 优先收集 *.json.gz 与 *.json (去重同名基础名)
-            seen_stems: set[str] = set()
-            all_files = sorted(
-                list(self.raw_dir.glob("*.json.gz")) + list(self.raw_dir.glob("*.json"))
-            )
-            for file_path in all_files:
-                base_stem = file_path.name.replace(".json.gz", "").replace(".json", "")
-                if base_stem in seen_stems:
-                    continue
-                seen_stems.add(base_stem)
-                records.extend(self.load_from_raw_json(file_path))
+        if not self.raw_dir.exists():
+            return records
 
-            if not records:
-                for csv_file in sorted(self.raw_dir.glob("*.csv")):
-                    records.extend(self.load_from_raw_csv(csv_file))
-        return records
+        # 1. 收集 *.json.gz 与 *.json (去重同名基础名)
+        seen_stems: set[str] = set()
+        all_json_files = sorted(
+            list(self.raw_dir.glob("*.json.gz")) + list(self.raw_dir.glob("*.json"))
+        )
+        for file_path in all_json_files:
+            base_stem = file_path.name.replace(".json.gz", "").replace(".json", "")
+            if base_stem in seen_stems:
+                continue
+            seen_stems.add(base_stem)
+            records.extend(self.load_from_raw_json(file_path))
+
+        # 2. 收集 *.csv (例如 GACC 官方导出快照 gacc_2025.csv, gacc_2026.csv)
+        for csv_file in sorted(self.raw_dir.glob("*.csv")):
+            records.extend(self.load_from_raw_csv(csv_file))
+
+        # 3. 按 (product_key, hs_code, report_month, trade_direction) 进行去重，保留最新有效记录 (GACC 优于 UN)
+        records_map: dict[tuple[str, str, str, str], CustomsTradeRecord] = {}
+        for r in records:
+            key = (r.product_key, r.hs_code, r.report_month, r.trade_direction)
+            if key not in records_map or (
+                records_map[key].source == "UN_Comtrade" and r.source == "GACC"
+            ):
+                records_map[key] = r
+
+        final_records = list(records_map.values())
+        final_records.sort(key=lambda r: (r.product_key, r.hs_code, r.trade_date))
+        return final_records
 
     def parse_api_records(self, items: list[dict[str, Any]]) -> list[CustomsTradeRecord]:
         """将 API 返回的字典列表转换为标准 CustomsTradeRecord。"""

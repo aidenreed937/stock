@@ -44,8 +44,9 @@ def records_to_customs_trade_frame(records: Sequence[CustomsTradeRecord]) -> pl.
     """将 CustomsTradeRecord 列表转换为 Polars 黄金事实表长表。
 
     派生指标:
-    1. export_asp_usd: 出口均价 = export_value_usd / export_volume
-    2. export_value_3mma: 按 (product_key, hs_code, trade_direction) 分组计算 3 个月移动平均出口金额
+    1. export_asp_usd: 出口均价 = export_value_usd / export_volume（税号粒度）
+    2. export_value_3mma: 按 (product_key, trade_direction) 聚合月度出口金额
+       （同一品类多税号先求和，跨 HS 版本演进保持序列连续）后计算 3 个月移动平均
     3. yoy_growth_3mma: 3MMA 出口金额同比增速 (lag 12 个月)
     4. mom_growth_3mma: 3MMA 出口金额月环比增速 (lag 1 个月)
     """
@@ -86,7 +87,7 @@ def records_to_customs_trade_frame(records: Sequence[CustomsTradeRecord]) -> pl.
     df = pl.DataFrame(data_dicts, schema=CUSTOMS_TRADE_SCHEMA)
     df = df.sort(["product_key", "hs_code", "trade_direction", "trade_date"])
 
-    # 1. 计算/补全 export_asp_usd
+    # 1. 计算/补全 export_asp_usd（税号粒度）
     df = df.with_columns(
         pl.when(
             pl.col("export_asp_usd").is_null()
@@ -98,30 +99,56 @@ def records_to_customs_trade_frame(records: Sequence[CustomsTradeRecord]) -> pl.
         .alias("export_asp_usd")
     )
 
-    # 2. 按品类与税号分组计算 3MMA 与同比/环比
-    group_cols = ["product_key", "hs_code", "trade_direction"]
-    df = df.with_columns(
-        pl.col("export_value_usd")
-        .rolling_mean(window_size=3, min_samples=1)
-        .over(group_cols)
-        .alias("export_value_3mma")
+    # 2. 品类级月度聚合：同一 product 多税号先求和（跨 HS 版本演进连续），再算 3MMA/YoY/MoM
+    agg_cols = ["product_key", "trade_date", "trade_direction"]
+    prod = (
+        df.group_by(agg_cols)
+        .agg(pl.col("export_value_usd").sum().alias("export_value_usd"))
+        .sort(agg_cols)
+        .with_columns(
+            pl.col("export_value_usd")
+            .rolling_mean(window_size=3, min_samples=1)
+            .over(["product_key", "trade_direction"])
+            .alias("export_value_3mma")
+        )
     )
-
-    df = df.with_columns(
-        pl.when(pl.col("export_value_3mma").shift(12).over(group_cols) > 0)
+    prod = prod.with_columns(
+        pl.when(pl.col("export_value_3mma").shift(12).over(["product_key", "trade_direction"]) > 0)
         .then(
-            (pl.col("export_value_3mma") - pl.col("export_value_3mma").shift(12).over(group_cols))
-            / pl.col("export_value_3mma").shift(12).over(group_cols)
+            (
+                pl.col("export_value_3mma")
+                - pl.col("export_value_3mma").shift(12).over(["product_key", "trade_direction"])
+            )
+            / pl.col("export_value_3mma").shift(12).over(["product_key", "trade_direction"])
         )
         .otherwise(None)
         .alias("yoy_growth_3mma"),
-        pl.when(pl.col("export_value_3mma").shift(1).over(group_cols) > 0)
+        pl.when(pl.col("export_value_3mma").shift(1).over(["product_key", "trade_direction"]) > 0)
         .then(
-            (pl.col("export_value_3mma") - pl.col("export_value_3mma").shift(1).over(group_cols))
-            / pl.col("export_value_3mma").shift(1).over(group_cols)
+            (
+                pl.col("export_value_3mma")
+                - pl.col("export_value_3mma").shift(1).over(["product_key", "trade_direction"])
+            )
+            / pl.col("export_value_3mma").shift(1).over(["product_key", "trade_direction"])
         )
         .otherwise(None)
         .alias("mom_growth_3mma"),
+    )
+
+    # 3. 品类级派生指标回填到税号长表（先移除旧派生列，避免 join 同名列冲突）
+    df = df.drop(["export_value_3mma", "yoy_growth_3mma", "mom_growth_3mma"]).join(
+        prod.select(
+            [
+                "product_key",
+                "trade_date",
+                "trade_direction",
+                "export_value_3mma",
+                "yoy_growth_3mma",
+                "mom_growth_3mma",
+            ]
+        ),
+        on=["product_key", "trade_date", "trade_direction"],
+        how="left",
     )
 
     return df
