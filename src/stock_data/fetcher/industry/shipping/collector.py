@@ -24,19 +24,14 @@ class ShippingCollector:
         self.shipping_dir = self.raw_dir / "shipping"
 
     def collect(self) -> list[ShippingIndicesRecord]:
-        """执行航运运价数据采集: 优先从 RAW CSV 快照读取，缺失时调取真实接口。"""
+        """执行航运运价数据采集: 在线抓取最新真实数据并落盘快照，以最新采集为准。"""
         self.shipping_dir.mkdir(parents=True, exist_ok=True)
-        for candidate in ["freight_indices_real.csv", "freight_indices.csv"]:
-            raw_csv = self.shipping_dir / candidate
-            if raw_csv.exists():
-                return self.load_from_raw_csv(raw_csv)
 
-        # 在线获取真实数据并保存快照
-        records = self.fetch_from_akshare()
-        if records:
-            return records
-
-        return []
+        # 在线获取最新真实数据并保存快照
+        live_records = self.fetch_from_akshare()
+        if not live_records:
+            logger.warning("在线抓取航运运价指数失败")
+        return live_records
 
     def fetch_from_akshare(self) -> list[ShippingIndicesRecord]:
         """从 AkShare 在线抓取波罗的海干散货运价 (BDI) 与成品油运价 (BCTI)。"""
@@ -46,7 +41,7 @@ class ShippingCollector:
             logger.error("未安装 akshare，跳过航运运价抓取")
             return []
 
-        logger.info("正在从官方接口抓取波罗的海干散货指数 (BDI)...")
+        logger.info("正在从官方接口在线抓取波罗的海干散货指数 (BDI)...")
         bdi_map: dict[str, float] = {}
         try:
             df_bdi = ak.macro_shipping_bdi()
@@ -59,7 +54,7 @@ class ShippingCollector:
         except Exception as e:
             logger.warning("抓取 BDI 指数异常: %s", e)
 
-        logger.info("正在从官方接口抓取波罗的海成品油运价指数 (BCTI)...")
+        logger.info("正在从官方接口在线抓取波罗的海成品油运价指数 (BCTI)...")
         bcti_map: dict[str, float] = {}
         try:
             df_bcti = ak.macro_shipping_bcti()
@@ -114,6 +109,7 @@ class ShippingCollector:
         records.sort(key=lambda r: r.trade_date)
         if records:
             self._save_raw_csv(records, self.shipping_dir / "freight_indices_real.csv")
+            self._save_raw_csv(records, self.shipping_dir / "freight_indices.csv")
         return records
 
     def _save_raw_csv(self, records: list[ShippingIndicesRecord], path: Path) -> None:

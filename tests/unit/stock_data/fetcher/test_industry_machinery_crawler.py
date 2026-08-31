@@ -50,15 +50,7 @@ def test_machinery_collector_online_crawl_and_merge(tmp_path: Path) -> None:
     machinery_dir = raw_dir / "machinery"
     machinery_dir.mkdir(parents=True)
 
-    # 1. 写入初始历史数据 (2026-06)
-    csv_file = machinery_dir / "excavator_monthly.csv"
-    csv_file.write_text(
-        "report_month,trade_date,excavator_total_units,excavator_domestic_units,excavator_export_units,komatsu_hours_china,unit,source,source_url,release_date,data_status,collected_at\n"
-        "2026-06,2026-06-30,25445.0,10898.0,14547.0,91.2,units/hours,CCMA/Komatsu,http://www.cncma.org/,2026-07-07,actual,2026-07-07T10:00:00Z\n",
-        encoding="utf-8",
-    )
-
-    # 2. Mock 在线爬虫，模拟 CCMA 发布 2026-07 新闻与小松发布 2026-07 开工小时
+    # Mock 在线爬虫，模拟 CCMA 发布 2026-07 新闻与小松发布 2026-07 开工小时
     mock_ccma_list_resp = MagicMock()
     mock_ccma_list_resp.status_code = 200
     mock_ccma_list_resp.text = (
@@ -93,37 +85,29 @@ def test_machinery_collector_online_crawl_and_merge(tmp_path: Path) -> None:
     with patch("curl_cffi.requests.get", side_effect=custom_requests_get):
         records = collector.collect()
 
-    assert len(records) == 2
-    assert records[0].report_month == "2026-06"
-    assert records[1].report_month == "2026-07"
-    assert records[1].excavator_total_units == 19521.0
-    assert records[1].excavator_domestic_units == 7608.0
-    assert records[1].excavator_export_units == 11913.0
-    assert records[1].komatsu_hours_china == 90.8
+    assert len(records) == 1
+    assert records[0].report_month == "2026-07"
+    assert records[0].excavator_total_units == 19521.0
+    assert records[0].excavator_domestic_units == 7608.0
+    assert records[0].excavator_export_units == 11913.0
+    assert records[0].komatsu_hours_china == 90.8
 
-    # 验证 CSV 自动回写增量
+    # 验证在线采集结果落盘 RAW CSV
+    csv_file = machinery_dir / "excavator_monthly.csv"
     updated_csv_text = csv_file.read_text(encoding="utf-8")
     assert "2026-07" in updated_csv_text
     assert "19521.0" in updated_csv_text
 
 
-def test_machinery_collector_network_error_fallback(tmp_path: Path) -> None:
+def test_machinery_collector_network_error_returns_empty(tmp_path: Path) -> None:
     raw_dir = tmp_path / "raw_industry"
     machinery_dir = raw_dir / "machinery"
     machinery_dir.mkdir(parents=True)
 
-    csv_file = machinery_dir / "excavator_monthly.csv"
-    csv_file.write_text(
-        "report_month,trade_date,excavator_total_units,excavator_domestic_units,excavator_export_units,komatsu_hours_china,unit,source,source_url,release_date,data_status,collected_at\n"
-        "2026-06,2026-06-30,25445.0,10898.0,14547.0,91.2,units/hours,CCMA/Komatsu,http://www.cncma.org/,2026-07-07,actual,2026-07-07T10:00:00Z\n",
-        encoding="utf-8",
-    )
-
     collector = MachineryCollector(raw_dir=raw_dir)
 
+    # 纯在线模式: 网络异常时返回空列表, 不回退读取本地快照
     with patch("curl_cffi.requests.get", side_effect=Exception("Network unreachable")):
         records = collector.collect()
 
-    assert len(records) == 1
-    assert records[0].report_month == "2026-06"
-    assert records[0].excavator_total_units == 25445.0
+    assert records == []

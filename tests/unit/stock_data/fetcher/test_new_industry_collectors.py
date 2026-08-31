@@ -20,20 +20,13 @@ from stock_data.fetcher.industry import (
     LIQUOR_WHOLESALE_SCHEMA,
     SEMICONDUCTOR_LEAD_SCHEMA,
     SOLAR_PRICE_CHAIN_SCHEMA,
-    AgriculturePorkCollector,
     AgriculturePorkRecord,
     ChemicalMarketRecord,
-    ChemicalsCollector,
-    CoalMarketCollector,
     CoalMarketRecord,
-    ConsumerElectronicsCollector,
     ConsumerElectronicsRecord,
-    LiquorWholesaleCollector,
     LiquorWholesaleRecord,
-    PvPriceChainCollector,
     SemiconductorLeadRecord,
     SolarPriceChainRecord,
-    TsmcLeadCollector,
     empty_agriculture_pork,
     empty_chemical_market,
     empty_coal_market,
@@ -87,25 +80,6 @@ def test_semiconductor_lead_frame_conversion() -> None:
     assert df["unit"][0] == "million_ntd/usd"
 
 
-def test_tsmc_lead_collector_from_raw_csv(tmp_path: Path) -> None:
-    raw_dir = tmp_path / "raw_industry"
-    semi_dir = raw_dir / "semiconductor"
-    semi_dir.mkdir(parents=True)
-    raw_csv = semi_dir / "tsmc_monthly.csv"
-    raw_csv.write_text(
-        "report_month,trade_date,tsmc_revenue_ntd_million,tsmc_revenue_usd_million,tsmc_revenue_yoy,tsmc_revenue_mom,dram_dxi_index,dram_spot_price_usd,unit,source,source_url,release_date,data_status,collected_at\n"
-        "2026-06,2026-06-30,360000.0,11428.6,0.205,-0.032,49500.0,4.86,million_ntd/usd,TSMC,,2026-07-10,actual,2026-07-10T10:00:00Z\n",
-        encoding="utf-8",
-    )
-
-    collector = TsmcLeadCollector(raw_dir=raw_dir)
-    records = collector.collect()
-    assert len(records) == 1
-    assert records[0].report_month == "2026-06"
-    assert records[0].tsmc_revenue_ntd_million == 360000.0
-    assert records[0].release_date == date(2026, 7, 10)
-
-
 def test_chemical_market_frame_conversion() -> None:
     assert empty_chemical_market().schema == CHEMICAL_MARKET_SCHEMA
 
@@ -143,25 +117,6 @@ def test_chemical_market_frame_conversion() -> None:
     assert df["unit"][0] == "percent/cny_per_ton"
 
 
-def test_chemicals_collector_from_raw_csv(tmp_path: Path) -> None:
-    raw_dir = tmp_path / "raw_industry"
-    chem_dir = raw_dir / "chemicals"
-    chem_dir.mkdir(parents=True)
-    raw_csv = chem_dir / "chemical_operating_spreads.csv"
-    raw_csv.write_text(
-        "report_month,trade_date,mdi_operating_rate,tio2_operating_rate,refrigerant_r32_operating_rate,mdi_gross_spread_cny,tio2_spread_cny,refrigerant_r32_price_cny,chemical_inventory_days,unit,source,source_url,release_date,data_status,collected_at\n"
-        "2026-06,2026-06-30,75.0,70.5,64.0,9800.0,4000.0,39000.0,25.8,percent/cny_per_ton,Baichuan,,2026-07-05,actual,2026-07-05T10:00:00Z\n",
-        encoding="utf-8",
-    )
-
-    collector = ChemicalsCollector(raw_dir=raw_dir)
-    records = collector.collect()
-    assert len(records) == 1
-    assert records[0].report_month == "2026-06"
-    assert records[0].mdi_operating_rate == 75.0
-    assert records[0].refrigerant_r32_price_cny == 39000.0
-
-
 def test_solar_price_chain_frame_conversion() -> None:
     assert empty_solar_price_chain().schema == SOLAR_PRICE_CHAIN_SCHEMA
 
@@ -192,28 +147,6 @@ def test_solar_price_chain_frame_conversion() -> None:
     assert "polysilicon_price_cny_kg" in df.columns
     assert "module_price_cny_watt" in df.columns
     assert df["module_price_cny_watt"][1] == 0.815
-
-
-def test_pv_price_collector_from_raw_csv(tmp_path: Path) -> None:
-    raw_dir = tmp_path / "raw_industry"
-    energy_dir = raw_dir / "energy"
-    energy_dir.mkdir(parents=True)
-    raw_csv = energy_dir / "pv_price_chain_weekly.csv"
-    raw_csv.write_text(
-        "report_date,trade_date,polysilicon_price_cny_kg,wafer_price_cny_piece,cell_price_cny_watt,module_price_cny_watt,module_price_yoy,module_price_mom,price_cycle_stage,unit,source,source_url,release_date,data_status,collected_at\n"
-        "2026-06-24,2026-06-24,51.5,1.42,0.356,0.815,0.05,0.006,bottom_rebound,cny_per_unit,PVInfoLink,,2026-06-24,actual,2026-06-24T10:00:00Z\n",
-        encoding="utf-8",
-    )
-
-    from unittest.mock import patch
-
-    collector = PvPriceChainCollector(raw_dir=raw_dir)
-    with patch.object(collector.crawler, "fetch_live_spot_prices", return_value=None):
-        records = collector.collect()
-        assert len(records) == 1
-        assert records[0].report_date == "2026-06-24"
-        assert records[0].polysilicon_price_cny_kg == 51.5
-        assert records[0].module_price_cny_watt == 0.815
 
 
 def test_infolink_spot_price_parser() -> None:
@@ -286,25 +219,6 @@ def test_agriculture_pork_frame_conversion() -> None:
     assert df["unit"][0] == "million_heads/cny_per_kg"
 
 
-def test_agriculture_pork_collector_from_raw_csv(tmp_path: Path) -> None:
-    raw_dir = tmp_path / "raw_industry"
-    agri_dir = raw_dir / "agriculture"
-    agri_dir.mkdir(parents=True)
-    raw_csv = agri_dir / "pork_capacity_monthly.csv"
-    raw_csv.write_text(
-        "report_month,trade_date,sow_stock_million_heads,sow_stock_yoy,sow_stock_mom,pig_price_cny_per_kg,pig_price_yoy,hog_to_grain_ratio,pig_farming_profit_cny_head,unit,source,source_url,release_date,data_status,collected_at\n"
-        "2026-06,2026-06-30,40.65,0.018,0.001,18.5,0.12,6.6,402.5,million_heads/cny_per_kg,MARA,,2026-07-18,actual,2026-07-18T10:00:00Z\n",
-        encoding="utf-8",
-    )
-
-    collector = AgriculturePorkCollector(raw_dir=raw_dir)
-    records = collector.collect()
-    assert len(records) == 1
-    assert records[0].report_month == "2026-06"
-    assert records[0].sow_stock_million_heads == 40.65
-    assert records[0].hog_to_grain_ratio == 6.6
-
-
 def test_liquor_wholesale_frame_conversion() -> None:
     assert empty_liquor_wholesale().schema == LIQUOR_WHOLESALE_SCHEMA
 
@@ -334,25 +248,6 @@ def test_liquor_wholesale_frame_conversion() -> None:
     assert "wuliangye_puwu_price_cny" in df.columns
     assert df["moutai_loose_price_cny"][1] == 2335.0
     assert df["unit"][0] == "cny_per_bottle"
-
-
-def test_liquor_wholesale_collector_from_raw_csv(tmp_path: Path) -> None:
-    raw_dir = tmp_path / "raw_industry"
-    consumer_dir = raw_dir / "consumer"
-    consumer_dir.mkdir(parents=True)
-    raw_csv = consumer_dir / "liquor_wholesale_weekly.csv"
-    raw_csv.write_text(
-        "report_date,trade_date,moutai_loose_price_cny,moutai_boxed_price_cny,wuliangye_puwu_price_cny,guojiao1573_price_cny,moutai_loose_price_yoy,moutai_loose_price_mom,unit,source,source_url,release_date,data_status,collected_at\n"
-        "2026-06-26,2026-06-26,2335.0,2545.0,963.0,892.0,0.04,0.002,cny_per_bottle,TodayLiquorPrice,,2026-06-26,actual,2026-06-26T10:00:00Z\n",
-        encoding="utf-8",
-    )
-
-    collector = LiquorWholesaleCollector(raw_dir=raw_dir)
-    records = collector.collect()
-    assert len(records) == 1
-    assert records[0].report_date == "2026-06-26"
-    assert records[0].moutai_loose_price_cny == 2335.0
-    assert records[0].wuliangye_puwu_price_cny == 963.0
 
 
 def test_consumer_electronics_frame_conversion() -> None:
@@ -392,25 +287,6 @@ def test_consumer_electronics_frame_conversion() -> None:
     assert df["ai_pc_penetration_rate"][1] == 0.37
 
 
-def test_consumer_electronics_collector_from_raw_csv(tmp_path: Path) -> None:
-    raw_dir = tmp_path / "raw_industry"
-    elec_dir = raw_dir / "electronics"
-    elec_dir.mkdir(parents=True)
-    raw_csv = elec_dir / "electronics_shipments_quarterly.csv"
-    raw_csv.write_text(
-        "report_quarter,trade_date,global_smartphone_shipments_million,china_smartphone_shipments_million,global_pc_shipments_million,ai_phone_penetration_rate,ai_pc_penetration_rate,smartphone_yoy_growth,pc_yoy_growth,apple_shipments_million,transsion_shipments_million,unit,source,source_url,release_date,data_status,collected_at\n"
-        "2026-Q2,2026-06-30,330.0,80.0,75.0,0.29,0.37,0.045,0.062,58.0,37.0,million_units/percent,IDC,,2026-07-25,actual,2026-07-25T10:00:00Z\n",
-        encoding="utf-8",
-    )
-
-    collector = ConsumerElectronicsCollector(raw_dir=raw_dir)
-    records = collector.collect()
-    assert len(records) == 1
-    assert records[0].report_quarter == "2026-Q2"
-    assert records[0].global_smartphone_shipments_million == 330.0
-    assert records[0].ai_phone_penetration_rate == 0.29
-
-
 def test_coal_market_frame_conversion() -> None:
     assert empty_coal_market().schema == COAL_MARKET_SCHEMA
 
@@ -446,75 +322,126 @@ def test_coal_market_frame_conversion() -> None:
     assert df["power_plant_available_days"][1] == 22.2
 
 
-def test_coal_market_collector_from_raw_csv(tmp_path: Path) -> None:
-    raw_dir = tmp_path / "raw_industry"
-    coal_dir = raw_dir / "coal"
-    coal_dir.mkdir(parents=True)
-    raw_csv = coal_dir / "coal_market_weekly.csv"
-    raw_csv.write_text(
-        "report_date,trade_date,q5500_fob_price_cny,coking_coal_price_cny,power_plant_inventory_million_ton,power_plant_daily_burn_ten_thousand_ton,power_plant_available_days,qinhuangdao_inventory_million_ton,q5500_price_yoy,q5500_price_mom,unit,source,source_url,release_date,data_status,collected_at\n"
-        "2026-06-26,2026-06-26,842.0,1665.0,175.0,790.0,22.2,6.20,-0.02,0.005,cny_per_ton/million_tons/days,CCTD,,2026-06-26,actual,2026-06-26T10:00:00Z\n",
-        encoding="utf-8",
-    )
-
-    collector = CoalMarketCollector(raw_dir=raw_dir)
-    records = collector.collect()
-    assert len(records) == 1
-    assert records[0].report_date == "2026-06-26"
-    assert records[0].q5500_fob_price_cny == 842.0
-    assert records[0].power_plant_available_days == 22.2
-
-
-def test_sync_all_industry_metrics_with_new_metrics(tmp_path: Path) -> None:
+def test_sync_all_industry_metrics_with_new_metrics(tmp_path: Path, monkeypatch) -> None:
     raw_dir = tmp_path / "raw_industry"
     curated_dir = tmp_path / "curated_industry"
 
-    # 1. 准备 mock RAW 数据快照
-    (raw_dir / "semiconductor").mkdir(parents=True)
-    (raw_dir / "semiconductor" / "tsmc_monthly.csv").write_text(
-        "report_month,trade_date,tsmc_revenue_ntd_million,tsmc_revenue_usd_million,tsmc_revenue_yoy,tsmc_revenue_mom,dram_dxi_index,dram_spot_price_usd,unit,source,source_url,release_date,data_status,collected_at\n"
-        "2026-06,2026-06-30,442680.0,14053.33,0.35,0.05,45000,3.5,million_ntd/usd,TWSE,,2026-07-10,actual,2026-07-10T00:00:00Z\n",
-        encoding="utf-8",
-    )
+    # mock 全部在线采集源 (纯在线模式, 以最新采集为准)
+    from stock_data.fetcher.industry.agriculture.crawler import MaraPorkCrawler
+    from stock_data.fetcher.industry.chemicals.crawler import ChemicalsCrawler
+    from stock_data.fetcher.industry.coal.crawler import CoalMarketCrawler
+    from stock_data.fetcher.industry.consumer.collector import LiquorPriceCrawler
+    from stock_data.fetcher.industry.electronics.crawler import ConsumerElectronicsCrawler
+    from stock_data.fetcher.industry.power.pv_price_collector import InfoLinkPvPriceCrawler
+    from stock_data.fetcher.industry.semiconductor.tsmc_collector import TsmcMonthlyRevenueCrawler
 
-    (raw_dir / "chemicals").mkdir(parents=True)
-    (raw_dir / "chemicals" / "chemical_operating_spreads.csv").write_text(
-        "report_month,trade_date,mdi_operating_rate,tio2_operating_rate,refrigerant_r32_operating_rate,mdi_gross_spread_cny,tio2_spread_cny,refrigerant_r32_price_cny,chemical_inventory_days,unit,source,source_url,release_date,data_status,collected_at\n"
-        "2026-06,2026-06-30,75.0,70.0,65.0,9600,3950,38500,25.0,percent/cny_per_ton,Baichuan,,2026-07-05,actual,2026-07-05T00:00:00Z\n",
-        encoding="utf-8",
+    monkeypatch.setattr(
+        TsmcMonthlyRevenueCrawler,
+        "fetch_latest_revenue",
+        lambda self: {
+            "report_month": "2026-06",
+            "release_date": "2026-07-10",
+            "tsmc_revenue_ntd_million": 442680.0,
+            "tsmc_revenue_usd_million": 14053.33,
+            "tsmc_revenue_yoy": 0.35,
+            "tsmc_revenue_mom": 0.05,
+            "source": "TWSE/TSMC",
+            "source_url": "",
+            "collected_at": "2026-07-10T00:00:00Z",
+        },
     )
-
-    (raw_dir / "energy").mkdir(parents=True)
-    (raw_dir / "energy" / "pv_price_chain_weekly.csv").write_text(
-        "report_date,trade_date,polysilicon_price_cny_kg,wafer_price_cny_piece,cell_price_cny_watt,module_price_cny_watt,module_price_yoy,module_price_mom,price_cycle_stage,unit,source,source_url,release_date,data_status,collected_at\n"
-        "2026-08-26,2026-08-26,40.0,1.10,0.33,0.723,0.02,0.001,bottom_rebound,cny_per_unit,InfoLink,,2026-08-26,actual,2026-08-26T00:00:00Z\n",
-        encoding="utf-8",
+    monkeypatch.setattr(
+        ChemicalsCrawler,
+        "fetch_latest_prices",
+        lambda self: {
+            "mdi_price_cny": 9600.0,
+            "tio2_price_cny": 3950.0,
+            "source": "100ppi",
+            "source_url": "",
+            "release_date": "2026-07-05",
+            "data_status": "actual",
+            "collected_at": "2026-07-05T00:00:00Z",
+        },
     )
-    (raw_dir / "energy" / "coal_market_weekly.csv").write_text(
-        "report_date,trade_date,q5500_fob_price_cny,coking_coal_price_cny,power_plant_inventory_million_ton,power_plant_daily_burn_ten_thousand_ton,power_plant_available_days,qinhuangdao_inventory_million_ton,q5500_price_yoy,q5500_price_mom,unit,source,source_url,release_date,data_status,collected_at\n"
-        "2026-08-28,2026-08-28,840.0,1660.0,180.0,770.0,23.4,6.10,-0.01,0.0,cny_per_ton/million_tons/days,CCTD,,2026-08-28,actual,2026-08-28T00:00:00Z\n",
-        encoding="utf-8",
+    monkeypatch.setattr(
+        InfoLinkPvPriceCrawler,
+        "fetch_live_spot_prices",
+        lambda self: {
+            "report_date": "2026-08-26",
+            "trade_date": date(2026, 8, 26),
+            "polysilicon_price_cny_kg": 40.0,
+            "wafer_price_cny_piece": 1.1,
+            "cell_price_cny_watt": 0.33,
+            "module_price_cny_watt": 0.723,
+            "price_cycle_stage": "bottom_rebound",
+            "source": "InfoLink Consulting",
+            "source_url": "",
+            "collected_at": "2026-08-26T00:00:00Z",
+        },
     )
-
-    (raw_dir / "agriculture").mkdir(parents=True)
-    (raw_dir / "agriculture" / "pork_capacity_monthly.csv").write_text(
-        "report_month,trade_date,sow_stock_million_heads,sow_stock_yoy,sow_stock_mom,pig_price_cny_per_kg,pig_price_yoy,hog_to_grain_ratio,pig_farming_profit_cny_head,unit,source,source_url,release_date,data_status,collected_at\n"
-        "2026-06,2026-06-30,40.5,0.01,0.001,18.2,0.05,7.3,380.0,million_heads/cny_per_kg,MARA,,2026-07-18,actual,2026-07-18T00:00:00Z\n",
-        encoding="utf-8",
+    monkeypatch.setattr(
+        MaraPorkCrawler,
+        "fetch_latest_month",
+        lambda self: {
+            "report_month": "2026-06",
+            "sow_stock_million_heads": 40.5,
+            "pig_price_cny_per_kg": 18.2,
+            "hog_to_grain_ratio": 7.3,
+            "pig_farming_profit_cny_head": 380.0,
+            "source": "MARA",
+            "source_url": "",
+            "release_date": "2026-07-18",
+            "data_status": "actual",
+            "collected_at": "2026-07-18T00:00:00Z",
+        },
     )
-
-    (raw_dir / "consumer").mkdir(parents=True)
-    (raw_dir / "consumer" / "liquor_wholesale_weekly.csv").write_text(
-        "report_date,trade_date,moutai_loose_price_cny,moutai_boxed_price_cny,wuliangye_puwu_price_cny,guojiao1573_price_cny,moutai_loose_price_yoy,moutai_loose_price_mom,unit,source,source_url,release_date,data_status,collected_at\n"
-        "2026-08-28,2026-08-28,2310.0,2520.0,945.0,875.0,0.03,0.005,cny_per_bottle,TodayLiquorPrice,,2026-08-28,actual,2026-08-28T00:00:00Z\n",
-        encoding="utf-8",
+    monkeypatch.setattr(
+        LiquorPriceCrawler,
+        "fetch_latest_liquor_price",
+        lambda self: {
+            "report_date": "2026-08-28",
+            "trade_date": date(2026, 8, 28),
+            "moutai_loose_price_cny": 2310.0,
+            "moutai_boxed_price_cny": 2520.0,
+            "wuliangye_puwu_price_cny": 945.0,
+            "guojiao1573_price_cny": 875.0,
+            "source": "TodayLiquorPrice",
+            "source_url": "",
+            "release_date": date(2026, 8, 28),
+            "collected_at": "2026-08-28T00:00:00Z",
+        },
     )
-
-    (raw_dir / "electronics").mkdir(parents=True)
-    (raw_dir / "electronics" / "electronics_shipments_quarterly.csv").write_text(
-        "report_quarter,trade_date,global_smartphone_shipments_million,china_smartphone_shipments_million,global_pc_shipments_million,ai_phone_penetration_rate,ai_pc_penetration_rate,smartphone_yoy_growth,pc_yoy_growth,apple_shipments_million,transsion_shipments_million,unit,source,source_url,release_date,data_status,collected_at\n"
-        "2026-Q2,2026-06-30,330.0,79.5,73.0,0.30,0.35,0.05,0.08,55.0,37.0,million_units/percent,IDC,,2026-07-25,actual,2026-07-25T00:00:00Z\n",
-        encoding="utf-8",
+    monkeypatch.setattr(
+        ConsumerElectronicsCrawler,
+        "fetch_latest_quarter",
+        lambda self: {
+            "report_quarter": "2026-Q2",
+            "global_smartphone_shipments_million": 330.0,
+            "china_smartphone_shipments_million": 79.5,
+            "global_pc_shipments_million": 73.0,
+            "smartphone_yoy_growth": 0.05,
+            "pc_yoy_growth": 0.08,
+            "apple_shipments_million": 55.0,
+            "transsion_shipments_million": 37.0,
+            "source": "IDC",
+            "source_url": "",
+            "release_date": "2026-07-25",
+            "data_status": "actual",
+            "collected_at": "2026-07-25T00:00:00Z",
+        },
+    )
+    monkeypatch.setattr(
+        CoalMarketCrawler,
+        "fetch_latest_q5500",
+        lambda self: {
+            "report_date": "2026-08-28",
+            "q5500_fob_price_cny": 840.0,
+            "source": "CCTD",
+            "source_url": "",
+            "release_date": "2026-08-28",
+            "data_status": "actual",
+            "collected_at": "2026-08-28T00:00:00Z",
+        },
     )
 
     new_metrics = [
@@ -537,3 +464,113 @@ def test_sync_all_industry_metrics_with_new_metrics(tmp_path: Path) -> None:
         assert metric in res
         assert res[metric] > 0
         assert (curated_dir / f"{metric}.parquet").exists()
+
+
+# ---------- 新增在线采集爬虫解析器测试 (纯函数, 无需网络) ----------
+
+CCTD_HTML_FIXTURE = (
+    '<div class="data_top_title">CCTD综合交易5500 平仓价</div>'
+    '<div class="fl bqz">本期值<br /><b><em style="color: #d70e18;">731</em></b></div>'
+    '<div class="fl bqz">较上期<br /><span><em style="color: #d70e18;">1</em></span></div>'
+    "<div>日期：2026-08-28 单位：元/吨</div>"
+)
+
+MARA_TABLE_HTML_FIXTURE = """
+<html><body><div class="detail_box2">
+<table class="data_table">
+<tr><td>指标</td><td>数值</td><td>环比</td></tr>
+<tr><td>2026年7月末能繁母猪存栏（万头）</td><td>4060</td><td>0.1%</td></tr>
+<tr><td>2026年7月份全国生猪出场价格（元/公斤）</td><td>18.50</td><td>0.5%</td></tr>
+<tr><td>2026年7月份猪粮比价</td><td>7.40</td><td>0.3%</td></tr>
+<tr><td>2026年7月份散养生猪每头净利润（元）</td><td>420</td><td>2%</td></tr>
+</table></div></body></html>
+"""
+
+MDI_HTML_FIXTURE = "[ MDI ] 8月31日，聚合MDI参考价为16866.67，与8月1日(17866.67)相比，下降了5.6% 2026-08-31 16:38:13"
+TIO2_HTML_FIXTURE = "[ 钛白粉 ] 8月31日，钛白粉参考价为14060.00，与8月1日(15460.00)相比，下降了9.06% 2026-08-31 16:38:13"
+
+IDC_SMARTPHONE_HTML_FIXTURE = """
+<html><body>
+<p>*Worldwide smartphone shipments increased 2.6% year-over-year (YoY) to 322.7 million units
+in the third quarter of 2025 (3Q25), according to preliminary data...</p>
+<table>
+<tr><th>Company</th><th>3Q25 Shipments</th><th>3Q25 Market Share</th><th>3Q24 Shipments</th><th>3Q24 Market Share</th><th>YoY Change</th></tr>
+<tr><td>1. Samsung</td><td>60.5</td><td>18.7%</td><td>58.1</td><td>18.5%</td><td>4.1%</td></tr>
+<tr><td>2. Apple</td><td>58.6</td><td>18.2%</td><td>56.9</td><td>18.1%</td><td>2.9%</td></tr>
+<tr><td>5. Transsion</td><td>29.2</td><td>9.0%</td><td>25.7</td><td>8.2%</td><td>13.6%</td></tr>
+</table>
+</body></html>
+"""
+
+IDC_PC_HTML_FIXTURE = (
+    "<p>PC shipments during the third quarter of 2025 grew 9.4% from the prior year, "
+    "with global volumes reaching 75.8 million units</p>"
+)
+
+IDC_CHINA_HTML_FIXTURE = (
+    "<p>China's smartphone market shipped 68.4 million units in 3Q25, "
+    "with the year-on-year (YoY) decline easing to 0.6%</p>"
+)
+
+
+def test_parse_cctd_q5500() -> None:
+    from stock_data.fetcher.industry.coal.crawler import parse_cctd_q5500
+
+    res = parse_cctd_q5500(CCTD_HTML_FIXTURE)
+    assert res is not None
+    assert res["report_date"] == "2026-08-28"
+    assert res["q5500_fob_price_cny"] == 731.0
+
+
+def test_parse_mara_monthly_table() -> None:
+    from stock_data.fetcher.industry.agriculture.crawler import parse_mara_monthly_table
+
+    res = parse_mara_monthly_table(MARA_TABLE_HTML_FIXTURE)
+    assert res is not None
+    assert res["report_month"] == "2026-07"
+    assert res["sow_stock_million_heads"] == 40.6  # 4060万头 -> 40.6百万头
+    assert res["pig_price_cny_per_kg"] == 18.5
+    assert res["hog_to_grain_ratio"] == 7.4
+    assert res["pig_farming_profit_cny_head"] == 420.0
+
+
+def test_parse_100ppi_reference_prices() -> None:
+    from stock_data.fetcher.industry.chemicals.crawler import (
+        parse_mdi_reference_price,
+        parse_tio2_reference_price,
+    )
+
+    assert parse_mdi_reference_price(MDI_HTML_FIXTURE) == 16866.67
+    assert parse_tio2_reference_price(TIO2_HTML_FIXTURE) == 14060.0
+
+
+def test_parse_idc_smartphone_pr() -> None:
+    from stock_data.fetcher.industry.electronics.crawler import parse_idc_smartphone_pr
+
+    res = parse_idc_smartphone_pr(IDC_SMARTPHONE_HTML_FIXTURE)
+    assert res is not None
+    assert res["report_quarter"] == "2025-Q3"
+    assert res["global_smartphone_shipments_million"] == 322.7
+    assert res["smartphone_yoy_growth"] == 0.026
+    assert res["apple_shipments_million"] == 58.6
+    assert res["transsion_shipments_million"] == 29.2
+
+
+def test_parse_idc_pc_pr() -> None:
+    from stock_data.fetcher.industry.electronics.crawler import parse_idc_pc_pr
+
+    res = parse_idc_pc_pr(IDC_PC_HTML_FIXTURE)
+    assert res is not None
+    assert res["report_quarter"] == "2025-Q3"
+    assert res["global_pc_shipments_million"] == 75.8
+    assert res["pc_yoy_growth"] == 0.094
+
+
+def test_parse_idc_china_pr() -> None:
+    from stock_data.fetcher.industry.electronics.crawler import parse_idc_china_pr
+
+    res = parse_idc_china_pr(IDC_CHINA_HTML_FIXTURE)
+    assert res is not None
+    assert res["report_quarter"] == "2025-Q3"
+    assert res["china_smartphone_shipments_million"] == 68.4
+    assert res["smartphone_yoy_growth"] == -0.006

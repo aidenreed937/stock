@@ -70,47 +70,48 @@ def test_deals_assets_events_frame_conversion() -> None:
     assert df_event["upfront_cash_usd"][0] == 160000000.0
 
 
-def test_pharma_bd_collector_and_aggregation(tmp_path: Path) -> None:
+def test_pharma_bd_collector_and_aggregation(tmp_path: Path, monkeypatch) -> None:
+    from stock_data.fetcher.industry.pharma.crawler import PharmaAnnouncementCrawler
+
     raw_dir = tmp_path / "raw_industry"
     processed_dir = tmp_path / "processed_industry"
     pharma_dir = raw_dir / "pharma"
     pharma_dir.mkdir(parents=True)
 
-    # 写入测试用 deals_ledger.yaml
-    sample_ledger = Path("data/raw/industry/pharma/deals_ledger.yaml")
-    if sample_ledger.exists():
-        (pharma_dir / "deals_ledger.yaml").write_text(
-            sample_ledger.read_text(encoding="utf-8"), encoding="utf-8"
-        )
-    else:
-        (pharma_dir / "deals_ledger.yaml").write_text(
-            "deals:\n"
-            "- deal_id: DEAL-TEST-01\n"
-            "  licensor: 恒瑞医药\n"
-            "  licensor_type: listed_a\n"
-            "  licensee: Merck & Co.\n"
-            "  is_mnc: true\n"
-            "  transaction_type: license_out\n"
-            "  territory_scope: global_ex_china\n"
-            "  announcement_date: '2023-10-15'\n"
-            "  effective_date: '2023-10-15'\n"
-            "  source_filing: HKEX / PR\n"
-            "  source_url: http://www.hkexnews.hk\n"
-            "  assets:\n"
-            "  - asset_id: AST-01\n"
-            "    drug_name_code: HRS-1167\n"
-            "    target: PARP1\n"
-            "    modality: adc\n"
-            "    stage: phase_2\n"
-            "    indication: Solid Tumors\n"
-            "  events:\n"
-            "  - event_id: EVT-01\n"
-            "    event_type: initial_deal\n"
-            "    event_date: '2023-10-15'\n"
-            "    upfront_cash_usd: 160000000.0\n"
-            "    potential_total_deal_usd: 1400000000.0\n",
-            encoding="utf-8",
-        )
+    # mock 在线公告爬虫, 以最新采集为准
+    sample_deal = {
+        "deal_id": "DEAL-TEST-01",
+        "licensor": "恒瑞医药",
+        "licensor_type": "listed_a",
+        "licensee": "Merck & Co.",
+        "is_mnc": True,
+        "transaction_type": "license_out",
+        "territory_scope": "global_ex_china",
+        "announcement_date": "2023-10-15",
+        "effective_date": "2023-10-15",
+        "source_filing": "HKEX / PR",
+        "source_url": "http://www.hkexnews.hk",
+        "assets": [
+            {
+                "asset_id": "AST-01",
+                "drug_name_code": "HRS-1167",
+                "target": "PARP1",
+                "modality": "adc",
+                "stage": "phase_2",
+                "indication": "Solid Tumors",
+            }
+        ],
+        "events": [
+            {
+                "event_id": "EVT-01",
+                "event_type": "initial_deal",
+                "event_date": "2023-10-15",
+                "upfront_cash_usd": 160000000.0,
+                "potential_total_deal_usd": 1400000000.0,
+            }
+        ],
+    }
+    monkeypatch.setattr(PharmaAnnouncementCrawler, "fetch_latest_deals", lambda self: [sample_deal])
 
     collector = PharmaBdCollector(raw_dir=raw_dir, processed_dir=processed_dir)
     records = collector.collect()
@@ -193,33 +194,6 @@ def test_pharma_bd_collector_with_crawler_live_merge(tmp_path: Path) -> None:
     pharma_dir = raw_dir / "pharma"
     pharma_dir.mkdir(parents=True)
 
-    # 初始写入 1 笔存量交易
-    (pharma_dir / "deals_ledger.yaml").write_text(
-        "deals:\n"
-        "- deal_id: DEAL-EXISTING-01\n"
-        "  licensor: 恒瑞医药\n"
-        "  licensor_type: listed_a\n"
-        "  licensee: Merck & Co.\n"
-        "  is_mnc: true\n"
-        "  transaction_type: license_out\n"
-        "  territory_scope: global_ex_china\n"
-        "  announcement_date: '2023-10-15'\n"
-        "  effective_date: '2023-10-15'\n"
-        "  assets:\n"
-        "  - asset_id: AST-01\n"
-        "    drug_name_code: HRS-1167\n"
-        "    target: PARP1\n"
-        "    modality: adc\n"
-        "    stage: phase_2\n"
-        "  events:\n"
-        "  - event_id: EVT-01\n"
-        "    event_type: initial_deal\n"
-        "    event_date: '2023-10-15'\n"
-        "    upfront_cash_usd: 160000000.0\n"
-        "    potential_total_deal_usd: 1400000000.0\n",
-        encoding="utf-8",
-    )
-
     mock_new_deal = {
         "deal_id": "DEAL-LIVE-2024-08-TEST",
         "licensor": "百利天恒",
@@ -247,7 +221,6 @@ def test_pharma_bd_collector_with_crawler_live_merge(tmp_path: Path) -> None:
                 "event_type": "initial_deal",
                 "event_date": "2024-08-15",
                 "upfront_cash_usd": 500000000.0,
-                "potential_total_deal_usd: 3000000000.0": 3000000000.0,
                 "potential_total_deal_usd": 3000000000.0,
             }
         ],
@@ -256,7 +229,5 @@ def test_pharma_bd_collector_with_crawler_live_merge(tmp_path: Path) -> None:
     collector = PharmaBdCollector(raw_dir=raw_dir, processed_dir=processed_dir)
     with patch.object(collector.crawler, "fetch_latest_deals", return_value=[mock_new_deal]):
         records = collector.collect()
-        assert len(records) == 2
-        months = [r.report_month for r in records]
-        assert "2023-10" in months
-        assert "2024-08" in months
+        assert len(records) == 1
+        assert records[0].report_month == "2024-08"

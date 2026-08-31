@@ -47,14 +47,7 @@ class CloudCapexCollector:
         self.sec_raw_dir = self.raw_dir / "cloud" / "sec_edgar"
 
     def collect(self) -> list[CloudCapexRecord]:
-        """执行数据采集: 扫描/拉取 SEC EDGAR 官方 10-Q -> 差分计算单季发生额 -> 汇总构建事实。"""
-        # 兼容测试用例的旧 CSV 快照
-        legacy_csv = self.raw_dir / "cloud_capex" / "csp_capex_quarterly.csv"
-        if legacy_csv.exists():
-            legacy_records = self._load_from_legacy_csv(legacy_csv)
-            if legacy_records:
-                return legacy_records
-
+        """执行数据采集: 在线拉取 SEC EDGAR 官方 10-Q -> 差分计算单季发生额 -> 汇总构建事实。"""
         self.sec_raw_dir.mkdir(parents=True, exist_ok=True)
         company_data: dict[str, dict[str, float]] = {}
 

@@ -86,9 +86,9 @@ def parse_ccma_excavator_article(html_text: str, source_url: str = "") -> dict[s
     return {
         "report_month": report_month,
         "release_date": rel_date,
-        "excavator_total_units": total_units or 0.0,
-        "excavator_domestic_units": dom_units or 0.0,
-        "excavator_export_units": exp_units or 0.0,
+        "excavator_total_units": total_units,
+        "excavator_domestic_units": dom_units,
+        "excavator_export_units": exp_units,
         "source": "CCMA",
         "source_url": source_url,
         "collected_at": now_utc_iso(),

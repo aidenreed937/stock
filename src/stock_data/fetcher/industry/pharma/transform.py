@@ -5,7 +5,7 @@ from datetime import UTC, datetime
 
 import polars as pl
 
-from stock_data.fetcher.industry.models import (
+from stock_data.fetcher.industry.pharma.models import (
     PharmaBdAssetRecord,
     PharmaBdDealRecord,
     PharmaBdEventRecord,

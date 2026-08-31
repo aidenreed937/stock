@@ -19,7 +19,6 @@ from curl_cffi import requests
 
 from stock_data.fetcher.industry.common import (
     now_utc_iso,
-    read_raw_text,
     save_raw_snapshot,
 )
 from stock_data.fetcher.industry.models import SemiconductorSalesRecord
@@ -330,33 +329,10 @@ class SemiconductorCollector:
         return parse_wsts_excel_file(excel_path)
 
     def _fetch_sia_news_enrichments(self) -> dict[str, dict[str, Any]]:
-        """抓取 SIA 官网月度新闻与本地已归档快照，解析 China 销售数据与 release_date。"""
+        """在线抓取 SIA 官网最新月度新闻，解析 China 销售数据与 release_date。"""
         enrichments: dict[str, dict[str, Any]] = {}
 
-        # 1. 优先加载本地已归档的全部 SIA 历史新闻快照 (支持 *.html.gz 与 *.html 双模，覆盖 2005~2026 历年公报)
-        if self.sia_raw_dir.exists():
-            seen_slugs: set[str] = set()
-            candidate_files = sorted(self.sia_raw_dir.glob("*.html.gz")) + sorted(
-                self.sia_raw_dir.glob("*.html")
-            )
-            for h in candidate_files:
-                if "list" in h.name:
-                    continue
-                slug = h.name.replace(".html.gz", "").replace(".html", "")
-                if slug in seen_slugs:
-                    continue
-                seen_slugs.add(slug)
-                try:
-                    content = read_raw_text(h)
-                    parsed = parse_sia_china_and_date(
-                        content, f"https://www.semiconductors.org/{slug}/"
-                    )
-                    if parsed and parsed.get("report_month"):
-                        enrichments[str(parsed["report_month"])] = parsed
-                except Exception as e:
-                    logger.debug("本地 SIA 快照解析失败 [%s]: %s", h.name, e)
-
-        # 2. 联网增量获取最新发布的月报公报
+        # 在线获取最新发布的月报公报
         list_url = "https://www.semiconductors.org/news-events/latest-news/"
         try:
             resp = requests.get(list_url, impersonate=self.impersonate, timeout=self.timeout)

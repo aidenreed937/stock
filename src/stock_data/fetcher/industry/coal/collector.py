@@ -7,6 +7,7 @@ import logging
 from datetime import date
 from pathlib import Path
 
+from stock_data.fetcher.industry.coal.crawler import CoalMarketCrawler
 from stock_data.fetcher.industry.common import now_utc_iso
 from stock_data.fetcher.industry.models import CoalMarketRecord
 
@@ -195,9 +196,10 @@ class CoalMarketCollector:
             self.coal_raw_dir = self.raw_dir / "coal"
         else:
             self.coal_raw_dir = self.raw_dir / "energy"
+        self.crawler = CoalMarketCrawler(raw_dir=self.raw_dir)
 
     def collect(self) -> list[CoalMarketRecord]:
-        """执行煤炭数据采集: 本地真实快照优先 -> 派生计算落盘。"""
+        """执行煤炭数据采集: 在线抓取 CCTD 最新 Q5500 平仓价并落盘，以最新采集为准。"""
         self.coal_raw_dir.mkdir(parents=True, exist_ok=True)
         csv_file = self.coal_raw_dir / "coal_market_weekly.csv"
         if not csv_file.exists():
@@ -209,19 +211,41 @@ class CoalMarketCollector:
                     csv_file = cand
                     break
 
-        records_map: dict[str, CoalMarketRecord] = {}
-        if csv_file.exists():
-            for rec in self.load_from_raw_csv(csv_file):
-                records_map[rec.report_date] = rec
-
-        if not records_map:
-            logger.warning("未找到本地煤炭周度市场快照")
+        # 在线抓取 CCTD 最新一期 Q5500 平仓价
+        live_data = self.crawler.fetch_latest_q5500()
+        if not live_data or not live_data.get("report_date"):
+            logger.warning("在线抓取 CCTD Q5500 平仓价失败")
             return []
 
-        records = sorted(records_map.values(), key=lambda r: r.trade_date)
-        updated_records = compute_coal_price_derivatives(records)
-        self.save_to_raw_csv(csv_file, updated_records)
-        return updated_records
+        d_key = str(live_data["report_date"])
+        try:
+            t_date = date.fromisoformat(d_key)
+        except ValueError:
+            t_date = date.today()
+        rec_live = CoalMarketRecord(
+            report_date=d_key,
+            trade_date=t_date,
+            q5500_fob_price_cny=live_data.get("q5500_fob_price_cny"),
+            coking_coal_price_cny=None,
+            power_plant_inventory_million_ton=None,
+            power_plant_daily_burn_ten_thousand_ton=None,
+            power_plant_available_days=None,
+            qinhuangdao_inventory_million_ton=None,
+            q5500_price_yoy=None,
+            q5500_price_mom=None,
+            unit="cny_per_ton/million_tons/days",
+            source=live_data.get("source") or "CCTD",
+            source_url=live_data.get("source_url") or "https://www.cctd.com.cn/",
+            release_date=date.fromisoformat(live_data["release_date"])
+            if live_data.get("release_date")
+            else None,
+            data_status=live_data.get("data_status") or "actual",
+            collected_at=live_data.get("collected_at") or now_utc_iso(),
+        )
+
+        records = [rec_live]
+        self.save_to_raw_csv(csv_file, records)
+        return records
 
     def save_to_raw_csv(self, file_path: Path | str, records: list[CoalMarketRecord]) -> None:
         """持久化标准化记录至 RAW CSV 快照。"""

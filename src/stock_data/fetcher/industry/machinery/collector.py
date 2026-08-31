@@ -34,97 +34,36 @@ class MachineryCollector:
         self.komatsu_crawler = KomatsuCrawler(raw_dir=self.raw_dir)
 
     def collect(self) -> list[ConstructionMachineryRecord]:
-        """执行工程机械数据采集: 检查真实 RAW 快照 -> 在线增量爬取 -> 协同合并落盘。"""
+        """执行工程机械数据采集: 在线爬取 CCMA/Komatsu 最新数据并落盘，以最新采集为准。"""
         self.machinery_dir.mkdir(parents=True, exist_ok=True)
         csv_file = self.machinery_dir / "excavator_monthly.csv"
-        alt_file = self.machinery_dir / "excavator_real.csv"
 
-        records_map: dict[str, ConstructionMachineryRecord] = {}
-        for candidate in [alt_file, csv_file]:
-            if candidate.exists():
-                for rec in self.load_from_raw_csv(candidate):
-                    records_map[rec.report_month] = rec
-
-        # 2. 在线增量爬取 CCMA 协会销售快报与小松 Komtrax 开工小时
+        # 在线爬取 CCMA 协会销售快报与小松 Komtrax 开工小时
         ccma_sales = self.ccma_crawler.fetch_latest_sales()
         komatsu_hours = self.komatsu_crawler.fetch_latest_hours()
 
-        has_new_data = False
-        all_months = set(records_map.keys()) | set(ccma_sales.keys()) | set(komatsu_hours.keys())
+        all_months = set(ccma_sales.keys()) | set(komatsu_hours.keys())
         now_iso = now_utc_iso()
 
-        for m_str in all_months:
+        records: list[ConstructionMachineryRecord] = []
+        for m_str in sorted(all_months):
             yr, mo = parse_month_string(m_str)
             t_date = get_month_end_date(yr, mo)
-            existing = records_map.get(m_str)
-
             ccma_item = ccma_sales.get(m_str)
             hrs_val = komatsu_hours.get(m_str)
 
-            if existing:
-                # 补全或更新已有记录
-                new_tot = (
-                    ccma_item["excavator_total_units"]
-                    if ccma_item and ccma_item.get("excavator_total_units")
-                    else existing.excavator_total_units
-                )
-                new_dom = (
-                    ccma_item["excavator_domestic_units"]
-                    if ccma_item and ccma_item.get("excavator_domestic_units")
-                    else existing.excavator_domestic_units
-                )
-                new_exp = (
-                    ccma_item["excavator_export_units"]
-                    if ccma_item and ccma_item.get("excavator_export_units")
-                    else existing.excavator_export_units
-                )
-                new_hrs = hrs_val if hrs_val is not None else existing.komatsu_hours_china
-                new_rel = (
-                    ccma_item["release_date"]
-                    if ccma_item and isinstance(ccma_item.get("release_date"), date)
-                    else existing.release_date
-                )
+            tot_u = ccma_item.get("excavator_total_units") if ccma_item else None
+            dom_u = ccma_item.get("excavator_domestic_units") if ccma_item else None
+            exp_u = ccma_item.get("excavator_export_units") if ccma_item else None
+            rel_d = (
+                ccma_item.get("release_date")
+                if ccma_item and isinstance(ccma_item.get("release_date"), date)
+                else None
+            )
+            s_url = ccma_item.get("source_url") if ccma_item else "http://www.cncma.org/"
 
-                if (
-                    new_tot != existing.excavator_total_units
-                    or new_hrs != existing.komatsu_hours_china
-                ):
-                    has_new_data = True
-
-                records_map[m_str] = ConstructionMachineryRecord(
-                    report_month=m_str,
-                    trade_date=t_date,
-                    excavator_total_units=new_tot,
-                    excavator_domestic_units=new_dom,
-                    excavator_export_units=new_exp,
-                    komatsu_hours_china=new_hrs,
-                    komatsu_hours_yoy=None,
-                    export_ratio=None,
-                    excavator_total_3mma=None,
-                    yoy_growth=None,
-                    yoy_growth_3mma=None,
-                    mom_growth_3mma=None,
-                    unit=existing.unit or "units/hours",
-                    source="CCMA/Komatsu",
-                    source_url=existing.source_url or "http://www.cncma.org/",
-                    release_date=new_rel,
-                    data_status="actual",
-                    collected_at=existing.collected_at or now_iso,
-                )
-            else:
-                # 全新月份入库
-                has_new_data = True
-                tot_u = ccma_item.get("excavator_total_units", 0.0) if ccma_item else 0.0
-                dom_u = ccma_item.get("excavator_domestic_units", 0.0) if ccma_item else 0.0
-                exp_u = ccma_item.get("excavator_export_units", 0.0) if ccma_item else 0.0
-                rel_d = (
-                    ccma_item.get("release_date")
-                    if ccma_item and isinstance(ccma_item.get("release_date"), date)
-                    else None
-                )
-                s_url = ccma_item.get("source_url") if ccma_item else "http://www.cncma.org/"
-
-                records_map[m_str] = ConstructionMachineryRecord(
+            records.append(
+                ConstructionMachineryRecord(
                     report_month=m_str,
                     trade_date=t_date,
                     excavator_total_units=tot_u,
@@ -144,13 +83,14 @@ class MachineryCollector:
                     data_status="actual",
                     collected_at=now_iso,
                 )
+            )
 
-        final_records = sorted(records_map.values(), key=lambda r: r.trade_date)
+        if not records:
+            logger.warning("在线抓取工程机械数据失败")
+            return []
 
-        # 3. 若有新增或变更，写回更新 RAW CSV
-        if has_new_data and final_records:
-            self.save_to_raw_csv(csv_file, final_records)
-
+        final_records = sorted(records, key=lambda r: r.trade_date)
+        self.save_to_raw_csv(csv_file, final_records)
         return final_records
 
     def save_to_raw_csv(
@@ -217,10 +157,8 @@ class MachineryCollector:
                 month_str = row["report_month"].strip()
                 year, month = parse_month_string(month_str)
                 t_date = get_month_end_date(year, month)
-                tot = (
-                    _safe_float(row.get("total_sales_volume"))
-                    or _safe_float(row.get("excavator_total_units"))
-                    or 0.0
+                tot = _safe_float(row.get("total_sales_volume")) or _safe_float(
+                    row.get("excavator_total_units")
                 )
                 dom = _safe_float(row.get("domestic_sales_volume")) or _safe_float(
                     row.get("excavator_domestic_units")
@@ -237,8 +175,8 @@ class MachineryCollector:
                         report_month=month_str,
                         trade_date=t_date,
                         excavator_total_units=tot,
-                        excavator_domestic_units=dom or 0.0,
-                        excavator_export_units=exp or 0.0,
+                        excavator_domestic_units=dom,
+                        excavator_export_units=exp,
                         komatsu_hours_china=hrs,
                         komatsu_hours_yoy=None,
                         export_ratio=None,

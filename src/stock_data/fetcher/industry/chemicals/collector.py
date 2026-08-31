@@ -7,6 +7,7 @@ import logging
 from datetime import date
 from pathlib import Path
 
+from stock_data.fetcher.industry.chemicals.crawler import ChemicalsCrawler
 from stock_data.fetcher.industry.common import (
     get_month_end_date,
     now_utc_iso,
@@ -22,6 +23,8 @@ CHEMICALS_CSV_FIELDNAMES = [
     "mdi_operating_rate",
     "tio2_operating_rate",
     "refrigerant_r32_operating_rate",
+    "mdi_price_cny",
+    "tio2_price_cny",
     "mdi_gross_spread_cny",
     "tio2_spread_cny",
     "refrigerant_r32_price_cny",
@@ -56,6 +59,8 @@ def save_chemicals_raw_csv(file_path: Path | str, records: list[ChemicalMarketRe
                     "refrigerant_r32_operating_rate": r.refrigerant_r32_operating_rate
                     if r.refrigerant_r32_operating_rate is not None
                     else "",
+                    "mdi_price_cny": r.mdi_price_cny if r.mdi_price_cny is not None else "",
+                    "tio2_price_cny": r.tio2_price_cny if r.tio2_price_cny is not None else "",
                     "mdi_gross_spread_cny": r.mdi_gross_spread_cny
                     if r.mdi_gross_spread_cny is not None
                     else "",
@@ -113,6 +118,8 @@ def load_chemicals_raw_csv(file_path: Path | str) -> list[ChemicalMarketRecord]:
                     refrigerant_r32_operating_rate=_safe_float(
                         row.get("refrigerant_r32_operating_rate")
                     ),
+                    mdi_price_cny=_safe_float(row.get("mdi_price_cny")),
+                    tio2_price_cny=_safe_float(row.get("tio2_price_cny")),
                     mdi_gross_spread_cny=_safe_float(row.get("mdi_gross_spread_cny")),
                     tio2_spread_cny=_safe_float(row.get("tio2_spread_cny")),
                     refrigerant_r32_price_cny=_safe_float(row.get("refrigerant_r32_price_cny")),
@@ -139,22 +146,45 @@ class ChemicalsCollector:
     ) -> None:
         self.raw_dir = Path(raw_dir)
         self.chem_raw_dir = self.raw_dir / "chemicals"
+        self.crawler = ChemicalsCrawler(raw_dir=self.raw_dir)
 
     def collect(self) -> list[ChemicalMarketRecord]:
-        """执行基础化工数据采集: 本地真实快照优先 -> 派生计算落盘。"""
+        """执行基础化工数据采集: 在线抓取生意社参考价并落盘，以最新采集为准。"""
         self.chem_raw_dir.mkdir(parents=True, exist_ok=True)
         csv_file = self.chem_raw_dir / "chemical_operating_spreads.csv"
 
-        records_map: dict[str, ChemicalMarketRecord] = {}
-        if csv_file.exists():
-            for rec in self.load_from_raw_csv(csv_file):
-                records_map[rec.report_month] = rec
-
-        if not records_map:
-            logger.warning("未找到本地基础化工月度快照")
+        # 在线抓取生意社 MDI/钛白粉参考价
+        live_data = self.crawler.fetch_latest_prices()
+        if not live_data:
+            logger.warning("在线抓取生意社参考价失败")
             return []
 
-        records = sorted(records_map.values(), key=lambda r: r.trade_date)
+        today = date.today()
+        report_month = f"{today.year:04d}-{today.month:02d}"
+        yr, mo = parse_month_string(report_month)
+        rec_live = ChemicalMarketRecord(
+            report_month=report_month,
+            trade_date=get_month_end_date(yr, mo),
+            mdi_operating_rate=None,
+            tio2_operating_rate=None,
+            refrigerant_r32_operating_rate=None,
+            mdi_price_cny=live_data.get("mdi_price_cny"),
+            tio2_price_cny=live_data.get("tio2_price_cny"),
+            mdi_gross_spread_cny=None,
+            tio2_spread_cny=None,
+            refrigerant_r32_price_cny=None,
+            chemical_inventory_days=None,
+            unit="percent/cny_per_ton",
+            source=live_data.get("source") or "100ppi",
+            source_url=live_data.get("source_url") or "https://www.100ppi.com/",
+            release_date=date.fromisoformat(live_data["release_date"])
+            if live_data.get("release_date")
+            else None,
+            data_status=live_data.get("data_status") or "actual",
+            collected_at=live_data.get("collected_at") or now_utc_iso(),
+        )
+
+        records = [rec_live]
         self.save_to_raw_csv(csv_file, records)
         return records
 

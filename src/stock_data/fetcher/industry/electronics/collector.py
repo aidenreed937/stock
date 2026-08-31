@@ -2,12 +2,14 @@
 
 from __future__ import annotations
 
+import calendar
 import csv
 import logging
 from datetime import date
 from pathlib import Path
 
 from stock_data.fetcher.industry.common import now_utc_iso
+from stock_data.fetcher.industry.electronics.crawler import ConsumerElectronicsCrawler
 from stock_data.fetcher.industry.models import ConsumerElectronicsRecord
 
 logger = logging.getLogger(__name__)
@@ -150,22 +152,48 @@ class ConsumerElectronicsCollector:
     ) -> None:
         self.raw_dir = Path(raw_dir)
         self.elec_raw_dir = self.raw_dir / "electronics"
+        self.crawler = ConsumerElectronicsCrawler(raw_dir=self.raw_dir)
 
     def collect(self) -> list[ConsumerElectronicsRecord]:
-        """执行消费电子数据采集: 本地真实快照优先 -> 派生计算落盘。"""
+        """执行消费电子数据采集: 在线抓取最新 IDC 季度数据并落盘，以最新采集为准。"""
         self.elec_raw_dir.mkdir(parents=True, exist_ok=True)
         csv_file = self.elec_raw_dir / "electronics_shipments_quarterly.csv"
 
-        records_map: dict[str, ConsumerElectronicsRecord] = {}
-        if csv_file.exists():
-            for rec in self.load_from_raw_csv(csv_file):
-                records_map[rec.report_quarter] = rec
-
-        if not records_map:
-            logger.warning("未找到本地消费电子季度出货快照")
+        # 在线抓取最新 IDC 季度 PR
+        live_data = self.crawler.fetch_latest_quarter()
+        if not live_data or not live_data.get("report_quarter"):
+            logger.warning("在线抓取 IDC 季度出货数据失败")
             return []
 
-        records = sorted(records_map.values(), key=lambda r: r.trade_date)
+        q_key = str(live_data["report_quarter"])
+        year = int(q_key[:4])
+        q_num = int(q_key[-1])
+        t_date = date(year, q_num * 3, calendar.monthrange(year, q_num * 3)[1])
+        rec_live = ConsumerElectronicsRecord(
+            report_quarter=q_key,
+            trade_date=t_date,
+            global_smartphone_shipments_million=live_data.get(
+                "global_smartphone_shipments_million"
+            ),
+            china_smartphone_shipments_million=live_data.get("china_smartphone_shipments_million"),
+            global_pc_shipments_million=live_data.get("global_pc_shipments_million"),
+            ai_phone_penetration_rate=None,
+            ai_pc_penetration_rate=None,
+            smartphone_yoy_growth=live_data.get("smartphone_yoy_growth"),
+            pc_yoy_growth=live_data.get("pc_yoy_growth"),
+            apple_shipments_million=live_data.get("apple_shipments_million"),
+            transsion_shipments_million=live_data.get("transsion_shipments_million"),
+            unit="million_units/percent",
+            source=live_data.get("source") or "IDC",
+            source_url=live_data.get("source_url") or "https://www.idc.com/",
+            release_date=date.fromisoformat(live_data["release_date"])
+            if live_data.get("release_date")
+            else None,
+            data_status=live_data.get("data_status") or "actual",
+            collected_at=live_data.get("collected_at") or now_utc_iso(),
+        )
+
+        records = [rec_live]
         self.save_to_raw_csv(csv_file, records)
         return records
 

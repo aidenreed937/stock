@@ -37,16 +37,14 @@ class SolarCollector:
         self.crawler = NeaBulletinCrawler(raw_dir=self.raw_dir)
 
     def collect(self) -> list[SolarCapacityRecord]:
-        """执行光伏装机数据采集: 检查 RAW 快照/官网爬虫 -> 差分计算当月新增 -> 校验落盘。"""
+        """执行光伏装机数据采集: 在线抓取国家能源局通报并落盘，以最新采集为准。"""
         self.nea_dir.mkdir(parents=True, exist_ok=True)
-        for candidate in ["solar_capacity_real.csv", "solar_capacity.csv"]:
-            raw_csv = self.nea_dir / candidate
-            if raw_csv.exists():
-                return self.load_from_raw_csv(raw_csv)
+        csv_file = self.nea_dir / "solar_capacity.csv"
 
-        # 尝试调用国家能源局官网克制爬虫
+        # 在线抓取国家能源局官网通报
         bulletins = self.crawler.fetch_latest_bulletins()
         if not bulletins:
+            logger.warning("在线抓取国家能源局光伏装机通报失败")
             return []
 
         # 按月份排序并计算差分单月新增
@@ -89,7 +87,48 @@ class SolarCollector:
             )
 
         records.sort(key=lambda r: r.trade_date)
+        self.save_to_raw_csv(csv_file, records)
         return records
+
+    def save_to_raw_csv(self, file_path: Path | str, records: list[SolarCapacityRecord]) -> None:
+        """持久化标准化记录至 RAW CSV 快照。"""
+        p = Path(file_path)
+        p.parent.mkdir(parents=True, exist_ok=True)
+        fieldnames = [
+            "report_month",
+            "trade_date",
+            "monthly_new_capacity_gw",
+            "cumulative_capacity_gw",
+            "yoy_growth",
+            "unit",
+            "source",
+            "source_url",
+            "release_date",
+            "data_status",
+            "collected_at",
+        ]
+        with p.open("w", encoding="utf-8", newline="") as f:
+            writer = csv.DictWriter(f, fieldnames=fieldnames)
+            writer.writeheader()
+            for r in records:
+                writer.writerow(
+                    {
+                        "report_month": r.report_month,
+                        "trade_date": r.trade_date.isoformat(),
+                        "monthly_new_capacity_gw": r.monthly_new_capacity_gw,
+                        "cumulative_capacity_gw": r.cumulative_capacity_gw
+                        if r.cumulative_capacity_gw is not None
+                        else "",
+                        "yoy_growth": r.yoy_growth if r.yoy_growth is not None else "",
+                        "unit": r.unit or "gw",
+                        "source": r.source or "NEA",
+                        "source_url": r.source_url or "",
+                        "release_date": r.release_date.isoformat() if r.release_date else "",
+                        "data_status": r.data_status or "actual",
+                        "collected_at": r.collected_at or now_utc_iso(),
+                    }
+                )
+        logger.info("已保存 NEA 光伏装机 RAW 快照: %s (共 %d 行)", p, len(records))
 
     def load_from_raw_csv(self, file_path: Path | str) -> list[SolarCapacityRecord]:
         """从 NEA RAW 快照 CSV 中读取并标准化。"""

@@ -9,6 +9,7 @@ from datetime import date
 from pathlib import Path
 from typing import Any
 
+from stock_data.fetcher.industry.agriculture.crawler import MaraPorkCrawler
 from stock_data.fetcher.industry.common import (
     get_month_end_date,
     now_utc_iso,
@@ -66,8 +67,8 @@ def parse_mara_pork_bulletin_text(text: str) -> dict[str, Any] | None:
     return {
         "sow_stock_million_heads": sow_val,
         "pig_price_cny_per_kg": pig_price,
-        "hog_to_grain_ratio": ratio_val or 7.2,
-        "pig_farming_profit_cny_head": 350.0,
+        "hog_to_grain_ratio": ratio_val,
+        "pig_farming_profit_cny_head": None,
         "source": "MARA/NBS",
         "source_url": "http://www.moa.gov.cn/nybgb/",
         "data_status": "actual",
@@ -229,25 +230,45 @@ class AgriculturePorkCollector:
     ) -> None:
         self.raw_dir = Path(raw_dir)
         self.agri_raw_dir = self.raw_dir / "agriculture"
+        self.crawler = MaraPorkCrawler(raw_dir=self.raw_dir)
 
     def collect(self) -> list[AgriculturePorkRecord]:
-        """执行生猪产能数据采集: 本地真实快照优先 -> 派生计算落盘。"""
+        """执行生猪产能数据采集: 在线抓取农业农村部最新月度通报并落盘，以最新采集为准。"""
         self.agri_raw_dir.mkdir(parents=True, exist_ok=True)
         csv_file = self.agri_raw_dir / "pork_capacity_monthly.csv"
 
-        records_map: dict[str, AgriculturePorkRecord] = {}
-        if csv_file.exists():
-            for rec in self.load_from_raw_csv(csv_file):
-                records_map[rec.report_month] = rec
-
-        if not records_map:
-            logger.warning("未找到本地生猪产能月度快照")
+        # 在线抓取农业农村部最新生猪月度通报
+        live_data = self.crawler.fetch_latest_month()
+        if not live_data or not live_data.get("report_month"):
+            logger.warning("在线抓取农业农村部生猪月度通报失败")
             return []
 
-        records = sorted(records_map.values(), key=lambda r: r.trade_date)
-        updated_records = compute_pork_derivatives(records)
-        self.save_to_raw_csv(csv_file, updated_records)
-        return updated_records
+        m_key = str(live_data["report_month"])
+        yr, mo = parse_month_string(m_key)
+        t_date = get_month_end_date(yr, mo)
+        rec_live = AgriculturePorkRecord(
+            report_month=m_key,
+            trade_date=t_date,
+            sow_stock_million_heads=live_data.get("sow_stock_million_heads"),
+            sow_stock_yoy=None,
+            sow_stock_mom=None,
+            pig_price_cny_per_kg=live_data.get("pig_price_cny_per_kg"),
+            pig_price_yoy=None,
+            hog_to_grain_ratio=live_data.get("hog_to_grain_ratio"),
+            pig_farming_profit_cny_head=live_data.get("pig_farming_profit_cny_head"),
+            unit="million_heads/cny_per_kg",
+            source=live_data.get("source") or "MARA/NBS",
+            source_url=live_data.get("source_url") or "http://www.moa.gov.cn/",
+            release_date=date.fromisoformat(live_data["release_date"])
+            if live_data.get("release_date")
+            else None,
+            data_status=live_data.get("data_status") or "actual",
+            collected_at=live_data.get("collected_at") or now_utc_iso(),
+        )
+
+        records = [rec_live]
+        self.save_to_raw_csv(csv_file, records)
+        return records
 
     def save_to_raw_csv(self, file_path: Path | str, records: list[AgriculturePorkRecord]) -> None:
         """持久化标准化记录至 RAW CSV 快照。"""

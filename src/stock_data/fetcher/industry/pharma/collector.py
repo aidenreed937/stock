@@ -15,13 +15,13 @@ from stock_data.fetcher.industry.common import (
     now_utc_iso,
     parse_month_string,
 )
-from stock_data.fetcher.industry.models import (
+from stock_data.fetcher.industry.pharma.crawler import PharmaAnnouncementCrawler
+from stock_data.fetcher.industry.pharma.models import (
     PharmaBdAssetRecord,
     PharmaBdDealRecord,
     PharmaBdEventRecord,
     PharmaLicenseOutRecord,
 )
-from stock_data.fetcher.industry.pharma.crawler import PharmaAnnouncementCrawler
 from stock_data.fetcher.industry.pharma.transform import (
     assets_to_frame,
     deals_to_frame,
@@ -374,43 +374,23 @@ class PharmaBdCollector:
         self.crawler = PharmaAnnouncementCrawler(raw_dir=self.raw_dir)
 
     def collect(self) -> list[PharmaLicenseOutRecord]:
-        """执行创新药出海 BD 数据采集: 在线检索最新公告 -> 合并底账 -> 落盘实体层 -> 聚合月度特征。"""
+        """执行创新药出海 BD 数据采集: 在线检索最新公告并落盘，以最新采集为准。"""
         self.pharma_dir.mkdir(parents=True, exist_ok=True)
         ledger_path = self.pharma_dir / "deals_ledger.yaml"
 
-        # 1. 加载现有底账
-        data: dict[str, Any] = {"deals": []}
-        if ledger_path.exists():
-            with ledger_path.open("r", encoding="utf-8") as f:
-                data = yaml.safe_load(f) or {"deals": []}
-
-        # 2. 在线爬取 A/H 股交易所最新对外许可公告
+        # 在线爬取 A/H 股交易所最新对外许可公告
         live_deals = self.crawler.fetch_latest_deals()
-        if live_deals:
-            existing_ids = {str(d.get("deal_id")) for d in data.get("deals", [])}
-            new_deals = [d for d in live_deals if str(d.get("deal_id")) not in existing_ids]
-            if new_deals:
-                logger.info(
-                    "在线爬虫新抓取到 %d 笔创新药出海 BD 公告，自动合并至底账", len(new_deals)
-                )
-                data.setdefault("deals", []).extend(new_deals)
-                with ledger_path.open("w", encoding="utf-8") as f:
-                    yaml.safe_dump(data, f, allow_unicode=True, sort_keys=False)
+        if not live_deals:
+            logger.warning("在线抓取创新药出海 BD 公告失败")
+            return []
 
-        if data.get("deals"):
-            return self.process_ledger_deals(data["deals"])
+        # 以最新在线采集结果为准，覆盖落盘底账
+        data: dict[str, Any] = {"deals": live_deals}
+        with ledger_path.open("w", encoding="utf-8") as f:
+            yaml.safe_dump(data, f, allow_unicode=True, sort_keys=False)
+        logger.info("在线采集创新药出海 BD 公告 %d 笔并覆盖落盘底账", len(live_deals))
 
-        for candidate in ["license_out_real.csv", "license_out_monthly.csv"]:
-            raw_csv = self.pharma_dir / candidate
-            if raw_csv.exists():
-                return self.load_from_raw_csv(raw_csv)
-
-        global_ledger = Path("data/raw/industry/pharma/deals_ledger.yaml")
-        if global_ledger.exists() and global_ledger.resolve() != ledger_path.resolve():
-            return self.load_from_ledger_yaml(global_ledger)
-
-        logger.warning("未找到创新药 deals_ledger.yaml 或 license_out_monthly.csv 快照")
-        return []
+        return self.process_ledger_deals(data["deals"])
 
     def process_ledger_deals(self, raw_deals: list[dict[str, Any]]) -> list[PharmaLicenseOutRecord]:
         """解析结构化交易底账，落盘 Processed 实体层与 RAW 快照。"""

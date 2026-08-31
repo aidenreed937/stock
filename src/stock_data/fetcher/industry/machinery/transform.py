@@ -70,9 +70,12 @@ def records_to_machinery_frame(records: Sequence[ConstructionMachineryRecord]) -
     if df["export_ratio"].null_count() == len(df):
         df = df.with_columns(
             (
-                pl.when(pl.col("excavator_total_units") > 0)
+                pl.when(
+                    pl.col("excavator_total_units").is_not_null()
+                    & (pl.col("excavator_total_units") > 0)
+                )
                 .then(pl.col("excavator_export_units") / pl.col("excavator_total_units"))
-                .otherwise(0.0)
+                .otherwise(None)
             ).alias("export_ratio")
         )
 

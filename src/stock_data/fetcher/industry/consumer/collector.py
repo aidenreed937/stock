@@ -56,9 +56,9 @@ def parse_liquor_price_text(text: str) -> dict[str, Any] | None:
 
     return {
         "moutai_loose_price_cny": loose_p,
-        "moutai_boxed_price_cny": boxed_p or (loose_p + 200.0 if loose_p else None),
-        "wuliangye_puwu_price_cny": wly_p or 945.0,
-        "guojiao1573_price_cny": gj_p or 875.0,
+        "moutai_boxed_price_cny": boxed_p,
+        "wuliangye_puwu_price_cny": wly_p,
+        "guojiao1573_price_cny": gj_p,
         "source": "TodayLiquorPrice",
         "source_url": JINRIJIA_URL,
         "data_status": "actual",
@@ -246,44 +246,37 @@ class LiquorWholesaleCollector:
         self.crawler = LiquorPriceCrawler(raw_dir=self.raw_dir)
 
     def collect(self) -> list[LiquorWholesaleRecord]:
-        """执行白酒一批价采集: 本地真实快照优先 -> 在线增量抓取合并 -> 派生计算落盘。"""
+        """执行白酒一批价采集: 在线抓取最新周度批价并落盘，以最新采集为准。"""
         self.consumer_raw_dir.mkdir(parents=True, exist_ok=True)
         csv_file = self.consumer_raw_dir / "liquor_wholesale_weekly.csv"
 
-        records_map: dict[str, LiquorWholesaleRecord] = {}
-        if csv_file.exists():
-            for rec in self.load_from_raw_csv(csv_file):
-                records_map[rec.report_date] = rec
-
+        # 在线抓取最新白酒批价
         live_data = self.crawler.fetch_latest_liquor_price()
-        if live_data and live_data.get("report_date"):
-            d_key = str(live_data["report_date"])
-            rec_live = LiquorWholesaleRecord(
-                report_date=d_key,
-                trade_date=live_data["trade_date"],
-                moutai_loose_price_cny=live_data["moutai_loose_price_cny"],
-                moutai_boxed_price_cny=live_data["moutai_boxed_price_cny"],
-                wuliangye_puwu_price_cny=live_data["wuliangye_puwu_price_cny"],
-                guojiao1573_price_cny=live_data["guojiao1573_price_cny"],
-                moutai_loose_price_yoy=None,
-                moutai_loose_price_mom=None,
-                unit="cny_per_bottle",
-                source=live_data.get("source") or "TodayLiquorPrice",
-                source_url=live_data.get("source_url") or JINRIJIA_URL,
-                release_date=live_data.get("release_date"),
-                data_status="actual",
-                collected_at=live_data.get("collected_at") or now_utc_iso(),
-            )
-            records_map[d_key] = rec_live
-
-        if not records_map:
-            logger.warning("未找到本地白酒批价快照，且在线采集未获取到数据")
+        if not live_data or not live_data.get("report_date"):
+            logger.warning("在线抓取白酒批价失败")
             return []
 
-        records = sorted(records_map.values(), key=lambda r: r.trade_date)
-        updated_records = compute_liquor_price_derivatives(records)
-        self.save_to_raw_csv(csv_file, updated_records)
-        return updated_records
+        d_key = str(live_data["report_date"])
+        rec_live = LiquorWholesaleRecord(
+            report_date=d_key,
+            trade_date=live_data["trade_date"],
+            moutai_loose_price_cny=live_data.get("moutai_loose_price_cny"),
+            moutai_boxed_price_cny=live_data.get("moutai_boxed_price_cny"),
+            wuliangye_puwu_price_cny=live_data.get("wuliangye_puwu_price_cny"),
+            guojiao1573_price_cny=live_data.get("guojiao1573_price_cny"),
+            moutai_loose_price_yoy=None,
+            moutai_loose_price_mom=None,
+            unit="cny_per_bottle",
+            source=live_data.get("source") or "TodayLiquorPrice",
+            source_url=live_data.get("source_url") or JINRIJIA_URL,
+            release_date=live_data.get("release_date"),
+            data_status="actual",
+            collected_at=live_data.get("collected_at") or now_utc_iso(),
+        )
+
+        records = [rec_live]
+        self.save_to_raw_csv(csv_file, records)
+        return records
 
     def save_to_raw_csv(self, file_path: Path | str, records: list[LiquorWholesaleRecord]) -> None:
         """持久化标准化记录至 RAW CSV 快照。"""

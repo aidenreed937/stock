@@ -231,54 +231,43 @@ class TsmcLeadCollector:
         self.crawler = TsmcMonthlyRevenueCrawler(raw_dir=self.raw_dir)
 
     def collect(self) -> list[SemiconductorLeadRecord]:
-        """执行台积电先导指标采集: 读取本地真实 RAW 快照 -> 在线增量爬取合并 -> 派生计算落盘。"""
+        """执行台积电先导指标采集: 在线抓取 TWSE 最新月营收并落盘，以最新采集为准。"""
         self.semi_raw_dir.mkdir(parents=True, exist_ok=True)
         csv_file = self.semi_raw_dir / "tsmc_monthly.csv"
 
-        records_map: dict[str, SemiconductorLeadRecord] = {}
-        if csv_file.exists():
-            for rec in self.load_from_raw_csv(csv_file):
-                records_map[rec.report_month] = rec
-
         # 在线爬取 TWSE 最新申报数据
         live_data = self.crawler.fetch_latest_revenue()
-        if live_data and live_data.get("report_month"):
-            m_key = str(live_data["report_month"])
-            yr, mo = parse_month_string(m_key)
-            t_d = get_month_end_date(yr, mo)
-            rel_d = (
-                date.fromisoformat(live_data["release_date"])
-                if live_data.get("release_date")
-                else date.today()
-            )
-
-            existing_rec = records_map.get(m_key)
-            dxi_val = existing_rec.dram_dxi_index if existing_rec is not None else None
-            spot_val = existing_rec.dram_spot_price_usd if existing_rec is not None else None
-
-            rec_live = SemiconductorLeadRecord(
-                report_month=m_key,
-                trade_date=t_d,
-                tsmc_revenue_ntd_million=live_data["tsmc_revenue_ntd_million"],
-                tsmc_revenue_usd_million=live_data["tsmc_revenue_usd_million"],
-                tsmc_revenue_yoy=live_data.get("tsmc_revenue_yoy"),
-                tsmc_revenue_mom=live_data.get("tsmc_revenue_mom"),
-                dram_dxi_index=dxi_val,
-                dram_spot_price_usd=spot_val,
-                unit="million_ntd/usd",
-                source=live_data.get("source") or "TWSE/TSMC",
-                source_url=live_data.get("source_url") or TWSE_OPENAPI_MONTHLY_REVENUE_URL,
-                release_date=rel_d,
-                data_status="actual",
-                collected_at=live_data.get("collected_at") or now_utc_iso(),
-            )
-            records_map[m_key] = rec_live
-
-        if not records_map:
-            logger.warning("未找到本地台积电月度营收快照，且在线采集未获取到数据")
+        if not live_data or not live_data.get("report_month"):
+            logger.warning("在线抓取台积电月营收失败")
             return []
 
-        records = sorted(records_map.values(), key=lambda r: r.trade_date)
+        m_key = str(live_data["report_month"])
+        yr, mo = parse_month_string(m_key)
+        t_d = get_month_end_date(yr, mo)
+        rel_d = (
+            date.fromisoformat(live_data["release_date"])
+            if live_data.get("release_date")
+            else date.today()
+        )
+
+        rec_live = SemiconductorLeadRecord(
+            report_month=m_key,
+            trade_date=t_d,
+            tsmc_revenue_ntd_million=live_data["tsmc_revenue_ntd_million"],
+            tsmc_revenue_usd_million=live_data["tsmc_revenue_usd_million"],
+            tsmc_revenue_yoy=live_data.get("tsmc_revenue_yoy"),
+            tsmc_revenue_mom=live_data.get("tsmc_revenue_mom"),
+            dram_dxi_index=None,
+            dram_spot_price_usd=None,
+            unit="million_ntd/usd",
+            source=live_data.get("source") or "TWSE/TSMC",
+            source_url=live_data.get("source_url") or TWSE_OPENAPI_MONTHLY_REVENUE_URL,
+            release_date=rel_d,
+            data_status="actual",
+            collected_at=live_data.get("collected_at") or now_utc_iso(),
+        )
+
+        records = [rec_live]
         self.save_to_raw_csv(csv_file, records)
         return records
 

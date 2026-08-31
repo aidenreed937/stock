@@ -76,8 +76,8 @@ def parse_infolink_spot_price_html(html_text: str, source_url: str = "") -> dict
                 pass
 
     if trade_d is None or rep_date is None:
-        trade_d = date.today()
-        rep_date = trade_d.isoformat()
+        logger.warning("InfoLink 报价页未解析出有效发布日期，放弃本次抓取")
+        return None
 
     results: dict[str, Any] = {
         "report_date": rep_date,
@@ -325,46 +325,38 @@ class PvPriceChainCollector:
         self.crawler = InfoLinkPvPriceCrawler(raw_dir=self.raw_dir)
 
     def collect(self) -> list[SolarPriceChainRecord]:
-        """执行光伏价格链条采集: 读取本地真实 RAW 快照 -> 在线增量爬取合并 -> 派生计算落盘。"""
+        """执行光伏价格链条采集: 在线抓取 InfoLink 最新周度价格并落盘，以最新采集为准。"""
         self.energy_raw_dir.mkdir(parents=True, exist_ok=True)
         csv_file = self.energy_raw_dir / "pv_price_chain_weekly.csv"
 
-        records_map: dict[str, SolarPriceChainRecord] = {}
-        if csv_file.exists():
-            for rec in self.load_from_raw_csv(csv_file):
-                records_map[rec.report_date] = rec
-
         # 在线抓取 InfoLink 最新周度现货价格
         live_data = self.crawler.fetch_live_spot_prices()
-        if live_data and live_data.get("report_date"):
-            d_key = str(live_data["report_date"])
-            rec_live = SolarPriceChainRecord(
-                report_date=d_key,
-                trade_date=live_data["trade_date"],
-                polysilicon_price_cny_kg=live_data["polysilicon_price_cny_kg"],
-                wafer_price_cny_piece=live_data["wafer_price_cny_piece"],
-                cell_price_cny_watt=live_data["cell_price_cny_watt"],
-                module_price_cny_watt=live_data["module_price_cny_watt"],
-                module_price_yoy=None,
-                module_price_mom=None,
-                price_cycle_stage=live_data.get("price_cycle_stage") or "bottom_rebound",
-                unit="cny_per_unit",
-                source=live_data.get("source") or "InfoLink Consulting",
-                source_url=live_data.get("source_url") or INFOLINK_SPOT_PRICE_URL,
-                release_date=live_data["trade_date"],
-                data_status="actual",
-                collected_at=live_data.get("collected_at") or now_utc_iso(),
-            )
-            records_map[d_key] = rec_live
-
-        if not records_map:
-            logger.warning("未找到本地光伏周度价格快照，且在线采集未获取到数据")
+        if not live_data or not live_data.get("report_date"):
+            logger.warning("在线抓取 InfoLink 光伏现货价格失败")
             return []
 
-        records = sorted(records_map.values(), key=lambda r: r.trade_date)
-        updated_records = compute_pv_price_derivatives(records)
-        self.save_to_raw_csv(csv_file, updated_records)
-        return updated_records
+        d_key = str(live_data["report_date"])
+        rec_live = SolarPriceChainRecord(
+            report_date=d_key,
+            trade_date=live_data["trade_date"],
+            polysilicon_price_cny_kg=live_data["polysilicon_price_cny_kg"],
+            wafer_price_cny_piece=live_data["wafer_price_cny_piece"],
+            cell_price_cny_watt=live_data["cell_price_cny_watt"],
+            module_price_cny_watt=live_data["module_price_cny_watt"],
+            module_price_yoy=None,
+            module_price_mom=None,
+            price_cycle_stage=live_data.get("price_cycle_stage") or "bottom_rebound",
+            unit="cny_per_unit",
+            source=live_data.get("source") or "InfoLink Consulting",
+            source_url=live_data.get("source_url") or INFOLINK_SPOT_PRICE_URL,
+            release_date=live_data["trade_date"],
+            data_status="actual",
+            collected_at=live_data.get("collected_at") or now_utc_iso(),
+        )
+
+        records = [rec_live]
+        self.save_to_raw_csv(csv_file, records)
+        return records
 
     def save_to_raw_csv(self, file_path: Path | str, records: list[SolarPriceChainRecord]) -> None:
         """持久化标准化记录至 RAW CSV 快照。"""

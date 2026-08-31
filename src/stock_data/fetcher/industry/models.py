@@ -63,7 +63,7 @@ class NevMonthlyRecord:
 
     report_month: str
     trade_date: date
-    wholesale_volume_ten_thousand: float
+    wholesale_volume_ten_thousand: float | None = None
     wholesale_volume_3mma: float | None = None
     retail_volume_ten_thousand: float | None = None
     export_volume_ten_thousand: float | None = None
@@ -146,9 +146,9 @@ class ConstructionMachineryRecord:
 
     report_month: str
     trade_date: date
-    excavator_total_units: float
-    excavator_domestic_units: float
-    excavator_export_units: float
+    excavator_total_units: float | None = None
+    excavator_domestic_units: float | None = None
+    excavator_export_units: float | None = None
     komatsu_hours_china: float | None = None
     komatsu_hours_yoy: float | None = None
     export_ratio: float | None = None
@@ -244,6 +244,8 @@ class ChemicalMarketRecord:
     mdi_operating_rate: float | None = None
     tio2_operating_rate: float | None = None
     refrigerant_r32_operating_rate: float | None = None
+    mdi_price_cny: float | None = None  # 生意社聚合MDI参考价 (元/吨)
+    tio2_price_cny: float | None = None  # 生意社钛白粉参考价 (元/吨)
     mdi_gross_spread_cny: float | None = None
     tio2_spread_cny: float | None = None
     refrigerant_r32_price_cny: float | None = None
