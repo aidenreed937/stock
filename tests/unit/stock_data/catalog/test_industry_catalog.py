@@ -1,8 +1,11 @@
 from datetime import date
 
+import polars as pl
+
 from stock_data.catalog.service import DataCatalog
 from stock_data.core.task_bundles import list_available_bundles, resolve_bundle
 from stock_data.core.task_registry import list_available_tasks, resolve_task
+from stock_data.storage.compat import StorageCompat
 
 
 def test_industry_task_registry() -> None:
@@ -83,3 +86,38 @@ def test_industry_datacatalog_read() -> None:
     assert len(df) > 0
     assert "global_sales_usd" in df.columns
     assert "trade_date" in df.columns
+
+
+def test_industry_dedup_keys_follow_task_primary_keys() -> None:
+    """industry 源去重键应来自任务契约主键, 而非退化为仅日期列。"""
+    df = pl.DataFrame(
+        {
+            "product_key": ["A", "A", "B"],
+            "hs_code": ["hs1", "hs1", "hs2"],
+            "report_month": ["202501", "202501", "202501"],
+            "trade_date": [date(2025, 1, 31)] * 3,
+            "export_value_usd": [1.0, 2.0, 3.0],
+        }
+    )
+    keys = StorageCompat.resolve_dedup_keys("customs_trade", "industry", "industry", df)
+    assert keys == ["product_key", "hs_code", "report_month"]
+    assert len(df.unique(subset=keys, keep="last")) == 2
+
+
+def test_industry_customs_trade_dedup_keeps_detail_rows(tmp_path) -> None:
+    """同一 trade_date 的多条明细 (不同产品) 默认去重后不应被折叠。"""
+    partition = tmp_path / "industry"
+    partition.mkdir(parents=True, exist_ok=True)
+    pl.DataFrame(
+        {
+            "product_key": ["A", "B", "C"],
+            "hs_code": ["hs1", "hs2", "hs3"],
+            "report_month": ["202501", "202501", "202501"],
+            "trade_date": [date(2025, 1, 31)] * 3,
+            "export_value_usd": [1.0, 2.0, 3.0],
+        }
+    ).write_parquet(partition / "customs_trade.parquet")
+
+    catalog = DataCatalog(data_source="industry", storage_dir=tmp_path)
+    df = catalog.load_dataset("customs_trade")
+    assert len(df) == 3
