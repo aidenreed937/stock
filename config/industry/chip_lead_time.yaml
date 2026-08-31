@@ -1,0 +1,39 @@
+# 全球芯片交付周期 (Chip Lead Time / 货期) 监控配置
+
+categories:
+  mcu:
+    weight: 0.25
+    description: "微控制器 / 逻辑控制"
+    skus:
+      - STM32F103C8T6   # ST 工业与消费主流 MCU
+      - ATMEGA328P-PU   # Microchip 8-bit MCU
+      - PIC16F877A-I/P  # Microchip 工业控制 MCU
+  analog:
+    weight: 0.30
+    description: "模拟与电源管理芯片"
+    skus:
+      - LM358N          # 通用双运放
+      - NE555P          # 经典时钟定时芯片
+      - LM317T          # 经典线性稳压芯片
+      - INA219AIDR      # TI 高精度电流功率监测
+  discrete:
+    weight: 0.20
+    description: "分立器件 / 功率半导体"
+    skus:
+      - 2N7002          # N沟道小信号MOS
+      - BSS138          # 电平转换MOS
+      - 1N4148          # 高速开关二极管
+      - IRF540N         # 功率MOSFET
+  compute:
+    weight: 0.25
+    description: "算力 / FPGA / 复杂逻辑芯片"
+    skus:
+      - XC7Z020-1CLG400C # Xilinx Zynq-7000 SoC/FPGA
+      - EP4CE6E22C8N     # Altera Cyclone IV FPGA
+      - STM32MP157AAC3   # ST 双核 MPU 应用处理器
+
+thresholds:
+  overheating: 26.0   # >= 26 周: 极度紧缺 / 缺芯过热
+  tight: 18.0         # >= 18 周: 供需偏紧
+  normal: 13.0        # >= 13 周: 平衡正常
+  easing: 0.0         # < 13 周: 供过于求 / 交期宽松

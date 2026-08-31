@@ -1,9 +1,10 @@
 """芯片交付周期 (Chip Lead Time / 货期) 月度先导指标采集器 (ChipLeadTimeCollector)。
 
 芯片交期是半导体产业物理世界最敏感的供需先行指标 (领先公司财报 2~4 个季度)。
-本采集器为纯真实数据驱动设计:
-1. 在线实时模式: 轮询 Mouser/分销商 API 获取标杆芯片 SKU 的原厂货期 (Lead Time)，并归档至 RAW 快照；
-2. 本地 RAW 重放模式: 离线重放 data/raw/industry/lead_time/ 目录下的真实快照。
+本采集器为纯真实数据驱动与配置化设计:
+1. 配置驱动: 从 config/industry/chip_lead_time.yaml 加载标杆 SKU 篮子、品类权重与状态判定阈值；
+2. 在线实时模式: 轮询 Mouser/分销商 API 获取标杆芯片 SKU 的原厂货期 (Lead Time)，并归档至 RAW 快照；
+3. 本地 RAW 重放模式: 离线重放 data/raw/industry/lead_time/ 目录下的真实快照。
 无任何写死/模拟数据。
 """
 
@@ -18,6 +19,7 @@ from pathlib import Path
 from typing import Any
 
 import requests
+import yaml
 
 from stock_data.fetcher.industry.common import (
     get_month_end_date,
@@ -29,30 +31,48 @@ from stock_data.fetcher.industry.models import ChipLeadTimeRecord
 
 logger = logging.getLogger(__name__)
 
-# 标杆品类权重分布 (用于计算全行业加权综合交期)
-CATEGORY_WEIGHTS = {
-    "mcu": 0.25,
-    "analog": 0.30,
-    "discrete": 0.20,
-    "compute": 0.25,
-}
-
-# 标杆芯片品类代表性 SKU 篮子 (用于分销商 API 在线轮询)
-BENCHMARK_SKU_BASKET: dict[str, list[str]] = {
-    "mcu": ["STM32F103C8T6", "ATMEGA328P-PU", "PIC16F877A-I/P"],
-    "analog": ["LM358N", "NE555P", "LM317T", "INA219AIDR"],
-    "discrete": ["2N7002", "BSS138", "1N4148", "IRF540N"],
-    "compute": ["XC7Z020-1CLG400C", "EP4CE6E22C8N", "STM32MP157AAC3"],
-}
+DEFAULT_CONFIG_PATH = Path("config/industry/chip_lead_time.yaml")
 
 
-def _determine_lead_time_status(avg_weeks: float) -> str:
-    """根据交付周期周数判定供需紧张状态。"""
-    if avg_weeks >= 26.0:
+def load_chip_lead_time_config(config_path: Path | str = DEFAULT_CONFIG_PATH) -> dict[str, Any]:
+    """加载芯片交付周期监控配置 (支持动态自定义 SKU 篮子、品类权重与状态阈值)。"""
+    p = Path(config_path)
+    if not p.exists():
+        return {
+            "categories": {
+                "mcu": {
+                    "weight": 0.25,
+                    "skus": ["STM32F103C8T6", "ATMEGA328P-PU", "PIC16F877A-I/P"],
+                },
+                "analog": {
+                    "weight": 0.30,
+                    "skus": ["LM358N", "NE555P", "LM317T", "INA219AIDR"],
+                },
+                "discrete": {
+                    "weight": 0.20,
+                    "skus": ["2N7002", "BSS138", "1N4148", "IRF540N"],
+                },
+                "compute": {
+                    "weight": 0.25,
+                    "skus": ["XC7Z020-1CLG400C", "EP4CE6E22C8N", "STM32MP157AAC3"],
+                },
+            },
+            "thresholds": {"overheating": 26.0, "tight": 18.0, "normal": 13.0, "easing": 0.0},
+        }
+    with p.open("r", encoding="utf-8") as f:
+        return yaml.safe_load(f) or {}
+
+
+def _determine_lead_time_status(
+    avg_weeks: float, thresholds: dict[str, float] | None = None
+) -> str:
+    """根据交付周期周数及配置阈值判定供需紧张状态。"""
+    th = thresholds or {"overheating": 26.0, "tight": 18.0, "normal": 13.0}
+    if avg_weeks >= th.get("overheating", 26.0):
         return "overheating"  # 极度紧缺/缺芯过热
-    if avg_weeks >= 18.0:
+    if avg_weeks >= th.get("tight", 18.0):
         return "tight"  # 供需偏紧
-    if avg_weeks >= 13.0:
+    if avg_weeks >= th.get("normal", 13.0):
         return "normal"  # 平衡正常
     return "easing"  # 供过于求/交期宽松
 
@@ -71,11 +91,18 @@ def _parse_lead_time_string_to_weeks(lead_time_str: str) -> float | None:
 
 
 class ChipLeadTimeCollector:
-    """全球芯片交付周期先导指标采集器 (纯真实数据与 RAW 快照架构)。"""
+    """全球芯片交付周期先导指标采集器 (配置驱动 + 纯真实数据与 RAW 快照架构)。"""
 
-    def __init__(self, raw_dir: Path | str = "data/raw/industry") -> None:
+    def __init__(
+        self,
+        raw_dir: Path | str = "data/raw/industry",
+        config_path: Path | str = DEFAULT_CONFIG_PATH,
+    ) -> None:
         self.raw_dir = Path(raw_dir)
         self.lead_time_raw_dir = self.raw_dir / "lead_time"
+        self.config = load_chip_lead_time_config(config_path)
+        self.categories = self.config.get("categories", {})
+        self.thresholds = self.config.get("thresholds", {})
 
     def collect(self) -> list[ChipLeadTimeRecord]:
         """执行芯片交付周期采集。优先在线轮询真实分销商 API，若无 Key 则从本地 RAW 快照加载。"""
@@ -112,7 +139,8 @@ class ChipLeadTimeCollector:
         cat_averages: dict[str, float] = {}
         sku_details: dict[str, dict[str, Any]] = {}
 
-        for cat, skus in BENCHMARK_SKU_BASKET.items():
+        for cat, cat_cfg in self.categories.items():
+            skus = cat_cfg.get("skus", [])
             cat_leads: list[float] = []
             for sku in skus:
                 try:
@@ -149,9 +177,10 @@ class ChipLeadTimeCollector:
             return []
 
         # 计算加权均值
-        total_weight = sum(CATEGORY_WEIGHTS[c] for c in cat_averages)
+        weights = {c: float(self.categories.get(c, {}).get("weight", 1.0)) for c in cat_averages}
+        total_weight = sum(weights.values()) or 1.0
         avg_val = round(
-            sum(cat_averages[c] * CATEGORY_WEIGHTS[c] for c in cat_averages) / total_weight,
+            sum(cat_averages[c] * weights[c] for c in cat_averages) / total_weight,
             2,
         )
 
@@ -169,7 +198,7 @@ class ChipLeadTimeCollector:
             compute_lead_time_weeks=cat_averages.get("compute"),
             lead_time_yoy_weeks=None,
             lead_time_mom_weeks=None,
-            lead_time_status=_determine_lead_time_status(avg_val),
+            lead_time_status=_determine_lead_time_status(avg_val, self.thresholds),
             unit="weeks",
             source="Mouser/Distributor",
             source_url="https://api.mouser.com",
@@ -243,7 +272,7 @@ class ChipLeadTimeCollector:
                         compute_lead_time_weeks=cat_avg.get("compute"),
                         lead_time_yoy_weeks=None,
                         lead_time_mom_weeks=None,
-                        lead_time_status=_determine_lead_time_status(avg_val),
+                        lead_time_status=_determine_lead_time_status(avg_val, self.thresholds),
                         unit="weeks",
                         source="Mouser/Distributor",
                         source_url="https://api.mouser.com",
