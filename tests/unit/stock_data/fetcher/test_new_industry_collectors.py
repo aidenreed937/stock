@@ -770,7 +770,8 @@ def test_industry_task_bundles_expansion() -> None:
 
     # 4. 全产业大包
     all_tasks = expand_task_targets("industry", ["industry_all"])
-    assert len(all_tasks) == 16
+    assert len(all_tasks) == 17
+    assert "chip_lead_time" in all_tasks
 
 
 def test_sync_all_industry_metrics_bundle_orchestration(tmp_path: Path, monkeypatch) -> None:
@@ -802,12 +803,14 @@ def test_sync_all_industry_metrics_bundle_orchestration(tmp_path: Path, monkeypa
 
     assert "semiconductor_sales" in res
     assert "semiconductor_lead" in res
+    assert "chip_lead_time" in res
     assert "cloud_capex_quarterly" in res
     assert "consumer_electronics" in res
-    assert len(res) == 4
+    assert len(res) == 5
     assert set(executed_endpoints) == {
         "semiconductor_sales",
         "semiconductor_lead",
+        "chip_lead_time",
         "cloud_capex_quarterly",
         "consumer_electronics",
     }

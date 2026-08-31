@@ -211,6 +211,22 @@ INDUSTRY_TASK_SPECS: tuple[dict[str, object], ...] = (
             "power_plant_available_days",
         ),
     },
+    {
+        "task": "chip_lead_time",
+        "api": "chip_lead_time",
+        "dataset": "chip_lead_time",
+        "qp": "industry",
+        "frequency": "monthly",
+        "update_delay_days": 10,
+        "update_time": "18:00",
+        "primary_keys": ("report_month",),
+        "date_columns": ("trade_date", "release_date"),
+        "required_columns": (
+            "report_month",
+            "trade_date",
+            "avg_lead_time_weeks",
+        ),
+    },
 )
 
 

@@ -40,8 +40,10 @@ from stock_data.fetcher.industry.power import (
     records_to_solar_price_chain_frame,
 )
 from stock_data.fetcher.industry.semiconductor import (
+    ChipLeadTimeCollector,
     SemiconductorCollector,
     TsmcLeadCollector,
+    records_to_chip_lead_time_frame,
     records_to_semiconductor_frame,
     records_to_semiconductor_lead_frame,
 )
@@ -162,6 +164,16 @@ def execute_single_industry_task(
         return save_curated_fact(
             records_to_semiconductor_lead_frame(rec_tsmc),
             curated_path / "semiconductor_lead.parquet",
+            primary_keys=["report_month"],
+        )
+
+    if endpoint == "chip_lead_time":
+        rec_clt = ChipLeadTimeCollector(raw_dir=raw_path).collect()
+        if not rec_clt:
+            return 0
+        return save_curated_fact(
+            records_to_chip_lead_time_frame(rec_clt),
+            curated_path / "chip_lead_time.parquet",
             primary_keys=["report_month"],
         )
 

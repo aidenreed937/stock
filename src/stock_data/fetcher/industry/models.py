@@ -236,6 +236,28 @@ class SemiconductorLeadRecord:
 
 
 @dataclass(frozen=True)
+class ChipLeadTimeRecord:
+    """全球芯片交付周期 (Chip Lead Time / 货期) 月度先导指标记录。"""
+
+    report_month: str
+    trade_date: date
+    avg_lead_time_weeks: float
+    mcu_lead_time_weeks: float | None = None
+    analog_lead_time_weeks: float | None = None
+    discrete_lead_time_weeks: float | None = None
+    compute_lead_time_weeks: float | None = None
+    lead_time_yoy_weeks: float | None = None
+    lead_time_mom_weeks: float | None = None
+    lead_time_status: str = "normal"
+    unit: str = "weeks"
+    source: str = "Susquehanna/Distributor"
+    source_url: str = ""
+    release_date: date | None = None
+    data_status: str = "actual"
+    collected_at: str = ""
+
+
+@dataclass(frozen=True)
 class ChemicalMarketRecord:
     """基础化工重点大宗品供需开工率、库存与价差记录。"""
 

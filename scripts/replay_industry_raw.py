@@ -28,6 +28,10 @@ import polars as pl
 from stock_data.fetcher.industry.cloud.collector import CSP_CIK_MAP
 from stock_data.fetcher.industry.cloud.parser import extract_sec_quarterly_capex
 from stock_data.fetcher.industry.common import save_curated_fact
+from stock_data.fetcher.industry.semiconductor import (
+    ChipLeadTimeCollector,
+    records_to_chip_lead_time_frame,
+)
 from stock_data.fetcher.industry.semiconductor.china_series import (
     build_china_series,
     parse_sia_raw_dir,
@@ -346,6 +350,12 @@ def _build_metric_plan() -> dict[str, dict[str, Any]]:
             "to_frame": records_to_coal_market_frame,
             "curated": "coal_market.parquet",
             "primary_keys": ["report_date"],
+        },
+        "chip_lead_time": {
+            "loader": lambda raw_root: ChipLeadTimeCollector(raw_dir=raw_root).collect(),
+            "to_frame": records_to_chip_lead_time_frame,
+            "curated": "chip_lead_time.parquet",
+            "primary_keys": ["report_month"],
         },
         "semiconductor": {"_skip": True},  # 占位防误用 (semiconductor_sales 已覆盖)
         "semiconductor_china_series": {

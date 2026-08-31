@@ -103,6 +103,7 @@ from stock_data.fetcher.industry.metals import (
 from stock_data.fetcher.industry.models import (
     AgriculturePorkRecord,
     ChemicalMarketRecord,
+    ChipLeadTimeRecord,
     CloudCapexRecord,
     CoalMarketRecord,
     ConstructionMachineryRecord,
@@ -142,12 +143,16 @@ from stock_data.fetcher.industry.power import (
     records_to_solar_price_chain_frame,
 )
 from stock_data.fetcher.industry.semiconductor import (
+    CHIP_LEAD_TIME_SCHEMA,
     SEMICONDUCTOR_LEAD_SCHEMA,
     SEMICONDUCTOR_SALES_SCHEMA,
+    ChipLeadTimeCollector,
     SemiconductorCollector,
     TsmcLeadCollector,
+    empty_chip_lead_time,
     empty_semiconductor_lead,
     empty_semiconductor_sales,
+    records_to_chip_lead_time_frame,
     records_to_semiconductor_frame,
     records_to_semiconductor_lead_frame,
 )
@@ -161,6 +166,7 @@ from stock_data.fetcher.industry.shipping import (
 __all__ = [
     "AGRICULTURE_PORK_SCHEMA",
     "CHEMICAL_MARKET_SCHEMA",
+    "CHIP_LEAD_TIME_SCHEMA",
     "CLOUD_CAPEX_SCHEMA",
     "COAL_MARKET_SCHEMA",
     "CONSTRUCTION_MACHINERY_SCHEMA",
@@ -181,6 +187,8 @@ __all__ = [
     "ChemicalMarketRecord",
     "Chemicals100PpiHtmlParser",
     "ChemicalsCollector",
+    "ChipLeadTimeCollector",
+    "ChipLeadTimeRecord",
     "CloudCapexCollector",
     "CloudCapexRecord",
     "CoalMarketCollector",
@@ -217,6 +225,7 @@ __all__ = [
     "clean_html_text",
     "empty_agriculture_pork",
     "empty_chemical_market",
+    "empty_chip_lead_time",
     "empty_cloud_capex",
     "empty_coal_market",
     "empty_construction_machinery",
@@ -251,6 +260,7 @@ __all__ = [
     "read_raw_text",
     "records_to_agriculture_pork_frame",
     "records_to_chemical_market_frame",
+    "records_to_chip_lead_time_frame",
     "records_to_cloud_capex_frame",
     "records_to_coal_market_frame",
     "records_to_consumer_electronics_frame",
