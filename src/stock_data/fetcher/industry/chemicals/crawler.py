@@ -36,34 +36,51 @@ MDI_PPI_URL = "https://mdi.100ppi.com/"
 TIO2_PPI_URL = "https://tio2.100ppi.com/"
 
 
-def parse_mdi_reference_price(html_text: str) -> float | None:
-    """从 MDI 频道页提取最新聚合 MDI 参考价 (元/吨)。
+class Chemicals100PpiHtmlParser:
+    """生意社 MDI / 钛白粉 参考价纯解析策略。"""
 
-    快讯格式: "[ MDI ] 8月31日，聚合MDI参考价为16866.67，与8月1日(...)相比，下降了5.6%"
-    """
-    m = re.search(r"聚合MDI参考价为\s*([\d.]+)", html_text)
-    if m:
-        return round(float(m.group(1)), 2)
-    return None
+    def parse_mdi(self, html_text: str) -> float | None:
+        """从 MDI 频道页提取最新聚合 MDI 参考价 (元/吨)。"""
+        m = re.search(r"聚合MDI参考价为\s*([\d.]+)", html_text)
+        if m:
+            return round(float(m.group(1)), 2)
+        return None
+
+    def parse_tio2(self, html_text: str) -> float | None:
+        """从钛白粉频道页提取最新钛白粉参考价 (元/吨)。"""
+        m = re.search(r"钛白粉参考价为\s*([\d.]+)", html_text)
+        if m:
+            return round(float(m.group(1)), 2)
+        return None
+
+    def parse(self, html_text: str, product: str = "mdi", **kwargs: Any) -> float | None:
+        """统一解析接口。"""
+        if product == "tio2":
+            return self.parse_tio2(html_text)
+        return self.parse_mdi(html_text)
+
+
+def parse_mdi_reference_price(html_text: str) -> float | None:
+    """向后兼容的聚合 MDI 参考价提取函数 (委托 Chemicals100PpiHtmlParser)。"""
+    return Chemicals100PpiHtmlParser().parse_mdi(html_text)
 
 
 def parse_tio2_reference_price(html_text: str) -> float | None:
-    """从钛白粉频道页提取最新钛白粉参考价 (元/吨)。
-
-    快讯格式: "8月31日，钛白粉参考价为14060.00，与8月1日(15460.00)相比，下降了9.06%"
-    """
-    m = re.search(r"钛白粉参考价为\s*([\d.]+)", html_text)
-    if m:
-        return round(float(m.group(1)), 2)
-    return None
+    """向后兼容的钛白粉参考价提取函数 (委托 Chemicals100PpiHtmlParser)。"""
+    return Chemicals100PpiHtmlParser().parse_tio2(html_text)
 
 
 class ChemicalsCrawler:
-    """生意社 MDI / 钛白粉 参考价克制爬虫 (curl_cffi 浏览器指纹绕过 WAF)。"""
+    """生意社 MDI / 钛白粉 参考价克制爬虫 (支持解析策略注入)。"""
 
-    def __init__(self, raw_dir: Path | str = "data/raw/industry") -> None:
+    def __init__(
+        self,
+        raw_dir: Path | str = "data/raw/industry",
+        parser: Chemicals100PpiHtmlParser | None = None,
+    ) -> None:
         self.raw_dir = Path(raw_dir)
         self.snapshot_dir = self.raw_dir / "chemicals" / "100ppi"
+        self.parser = parser or Chemicals100PpiHtmlParser()
 
     def _get(self, url: str) -> str | None:
         try:
@@ -77,23 +94,32 @@ class ChemicalsCrawler:
             logger.warning("访问生意社页面异常 [%s]: %s", url, e)
             return None
 
-    def fetch_latest_prices(self) -> dict[str, Any] | None:
-        """抓取 MDI 与钛白粉频道最新参考价并归档页面快照。"""
+    def fetch_latest_prices(self, force: bool = False) -> dict[str, Any] | None:
+        """抓取 MDI 与钛白粉频道最新参考价并归档页面快照 (支持本地快照缓存)。"""
         self.snapshot_dir.mkdir(parents=True, exist_ok=True)
         result: dict[str, Any] = {}
 
         for key, url, parse_fn, name in (
-            ("mdi_price_cny", MDI_PPI_URL, parse_mdi_reference_price, "聚合MDI"),
-            ("tio2_price_cny", TIO2_PPI_URL, parse_tio2_reference_price, "钛白粉"),
+            ("mdi_price_cny", MDI_PPI_URL, self.parser.parse_mdi, "聚合MDI"),
+            ("tio2_price_cny", TIO2_PPI_URL, self.parser.parse_tio2, "钛白粉"),
         ):
-            html_text = self._get(url)
-            if html_text is None:
-                continue
             snapshot_file = self.snapshot_dir / f"100ppi_{key.split('_')[0]}_latest.html"
-            try:
-                snapshot_file.write_text(html_text, encoding="utf-8")
-            except Exception as e:
-                logger.debug("保存生意社快照失败: %s", e)
+            html_text = None
+            if not force and snapshot_file.exists() and snapshot_file.stat().st_size > 0:
+                try:
+                    html_text = snapshot_file.read_text(encoding="utf-8")
+                except Exception as e:
+                    logger.debug("读取本地快照失败: %s", e)
+
+            if html_text is None:
+                html_text = self._get(url)
+                if html_text is None:
+                    continue
+                try:
+                    snapshot_file.write_text(html_text, encoding="utf-8")
+                except Exception as e:
+                    logger.debug("保存生意社快照失败: %s", e)
+
             price = parse_fn(html_text)
             if price is not None:
                 result[key] = price

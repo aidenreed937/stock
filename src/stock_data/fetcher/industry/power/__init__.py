@@ -1,8 +1,7 @@
-"""光伏装机容量 (NEA) 与光伏产业链价格链条数据工程子包。"""
-
 from stock_data.fetcher.industry.power.collector import SolarCollector
 from stock_data.fetcher.industry.power.pv_price_collector import (
     InfoLinkPvPriceCrawler,
+    InfoLinkSpotPriceHtmlParser,
     PvPriceChainCollector,
     parse_infolink_spot_price_html,
 )
@@ -19,6 +18,7 @@ __all__ = [
     "SOLAR_CAPACITY_SCHEMA",
     "SOLAR_PRICE_CHAIN_SCHEMA",
     "InfoLinkPvPriceCrawler",
+    "InfoLinkSpotPriceHtmlParser",
     "PvPriceChainCollector",
     "SolarCollector",
     "empty_solar_capacity",

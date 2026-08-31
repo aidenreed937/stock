@@ -232,13 +232,13 @@ class AgriculturePorkCollector:
         self.agri_raw_dir = self.raw_dir / "agriculture"
         self.crawler = MaraPorkCrawler(raw_dir=self.raw_dir)
 
-    def collect(self) -> list[AgriculturePorkRecord]:
-        """执行生猪产能数据采集: 在线抓取农业农村部最新月度通报并落盘，以最新采集为准。"""
+    def collect(self, force: bool = False) -> list[AgriculturePorkRecord]:
+        """执行生猪产能数据采集: 抓取农业农村部最新月度通报并落盘，以最新采集为准。"""
         self.agri_raw_dir.mkdir(parents=True, exist_ok=True)
         csv_file = self.agri_raw_dir / "pork_capacity_monthly.csv"
 
-        # 在线抓取农业农村部最新生猪月度通报
-        live_data = self.crawler.fetch_latest_month()
+        # 在线/本地快照抓取农业农村部最新生猪月度通报
+        live_data = self.crawler.fetch_latest_month(force=force)
         if not live_data or not live_data.get("report_month"):
             logger.warning("在线抓取农业农村部生猪月度通报失败")
             return []

@@ -19,6 +19,7 @@ from typing import Any
 
 import requests
 
+from stock_data.fetcher.industry.base_parser import HtmlParserProtocol
 from stock_data.fetcher.industry.common import now_utc_iso
 
 logger = logging.getLogger(__name__)
@@ -33,39 +34,70 @@ CCTD_HEADERS = {
 }
 
 
-def parse_cctd_q5500(html_text: str) -> dict[str, Any] | None:
-    """从 CCTD 秦皇岛动力煤价格页提取 CCTD 综合交易 5500 平仓价。
+class CctdCoalPriceHtmlParser:
+    """CCTD 秦皇岛动力煤价格页 HTML 纯解析策略。"""
 
-    页面文本格式: "CCTD综合交易5500 ... 平仓价 本期值 731 较上期 1 日期：2026-08-28 单位：元/吨"
-    """
-    idx = html_text.find("本期值")
-    if idx < 0:
-        return None
-    segment = html_text[idx : idx + 300]
-    m_price = re.search(r"<em[^>]*>\s*([\d.]+)\s*</em>", segment)
-    if not m_price:
-        return None
-    m_mom = re.search(r"较上期.*?<em[^>]*>\s*([-\d.]+)\s*</em>", segment, re.DOTALL)
-    m_date = re.search(r"日期：(\d{4}-\d{2}-\d{2})", html_text)
-    if not m_date:
-        return None
-    return {
-        "report_date": m_date.group(1),
-        "q5500_fob_price_cny": float(m_price.group(1)),
-        "q5500_mom": float(m_mom.group(1)) if m_mom else None,
-    }
+    def parse(self, html_text: str, **kwargs: Any) -> dict[str, Any] | None:
+        """从 CCTD 秦皇岛动力煤价格页提取 CCTD 综合交易 5500 平仓价。"""
+        idx = html_text.find("本期值")
+        if idx < 0:
+            return None
+        segment = html_text[idx : idx + 300]
+        m_price = re.search(r"<em[^>]*>\s*([\d.]+)\s*</em>", segment)
+        if not m_price:
+            return None
+        m_mom = re.search(r"较上期.*?<em[^>]*>\s*([-\d.]+)\s*</em>", segment, re.DOTALL)
+        m_date = re.search(r"日期：(\d{4}-\d{2}-\d{2})", html_text)
+        if not m_date:
+            return None
+        return {
+            "report_date": m_date.group(1),
+            "q5500_fob_price_cny": float(m_price.group(1)),
+            "q5500_mom": float(m_mom.group(1)) if m_mom else None,
+        }
+
+
+def parse_cctd_q5500(html_text: str) -> dict[str, Any] | None:
+    """向后兼容的 CCTD 动力煤价格提取函数 (委托 CctdCoalPriceHtmlParser)。"""
+    return CctdCoalPriceHtmlParser().parse(html_text)
 
 
 class CoalMarketCrawler:
-    """CCTD 秦皇岛动力煤价格页克制爬虫 (周频, 单次轻量请求)。"""
+    """CCTD 秦皇岛动力煤价格页克制爬虫 (支持解析策略注入)。"""
 
-    def __init__(self, raw_dir: Path | str = "data/raw/industry") -> None:
+    def __init__(
+        self,
+        raw_dir: Path | str = "data/raw/industry",
+        parser: HtmlParserProtocol[dict[str, Any]] | None = None,
+    ) -> None:
         self.raw_dir = Path(raw_dir)
         self.snapshot_dir = self.raw_dir / "coal" / "cctd"
+        self.parser = parser or CctdCoalPriceHtmlParser()
 
-    def fetch_latest_q5500(self) -> dict[str, Any] | None:
-        """抓取 CCTD 最新一期 Q5500 平仓价并归档页面快照。"""
+    def fetch_latest_q5500(self, force: bool = False) -> dict[str, Any] | None:
+        """抓取 CCTD 最新一期 Q5500 平仓价并归档页面快照 (支持本地快照缓存)。"""
         self.snapshot_dir.mkdir(parents=True, exist_ok=True)
+        snapshot_file = self.snapshot_dir / "cctd_q5500_latest.html"
+
+        if not force and snapshot_file.exists() and snapshot_file.stat().st_size > 0:
+            try:
+                html_text = snapshot_file.read_text(encoding="utf-8")
+                parsed = self.parser.parse(html_text)
+                if parsed:
+                    parsed["source"] = "CCTD"
+                    parsed["source_url"] = CCTD_URL
+                    parsed["release_date"] = parsed["report_date"]
+                    parsed["data_status"] = "actual"
+                    parsed["collected_at"] = now_utc_iso()
+                    logger.info(
+                        "命中 CCTD 本地 RAW 快照: %s 元/吨 (%s)",
+                        parsed["q5500_fob_price_cny"],
+                        parsed["report_date"],
+                    )
+                    return parsed
+            except Exception as e:
+                logger.debug("读取 CCTD 本地快照失败，将在线重抓: %s", e)
+
         try:
             logger.info("正在抓取 CCTD 秦皇岛动力煤价格页: %s", CCTD_URL)
             resp = requests.get(CCTD_URL, headers=CCTD_HEADERS, timeout=20)
@@ -78,13 +110,12 @@ class CoalMarketCrawler:
             logger.warning("访问 CCTD 页面异常: %s", e)
             return None
 
-        snapshot_file = self.snapshot_dir / "cctd_q5500_latest.html"
         try:
             snapshot_file.write_text(html_text, encoding="utf-8")
         except Exception as e:
             logger.debug("保存 CCTD 快照失败: %s", e)
 
-        parsed = parse_cctd_q5500(html_text)
+        parsed = self.parser.parse(html_text)
         if parsed is None:
             logger.warning("CCTD 页面解析失败 (格式可能已改版)")
             return None

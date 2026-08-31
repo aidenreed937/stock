@@ -17,8 +17,11 @@ from pathlib import Path
 from typing import Any
 
 import requests
-from bs4 import BeautifulSoup
 
+from stock_data.fetcher.industry.base_parser import (
+    extract_first_float,
+    parse_html_tables_to_rows,
+)
 from stock_data.fetcher.industry.common import now_utc_iso
 
 logger = logging.getLogger(__name__)
@@ -87,132 +90,161 @@ def extract_yoy_growth(text: str) -> float | None:
     return None
 
 
-def _to_float(val: str) -> float | None:
-    cleaned = val.replace(",", "").strip()
-    try:
-        return float(cleaned)
-    except (ValueError, TypeError):
-        return None
+class IdcElectronicsHtmlParser:
+    """IDC 消费电子 Press Release HTML 纯解析策略。"""
+
+    def parse_vendor_table(self, html_text: str) -> dict[str, float]:
+        """从 IDC PR 厂商表格提取 Apple 与 Transsion 季度出货量 (百万台)。"""
+        all_rows = parse_html_tables_to_rows(html_text)
+        result: dict[str, float] = {}
+        for cells in all_rows:
+            if len(cells) < 2:
+                continue
+            row_label = cells[0].lower()
+            if "apple" in row_label:
+                val = extract_first_float(cells[1])
+                if val is not None:
+                    result["apple_shipments_million"] = val
+            elif "transsion" in row_label:
+                val = extract_first_float(cells[1])
+                if val is not None:
+                    result["transsion_shipments_million"] = val
+        return result
+
+    def parse_smartphone_pr(self, html_text: str) -> dict[str, Any] | None:
+        """解析 IDC 全球智能手机季度 PR。"""
+        quarter = extract_idc_quarter(html_text)
+        if quarter is None:
+            return None
+        result: dict[str, Any] = {
+            "report_quarter": quarter,
+            "global_smartphone_shipments_million": extract_total_million_units(html_text),
+            "smartphone_yoy_growth": extract_yoy_growth(html_text),
+        }
+        result.update(self.parse_vendor_table(html_text))
+        if result["global_smartphone_shipments_million"] is None:
+            return None
+        return result
+
+    def parse_pc_pr(self, html_text: str) -> dict[str, Any] | None:
+        """解析 IDC 全球 PC 季度 PR。"""
+        quarter = extract_idc_quarter(html_text)
+        if quarter is None:
+            return None
+        return {
+            "report_quarter": quarter,
+            "global_pc_shipments_million": extract_total_million_units(html_text),
+            "pc_yoy_growth": extract_yoy_growth(html_text),
+        }
+
+    def parse_china_pr(self, html_text: str) -> dict[str, Any] | None:
+        """解析 IDC 中国市场智能手机季度 PR。"""
+        quarter = extract_idc_quarter(html_text)
+        if quarter is None:
+            return None
+        return {
+            "report_quarter": quarter,
+            "china_smartphone_shipments_million": extract_total_million_units(html_text),
+            "smartphone_yoy_growth": extract_yoy_growth(html_text),
+        }
+
+    def parse(
+        self,
+        html_text: str,
+        pr_type: str = "smartphone_global",
+        **kwargs: Any,
+    ) -> dict[str, Any] | None:
+        """统一解析接口。"""
+        if pr_type == "pc_global":
+            return self.parse_pc_pr(html_text)
+        if pr_type == "china":
+            return self.parse_china_pr(html_text)
+        return self.parse_smartphone_pr(html_text)
 
 
 def parse_idc_vendor_table(html_text: str) -> dict[str, float]:
-    """从 IDC PR 厂商表格提取 Apple 与 Transsion 季度出货量 (百万台)。
-
-    表格列序: Company | 本期出货 | 本期份额 | 上期出货 | 上期份额 | YoY。
-    """
-    soup = BeautifulSoup(html_text, "html.parser")
-    result: dict[str, float] = {}
-    for table in soup.find_all("table"):
-        for tr in table.find_all("tr"):
-            cells = [td.get_text(strip=True) for td in tr.find_all(["td", "th"])]
-            if len(cells) < 2:
-                continue
-            row_label = cells[0]
-            if "apple" in row_label.lower():
-                val = _to_float(cells[1])
-                if val is not None:
-                    result["apple_shipments_million"] = val
-            elif "transsion" in row_label.lower():
-                val = _to_float(cells[1])
-                if val is not None:
-                    result["transsion_shipments_million"] = val
-    return result
+    """向后兼容的 IDC 厂商表格解析函数 (委托 IdcElectronicsHtmlParser)。"""
+    return IdcElectronicsHtmlParser().parse_vendor_table(html_text)
 
 
 def parse_idc_smartphone_pr(html_text: str) -> dict[str, Any] | None:
-    """解析 IDC 全球智能手机季度 PR。"""
-    quarter = extract_idc_quarter(html_text)
-    if quarter is None:
-        return None
-    result: dict[str, Any] = {
-        "report_quarter": quarter,
-        "global_smartphone_shipments_million": extract_total_million_units(html_text),
-        "smartphone_yoy_growth": extract_yoy_growth(html_text),
-    }
-    result.update(parse_idc_vendor_table(html_text))
-    if result["global_smartphone_shipments_million"] is None:
-        return None
-    return result
+    """向后兼容的 IDC 全球智能手机 PR 解析函数 (委托 IdcElectronicsHtmlParser)。"""
+    return IdcElectronicsHtmlParser().parse_smartphone_pr(html_text)
 
 
 def parse_idc_pc_pr(html_text: str) -> dict[str, Any] | None:
-    """解析 IDC 全球 PC 季度 PR。"""
-    quarter = extract_idc_quarter(html_text)
-    if quarter is None:
-        return None
-    return {
-        "report_quarter": quarter,
-        "global_pc_shipments_million": extract_total_million_units(html_text),
-        "pc_yoy_growth": extract_yoy_growth(html_text),
-    }
+    """向后兼容的 IDC 全球 PC PR 解析函数 (委托 IdcElectronicsHtmlParser)。"""
+    return IdcElectronicsHtmlParser().parse_pc_pr(html_text)
 
 
 def parse_idc_china_pr(html_text: str) -> dict[str, Any] | None:
-    """解析 IDC 中国市场智能手机季度 PR。"""
-    quarter = extract_idc_quarter(html_text)
-    if quarter is None:
-        return None
-    return {
-        "report_quarter": quarter,
-        "china_smartphone_shipments_million": extract_total_million_units(html_text),
-        "smartphone_yoy_growth": extract_yoy_growth(html_text),
-    }
+    """向后兼容的 IDC 中国市场智能手机 PR 解析函数 (委托 IdcElectronicsHtmlParser)。"""
+    return IdcElectronicsHtmlParser().parse_china_pr(html_text)
 
 
 class ConsumerElectronicsCrawler:
-    """IDC 官方 Press Release 克制爬虫 (每季度 3 个 PR, 单次轻量请求)。"""
+    """IDC 官方 Press Release 克制爬虫 (支持解析策略注入)。"""
 
-    def __init__(self, raw_dir: Path | str = "data/raw/industry") -> None:
+    def __init__(
+        self,
+        raw_dir: Path | str = "data/raw/industry",
+        parser: IdcElectronicsHtmlParser | None = None,
+    ) -> None:
         self.raw_dir = Path(raw_dir)
         self.snapshot_dir = self.raw_dir / "electronics" / "idc"
+        self.parser = parser or IdcElectronicsHtmlParser()
 
-    def fetch_latest_quarter(self) -> dict[str, Any] | None:
-        """抓取最新一期 IDC 全球手机 / PC / 中国 PR 并合并为单季度记录。"""
+    def fetch_latest_quarter(self, force: bool = False) -> dict[str, Any] | None:
+        """抓取最新一期 IDC 全球手机 / PC / 中国 PR 并合并为单季度记录 (支持本地快照缓存)。"""
         self.snapshot_dir.mkdir(parents=True, exist_ok=True)
         merged: dict[str, Any] | None = None
 
         for key, cid in IDC_PR_IDS.items():
             url = IDC_GETDOC_URL.format(cid=cid)
-            try:
-                logger.info("正在抓取 IDC Press Release: %s", url)
-                resp = requests.get(url, headers=IDC_HEADERS, timeout=15)
-                if resp.status_code != 200:
-                    logger.warning("IDC %s 返回 HTTP %d", key, resp.status_code)
-                    continue
-                resp.encoding = "utf-8"
-                html_text = resp.text
-                # 保存 RAW 原始快照
-                snapshot_file = self.snapshot_dir / f"idc_{key}_{cid}.html"
+            snapshot_file = self.snapshot_dir / f"idc_{key}_{cid}.html"
+            html_text = None
+
+            if not force and snapshot_file.exists() and snapshot_file.stat().st_size > 0:
                 try:
-                    snapshot_file.write_text(html_text, encoding="utf-8")
+                    html_text = snapshot_file.read_text(encoding="utf-8")
+                    logger.debug("命中 IDC 本地 RAW 快照: %s", snapshot_file.name)
                 except Exception as e:
-                    logger.debug("保存 IDC 快照失败: %s", e)
+                    logger.debug("读取 IDC 本地快照失败: %s", e)
 
-                if key == "smartphone_global":
-                    parsed = parse_idc_smartphone_pr(html_text)
-                elif key == "pc_global":
-                    parsed = parse_idc_pc_pr(html_text)
-                else:
-                    parsed = parse_idc_china_pr(html_text)
-
-                if not parsed:
-                    logger.warning("IDC %s PR 解析失败，跳过", key)
-                    continue
-                if merged is None:
-                    merged = dict(parsed)
-                else:
-                    if merged.get("report_quarter") != parsed.get("report_quarter"):
-                        logger.warning(
-                            "IDC PR 季度不一致 [%s vs %s]，以首次解析季度为准",
-                            merged.get("report_quarter"),
-                            parsed.get("report_quarter"),
-                        )
+            if html_text is None:
+                try:
+                    logger.info("正在抓取 IDC Press Release: %s", url)
+                    resp = requests.get(url, headers=IDC_HEADERS, timeout=15)
+                    if resp.status_code != 200:
+                        logger.warning("IDC %s 返回 HTTP %d", key, resp.status_code)
                         continue
-                    for k, v in parsed.items():
-                        if v is not None:
-                            merged[k] = v
-            except Exception as e:
-                logger.warning("抓取 IDC %s 异常: %s", key, e)
+                    resp.encoding = "utf-8"
+                    html_text = resp.text
+                    try:
+                        snapshot_file.write_text(html_text, encoding="utf-8")
+                    except Exception as e:
+                        logger.debug("保存 IDC 快照失败: %s", e)
+                except Exception as e:
+                    logger.warning("抓取 IDC %s 异常: %s", key, e)
+                    continue
+
+            parsed = self.parser.parse(html_text, pr_type=key)
+            if not parsed:
+                logger.warning("IDC %s PR 解析失败，跳过", key)
+                continue
+            if merged is None:
+                merged = dict(parsed)
+            else:
+                if merged.get("report_quarter") != parsed.get("report_quarter"):
+                    logger.warning(
+                        "IDC PR 季度不一致 [%s vs %s]，以首次解析季度为准",
+                        merged.get("report_quarter"),
+                        parsed.get("report_quarter"),
+                    )
+                    continue
+                for k, v in parsed.items():
+                    if v is not None:
+                        merged[k] = v
 
         if merged:
             merged["source"] = "IDC"

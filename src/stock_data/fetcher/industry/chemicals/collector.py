@@ -148,13 +148,13 @@ class ChemicalsCollector:
         self.chem_raw_dir = self.raw_dir / "chemicals"
         self.crawler = ChemicalsCrawler(raw_dir=self.raw_dir)
 
-    def collect(self) -> list[ChemicalMarketRecord]:
-        """执行基础化工数据采集: 在线抓取生意社参考价并落盘，以最新采集为准。"""
+    def collect(self, force: bool = False) -> list[ChemicalMarketRecord]:
+        """执行基础化工数据采集: 抓取生意社参考价并落盘，以最新采集为准。"""
         self.chem_raw_dir.mkdir(parents=True, exist_ok=True)
         csv_file = self.chem_raw_dir / "chemical_operating_spreads.csv"
 
-        # 在线抓取生意社 MDI/钛白粉参考价
-        live_data = self.crawler.fetch_latest_prices()
+        # 在线/本地快照抓取生意社 MDI/钛白粉参考价
+        live_data = self.crawler.fetch_latest_prices(force=force)
         if not live_data:
             logger.warning("在线抓取生意社参考价失败")
             return []

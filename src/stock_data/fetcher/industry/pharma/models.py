@@ -26,10 +26,10 @@ class PharmaLicenseOutRecord:
     global_rights_ratio: float | None = None
     mnc_ratio: float | None = None
     late_stage_ratio: float | None = None
-    adc_deal_count: int = 0
-    bispecific_deal_count: int = 0
-    metabolic_glp1_deal_count: int = 0
-    small_molecule_deal_count: int = 0
+    adc_asset_count: int = 0  # 当月 ADC 类型资产数 (一个 deal 可含多个资产)
+    bispecific_asset_count: int = 0
+    metabolic_glp1_asset_count: int = 0
+    small_molecule_asset_count: int = 0
     unit: str = "million_usd"
     source: str = "PharmaCube/Filings/PR"
     source_url: str = ""

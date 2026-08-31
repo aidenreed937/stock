@@ -198,8 +198,8 @@ class CoalMarketCollector:
             self.coal_raw_dir = self.raw_dir / "energy"
         self.crawler = CoalMarketCrawler(raw_dir=self.raw_dir)
 
-    def collect(self) -> list[CoalMarketRecord]:
-        """执行煤炭数据采集: 在线抓取 CCTD 最新 Q5500 平仓价并落盘，以最新采集为准。"""
+    def collect(self, force: bool = False) -> list[CoalMarketRecord]:
+        """执行煤炭数据采集: 抓取 CCTD 最新 Q5500 平仓价并落盘，以最新采集为准。"""
         self.coal_raw_dir.mkdir(parents=True, exist_ok=True)
         csv_file = self.coal_raw_dir / "coal_market_weekly.csv"
         if not csv_file.exists():
@@ -211,8 +211,8 @@ class CoalMarketCollector:
                     csv_file = cand
                     break
 
-        # 在线抓取 CCTD 最新一期 Q5500 平仓价
-        live_data = self.crawler.fetch_latest_q5500()
+        # 在线/本地快照抓取 CCTD 最新一期 Q5500 平仓价
+        live_data = self.crawler.fetch_latest_q5500(force=force)
         if not live_data or not live_data.get("report_date"):
             logger.warning("在线抓取 CCTD Q5500 平仓价失败")
             return []

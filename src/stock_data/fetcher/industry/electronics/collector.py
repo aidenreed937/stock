@@ -154,13 +154,13 @@ class ConsumerElectronicsCollector:
         self.elec_raw_dir = self.raw_dir / "electronics"
         self.crawler = ConsumerElectronicsCrawler(raw_dir=self.raw_dir)
 
-    def collect(self) -> list[ConsumerElectronicsRecord]:
-        """执行消费电子数据采集: 在线抓取最新 IDC 季度数据并落盘，以最新采集为准。"""
+    def collect(self, force: bool = False) -> list[ConsumerElectronicsRecord]:
+        """执行消费电子数据采集: 抓取最新 IDC 季度数据并落盘，以最新采集为准。"""
         self.elec_raw_dir.mkdir(parents=True, exist_ok=True)
         csv_file = self.elec_raw_dir / "electronics_shipments_quarterly.csv"
 
-        # 在线抓取最新 IDC 季度 PR
-        live_data = self.crawler.fetch_latest_quarter()
+        # 在线/本地快照抓取最新 IDC 季度 PR
+        live_data = self.crawler.fetch_latest_quarter(force=force)
         if not live_data or not live_data.get("report_quarter"):
             logger.warning("在线抓取 IDC 季度出货数据失败")
             return []

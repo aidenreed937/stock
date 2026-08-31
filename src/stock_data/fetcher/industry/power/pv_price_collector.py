@@ -9,9 +9,13 @@ from datetime import date
 from pathlib import Path
 from typing import Any
 
-from bs4 import BeautifulSoup
 from curl_cffi import requests
 
+from stock_data.fetcher.industry.base_parser import (
+    HtmlParserProtocol,
+    extract_first_float,
+    parse_html_tables_to_rows,
+)
 from stock_data.fetcher.industry.common import now_utc_iso
 from stock_data.fetcher.industry.models import SolarPriceChainRecord
 
@@ -45,65 +49,66 @@ PV_PRICE_FIELDNAMES = [
 ]
 
 
-def parse_infolink_spot_price_html(html_text: str, source_url: str = "") -> dict[str, Any] | None:
-    """从 InfoLink Consulting 官方光伏现货报价页面 HTML 中高精度抽取各环节均价与发布日期。"""
-    if "多晶硅" not in html_text and "硅片" not in html_text and "组件" not in html_text:
-        return None
+class InfoLinkSpotPriceHtmlParser:
+    """InfoLink Consulting 官方光伏现货报价页面 HTML 纯解析策略。"""
 
-    soup = BeautifulSoup(html_text, "html.parser")
+    def parse(
+        self,
+        html_text: str,
+        source_url: str = "",
+        **kwargs: Any,
+    ) -> dict[str, Any] | None:
+        """从 InfoLink 官方光伏现货报价页面 HTML 中高精度抽取各环节均价与发布日期。"""
+        if "多晶硅" not in html_text and "硅片" not in html_text and "组件" not in html_text:
+            return None
 
-    # 1. 解析日期
-    trade_d: date | None = None
-    rep_date: str | None = None
-    curr_yr = date.today().year
+        # 1. 解析日期
+        trade_d: date | None = None
+        rep_date: str | None = None
+        curr_yr = date.today().year
 
-    match_range = re.search(r"\((\d{1,2})\.(\d{1,2})-(\d{1,2})\.(\d{1,2})\)", html_text)
-    if match_range:
-        _, _, m2, d2 = [int(x) for x in match_range.groups()]
-        try:
-            trade_d = date(curr_yr, m2, d2)
-            rep_date = trade_d.isoformat()
-        except ValueError:
-            pass
-    else:
-        match_art_date = re.search(r"(20\d\d)[年\-/](\d{1,2})[月\-/](\d{1,2})", html_text)
-        if match_art_date:
-            y, m, d = [int(x) for x in match_art_date.groups()]
+        match_range = re.search(r"\((\d{1,2})\.(\d{1,2})-(\d{1,2})\.(\d{1,2})\)", html_text)
+        if match_range:
+            _, _, m2, d2 = [int(x) for x in match_range.groups()]
             try:
-                trade_d = date(y, m, d)
+                trade_d = date(curr_yr, m2, d2)
                 rep_date = trade_d.isoformat()
             except ValueError:
                 pass
+        else:
+            match_art_date = re.search(r"(20\d\d)[年\-/](\d{1,2})[月\-/](\d{1,2})", html_text)
+            if match_art_date:
+                y, m, d = [int(x) for x in match_art_date.groups()]
+                try:
+                    trade_d = date(y, m, d)
+                    rep_date = trade_d.isoformat()
+                except ValueError:
+                    pass
 
-    if trade_d is None or rep_date is None:
-        logger.warning("InfoLink 报价页未解析出有效发布日期，放弃本次抓取")
-        return None
+        if trade_d is None or rep_date is None:
+            logger.warning("InfoLink 报价页未解析出有效发布日期，放弃本次抓取")
+            return None
 
-    results: dict[str, Any] = {
-        "report_date": rep_date,
-        "trade_date": trade_d,
-        "polysilicon_price_cny_kg": None,
-        "wafer_price_cny_piece": None,
-        "cell_price_cny_watt": None,
-        "module_price_cny_watt": None,
-        "price_cycle_stage": "bottom_rebound",
-        "source": "InfoLink Consulting",
-        "source_url": source_url or INFOLINK_SPOT_PRICE_URL,
-        "data_status": "actual",
-        "collected_at": now_utc_iso(),
-    }
+        results: dict[str, Any] = {
+            "report_date": rep_date,
+            "trade_date": trade_d,
+            "polysilicon_price_cny_kg": None,
+            "wafer_price_cny_piece": None,
+            "cell_price_cny_watt": None,
+            "module_price_cny_watt": None,
+            "price_cycle_stage": "bottom_rebound",
+            "source": "InfoLink Consulting",
+            "source_url": source_url or INFOLINK_SPOT_PRICE_URL,
+            "data_status": "actual",
+            "collected_at": now_utc_iso(),
+        }
 
-    tables = soup.find_all("table")
-    for tb in tables:
-        rows = tb.find_all("tr")
-        for r in rows:
-            cells = [td.get_text().strip() for td in r.find_all(["td", "th"])]
+        all_rows = parse_html_tables_to_rows(html_text)
+        for cells in all_rows:
             if len(cells) >= 4:
                 item_name = cells[0]
-                avg_str = cells[3].replace(",", "").strip()
-                try:
-                    avg_val = float(avg_str)
-                except (ValueError, TypeError):
+                avg_val = extract_first_float(cells[3])
+                if avg_val is None:
                     continue
                 if "多晶硅" in item_name and "致密料" in item_name and "(RMB)" in item_name:
                     results["polysilicon_price_cny_kg"] = avg_val
@@ -125,15 +130,20 @@ def parse_infolink_spot_price_html(html_text: str, source_url: str = "") -> dict
                     if results["module_price_cny_watt"] is None:
                         results["module_price_cny_watt"] = avg_val
 
-    if (
-        results["polysilicon_price_cny_kg"] is None
-        and results["wafer_price_cny_piece"] is None
-        and results["cell_price_cny_watt"] is None
-        and results["module_price_cny_watt"] is None
-    ):
-        return None
+        if (
+            results["polysilicon_price_cny_kg"] is None
+            and results["wafer_price_cny_piece"] is None
+            and results["cell_price_cny_watt"] is None
+            and results["module_price_cny_watt"] is None
+        ):
+            return None
 
-    return results
+        return results
+
+
+def parse_infolink_spot_price_html(html_text: str, source_url: str = "") -> dict[str, Any] | None:
+    """从 InfoLink Consulting 官方光伏现货报价页面 HTML 中高精度抽取各环节均价 (委托 InfoLinkSpotPriceHtmlParser)。"""
+    return InfoLinkSpotPriceHtmlParser().parse(html_text, source_url=source_url)
 
 
 def load_pv_price_raw_csv(file_path: Path | str) -> list[SolarPriceChainRecord]:
@@ -277,15 +287,32 @@ def compute_pv_price_derivatives(
 
 
 class InfoLinkPvPriceCrawler:
-    """InfoLink Consulting 官方光伏现货价格周度在线爬虫。"""
+    """InfoLink Consulting 官方光伏现货价格周度在线爬虫 (支持解析策略注入)。"""
 
-    def __init__(self, raw_dir: Path | str = "data/raw/industry") -> None:
+    def __init__(
+        self,
+        raw_dir: Path | str = "data/raw/industry",
+        parser: HtmlParserProtocol[dict[str, Any]] | None = None,
+    ) -> None:
         self.raw_dir = Path(raw_dir)
         self.energy_dir = self.raw_dir / "energy"
+        self.parser = parser or InfoLinkSpotPriceHtmlParser()
 
-    def fetch_live_spot_prices(self) -> dict[str, Any] | None:
-        """从 InfoLink 官方发布页抓取最新周度现货报价。"""
+    def fetch_live_spot_prices(self, force: bool = False) -> dict[str, Any] | None:
+        """从 InfoLink 官方发布页抓取最新周度现货报价 (支持本地快照缓存)。"""
         self.energy_dir.mkdir(parents=True, exist_ok=True)
+        snapshot_file = self.energy_dir / "infolink_live_spot_price.html"
+
+        if not force and snapshot_file.exists() and snapshot_file.stat().st_size > 0:
+            try:
+                html_text = snapshot_file.read_text(encoding="utf-8")
+                parsed = self.parser.parse(html_text, source_url=INFOLINK_SPOT_PRICE_URL)
+                if parsed:
+                    logger.debug("命中 InfoLink 本地 RAW 快照: %s", parsed.get("report_date"))
+                    return parsed
+            except Exception as e:
+                logger.debug("读取 InfoLink 本地快照失败: %s", e)
+
         try:
             logger.info("正在在线抓取 InfoLink 官方光伏现货价格发布页: %s", INFOLINK_SPOT_PRICE_URL)
             resp = requests.get(
@@ -299,9 +326,8 @@ class InfoLinkPvPriceCrawler:
                 return None
 
             html_text = resp.text
-            parsed = parse_infolink_spot_price_html(html_text, INFOLINK_SPOT_PRICE_URL)
+            parsed = self.parser.parse(html_text, source_url=INFOLINK_SPOT_PRICE_URL)
             if parsed:
-                snapshot_file = self.energy_dir / "infolink_live_spot_price.html"
                 try:
                     snapshot_file.write_text(html_text, encoding="utf-8")
                 except Exception as e:
@@ -314,23 +340,25 @@ class InfoLinkPvPriceCrawler:
 
 
 class PvPriceChainCollector:
-    """光伏产业链各环节周度真实价格与拐点采集适配器。"""
+    """光伏产业链各环节周度真实价格与拐点采集适配器 (支持解析策略注入)。"""
 
     def __init__(
         self,
         raw_dir: Path | str = "data/raw/industry",
+        crawler: InfoLinkPvPriceCrawler | None = None,
+        parser: HtmlParserProtocol[dict[str, Any]] | None = None,
     ) -> None:
         self.raw_dir = Path(raw_dir)
         self.energy_raw_dir = self.raw_dir / "energy"
-        self.crawler = InfoLinkPvPriceCrawler(raw_dir=self.raw_dir)
+        self.crawler = crawler or InfoLinkPvPriceCrawler(raw_dir=self.raw_dir, parser=parser)
 
-    def collect(self) -> list[SolarPriceChainRecord]:
-        """执行光伏价格链条采集: 在线抓取 InfoLink 最新周度价格并落盘，以最新采集为准。"""
+    def collect(self, force: bool = False) -> list[SolarPriceChainRecord]:
+        """执行光伏价格链条采集: 抓取 InfoLink 最新周度价格并落盘，以最新采集为准。"""
         self.energy_raw_dir.mkdir(parents=True, exist_ok=True)
         csv_file = self.energy_raw_dir / "pv_price_chain_weekly.csv"
 
-        # 在线抓取 InfoLink 最新周度现货价格
-        live_data = self.crawler.fetch_live_spot_prices()
+        # 在线/本地快照抓取 InfoLink 最新周度现货价格
+        live_data = self.crawler.fetch_live_spot_prices(force=force)
         if not live_data or not live_data.get("report_date"):
             logger.warning("在线抓取 InfoLink 光伏现货价格失败")
             return []

@@ -122,7 +122,7 @@ def test_pharma_bd_collector_and_aggregation(tmp_path: Path, monkeypatch) -> Non
     assert "upfront_cash_million_usd" in df_curated.columns
     assert "upfront_3mma" in df_curated.columns
     assert "yoy_growth_3mma" in df_curated.columns
-    assert "adc_deal_count" in df_curated.columns
+    assert "adc_asset_count" in df_curated.columns
 
     # 实体表落盘检查
     assert (processed_dir / "pharma_bd_deals.parquet").exists()

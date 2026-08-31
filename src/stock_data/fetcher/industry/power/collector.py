@@ -36,53 +36,81 @@ class SolarCollector:
             self.nea_dir = self.raw_dir / "energy" / "cn_nea"
         self.crawler = NeaBulletinCrawler(raw_dir=self.raw_dir)
 
-    def collect(self) -> list[SolarCapacityRecord]:
+    def collect(self, force: bool = False) -> list[SolarCapacityRecord]:
         """执行光伏装机数据采集: 在线抓取国家能源局通报并落盘，以最新采集为准。"""
         self.nea_dir.mkdir(parents=True, exist_ok=True)
         csv_file = self.nea_dir / "solar_capacity.csv"
 
+        existing_records = self.load_from_raw_csv(csv_file)
+        existing_by_month = {r.report_month: r for r in existing_records}
+
+        if not force and existing_records:
+            return existing_records
+
         # 在线抓取国家能源局官网通报
         bulletins = self.crawler.fetch_latest_bulletins()
-        if not bulletins:
+        if not bulletins and not existing_records:
             logger.warning("在线抓取国家能源局光伏装机通报失败")
             return []
 
-        # 按月份排序并计算差分单月新增
-        months_sorted = sorted(bulletins.keys())
-        records: list[SolarCapacityRecord] = []
         now_iso = now_utc_iso()
+        for m_str, info in bulletins.items():
+            cum_gw = info.get("cumulative_gw")
+            if cum_gw is None:
+                continue
+            yr, mo = parse_month_string(m_str)
+            t_date = get_month_end_date(yr, mo)
+            rel_d = date.fromisoformat(info["release_date"]) if info.get("release_date") else None
+            existing_by_month[m_str] = SolarCapacityRecord(
+                report_month=m_str,
+                trade_date=t_date,
+                monthly_new_capacity_gw=0.0,
+                cumulative_capacity_gw=float(cum_gw),
+                yoy_growth=info.get("yoy_growth"),
+                unit="gw",
+                source="NEA",
+                source_url=info.get("url") or "http://www.nea.gov.cn/",
+                release_date=rel_d,
+                data_status="actual",
+                collected_at=info.get("collected_at") or now_iso,
+            )
+
+        if not existing_by_month:
+            return []
+
+        # 按月份排序并重新计算差分单月新增
+        months_sorted = sorted(existing_by_month.keys())
+        records: list[SolarCapacityRecord] = []
         prev_cum: float | None = None
 
         for m_str in months_sorted:
-            info = bulletins[m_str]
-            cum_gw = float(info["cumulative_gw"])
+            r = existing_by_month[m_str]
+            cum_gw = r.cumulative_capacity_gw
             yr, mo = parse_month_string(m_str)
-            t_date = get_month_end_date(yr, mo)
 
-            # 当月新增装机差分 (1月为当年新增，其余月为本月累计 - 上月累计)
-            if mo == 1 or prev_cum is None:
-                new_gw = cum_gw if cum_gw < 50 else round(cum_gw * 0.1, 2)  # 若仅有累计且无基期
+            if cum_gw is not None:
+                if mo == 1 or prev_cum is None:
+                    new_gw = cum_gw if cum_gw < 50 else round(cum_gw * 0.1, 2)
+                else:
+                    diff = cum_gw - prev_cum
+                    new_gw = round(diff, 2) if diff > 0 else 0.0
+                prev_cum = cum_gw
             else:
-                diff = cum_gw - prev_cum
-                new_gw = round(diff, 2) if diff > 0 else 0.0
-
-            prev_cum = cum_gw
+                new_gw = r.monthly_new_capacity_gw
 
             records.append(
                 SolarCapacityRecord(
-                    report_month=m_str,
-                    trade_date=t_date,
+                    report_month=r.report_month,
+                    trade_date=r.trade_date,
                     monthly_new_capacity_gw=new_gw,
                     cumulative_capacity_gw=cum_gw,
-                    yoy_growth=info.get("yoy_growth"),
-                    unit="gw",
-                    source="NEA",
-                    source_url=info.get("url") or "http://www.nea.gov.cn/",
-                    release_date=date.fromisoformat(info["release_date"])
-                    if info.get("release_date")
-                    else None,
-                    data_status="actual",
-                    collected_at=info.get("collected_at") or now_iso,
+                    yoy_growth=r.yoy_growth,
+                    unit=r.unit,
+                    source=r.source,
+                    source_url=r.source_url,
+                    release_date=r.release_date,
+                    data_status=r.data_status,
+                    collected_at=r.collected_at,
                 )
             )
 
