@@ -155,10 +155,15 @@ def _run_sync_task(task: SyncTaskItem, force_refresh: bool) -> SyncExecutionResu
     t0 = time.perf_counter()
     try:
         if task.data_source == "industry":
-            from stock_data.fetcher.industry.pipeline import sync_all_industry_metrics
+            from stock_data.fetcher.industry.pipeline import execute_single_industry_task
 
-            res_dict = sync_all_industry_metrics(metrics=[task.endpoint])
-            row_count = res_dict.get(task.endpoint, 0)
+            refresh = force_refresh or task.refresh_raw_cache
+            row_count = execute_single_industry_task(
+                endpoint=task.endpoint,
+                start_date=task.start_date,
+                end_date=task.end_date,
+                force_refresh=refresh,
+            )
             dur = round(time.perf_counter() - t0, 2)
             return SyncExecutionResult(
                 data_source=task.data_source,
@@ -172,9 +177,9 @@ def _run_sync_task(task: SyncTaskItem, force_refresh: bool) -> SyncExecutionResu
                     if row_count > 0
                     else empty_result_status(task.data_source, task.endpoint)
                 ),
-                error=None
-                if row_count > 0
-                else empty_result_reason(task.data_source, task.endpoint),
+                error=(
+                    None if row_count > 0 else empty_result_reason(task.data_source, task.endpoint)
+                ),
                 symbol=task.symbol,
             )
 

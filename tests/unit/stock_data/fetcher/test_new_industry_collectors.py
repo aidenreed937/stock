@@ -338,7 +338,7 @@ def test_sync_all_industry_metrics_with_new_metrics(tmp_path: Path, monkeypatch)
     monkeypatch.setattr(
         TsmcMonthlyRevenueCrawler,
         "fetch_latest_revenue",
-        lambda self: {
+        lambda self, *args, **kwargs: {
             "report_month": "2026-06",
             "release_date": "2026-07-10",
             "tsmc_revenue_ntd_million": 442680.0,
@@ -353,7 +353,7 @@ def test_sync_all_industry_metrics_with_new_metrics(tmp_path: Path, monkeypatch)
     monkeypatch.setattr(
         ChemicalsCrawler,
         "fetch_latest_prices",
-        lambda self: {
+        lambda self, *args, **kwargs: {
             "mdi_price_cny": 9600.0,
             "tio2_price_cny": 3950.0,
             "source": "100ppi",
@@ -366,7 +366,7 @@ def test_sync_all_industry_metrics_with_new_metrics(tmp_path: Path, monkeypatch)
     monkeypatch.setattr(
         InfoLinkPvPriceCrawler,
         "fetch_live_spot_prices",
-        lambda self: {
+        lambda self, *args, **kwargs: {
             "report_date": "2026-08-26",
             "trade_date": date(2026, 8, 26),
             "polysilicon_price_cny_kg": 40.0,
@@ -382,7 +382,7 @@ def test_sync_all_industry_metrics_with_new_metrics(tmp_path: Path, monkeypatch)
     monkeypatch.setattr(
         MaraPorkCrawler,
         "fetch_latest_month",
-        lambda self: {
+        lambda self, *args, **kwargs: {
             "report_month": "2026-06",
             "sow_stock_million_heads": 40.5,
             "pig_price_cny_per_kg": 18.2,
@@ -398,7 +398,7 @@ def test_sync_all_industry_metrics_with_new_metrics(tmp_path: Path, monkeypatch)
     monkeypatch.setattr(
         LiquorPriceCrawler,
         "fetch_latest_liquor_price",
-        lambda self: {
+        lambda self, *args, **kwargs: {
             "report_date": "2026-08-28",
             "trade_date": date(2026, 8, 28),
             "moutai_loose_price_cny": 2310.0,
@@ -414,7 +414,7 @@ def test_sync_all_industry_metrics_with_new_metrics(tmp_path: Path, monkeypatch)
     monkeypatch.setattr(
         ConsumerElectronicsCrawler,
         "fetch_latest_quarter",
-        lambda self: {
+        lambda self, *args, **kwargs: {
             "report_quarter": "2026-Q2",
             "global_smartphone_shipments_million": 330.0,
             "china_smartphone_shipments_million": 79.5,
@@ -433,7 +433,7 @@ def test_sync_all_industry_metrics_with_new_metrics(tmp_path: Path, monkeypatch)
     monkeypatch.setattr(
         CoalMarketCrawler,
         "fetch_latest_q5500",
-        lambda self: {
+        lambda self, *args, **kwargs: {
             "report_date": "2026-08-28",
             "q5500_fob_price_cny": 840.0,
             "source": "CCTD",
@@ -454,10 +454,21 @@ def test_sync_all_industry_metrics_with_new_metrics(tmp_path: Path, monkeypatch)
         "coal_market",
     ]
 
+    # 1. 默认增量模式：未到发布窗口时被 DailySyncEngine 智能跳过
+    res_skipped = sync_all_industry_metrics(
+        raw_dir=raw_dir,
+        curated_dir=curated_dir,
+        metrics=new_metrics,
+        force=False,
+    )
+    assert isinstance(res_skipped, dict)
+
+    # 2. 强制同步模式：执行全部 Task 并落盘
     res = sync_all_industry_metrics(
         raw_dir=raw_dir,
         curated_dir=curated_dir,
         metrics=new_metrics,
+        force=True,
     )
 
     for metric in new_metrics:
@@ -574,3 +585,229 @@ def test_parse_idc_china_pr() -> None:
     assert res["report_quarter"] == "2025-Q3"
     assert res["china_smartphone_shipments_million"] == 68.4
     assert res["smartphone_yoy_growth"] == -0.006
+
+
+def test_html_parser_protocol_conformance_and_injection(tmp_path: Path) -> None:
+    """验证所有解析器策略类均符合 HtmlParserProtocol 协议，且各 Crawler 均支持解析器注入。"""
+    from stock_data.fetcher.industry import (
+        CctdCoalPriceHtmlParser,
+        Chemicals100PpiHtmlParser,
+        HtmlParserProtocol,
+        IdcElectronicsHtmlParser,
+        InfoLinkPvPriceCrawler,
+        InfoLinkSpotPriceHtmlParser,
+        MaraPorkHtmlParser,
+    )
+    from stock_data.fetcher.industry.agriculture.crawler import MaraPorkCrawler
+    from stock_data.fetcher.industry.chemicals.crawler import ChemicalsCrawler
+    from stock_data.fetcher.industry.coal.crawler import CoalMarketCrawler
+    from stock_data.fetcher.industry.electronics.crawler import ConsumerElectronicsCrawler
+
+    # 1. 协议实现检查
+    p1 = MaraPorkHtmlParser()
+    p2 = InfoLinkSpotPriceHtmlParser()
+    p3 = CctdCoalPriceHtmlParser()
+    p4 = Chemicals100PpiHtmlParser()
+    p5 = IdcElectronicsHtmlParser()
+
+    assert isinstance(p1, HtmlParserProtocol)
+    assert isinstance(p2, HtmlParserProtocol)
+    assert isinstance(p3, HtmlParserProtocol)
+    assert isinstance(p4, HtmlParserProtocol)
+    assert isinstance(p5, HtmlParserProtocol)
+
+    # 2. 注入自定义测试解析器
+    class MockCustomParser:
+        def parse(self, html_text: str, **kwargs) -> dict:
+            return {"mock_key": "injected_value"}
+
+    mock_parser = MockCustomParser()
+    crawler_mara = MaraPorkCrawler(raw_dir=tmp_path, parser=mock_parser)
+    assert crawler_mara.parser is mock_parser
+
+    crawler_infolink = InfoLinkPvPriceCrawler(raw_dir=tmp_path, parser=mock_parser)
+    assert crawler_infolink.parser is mock_parser
+
+    crawler_coal = CoalMarketCrawler(raw_dir=tmp_path, parser=mock_parser)
+    assert crawler_coal.parser is mock_parser
+
+    crawler_chem = ChemicalsCrawler(raw_dir=tmp_path, parser=p4)
+    assert crawler_chem.parser is p4
+
+    crawler_elec = ConsumerElectronicsCrawler(raw_dir=tmp_path, parser=p5)
+    assert crawler_elec.parser is p5
+
+
+def test_comtrade_incremental_period_calculation() -> None:
+    """验证 ComtradeCollector._calculate_periods 在增量与默认模式下的计算。"""
+    from stock_data.fetcher.industry.customs.collector import _calculate_periods
+
+    # 1. 增量区间模式
+    p1 = _calculate_periods(start_month="2026-03", end_month="2026-06")
+    assert p1 == ["202603", "202604", "202605", "202606"]
+
+    # 2. 跨年增量区间模式
+    p2 = _calculate_periods(start_month="202511", end_month="202602")
+    assert p2 == ["202511", "202512", "202601", "202602"]
+
+    # 3. 默认 lookback 模式
+    p3 = _calculate_periods(lookback_months=3)
+    assert len(p3) == 3
+
+
+def test_crawler_cache_hit_without_network(tmp_path: Path) -> None:
+    """验证爬虫类源在本地 RAW 快照已存在时命中缓存，不发起任何网络请求。"""
+    from stock_data.fetcher.industry.coal.crawler import CoalMarketCrawler
+    from stock_data.fetcher.industry.power.pv_price_collector import InfoLinkPvPriceCrawler
+
+    # 1. CoalMarketCrawler 命中快照
+    coal_dir = tmp_path / "coal" / "cctd"
+    coal_dir.mkdir(parents=True, exist_ok=True)
+    (coal_dir / "cctd_q5500_latest.html").write_text(
+        "<table><tr><td>2026-08-15</td><td>5500大卡动力煤</td><td>850.0</td></tr></table>",
+        encoding="utf-8",
+    )
+
+    class MockCoalParser:
+        def parse(self, html_text: str, **kwargs) -> dict:
+            return {"report_date": "2026-08-15", "q5500_fob_price_cny": 850.0}
+
+    coal_crawler = CoalMarketCrawler(raw_dir=tmp_path, parser=MockCoalParser())
+    cached_coal = coal_crawler.fetch_latest_q5500(force=False)
+    assert cached_coal is not None
+    assert cached_coal["q5500_fob_price_cny"] == 850.0
+
+    # 2. InfoLinkPvPriceCrawler 命中快照
+    energy_dir = tmp_path / "energy"
+    energy_dir.mkdir(parents=True, exist_ok=True)
+    (energy_dir / "infolink_live_spot_price.html").write_text(
+        "<html><body>Spot Price</body></html>",
+        encoding="utf-8",
+    )
+
+    class MockPvParser:
+        def parse(self, html_text: str, **kwargs) -> dict:
+            return {
+                "report_date": "2026-08-20",
+                "trade_date": date(2026, 8, 20),
+                "polysilicon_price_cny_kg": 40.0,
+                "wafer_price_cny_piece": 1.2,
+                "cell_price_cny_watt": 0.3,
+                "module_price_cny_watt": 0.7,
+            }
+
+    pv_crawler = InfoLinkPvPriceCrawler(raw_dir=tmp_path, parser=MockPvParser())
+    cached_pv = pv_crawler.fetch_live_spot_prices(force=False)
+    assert cached_pv is not None
+    assert cached_pv["polysilicon_price_cny_kg"] == 40.0
+
+
+def test_execute_single_industry_task_dispatcher(tmp_path: Path, monkeypatch) -> None:
+    """验证 execute_single_industry_task 正确分发到对应 Collector。"""
+    from stock_data.fetcher.industry import (
+        CoalMarketRecord,
+        execute_single_industry_task,
+    )
+    from stock_data.fetcher.industry.coal.collector import CoalMarketCollector
+
+    # Mock coal collector
+    def mock_collect(self, force: bool = False):
+        return [
+            CoalMarketRecord(
+                report_date="2026-08-20",
+                trade_date=date(2026, 8, 20),
+                q5500_fob_price_cny=850.0,
+                coking_coal_price_cny=None,
+                power_plant_inventory_million_ton=None,
+                power_plant_daily_burn_ten_thousand_ton=None,
+                power_plant_available_days=None,
+                qinhuangdao_inventory_million_ton=None,
+                q5500_price_yoy=None,
+                q5500_price_mom=None,
+                unit="cny_per_ton",
+                source="CCTD",
+                source_url="",
+                release_date="2026-08-20",
+                data_status="actual",
+                collected_at="2026-08-20T00:00:00Z",
+            )
+        ]
+
+    monkeypatch.setattr(CoalMarketCollector, "collect", mock_collect)
+    count = execute_single_industry_task(
+        endpoint="coal_market",
+        raw_dir=tmp_path / "raw",
+        curated_dir=tmp_path / "curated",
+    )
+    assert count == 1
+    assert (tmp_path / "curated" / "coal_market.parquet").exists()
+
+
+def test_industry_task_bundles_expansion() -> None:
+    """验证产业任务包在 task_bundles 模块中的展开映射。"""
+    from stock_data.core.task_bundles import expand_task_targets
+
+    # 1. 科技硬件包
+    tech_tasks = expand_task_targets("industry", ["industry_tech"])
+    assert "semiconductor_sales" in tech_tasks
+    assert "semiconductor_lead" in tech_tasks
+    assert "cloud_capex_quarterly" in tech_tasks
+    assert "consumer_electronics" in tech_tasks
+
+    # 2. 周期能源包
+    energy_tasks = expand_task_targets("industry", ["industry_energy"])
+    assert "solar_capacity" in energy_tasks
+    assert "solar_price_chain" in energy_tasks
+    assert "non_ferrous_metals" in energy_tasks
+    assert "coal_market" in energy_tasks
+    assert "chemical_market" in energy_tasks
+
+    # 3. 消费医药包
+    consume_tasks = expand_task_targets("industry", ["industry_consume"])
+    assert "agriculture_pork" in consume_tasks
+    assert "liquor_wholesale" in consume_tasks
+    assert "pharma_license_out" in consume_tasks
+
+    # 4. 全产业大包
+    all_tasks = expand_task_targets("industry", ["industry_all"])
+    assert len(all_tasks) == 16
+
+
+def test_sync_all_industry_metrics_bundle_orchestration(tmp_path: Path, monkeypatch) -> None:
+    """验证 sync_all_industry_metrics 支持按 bundle 编排并使用指定线程池并发执行。"""
+    import stock_data.fetcher.industry.pipeline as pipeline_mod
+
+    executed_endpoints: list[str] = []
+
+    def mock_exec(
+        endpoint,
+        start_date=None,
+        end_date=None,
+        force_refresh=False,
+        raw_dir=None,
+        curated_dir=None,
+    ):
+        executed_endpoints.append(endpoint)
+        return 10
+
+    monkeypatch.setattr(pipeline_mod, "execute_single_industry_task", mock_exec)
+
+    res = sync_all_industry_metrics(
+        raw_dir=tmp_path / "raw",
+        curated_dir=tmp_path / "curated",
+        bundle="industry_tech",
+        force=True,
+        max_workers=4,
+    )
+
+    assert "semiconductor_sales" in res
+    assert "semiconductor_lead" in res
+    assert "cloud_capex_quarterly" in res
+    assert "consumer_electronics" in res
+    assert len(res) == 4
+    assert set(executed_endpoints) == {
+        "semiconductor_sales",
+        "semiconductor_lead",
+        "cloud_capex_quarterly",
+        "consumer_electronics",
+    }

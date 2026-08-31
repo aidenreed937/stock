@@ -476,7 +476,7 @@ def test_task_bundles_cover_registered_tasks_except_explicit_aggregate_routes() 
             "cashflow",
             "institutional_holders",
         },
-        "fred": {"GDP", "T10Y2Y", "WALCL"},
+        "fred": {"GDP", "T10Y2Y", "WALCL", "DEXTAUS"},
     }
     for provider, unbundled in expected_unbundled.items():
         bundled = {

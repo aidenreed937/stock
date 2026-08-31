@@ -154,6 +154,7 @@ class ConcurrencyConfig(BaseModel):
     alphavantage_max_workers: int = Field(
         default=1, gt=0, description="Alpha Vantage 抓取最大并发线程数"
     )
+    industry_max_workers: int = Field(default=4, gt=0, description="垂直产业抓取最大并发线程数")
     default_max_workers: int = Field(default=4, gt=0, description="默认通用抓取最大并发线程数")
 
 

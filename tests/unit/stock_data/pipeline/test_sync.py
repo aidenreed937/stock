@@ -978,8 +978,8 @@ def test_industry_sync_execution() -> None:
         symbol="",
     )
     with patch(
-        "stock_data.fetcher.industry.pipeline.sync_all_industry_metrics",
-        return_value={"construction_machinery": 103},
+        "stock_data.fetcher.industry.pipeline.execute_single_industry_task",
+        return_value=103,
     ):
         results = engine.execute_plan([task], force_refresh=True)
 

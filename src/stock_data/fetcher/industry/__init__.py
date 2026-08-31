@@ -15,7 +15,9 @@
 from stock_data.fetcher.industry.agriculture import (
     AGRICULTURE_PORK_SCHEMA,
     AgriculturePorkCollector,
+    MaraPorkHtmlParser,
     empty_agriculture_pork,
+    parse_mara_monthly_table,
     records_to_agriculture_pork_frame,
 )
 from stock_data.fetcher.industry.automotive import (
@@ -24,10 +26,19 @@ from stock_data.fetcher.industry.automotive import (
     empty_nev_monthly,
     records_to_nev_frame,
 )
+from stock_data.fetcher.industry.base_parser import (
+    HtmlParserProtocol,
+    clean_html_text,
+    extract_first_float,
+    parse_html_tables_to_rows,
+)
 from stock_data.fetcher.industry.chemicals import (
     CHEMICAL_MARKET_SCHEMA,
+    Chemicals100PpiHtmlParser,
     ChemicalsCollector,
     empty_chemical_market,
+    parse_mdi_reference_price,
+    parse_tio2_reference_price,
     records_to_chemical_market_frame,
 )
 from stock_data.fetcher.industry.cloud import (
@@ -38,8 +49,10 @@ from stock_data.fetcher.industry.cloud import (
 )
 from stock_data.fetcher.industry.coal import (
     COAL_MARKET_SCHEMA,
+    CctdCoalPriceHtmlParser,
     CoalMarketCollector,
     empty_coal_market,
+    parse_cctd_q5500,
     records_to_coal_market_frame,
 )
 from stock_data.fetcher.industry.common import (
@@ -67,7 +80,12 @@ from stock_data.fetcher.industry.customs import (
 from stock_data.fetcher.industry.electronics import (
     CONSUMER_ELECTRONICS_SCHEMA,
     ConsumerElectronicsCollector,
+    IdcElectronicsHtmlParser,
     empty_consumer_electronics,
+    parse_idc_china_pr,
+    parse_idc_pc_pr,
+    parse_idc_smartphone_pr,
+    parse_idc_vendor_table,
     records_to_consumer_electronics_frame,
 )
 from stock_data.fetcher.industry.machinery import (
@@ -106,14 +124,20 @@ from stock_data.fetcher.industry.pharma import (
     empty_pharma_license_out,
     records_to_pharma_bd_frame,
 )
-from stock_data.fetcher.industry.pipeline import sync_all_industry_metrics
+from stock_data.fetcher.industry.pipeline import (
+    execute_single_industry_task,
+    sync_all_industry_metrics,
+)
 from stock_data.fetcher.industry.power import (
     SOLAR_CAPACITY_SCHEMA,
     SOLAR_PRICE_CHAIN_SCHEMA,
+    InfoLinkPvPriceCrawler,
+    InfoLinkSpotPriceHtmlParser,
     PvPriceChainCollector,
     SolarCollector,
     empty_solar_capacity,
     empty_solar_price_chain,
+    parse_infolink_spot_price_html,
     records_to_solar_frame,
     records_to_solar_price_chain_frame,
 )
@@ -153,7 +177,9 @@ __all__ = [
     "SOLAR_PRICE_CHAIN_SCHEMA",
     "AgriculturePorkCollector",
     "AgriculturePorkRecord",
+    "CctdCoalPriceHtmlParser",
     "ChemicalMarketRecord",
+    "Chemicals100PpiHtmlParser",
     "ChemicalsCollector",
     "CloudCapexCollector",
     "CloudCapexRecord",
@@ -164,9 +190,14 @@ __all__ = [
     "ConsumerElectronicsCollector",
     "ConsumerElectronicsRecord",
     "CustomsTradeRecord",
+    "HtmlParserProtocol",
+    "IdcElectronicsHtmlParser",
+    "InfoLinkPvPriceCrawler",
+    "InfoLinkSpotPriceHtmlParser",
     "LiquorWholesaleCollector",
     "LiquorWholesaleRecord",
     "MachineryCollector",
+    "MaraPorkHtmlParser",
     "NevCollector",
     "NevMonthlyRecord",
     "NonFerrousCollector",
@@ -183,6 +214,7 @@ __all__ = [
     "SolarCollector",
     "SolarPriceChainRecord",
     "TsmcLeadCollector",
+    "clean_html_text",
     "empty_agriculture_pork",
     "empty_chemical_market",
     "empty_cloud_capex",
@@ -199,11 +231,23 @@ __all__ = [
     "empty_shipping_indices",
     "empty_solar_capacity",
     "empty_solar_price_chain",
+    "execute_single_industry_task",
+    "extract_first_float",
     "get_hs6_query_list",
     "get_month_end_date",
     "load_hs_catalog",
+    "parse_cctd_q5500",
     "parse_comtrade_items",
+    "parse_html_tables_to_rows",
+    "parse_idc_china_pr",
+    "parse_idc_pc_pr",
+    "parse_idc_smartphone_pr",
+    "parse_idc_vendor_table",
+    "parse_infolink_spot_price_html",
+    "parse_mara_monthly_table",
+    "parse_mdi_reference_price",
     "parse_raw_csv_rows",
+    "parse_tio2_reference_price",
     "read_raw_text",
     "records_to_agriculture_pork_frame",
     "records_to_chemical_market_frame",

@@ -29,6 +29,37 @@ _DEFAULT_CATALOG_CSV = "config/data/customs/hs_codes_catalog.csv"
 _DEFAULT_CURATED_PARQUET = "data/curated/industry/customs_trade.parquet"
 
 
+def _calculate_periods(
+    lookback_months: int = 12,
+    start_month: str | None = None,
+    end_month: str | None = None,
+) -> list[str]:
+    """计算 UN Comtrade 查询月份列表。"""
+    periods: list[str] = []
+    if start_month:
+        s_clean = start_month.replace("-", "").strip()
+        e_clean = (end_month or date.today().strftime("%Y%m")).replace("-", "").strip()
+        sy, sm = int(s_clean[:4]), int(s_clean[4:6])
+        ey, em = int(e_clean[:4]), int(e_clean[4:6])
+        cur_y, cur_m = sy, sm
+        while (cur_y, cur_m) <= (ey, em):
+            periods.append(f"{cur_y}{cur_m:02d}")
+            cur_m += 1
+            if cur_m > 12:
+                cur_m = 1
+                cur_y += 1
+    else:
+        today = date.today()
+        for i in range(lookback_months):
+            year = today.year
+            month = today.month - i
+            while month <= 0:
+                year -= 1
+                month += 12
+            periods.append(f"{year}{month:02d}")
+    return periods
+
+
 class ComtradeCollector:
     """UN Comtrade 官方贸易数据采集适配器 (支持 gzip 紧凑压缩快照)。"""
 
@@ -51,24 +82,21 @@ class ComtradeCollector:
         """从字典表中提取去重后的 6 位国际通用 HS 编码列表。"""
         return get_hs6_query_list(self.catalog_path)
 
-    def collect(self, lookback_months: int = 12) -> list[CustomsTradeRecord]:
-        """执行数据采集: 在线拉取 UN Comtrade 最近 N 个月数据并落盘，以最新采集为准。"""
+    def collect(
+        self,
+        lookback_months: int = 12,
+        start_month: str | None = None,
+        end_month: str | None = None,
+    ) -> list[CustomsTradeRecord]:
+        """执行数据采集: 在线拉取 UN Comtrade 数据并落盘，以最新采集为准。"""
         self.raw_dir.mkdir(parents=True, exist_ok=True)
-
         if not self.subscription_key:
             logger.warning("未配置 COMTRADE_SUBSCRIPTION_KEY，无法在线拉取 UN Comtrade 数据")
             return []
 
-        # 在线拉取最近 N 个月 (UN Comtrade API 按月查询)
-        periods: list[str] = []
-        today = date.today()
-        for i in range(lookback_months):
-            year = today.year
-            month = today.month - i
-            while month <= 0:
-                year -= 1
-                month += 12
-            periods.append(f"{year}{month:02d}")
+        periods = _calculate_periods(lookback_months, start_month, end_month)
+        if not periods:
+            return []
 
         api_records = self.fetch_api(period=periods)
         if not api_records:
