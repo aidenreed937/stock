@@ -121,3 +121,62 @@ def test_industry_customs_trade_dedup_keeps_detail_rows(tmp_path) -> None:
     catalog = DataCatalog(data_source="industry", storage_dir=tmp_path)
     df = catalog.load_dataset("customs_trade")
     assert len(df) == 3
+
+
+def test_industry_subdir_dataset_aliases() -> None:
+    """energy/ 子目录内文件可返回独立寻址别名, 普通数据集不受影响。"""
+    assert StorageCompat.subdir_dataset_aliases("global_power_generation", "industry") == (
+        "energy/global_power_generation",
+    )
+    assert StorageCompat.subdir_dataset_aliases("energy_cross_source_audit", "industry") == (
+        "energy/energy_cross_source_audit",
+    )
+    assert StorageCompat.subdir_dataset_aliases("semiconductor_sales", "industry") == ()
+    assert StorageCompat.subdir_dataset_aliases("global_power_generation", "tushare") == ()
+
+
+def test_industry_energy_subdir_addressing(tmp_path) -> None:
+    """energy/ 子目录文件可按文件名独立加载, 同时保留 "energy" 聚合数据集。"""
+    partition = tmp_path / "industry" / "energy"
+    partition.mkdir(parents=True, exist_ok=True)
+    pl.DataFrame(
+        {
+            "geo_code": ["CN", "US"],
+            "trade_date": [date(2025, 1, 1), date(2025, 1, 2)],
+            "technology": ["solar", "wind"],
+            "generation_twh": [1.0, 2.0],
+        }
+    ).write_parquet(partition / "global_power_generation.parquet")
+    pl.DataFrame(
+        {
+            "geo_code": ["CN", "US"],
+            "year": [2024, 2024],
+            "technology": ["solar", "wind"],
+            "capacity_gw": [100.0, 200.0],
+        }
+    ).write_parquet(partition / "global_renewable_capacity.parquet")
+    # 顶层文件, 验证不受子目录定位影响
+    pl.DataFrame(
+        {
+            "report_month": ["202501"],
+            "trade_date": [date(2025, 1, 31)],
+            "global_sales_usd": [10.0],
+        }
+    ).write_parquet(tmp_path / "industry" / "semiconductor_sales.parquet")
+
+    catalog = DataCatalog(data_source="industry", storage_dir=tmp_path)
+
+    single = catalog.load_dataset("global_power_generation", dedup=False)
+    assert len(single) == 2
+    assert "generation_twh" in single.columns
+
+    aggregated = catalog.load_dataset("energy", dedup=False)
+    assert len(aggregated) == 4  # 聚合数据集仍合并 energy/ 下全部文件
+
+    top_level = catalog.load_dataset("semiconductor_sales", dedup=False)
+    assert len(top_level) == 1
+
+    entries = {entry.dataset: entry for entry in catalog.available_datasets()}
+    assert entries["energy"].files  # 聚合数据集仍存在
+    assert len(entries["energy"].files) == 2
+    assert "global_power_generation" not in entries  # 不新增独立注册名

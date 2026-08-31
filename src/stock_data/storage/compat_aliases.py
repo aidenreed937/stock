@@ -6,6 +6,18 @@ from pathlib import Path
 
 from stock_data.core.task_registry import resolve_task
 
+# industry 数据源下按业务子目录存储、但仍需按文件名独立寻址的数据集。
+# 子目录名与文件名的映射关系与 dataset_name (catalog/ops.py) 的目录聚合规则配套。
+INDUSTRY_SUBDIR_DATASETS: frozenset[str] = frozenset(
+    {
+        "energy_cross_source_audit",
+        "global_energy_macro_baseline",
+        "global_oil_gas_balance",
+        "global_power_generation",
+        "global_renewable_capacity",
+    }
+)
+
 
 class DatasetAliasMixin:
     """解析历史端点名、数据集别名和固定实体标识。"""
@@ -50,6 +62,18 @@ class DatasetAliasMixin:
             except Exception:
                 pass
         return tuple(dict.fromkeys(aliases))
+
+    @staticmethod
+    def subdir_dataset_aliases(endpoint: str, provider: str | None = None) -> tuple[str, ...]:
+        """返回位于业务子目录内、需按文件名独立寻址的数据集定位别名。
+
+        与 dataset_aliases 分离: 仅 DataCatalog 读取路径消费, 不注入对账、
+        DuckDB 查询等依赖目录聚合语义的调用方。
+        """
+        if provider is not None and provider.lower() == "industry":
+            if endpoint.casefold() in INDUSTRY_SUBDIR_DATASETS:
+                return (f"energy/{endpoint}",)
+        return ()
 
     @staticmethod
     def dataset_symbol_filter(endpoint: str, provider: str | None = None) -> str | None:

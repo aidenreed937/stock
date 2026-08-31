@@ -72,7 +72,9 @@ class CatalogReadMixin:
         if dataset is None:
             return _list_parquet_files(source_dir, market=market)
         files: set[Path] = set()
-        for alias in StorageCompat.dataset_aliases(dataset, self.data_source):
+        aliases = list(StorageCompat.dataset_aliases(dataset, self.data_source))
+        aliases.extend(StorageCompat.subdir_dataset_aliases(dataset, self.data_source))
+        for alias in aliases:
             files.update(_list_parquet_files(source_dir, dataset=alias, market=market))
         return sorted(files)
 

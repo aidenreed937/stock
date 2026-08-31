@@ -124,8 +124,18 @@ def list_parquet_files(
     for path in base_dir.rglob("*.parquet"):
         if path.name.casefold().endswith(tuple(suffix.casefold() for suffix in artifact_suffixes)):
             continue
-        if dataset is not None and dataset_name(path).casefold() != dataset.casefold():
-            continue
+        if dataset is not None:
+            if "/" in dataset:
+                # 形如 "energy/global_power_generation" 的子目录定位,
+                # 支持业务子目录内文件按文件名独立寻址。
+                subdir, _, stem = dataset.partition("/")
+                if not (
+                    path.parent.name.casefold() == subdir.casefold()
+                    and path.stem.casefold() == stem.casefold()
+                ):
+                    continue
+            elif dataset_name(path).casefold() != dataset.casefold():
+                continue
         if market is not None and f"market={market.upper()}" not in path.parts:
             continue
         files.append(path)

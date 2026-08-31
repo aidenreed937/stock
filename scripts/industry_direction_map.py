@@ -423,6 +423,52 @@ def build_pharma_bd_direction() -> pl.DataFrame:
     )
 
 
+def build_consumer_electronics_direction() -> pl.DataFrame:
+    """消费电子腿: 全球智能手机 + PC 出货量季频同比 → 滚动分位 → 日频方向得分。
+
+    数据源: data/curated/industry/consumer_electronics.parquet (IDC/Canalys 季度出货,
+    AI 终端需求全球代理)。季频 release_date 生效, 无前视; 双腿合成对齐 optical 口径。
+    """
+    cat = DataCatalog(data_source="industry")
+    gm = (
+        pl.read_parquet("data/curated/mart/global_macro_daily.parquet")
+        .select(["trade_date"])
+        .sort("trade_date")
+    )
+    try:
+        ce = cat.load_dataset("consumer_electronics")
+    except Exception:
+        return pl.DataFrame(schema={"trade_date": pl.Date, "direction_score": pl.Float64})
+    if ce.is_empty():
+        return pl.DataFrame(schema={"trade_date": pl.Date, "direction_score": pl.Float64})
+
+    legs: list[pl.DataFrame] = []
+    for col in ("global_smartphone_shipments_million", "global_pc_shipments_million"):
+        if col not in ce.columns:
+            continue
+        quarterly = _quarterly_pct(ce, col)
+        daily = (
+            gm.join(quarterly, on="trade_date", how="left")
+            .sort("trade_date")
+            .with_columns(pl.col("pct").fill_null(strategy="forward").alias(f"{col}_score"))
+            .select(["trade_date", f"{col}_score"])
+            .drop_nulls()
+        )
+        legs.append(daily)
+    if not legs:
+        return pl.DataFrame(schema={"trade_date": pl.Date, "direction_score": pl.Float64})
+
+    merged = legs[0]
+    for s in legs[1:]:
+        merged = merged.join(s, on="trade_date", how="full", coalesce=True)
+    score_cols = [c for c in merged.columns if c.endswith("_score")]
+    return (
+        merged.with_columns(pl.mean_horizontal(score_cols).alias("direction_score"))
+        .select(["trade_date", "direction_score"])
+        .drop_nulls()
+    )
+
+
 def build_optical_direction() -> pl.DataFrame:
     """海关光模块出口金额 (3MMA) + 北美云厂商 CapEx 同比 → 复合日频方向得分。"""
     cat = DataCatalog(data_source="industry")
@@ -729,6 +775,7 @@ _THEME_SIGNAL: dict[str, str] = {
     "医疗服务": "medical_device",  # 海关医疗设备出口（CXO/医疗服务全球需求代理）
     "医疗器械": "medical_device",
     "医疗": "medical_device",
+    "消费电子": "consumer_electronics",  # 全球手机/PC 出货（AI 终端需求）
 }
 
 
@@ -754,6 +801,7 @@ _THEME_L2_CODE: dict[str, str] = {
     "农化制品": "220800",
     "塑料": "220500",
     "医疗服务": "370600",
+    "消费电子": "270500",
 }
 
 # 信号腿供需属性注册表（结构化元数据，替代散在注释中的语义）：
@@ -776,6 +824,7 @@ _SIGNAL_LEG_SUPPLY_DEMAND: dict[str, str] = {
     "chemicals": "demand",  # 海关化工品出口（海外化工需求）
     "medical_device": "demand",  # 海关医疗设备出口（海外采购）
     "pharma_export": "demand",  # HS30 章药品出口（化学药制剂/疫苗，海外采购）
+    "consumer_electronics": "demand",  # 全球手机/PC 出货量（终端需求）
 }
 
 
@@ -805,6 +854,7 @@ def build_theme_signals() -> dict[str, pl.DataFrame]:
     chemicals = build_chemicals_direction()
     medical_device = build_medical_device_direction()
     pharma_export = build_pharma_export_direction()
+    consumer_electronics = build_consumer_electronics_direction()
     cat = DataCatalog(data_source="industry")
     solar = cat.load_dataset("solar_capacity")
     nev = cat.load_dataset("nev_monthly_sales")
@@ -861,6 +911,9 @@ def build_theme_signals() -> dict[str, pl.DataFrame]:
 
     if not pharma_export.is_empty():
         out["pharma_export"] = pharma_export
+
+    if not consumer_electronics.is_empty():
+        out["consumer_electronics"] = consumer_electronics
 
     return out
 
