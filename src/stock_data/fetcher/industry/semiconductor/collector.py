@@ -19,6 +19,7 @@ from curl_cffi import requests
 
 from stock_data.fetcher.industry.common import (
     now_utc_iso,
+    read_raw_text,
     save_raw_snapshot,
 )
 from stock_data.fetcher.industry.models import SemiconductorSalesRecord
@@ -213,7 +214,7 @@ def parse_sia_china_and_date(html_text: str, source_url: str) -> dict[str, Any] 
     china_yoy = None
     china_mom = None
 
-    for sent in html_text.split("."):
+    for sent in re.split(r"\.\s+", html_text):
         if "china" in sent.lower():
             if "month-to-month" in sent.lower() and china_mom is None:
                 c_m = re.search(r"China\s*\(([-+]?[\d.]+)\s*(?:%|percent)\)", sent, re.IGNORECASE)
@@ -235,7 +236,7 @@ def parse_sia_china_and_date(html_text: str, source_url: str) -> dict[str, Any] 
             china_yoy = round(val, 4)
 
     china_m_abs = re.search(
-        r"China\s+(?:\([^\)]+\)\s+)?(?:were|totaled|was|\$)\s*([\d.]+)\s*billion",
+        r"China\s+(?:\([^)]+\)\s+)?(?:were|totaled|was)?\s*\$?([\d.]+)\s*billion",
         html_text,
         re.IGNORECASE,
     )
@@ -332,15 +333,23 @@ class SemiconductorCollector:
         """抓取 SIA 官网月度新闻与本地已归档快照，解析 China 销售数据与 release_date。"""
         enrichments: dict[str, dict[str, Any]] = {}
 
-        # 1. 优先加载本地已归档的全部 SIA 历史新闻快照 (覆盖 2022~2026 历年公报)
+        # 1. 优先加载本地已归档的全部 SIA 历史新闻快照 (支持 *.html.gz 与 *.html 双模，覆盖 2005~2026 历年公报)
         if self.sia_raw_dir.exists():
-            for h in self.sia_raw_dir.glob("*.html"):
+            seen_slugs: set[str] = set()
+            candidate_files = sorted(self.sia_raw_dir.glob("*.html.gz")) + sorted(
+                self.sia_raw_dir.glob("*.html")
+            )
+            for h in candidate_files:
                 if "list" in h.name:
                     continue
+                slug = h.name.replace(".html.gz", "").replace(".html", "")
+                if slug in seen_slugs:
+                    continue
+                seen_slugs.add(slug)
                 try:
-                    content = h.read_text(encoding="utf-8")
+                    content = read_raw_text(h)
                     parsed = parse_sia_china_and_date(
-                        content, f"https://www.semiconductors.org/{h.stem}/"
+                        content, f"https://www.semiconductors.org/{slug}/"
                     )
                     if parsed and parsed.get("report_month"):
                         enrichments[str(parsed["report_month"])] = parsed
@@ -352,7 +361,13 @@ class SemiconductorCollector:
         try:
             resp = requests.get(list_url, impersonate=self.impersonate, timeout=self.timeout)
             if resp.status_code == 200:
-                save_raw_snapshot("sia", "latest_news_list.html", resp.text, base_dir=self.raw_dir)
+                save_raw_snapshot(
+                    "sia",
+                    "latest_news_list.html.gz",
+                    resp.text,
+                    base_dir=self.raw_dir,
+                    compress=True,
+                )
                 links = re.findall(
                     r'href="(https://www\.semiconductors\.org/global-semiconductor-sales-[^"]+)"',
                     resp.text,
@@ -365,7 +380,11 @@ class SemiconductorCollector:
                         if r_art.status_code == 200:
                             slug = link.rstrip("/").split("/")[-1]
                             save_raw_snapshot(
-                                "sia", f"{slug}.html", r_art.text, base_dir=self.raw_dir
+                                "sia",
+                                f"{slug}.html.gz",
+                                r_art.text,
+                                base_dir=self.raw_dir,
+                                compress=True,
                             )
                             parsed = parse_sia_china_and_date(r_art.text, link)
                             if parsed and parsed.get("report_month"):

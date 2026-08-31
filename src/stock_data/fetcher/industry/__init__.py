@@ -26,6 +26,7 @@ from stock_data.fetcher.industry.cloud import (
 )
 from stock_data.fetcher.industry.common import (
     get_month_end_date,
+    read_raw_text,
     save_curated_fact,
     save_raw_snapshot,
 )
@@ -130,6 +131,7 @@ __all__ = [
     "load_hs_catalog",
     "parse_comtrade_items",
     "parse_raw_csv_rows",
+    "read_raw_text",
     "records_to_cloud_capex_frame",
     "records_to_customs_trade_frame",
     "records_to_machinery_frame",

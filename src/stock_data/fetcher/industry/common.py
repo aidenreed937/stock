@@ -1,6 +1,7 @@
 """垂直产业采集器通用工具 (日期自然日计算、RAW 原始快照归档、增量落盘)。"""
 
 import calendar
+import gzip
 import json
 import logging
 from datetime import UTC, date, datetime
@@ -29,16 +30,32 @@ def save_raw_snapshot(
     snapshot_filename: str,
     content: str | bytes | dict[str, Any] | list[Any],
     base_dir: Path | str = "data/raw/industry",
+    compress: bool = False,
 ) -> Path:
     """将外部采集的原始数据 (HTML/JSON/文本) 归档到 2-Tier ETL RAW 分源目录。
 
     目录规范: data/raw/industry/{source_name}/{snapshot_filename}
+    当 compress 为 True 或 snapshot_filename 以 .gz 结尾时，自动执行 Gzip 压缩存储。
     """
     target_dir = Path(base_dir) / source_name.lower().replace("/", "_")
     target_dir.mkdir(parents=True, exist_ok=True)
+
+    if compress and not snapshot_filename.endswith(".gz"):
+        snapshot_filename = f"{snapshot_filename}.gz"
+
     target_file = target_dir / snapshot_filename
 
-    if isinstance(content, dict | list):
+    if str(target_file).endswith(".gz"):
+        if isinstance(content, dict | list):
+            data_bytes = json.dumps(content, ensure_ascii=False, indent=2).encode("utf-8")
+        elif isinstance(content, str):
+            data_bytes = content.encode("utf-8")
+        else:
+            data_bytes = content
+        if not (len(data_bytes) >= 2 and data_bytes[:2] == b"\x1f\x8b"):
+            data_bytes = gzip.compress(data_bytes, compresslevel=9)
+        target_file.write_bytes(data_bytes)
+    elif isinstance(content, dict | list):
         with target_file.open("w", encoding="utf-8") as f:
             json.dump(content, f, ensure_ascii=False, indent=2)
     elif isinstance(content, bytes):
@@ -50,11 +67,20 @@ def save_raw_snapshot(
     return target_file
 
 
+def read_raw_text(file_path: Path | str) -> str:
+    """读取本地 RAW 原始快照文本 (自动识别 .gz 压缩文件与普通文本文件)。"""
+    p = Path(file_path)
+    if str(p).endswith(".gz"):
+        with gzip.open(p, "rt", encoding="utf-8") as f:
+            return f.read()
+    return p.read_text(encoding="utf-8")
+
+
 def save_curated_fact(
     new_df: pl.DataFrame,
     target_parquet_path: Path | str,
     primary_keys: list[str] | None = None,
-    export_csv: bool = True,
+    export_csv: bool = False,
 ) -> int:
     """将清洗后的黄金事实 DataFrame 执行增量去重并持久化为 Parquet (可附带 CSV)。
 

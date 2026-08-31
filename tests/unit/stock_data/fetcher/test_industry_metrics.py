@@ -20,6 +20,7 @@ from stock_data.fetcher.industry import (
     NonFerrousCollector,
     NonFerrousMetalsRecord,
     PharmaLicenseOutRecord,
+    SemiconductorCollector,
     SemiconductorSalesRecord,
     ShippingIndicesRecord,
     SolarCapacityRecord,
@@ -33,6 +34,7 @@ from stock_data.fetcher.industry import (
     empty_shipping_indices,
     empty_solar_capacity,
     get_month_end_date,
+    read_raw_text,
     records_to_cloud_capex_frame,
     records_to_customs_trade_frame,
     records_to_machinery_frame,
@@ -43,6 +45,7 @@ from stock_data.fetcher.industry import (
     records_to_shipping_frame,
     records_to_solar_frame,
     save_curated_fact,
+    save_raw_snapshot,
     sync_all_industry_metrics,
 )
 
@@ -495,3 +498,67 @@ def test_watermark_incremental_merge_and_idempotence(tmp_path: Path) -> None:
         )
         == 2
     )
+
+
+def test_save_raw_snapshot_and_read_raw_text_gzip(tmp_path: Path) -> None:
+    # 1. 文本普通保存 vs Gzip 压缩保存
+    plain_file = save_raw_snapshot("test_source", "data.txt", "hello world", base_dir=tmp_path)
+    assert plain_file.exists()
+    assert plain_file.name == "data.txt"
+    assert read_raw_text(plain_file) == "hello world"
+
+    gz_file_1 = save_raw_snapshot(
+        "test_source",
+        "data.html",
+        "<html>compressed content</html>",
+        base_dir=tmp_path,
+        compress=True,
+    )
+    assert gz_file_1.exists()
+    assert gz_file_1.name == "data.html.gz"
+    assert read_raw_text(gz_file_1) == "<html>compressed content</html>"
+
+    # 2. 传入 dict / list 并自动 Gzip 压缩
+    json_gz = save_raw_snapshot(
+        "test_source", "data.json.gz", {"key": "value", "items": [1, 2, 3]}, base_dir=tmp_path
+    )
+    assert json_gz.exists()
+    assert '"key": "value"' in read_raw_text(json_gz)
+
+
+def test_semiconductor_collector_dual_mode_snapshots(tmp_path: Path) -> None:
+    raw_dir = tmp_path / "raw_industry"
+    sia_dir = raw_dir / "sia"
+    sia_dir.mkdir(parents=True)
+
+    # 1. 创建一个 .html.gz 文件 (2026-05)
+    html_202605 = (
+        "<html><body>"
+        "WASHINGTON—June 5, 2026—The Semiconductor Industry Association (SIA) today announced "
+        "global semiconductor sales were $49.0 billion during the month of May 2026. "
+        "Regionally, month-to-month sales increased in China (2.1%). "
+        "Sales to China were $14.5 billion in May."
+        "</body></html>"
+    )
+    save_raw_snapshot("sia", "may-2026-chip-sales.html.gz", html_202605, base_dir=raw_dir)
+
+    # 2. 创建一个普通 .html 文件 (2026-06)
+    html_202606 = (
+        "<html><body>"
+        "WASHINGTON—July 6, 2026—The Semiconductor Industry Association (SIA) today announced "
+        "global semiconductor sales were $52.0 billion for the month of June 2026. "
+        "Regionally, month-to-month sales increased in China (3.2%). "
+        "Sales to China were $15.2 billion in June."
+        "</body></html>"
+    )
+    save_raw_snapshot("sia", "june-2026-chip-sales.html", html_202606, base_dir=raw_dir)
+
+    collector = SemiconductorCollector(raw_dir=raw_dir)
+    enrichments = collector._fetch_sia_news_enrichments()
+
+    assert "2026-05" in enrichments
+    assert "2026-06" in enrichments
+    assert enrichments["2026-05"]["china_sales_usd"] == 14.5
+    assert enrichments["2026-05"]["china_mom_growth"] == 0.021
+    assert enrichments["2026-06"]["china_sales_usd"] == 15.2
+    assert enrichments["2026-06"]["china_mom_growth"] == 0.032
