@@ -40,7 +40,7 @@ def parse_backfill_date(value: str | None) -> date | None:
     clean = value.strip().lower()
     if clean == "today":
         return date.today()
-    match = re.fullmatch(r"today-(\d+)", clean)
+    match = re.fullmatch(r"today-(\d+)d?", clean)
     if match:
         return date.today() - timedelta(days=int(match.group(1)))
     return datetime.strptime(clean.replace("-", ""), "%Y%m%d").date()

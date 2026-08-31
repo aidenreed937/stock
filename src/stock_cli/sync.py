@@ -25,7 +25,7 @@ def _build_parser() -> argparse.ArgumentParser:
         "-s",
         "--source",
         default="tushare",
-        help="数据源标识 (tushare / yfinance / lixinger / fred / alphavantage / all)",
+        help="数据源标识 (tushare / yfinance / lixinger / fred / alphavantage / industry / all)",
     )
     parser.add_argument("-d", "--date", help="指定拟增量目标日期 (YYYY-MM-DD, 默认当日)")
     parser.add_argument("-e", "--endpoint", "--endpoints", dest="endpoints")

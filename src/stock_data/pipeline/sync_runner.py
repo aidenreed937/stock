@@ -8,7 +8,14 @@ from typing import Any
 
 from stock_data.pipeline.sync import DailySyncEngine, SyncExecutionResult, SyncTaskItem
 
-SYNC_SOURCES: tuple[str, ...] = ("tushare", "yfinance", "lixinger", "fred", "alphavantage")
+SYNC_SOURCES: tuple[str, ...] = (
+    "tushare",
+    "yfinance",
+    "lixinger",
+    "fred",
+    "alphavantage",
+    "industry",
+)
 
 
 @dataclass(frozen=True)

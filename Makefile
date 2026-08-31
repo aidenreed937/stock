@@ -1,4 +1,4 @@
-.PHONY: help install lint lint-rust format test test-rust-plugins check run scan realtime market-aggregate market-temperature market-context industry-structure investor-brief quant-brief factor-research factor-combine factor-backtest multi-date screen-stocks report-consistency market-cycle-review artifact-index cleanup-analytics backfill baseline migrate-data migrate-curated cleanup-data backfill-accept repair-stock-daily-bar build-plugins industry-trend-factors industry-trend-strategy industry-trend-live backfill-customs sync-customs catalog-customs
+.PHONY: help install lint lint-rust format test test-rust-plugins check run scan realtime market-aggregate market-temperature market-context industry-structure investor-brief quant-brief factor-research factor-combine factor-backtest multi-date screen-stocks report-consistency market-cycle-review artifact-index cleanup-analytics backfill baseline migrate-data migrate-curated cleanup-data backfill-accept repair-stock-daily-bar build-plugins industry-trend-factors industry-trend-strategy industry-trend-live backfill-customs sync-customs catalog-customs sync-industry
 
 export UV_CACHE_DIR ?= .uv_cache
 export UV_PYTHON_INSTALL_DIR ?= .uv_python
@@ -42,6 +42,7 @@ help:
 	@echo "  make backfill-fundamental - Backfill fundamentals from lixinger based on universe"
 	@echo "  make backfill-customs [START_YEAR=2015] [END_YEAR=2024] [FORCE=1] - Backfill historical UN Comtrade customs trade data"
 	@echo "  make sync-customs PERIOD=YYYY-MM - Sync monthly customs trade data from UN Comtrade"
+	@echo "  make sync-industry [ENDPOINT=xxx] [FORCE=1] - Sync vertical industry metrics (e.g., construction_machinery)"
 	@echo "  make catalog-customs - View the 39 HS codes and SW industry mapping catalog"
 
 build-plugins:
@@ -86,6 +87,9 @@ market-aggregate:
 
 sync:
 	uv run python -m stock_cli.sync --source $(or $(SOURCE),$(DATA_SOURCE),tushare) $(if $(DATE),--date $(DATE)) $(if $(or $(ENDPOINT),$(ENDPOINTS)),--endpoints $(or $(ENDPOINT),$(ENDPOINTS))) $(if $(FORCE),--force) $(if $(NO_AUDIT),--no-audit) $(if $(WORKERS),--max-workers $(WORKERS))
+
+sync-industry:
+	uv run python -m stock_cli.sync --source industry $(if $(or $(ENDPOINT),$(ENDPOINTS),$(METRIC)),--endpoints $(or $(ENDPOINT),$(ENDPOINTS),$(METRIC))) $(if $(FORCE),--force) $(if $(DATE),--date $(DATE)) $(if $(WORKERS),--max-workers $(WORKERS))
 
 backfill:
 	uv run python -m stock_cli.backfill $(if $(START),--start $(START)) $(if $(END),--end $(END)) --data-source $(or $(SOURCE),$(DATA_SOURCE),tushare) $(if $(ENDPOINT),--endpoint $(ENDPOINT)) $(if $(SYMBOL),--symbol $(SYMBOL)) $(if $(FORCE_REFRESH),--force-refresh) $(if $(WORKERS),--max-workers $(WORKERS))

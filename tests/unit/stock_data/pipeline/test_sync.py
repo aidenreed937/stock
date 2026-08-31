@@ -927,3 +927,63 @@ def test_sync_cli_exits_nonzero_for_failed_execution() -> None:
         sync_cli_main()
 
     assert exc_info.value.code == 1
+
+
+def test_industry_sync_watermarks_and_window_protection() -> None:
+    """测试 industry 垂直产业指标的水位嗅探与发布时间窗口保护机制。"""
+    engine = DailySyncEngine(data_source="industry")
+
+    # 1. 水位嗅探测试
+    with patch.object(
+        engine.catalog,
+        "latest_trade_dates",
+        return_value=[date(2026, 7, 31)],
+    ):
+        watermarks = engine.sniff_watermarks(["construction_machinery"])
+        assert watermarks["construction_machinery"] == date(2026, 7, 31)
+
+    # 2. 时间窗口保护测试 (未到 T+8 发布窗口时自动跳过)
+    plan_skipped = engine.build_sync_plan(
+        target_date=date(2026, 8, 31),
+        endpoints=["construction_machinery"],
+        force=False,
+    )
+    assert len(plan_skipped) == 1
+    assert plan_skipped[0].status == "SKIPPED"
+    assert "窗口未到" in (plan_skipped[0].reason or "")
+
+    # 3. 强制同步测试 (force=True 时变为 PENDING)
+    plan_force = engine.build_sync_plan(
+        target_date=date(2026, 8, 31),
+        endpoints=["construction_machinery"],
+        force=True,
+    )
+    assert len(plan_force) == 1
+    assert plan_force[0].status == "PENDING"
+    assert plan_force[0].is_ready is True
+
+
+def test_industry_sync_execution() -> None:
+    """测试 industry 增量任务执行与结果结构化生成。"""
+    engine = DailySyncEngine(data_source="industry")
+    task = SyncTaskItem(
+        data_source="industry",
+        endpoint="construction_machinery",
+        dataset="construction_machinery",
+        start_date=date(2026, 8, 31),
+        end_date=date(2026, 8, 31),
+        watermark=date(2026, 7, 31),
+        status="PENDING",
+        is_ready=True,
+        symbol="",
+    )
+    with patch(
+        "stock_data.fetcher.industry.pipeline.sync_all_industry_metrics",
+        return_value={"construction_machinery": 103},
+    ):
+        results = engine.execute_plan([task], force_refresh=True)
+
+    assert len(results) == 1
+    assert results[0].endpoint == "construction_machinery"
+    assert results[0].records == 103
+    assert results[0].status == "SUCCESS"

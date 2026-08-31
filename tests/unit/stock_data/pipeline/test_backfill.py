@@ -357,3 +357,15 @@ def test_planner_expands_single_sync_index_bar_watchlist() -> None:
     )
 
     assert [task.symbol for task in tasks] == ["000300.SH", "399006.SZ"]
+
+
+def test_historical_backfill_industry_source() -> None:
+    with patch(
+        "stock_data.fetcher.industry.pipeline.sync_all_industry_metrics",
+        return_value={"nev_monthly_sales": 103},
+    ) as mock_sync:
+        backfiller = HistoricalBackfiller(data_source="industry", endpoint="nev_monthly_sales")
+        summary = backfiller.backfill_range(date(2026, 8, 1), date(2026, 8, 31))
+        mock_sync.assert_called_once_with(metrics=["nev_monthly_sales"])
+        assert summary["synced_days"] == 103
+        assert summary["failed_days"] == 0

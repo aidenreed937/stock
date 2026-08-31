@@ -154,6 +154,30 @@ def _symbol_base_date(data_source: str, symbol: str, endpoint: str = "") -> date
 def _run_sync_task(task: SyncTaskItem, force_refresh: bool) -> SyncExecutionResult:
     t0 = time.perf_counter()
     try:
+        if task.data_source == "industry":
+            from stock_data.fetcher.industry.pipeline import sync_all_industry_metrics
+
+            res_dict = sync_all_industry_metrics(metrics=[task.endpoint])
+            row_count = res_dict.get(task.endpoint, 0)
+            dur = round(time.perf_counter() - t0, 2)
+            return SyncExecutionResult(
+                data_source=task.data_source,
+                endpoint=task.endpoint,
+                start_date=task.start_date,
+                end_date=task.end_date,
+                records=row_count,
+                duration_s=dur,
+                status=(
+                    "SUCCESS"
+                    if row_count > 0
+                    else empty_result_status(task.data_source, task.endpoint)
+                ),
+                error=None
+                if row_count > 0
+                else empty_result_reason(task.data_source, task.endpoint),
+                symbol=task.symbol,
+            )
+
         pipeline = create_pipeline(data_source=task.data_source, endpoint=task.endpoint)
         refresh = force_refresh or task.refresh_raw_cache
         df = pipeline.sync_daily_bars(

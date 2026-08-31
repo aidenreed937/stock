@@ -11,7 +11,7 @@ from typing import Any
 from stock_core.exceptions import DataFetchError
 from stock_core.utils.logger import logger
 from stock_data.core.factory import create_pipeline
-from stock_data.core.task_registry import is_per_symbol_task, resolve_public_task
+from stock_data.core.task_registry import resolve_public_task
 from stock_data.fetcher.base import BaseDataFetcher
 from stock_data.pipeline.pipeline import MarketDataPipeline
 from stock_data.pipeline.planner import (
@@ -55,10 +55,10 @@ def _sync_pipeline(
 
 
 def _resolve_calendar_dates(
-    fetcher: BaseDataFetcher, data_source: str, start_date: date, end_date: date
+    fetcher: BaseDataFetcher | None, data_source: str, start_date: date, end_date: date
 ) -> list[date]:
     """获取开市有效交易日列表，缺少可信交易日历时 fail-closed。"""
-    if data_source.lower() == "fred":
+    if data_source.lower() in {"fred", "industry"}:
         return [start_date + timedelta(days=i) for i in range((end_date - start_date).days + 1)]
 
     if data_source.lower() in {"tushare", "lixinger"}:
@@ -98,37 +98,18 @@ def _execute_parallel_tasks(
     """多线程并发执行任务并统计成功与失败数。"""
     synced = 0
     failed = 0
-    workers = min(max_workers, 8) if max_workers > 1 else 1
-    if workers > 1 and len(items) > 1:
-        with ThreadPoolExecutor(max_workers=workers) as executor:
-            futures = {executor.submit(task_fn, item): item for item in items}
-            for idx, fut in enumerate(as_completed(futures), 1):
-                item = futures[fut]
-                desc = item_desc(item)
-                try:
-                    res = fut.result()
-                    if (isinstance(res, bool) and res) or (isinstance(res, int) and res > 0):
-                        synced += res if isinstance(res, int) else 1
-                        logger.info(f"[{idx}/{len(items)}] {desc} 回填成功")
-                    else:
-                        failed += 1 if isinstance(res, bool) else _failed_item_count(item)
-                        logger.warning(f"[{idx}/{len(items)}] {desc} 回填失败")
-                except Exception as e:
-                    logger.error(f"[{idx}/{len(items)}] {desc} 抛出异常: {e}")
-                    failed += _failed_item_count(item)
-    else:
-        for idx, item in enumerate(items, 1):
-            desc = item_desc(item)
+    with ThreadPoolExecutor(max_workers=max_workers) as pool:
+        future_map = {pool.submit(task_fn, item): item for item in items}
+        for future in as_completed(future_map):
+            item = future_map[future]
             try:
-                res = task_fn(item)
-                if (isinstance(res, bool) and res) or (isinstance(res, int) and res > 0):
-                    synced += res if isinstance(res, int) else 1
-                    logger.info(f"[{idx}/{len(items)}] {desc} 回填成功")
+                res = future.result()
+                if res is True or (isinstance(res, int) and res > 0):
+                    synced += 1
                 else:
-                    failed += 1 if isinstance(res, bool) else _failed_item_count(item)
-                    logger.warning(f"[{idx}/{len(items)}] {desc} 回填失败")
-            except Exception as e:
-                logger.error(f"[{idx}/{len(items)}] {desc} 抛出异常: {e}")
+                    failed += _failed_item_count(item)
+            except Exception as err:
+                logger.error(f"任务 [{item_desc(item)}] 并发执行异常: {err}")
                 failed += _failed_item_count(item)
     return synced, failed
 
@@ -148,8 +129,13 @@ class HistoricalBackfiller:
         self.data_source = data_source
         self.endpoint = resolve_public_task(data_source, endpoint).task_name
         self._calendar_cache: dict[tuple[date, date], list[date]] = {}
+        self.pipeline: MarketDataPipeline | None = None
+        self.fetcher: BaseDataFetcher | None = None
 
-        if pipeline is not None:
+        if self.data_source == "industry":
+            self.pipeline = None
+            self.fetcher = None
+        elif pipeline is not None:
             self.pipeline = pipeline
             self.fetcher = fetcher or pipeline.fetcher
         else:
@@ -206,11 +192,17 @@ class HistoricalBackfiller:
 
         todo_dates = []
         for trade_date in open_dates:
-            has_curated = getattr(self.pipeline.store, "has_curated", lambda e, d, s=None: False)(
-                self.endpoint, trade_date, self.symbol
+            has_curated = (
+                getattr(self.pipeline.store, "has_curated", lambda e, d, s=None: False)(
+                    self.endpoint, trade_date, self.symbol
+                )
+                if self.pipeline is not None
+                else False
             )
             has_raw = True
-            raw_store = getattr(self.pipeline, "raw_store", None)
+            raw_store = (
+                getattr(self.pipeline, "raw_store", None) if self.pipeline is not None else None
+            )
             if not force_refresh and raw_store is not None and hasattr(raw_store, "has_raw"):
                 has_raw = bool(
                     raw_store.has_raw(self.data_source, self.endpoint, trade_date, self.symbol)
@@ -233,104 +225,15 @@ class HistoricalBackfiller:
         max_workers: int = 1,
     ) -> dict[str, Any]:
         """按交易日范围进行历史数据批量回填。"""
-        total_days = (end_date - start_date).days + 1
-        freq = self.frequency
-        task_spec = resolve_public_task(self.data_source, self.endpoint)
-        is_per_sym = is_per_symbol_task(self.data_source, self.endpoint)
+        from stock_data.pipeline.backfill_range import execute_backfill_range
 
-        # 1. 范围拉取模式 (月频/宏观/静态/按标的历史范围)
-        if freq != "daily" or is_per_sym or task_spec.is_single_sync:
-            sym_code = (
-                ""
-                if task_spec.fetch_mode == "per_period"
-                else self.symbol or ("" if is_per_sym else self.endpoint)
-            )
-            is_short_daily_symbol_range = (
-                not force_refresh
-                and self.symbol
-                and freq == "daily"
-                and (end_date - start_date).days <= 30
-            )
-            if is_short_daily_symbol_range:
-                open_dates = self._get_open_trading_dates(start_date, end_date, use_cache=True)
-                todo_dates = self._generate_tasks(start_date, end_date, force_refresh=False)
-                if not todo_dates:
-                    return {
-                        "total_days": total_days,
-                        "open_days": len(open_dates),
-                        "synced_days": 0,
-                        "skipped_days": len(open_dates),
-                        "failed_days": 0,
-                    }
-
-            try:
-                df = _sync_pipeline(
-                    self.pipeline, sym_code, start_date, end_date, force_refresh, max_workers
-                )
-                count = len(df) if not df.is_empty() else 0
-                return {
-                    "total_days": total_days,
-                    "open_days": 1,
-                    "synced_days": count,
-                    "skipped_days": 1 if count == 0 else 0,
-                    "failed_days": 0,
-                }
-            except Exception as err:
-                logger.error(f"标的 [{sym_code}] 范围回填异常: {err}")
-                return {
-                    "total_days": total_days,
-                    "open_days": 1,
-                    "synced_days": 0,
-                    "skipped_days": 0,
-                    "failed_days": 1,
-                }
-
-        # 2. 按交易日切片并行拉取模式 (全市场每日截面)
-        open_dates = self._get_open_trading_dates(start_date, end_date, use_cache=not force_refresh)
-        todo_dates = self._generate_tasks(start_date, end_date, force_refresh=force_refresh)
-        skipped_count = len(open_dates) - len(todo_dates)
-
-        if not todo_dates:
-            return {
-                "total_days": total_days,
-                "open_days": len(open_dates),
-                "synced_days": 0,
-                "skipped_days": skipped_count,
-                "failed_days": 0,
-            }
-
-        def _sync_day(d: date) -> bool:
-            try:
-                df = _sync_pipeline(
-                    self.pipeline, self.symbol or "", d, d, force_refresh, max_workers
-                )
-                if self.endpoint in (
-                    "report_rc",
-                    "forecast",
-                    "express",
-                    "margin_detail",
-                    "hsgt_top10",
-                ):
-                    return True
-                return not df.is_empty()
-            except Exception as e:
-                logger.error(f"交易日 [{d}] 同步异常: {e}")
-                return False
-
-        synced_count, failed_count = _execute_parallel_tasks(
-            task_fn=_sync_day,
-            items=todo_dates,
+        return execute_backfill_range(
+            self,
+            start_date=start_date,
+            end_date=end_date,
+            force_refresh=force_refresh,
             max_workers=max_workers,
-            item_desc=lambda d: f"交易日 [{d}] 数据",
         )
-
-        return {
-            "total_days": total_days,
-            "open_days": len(open_dates),
-            "synced_days": synced_count,
-            "skipped_days": skipped_count,
-            "failed_days": failed_count,
-        }
 
 
 def _load_backfill_yaml_config(
