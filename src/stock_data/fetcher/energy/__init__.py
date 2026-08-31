@@ -1,6 +1,7 @@
 """全球能源多源采集与数据规范化模块。"""
 
 from stock_data.fetcher.energy.base import EnergyFetcherBase
+from stock_data.fetcher.energy.cn_nea import CnNeaCollector
 from stock_data.fetcher.energy.common import (
     DEFAULT_CURATED_ENERGY_DIR,
     DEFAULT_RAW_ENERGY_DIR,
@@ -9,6 +10,16 @@ from stock_data.fetcher.energy.common import (
     parse_period_to_date,
     save_curated_energy_fact,
     save_raw_energy_snapshot,
+)
+from stock_data.fetcher.energy.ember import (
+    EmberClient,
+    EmberCollector,
+    EmberParser,
+)
+from stock_data.fetcher.energy.irena import (
+    IrenaClient,
+    IrenaCollector,
+    IrenaParser,
 )
 from stock_data.fetcher.energy.models import (
     EnergyCrossSourceAuditRecord,
@@ -41,7 +52,11 @@ __all__ = [
     "DEFAULT_CURATED_ENERGY_DIR",
     "DEFAULT_RAW_ENERGY_DIR",
     "GEO_CODE_MAPPING",
+    "CnNeaCollector",
     "DataStatus",
+    "EmberClient",
+    "EmberCollector",
+    "EmberParser",
     "EnergyCrossSourceAuditRecord",
     "EnergyFetcherBase",
     "EnergyFlowType",
@@ -51,6 +66,9 @@ __all__ = [
     "GlobalOilGasBalanceRecord",
     "GlobalPowerGenerationRecord",
     "GlobalRenewableCapacityRecord",
+    "IrenaClient",
+    "IrenaCollector",
+    "IrenaParser",
     "PeriodType",
     "convert_capacity_to_gw",
     "convert_energy_to_ej",

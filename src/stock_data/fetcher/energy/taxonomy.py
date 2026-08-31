@@ -19,10 +19,12 @@ class EnergyProduct(StrEnum):
 
     # 可再生与清洁能源
     SOLAR_PV = "SOLAR_PV"
+    SOLAR_CSP = "SOLAR_CSP"  # 光热发电 / 聚光太阳能
     WIND_ONSHORE = "WIND_ONSHORE"
     WIND_OFFSHORE = "WIND_OFFSHORE"
     WIND_TOTAL = "WIND_TOTAL"
     HYDRO = "HYDRO"
+    PUMPED_STORAGE = "PUMPED_STORAGE"  # 抽水蓄能
     NUCLEAR = "NUCLEAR"
     BIOENERGY = "BIOENERGY"
     GEOTHERMAL = "GEOTHERMAL"
@@ -132,6 +134,7 @@ GEO_CODE_MAPPING: Final[dict[str, str]] = {
     # 美洲/大洋洲/中东/其他
     "RUSSIA": "RUS",
     "RUSSIAN FEDERATION": "RUS",
+    "RUSSIAN FED": "RUS",
     "RUS": "RUS",
     "俄罗斯": "RUS",
     "SAUDI ARABIA": "SAU",
@@ -146,6 +149,31 @@ GEO_CODE_MAPPING: Final[dict[str, str]] = {
     "CANADA": "CAN",
     "CAN": "CAN",
     "加拿大": "CAN",
+    "VIET NAM": "VNM",
+    "VIETNAM": "VNM",
+    "VNM": "VNM",
+    "INDONESIA": "IDN",
+    "IDN": "IDN",
+    "MEXICO": "MEX",
+    "MEX": "MEX",
+    "TURKEY": "TUR",
+    "TÜRKIYE": "TUR",
+    "TURKIYE": "TUR",
+    "TUR": "TUR",
+    "SOUTH AFRICA": "ZAF",
+    "ZAF": "ZAF",
+    "IRAN": "IRN",
+    "IRAN (ISLAMIC REPUBLIC OF)": "IRN",
+    "IRAN IR": "IRN",
+    "IRN": "IRN",
+    "NORWAY": "NOR",
+    "NOR": "NOR",
+    "SWEDEN": "SWE",
+    "SWE": "SWE",
+    "DENMARK": "DNK",
+    "DNK": "DNK",
+    "CHILE": "CHL",
+    "CHL": "CHL",
 }
 
 

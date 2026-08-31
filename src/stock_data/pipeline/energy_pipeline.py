@@ -108,6 +108,29 @@ def sync_all_energy_data(
     target_sources = set(sources) if sources else None
 
     logger.info("开始执行全球能源多源数据同步, 目标源: %s", target_sources or "全部")
-    # 各具体采集器在后续批次逐步装配接入
+
+    # 1. 国际可再生能源署 (IRENA) 全球新能源装机长周期数据
+    if target_sources is None or "irena" in target_sources:
+        from stock_data.fetcher.energy.irena import IrenaCollector
+
+        irena_col = IrenaCollector(raw_dir=raw_path, curated_dir=curated_path)
+        irena_res = irena_col.collect_and_save()
+        results.update(irena_res)
+
+    # 2. 中国国家能源局 (NEA) 电力与新能源高频数据
+    if target_sources is None or "cn_nea" in target_sources or "nea" in target_sources:
+        from stock_data.fetcher.energy.cn_nea import CnNeaCollector
+
+        collector = CnNeaCollector(raw_dir=raw_path, curated_dir=curated_path)
+        nea_res = collector.collect_and_save()
+        results.update(nea_res)
+
+    # 3. 智库 Ember 全球发电结构与电力数据 (2000~2025 全量历史)
+    if target_sources is None or "ember" in target_sources:
+        from stock_data.fetcher.energy.ember import EmberCollector
+
+        ember_col = EmberCollector(raw_dir=raw_path, curated_dir=curated_path)
+        ember_res = ember_col.collect_and_save()
+        results.update(ember_res)
 
     return results

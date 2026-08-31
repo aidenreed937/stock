@@ -114,8 +114,9 @@ def test_models_and_polars_converters() -> None:
         source="EMBER",
     )
     df_power = records_to_power_generation_frame([power_rec])
-    assert df_power.shape == (1, 13)
+    assert df_power.shape == (1, 14)
     assert df_power["generation_twh"][0] == 85.4
+    assert df_power["unit"][0] == "twh"
 
     # 3. 可再生能源装机
     cap_rec = GlobalRenewableCapacityRecord(
@@ -127,8 +128,9 @@ def test_models_and_polars_converters() -> None:
         source="IRENA",
     )
     df_cap = records_to_renewable_capacity_frame([cap_rec])
-    assert df_cap.shape == (1, 10)
+    assert df_cap.shape == (1, 11)
     assert df_cap["capacity_gw"][0] == 150.5
+    assert df_cap["unit"][0] == "gw"
 
     # 4. 宏观长周期基准
     macro_rec = GlobalMacroEnergyBaselineRecord(

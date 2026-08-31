@@ -67,6 +67,7 @@ class GlobalPowerGenerationRecord:
     period_type: str  # monthly | yearly
     technology: str  # SOLAR_PV | WIND_TOTAL | HYDRO | NUCLEAR | THERMAL_POWER | TOTAL_ELECTRICITY
     generation_twh: float  # 发电量 (TWh)
+    unit: str = "twh"  # 显式计量单位: 太瓦时 (TWh)
     yoy_growth: float | None = None  # 同比增速 (如 0.15 记 15%)
     share_percent: float | None = None  # 发电结构占比 (0~100)
     emissions_mtco2: float | None = None  # 电力碳排放量 (百万吨 CO2)
@@ -78,14 +79,15 @@ class GlobalPowerGenerationRecord:
 
 @dataclass(frozen=True)
 class GlobalRenewableCapacityRecord:
-    """年度全球新能源装机容量记录 (对应 global_renewable_capacity.parquet)."""
+    """年度/月度全球新能源装机容量记录 (对应 global_renewable_capacity.parquet)."""
 
     geo_code: str  # ISO-3 编码
     year: int  # YYYY
     technology: str  # SOLAR_PV | WIND_ONSHORE | WIND_OFFSHORE | HYDRO | BIOENERGY 等
     capacity_gw: float  # 累计装机容量 (GW)
-    new_added_gw: float | None = None  # 当年新增装机容量 (GW)
-    yoy_growth: float | None = None  # 累计装机同比增速
+    new_added_gw: float | None = None  # 当年/当月新增装机容量 (GW)
+    unit: str = "gw"  # 显式计量单位: 吉瓦 (GW)
+    yoy_growth: float | None = None  # 累计装机同比增速 (小数)
     source: str = "IRENA"  # IRENA | EI | NEA | EUROSTAT
     data_status: str = "actual"
     release_date: date | None = None
@@ -150,47 +152,47 @@ def records_to_oil_gas_balance_frame(records: list[GlobalOilGasBalanceRecord]) -
 
 def records_to_power_generation_frame(records: list[GlobalPowerGenerationRecord]) -> pl.DataFrame:
     """将全球发电结构记录转换为强类型 Polars DataFrame."""
+    schema = {
+        "geo_code": pl.Utf8,
+        "trade_date": pl.Date,
+        "period": pl.Utf8,
+        "period_type": pl.Utf8,
+        "technology": pl.Utf8,
+        "generation_twh": pl.Float64,
+        "unit": pl.Utf8,
+        "yoy_growth": pl.Float64,
+        "share_percent": pl.Float64,
+        "emissions_mtco2": pl.Float64,
+        "source": pl.Utf8,
+        "data_status": pl.Utf8,
+        "release_date": pl.Date,
+        "collected_at": pl.Utf8,
+    }
     if not records:
-        return pl.DataFrame(
-            schema={
-                "geo_code": pl.Utf8,
-                "trade_date": pl.Date,
-                "period": pl.Utf8,
-                "period_type": pl.Utf8,
-                "technology": pl.Utf8,
-                "generation_twh": pl.Float64,
-                "yoy_growth": pl.Float64,
-                "share_percent": pl.Float64,
-                "emissions_mtco2": pl.Float64,
-                "source": pl.Utf8,
-                "data_status": pl.Utf8,
-                "release_date": pl.Date,
-                "collected_at": pl.Utf8,
-            }
-        )
-    return pl.DataFrame([asdict(r) for r in records])
+        return pl.DataFrame(schema=schema)
+    return pl.DataFrame([asdict(r) for r in records], schema=schema)
 
 
 def records_to_renewable_capacity_frame(
     records: list[GlobalRenewableCapacityRecord],
 ) -> pl.DataFrame:
     """将全球可再生能源装机记录转换为强类型 Polars DataFrame."""
+    schema = {
+        "geo_code": pl.Utf8,
+        "year": pl.Int64,
+        "technology": pl.Utf8,
+        "capacity_gw": pl.Float64,
+        "new_added_gw": pl.Float64,
+        "unit": pl.Utf8,
+        "yoy_growth": pl.Float64,
+        "source": pl.Utf8,
+        "data_status": pl.Utf8,
+        "release_date": pl.Date,
+        "collected_at": pl.Utf8,
+    }
     if not records:
-        return pl.DataFrame(
-            schema={
-                "geo_code": pl.Utf8,
-                "year": pl.Int64,
-                "technology": pl.Utf8,
-                "capacity_gw": pl.Float64,
-                "new_added_gw": pl.Float64,
-                "yoy_growth": pl.Float64,
-                "source": pl.Utf8,
-                "data_status": pl.Utf8,
-                "release_date": pl.Date,
-                "collected_at": pl.Utf8,
-            }
-        )
-    return pl.DataFrame([asdict(r) for r in records])
+        return pl.DataFrame(schema=schema)
+    return pl.DataFrame([asdict(r) for r in records], schema=schema)
 
 
 def records_to_macro_energy_baseline_frame(

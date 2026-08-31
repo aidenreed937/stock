@@ -45,6 +45,6 @@ class EnergyFetcherBase(abc.ABC):
         )
 
     @abc.abstractmethod
-    def collect(self) -> list[Any]:
-        """执行采集并返回规范化记录列表。"""
+    def collect(self) -> Any:
+        """执行采集并返回规范化记录列表或字典。"""
         raise NotImplementedError
