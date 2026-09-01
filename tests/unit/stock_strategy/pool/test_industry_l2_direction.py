@@ -129,6 +129,29 @@ def test_crowd_gate_excludes_overheated() -> None:
     assert syms == {"730200", "710100", "280500"}
 
 
+def test_quadrant_gate_excludes_worst_quadrant() -> None:
+    """供需象限防守门：需求低|供给扩张剔除（象限缺失放行）。"""
+    d = date(2026, 8, 25)
+    df = pl.DataFrame(
+        {
+            "trade_date": [d] * 4,
+            "industry_code": ["270100", "730200", "710100", "280500"],
+            "industry_name": ["半导体", "通信设备", "计算机设备", "乘用车"],
+            "return_60d": [12.0, 9.0, 6.0, 3.0],
+            "pe_ttm_ew_percentile_5y": [40.0, 50.0, 60.0, 20.0],
+            "revenue_growth_ttm": [0.15, 0.18, 0.05, 0.03],
+            "profit_growth_ttm": [0.29, 0.72, 0.22, -0.32],
+            # 730200 落入最差象限 → 剔除；710100 象限缺失 → 放行
+            "quadrant": ["需求高|供给平稳", "需求低|供给扩张", None, "需求中|供给平稳"],
+        }
+    )
+    s = IndustryL2DirectionStrategy(top_k=3, rebalance_period=1, quadrant_gate=True)
+    signals = s.on_bar(df)
+    syms = {sig.symbol for sig in signals}
+    # 730200 被剔除（需求低|供给扩张）；Top3: 270100(12), 710100(6), 280500(3)
+    assert syms == {"270100", "710100", "280500"}
+
+
 def test_panic_scale_reduces_holdings() -> None:
     """恐慌降仓：panic_index>65 时持仓降至 panic_scale 比例（保留敞口）。"""
     d = date(2026, 8, 25)

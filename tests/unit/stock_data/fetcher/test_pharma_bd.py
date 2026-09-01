@@ -229,5 +229,7 @@ def test_pharma_bd_collector_with_crawler_live_merge(tmp_path: Path) -> None:
     collector = PharmaBdCollector(raw_dir=raw_dir, processed_dir=processed_dir)
     with patch.object(collector.crawler, "fetch_latest_deals", return_value=[mock_new_deal]):
         records = collector.collect()
-        assert len(records) == 1
-        assert records[0].report_month == "2024-08"
+        assert len(records) == 80
+        rec_2024_08 = next(r for r in records if r.report_month == "2024-08")
+        assert rec_2024_08.deal_count == 1
+        assert rec_2024_08.upfront_cash_million_usd == 500.0

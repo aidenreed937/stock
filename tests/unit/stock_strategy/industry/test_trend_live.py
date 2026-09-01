@@ -47,7 +47,7 @@ def _make_theme_etf_direction() -> pl.DataFrame:
 
 
 def test_load_l2_etf_map_from_theme_direction(monkeypatch, tmp_path: Path) -> None:
-    """方向池 15 行业应具备标准 1:1 ETF 映射及代理属性（去重后）。"""
+    """方向池 16 行业应具备标准 1:1 ETF 映射及代理属性（去重后）。"""
     etf_map = load_l2_etf_map()
     assert etf_map["270100"]["symbol"] == "512480.SH"  # 半导体
     assert etf_map["730200"]["symbol"] == "515880.SH"  # 通信设备
@@ -61,6 +61,7 @@ def test_load_l2_etf_map_from_theme_direction(monkeypatch, tmp_path: Path) -> No
     assert etf_map["421100"]["symbol"] == "159666.SZ"  # 航运港口 (交通运输ETF)
     assert etf_map["370600"]["symbol"] == "512170.SH"  # 医疗服务 (医疗ETF 主题代理)
     assert etf_map["220200"]["symbol"] == "516020.SH"  # 化学原料 (细分化工ETF 代理)
+    assert etf_map["270500"]["symbol"] == "159732.SZ"  # 消费电子 (消费电子ETF)
 
     # 去重出池行业不应再在映射基准中
     assert "630500" not in etf_map  # 光伏设备（去重剔除）
@@ -72,6 +73,7 @@ def test_load_l2_etf_map_from_theme_direction(monkeypatch, tmp_path: Path) -> No
     assert etf_map["640600"]["match_type"] == "pure_l2"
     assert etf_map["421100"]["match_type"] == "proxy_l1"
     assert etf_map["220200"]["match_type"] == "proxy_l2"
+    assert etf_map["270500"]["match_type"] == "pure_l2"
 
 
 def test_inspect_live_industry_trend_signal(monkeypatch, tmp_path: Path) -> None:
@@ -171,7 +173,7 @@ def test_inspect_live_with_unmapped_industry(monkeypatch, tmp_path: Path) -> Non
         strategy_key="industry_l2_direction", total_capital=100_000.0
     )
     by_code = {inst.industry_code: inst for inst in res.instructions}
-    # 999999 不在方向池 13 行业（面板过滤后仅 270100 进入候选）→ 仅 1 条指令
+    # 999999 不在方向池 16 行业（面板过滤后仅 270100 进入候选）→ 仅 1 条指令
     assert set(by_code.keys()) == {"270100"}
     assert by_code["270100"].etf_symbol == "512480.SH"
     assert by_code["270100"].recommended_lots is not None

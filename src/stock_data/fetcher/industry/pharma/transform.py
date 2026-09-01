@@ -173,13 +173,21 @@ def records_to_pharma_bd_frame(records: Sequence[PharmaLicenseOutRecord]) -> pl.
 
     # 衍生同比与环比斜率
     if df["yoy_growth_3mma"].null_count() == len(df):
+        prev_12 = pl.col("upfront_3mma").shift(12)
+        prev_1 = pl.col("upfront_3mma").shift(1)
         df = df.with_columns(
-            (pl.col("upfront_3mma") / pl.col("upfront_3mma").shift(12) - 1.0).alias(
-                "yoy_growth_3mma"
-            ),
-            (pl.col("upfront_3mma") / pl.col("upfront_3mma").shift(1) - 1.0).alias(
-                "mom_growth_3mma"
-            ),
+            pl.when(prev_12 > 0)
+            .then(pl.col("upfront_3mma") / prev_12 - 1.0)
+            .when(prev_12 == 0)
+            .then(pl.when(pl.col("upfront_3mma") > 0).then(1.0).otherwise(0.0))
+            .otherwise(None)
+            .alias("yoy_growth_3mma"),
+            pl.when(prev_1 > 0)
+            .then(pl.col("upfront_3mma") / prev_1 - 1.0)
+            .when(prev_1 == 0)
+            .then(pl.when(pl.col("upfront_3mma") > 0).then(1.0).otherwise(0.0))
+            .otherwise(None)
+            .alias("mom_growth_3mma"),
         )
 
     # 衍生比例指标

@@ -66,6 +66,8 @@ def test_chip_lead_time_collector_from_raw_snapshots(tmp_path: Path, monkeypatch
     """验证未配置 API Key 时自动回退读取本地 RAW 快照。"""
     monkeypatch.delenv("MOUSER_SEARCH_API_KEY", raising=False)
     monkeypatch.delenv("MOUSER_API_KEY", raising=False)
+    monkeypatch.setattr("stock_data.core.settings.data_settings.mouser_search_api_key", None)
+    monkeypatch.setattr("stock_data.core.settings.data_settings.mouser_api_key", None)
 
     lead_dir = tmp_path / "raw" / "lead_time"
     lead_dir.mkdir(parents=True, exist_ok=True)
@@ -116,6 +118,8 @@ def test_chip_lead_time_collector_empty_when_no_key_and_no_raw(tmp_path: Path, m
     """验证未配置 Key 且本地无 RAW 快照时安全返回空列表。"""
     monkeypatch.delenv("MOUSER_SEARCH_API_KEY", raising=False)
     monkeypatch.delenv("MOUSER_API_KEY", raising=False)
+    monkeypatch.setattr("stock_data.core.settings.data_settings.mouser_search_api_key", None)
+    monkeypatch.setattr("stock_data.core.settings.data_settings.mouser_api_key", None)
 
     collector = ChipLeadTimeCollector(raw_dir=tmp_path / "raw")
     records = collector.collect()

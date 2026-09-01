@@ -28,7 +28,8 @@ _L2_PANEL_MART = Path("data/curated/mart/industry_l2_panel_daily.parquet")
 _L2_PRICE_MART = Path("data/curated/mart/industry_l2_daily.parquet")
 # L2 财务黄金表 2020Q1 起，实证回测统一从首份 L2 财报发布后开始（公平对比）
 _L2_AVAILABLE_FROM = date(2020, 5, 1)
-# 全球共振方向池 15 个申万二级行业（去重版：剔除高相关成员 光伏/生物制品/化学制品/塑料）
+# 全球共振方向池 16 个申万二级行业（去重版：剔除高相关成员 光伏/生物制品/化学制品/塑料，
+# 2026-09 纳入消费电子 270500：全球手机/PC 出货 AI 终端需求方向，159732.SZ 纯正对标 gap -0.65%）
 _L2_DIRECTION_POOL = (
     "270100",  # 半导体
     "730200",  # 通信设备
@@ -45,6 +46,7 @@ _L2_DIRECTION_POOL = (
     "220800",  # 农化制品
     "640600",  # 工程机械
     "421100",  # 航运港口
+    "270500",  # 消费电子
 )
 
 

@@ -82,6 +82,36 @@ def build_semi_lead_direction() -> pl.DataFrame:
     )
 
 
+def build_semi_sales_direction() -> pl.DataFrame:
+    """全球半导体销售额腿 (SIA 全球销售额 YoY) → 滚动分位 → 日频方向得分。
+
+    数据源：data/curated/industry/semiconductor_sales.parquet（SIA 全球半导体销售额，
+    半导体景气**同步确认**指标——下游真实销售兑现，与 SOX 市价、台积电订单领先互补）。
+    月频腿 release_date 生效（次月末披露），无前视。
+    """
+    cat = DataCatalog(data_source="industry")
+    try:
+        sales = cat.load_dataset("semiconductor_sales")
+    except Exception:
+        return pl.DataFrame(schema={"trade_date": pl.Date, "direction_score": pl.Float64})
+    if sales.is_empty():
+        return pl.DataFrame(schema={"trade_date": pl.Date, "direction_score": pl.Float64})
+
+    monthly = _monthly_pct(sales, "global_sales_usd")
+    gm = (
+        pl.read_parquet("data/curated/mart/global_macro_daily.parquet")
+        .select(["trade_date"])
+        .sort("trade_date")
+    )
+    return (
+        gm.join(monthly, on="trade_date", how="left")
+        .sort("trade_date")
+        .with_columns(pl.col("pct").fill_null(strategy="forward").alias("direction_score"))
+        .select(["trade_date", "direction_score"])
+        .drop_nulls()
+    )
+
+
 def build_sox_direction() -> pl.DataFrame:
     """AI 算力腿：SOX 相对 200 日均线偏离 / 20 日动量 / 60 日变化 的滚动分位合成（日频）。"""
     gm = (
@@ -832,21 +862,29 @@ def build_theme_signals() -> dict[str, pl.DataFrame]:
     """主题方向信号（日频）：semi / optical / solar / nev / metals / lithium / transformer / pharma_bd / machinery / shipping / gold / chemicals / medical_device。"""
     semi = build_sox_direction()  # trade_date, direction_score
     semi_lead = build_semi_lead_direction()  # 台积电月营收（半导体领先腿）
-    if not semi_lead.is_empty():
-        # 合成：SOX（日频）均值 台积电（月频，前向填充）→ 领先+同步双确认
-        merged = semi.join(
-            semi_lead.rename({"direction_score": "lead"}), on="trade_date", how="left"
-        )
-        semi = (
+    semi_sales = build_semi_sales_direction()  # SIA 全球销售额（半导体同步腿）
+    # 合成：SOX（日频）+ 台积电（月频领先）+ SIA 全球销售额（月频同步）→ 市价/订单/销售三确认
+    legs = [("lead", semi_lead), ("sales", semi_sales)]
+    if any(not leg.is_empty() for _, leg in legs):
+        merged = semi
+        for name, leg in legs:
+            if leg.is_empty():
+                continue
+            merged = merged.join(
+                leg.rename({"direction_score": name}), on="trade_date", how="left"
+            )
+        fill_cols = [name for name, leg in legs if not leg.is_empty()]
+        merged = (
             merged.sort("trade_date")
-            .with_columns(pl.col("lead").fill_null(strategy="forward"))
-            .drop_nulls(subset=["lead"])
+            .with_columns([pl.col(c).fill_null(strategy="forward") for c in fill_cols])
+            .drop_nulls(subset=fill_cols)
             .with_columns(
-                ((pl.col("direction_score") + pl.col("lead")) / 2.0).alias("direction_score")
+                pl.mean_horizontal(["direction_score", *fill_cols]).alias("direction_score")
             )
             .select(["trade_date", "direction_score"])
             .drop_nulls()
         )
+        semi = merged
     optical = build_optical_direction()
     machinery = build_machinery_direction()
     shipping = build_shipping_direction()
