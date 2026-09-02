@@ -5,7 +5,8 @@
 2. runner: 行业轮动多资产回测运行器；
 3. report: 多策略横向对比研报与资金曲线；
 4. audit: 跨周期稳定性审计与防退化 CI 门禁；
-5. live: 14:50 盘尾实盘信号推演与 ETF 报单生成。
+5. live: 14:50 盘尾实盘信号推演与 ETF 报单生成；
+6. semiconductor: 半导体深研线回测/IC 验证研究（剪刀差/结构性腿确认腿）。
 """
 
 from stock_strategy.industry.assembly import (
@@ -29,6 +30,9 @@ from stock_strategy.industry.report import (
     load_industry_benchmarks,
 )
 from stock_strategy.industry.runner import IndustryStrategyRunner
+from stock_strategy.industry.semiconductor import (
+    run_semiconductor_research,
+)
 
 __all__ = [
     "IndustryLiveOrderInstruction",
@@ -44,4 +48,5 @@ __all__ = [
     "load_macro_regimes",
     "load_stress_tests",
     "run_industry_strategy_audit",
+    "run_semiconductor_research",
 ]

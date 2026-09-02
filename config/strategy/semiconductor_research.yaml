@@ -1,0 +1,36 @@
+# 半导体深研线回测/IC 验证研究配置
+#
+# 对应 stock_strategy/industry/semiconductor/（策略产物层），消费
+# data/analytics/semiconductor/（统一管线输入数据）跑出不同策略验证结果。
+#
+# 说明：防守阈值（剪刀差<0 / DOI≥70 / 降仓0.3）为 methodology 定稿阈值
+# （framework_semiconductor.md，分位硬编码、已做敏感性、不再微调——AGENTS 阈值不重炒纪律）。
+# 这里提供默认值并允许覆盖，但改动属于"研究参数"，默认保持定稿值。
+#
+# 术语约定：本配置对应**验证层**——消费 stock_analytics 产出的特征（feature / 候选因子），
+# 通过 IC / 回测 / 敏感性扫描**验证其是否为有效因子（factor）**，不产生新特征。
+
+schema_version: 1
+title: "半导体深研线回测/IC 验证研究配置"
+output_dir: "data/strategy/semiconductor"
+
+# 研究目标与窗口
+industry: "270100"          # 申万半导体
+start_date: "2018-01-01"    # 研究起点（数据腿起点后）
+oos_start: "2022-01-01"     # 样本外起点（对齐国泰海通拆分）
+
+# IC 验证
+fwd_horizon: 60             # f60 = close.shift(-60)/close - 1（60 日前瞻收益）
+ic_min_samples: 30          # IC 计算最小样本（不足返回 None）
+ic_legs:                    # IC 验证的腿部（须存在于 semiconductor_legs 产物）
+  - ai_capex_score
+  - storage_score
+
+# 指标年化
+trading_days: 252           # 年化交易日
+
+# 事件状态机防守门（methodology 定稿阈值）
+defense:
+  scissors_lt: 0            # 剪刀差 < 0 → 触发防守
+  doi_ge: 70                # DOI 高堆积 ≥ 70 → 触发降仓
+  drawdown_weight: 0.3      # 单触发降仓权重（双触发空仓 0）
