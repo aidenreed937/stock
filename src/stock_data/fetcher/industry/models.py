@@ -3,6 +3,19 @@
 from dataclasses import dataclass
 from datetime import date
 
+from stock_data.fetcher.industry._power_models import (
+    PolysiliconBalanceRecord,
+    PolysiliconInventoryMonthlyRecord,
+    PolysiliconSupplyMonthlyRecord,
+    PvWaferMonthlyRecord,
+    SiliconWaferMonthlyRecord,
+    SolarCellNbsRecord,
+    SolarSupplyDemandRecord,
+)
+from stock_data.fetcher.industry._semiconductor_models import (
+    SemiconductorEquipmentRecord,
+    SemiconductorSalesRecord,
+)
 from stock_data.fetcher.industry.pharma.models import (
     PharmaBdAssetRecord,
     PharmaBdDealRecord,
@@ -25,36 +38,20 @@ __all__ = [
     "PharmaBdDealRecord",
     "PharmaBdEventRecord",
     "PharmaLicenseOutRecord",
+    "PolysiliconBalanceRecord",
+    "PolysiliconInventoryMonthlyRecord",
+    "PolysiliconSupplyMonthlyRecord",
+    "PvWaferMonthlyRecord",
+    "SemiconductorEquipmentRecord",
     "SemiconductorLeadRecord",
     "SemiconductorSalesRecord",
     "ShippingIndicesRecord",
+    "SiliconWaferMonthlyRecord",
     "SolarCapacityRecord",
+    "SolarCellNbsRecord",
     "SolarPriceChainRecord",
+    "SolarSupplyDemandRecord",
 ]
-
-
-@dataclass(frozen=True)
-class SemiconductorSalesRecord:
-    """SIA / WSTS 全球半导体月度销售额记录。"""
-
-    report_month: str
-    trade_date: date
-    global_sales_usd: float
-    china_sales_usd: float | None = None
-    china_yoy_growth: float | None = None
-    china_mom_growth: float | None = None
-    americas_sales_usd: float | None = None
-    europe_sales_usd: float | None = None
-    japan_sales_usd: float | None = None
-    asia_pacific_sales_usd: float | None = None
-    yoy_growth: float | None = None
-    mom_growth: float | None = None
-    unit: str = "billion_usd"
-    source: str = "SIA/WSTS"
-    source_url: str = ""
-    release_date: date | None = None
-    data_status: str = "actual"
-    collected_at: str = ""
 
 
 @dataclass(frozen=True)
@@ -259,21 +256,35 @@ class ChipLeadTimeRecord:
 
 @dataclass(frozen=True)
 class ChemicalMarketRecord:
-    """基础化工重点大宗品供需开工率、库存与价差记录。"""
+    """基础化工真实基本面物理量事实记录。"""
 
     report_month: str
     trade_date: date
-    mdi_operating_rate: float | None = None
-    tio2_operating_rate: float | None = None
-    refrigerant_r32_operating_rate: float | None = None
-    mdi_price_cny: float | None = None  # 生意社聚合MDI参考价 (元/吨)
+    # --- 1. NBS 官方月度工业品产量 (万吨 / 万重箱, 真实官方物理量) ---
+    soda_ash_production: float | None = None  # 纯碱产量 (万吨)
+    caustic_soda_production: float | None = None  # 烧碱产量 (万吨)
+    synthetic_fiber_production: float | None = None  # 化学纤维产量 (万吨)
+    chemical_fertilizer_production: float | None = None  # 农用化肥总产量 (万吨)
+    plastics_production: float | None = None  # 初级形态塑料产量 (万吨)
+    plate_glass_production: float | None = None  # 平板玻璃产量 (纯碱下游最核心需求, 万重箱)
+    # --- 2. 期货交易所注册仓单 (张/手, 交易所体系可交割库存压力代理) ---
+    czce_soda_ash_receipt: float | None = None  # 郑商所纯碱期货注册仓单 (张)
+    czce_pta_receipt: float | None = None  # 郑商所 PTA 期货注册仓单 (张)
+    czce_urea_receipt: float | None = None  # 郑商所尿素期货注册仓单 (张)
+    # --- 3. 真实基准现货价与参考价 (元/吨) ---
+    soda_ash_price_cny: float | None = None  # 纯碱基准现货参考价 (元/吨)
+    pta_price_cny: float | None = None  # PTA 基准现货参考价 (元/吨)
+    urea_price_cny: float | None = None  # 尿素基准现货参考价 (元/吨)
+    mdi_price_cny: float | None = None  # 生意社聚合 MDI 参考价 (元/吨)
     tio2_price_cny: float | None = None  # 生意社钛白粉参考价 (元/吨)
-    mdi_gross_spread_cny: float | None = None
-    tio2_spread_cny: float | None = None
-    refrigerant_r32_price_cny: float | None = None
-    chemical_inventory_days: float | None = None
-    unit: str = "percent/cny_per_ton"
-    source: str = "Baichuan/Zhuochuang"
+    refrigerant_r32_price_cny: float | None = None  # R32 现货参考价 (元/吨)
+    # --- 4. 未授权商业字段 (未购买商业授权时严格保持 None, 严禁伪造) ---
+    soda_ash_operating_rate: float | None = None
+    pta_operating_rate: float | None = None
+    chemical_social_inventory: float | None = None
+    # --- 元数据与审计血统 ---
+    unit: str = "mixed"
+    source: str = "NBS/CZCE/100ppi"
     source_url: str = ""
     release_date: date | None = None
     data_status: str = "actual"

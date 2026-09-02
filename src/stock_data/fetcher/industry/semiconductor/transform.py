@@ -8,6 +8,7 @@ import polars as pl
 
 from stock_data.fetcher.industry.models import (
     ChipLeadTimeRecord,
+    SemiconductorEquipmentRecord,
     SemiconductorLeadRecord,
     SemiconductorSalesRecord,
 )
@@ -227,4 +228,123 @@ def records_to_chip_lead_time_frame(
             .round(2)
             .alias("lead_time_yoy_weeks"),
         )
+    return df
+
+
+SEMICONDUCTOR_EQUIPMENT_SCHEMA = {
+    "report_month": pl.String,
+    "trade_date": pl.Date,
+    "billings_jpy_billion": pl.Float64,
+    "billings_3mma_jpy": pl.Float64,
+    "yoy_growth": pl.Float64,
+    "yoy_growth_3mma": pl.Float64,
+    "mom_growth_3mma": pl.Float64,
+    "unit": pl.String,
+    "source": pl.String,
+    "source_url": pl.String,
+    "release_date": pl.Date,
+    "data_status": pl.String,
+    "collected_at": pl.String,
+}
+
+
+def empty_semiconductor_equipment() -> pl.DataFrame:
+    """构造半导体设备出货空事实表骨架。"""
+    return pl.DataFrame(schema=SEMICONDUCTOR_EQUIPMENT_SCHEMA)
+
+
+def records_to_semiconductor_equipment_frame(
+    records: Sequence[SemiconductorEquipmentRecord],
+) -> pl.DataFrame:
+    """将半导体设备出货记录转换为强类型 Polars DataFrame。"""
+    if not records:
+        return empty_semiconductor_equipment()
+
+    now_iso = datetime.now(UTC).isoformat()
+    data = {
+        "report_month": [r.report_month for r in records],
+        "trade_date": [r.trade_date for r in records],
+        "billings_jpy_billion": [r.billings_jpy_billion for r in records],
+        "billings_3mma_jpy": [r.billings_3mma_jpy for r in records],
+        "yoy_growth": [r.yoy_growth for r in records],
+        "yoy_growth_3mma": [r.yoy_growth_3mma for r in records],
+        "mom_growth_3mma": [r.mom_growth_3mma for r in records],
+        "unit": [r.unit or "billion_jpy" for r in records],
+        "source": [r.source or "SEAJ" for r in records],
+        "source_url": [r.source_url or "" for r in records],
+        "release_date": [r.release_date for r in records],
+        "data_status": [r.data_status or "actual" for r in records],
+        "collected_at": [r.collected_at or now_iso for r in records],
+    }
+
+    df = (
+        pl.DataFrame(data, schema=SEMICONDUCTOR_EQUIPMENT_SCHEMA)
+        .unique(subset=["report_month"], keep="last")
+        .sort("trade_date")
+    )
+    # 防御性门禁: 检测并自动修正百万円/億円导致的 10x 异常量纲 (日本半导体设备月出货量正常区间 100~800 十亿日元)
+    df = df.with_columns(
+        pl.when(pl.col("billings_jpy_billion") > 1500.0)
+        .then((pl.col("billings_jpy_billion") / 10.0).round(2))
+        .otherwise(pl.col("billings_jpy_billion"))
+        .alias("billings_jpy_billion"),
+        pl.when(pl.col("billings_3mma_jpy") > 1500.0)
+        .then((pl.col("billings_3mma_jpy") / 10.0).round(2))
+        .otherwise(pl.col("billings_3mma_jpy"))
+        .alias("billings_3mma_jpy"),
+    )
+    # 自动计算 3MMA 与 YoY 增速（若输入为 null 时补全）
+    if len(df) >= 3:
+        df = (
+            df.with_columns(
+                pl.col("billings_jpy_billion")
+                .rolling_mean(window_size=3, min_samples=1)
+                .round(2)
+                .alias("_3mma")
+            )
+            .with_columns(
+                pl.when(pl.col("billings_3mma_jpy").is_null())
+                .then(pl.col("_3mma"))
+                .otherwise(pl.col("billings_3mma_jpy"))
+                .alias("billings_3mma_jpy")
+            )
+            .drop("_3mma")
+        )
+    if len(df) >= 13:
+        df = (
+            df.with_columns(
+                pl.col("billings_jpy_billion").pct_change(12).round(4).alias("_yoy"),
+                pl.col("billings_3mma_jpy").pct_change(12).round(4).alias("_yoy_3mma"),
+                pl.col("billings_3mma_jpy").pct_change(1).round(4).alias("_mom_3mma"),
+            )
+            .with_columns(
+                pl.when(pl.col("yoy_growth").is_null())
+                .then(pl.col("_yoy"))
+                .when(pl.col("yoy_growth").abs() > 2.0)  # 处理历史百分制残留 (如 46.9 -> 0.469)
+                .then((pl.col("yoy_growth") / 100.0).round(4))
+                .otherwise(pl.col("yoy_growth"))
+                .alias("yoy_growth"),
+                pl.when(pl.col("yoy_growth_3mma").is_null())
+                .then(pl.col("_yoy_3mma"))
+                .when(pl.col("yoy_growth_3mma").abs() > 2.0)
+                .then((pl.col("yoy_growth_3mma") / 100.0).round(4))
+                # 残留百分制值 (abs<=2 绕过 /100, 且与自算 3MMA 同比偏差>0.3, 自算值可信): 用自算覆盖
+                .when(
+                    (pl.col("yoy_growth_3mma").abs() < 2.0)
+                    & (pl.col("_yoy_3mma").abs() < 2.0)
+                    & ((pl.col("yoy_growth_3mma") - pl.col("_yoy_3mma")).abs() > 0.3)
+                )
+                .then(pl.col("_yoy_3mma"))
+                .otherwise(pl.col("yoy_growth_3mma"))
+                .alias("yoy_growth_3mma"),
+                pl.when(pl.col("mom_growth_3mma").is_null())
+                .then(pl.col("_mom_3mma"))
+                .when(pl.col("mom_growth_3mma").abs() > 2.0)
+                .then((pl.col("mom_growth_3mma") / 100.0).round(4))
+                .otherwise(pl.col("mom_growth_3mma"))
+                .alias("mom_growth_3mma"),
+            )
+            .drop(["_yoy", "_yoy_3mma", "_mom_3mma"])
+        )
+
     return df

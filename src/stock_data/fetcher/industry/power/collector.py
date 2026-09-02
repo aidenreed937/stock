@@ -12,7 +12,7 @@ from stock_data.fetcher.industry.common import (
     now_utc_iso,
     parse_month_string,
 )
-from stock_data.fetcher.industry.models import SolarCapacityRecord
+from stock_data.fetcher.industry.models import SolarCapacityRecord, SolarCellNbsRecord
 from stock_data.fetcher.industry.power.crawler import NeaBulletinCrawler
 
 logger = logging.getLogger(__name__)
@@ -197,4 +197,69 @@ class SolarCollector:
                     )
                 )
         records.sort(key=lambda r: r.trade_date)
+        return records
+
+
+class NbsSolarCellCollector:
+    """国家统计局 (NBS) 太阳能电池 (光伏电池) 月度产量采集适配器。
+
+    读取已落盘 RAW CSV (`data/raw/industry/power/nbs/nbs_solar_cell_monthly.csv`),
+    结构对齐化工 NBS (report_month/output_current/output_cumulative/output_yoy/output_cum_yoy)。
+    NBS 月报发布日为次月 18 日 (对齐 chemicals/collector.py 的 release 惯例)。
+    """
+
+    NBS_RELEASE_DAY = 18
+
+    def __init__(
+        self,
+        raw_dir: Path | str = "data/raw/industry",
+    ) -> None:
+        self.raw_dir = Path(raw_dir)
+        self.csv_file = self.raw_dir / "power" / "nbs" / "nbs_solar_cell_monthly.csv"
+
+    def _release_date(self, report_month: str) -> date:
+        yr, mo = parse_month_string(report_month)
+        if mo == 12:
+            return date(yr + 1, 1, self.NBS_RELEASE_DAY)
+        return date(yr, mo + 1, self.NBS_RELEASE_DAY)
+
+    def collect(self) -> list[SolarCellNbsRecord]:
+        """从 NBS RAW CSV 读取并标准化为记录列表 (不触发在线抓取)。"""
+        if not self.csv_file.exists():
+            logger.warning("NBS 太阳能电池 RAW 快照不存在: %s", self.csv_file)
+            return []
+
+        def _safe_float(val: str | None) -> float | None:
+            if not val or not val.strip():
+                return None
+            try:
+                return float(val.strip())
+            except (ValueError, TypeError):
+                return None
+
+        records: list[SolarCellNbsRecord] = []
+        with self.csv_file.open("r", encoding="utf-8") as f:
+            reader = csv.DictReader(f)
+            for row in reader:
+                m_str = row["report_month"].strip()
+                yr, mo = parse_month_string(m_str)
+                t_date = get_month_end_date(yr, mo)
+                records.append(
+                    SolarCellNbsRecord(
+                        report_month=m_str,
+                        trade_date=t_date,
+                        output_current=_safe_float(row.get("output_current")),
+                        output_cumulative=_safe_float(row.get("output_cumulative")),
+                        output_yoy=_safe_float(row.get("output_yoy")),
+                        output_cum_yoy=_safe_float(row.get("output_cum_yoy")),
+                        unit="ten_thousand_kw",
+                        source="NBS",
+                        source_url="https://data.stats.gov.cn/",
+                        release_date=self._release_date(m_str),
+                        data_status="actual",
+                        collected_at=now_utc_iso(),
+                    )
+                )
+        records.sort(key=lambda r: r.trade_date)
+        logger.info("已读取 NBS 太阳能电池产量 %d 个月 (RAW: %s)", len(records), self.csv_file)
         return records
