@@ -46,7 +46,7 @@ description: 宏观风控双轨雷达与跨周期策略研究技能：狂热/恐
 flowchart LR
     A["原始指标<br>(lixinger/tushare 等)"] --> B["因子管线<br>config/analytics/macro_risk.yaml<br>+ data_fetchers.py"]
     B --> C["风险因子产物<br>data/analytics/macro_risk/latest/<br>risk_factors.parquet"]
-    C --> D["策略面板装配<br>assembly.py assemble_macro_panel<br>(extra_cols 白名单透传)"]
+    C --> D["策略面板装配<br>assembly.py assemble_macro_panel<br>(panel_extra_cols 配置声明透传)"]
     D --> E["策略信号<br>src/stock_strategy/pool/<br>on_bar(data)"]
     E --> F["回测/报告/审计/实盘<br>MacroRiskRunner + CLI"]
 ```
@@ -58,7 +58,7 @@ flowchart LR
 2. **注册提取器**：在 `data_fetchers.py` 用 `@register_fetcher("<series>")` 实现提取函数（PIT 时滞、T+1 平移按同文件既有模式）；
 3. **声明配置**：在 `config/analytics/macro_risk.yaml` 的 `factors:` 注册因子（series/column/window/direction），如需进维度或双轨指数再在 `dimensions:` / `indices:` 挂载；
 4. **重跑管线**：`uv run python -m stock_cli.macro_risk --last-n 60`，确认新列出现在 `risk_factors.parquet`；
-5. **透传到策略面板**：若策略需要消费该列，必须在 `assembly.py` 的 `assemble_macro_panel` `extra_cols` 白名单中加入列名（**关键耦合点：不在白名单则策略读不到**）；
+5. **声明策略面板透传列**：若策略需要消费该列，必须在 `config/strategy/macro_risk.yaml` 对应策略节点的 `panel_extra_cols` 中加入列名（**关键耦合点：不声明则策略读不到；声明但产物缺列会 fail-fast**）；
 6. **策略消费**：在策略 `on_bar(data)` 中读取新列并生成信号；
 7. **验证**：跑受影响单测 + `macro_strategy_report` 对账 + `macro_strategy_audit --assert-guardrails`。
 
@@ -70,7 +70,7 @@ flowchart LR
 - **改完必跑**：受影响单测 → `macro_strategy_report` 全周期对账 → `macro_strategy_audit --assert-guardrails` 防退化 → `macro_strategy_live --dry-run` 验证报单；
 - 策略池清单（`references/macro_strategies_playbook.md` 第〇节）随新增/变更同步。
 
-> ⚠️ 两个易错耦合点：① 新因子不进 `extra_cols` 白名单 = 策略侧不可见；② 策略阈值/权重改了但 `config/strategy/macro_risk.yaml` 未同步 = 报告与实盘不一致。任何一侧改动后先看 `git diff` 确认双侧一致。
+> ⚠️ 两个易错耦合点：① 新因子未在策略节点 `panel_extra_cols` 声明 = 策略侧不可见；② 策略阈值/权重改了但 `config/strategy/macro_risk.yaml` 未同步 = 报告与实盘不一致。任何一侧改动后先看 `git diff` 确认双侧一致。
 
 ---
 
@@ -195,7 +195,7 @@ flowchart LR
 - **策略池清单**（键名 → 类名 → 定位哲学）：维护在 `references/macro_strategies_playbook.md` 第〇节；新增/变更策略时同步该表，无需修改本 SKILL；
 - **新策略构建 6 步流水线**：
   1. 编码：`src/stock_strategy/pool/` 下新建策略类，继承 `BaseStrategy`，实现 `on_init()` / `on_bar(data) -> list[Signal]`，注册至 `STRATEGY_REGISTRY`；
-  2. 声明：`config/strategy/macro_risk.yaml` 的 `strategies:` 节点下声明 `strategy_class` / `benchmark_symbol` / `symbols` / `initial_weights` / `friction` / `thresholds`；
+  2. 声明：`config/strategy/macro_risk.yaml` 的 `strategies:` 节点下声明 `strategy_class` / `benchmark_symbol` / `symbols` / `initial_weights` / `panel_extra_cols`（策略需要的额外宏观因子列）/ `friction` / `thresholds`；
   3. 单测：`tests/unit/stock_strategy/pool/` 下编写极端行情分支与鲁棒性测试；
   4. 全周期对账：`uv run python -m stock_cli.macro_strategy_report`；
   5. 跨周期审计：`uv run python -m stock_cli.macro_strategy_audit --assert-guardrails`；

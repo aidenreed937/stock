@@ -55,6 +55,56 @@ def test_assemble_macro_panel_joins_and_forward_fills(monkeypatch) -> None:
     assert panel["close"].to_list() == [101.0, 102.0, 103.0, 104.0]
 
 
+def test_assemble_macro_panel_passes_declared_extra_cols(monkeypatch) -> None:
+    close = pl.DataFrame(
+        {
+            "trade_date": [date(2026, 1, 1 + i) for i in range(5)],
+            "close": [100.0, 101.0, 102.0, 103.0, 104.0],
+        }
+    )
+    factors = pl.DataFrame(
+        {
+            "trade_date": [date(2026, 1, 2), date(2026, 1, 4)],
+            "panic_index": [10.0, 20.0],
+            "overheat_index": [30.0, 40.0],
+            "smart_money_pct": [80.0, 60.0],
+            "repurchase_score": [55.0, 65.0],
+        }
+    )
+    _patch_factors(monkeypatch, factors)
+    panel = assembly.assemble_macro_panel(
+        catalog=_FakeCatalog({"000985.CSI": close}),
+        benchmark_symbol="000985.CSI",
+        extra_factor_cols=["smart_money_pct"],
+    )
+    assert set(panel.columns) == {
+        "trade_date",
+        "close",
+        "panic_index",
+        "overheat_index",
+        "smart_money_pct",
+    }
+    assert panel["smart_money_pct"].to_list() == [80.0, 80.0, 60.0, 60.0]
+
+
+def test_assemble_macro_panel_missing_declared_extra_cols_raises(monkeypatch) -> None:
+    close = pl.DataFrame({"trade_date": [date(2026, 1, 1)], "close": [100.0]})
+    factors = pl.DataFrame(
+        {
+            "trade_date": [date(2026, 1, 1)],
+            "panic_index": [10.0],
+            "overheat_index": [30.0],
+        }
+    )
+    _patch_factors(monkeypatch, factors)
+    with pytest.raises(DataValidationError, match="策略声明透传列"):
+        assembly.assemble_macro_panel(
+            catalog=_FakeCatalog({"000985.CSI": close}),
+            benchmark_symbol="000985.CSI",
+            extra_factor_cols=["smart_money_pct"],
+        )
+
+
 def test_assemble_macro_panel_missing_factor_cols_raises(monkeypatch) -> None:
     factors = pl.DataFrame({"trade_date": [date(2026, 1, 1)], "panic_index": [10.0]})
     _patch_factors(monkeypatch, factors)

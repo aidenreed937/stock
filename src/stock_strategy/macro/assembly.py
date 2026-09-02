@@ -28,6 +28,7 @@ def assemble_macro_panel(
     risk_root: Path | str = "data/analytics/macro_risk",
     start_date: date | None = None,
     end_date: date | None = None,
+    extra_factor_cols: Sequence[str] | str | None = None,
 ) -> pl.DataFrame:
     """装配宏观风控策略信号面板。
 
@@ -37,9 +38,11 @@ def assemble_macro_panel(
         risk_root: 宏观风险产物根目录。
         start_date: 可选起始日期截断。
         end_date: 可选截止日期截断。
+        extra_factor_cols: 策略显式声明需要透传的额外宏观因子列。
 
     Returns:
-        ``trade_date / close / panic_index / overheat_index`` 面板，按 trade_date 升序。
+        ``trade_date / close / panic_index / overheat_index`` 及声明透传列面板，
+        按 trade_date 升序。
     """
     _run_dir, factors, _manifest = load_latest_risk_factors(risk_root)
     if factors.is_empty() or not {"trade_date", "panic_index", "overheat_index"}.issubset(
@@ -55,30 +58,25 @@ def assemble_macro_panel(
     if close.is_empty():
         raise DataValidationError(f"指数日线为空: {benchmark_symbol}")
 
-    extra_cols = [
-        c
-        for c in [
-            "divergence_score_score",
-            "composite_flow_score",
-            "repurchase_score",
-            "insider_net_score",
-            "insider_sell_score",
-            "unlock_amount_score",
-            "cb_price_score",
-            "copper_gold_score",
-            "dim_flow",
-            "dim_valuation",
-            "dim_leverage",
-            "dim_crowding",
-            "dim_fear",
-            "dim_euphoria",
-            "dim_breadth",
-            "dim_corporate",
-            "dim_cross_asset",
-            "smart_money_pct",
-        ]
-        if c in factors.columns
-    ]
+    if isinstance(extra_factor_cols, str):
+        raw_extra_cols = [extra_factor_cols]
+    else:
+        raw_extra_cols = list(extra_factor_cols or [])
+    reserved_cols = {"trade_date", "close", "panic_index", "overheat_index"}
+    extra_cols = []
+    seen_cols = set(reserved_cols)
+    for col in raw_extra_cols:
+        col_name = str(col)
+        if not col_name or col_name in seen_cols:
+            continue
+        extra_cols.append(col_name)
+        seen_cols.add(col_name)
+
+    missing_extra_cols = [c for c in extra_cols if c not in factors.columns]
+    if missing_extra_cols:
+        raise DataValidationError(
+            f"宏观风险因子面板缺少策略声明透传列: {', '.join(missing_extra_cols)}"
+        )
     factor_cols = ["trade_date", "panic_index", "overheat_index", *extra_cols]
 
     factors = (

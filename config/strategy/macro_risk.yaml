@@ -98,6 +98,8 @@ strategies:
       "000922.CSI": 0.5
       "399006.SZ": 0.5
     ma_window: 20
+    panel_extra_cols:
+      - "smart_money_pct"
     thresholds:
       panic_threshold: 75.0
       panic_entry_threshold: 65.0
@@ -115,6 +117,8 @@ strategies:
       "510880.SH": 0.5
       "159915.SZ": 0.5
     ma_window: 20
+    panel_extra_cols:
+      - "smart_money_pct"
     thresholds:
       panic_threshold: 75.0
       panic_entry_threshold: 65.0
@@ -138,6 +142,8 @@ strategies:
       "159915.SZ": 0.35
       "511010.SH": 0.30
     ma_window: 20
+    panel_extra_cols:
+      - "smart_money_pct"
     thresholds:
       equity_cap: 0.7 # 权益总仓位封顶 70%，余量固收
       panic_threshold: 75.0

@@ -121,6 +121,7 @@ def main() -> None:
                 catalog=catalog,
                 benchmark_symbol=benchmark,
                 risk_root=Path(args.risk_root),
+                extra_factor_cols=spec.get("panel_extra_cols", ()),
             )
             wf_res = run_walk_forward_analysis(
                 strategy_name=name,

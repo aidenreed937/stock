@@ -131,6 +131,7 @@ def main() -> None:
             "initial_weights",
             "benchmark_symbol",
             "friction",
+            "panel_extra_cols",
             "thresholds",
         }:
             strategy_kwargs[k] = v
@@ -158,6 +159,7 @@ def main() -> None:
         risk_root=args.risk_root,
         start_date=start,
         end_date=end,
+        extra_factor_cols=entry.get("panel_extra_cols", ()),
     )
     if panel.is_empty():
         logger.error("信号面板为空，请先运行宏观风险管线 (macro_risk)")

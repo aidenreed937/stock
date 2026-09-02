@@ -169,6 +169,7 @@ def run_full_stability_audit(
             catalog=catalog,
             benchmark_symbol=benchmark,
             risk_root=risk_root,
+            extra_factor_cols=spec.get("panel_extra_cols", ()),
         )
         price_panel = load_price_panel(catalog=catalog, symbols=tuple(spec["symbols"]))
         nav = runner.backtest(panel, price_panel)

@@ -32,12 +32,16 @@ DEFAULT_RISK_ROOT = Path("data/analytics/macro_risk")
 DEFAULT_OUTPUT_DIR = Path("data/analytics/macro_strategy/robustness")
 
 # 参数扰动网格（配置值为 panic=75 / overheat=65 / ma_window=20）
-PARAM_GRID = {
+PARAM_GRID: dict[str, list[float | int]] = {
     "panic_threshold": [70.0, 75.0, 80.0],
     "overheat_threshold": [60.0, 65.0, 70.0],
     "ma_window": [10, 20, 30],
 }
-CONFIG_PARAMS = {"panic_threshold": 75.0, "overheat_threshold": 65.0, "ma_window": 20}
+CONFIG_PARAMS: dict[str, float | int] = {
+    "panic_threshold": 75.0,
+    "overheat_threshold": 65.0,
+    "ma_window": 20,
+}
 
 HOLDOUT_START = date(2023, 1, 1)
 
@@ -68,6 +72,7 @@ def _make_runner(spec: dict[str, Any], **param_overrides: float | int) -> MacroR
             "initial_weights",
             "benchmark_symbol",
             "friction",
+            "panel_extra_cols",
             "thresholds",
         }:
             strategy_kwargs[k] = v
@@ -159,6 +164,7 @@ def main() -> None:
             catalog=catalog,
             benchmark_symbol=str(spec["benchmark_symbol"]),
             risk_root=args.risk_root,
+            extra_factor_cols=spec.get("panel_extra_cols", ()),
         )
         price_panel = load_price_panel(catalog=catalog, symbols=tuple(spec["symbols"]))
 

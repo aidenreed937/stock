@@ -90,6 +90,7 @@ def test_runner_for_thresholds_transparency() -> None:
         "symbols": ["000300.SH"],
         "initial_weights": {"000300.SH": 1.0},
         "ma_window": 30,
+        "panel_extra_cols": ["smart_money_pct"],
         "thresholds": {
             "panic_threshold": 82.5,
             "panic_entry_threshold": 68.0,

@@ -88,6 +88,7 @@ def inspect_live_signal(
         catalog=catalog,
         benchmark_symbol=benchmark_symbol,
         risk_root=risk_root,
+        extra_factor_cols=spec.get("panel_extra_cols", ()),
     )
     if panel.is_empty():
         raise RuntimeError("本地宏观风险面板为空，无法推演信号")
@@ -155,6 +156,7 @@ def inspect_live_signal(
             "initial_weights",
             "benchmark_symbol",
             "friction",
+            "panel_extra_cols",
             "thresholds",
         }:
             strategy_kwargs[k] = v

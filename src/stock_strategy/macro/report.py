@@ -198,6 +198,7 @@ def _runner_for(spec: dict[str, Any]) -> tuple[MacroRiskRunner, str]:
             "initial_weights",
             "benchmark_symbol",
             "friction",
+            "panel_extra_cols",
             "thresholds",
         }:
             strategy_kwargs[k] = v
@@ -245,6 +246,7 @@ def build_multi_strategy_comparison_report(
             catalog=catalog,
             benchmark_symbol=benchmark,
             risk_root=risk_root,
+            extra_factor_cols=spec.get("panel_extra_cols", ()),
         )
         price_panel = load_price_panel(catalog=catalog, symbols=tuple(spec["symbols"]))
         nav = runner.backtest(panel, price_panel)
