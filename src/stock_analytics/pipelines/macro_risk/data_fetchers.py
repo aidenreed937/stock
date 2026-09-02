@@ -302,7 +302,7 @@ def fetch_fund_issuance(ctx: FetchContext) -> pl.DataFrame:
         )
 
     cal = ctx.md.select(["trade_date"]).with_columns(
-        pl.col("trade_date").cast(pl.Date).dt.to_string("%Y-%m").alias("month")
+        pl.col("trade_date").cast(pl.Date).dt.offset_by("-1mo").dt.to_string("%Y-%m").alias("month")
     )
     return (
         cal.join(

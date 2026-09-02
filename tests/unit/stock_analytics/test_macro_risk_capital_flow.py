@@ -5,7 +5,11 @@ from unittest.mock import MagicMock
 
 import polars as pl
 
-from stock_analytics.pipelines.macro_risk.data_fetchers import FetchContext, fetch_main_flow
+from stock_analytics.pipelines.macro_risk.data_fetchers import (
+    FetchContext,
+    fetch_fund_issuance,
+    fetch_main_flow,
+)
 
 
 def test_fetch_main_flow_from_capital_game() -> None:
@@ -68,3 +72,31 @@ def test_fetch_main_flow_fallback_to_market_daily() -> None:
     assert "main_ratio" in df.columns
     assert "etf_flow_ratio" in df.columns
     assert "divergence_score" in df.columns
+
+
+def test_fetch_fund_issuance_lags_monthly_data_to_next_month() -> None:
+    mock_fs = MagicMock()
+    mock_fs.get_domain_mart.return_value = pl.DataFrame(
+        {
+            "month": ["2026-04"],
+            "equity_issue_pct5y": [88.0],
+        }
+    )
+    market_daily = pl.DataFrame(
+        {
+            "trade_date": [
+                date(2026, 4, 30),
+                date(2026, 5, 6),
+                date(2026, 6, 1),
+            ]
+        }
+    )
+    ctx = FetchContext(
+        cat=MagicMock(),
+        cat_yf=MagicMock(),
+        fs=mock_fs,
+        md=market_daily,
+    )
+
+    df = fetch_fund_issuance(ctx).sort("trade_date")
+    assert df["fund_issue_pct5y"].to_list() == [None, 88.0, None]

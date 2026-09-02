@@ -53,7 +53,7 @@ dimensions:
         comment: "交投活跃度处于正常区间"
 
   flow:
-    name: "主力资金"
+    name: "资金与筹码"
     category: "生存与毁灭级风险 (硬约束 / 强平与失速)"
     missing:
       grade: "数据暂缺"
@@ -63,26 +63,26 @@ dimensions:
       - condition: "divergence_and_flow"
         div_score_min: 85.0
         val_min: 65.0
-        grade: "主力派发"
+        grade: "资金筹码背离"
         icon: "🔴"
-        comment: "主力坚决流出且散户激进接盘，筹码严重背离"
+        comment: "资金流向或筹码分歧明显承压，筹码结构严重背离"
     tiers:
       - min: 80.0
         grade: "坚决出逃"
         icon: "🔴"
-        comment: "主力资金单向大幅净流出，防范真摔"
+        comment: "资金流向或筹码分歧显著承压，防范真摔"
       - min: 60.0
         grade: "流出承压"
         icon: "🟡"
-        comment: "主力资金持续净流出"
+        comment: "资金流向或筹码分歧承压"
       - max: 30.0
         grade: "流入活跃"
         icon: "🟢"
-        comment: "主力资金积极回流加仓"
+        comment: "资金流向改善或筹码分歧较低"
       - default: true
         grade: "流向平衡"
         icon: "⚪"
-        comment: "主力资金流向未见明显倾斜"
+        comment: "资金流向与筹码分歧未见明显倾斜"
 
   fear:
     name: "期权情绪"
@@ -118,13 +118,13 @@ dimensions:
       comment: "历史数据不足"
     tiers:
       - min: 85.0
-        grade: "全面普跌"
+        grade: "广度收缩"
         icon: "🟡"
-        comment: "个股大面积破位，短期情绪宣泄充分"
+        comment: "涨跌比或 60 日新高扩散偏弱，短期情绪宣泄较充分"
       - max: 20.0
-        grade: "全线普涨"
+        grade: "广度扩散"
         icon: "⚪"
-        comment: "赚钱效应扩散，涨多后警惕分化"
+        comment: "上涨占优或新高扩散，涨多后警惕分化"
       - default: true
         grade: "结构均衡"
         icon: "⚪"
@@ -168,13 +168,13 @@ dimensions:
         icon: "🔴"
         comment: "产业资本与董监高净减持激增，警惕产业离场"
       - max: 25.0
-        grade: "回购托底"
+        grade: "产业压力低"
         icon: "🟢"
-        comment: "上市公司回购与股东净增持高发，产业资本积极抄底"
+        comment: "增持、减持与解禁综合压力较低，不等同于回购单项高发"
       - default: true
         grade: "运作常态"
         icon: "⚪"
-        comment: "产业资本增减持与回购处于平稳区间"
+        comment: "产业资本增持、减持与解禁处于平稳区间"
 
   cross_asset:
     name: "跨资产与宏观"

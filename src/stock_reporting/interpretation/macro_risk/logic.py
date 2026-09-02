@@ -9,81 +9,13 @@ from __future__ import annotations
 from pathlib import Path
 from typing import Any
 
-import yaml
-
-from stock_reporting.interpretation.macro_risk.fallback_config import FALLBACK_CONFIG
+from stock_reporting.interpretation.macro_risk.config import (
+    grade_dim,
+    index_threshold,
+    load_reporting_config,
+    safe_float,
+)
 from stock_reporting.interpretation.macro_risk.position_hint import dd_position_hint
-
-_DEFAULT_CONFIG_PATH = Path("config/reporting/macro_risk_thresholds.yaml")
-
-
-def load_reporting_config(config_path: Path | str | None = None) -> dict[str, Any]:
-    """读取研报评级与定性话术配置文件。"""
-    cfg_p = Path(config_path) if config_path else _DEFAULT_CONFIG_PATH
-    if cfg_p.is_file():
-        try:
-            payload = yaml.safe_load(cfg_p.read_text(encoding="utf-8"))
-            if isinstance(payload, dict) and "dimensions" in payload:
-                return payload
-        except Exception:
-            pass
-    return FALLBACK_CONFIG
-
-
-def _safe_float(val: Any, default: float = 0.0) -> float:
-    if val is None:
-        return default
-    try:
-        return float(val)
-    except (TypeError, ValueError):
-        return default
-
-
-def _grade_dim(
-    dim_key: str,
-    val: float | None,
-    cfg: dict[str, Any],
-    special_vars: dict[str, float | None] | None = None,
-) -> tuple[str, str, str]:
-    """根据 YAML 分段配置打分并匹配话术。"""
-    dim_cfg = cfg.get("dimensions", {}).get(dim_key, {})
-    if val is None:
-        missing = dim_cfg.get("missing", {})
-        return (
-            missing.get("grade", "数据暂缺"),
-            missing.get("icon", "⚪"),
-            missing.get("comment", "历史数据不足"),
-        )
-
-    special_cases = dim_cfg.get("special_cases", [])
-    if special_cases and special_vars:
-        for sc in special_cases:
-            cond = sc.get("condition")
-            if cond == "divergence_and_flow":
-                div_s = special_vars.get("div_score")
-                if (
-                    div_s is not None
-                    and div_s >= sc.get("div_score_min", 85.0)
-                    and val >= sc.get("val_min", 65.0)
-                ):
-                    return sc["grade"], sc["icon"], sc["comment"]
-
-    tiers = dim_cfg.get("tiers", [])
-    default_tier: dict[str, str] = {"grade": "正常", "icon": "⚪", "comment": "处于正常区间"}
-    for t in tiers:
-        if t.get("default"):
-            default_tier = t
-            continue
-        if "min" in t and val >= float(t["min"]):
-            return t["grade"], t["icon"], t["comment"]
-        if "max" in t and val <= float(t["max"]):
-            return t["grade"], t["icon"], t["comment"]
-
-    return (
-        default_tier.get("grade", "正常"),
-        default_tier.get("icon", "⚪"),
-        default_tier.get("comment", "处于正常区间"),
-    )
 
 
 def evaluate_macro_risk(
@@ -101,12 +33,12 @@ def evaluate_macro_risk(
     """
     cfg = load_reporting_config(config_path)
 
-    overheat = _safe_float(row.get("overheat_index"))
-    panic = _safe_float(row.get("panic_index"))
-    crowding = _safe_float(row.get("dim_crowding"))
+    overheat = safe_float(row.get("overheat_index"))
+    panic = safe_float(row.get("panic_index"))
+    crowding = safe_float(row.get("dim_crowding"))
 
     def _get(k: str) -> float | None:
-        return _safe_float(row.get(k)) if row.get(k) is not None else None
+        return safe_float(row.get(k)) if row.get(k) is not None else None
 
     val_valuation = _get("dim_valuation")
     val_leverage = _get("dim_leverage")
@@ -119,16 +51,21 @@ def evaluate_macro_risk(
     val_corporate = _get("dim_corporate")
     val_cross_asset = _get("dim_cross_asset")
 
+    overheat_critical = index_threshold(cfg, "overheat", "threshold_critical", 65.0)
+    overheat_warning = index_threshold(cfg, "overheat", "threshold_warning", 60.0)
+    panic_critical = index_threshold(cfg, "panic", "threshold_critical", 70.0)
+    panic_warning = index_threshold(cfg, "panic", "threshold_warning", 60.0)
+
     special_flow = {"div_score": val_div_score}
 
-    s_lev, b_lev, d_lev = _grade_dim("leverage", val_leverage, cfg)
-    s_crw, b_crw, d_crw = _grade_dim("crowding", val_crowding, cfg)
-    s_flw, b_flw, d_flw = _grade_dim("flow", val_flow, cfg, special_flow)
-    s_sen, b_sen, d_sen = _grade_dim("fear", val_sentiment, cfg)
-    s_brd, b_brd, d_brd = _grade_dim("breadth", val_breadth, cfg)
-    s_val, b_val, d_val = _grade_dim("valuation", val_valuation, cfg)
-    s_corp, b_corp, d_corp = _grade_dim("corporate", val_corporate, cfg)
-    s_cross, b_cross, d_cross = _grade_dim("cross_asset", val_cross_asset, cfg)
+    s_lev, b_lev, d_lev = grade_dim("leverage", val_leverage, cfg)
+    s_crw, b_crw, d_crw = grade_dim("crowding", val_crowding, cfg)
+    s_flw, b_flw, d_flw = grade_dim("flow", val_flow, cfg, special_flow)
+    s_sen, b_sen, d_sen = grade_dim("fear", val_sentiment, cfg)
+    s_brd, b_brd, d_brd = grade_dim("breadth", val_breadth, cfg)
+    s_val, b_val, d_val = grade_dim("valuation", val_valuation, cfg)
+    s_corp, b_corp, d_corp = grade_dim("corporate", val_corporate, cfg)
+    s_cross, b_cross, d_cross = grade_dim("cross_asset", val_cross_asset, cfg)
 
     risk_tiers = [
         {
@@ -151,7 +88,7 @@ def evaluate_macro_risk(
                     "desc": d_crw,
                 },
                 {
-                    "name": "主力资金",
+                    "name": "资金与筹码",
                     "code": "dim_flow",
                     "val": val_flow,
                     "status": s_flw,
@@ -219,23 +156,25 @@ def evaluate_macro_risk(
     val_turnover = _get("market_turnover_score")
 
     advice = ""
-    if overheat > 65 and panic > 65:
+    scenario = "safe"
+    if overheat >= overheat_critical and panic >= panic_critical:
         status = "双极值共振 —— 【高位杠杆踩踏 (严禁抄底)】"
         level = "danger"
+        scenario = "dual_extreme"
         advice = (
             f"- **当前状态**：狂热指数 ({overheat:.1f}) 与 恐慌指数 ({panic:.1f}) 发生罕见双极值共振。\n"
-            "- **市场定性**：存量杠杆与换手拥挤度极高，同时遭遇突发恐慌性单日普跌踩踏。\n"
+            "- **市场定性**：存量杠杆与换手拥挤度极高，同时遭遇突发恐慌性广度承压。\n"
             "- **后续推演**：属于典型的杠杆多杀多破位初期，切勿将单日急跌误判为‘超跌黄金坑’，后续仍有被动平仓与连锁回撤风险。\n"
             "👉 **操作建议**：坚决逢反弹减仓，严禁在杠杆出清前左侧盲目加杠杆抄底；以生命线（20日均线）跌破为刚性止损线。"
         )
-    elif overheat > 65:
+    elif overheat >= overheat_critical:
         has_top_divergence = (val_fund_issue is not None and val_fund_issue >= 75.0) and (
             (val_insider_sell is not None and val_insider_sell >= 75.0)
             or (val_unlock is not None and val_unlock >= 80.0)
         )
         extra_evidences = []
         if val_div is not None and val_div >= 70.0:
-            extra_evidences.append(f"主力散户博弈分歧度极高 ({val_div:.1f})，机构大单正在密集派发")
+            extra_evidences.append(f"资金与筹码博弈分歧度极高 ({val_div:.1f})，资金结构明显分化")
         if val_turnover is not None and val_turnover >= 85.0:
             extra_evidences.append(
                 f"全市场换手率触及天花板 ({val_turnover:.1f})，买盘进入物理耗尽区"
@@ -259,54 +198,82 @@ def evaluate_macro_risk(
                 "👉 **操作建议**：狂热区不盲目左侧猜顶，但严禁加杠杆追高；收紧止盈线，以生命线（20日均线）跌破为右侧退出开关，跌破坚决清仓进攻端。"
             )
         level = "danger"
-    elif panic > 65:
+        scenario = "overheat_extreme"
+    elif panic >= panic_critical:
         val_rep_val = (
-            _safe_float(row.get("repurchase_score"))
+            safe_float(row.get("repurchase_score"))
             if row.get("repurchase_score") is not None
             else None
         )
-        has_corp_support = (val_corporate is not None and val_corporate >= 75.0) or (
-            val_rep_val is not None and val_rep_val >= 80.0
-        )
-        is_corp_absent = (val_corporate is not None and val_corporate <= 25.0) and (
-            val_rep_val is None or val_rep_val <= 30.0
-        )
+        corp_pressure_low = val_corporate is not None and val_corporate <= 25.0
+        corp_pressure_high = val_corporate is not None and val_corporate >= 75.0
+        buyback_support = val_rep_val is not None and val_rep_val <= 30.0
+        buyback_absent = val_rep_val is not None and val_rep_val >= 70.0
+        smart_money_support = val_smart_score is not None and val_smart_score >= 80.0
+        partial_corp_support = corp_pressure_low or buyback_support
+        strong_corp_support = corp_pressure_low and buyback_support
+        is_corp_absent = corp_pressure_high and (val_rep_val is None or buyback_absent)
+
+        support_parts = []
+        if corp_pressure_low:
+            support_parts.append(f"产业资本综合压力低 ({val_corporate:.1f})")
+        if buyback_support:
+            support_parts.append(f"回购反向分位低 ({val_rep_val:.1f})，对应回购金额偏高")
+        if smart_money_support:
+            support_parts.append(f"聪明钱组合高分位 ({val_smart_score:.1f})")
+        support_desc = "，".join(support_parts)
+
+        pressure_parts = []
+        if corp_pressure_high:
+            pressure_parts.append(f"产业资本综合压力高 ({val_corporate:.1f})")
+        if buyback_absent:
+            pressure_parts.append(f"回购反向分位高 ({val_rep_val:.1f})，对应回购金额不足")
+        pressure_desc = "，".join(pressure_parts) or "产业资本压力未见缓和"
+
         is_corp_lead = (
-            val_smart_score is not None
-            and val_smart_score < 40.0
-            and (
-                (val_corporate is not None and val_corporate >= 65.0)
-                or (val_rep_val is not None and val_rep_val >= 70.0)
-            )
+            val_smart_score is not None and val_smart_score < 40.0 and partial_corp_support
         )
 
         if is_corp_lead:
-            corp_metric = val_corporate if val_corporate is not None else val_rep_val
-            status = "极度恐慌 —— 【微观产业底抢跑 (企业增持/回购)】"
+            status = "极度恐慌 —— 【微观产业底抢跑 (产业压力缓和/回购高发)】"
             advice = (
-                f"- **当前状态**：恐慌指数偏高 ({panic:.1f})，聪明钱组合尚在观望 ({val_smart_score:.1f})，但上市公司增持与回购潮已率先爆发 ({corp_metric:.1f})。\n"
-                "- **市场定性**：产业资本先行于宏观调令，对细分行业估值底线展开实质性投票。\n"
-                "- **后续推演**：微观企业自发展开托底，筑底周期开启，下行空间有限。\n"
-                "👉 **操作建议**：左侧跟随产业资本低吸被错杀的绩优蓝筹与红利资产，防范错过反弹行情。"
+                f"- **当前状态**：恐慌指数偏高 ({panic:.1f})，聪明钱组合尚在观望 ({val_smart_score:.1f})，但{support_desc}。\n"
+                "- **市场定性**：产业资本压力先于宏观风险缓和，对部分细分行业估值底线形成初步支撑。\n"
+                "- **后续推演**：微观基本面底部信号开始出现，但仍需价格与资金面确认。\n"
+                "👉 **操作建议**：可左侧小步分批观察绩优蓝筹与红利资产，避免一次性重仓。"
             )
-        elif has_corp_support:
-            corp_metric = val_corporate if val_corporate is not None else val_rep_val
-            status = "极度恐慌 —— 【产业托底真黄金坑 (强共振底)】"
+            level = "opportunity"
+            scenario = "panic_corporate_lead"
+        elif strong_corp_support or (partial_corp_support and smart_money_support):
+            status = "极度恐慌 —— 【产业托底真黄金坑 (低压力/回购共振底)】"
             advice = (
-                f"- **当前状态**：恐慌指数突破危险阈值 ({panic:.1f})，同时全市场回购与产业资本托底达极高分位 ({corp_metric:.1f})。\n"
-                "- **市场定性**：二级市场非理性情绪杀跌与上市公司真金白银大额回购注销发生罕见强共振。\n"
-                "- **后续推演**：下行空间已被微观基本面与产业资本托底彻底锁死，极大概率为历史级坚实大底。\n"
-                "👉 **操作建议**：坚决在左侧分批重仓配置大盘宽基（沪深300）与高股息红利，无需精准择时，耐心锁仓等待均值回归。"
+                f"- **当前状态**：恐慌指数突破危险阈值 ({panic:.1f})，同时{support_desc}。\n"
+                "- **市场定性**：二级市场非理性情绪杀跌与产业资本低压力、回购高发或聪明钱接货形成共振。\n"
+                "- **后续推演**：底部支撑明显增强，但仍需尊重趋势生命线，避免把反弹当作确定性反转。\n"
+                "👉 **操作建议**：左侧分批配置大盘宽基与高股息红利，保留仓位纪律并等待均值回归。"
             )
+            level = "opportunity"
+            scenario = "panic_true_gold_pit"
+        elif partial_corp_support:
+            status = "极度恐慌 —— 【产业资本低压力支撑 (底部信号待确认)】"
+            advice = (
+                f"- **当前状态**：恐慌指数突破危险阈值 ({panic:.1f})，{support_desc}，但产业托底证据尚未形成强共振。\n"
+                "- **市场定性**：当前更接近产业资本压力缓和，而非已确认的大额回购托底。\n"
+                "- **后续推演**：下行压力有所缓冲，后续仍需观察回购、聪明钱与价格趋势是否继续确认。\n"
+                "👉 **操作建议**：只做小步分批低吸或观察，不把单一低压力信号当作满仓抄底依据。"
+            )
+            level = "opportunity"
+            scenario = "panic_partial_support"
         elif is_corp_absent:
-            corp_metric = val_corporate if val_corporate is not None else 0.0
-            status = "极度恐慌 —— 【警惕多杀多中继 (产业未托底/假黄金坑)】"
+            status = "极度恐慌 —— 【警惕多杀多中继 (产业压力高/假黄金坑)】"
             advice = (
-                f"- **当前状态**：恐慌指数爆表 ({panic:.1f})，但全市场回购分位数仅处于低位 ({corp_metric:.1f})。\n"
-                "- **市场定性**：暴跌主要由场内杠杆爆仓与情绪踩踏造成，实体企业尚未认可当前估值底线并大额回购。\n"
+                f"- **当前状态**：恐慌指数爆表 ({panic:.1f})，但{pressure_desc}。\n"
+                "- **市场定性**：暴跌主要由场内杠杆爆仓与情绪踩踏造成，产业资本压力并未同步缓和。\n"
                 "- **后续推演**：属于典型的流动性挤压中继，谨防单日反弹诱多，后续仍面临二次下探与多杀多连环风险。\n"
                 "👉 **操作建议**：严禁盲目左侧加杠杆抄底；坚决以生命线（20日均线）为防线，未重新站上前保持防守或持有债金避险。"
             )
+            level = "warning"
+            scenario = "panic_false_gold_pit"
         elif crowding > 45:
             status = "极度恐慌 —— 【放量出清底】"
             advice = (
@@ -315,6 +282,8 @@ def evaluate_macro_risk(
                 "- **后续推演**：通常呈 V 型反转，反弹极具爆发力，但短期余震剧烈。\n"
                 "👉 **操作建议**：左侧分批建仓，切忌一次性打满，留足子弹。"
             )
+            level = "opportunity"
+            scenario = "panic_volume_bottom"
         else:
             status = "极度恐慌 —— 【缩量绝望底】"
             advice = (
@@ -323,23 +292,26 @@ def evaluate_macro_risk(
                 "- **后续推演**：最坚实的长线 U 型底，向下空间已被彻底封死。\n"
                 "👉 **操作建议**：果断重仓配置宽基，无需精准择时，耐心锁仓。"
             )
-        level = "opportunity"
+            level = "opportunity"
+            scenario = "panic_shrink_bottom"
 
         # 恐慌极值的位置风险提示（识别「假冰点」）：见 position_hint.dd_position_hint
         if dd_from_high is not None:
             advice += dd_position_hint(dd_from_high, cfg)
 
-    elif overheat > 55:
+    elif overheat >= overheat_warning:
         status = "局部过热 (随时可能见顶)"
         level = "warning"
+        scenario = "overheat_warning"
         advice = (
             f"- **当前状态**：狂热指数较高 ({overheat:.1f})，资金博弈加剧。\n"
             "- **市场定性**：情绪高昂，随时面临流动性反噬。\n"
             "👉 **操作建议**：多头头寸停止追高，逐步锁定高位利润；以生命线（20日均线）为防守底线，跌破果断减仓退守红利。"
         )
-    elif panic > 55:
+    elif panic >= panic_warning:
         status = "恐慌蔓延 (进入左侧底部区域)"
         level = "warning"
+        scenario = "panic_warning"
         advice = (
             f"- **当前状态**：恐慌情绪蔓延 ({panic:.1f})，部分资金开始踩踏。\n"
             "- **市场定性**：已进入非理性抛售的高赔率区间。\n"
@@ -359,7 +331,7 @@ def evaluate_macro_risk(
         "杠杆 (Leverage)": val_leverage if val_leverage is not None else 0.0,
         "情绪 (Sentiment)": val_sentiment if val_sentiment is not None else 0.0,
         "拥挤度 (Crowding)": crowding,
-        "主力资金 (Flow)": val_flow if val_flow is not None else 0.0,
+        "资金与筹码 (Flow)": val_flow if val_flow is not None else 0.0,
         "市场广度 (Breadth)": val_breadth if val_breadth is not None else 0.0,
         "产业资本 (Corporate)": val_corporate if val_corporate is not None else 0.0,
         "跨资产宏观 (CrossAsset)": val_cross_asset if val_cross_asset is not None else 0.0,
@@ -379,6 +351,7 @@ def evaluate_macro_risk(
         "dimensions": dims,
         "risk_tiers": risk_tiers,
         "advice": advice,
+        "scenario": scenario,
     }
 
 

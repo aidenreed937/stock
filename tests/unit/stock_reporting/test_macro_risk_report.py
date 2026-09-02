@@ -3,9 +3,18 @@
 from datetime import date
 
 import polars as pl
+import pytest
 
-from stock_reporting.interpretation.macro_risk.logic import evaluate_macro_risk
+from stock_reporting.interpretation.macro_risk.logic import (
+    evaluate_macro_risk,
+    load_reporting_config,
+)
 from stock_reporting.templates.macro_risk_report import render_macro_risk_report
+
+
+def test_load_reporting_config_missing_path_raises(tmp_path) -> None:
+    with pytest.raises(FileNotFoundError):
+        load_reporting_config(tmp_path / "missing.yaml")
 
 
 def test_evaluate_macro_risk_dual_extremes() -> None:
@@ -40,6 +49,36 @@ def test_evaluate_macro_risk_extreme_overheat() -> None:
     res = evaluate_macro_risk(row)
     assert "极度狂热" in res["status"]
     assert res["level"] == "danger"
+
+
+def test_evaluate_macro_risk_uses_configured_index_thresholds() -> None:
+    """双轨指数灯号使用 YAML 中的 60/65、60/70 阈值。"""
+    safe_row = {
+        "trade_date": date(2026, 7, 29),
+        "overheat_index": 58.0,
+        "panic_index": 58.0,
+    }
+    safe_res = evaluate_macro_risk(safe_row)
+    assert safe_res["level"] == "safe"
+
+    warning_row = {
+        "trade_date": date(2026, 6, 10),
+        "overheat_index": 45.0,
+        "panic_index": 66.0,
+    }
+    warning_res = evaluate_macro_risk(warning_row)
+    assert warning_res["level"] == "warning"
+    assert "恐慌蔓延" in warning_res["status"]
+
+    overheat_only_row = {
+        "trade_date": date(2026, 6, 26),
+        "overheat_index": 66.0,
+        "panic_index": 66.0,
+    }
+    overheat_res = evaluate_macro_risk(overheat_only_row)
+    assert overheat_res["level"] == "danger"
+    assert "极度狂热" in overheat_res["status"]
+    assert "双极值共振" not in overheat_res["status"]
 
 
 def test_evaluate_macro_risk_panic_volume_bottom() -> None:
@@ -138,54 +177,107 @@ def test_evaluate_macro_risk_divergence_distribution() -> None:
     flow_item = next(
         item for tier in res["risk_tiers"] for item in tier["metrics"] if item["code"] == "dim_flow"
     )
-    assert flow_item["status"] == "主力派发"
+    assert flow_item["status"] == "资金筹码背离"
+    assert flow_item["desc"] == "资金流向或筹码分歧明显承压，筹码结构严重背离"
     assert "🔴" in flow_item["badge"]
 
 
 def test_evaluate_macro_risk_true_gold_pit() -> None:
-    """测试真黄金坑：恐慌爆表 + 产业资本/回购大额托底共振。"""
+    """测试真黄金坑：恐慌爆表 + 产业低压力/高回购金额共振。"""
     row = {
         "trade_date": date(2026, 3, 23),
         "overheat_index": 40.0,
         "panic_index": 86.0,
-        "dim_corporate": 85.0,
-        "repurchase_score": 90.0,
+        "dim_corporate": 18.0,
+        "repurchase_score": 22.0,
     }
     res = evaluate_macro_risk(row)
     assert "产业托底真黄金坑" in res["status"]
     assert res["level"] == "opportunity"
-    assert "大额回购注销发生罕见强共振" in res["advice"]
+    assert "产业资本综合压力低" in res["advice"]
+    assert "对应回购金额偏高" in res["advice"]
+
+
+def test_evaluate_macro_risk_low_corporate_pressure_not_false_gold_pit() -> None:
+    """产业资本低分代表综合压力低，不应被判为产业未托底。"""
+    row = {
+        "trade_date": date(2026, 8, 24),
+        "overheat_index": 40.0,
+        "panic_index": 72.0,
+        "dim_corporate": 18.8,
+        "repurchase_score": 24.0,
+    }
+    res = evaluate_macro_risk(row)
+    assert "假黄金坑" not in res["status"]
+    assert "产业资本综合压力低" in res["advice"]
 
 
 def test_evaluate_macro_risk_false_gold_pit_warning() -> None:
-    """测试假黄金坑警示：恐慌高企但产业资本完全缺位观望。"""
+    """测试假黄金坑警示：恐慌高企但产业资本压力高且回购不足。"""
     row = {
         "trade_date": date(2015, 6, 19),
         "overheat_index": 50.0,
         "panic_index": 72.0,
-        "dim_corporate": 10.0,
-        "repurchase_score": 10.0,
+        "dim_corporate": 82.0,
+        "repurchase_score": 78.0,
     }
     res = evaluate_macro_risk(row)
     assert "警惕多杀多中继" in res["status"]
     assert "假黄金坑" in res["status"]
+    assert res["level"] == "warning"
     assert "严禁盲目左侧加杠杆抄底" in res["advice"]
 
 
 def test_evaluate_macro_risk_corporate_lead() -> None:
-    """测试独立产业底：聪明钱观望但上市公司率先大额回购与增持。"""
+    """测试独立产业底：聪明钱观望但产业压力先行缓和。"""
     row = {
         "trade_date": date(2026, 2, 2),
         "overheat_index": 45.0,
         "panic_index": 72.0,
         "smart_money_pct": 5.0,
-        "dim_corporate": 80.0,
-        "repurchase_score": 85.0,
+        "dim_corporate": 20.0,
+        "repurchase_score": 62.0,
     }
     res = evaluate_macro_risk(row)
     assert "微观产业底抢跑" in res["status"]
     assert res["level"] == "opportunity"
-    assert "上市公司增持与回购潮已率先爆发" in res["advice"]
+    assert "产业资本压力先于宏观风险缓和" in res["advice"]
+
+
+def test_render_macro_risk_report_false_gold_pit_action_guide() -> None:
+    """普通版操作指引不得与假黄金坑分支冲突。"""
+    df = pl.DataFrame(
+        {
+            "trade_date": [date(2026, 8, 19)],
+            "overheat_index": [40.0],
+            "panic_index": [72.0],
+            "dim_corporate": [82.0],
+            "repurchase_score": [78.0],
+        }
+    )
+    md = render_macro_risk_report(df, date(2026, 8, 19))
+    assert "假黄金坑" in md
+    assert "不要左侧抄底" in md
+    assert "恐慌区可左侧分批低吸" not in md
+
+
+def test_evaluate_macro_risk_breadth_text_is_not_overstated() -> None:
+    row = {
+        "trade_date": date(2026, 8, 28),
+        "overheat_index": 45.0,
+        "panic_index": 45.0,
+        "dim_breadth": 19.5,
+    }
+    res = evaluate_macro_risk(row)
+    breadth_item = next(
+        item
+        for tier in res["risk_tiers"]
+        for item in tier["metrics"]
+        if item["code"] == "dim_breadth"
+    )
+    assert breadth_item["status"] == "广度扩散"
+    assert "上涨占优或新高扩散" in breadth_item["desc"]
+    assert "全线普涨" not in breadth_item["status"]
 
 
 def test_evaluate_macro_risk_top_fund_corporate_divergence() -> None:

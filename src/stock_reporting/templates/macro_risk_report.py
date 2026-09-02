@@ -12,11 +12,11 @@ from stock_reporting.interpretation.macro_risk.logic import evaluate_macro_risk
 _PLAIN_DESC = {
     "两融杠杆": "借钱买股票的热度，越高越容易踩踏",
     "换手拥挤": "交易拥挤程度，越高短线越危险",
-    "主力资金": "大资金在买还是在卖",
+    "资金与筹码": "资金流向和筹码分歧的综合状态",
     "期权情绪": "市场恐慌情绪，越高越接近底部",
-    "市场广度": "涨跌股票的数量对比",
+    "市场广度": "涨跌数量和新高扩散情况",
     "大盘估值": "股票整体贵不贵",
-    "产业资本": "上市公司自己买不买自家股票",
+    "产业资本": "增持、减持和解禁压力的综合状态",
     "跨资产宏观": "股债商综合信号",
 }
 
@@ -88,6 +88,7 @@ def _build_action_guide(
     level: str,
     ma20_status: dict[str, float | bool] | None,
     panic_value: float,
+    scenario: str = "safe",
 ) -> str:
     """面向普通投资者的三选一操作指引（持有/空仓/风险）。"""
     broken = bool(ma20_status and ma20_status["broken"])
@@ -103,7 +104,19 @@ def _build_action_guide(
             "2. **空仓**：现在不是买入时机，等回调。\n"
             "3. **风险**：市场过热，未来一季度下跌概率偏高，勿加杠杆。"
         )
+    if scenario == "panic_false_gold_pit":
+        return (
+            "1. **已持有**：不加仓，按生命线和既定仓位纪律防守。\n"
+            "2. **空仓**：不要左侧抄底，等待重新站上生命线或产业压力缓和。\n"
+            "3. **风险**：当前是假黄金坑分支，单日反弹可能只是流动性中继。"
+        )
     if level == "opportunity":
+        if scenario == "panic_partial_support":
+            return (
+                "1. **已持有**：无需恐慌割肉，但不把仓位一次性打满。\n"
+                "2. **空仓**：仅小步分批观察宽基/红利，等待回购或聪明钱继续确认。\n"
+                "3. **风险**：产业资本只是低压力，不能等同于强回购托底。"
+            )
         pos_hint = (
             "（注意：若市场位置偏高可能是假冰点，抄底分批勿满仓）" if panic_value > 75 else ""
         )
@@ -173,7 +186,10 @@ def render_macro_risk_report(
         "signal_badge": _signal_badge(eval_result["level"]),
         "key_metrics": key_metrics,
         "action_guide": _build_action_guide(
-            eval_result["level"], ma20_status, eval_result["panic_value"]
+            eval_result["level"],
+            ma20_status,
+            eval_result["panic_value"],
+            eval_result.get("scenario", "safe"),
         ),
     }
 

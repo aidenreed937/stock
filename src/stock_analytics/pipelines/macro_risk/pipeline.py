@@ -142,8 +142,8 @@ class MacroRiskPipeline:
 
             scored = s.select(["trade_date", score_col])
 
-            # 合并逻辑（海外/月度低频数据使用 backward asof 对齐）
-            if f_cfg.series in ("vix", "global_macro", "fund_issuance"):
+            # 合并逻辑（海外低频数据使用 backward asof 对齐）
+            if f_cfg.series in ("vix", "global_macro"):
                 score_frame = score_frame.join_asof(
                     scored.drop_nulls(), on="trade_date", strategy="backward"
                 )

@@ -1,4 +1,9 @@
+from datetime import date
+
+import polars as pl
+
 from stock_analytics.pipelines.macro_risk import MacroRiskPipeline
+from stock_analytics.pipelines.macro_risk.config import FactorConfig, MacroRiskConfig
 
 
 def test_macro_risk_pipeline_init() -> None:
@@ -59,3 +64,37 @@ def test_macro_risk_completeness_valuation_gap() -> None:
     assert rep["complete"] is False
     assert "dim_valuation" in rep["missing_fields"]
     assert rep["available"] == 7
+
+
+def test_macro_risk_pipeline_does_not_asof_fund_issuance(monkeypatch) -> None:
+    """公募新发按交易日精确连接，不能把最后一个有效月度值向未来延续。"""
+    pipeline = MacroRiskPipeline()
+    pipeline.config = MacroRiskConfig(
+        factors={
+            "fund_issue_pct": FactorConfig(
+                series="fund_issuance",
+                column="fund_issue_pct5y",
+                window=10,
+                min_periods=1,
+                direction="raw",
+            )
+        },
+        dims={},
+        indices={},
+    )
+    axis = pl.DataFrame({"trade_date": [date(2026, 5, 28), date(2026, 5, 29), date(2026, 6, 1)]})
+    fund_issuance = pl.DataFrame(
+        {
+            "trade_date": [date(2026, 5, 28), date(2026, 5, 29)],
+            "fund_issue_pct5y": [70.0, 88.0],
+        }
+    )
+
+    monkeypatch.setattr(pipeline, "_market_daily", lambda: axis)
+    monkeypatch.setattr(pipeline, "_get_raw_series", lambda name: fund_issuance)
+
+    result = pipeline.run(as_of=date(2026, 6, 1), output_dir=None)
+    may_score = result.filter(pl.col("trade_date") == date(2026, 5, 29))["fund_issue_pct_score"][0]
+    jun_score = result.filter(pl.col("trade_date") == date(2026, 6, 1))["fund_issue_pct_score"][0]
+    assert may_score is not None
+    assert jun_score is None
