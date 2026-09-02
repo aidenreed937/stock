@@ -1,0 +1,54 @@
+# 半导体深研线：供需剪刀差 + 结构性确认腿 管线配置
+#
+# 对应 references/semiconductor/ 交易方法论中的实物流量前瞻腿：
+#   - 剪刀差 = demand（TSMC 台积电月营收领先 + SIA 全球销售额同步，均值合成）
+#             − supply（SEAJ 日本制设备出货，领先 1-2 年产能释放）
+#   - 结构性腿 = ai_capex（北美四大云厂商 CapEx 季度同比，AI 算力扩张）
+#              + storage（DXI 存储指数月度同比，AI 存储/涨价代理）
+# 全部按 release_date 生效（无前视）、0-100 滚动分位、日频前向填充。
+# 结构性腿 leg_type 独立分组、不入剪刀差；仅半导体(270100)与计算机设备(710100)有值，其余 null。
+#
+# 术语约定：本配置产出的腿部都是「特征（feature / 候选因子）」——回测的输入，
+# 不是已验证的有效因子。因子有效性（IC/回测/敏感性）由 stock_strategy 验证层确认。
+
+schema_version: 1
+title: "半导体深研线供需剪刀差与结构性确认腿"
+artifact_root: "data/analytics/semiconductor"
+
+# 日频交易日历（Curated Mart，仅取 trade_date 列）
+calendar_mart: "global_macro_daily"
+
+# 输出覆盖的申万二级行业（有实物流量数据腿的行业）
+industry_codes:
+  - "270100"   # 半导体
+  - "710100"   # 计算机设备
+
+# 剪刀差腿配置
+scissors:
+  # demand = 多个需求源均值合成（每种源独立 YoY-滚动分位后取均值）
+  demand_sources:
+    - source: "semiconductor_lead"      # TSMC 台积电月营收（领先）
+      column: "tsmc_revenue_3mma_usd"
+      window_months: 36
+    - source: "semiconductor_sales"     # SIA/WSTS 全球半导体销售额（同步，官方 3MMA）
+      column: "global_sales_usd"
+      window_months: 36
+  # supply = 单供给源（SEAJ 日本制设备出货 3MMA）
+  supply:
+    source: "semiconductor_equipment"
+    column: "billings_3mma_jpy"
+    window_months: 36
+
+# 结构性确认腿（leg_type 独立分组，不入剪刀差）
+structural:
+  ai_capex:                             # AI 算力扩张：北美四大云厂商 CapEx 季度同比
+    source: "cloud_capex_quarterly"
+    column: "total_capex_billion_usd"
+    window_quarters: 12                 # 12 季滚动分位
+  storage:                              # AI 存储/涨价：DXI 存储指数月度同比
+    source: "semiconductor_lead"
+    column: "dram_dxi_index"
+    window_months: 36                   # 36 月滚动分位
+
+# 数据缺失时的中性回退分位
+neutral_score: 50.0

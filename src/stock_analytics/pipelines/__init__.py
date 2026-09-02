@@ -36,6 +36,10 @@ from stock_analytics.pipelines.quant_brief import (
     QuantBriefRunResult,
     run_quant_brief,
 )
+from stock_analytics.pipelines.semiconductor import (
+    SemiconductorLegsPipeline,
+    run_semiconductor_legs,
+)
 from stock_analytics.pipelines.stock_diagnostics import run_stock_diagnostics
 from stock_analytics.pipelines.stock_screen import (
     StockScreenRunResult,
@@ -55,6 +59,7 @@ __all__ = [
     "MarketCycleReviewRunResult",
     "MarketTemperatureRunResult",
     "QuantBriefRunResult",
+    "SemiconductorLegsPipeline",
     "StockScreenRunResult",
     "run_daily_review",
     "run_industry_diagnostics",
@@ -64,6 +69,7 @@ __all__ = [
     "run_market_cycle_review",
     "run_market_temperature",
     "run_quant_brief",
+    "run_semiconductor_legs",
     "run_stock_diagnostics",
     "run_stock_screen",
     "run_thesis_review",
