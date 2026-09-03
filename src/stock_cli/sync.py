@@ -8,6 +8,7 @@ from datetime import date
 
 import polars as pl
 
+from stock_cli.sync_marts import refresh_synced_marts
 from stock_core.utils.logger import logger
 from stock_data.pipeline.sync_runner import SyncSourceRun, run_sync
 
@@ -31,6 +32,7 @@ def _build_parser() -> argparse.ArgumentParser:
     parser.add_argument("-e", "--endpoint", "--endpoints", dest="endpoints")
     parser.add_argument("--force", action="store_true")
     parser.add_argument("--no-audit", action="store_true")
+    parser.add_argument("--refresh-marts", "--refresh-mart", action="store_true")
     parser.add_argument("-w", "--max-workers", type=_positive_int, default=None)
     return parser
 
@@ -82,6 +84,7 @@ def main() -> None:
         max_workers=args.max_workers,
         target_date_is_explicit=args.date is not None,
     )
+    refresh_synced_marts(runs, enabled=args.refresh_marts)
     if any(_render_summary(run) for run in runs):
         logger.error("增量同步执行存在失败任务，请检查上述日志报告！")
         sys.exit(1)

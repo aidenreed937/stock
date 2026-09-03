@@ -51,6 +51,11 @@ def contract_fields(meta: Any, defaults: Any | None = None) -> dict[str, Any]:
             )
         ),
         "request_window_days": getattr(meta, "request_window_days", None),
+        "sync_lookback_days": (
+            getattr(meta, "sync_lookback_days", None)
+            if getattr(meta, "sync_lookback_days", None) is not None
+            else getattr(defaults, "sync_lookback_days", None)
+        ),
         "max_rows_per_request": getattr(meta, "max_rows_per_request", None),
         "request_fields": getattr(meta, "request_fields", None),
     }

@@ -55,11 +55,11 @@ LiXinger 不再注册历史别名 `macro_bundle` 和 `index_bundle`。宏观数�
 
 | 计划状态 | 判定 | 上游 HTTP 请求 |
 | :--- | :--- | :---: |
-| `UP_TO_DATE` | Curated 水位已覆盖目标日/期间 | 否 |
+| `UP_TO_DATE` | 普通任务的 Curated 水位已覆盖目标日/期间 | 否 |
 | `SKIPPED` | 发布时间窗口未到、交易日历不可用或任务被配置停用 | 否 |
-| `PENDING` | 水位存在缺口，或首次同步尚无水位 | 先查 RAW 缓存 |
+| `PENDING` | 水位存在缺口、首次同步尚无水位，或事件任务到了滚动刷新窗口 | 普通任务先查 RAW 缓存；事件刷新任务绕过 RAW |
 
-待执行任务默认启用 RAW 缓存；缓存覆盖目标日期和标的时直接复用，跳过网络请求。`FORCE=1` 才会关闭 RAW 缓存，并允许绕过发布时间窗口和已最新水位，用于核验上游响应或强制刷新。
+待执行任务默认启用 RAW 缓存；缓存覆盖目标日期和标的时直接复用，跳过网络请求。TuShare `stk_holdertrade`、`repurchase`、`block_trade`、`share_float` 在发布窗口后每天刷新，分别最多回看 31/31/5/31 天，并按本地业务水位收窄日常请求区间；`FORCE=1` 仍可关闭普通任务 RAW 缓存并绕过发布时间窗口。
 
 日频任务通常从 Curated 水位次日开始，月频/季频任务推进到下一业务期间。历史兼容表的 `date`/`Date` 会在 Curated 加载时归一为 `trade_date`，水位扫描按任务注册的 `date_columns` 兼容这些别名；看到摘要 `N/A` 时，应使用 `DataCatalog.latest_trade_dates()` 或 `get_latest_trade_date()` 复核，不能仅凭摘要判定缺数。事件型、静态型任务不保证有统一日度水位。
 

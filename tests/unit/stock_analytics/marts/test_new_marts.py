@@ -668,6 +668,23 @@ def test_unlock_pressure_empty() -> None:
     )
 
 
+def test_unlock_pressure_zero_fills_explicit_window_without_events() -> None:
+    close = pl.DataFrame(
+        {
+            "symbol": ["600000.SH"] * 2,
+            "trade_date": [date(2026, 8, 4), date(2026, 8, 5)],
+            "close": [10.5, 11.0],
+        }
+    )
+    frame = build_unlock_pressure_frame(
+        pl.DataFrame(), close, start_date=date(2026, 8, 4), end_date=date(2026, 8, 5)
+    )
+
+    assert frame["trade_date"].to_list() == [date(2026, 8, 4), date(2026, 8, 5)]
+    assert frame["unlock_count"].to_list() == [0, 0]
+    assert frame["unlock_amount"].to_list() == [0.0, 0.0]
+
+
 def test_unlock_pressure_zero_fill_for_trading_days_without_unlocks() -> None:
     """交易日历中无解禁事件的交易日应合规填充 0 值。"""
     share_float = pl.DataFrame(

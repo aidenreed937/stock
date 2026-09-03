@@ -7,6 +7,7 @@ from pathlib import Path
 
 from stock_analytics.features import FeatureStore, MarketDailyBuilder
 from stock_analytics.marts import DomainMartBuilder
+from stock_analytics.marts.build_steps import build_corporate_actions, build_unlock_pressure
 from stock_core.utils.logger import logger
 from stock_data.catalog import DataCatalog
 
@@ -20,6 +21,7 @@ TARGET_CHOICES: tuple[str, ...] = (
     "dragon_tiger_daily",
     "etf_flow_daily",
     "industry_l2_daily",
+    "corporate_actions_daily",
     "unlock_pressure_daily",
     "northbound_industry_daily",
     "capital_game_daily",
@@ -35,6 +37,7 @@ def build_features(
     end_date: date | None = None,
     overwrite: bool = False,
     storage_dir: Path | None = None,
+    refresh_marts: bool = False,
 ) -> None:
     """构建指定的 Analytics Feature 或 Domain Mart。"""
     catalog = DataCatalog(data_source="tushare", storage_dir=storage_dir)
@@ -84,6 +87,7 @@ def build_features(
         "dragon_tiger_daily",
         "etf_flow_daily",
         "industry_l2_daily",
+        "corporate_actions_daily",
         "unlock_pressure_daily",
         "northbound_industry_daily",
         "capital_game_daily",
@@ -134,11 +138,26 @@ def build_features(
                 overwrite=overwrite,
             )
             logger.info("领域 Mart [etf_flow_daily] 构建完成: {} 行", result.height)
-        elif target == "unlock_pressure_daily":
-            result = domain_builder.build_unlock_pressure(
+        elif target == "corporate_actions_daily":
+            result = build_corporate_actions(
+                catalog,
+                store,
                 start_date=start_date,
                 end_date=end_date,
                 overwrite=overwrite,
+                include_block_trade_discount=True,
+                refresh_start=refresh_marts,
+            )
+            output_count = sum(frame.height for frame in result.values())
+            logger.info("领域 Mart [corporate_actions_daily] 构建完成: {} 行", output_count)
+        elif target == "unlock_pressure_daily":
+            result = build_unlock_pressure(
+                catalog,
+                store,
+                start_date=start_date,
+                end_date=end_date,
+                overwrite=overwrite,
+                refresh_start=refresh_marts,
             )
             logger.info("领域 Mart [unlock_pressure_daily] 构建完成: {} 行", result.height)
         elif target == "northbound_industry_daily":

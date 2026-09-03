@@ -21,6 +21,7 @@ FINANCE_ENDPOINTS: dict[str, EndpointMeta] = {
             "total_share": "share",
         },
         request_window_days=31,
+        sync_lookback_days=31,
         max_rows_per_request=3000,
         request_fields=(
             "ts_code,ann_date,holder_name,holder_type,in_de,change_vol,change_ratio,"
@@ -43,6 +44,7 @@ FINANCE_ENDPOINTS: dict[str, EndpointMeta] = {
             "low_limit": "CNY/share",
         },
         request_window_days=31,
+        sync_lookback_days=31,
         max_rows_per_request=2000,
         request_fields=("ts_code,ann_date,end_date,proc,exp_date,vol,amount,high_limit,low_limit"),
     ),
@@ -62,6 +64,7 @@ FINANCE_ENDPOINTS: dict[str, EndpointMeta] = {
             "amount": "CNY10k",
         },
         request_window_days=1,
+        sync_lookback_days=5,
         max_rows_per_request=1000,
         request_fields="ts_code,trade_date,price,vol,amount,buyer,seller",
     ),
@@ -80,6 +83,7 @@ FINANCE_ENDPOINTS: dict[str, EndpointMeta] = {
             "float_ratio": "percent",
         },
         request_window_days=30,
+        sync_lookback_days=31,
         max_rows_per_request=6000,
         request_fields=(
             "ts_code,ann_date,float_date,float_share,float_ratio,holder_name,share_type"

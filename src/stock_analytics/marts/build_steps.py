@@ -121,6 +121,7 @@ def build_corporate_actions(
     end_date: date | None,
     overwrite: bool,
     include_block_trade_discount: bool,
+    refresh_start: bool = False,
 ) -> dict[str, pl.DataFrame]:
     """加载并物化增减持、回购与大宗交易聚合。"""
     incremental_starts = (
@@ -130,7 +131,7 @@ def build_corporate_actions(
             date_column="announcement_date",
             requested_start=start_date,
             end_date=end_date,
-            overwrite=overwrite,
+            overwrite=overwrite or refresh_start,
         ),
         _incremental_start_date(
             store,
@@ -138,7 +139,7 @@ def build_corporate_actions(
             date_column="announcement_date",
             requested_start=start_date,
             end_date=end_date,
-            overwrite=overwrite,
+            overwrite=overwrite or refresh_start,
         ),
         _incremental_start_date(
             store,
@@ -146,7 +147,7 @@ def build_corporate_actions(
             date_column="trade_date",
             requested_start=start_date,
             end_date=end_date,
-            overwrite=overwrite,
+            overwrite=overwrite or refresh_start,
         ),
     )
     available_starts = [value for value in incremental_starts if value is not None]
@@ -716,6 +717,7 @@ def build_unlock_pressure(
     start_date: date | None,
     end_date: date | None,
     overwrite: bool,
+    refresh_start: bool = False,
 ) -> pl.DataFrame:
     """加载限售解禁明细并按解禁日聚合解禁压力 Mart。
 
@@ -728,7 +730,7 @@ def build_unlock_pressure(
         date_column="trade_date",
         requested_start=start_date,
         end_date=end_date,
-        overwrite=overwrite,
+        overwrite=overwrite or refresh_start,
     )
     share_float = catalog.load_dataset(
         "share_float",
@@ -736,8 +738,6 @@ def build_unlock_pressure(
         end_date=end_date,
         columns=["symbol", "float_date", "float_share", "float_ratio"],
     )
-    if share_float.is_empty():
-        return build_unlock_pressure_frame(pl.DataFrame(), pl.DataFrame())
     close_start = effective_start - timedelta(days=60) if effective_start is not None else None
     daily_close = catalog.load_dataset(
         "stock_daily_bar",

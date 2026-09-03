@@ -171,6 +171,11 @@ def test_task_spec_properties() -> None:
     assert theme_cons.partitioned is True
     assert theme_cons.request_window_days == 1
 
+    assert resolve_task("tushare", "stk_holdertrade").sync_lookback_days == 31
+    assert resolve_task("tushare", "repurchase").sync_lookback_days == 31
+    assert resolve_task("tushare", "block_trade").sync_lookback_days == 5
+    assert resolve_task("tushare", "share_float").sync_lookback_days == 31
+
 
 def test_tushare_research_tasks_are_available_with_source_dates() -> None:
     from stock_data.core.constants import ENDPOINT_START_DATE_OVERRIDES

@@ -53,7 +53,6 @@ WATERMARK_DATE_COLUMNS = (
     "period",
     "Start Date",
 )
-REFRESH_WATERMARK_FREQUENCIES = {"static", "event"}
 
 
 def disabled_endpoints(
@@ -365,7 +364,7 @@ def sniff_watermarks(
         try:
             task = resolve_task_fn(data_source, endpoint)
             meta = DataUpdateScheduler.get_endpoint_update_meta(data_source, endpoint)
-            if meta.frequency in REFRESH_WATERMARK_FREQUENCIES:
+            if meta.frequency == "static":
                 dates = catalog.latest_refresh_dates(dataset=task.dataset, n=1)
                 watermarks[endpoint] = dates[0] if dates else None
                 continue

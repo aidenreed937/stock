@@ -43,11 +43,13 @@ def test_tushare_registry() -> None:
 
     block_trade = TUSHARE_API_REGISTRY["block_trade"]
     assert block_trade.nullable_primary_keys == ["buyer", "seller"]
+    assert block_trade.sync_lookback_days == 5
 
     share_float = TUSHARE_API_REGISTRY["share_float"]
     assert share_float.query_mode == "float_date"
     assert share_float.date_columns == ["float_date", "ann_date"]
     assert share_float.max_rows_per_request == 6000
+    assert share_float.sync_lookback_days == 31
     assert share_float.units == {"float_share": "share", "float_ratio": "percent"}
 
     assert TUSHARE_API_REGISTRY["pledge_detail"].max_rows_per_request == 1000

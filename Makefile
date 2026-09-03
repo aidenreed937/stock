@@ -87,7 +87,7 @@ market-aggregate:
 	uv run python -m stock_cli.market_aggregate $(if $(WATCH),--watch) $(if $(INTERVAL),--interval $(INTERVAL)) $(if $(FORMAT),--format $(FORMAT)) $(if $(CONFIG),--config $(CONFIG)) $(if $(OUTPUT_ROOT),--output-root $(OUTPUT_ROOT)) $(if $(RUN_CLASS),--run-class $(RUN_CLASS)) $(if $(NO_LATEST),--no-latest) $(if $(RECORD),--record) $(if $(RAW_ROOT),--raw-root $(RAW_ROOT)) $(if $(BATCH_SIZE),--batch-size $(BATCH_SIZE),$(if $(PAGE_SIZE),--batch-size $(PAGE_SIZE))) $(if $(STRONG_MOVE_PCT),--strong-move-pct $(STRONG_MOVE_PCT)) $(if $(SKIP_INDUSTRY),--skip-industry)
 
 sync:
-	uv run python -m stock_cli.sync --source $(or $(SOURCE),$(DATA_SOURCE),tushare) $(if $(DATE),--date $(DATE)) $(if $(or $(ENDPOINT),$(ENDPOINTS)),--endpoints $(or $(ENDPOINT),$(ENDPOINTS))) $(if $(FORCE),--force) $(if $(NO_AUDIT),--no-audit) $(if $(WORKERS),--max-workers $(WORKERS))
+	uv run python -m stock_cli.sync --source $(or $(SOURCE),$(DATA_SOURCE),tushare) $(if $(DATE),--date $(DATE)) $(if $(or $(ENDPOINT),$(ENDPOINTS)),--endpoints $(or $(ENDPOINT),$(ENDPOINTS))) $(if $(FORCE),--force) $(if $(NO_AUDIT),--no-audit) $(if $(or $(REFRESH_MARTS),$(REFRESH_MART)),--refresh-marts) $(if $(WORKERS),--max-workers $(WORKERS))
 
 sync-industry:
 	uv run python -m stock_cli.sync --source industry $(if $(or $(ENDPOINT),$(ENDPOINTS),$(METRIC)),--endpoints $(or $(ENDPOINT),$(ENDPOINTS),$(METRIC))) $(if $(FORCE),--force) $(if $(DATE),--date $(DATE)) $(if $(WORKERS),--max-workers $(WORKERS))

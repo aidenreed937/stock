@@ -27,6 +27,7 @@ class EndpointMeta:
     units: dict[str, str] = field(default_factory=dict)
     max_range_days: int | None = None
     request_window_days: int | None = None
+    sync_lookback_days: int | None = None
     per_symbol_windowed: bool = False
     pagination_required: bool = True
     max_rows_per_request: int | None = None

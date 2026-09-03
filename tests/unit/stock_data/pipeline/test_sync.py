@@ -134,7 +134,7 @@ def test_sniff_watermarks_uses_refresh_date_for_static_endpoint() -> None:
         patch("stock_data.pipeline.sync._disabled_endpoints", return_value=set()),
         patch(
             "stock_data.pipeline.sync.DataUpdateScheduler.get_endpoint_update_meta",
-            return_value=MagicMock(frequency="event"),
+            return_value=MagicMock(frequency="static"),
         ),
     ):
         assert _sniff_watermarks(catalog, "tushare", ["stock_basic"]) == {
@@ -143,6 +143,34 @@ def test_sniff_watermarks_uses_refresh_date_for_static_endpoint() -> None:
 
     catalog.latest_refresh_dates.assert_called_once_with(dataset="stock_basic", n=1)
     catalog.latest_trade_dates.assert_not_called()
+
+
+def test_sniff_watermarks_uses_business_date_for_event_endpoint() -> None:
+    catalog = MagicMock()
+    catalog.latest_trade_dates.return_value = [date(2026, 8, 25)]
+    task = MagicMock(dataset="share_float", api_name="share_float")
+
+    with (
+        patch(
+            "stock_data.pipeline.sync.expand_task_targets",
+            return_value=["share_float"],
+        ),
+        patch("stock_data.pipeline.sync.resolve_task", return_value=task),
+        patch("stock_data.pipeline.sync._disabled_endpoints", return_value=set()),
+        patch("stock_data.pipeline.sync._watermark_date_column", return_value="float_date"),
+        patch(
+            "stock_data.pipeline.sync.DataUpdateScheduler.get_endpoint_update_meta",
+            return_value=MagicMock(frequency="event"),
+        ),
+    ):
+        assert _sniff_watermarks(catalog, "tushare", ["share_float"]) == {
+            "share_float": date(2026, 8, 25)
+        }
+
+    catalog.latest_trade_dates.assert_called_once_with(
+        dataset="share_float", n=1, date_column="float_date"
+    )
+    catalog.latest_refresh_dates.assert_not_called()
 
 
 def test_symbol_refresh_watermarks_reads_updated_at() -> None:
@@ -208,6 +236,63 @@ def test_build_sync_plan_uptodate() -> None:
     ):
         plan = engine.build_sync_plan(target_date=date(2026, 8, 13), endpoints=["stock_daily_bar"])
         assert plan[0].status == "UP_TO_DATE"
+
+
+@pytest.mark.parametrize(
+    ("endpoint", "lookback_days"),
+    [
+        ("stk_holdertrade", 31),
+        ("repurchase", 31),
+        ("block_trade", 5),
+        ("share_float", 31),
+    ],
+)
+def test_build_sync_plan_refreshes_event_window_after_watermark(
+    endpoint: str, lookback_days: int
+) -> None:
+    engine = DailySyncEngine(data_source="tushare")
+    target = date(2026, 9, 2)
+    with (
+        patch.object(engine, "sniff_watermarks", return_value={endpoint: target}),
+        patch("stock_data.pipeline.scheduler.DataUpdateScheduler.is_data_ready", return_value=True),
+    ):
+        plan = engine.build_sync_plan(target_date=target, endpoints=[endpoint])
+
+    assert len(plan) == 1
+    assert plan[0].status == "PENDING"
+    assert plan[0].start_date == target
+    assert plan[0].end_date == target
+    assert plan[0].refresh_raw_cache is True
+
+
+def test_build_sync_plan_refreshes_event_gap_with_capped_lookback() -> None:
+    engine = DailySyncEngine(data_source="tushare")
+    target = date(2026, 9, 2)
+    watermark = date(2026, 8, 25)
+    with (
+        patch.object(engine, "sniff_watermarks", return_value={"repurchase": watermark}),
+        patch("stock_data.pipeline.scheduler.DataUpdateScheduler.is_data_ready", return_value=True),
+    ):
+        plan = engine.build_sync_plan(target_date=target, endpoints=["repurchase"])
+
+    assert plan[0].start_date == watermark
+    assert plan[0].end_date == target
+    assert plan[0].refresh_raw_cache is True
+
+
+def test_build_sync_plan_keeps_event_window_protection() -> None:
+    engine = DailySyncEngine(data_source="tushare")
+    target = date(2026, 9, 2)
+    with (
+        patch.object(engine, "sniff_watermarks", return_value={"share_float": target}),
+        patch(
+            "stock_data.pipeline.scheduler.DataUpdateScheduler.is_data_ready", return_value=False
+        ),
+    ):
+        plan = engine.build_sync_plan(target_date=target, endpoints=["share_float"])
+
+    assert plan[0].status == "SKIPPED"
+    assert plan[0].refresh_raw_cache is False
 
 
 def test_build_sync_plan_retries_previous_trading_day_for_default_margin_sync() -> None:
@@ -737,6 +822,30 @@ def test_execute_plan_passes_task_symbol_to_pipeline() -> None:
     assert results[0].symbol == "000001.SH"
     mock_pipeline.sync_daily_bars.assert_called_once()
     assert mock_pipeline.sync_daily_bars.call_args.kwargs["symbol"] == "000001.SH"
+
+
+def test_execute_plan_bypasses_raw_cache_for_refresh_task() -> None:
+    engine = DailySyncEngine(data_source="tushare", max_workers=1)
+    task = SyncTaskItem(
+        data_source="tushare",
+        endpoint="share_float",
+        dataset="share_float",
+        start_date=date(2026, 8, 1),
+        end_date=date(2026, 9, 2),
+        watermark=date(2026, 9, 2),
+        status="PENDING",
+        is_ready=True,
+        refresh_raw_cache=True,
+    )
+    mock_pipeline = MagicMock()
+    mock_pipeline.sync_daily_bars.return_value = pl.DataFrame({"symbol": ["600000.SH"]})
+
+    with patch("stock_data.pipeline.sync.create_pipeline", return_value=mock_pipeline):
+        results = engine.execute_plan([task])
+
+    assert results[0].status == "SUCCESS"
+    assert mock_pipeline.sync_daily_bars.call_args.kwargs["use_raw_cache"] is False
+    assert mock_pipeline.sync_daily_bars.call_args.kwargs["force_refresh"] is True
 
 
 def test_sync_daily_workflow_with_audit() -> None:

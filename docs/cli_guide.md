@@ -129,6 +129,12 @@ make sync SOURCE=tushare ENDPOINT=dc_concept_cons
 make sync SOURCE=tushare ENDPOINT=top10_floatholders,stk_holdernumber  # 单日秒级增量公告同步 (<1s)
 ```
 
+公司行为四个事件端点（`stk_holdertrade`、`repurchase`、`block_trade`、`share_float`）在发布窗口后按有限滚动窗口每日刷新；需要同步完成后重建受影响 Mart 时追加 `REFRESH_MARTS=1`：
+
+```bash
+make sync SOURCE=tushare ENDPOINT=corporate_action_bundle REFRESH_MARTS=1
+```
+
 TuShare 财报使用 `financial_statement_bundle`，展开为 `income`、`fina_indicator`、`balancesheet`、
 `cashflow` 四个报告期任务。它们与 `top10_floatholders`、`stk_holdernumber` 均属于全市场批量任务（`fetch_mode=per_period`），按目标日前最近已完成季度末调度，并以全市场 `stock_basic` 为股票池；当前报告期可能刷新以吸收重述。CLI 传项目任务名，不传上游内部的 `*_vip` 名称：
 
@@ -186,7 +192,7 @@ make multi-date DATES="2026-08-01 2026-08-14" DRY_RUN=1
 uv run python -m stock_cli.multi_date --help
 ```
 
-需要增量刷新 Mart 时追加 `REFRESH_MART=1`；实验或回填运行使用 `RUN_CLASS=experiment` 或 `RUN_CLASS=backfill`。历史重建仍需显式使用特征构建 CLI 的覆盖参数，并提前确认备份和恢复方案。
+需要增量刷新 Mart 时追加 `REFRESH_MARTS=1`（兼容 `REFRESH_MART=1`）；实验或回填运行使用 `RUN_CLASS=experiment` 或 `RUN_CLASS=backfill`。历史重建仍需显式使用特征构建 CLI 的覆盖参数，并提前确认备份和恢复方案。
 
 ---
 

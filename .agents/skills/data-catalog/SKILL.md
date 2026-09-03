@@ -65,8 +65,8 @@ df_summary = DataCatalog().summary()
 | **卖方预测与业绩** | `report_rc`, `forecast`, `express` | `tushare` | 一致预期盈利预测 (`np`, `tp`)、业绩预告与快报 |
 | **场内基金与 ETF** | `fund_daily`, `fund_adj`, `etf_share_size` | `tushare` | 63 只核心 ETF 全历史日线、复权因子(含分红)与份额规模 |
 | **可转债与期权** | `cb_basic`, `cb_daily`, `opt_basic`, `opt_daily` | `tushare` | 可转债静态/日行情、期权合约静态/日行情 |
-| **公司行为事件** | `stk_holdertrade`, `repurchase`, `block_trade` | `tushare` | 增减持、回购与大宗交易事件明细 |
-| **领域 Mart** | `market_daily`、`industry_daily`、`industry_panel_daily`、`market_temperature_derived_facts`、`convertible_bond_daily`、`insider_activity_daily`、`repurchase_daily`、`block_trade_daily`、`settlement_iv_proxy_daily` | `FeatureStore` | 市场、行业、温度、衍生品与公司行为聚合事实；不通过 `DataCatalog` 直接加载 |
+| **公司行为事件** | `stk_holdertrade`, `repurchase`, `block_trade`, `share_float` | `tushare` | 增减持、回购、大宗交易与限售解禁事件明细 |
+| **领域 Mart** | `market_daily`、`industry_daily`、`industry_panel_daily`、`market_temperature_derived_facts`、`convertible_bond_daily`、`insider_activity_daily`、`repurchase_daily`、`block_trade_daily`、`unlock_pressure_daily`、`settlement_iv_proxy_daily` | `FeatureStore` | 市场、行业、温度、衍生品与公司行为聚合事实；不通过 `DataCatalog` 直接加载 |
 | **外盘与全球宏观** | `stock_daily_bar`, `index_daily_bar`, `macro_indicators` | `yfinance` / `fred` | 美股巨头、外盘指数、美债/黄金/原油/VIX、FED 宏观序列 |
 
 ---

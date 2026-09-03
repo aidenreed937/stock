@@ -44,6 +44,38 @@ def empty_unlock_pressure() -> pl.DataFrame:
     return pl.DataFrame(schema=UNLOCK_PRESSURE_SCHEMA)
 
 
+def _calendar_zero_frame(
+    daily_close: pl.DataFrame,
+    *,
+    start_date: date | None,
+    end_date: date | None,
+) -> pl.DataFrame:
+    """为显式构建窗口内没有解禁事件的交易日生成零值行。"""
+    if daily_close.is_empty() or "trade_date" not in daily_close.columns:
+        return empty_unlock_pressure()
+    calendar = (
+        daily_close.select(pl.col("trade_date").cast(pl.Date, strict=False))
+        .drop_nulls()
+        .unique()
+        .sort("trade_date")
+    )
+    if start_date is not None:
+        calendar = calendar.filter(pl.col("trade_date") >= start_date)
+    if end_date is not None:
+        calendar = calendar.filter(pl.col("trade_date") <= end_date)
+    if calendar.is_empty():
+        return empty_unlock_pressure()
+    return calendar.with_columns(
+        pl.lit(0, dtype=pl.Int64).alias("unlock_count"),
+        pl.lit(0, dtype=pl.Int64).alias("unlock_batch_count"),
+        pl.lit(0.0, dtype=pl.Float64).alias("unlock_share_amount"),
+        pl.lit(0.0, dtype=pl.Float64).alias("unlock_amount"),
+        pl.lit(0, dtype=pl.Int64).alias("large_unlock_count"),
+        pl.lit(0.0, dtype=pl.Float64).alias("avg_float_ratio"),
+        pl.lit(0.0, dtype=pl.Float64).alias("max_float_ratio"),
+    ).select(list(UNLOCK_PRESSURE_SCHEMA))
+
+
 def build_unlock_pressure_frame(
     share_float: pl.DataFrame,
     daily_close: pl.DataFrame,
@@ -61,7 +93,11 @@ def build_unlock_pressure_frame(
     schema = UNLOCK_PRESSURE_SCHEMA
     required_sf = {"symbol", "float_date", "float_share", "float_ratio"}
     required_close = {"symbol", "trade_date", "close"}
-    if share_float.is_empty() or not required_sf.issubset(share_float.columns):
+    if share_float.is_empty():
+        if start_date is not None or end_date is not None:
+            return _calendar_zero_frame(daily_close, start_date=start_date, end_date=end_date)
+        return empty_unlock_pressure()
+    if not required_sf.issubset(share_float.columns):
         return empty_unlock_pressure()
 
     sf = share_float.select(

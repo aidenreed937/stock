@@ -3,7 +3,7 @@
 from __future__ import annotations
 
 from collections.abc import Callable
-from datetime import date, datetime
+from datetime import date, datetime, timedelta
 from typing import Any
 
 from stock_data.catalog import DataCatalog
@@ -174,6 +174,31 @@ def build_sync_plan(
             current_period_refresh = (
                 is_period_task and period_watermark is not None and period_watermark == sync_target
             )
+            sync_lookback_days = getattr(task, "sync_lookback_days", None)
+            if sync_lookback_days is not None:
+                rolling_start = sync_target - timedelta(days=max(int(sync_lookback_days), 0))
+                lookback_start = (
+                    sync_target
+                    if period_watermark is None
+                    else max(rolling_start, period_watermark)
+                )
+                lookback_start = min(lookback_start, sync_target)
+                plan.append(
+                    SyncTaskItem(
+                        data_source=data_source,
+                        endpoint=endpoint,
+                        dataset=task.dataset,
+                        start_date=lookback_start,
+                        end_date=sync_target,
+                        watermark=watermark,
+                        status="PENDING",
+                        is_ready=True,
+                        reason=f"事件滚动回看 ({lookback_start} ~ {sync_target})",
+                        symbol=symbol,
+                        refresh_raw_cache=True,
+                    )
+                )
+                continue
             if (
                 not force
                 and period_watermark is not None

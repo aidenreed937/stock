@@ -50,6 +50,7 @@ class TaskSpec:
     update_delay_days: int = 0
     delay_in_trading_days: bool = False
     request_window_days: int | None = None
+    sync_lookback_days: int | None = None
     max_rows_per_request: int | None = None
     request_fields: str | None = None
 
@@ -437,7 +438,6 @@ _ALIASES: dict[tuple[str, str], str] = {
 }
 
 _DISABLED_TASKS = {"bak_daily", "stk_account"}
-# 高消耗风险任务只在显式指定端点时执行，避免进入默认全源同步。
 _EXPLICIT_ONLY_TASKS = _registry_helpers.EXPLICIT_ONLY_TASKS
 
 

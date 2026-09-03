@@ -56,7 +56,7 @@
       "max_lines": 145
     },
     "src/stock_cli/sync.py": {
-      "max_lines": 92
+      "max_lines": 95
     },
     "src/stock_cli/scan_watchlist.py": {
       "max_lines": 91
