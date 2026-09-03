@@ -155,3 +155,65 @@ strategies:
       commission_rate: 0.0001 # 万1券商佣金
       slippage_rate: 0.0005 # 0.05% 冲击滑点
       rebalance_deadband: 0.03 # 3% 调仓死区
+
+# 5. IC 验证配置（SOP S3 时序 Rank IC：整体 / 年度 / 当前时窗）
+# factors: 待验证的双轨核心指数与各维度分（来自 data/analytics/macro_risk 产物）
+# horizons: 前瞻收益窗口（交易日）；min_samples: 有效样本下限；trailing_window: 当前时窗交易日数
+ic:
+  factors:
+    - "overheat_index"
+    - "panic_index"
+    - "dim_valuation"
+    - "dim_leverage"
+    - "dim_flow"
+    - "dim_breadth"
+    - "dim_fear"
+    - "dim_euphoria"
+    - "dim_crowding"
+    - "dim_corporate"
+    - "dim_cross_asset"
+    - "dim_smart_money"
+  horizons: [5, 20, 60]
+  min_samples: 30
+  trailing_window: 756
+  benchmark_symbol: "000985.CSI"
+  # 置换检验（显著性/运气区间）：打乱收益 n_permutations 次构建零假设分布，
+  # 输出真实 IC 的 p 值与 95% 运气区间；seed 固定保证可复现；alpha 双侧显著性水平。
+  n_permutations: 500
+  seed: 42
+  alpha: 0.05
+  # 23 个原始因子 score 列的独立 IC 验证（探索性成分层，独立产物 ic_single_*，
+  # 不混入上方 12 信号报告）。列名为风险因子产物中的 score 列：
+  # 一般 {factor_name}_score，仅 smart_money 为 smart_money_pct（score_column 机制）。
+  single_factors:
+    - "erp_score"
+    - "pb_score"
+    - "margin_pen_score"
+    - "margin_buy_ratio_score"
+    - "main_ratio_score"
+    - "composite_flow_score"
+    - "etf_flow_ratio_score"
+    - "divergence_score_score"
+    - "adv_dec_score"
+    - "newhigh60_ratio_score"
+    - "pcr_score"
+    - "iv_score"
+    - "vix_score"
+    - "market_turnover_score"
+    - "fund_issue_pct_score"
+    - "repurchase_score"
+    - "insider_net_score"
+    - "insider_sell_score"
+    - "unlock_amount_score"
+    - "cb_price_score"
+    - "us_yield_curve_score"
+    - "copper_gold_score"
+    - "smart_money_pct"
+
+# 6. 参数敏感性扫描配置（SOP S3 敏感性件：overheat 阈值 × 趋势均线窗口网格）
+sensitivity:
+  strategy: "macro_rotation_v5_etf"
+  overheat_grid: [55.0, 60.0, 62.0, 64.0, 65.0, 66.0, 70.0]
+  ma_grid: [10, 20, 30]
+  risk_root: "data/analytics/macro_risk"
+  output_dir: "data/analytics/macro_strategy/robustness"

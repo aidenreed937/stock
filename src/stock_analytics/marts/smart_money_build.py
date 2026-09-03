@@ -34,49 +34,40 @@ def build_smart_money(
     组合信号需要长回看窗口（1250/500 日滚动分位）做冷启动，
     计算量小（输入均为已物化 Mart / 事实表），默认全量重算。
     """
-    if not overwrite:
-        existing = store.get_domain_mart(
-            SMART_MONEY_MART_NAME,
-            date_column="trade_date",
-            columns=["trade_date"],
-        )
-        if not existing.is_empty() and "trade_date" in existing.columns:
-            latest_val = existing["trade_date"].drop_nulls().max()
-            if isinstance(latest_val, date) and (end_date is None or latest_val >= end_date):
-                if start_date is None or latest_val >= start_date:
-                    return existing
-
+    # 滚动分位必须在完整历史窗口上计算；start_date 只用于限制最终返回范围。
+    # 若只读取目标日期区间，1250/500/250 日分位会因历史样本不足而整体变成 null。
     insider = store.get_domain_mart(
         INSIDER_MART_NAME,
         date_column="announcement_date",
-        start_date=start_date,
         end_date=end_date,
     )
     block_trade = store.get_domain_mart(
         BLOCK_TRADE_MART_NAME,
         date_column="trade_date",
-        start_date=start_date,
         end_date=end_date,
     )
     top10_holders = catalog.load_dataset("top10_floatholders")
     calendar = (
-        store.get_market_daily(columns=["trade_date"]).select("trade_date").sort("trade_date")
+        store.get_market_daily(end_date=end_date, columns=["trade_date"])
+        .select("trade_date")
+        .sort("trade_date")
     )
-    if start_date is not None:
-        calendar = calendar.filter(pl.col("trade_date") >= start_date)
-    if end_date is not None:
-        calendar = calendar.filter(pl.col("trade_date") <= end_date)
 
-    frame = build_smart_money_frame(insider, block_trade, top10_holders, calendar)
-    if not frame.is_empty():
+    full_frame = build_smart_money_frame(insider, block_trade, top10_holders, calendar)
+    if not full_frame.is_empty():
+        # 传入完整计算结果，避免首次窄区间构建或窄区间 overwrite 破坏后续滚动分位所需的历史。
         store.save_domain_mart(
             SMART_MONEY_MART_NAME,
-            frame,
+            full_frame,
             keys=["trade_date"],
             date_column="trade_date",
             overwrite=overwrite,
         )
-    return frame
+
+    output_frame = full_frame
+    if start_date is not None:
+        output_frame = output_frame.filter(pl.col("trade_date") >= start_date)
+    return output_frame
 
 
 __all__ = ["build_smart_money"]

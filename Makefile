@@ -1,4 +1,4 @@
-.PHONY: help install lint lint-rust format test test-rust-plugins check run scan realtime market-aggregate market-temperature market-context industry-structure investor-brief quant-brief factor-research factor-combine factor-backtest multi-date screen-stocks report-consistency market-cycle-review artifact-index cleanup-analytics backfill baseline migrate-data migrate-curated cleanup-data backfill-accept repair-stock-daily-bar build-plugins industry-trend-factors industry-trend-strategy industry-trend-live backfill-customs sync-customs catalog-customs sync-industry
+.PHONY: help install lint lint-rust format test test-rust-plugins check run scan realtime market-aggregate market-temperature market-context industry-structure investor-brief quant-brief factor-research factor-combine factor-backtest multi-date screen-stocks report-consistency market-cycle-review artifact-index cleanup-analytics backfill baseline migrate-data migrate-curated cleanup-data backfill-accept repair-stock-daily-bar build-plugins industry-trend-factors industry-trend-strategy industry-trend-live backfill-customs sync-customs catalog-customs sync-industry macro-ic-review
 
 export UV_CACHE_DIR ?= .uv_cache
 export UV_PYTHON_INSTALL_DIR ?= .uv_python
@@ -27,6 +27,7 @@ help:
 	@echo "  make screen-stocks - Generate stock screening artifacts under data/analytics"
 	@echo "  make report-consistency - Validate report consistency across analytics artifacts"
 	@echo "  make market-cycle-review - Generate cross-cycle market review from analytics artifacts"
+	@echo "  make macro-ic-review - Run macro factor IC stability periodic review (snapshot + drift detection)"
 	@echo "  make artifact-index ROOT=data/analytics/market_temperature - Rebuild analytics run index"
 	@echo "  make cleanup-analytics ROOT=data/analytics/market_temperature [APPLY=1] [RUN_CLASS=experiment] - Preview/clean old runs"
 	@echo "  make backfill - Backfill historical data (e.g., make backfill START=2026-08-01 END=2026-08-12)"
@@ -243,3 +244,6 @@ sync-customs:
 
 catalog-customs:
 	uv run python -m stock_cli.customs catalog $(if $(CATALOG),--catalog $(CATALOG))
+
+macro-ic-review:
+	uv run python -m stock_cli.macro_ic_review $(if $(HORIZON),--horizon $(HORIZON)) $(if $(OUTPUT),--output-dir $(OUTPUT))

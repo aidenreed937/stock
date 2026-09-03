@@ -37,6 +37,9 @@ macro_risk:
       min_periods: 500
       direction: rev
     etf_flow_ratio:
+      # 设计说明: 本因子不进入 dim_flow，保留为独立观测。ETF 份额×收盘价口径
+      # 为 T+1 早间公布、且常走降级置空路径（见 data_fetchers.py），PIT 与可信度
+      # 不足以混入资金流维度（避免污染 dim_flow/panic 信号）。详见 commit 28f21e6。
       series: main_flow
       column: etf_flow_ratio
       window: 1250
@@ -91,6 +94,9 @@ macro_risk:
       min_periods: 250
       direction: raw
     repurchase:
+      # 设计说明: 本因子不进入 dim_corporate，保留为独立观测。dim_corporate 衡量
+      # 产业资本/大股东增减持与解禁压力（卖出方向），repurchase 是公司回购（买入方向，
+      # rev），事件驱动滚动口径，语义不同源，混入会失真维度方向解释。详见 commit 28f21e6。
       series: corporate
       column: repurchase_amount
       window: 1250
@@ -121,6 +127,9 @@ macro_risk:
       min_periods: 250
       direction: raw
     us_yield_curve:
+      # 设计说明: 本因子不进入 dim_cross_asset，保留为独立观测。年度 IC 符号跨周期
+      # 正负漂移（不稳定），与 cb_price/copper_gold 的稳定负向不一致，混入会削弱
+      # 维度稳定性；保留 score 列独立观测，供研报/IC 单独解读。
       series: global_macro
       column: us_yield_curve_10y_2y
       window: 1250
@@ -173,7 +182,6 @@ macro_risk:
     - unlock_amount
     cross_asset:
     - cb_price
-    - us_yield_curve
     - copper_gold
     smart_money:
     - smart_money

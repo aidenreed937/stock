@@ -52,6 +52,36 @@ def _check_data_completeness(row_dict: dict[str, object]) -> dict[str, object]:
     }
 
 
+def _build_inputs_and_watermarks(
+    raw_cache: dict[str, pl.DataFrame],
+) -> tuple[dict[str, dict[str, object]], dict[str, dict[str, object]]]:
+    """从各因子数据源原始序列构造 manifest 的 ``inputs`` 与 ``watermarks``。
+
+    ``inputs``：本次运行消费的因子数据源清单（fetcher 名、数据行数、最新日期）；
+    ``watermarks``：各数据源序列的最新交易日水位（``data_source.dataset`` 键，
+    对齐 ``build_watermark_index`` 索引语义）。
+    """
+    inputs: dict[str, dict[str, object]] = {}
+    watermarks: dict[str, dict[str, object]] = {}
+    for series, frame in raw_cache.items():
+        latest = None
+        rows = 0
+        if not frame.is_empty() and "trade_date" in frame.columns:
+            rows = len(frame)
+            dates = frame["trade_date"].drop_nulls()
+            if len(dates) > 0:
+                latest = str(dates.max())
+        inputs[series] = {"rows": rows, "latest_date": latest}
+        watermarks[f"analytics.{series}"] = {
+            "data_source": "analytics",
+            "dataset": series,
+            "status": "ok" if latest else "empty",
+            "latest": latest,
+            "sample_size": rows,
+        }
+    return inputs, watermarks
+
+
 class MacroRiskPipeline:
     def __init__(
         self,
@@ -192,6 +222,7 @@ class MacroRiskPipeline:
                 session.write_parquet("risk_factors.parquet", score_frame)
                 session.write_text("report.md", report_md)
 
+                inputs, watermarks = _build_inputs_and_watermarks(raw_cache)
                 manifest = build_manifest_base(
                     artifact_type="macro_risk",
                     schema_version=1,
@@ -200,6 +231,8 @@ class MacroRiskPipeline:
                     as_of_date=as_of,
                     artifact_root=output_dir,
                     config_path="config/analytics/macro_risk.yaml",
+                    inputs=inputs,
+                    watermarks=watermarks,
                 )
                 # 提取当日核心指标快照至 manifest.summary
                 as_of_rows = score_frame.filter(pl.col("trade_date") == as_of).tail(1)

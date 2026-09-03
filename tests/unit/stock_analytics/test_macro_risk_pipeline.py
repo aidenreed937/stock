@@ -98,3 +98,50 @@ def test_macro_risk_pipeline_does_not_asof_fund_issuance(monkeypatch) -> None:
     jun_score = result.filter(pl.col("trade_date") == date(2026, 6, 1))["fund_issue_pct_score"][0]
     assert may_score is not None
     assert jun_score is None
+
+
+def test_build_inputs_and_watermarks_populated() -> None:
+    """Manifest inputs/watermarks 从各因子数据源原始序列正确回填。"""
+    from datetime import date
+
+    import polars as pl
+
+    from stock_analytics.pipelines.macro_risk.pipeline import (
+        _build_inputs_and_watermarks,
+    )
+
+    raw_cache = {
+        "valuation": pl.DataFrame(
+            {"trade_date": [date(2026, 8, 28), date(2026, 8, 31)], "erp": [1.0, 2.0]}
+        ),
+        "vix": pl.DataFrame({"trade_date": [date(2026, 8, 31)], "vix": [20.0]}),
+    }
+    inputs, watermarks = _build_inputs_and_watermarks(raw_cache)
+
+    assert set(inputs) == {"valuation", "vix"}
+    assert inputs["valuation"]["latest_date"] == "2026-08-31"
+    assert inputs["valuation"]["rows"] == 2
+    assert inputs["vix"]["latest_date"] == "2026-08-31"
+
+    assert "analytics.valuation" in watermarks
+    assert watermarks["analytics.valuation"]["latest"] == "2026-08-31"
+    assert watermarks["analytics.valuation"]["sample_size"] == 2
+    assert watermarks["analytics.vix"]["status"] == "ok"
+
+
+def test_build_inputs_and_watermarks_empty_frame() -> None:
+    """空数据源帧 → watermark status=empty、latest=None（不抛异常）。"""
+
+    import polars as pl
+
+    from stock_analytics.pipelines.macro_risk.pipeline import (
+        _build_inputs_and_watermarks,
+    )
+
+    raw_cache = {
+        "vix": pl.DataFrame(schema={"trade_date": pl.Date, "vix": pl.Float64}),
+    }
+    inputs, watermarks = _build_inputs_and_watermarks(raw_cache)
+    assert inputs["vix"]["latest_date"] is None
+    assert watermarks["analytics.vix"]["status"] == "empty"
+    assert watermarks["analytics.vix"]["latest"] is None

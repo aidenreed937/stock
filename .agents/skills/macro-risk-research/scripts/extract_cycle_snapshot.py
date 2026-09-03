@@ -5,6 +5,13 @@ import pandas as pd
 import polars as pl
 
 
+def _calculate_period_return(closes: pl.Series, days: int) -> float:
+    """计算收盘价序列最后一个点相对 N 个交易日前的收益率。"""
+    if len(closes) <= days:
+        return 0.0
+    return (float(closes[-1]) / float(closes[-days - 1]) - 1.0) * 100
+
+
 def main():
     risk_df = pl.read_parquet("data/analytics/macro_risk/latest/risk_factors.parquet").with_columns(pl.col("trade_date").cast(pl.Date))
     con = duckdb.connect()
@@ -20,7 +27,9 @@ def main():
     # 提取最近 60 交易日
     dates_60 = risk_df["trade_date"].sort().tail(60).to_list()
     risk_60 = risk_df.filter(pl.col("trade_date").is_in(dates_60)).sort("trade_date")
-    index_60 = index_df.filter(pl.col("trade_date").is_in(dates_60)).sort(["symbol", "trade_date"])
+    index_history = index_df.filter(pl.col("trade_date") <= latest_date).sort(
+        ["symbol", "trade_date"]
+    )
 
     # 最新一行风控
     latest = risk_60.tail(1).to_dicts()[0]
@@ -52,15 +61,12 @@ def main():
     print("\n[2. 核心指数 20日 / 60日 区间涨跌幅与回撤]")
     res = []
     for sym, name in [("000985", "中证全指"), ("000300", "沪深300"), ("399006", "创业板指"), ("000922", "中证红利")]:
-        sub = index_60.filter(pl.col("symbol") == sym).sort("trade_date")
-        if len(sub) >= 20:
-            sub20 = sub.tail(20)
-            ret20 = (sub20["close"][-1] / sub20["close"][0] - 1.0) * 100
-        else:
-            ret20 = 0.0
-        ret60 = (sub["close"][-1] / sub["close"][0] - 1.0) * 100
-        cum_max = sub["close"].cum_max()
-        max_dd = ((sub["close"] / cum_max) - 1.0).min() * 100
+        sub = index_history.filter(pl.col("symbol") == sym).sort("trade_date")
+        ret20 = _calculate_period_return(sub["close"], 20)
+        ret60 = _calculate_period_return(sub["close"], 60)
+        drawdown_window = sub.tail(60)
+        cum_max = drawdown_window["close"].cum_max()
+        max_dd = ((drawdown_window["close"] / cum_max) - 1.0).min() * 100
         res.append({
             "指数": name,
             "代码": sym,

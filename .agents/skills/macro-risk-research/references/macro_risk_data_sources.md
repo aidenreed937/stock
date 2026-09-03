@@ -115,6 +115,10 @@ Mart 构建入口：`make features-build TARGET=domain_marts`（`stock_analytics
 2. **估值冷启动**：2015-01 ~ 2016-08 无 `dim_valuation`，该区间 `overheat_index` 实为 4 维口径，不与后续 5 维口径直接横向比较；
 3. **ETF 后复权**：策略回测用后复权（含分红），指数基准不含分红，两组超额含口径差；
 4. **fund_issue 失真**：`fund_issue_pct` 为 5 年排名分位，慢熊中「相对指标窗口污染」失真，已降级为参考维度不进双轨指数。
+5. **euphoria 维度停更（2026-05-29 起）**：`fund_issue_pct_score` / `dim_euphoria` 最后有效值 2026-05-29，此后缺失
+   （上游 `fund_issuance_monthly` Mart 或原始基金发行数据未更新）。**不影响双轨指数**（euphoria 不在
+   overheat/panic 构成内，`data_completeness` 8 项检查亦不包含它），但 8 维画像缺「亢奋」维度；
+   引用 8 维全景画像或情绪周期解读时必须披露该缺口，补数路径为重建 `fund_issuance` 数据链。
 
 ---
 
