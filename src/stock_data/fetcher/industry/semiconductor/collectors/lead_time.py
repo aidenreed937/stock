@@ -4,15 +4,16 @@
 本采集器为纯真实数据驱动与配置化设计:
 1. 配置驱动: 从 config/industry/chip_lead_time.yaml 加载标杆 SKU 篮子、品类权重与状态判定阈值；
 2. 在线实时模式: 轮询 Mouser API 获取标杆芯片 SKU 的原厂货期 (Lead Time)，并归档至 RAW 快照；
-3. 本地 RAW 重放模式: 离线重放 data/raw/industry/lead_time/ 目录下的真实快照 (支持 *.json 与 *.csv)。
+3. 本地 RAW 重放模式: 离线重放调用方传入的 RAW 根目录下的 Mouser JSON 快照。
 无任何写死/模拟数据。
 """
 
 from __future__ import annotations
 
+import json
 import logging
 import os
-import re
+from dataclasses import replace
 from datetime import date
 from pathlib import Path
 from typing import Any
@@ -20,16 +21,21 @@ from typing import Any
 import requests
 import yaml
 
-from stock_data.fetcher.industry.common import (
-    get_month_end_date,
-    now_utc_iso,
+from stock_data.fetcher.industry.common import now_utc_iso
+from stock_data.fetcher.industry.semiconductor.lineage import (
+    raw_content_sha256,
+    raw_snapshot_content_bytes,
+    raw_snapshot_path_value,
 )
-from stock_data.fetcher.industry.models import ChipLeadTimeRecord
-from stock_data.fetcher.industry.semiconductor.lead_time_raw import (
+from stock_data.fetcher.industry.semiconductor.models import ChipLeadTimeRecord
+from stock_data.fetcher.industry.semiconductor.parsers.lead_time_raw import (
     archive_lead_time_raw_snapshot,
     determine_lead_time_status,
+    extract_lead_time_release_date,
     load_lead_time_raw_records,
+    parse_lead_time_string_to_weeks,
 )
+from stock_data.fetcher.industry.semiconductor.paths import SemiconductorRawPaths
 
 logger = logging.getLogger(__name__)
 
@@ -65,29 +71,16 @@ def load_chip_lead_time_config(config_path: Path | str = DEFAULT_CONFIG_PATH) ->
         return yaml.safe_load(f) or {}
 
 
-def _parse_lead_time_string_to_weeks(lead_time_str: str) -> float | None:
-    """将分销商返回的 '18 Weeks'、'280 天数' 或 '120 Days' 字符串解析为标准周数。"""
-    if not lead_time_str:
-        return None
-    match_weeks = re.search(r"(\d+(?:\.\d+)?)\s*(?:weeks?|周数|周)", lead_time_str, re.IGNORECASE)
-    if match_weeks:
-        return float(match_weeks.group(1))
-    match_days = re.search(r"(\d+(?:\.\d+)?)\s*(?:days?|天数|天)", lead_time_str, re.IGNORECASE)
-    if match_days:
-        return round(float(match_days.group(1)) / 7.0, 1)
-    return None
-
-
 class ChipLeadTimeCollector:
     """全球芯片交付周期先导指标采集器 (配置驱动 + 纯真实数据与 RAW 快照架构)。"""
 
     def __init__(
         self,
-        raw_dir: Path | str = "data/raw/industry",
+        raw_dir: Path | str,
         config_path: Path | str = DEFAULT_CONFIG_PATH,
     ) -> None:
-        self.raw_dir = Path(raw_dir)
-        self.lead_time_raw_dir = self.raw_dir / "lead_time"
+        self.paths = SemiconductorRawPaths(raw_dir)
+        self.lead_time_raw_dir = self.paths.lead_time_dir
         self.config = load_chip_lead_time_config(config_path)
         self.categories = self.config.get("categories", {})
         self.thresholds = self.config.get("thresholds", {})
@@ -126,6 +119,7 @@ class ChipLeadTimeCollector:
 
         cat_averages: dict[str, float] = {}
         sku_details: dict[str, dict[str, Any]] = {}
+        missing_release_skus: list[str] = []
 
         for cat, cat_cfg in self.categories.items():
             skus = cat_cfg.get("skus", [])
@@ -145,14 +139,22 @@ class ChipLeadTimeCollector:
                         parts = res_json.get("SearchResults", {}).get("Parts", [])
                         if parts:
                             lt_str = parts[0].get("LeadTime", "")
-                            w = _parse_lead_time_string_to_weeks(lt_str)
+                            w = parse_lead_time_string_to_weeks(lt_str)
                             if w is not None:
                                 cat_leads.append(w)
+                                release_date = extract_lead_time_release_date(res_json)
+                                if release_date is None:
+                                    missing_release_skus.append(sku)
                                 sku_details[sku] = {
                                     "category": cat,
                                     "lead_time_raw": lt_str,
                                     "lead_time_weeks": w,
                                     "manufacturer": parts[0].get("Manufacturer", ""),
+                                    "release_date": (
+                                        release_date.isoformat()
+                                        if release_date is not None
+                                        else None
+                                    ),
                                 }
                 except Exception as e:
                     logger.debug("Mouser API 查询 SKU [%s] 异常: %s", sku, e)
@@ -162,6 +164,21 @@ class ChipLeadTimeCollector:
 
         if not cat_averages:
             logger.warning("未能从 Mouser API 获取到任何有效标杆芯片交期数据")
+            return []
+        if missing_release_skus:
+            logger.warning(
+                "Mouser 交期响应缺少真实 release_date，拒绝生成 RAW: %s",
+                ", ".join(missing_release_skus),
+            )
+            return []
+
+        release_dates = [
+            date.fromisoformat(str(detail["release_date"]))
+            for detail in sku_details.values()
+            if detail.get("release_date")
+        ]
+        if not release_dates:
+            logger.warning("Mouser 交期响应未提供真实 release_date，拒绝生成 RAW")
             return []
 
         # 计算加权均值
@@ -173,12 +190,12 @@ class ChipLeadTimeCollector:
         )
 
         today = date.today()
+        release_date = max(release_dates)
         m_key = f"{today.year:04d}-{today.month:02d}"
-        trade_d = get_month_end_date(today.year, today.month)
 
         record = ChipLeadTimeRecord(
             report_month=m_key,
-            trade_date=trade_d,
+            trade_date=today,
             avg_lead_time_weeks=avg_val,
             mcu_lead_time_weeks=cat_averages.get("mcu"),
             analog_lead_time_weeks=cat_averages.get("analog"),
@@ -190,18 +207,33 @@ class ChipLeadTimeCollector:
             unit="weeks",
             source="Mouser/Distributor",
             source_url="https://api.mouser.com",
-            release_date=today,
+            release_date=release_date,
             data_status="actual",
             collected_at=now_utc_iso(),
+            lead_time_raw=json.dumps(
+                {
+                    sku: detail.get("lead_time_raw")
+                    for sku, detail in sorted(sku_details.items())
+                    if detail.get("lead_time_raw")
+                },
+                ensure_ascii=False,
+                sort_keys=True,
+            ),
+            sku_details_raw=json.dumps(sku_details, ensure_ascii=False, sort_keys=True),
         )
 
         # 归档 RAW 快照
-        archive_lead_time_raw_snapshot(
-            raw_dir=self.raw_dir,
+        snapshot_path = archive_lead_time_raw_snapshot(
+            raw_dir=self.paths.raw_root,
             month_key=m_key,
             record=record,
             cat_averages=cat_averages,
             sku_details=sku_details,
+        )
+        record = replace(
+            record,
+            raw_content_sha256=raw_content_sha256(raw_snapshot_content_bytes(snapshot_path)),
+            raw_snapshot_path=raw_snapshot_path_value(snapshot_path, self.paths.raw_root),
         )
 
         logger.info(
@@ -210,5 +242,5 @@ class ChipLeadTimeCollector:
         return [record]
 
     def load_from_raw_snapshots(self) -> list[ChipLeadTimeRecord]:
-        """从本地 RAW 快照目录加载所有历史月度快照 (支持 JSON 快照与 CSV 原始文件)。"""
+        """从本地 RAW 快照目录加载所有历史月度 JSON 快照。"""
         return load_lead_time_raw_records(self.lead_time_raw_dir, self.thresholds)
