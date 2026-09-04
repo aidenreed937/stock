@@ -1,0 +1,156 @@
+"""半导体产业端点注册。"""
+
+from stock_data.fetcher.industry.contracts import IndustryEndpointSpec, IndustryRunContext
+from stock_data.fetcher.industry.runner import (
+    collector,
+    context_collector,
+    frame_endpoint,
+    record_endpoint,
+)
+from stock_data.fetcher.industry.semiconductor.collectors import (
+    ChannelInventoryCollector,
+    ChipLeadTimeCollector,
+    FoundryUtilizationCollector,
+    MemoryPriceCollector,
+    SeajEquipmentCollector,
+    SemiconductorCollector,
+    SemiEquipmentCollector,
+    TsmcLeadCollector,
+)
+from stock_data.fetcher.industry.semiconductor.collectors.inventory import (
+    SemiconductorInventoryCollector,
+)
+from stock_data.fetcher.industry.semiconductor.paths import SEMICONDUCTOR_RAW_SUBDIR
+from stock_data.fetcher.industry.semiconductor.transforms import (
+    build_channel_inventory_curated_frame,
+    build_channel_inventory_raw_frame,
+    build_foundry_raw_frame,
+    build_foundry_utilization_frame,
+    build_inventory_days_frame,
+    build_inventory_raw_frame,
+    build_memory_price_curated_frame,
+    build_memory_price_raw_frame,
+    build_semi_equipment_curated_frame,
+    build_semi_equipment_raw_frame,
+    records_to_chip_lead_time_frame,
+    records_to_raw_chip_lead_time_frame,
+    records_to_raw_semiconductor_equipment_frame,
+    records_to_raw_semiconductor_frame,
+    records_to_raw_semiconductor_lead_frame,
+    records_to_semiconductor_equipment_frame,
+    records_to_semiconductor_frame,
+    records_to_semiconductor_lead_frame,
+)
+from stock_data.fetcher.industry.semiconductor.workflows import backfill_semiconductor_china
+
+
+def _backfill_china_sales(context: IndustryRunContext, _count: int) -> None:
+    backfill_semiconductor_china(context.curated_dir, context.raw_dir)
+
+
+ENDPOINT_SPECS: tuple[IndustryEndpointSpec, ...] = (
+    record_endpoint(
+        endpoint="semiconductor_sales",
+        domain="semiconductor",
+        collect=collector(SemiconductorCollector),
+        transform=records_to_semiconductor_frame,
+        target_file="semiconductor_sales.parquet",
+        primary_keys=["report_month"],
+        raw_subdir=SEMICONDUCTOR_RAW_SUBDIR,
+        raw_transform=records_to_raw_semiconductor_frame,
+        after_success=_backfill_china_sales,
+    ),
+    record_endpoint(
+        endpoint="semiconductor_equipment",
+        domain="semiconductor",
+        collect=collector(SeajEquipmentCollector),
+        transform=records_to_semiconductor_equipment_frame,
+        target_file="semiconductor_equipment.parquet",
+        primary_keys=["report_month"],
+        raw_subdir=SEMICONDUCTOR_RAW_SUBDIR,
+        raw_transform=records_to_raw_semiconductor_equipment_frame,
+    ),
+    record_endpoint(
+        endpoint="semiconductor_lead",
+        domain="semiconductor",
+        collect=collector(TsmcLeadCollector),
+        transform=records_to_semiconductor_lead_frame,
+        target_file="semiconductor_lead.parquet",
+        primary_keys=["report_month"],
+        raw_subdir=SEMICONDUCTOR_RAW_SUBDIR,
+        raw_transform=records_to_raw_semiconductor_lead_frame,
+    ),
+    record_endpoint(
+        endpoint="chip_lead_time",
+        domain="semiconductor",
+        collect=collector(ChipLeadTimeCollector),
+        transform=records_to_chip_lead_time_frame,
+        target_file="chip_lead_time.parquet",
+        primary_keys=["report_month"],
+        raw_subdir=SEMICONDUCTOR_RAW_SUBDIR,
+        raw_transform=records_to_raw_chip_lead_time_frame,
+    ),
+    frame_endpoint(
+        endpoint="semiconductor_equipment_semi",
+        domain="semiconductor",
+        context_collect=context_collector(SemiEquipmentCollector, "collect_raw"),
+        target_file="semiconductor_equipment_semi.parquet",
+        primary_keys=["report_quarter"],
+        transform=build_semi_equipment_curated_frame,
+        raw_subdir=SEMICONDUCTOR_RAW_SUBDIR,
+        raw_transform=build_semi_equipment_raw_frame,
+    ),
+    frame_endpoint(
+        endpoint="foundry_capacity_utilization",
+        domain="semiconductor",
+        context_collect=context_collector(FoundryUtilizationCollector, "collect_raw"),
+        target_file="foundry_capacity_utilization.parquet",
+        primary_keys=["report_quarter"],
+        transform=build_foundry_utilization_frame,
+        raw_subdir=SEMICONDUCTOR_RAW_SUBDIR,
+        raw_transform=build_foundry_raw_frame,
+    ),
+    frame_endpoint(
+        endpoint="semiconductor_inventory_days",
+        domain="semiconductor",
+        context_collect=context_collector(SemiconductorInventoryCollector, "collect_raw"),
+        target_file="semiconductor_inventory_days.parquet",
+        primary_keys=["report_quarter", "symbol"],
+        transform=build_inventory_days_frame,
+        raw_subdir=SEMICONDUCTOR_RAW_SUBDIR,
+        raw_transform=build_inventory_raw_frame,
+    ),
+    frame_endpoint(
+        endpoint="semiconductor_channel_inventory",
+        domain="semiconductor",
+        context_collect=context_collector(ChannelInventoryCollector, "collect_raw"),
+        target_file="semiconductor_channel_inventory.parquet",
+        primary_keys=["report_quarter", "symbol"],
+        transform=build_channel_inventory_curated_frame,
+        raw_subdir=SEMICONDUCTOR_RAW_SUBDIR,
+        raw_transform=build_channel_inventory_raw_frame,
+    ),
+    frame_endpoint(
+        endpoint="semiconductor_memory_price",
+        domain="semiconductor",
+        context_collect=context_collector(MemoryPriceCollector, "collect_raw"),
+        target_file="semiconductor_memory_price.parquet",
+        primary_keys=[
+            "trade_date",
+            "product_family",
+            "price_scope",
+            "table_index",
+            "item",
+        ],
+        transform=build_memory_price_curated_frame,
+        raw_subdir=SEMICONDUCTOR_RAW_SUBDIR,
+        raw_transform=build_memory_price_raw_frame,
+        raw_primary_keys=[
+            "trade_date",
+            "product_family",
+            "price_scope",
+            "table_index",
+            "item_raw",
+        ],
+    ),
+)
