@@ -287,6 +287,20 @@ def _append_derived_q4_from_annual_sources(df: pl.DataFrame) -> pl.DataFrame:
         )
         if q4_billings <= 0:
             continue
+        first_three_china = [
+            _float_value(row.get("china_billings_billion_usd"))
+            for row in first_three
+            if row is not None
+        ]
+        annual_china = _float_value(annual_row.get("china_billings_billion_usd"))
+        q4_china = None
+        if annual_china is not None and not any(value is None for value in first_three_china):
+            q4_china = round(
+                annual_china - sum(value for value in first_three_china if value is not None),
+                2,
+            )
+            if q4_china <= 0:
+                q4_china = None
         derived_row = dict.fromkeys(df.columns)
         derived_row.update(
             {
@@ -295,7 +309,7 @@ def _append_derived_q4_from_annual_sources(df: pl.DataFrame) -> pl.DataFrame:
                 "source_record_type": "derived_quarter",
                 "report_year": str(year),
                 "global_billings_billion_usd": q4_billings,
-                "china_billings_billion_usd": None,
+                "china_billings_billion_usd": q4_china,
                 "unit": "billion_usd",
                 "source": annual_row.get("source") or "SEMI_WWSEMS",
                 "source_url": annual_row.get("source_url") or "",

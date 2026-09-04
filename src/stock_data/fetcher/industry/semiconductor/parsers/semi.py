@@ -42,67 +42,71 @@ def parse_semi_article_text(
     source_url: str = "",
     default_date: date | None = None,
 ) -> dict[str, Any] | None:
-    """从 SEMI/PR Newswire 新闻通报文本解析设备出货额与报告季度。"""
+    """从 SEMI/PR Newswire 新闻通报文本解析设备出货额与报告季度。
+
+    季度声明必须与金额在同一上下文窗口（季度词前后各 400/800 字符）内绑定：
+    页面侧栏"相关新闻"链接标题也含 "Qx YYYY" 字样，但不带金额，若直接全文
+    匹配会把年度公报误判为季度公报（实测 2025 年度 135B 公报被误判为 2026-Q2）。
+    """
     if not text:
         return None
 
-    q_match = re.search(
+    # 遍历所有季度声明，收集「同句内带金额」的候选，取金额与季度词距离最近的
+    candidates: list[dict[str, Any]] = []
+    for q_match in re.finditer(
         r"(first[-\s]+quarter|second[-\s]+quarter|third[-\s]+quarter|fourth[-\s]+quarter|q[1-4])"
         r"\s+(?:of\s+)?(\d{4})",
         text,
         re.IGNORECASE,
-    )
-    if not q_match:
+    ):
+        q_name, year_str = q_match.groups()
+        q_num = QUARTER_WORDS_MAP.get(q_name.lower().replace("-", " "))
+        if not q_num:
+            continue
+        sent_start, sent_end = _sentence_bounds(text, q_match.start(), q_match.end())
+        billings_match = _search_billings_in_window(text, sent_start, sent_end)
+        if billings_match is None:
+            continue  # 侧栏/导航中的季度词同句无金额，跳过
+        candidates.append(
+            {
+                "q_num": q_num,
+                "year": int(year_str),
+                "billings_match": billings_match,
+                "distance": abs(billings_match.start() - (q_match.start() + q_match.end()) // 2),
+                # china 金额常在同一句或紧邻下一句，扩展窗口至句尾后 600 字符
+                "win_start": sent_start,
+                "win_end": min(len(text), sent_end + 600),
+            }
+        )
+    if not candidates:
         return _parse_semi_annual_article_text(
             text,
             source_url=source_url,
             default_date=default_date,
         )
-
-    q_name, year_str = q_match.groups()
-    q_num = QUARTER_WORDS_MAP.get(q_name.lower().replace("-", " "))
-    if not q_num:
-        return None
-    year = int(year_str)
-
-    billings_match = re.search(
-        r"(?:increased|reached|reach|registered|sales of|billings of|to)\s+"
-        r"(?:a\s+record\s+|record\s+)?"
-        r"((?:US)?\$[\d\.]+\s*billion)",
-        text,
-        re.IGNORECASE,
-    )
-    if not billings_match:
-        billings_match = re.search(
-            r"(\$[\d\.]+\s*billion)\s+(?:in\s+the\s+)?"
-            r"(?:first|second|third|fourth|q[1-4])",
-            text,
-            re.IGNORECASE,
-        )
-        if not billings_match:
-            return None
+    best = min(candidates, key=lambda item: item["distance"])
 
     china_match = re.search(
         r"China[^\.\n]*?(?:spending|investments|sales|billings)?[^\.\n]*?"
         r"(\$[\d\.]+\s*billion)",
-        text,
+        text[best["win_start"] : best["win_end"]],
         re.IGNORECASE,
     )
 
-    month_end = q_num * 3
+    month_end = best["q_num"] * 3
     day_end = 31 if month_end in (3, 12) else 30
-    trade_date = date(year, month_end, day_end)
+    trade_date = date(best["year"], month_end, day_end)
 
     return {
-        "report_quarter": f"{year}-Q{q_num}",
+        "report_quarter": f"{best['year']}-Q{best['q_num']}",
         "trade_date": trade_date,
         "source_record_type": "quarterly_actual",
-        "report_year": str(year),
-        "global_billings_billion_usd": _parse_billion_amount(billings_match.group(1)),
+        "report_year": str(best["year"]),
+        "global_billings_billion_usd": _parse_billion_amount(best["billings_match"].group(1)),
         "china_billings_billion_usd": (
             _parse_billion_amount(china_match.group(1)) if china_match else None
         ),
-        "global_billings_raw": billings_match.group(1).strip(),
+        "global_billings_raw": best["billings_match"].group(1).strip(),
         "china_billings_raw": china_match.group(1).strip() if china_match else None,
         "annual_billings_raw": None,
         "yoy_growth_raw": _extract_growth_raw(text, "year-over-year"),
@@ -110,6 +114,43 @@ def parse_semi_article_text(
         "release_date": _parse_english_release_date(text) or default_date,
         "source_url": source_url or _extract_source_url(text) or "",
     }
+
+
+_SENTENCE_SPLIT_RE = re.compile(r"(?<=[.!?;])\s+(?=[A-Z\"'(])")
+
+
+def _sentence_bounds(text: str, start: int, end: int) -> tuple[int, int]:
+    """返回包含 [start, end) 的句子边界。
+
+    标点后跟大写/引号视为分句，避免小数点在金额内误分；换行不视为分句，兼容
+    多行纯文本样本。
+    """
+    sent_start = 0
+    for m in _SENTENCE_SPLIT_RE.finditer(text):
+        if m.end() <= start:
+            sent_start = m.end()
+        elif m.start() >= end:
+            return sent_start, m.start()
+    return sent_start, len(text)
+
+
+def _search_billings_in_window(text: str, start: int, end: int) -> re.Match[str] | None:
+    """在窗口内搜索出货额：优先"动词 + 金额"，回退"金额 + 季度词"。"""
+    billings_match = re.search(
+        r"(?:increased|reached|reach|registered|sales of|billings of|to)\s+"
+        r"(?:a\s+record\s+|record\s+)?"
+        r"((?:US)?\$[\d\.]+\s*billion)",
+        text[start:end],
+        re.IGNORECASE,
+    )
+    if billings_match:
+        return billings_match
+    return re.search(
+        r"(\$[\d\.]+\s*billion)\s+(?:in\s+the\s+)?"
+        r"(?:first|second|third|fourth|q[1-4])",
+        text[start:end],
+        re.IGNORECASE,
+    )
 
 
 def extract_semi_press_release_links(html_content: bytes | str, base_url: str) -> list[str]:
@@ -162,30 +203,23 @@ def _parse_semi_annual_article_text(
     ):
         return None
 
-    year = _extract_annual_report_year(text)
-    if year is None:
+    annual = _extract_annual_claim(text)
+    if annual is None:
         return None
+    year, amount_raw = annual
+    china_amount_raw = _extract_annual_china_amount(text, year)
 
-    segment_match = re.search(
-        r"global\s+semiconductor\s+equipment\s+(?:sales|billings)[\s\S]{0,500}",
-        text,
-        re.IGNORECASE,
-    )
-    segment = segment_match.group(0) if segment_match else text[:800]
-    amount_match = re.search(r"((?:US)?\$[\d\.]+\s*billion)", segment, re.IGNORECASE)
-    if not amount_match:
-        return None
-
-    amount_raw = amount_match.group(1).strip()
     return {
         "report_quarter": f"{year}-ANNUAL",
         "trade_date": date(year, 12, 31),
         "source_record_type": "annual_source",
         "report_year": str(year),
         "global_billings_billion_usd": None,
-        "china_billings_billion_usd": None,
+        "china_billings_billion_usd": (
+            _parse_billion_amount(china_amount_raw) if china_amount_raw else None
+        ),
         "global_billings_raw": None,
-        "china_billings_raw": None,
+        "china_billings_raw": china_amount_raw,
         "annual_billings_raw": amount_raw,
         "annual_billings_billion_usd": _parse_billion_amount(amount_raw),
         "yoy_growth_raw": _extract_growth_raw(text, "year-over-year"),
@@ -196,18 +230,109 @@ def _parse_semi_annual_article_text(
     }
 
 
-def _extract_annual_report_year(text: str) -> int | None:
+def _extract_annual_claim(text: str) -> tuple[int, str] | None:
+    """年度公报：在「含金额」的句子内提取报告年份与年度总额。
+
+    同样要求句子级绑定（年度词与金额同句），避免页面侧栏"相关新闻"链接标题
+    （如 "…in Q2 2026"）污染年份提取。
+    """
+    year_patterns = (
+        r"\b(20\d{2})\s+(?:global|worldwide)\s+"
+        r"(?:semiconductor(?:\s+manufacturing)?\s+equipment\s+(?:sales|billings)|"
+        r"sales\s+of\s+semiconductor(?:\s+manufacturing)?\s+equipment)\b",
+        r"\b(?:global|worldwide)\s+semiconductor(?:\s+manufacturing)?\s+equipment\s+"
+        r"(?:sales|billings)[\s\S]{0,160}?\b(?:in|during|for)\s+(20\d{2})\b",
+        r"\b(?:global|worldwide)\s+sales\s+of\s+semiconductor"
+        r"(?:\s+manufacturing)?\s+equipment[\s\S]{0,160}?"
+        r"\b(?:in|during|for)\s+(20\d{2})\b",
+        r"\b(?:global|worldwide)\s+semiconductor(?:\s+manufacturing)?\s+equipment\s+"
+        r"(?:sales|billings)[\s\S]{0,160}?\bin\s+calendar\s+year\s+(20\d{2})\b",
+    )
+    prev_end = 0
+    for m in _SENTENCE_SPLIT_RE.finditer(text):
+        sent = text[prev_end : m.start()]
+        prev_end = m.end()
+        claim = _annual_claim_in_sentence(sent, year_patterns)
+        if claim is not None:
+            return claim
+    claim = _annual_claim_in_sentence(text[prev_end:], year_patterns)
+    return claim
+
+
+def _annual_claim_in_sentence(
+    sent: str,
+    year_patterns: tuple[str, ...],
+) -> tuple[int, str] | None:
+    if not re.search(
+        r"\b(?:global|worldwide)\s+semiconductor(?:\s+manufacturing)?\s+equipment\s+"
+        r"(?:sales|billings)\b|"
+        r"\b(?:global|worldwide)\s+sales\s+of\s+semiconductor"
+        r"(?:\s+manufacturing)?\s+equipment\b",
+        sent,
+        re.IGNORECASE,
+    ):
+        return None
+    amount = re.search(r"((?:US)?\$[\d\.]+\s*billion)", sent, re.IGNORECASE)
+    if not amount:
+        return None
+    year: int | None = None
+    for pattern in year_patterns:
+        ymatch = re.search(pattern, sent, re.IGNORECASE)
+        if ymatch:
+            year = int(ymatch.group(1))
+            break
+    if year is None:
+        return None
+    return year, amount.group(1).strip()
+
+
+def _extract_annual_china_amount(text: str, year: int) -> str | None:
+    """提取年度公报中的 China 区域总额，保留源端金额字符串。"""
+    soup = BeautifulSoup(text, "html.parser")
+    for node in soup.find_all(["script", "style", "noscript"]):
+        node.decompose()
+    plain_text = re.sub(r"\s+", " ", soup.get_text(" ", strip=True))
     patterns = (
-        r"\b(20\d{2})\s+global\s+semiconductor\s+equipment\s+(?:sales|billings)\b",
-        r"\bglobal\s+semiconductor\s+equipment\s+(?:sales|billings)"
-        r"[\s\S]{0,160}?\bin\s+(20\d{2})\b",
-        r"\bglobal\s+semiconductor\s+equipment\s+(?:sales|billings)"
-        r"[\s\S]{0,160}?\bin\s+calendar\s+year\s+(20\d{2})\b",
+        r"\b(?:sales|spending|investments?|billings)\b[^.!?]{0,120}?\bChina\b"
+        r"[^.!?]{0,180}?((?:US)?\$[\d,.]+\s*billion)",
+        r"\bChina\b[^.!?]{0,240}?\b(?:sales|spending|investments?|billings|market)\b"
+        r"[^.!?]{0,140}?((?:US)?\$[\d,.]+\s*billion)",
     )
     for pattern in patterns:
-        match = re.search(pattern, text, re.IGNORECASE)
+        match = re.search(pattern, plain_text, re.IGNORECASE)
         if match:
-            return int(match.group(1))
+            return match.group(1).strip()
+
+    for table in soup.find_all("table"):
+        rows = [
+            [cell.get_text(" ", strip=True) for cell in row.find_all(["th", "td"])]
+            for row in table.find_all("tr")
+        ]
+        rows = [row for row in rows if row]
+        table_text = " ".join(cell for row in rows for cell in row)
+        if str(year) not in table_text:
+            continue
+
+        target_index: int | None = None
+        for row in rows:
+            for index, cell in enumerate(row):
+                if cell.strip() == str(year):
+                    target_index = index
+                    break
+            if target_index is not None:
+                break
+
+        for row in rows:
+            if not row or row[0].strip().casefold() != "china":
+                continue
+            candidates = (
+                [row[target_index]]
+                if target_index is not None and target_index < len(row)
+                else row[1:]
+            )
+            for candidate in candidates:
+                if re.fullmatch(r"(?:US)?\$?[\d,]+(?:\.\d+)?(?:\s+billion)?", candidate):
+                    return str(candidate).strip()
     return None
 
 
