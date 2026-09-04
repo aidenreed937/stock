@@ -1,6 +1,21 @@
 """半导体产业 Curated/RAW Schema 与端点存储契约。"""
 
+from typing import Any
+
 import polars as pl
+
+from stock_data.fetcher.industry.semiconductor.transforms.memory_benchmark import (
+    MEMORY_BENCHMARK_CURATED_SCHEMA as MEMORY_BENCHMARK_CURATED_SCHEMA,
+)
+from stock_data.fetcher.industry.semiconductor.transforms.memory_benchmark import (
+    MEMORY_BENCHMARK_RAW_SCHEMA as MEMORY_BENCHMARK_RAW_SCHEMA,
+)
+from stock_data.fetcher.industry.semiconductor.transforms.taiwan_memory import (
+    TAIWAN_MEMORY_LEAD_CURATED_SCHEMA as TAIWAN_MEMORY_LEAD_CURATED_SCHEMA,
+)
+from stock_data.fetcher.industry.semiconductor.transforms.taiwan_memory import (
+    TAIWAN_MEMORY_LEAD_RAW_SCHEMA as TAIWAN_MEMORY_LEAD_RAW_SCHEMA,
+)
 
 SEMICONDUCTOR_SALES_SCHEMA = {
     "report_month": pl.String,
@@ -22,7 +37,6 @@ SEMICONDUCTOR_SALES_SCHEMA = {
     "data_status": pl.String,
     "collected_at": pl.String,
 }
-
 SEMICONDUCTOR_LEAD_SCHEMA = {
     "report_month": pl.String,
     "trade_date": pl.Date,
@@ -305,7 +319,7 @@ CHANNEL_INVENTORY_CURATED_SCHEMA = {
     "collected_at": pl.String,
 }
 
-MEMORY_PRICE_RAW_SCHEMA = {
+MEMORY_PRICE_RAW_SCHEMA: dict[str, Any] = {
     "trade_date": pl.Date,
     "updated_at_raw": pl.String,
     "product_family": pl.String,
@@ -334,9 +348,9 @@ MEMORY_PRICE_RAW_SCHEMA = {
     "raw_snapshot_path": pl.String,
 }
 
-MEMORY_PRICE_CURATED_SCHEMA = {
+MEMORY_PRICE_CURATED_SCHEMA: dict[str, Any] = {
     "trade_date": pl.Date,
-    "updated_at": pl.String,
+    "updated_at": pl.Datetime(time_unit="us", time_zone="UTC"),
     "product_family": pl.String,
     "price_scope": pl.String,
     "page_slug": pl.String,

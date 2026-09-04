@@ -3,6 +3,7 @@
 import polars as pl
 
 from stock_core.utils.logger import logger
+from stock_data.core.runtime import DataRuntimeContext
 
 # 声明不同数据源与 API endpoint 的显式单位转换规则
 # 映射：数据源 -> 接口 -> 原始列 -> (目标列, 倍率)
@@ -82,22 +83,35 @@ UNIT_CONVERSION_RULES: dict[str, dict[str, dict[str, tuple[str, float]]]] = {
             # TuShare dividend 的 base_share 单位为万股。
             "base_share": ("base_share", 10000.0),
         },
-    }
+    },
+    "industry": {
+        "semiconductor_memory_taiwan_lead": {
+            # MOPS 月营收接口的源端金额单位为千元新台币；Curated 统一为百万新台币。
+            "revenue_ntd_thousand": ("revenue_ntd_million", 0.001),
+        },
+    },
 }
 
 
 class UnitNormalizer:
     """显式单位标准化器，根据 data_source 和 endpoint 执行无歧义的单位倍率转换。"""
 
-    def __init__(self, data_source: str, endpoint: str) -> None:
+    def __init__(
+        self,
+        data_source: str,
+        endpoint: str,
+        runtime: DataRuntimeContext | None = None,
+    ) -> None:
         """初始化单位标准化器。
 
         Args:
             data_source: 数据源标识 (如 tushare).
             endpoint: 接口名称 (如 daily, daily_basic).
+            runtime: 可选的统一数据运行时目录上下文。
         """
         self.data_source = data_source.lower()
         self.endpoint = endpoint.lower()
+        self.runtime = runtime
         self.rules = UNIT_CONVERSION_RULES.get(self.data_source, {}).get(self.endpoint, {})
 
     def normalize_units(self, df: pl.DataFrame) -> pl.DataFrame:
@@ -134,6 +148,8 @@ class UnitNormalizer:
 
         if self.data_source == "tushare" and self.endpoint in {"daily", "stock_daily_bar"}:
             return self._normalize_tushare_bar_units(df)
+        if self.data_source == "industry" and self.endpoint == "semiconductor_memory_taiwan_lead":
+            return _normalize_taiwan_memory_units(df, runtime=self.runtime), df.head(0)
 
         return self._normalize_configured_units(df), df.head(0)
 
@@ -244,8 +260,7 @@ class UnitNormalizer:
         if has_amount and has_raw_volume:
             work, factor_column, helper_columns = self._infer_tushare_bar_amount_factor(work)
         elif has_amount:
-            # 没有 vol 时只能是已经含有标准 volume 的数据；不得再按 TuShare
-            # 原始成交量规则放大成交额。
+            # 没有 vol 时只能是标准 volume，不得按 TuShare 原始规则放大成交额。
             work = work.with_columns(pl.lit(1.0).alias(factor_column))
             helper_columns.append(factor_column)
 
@@ -278,3 +293,82 @@ class UnitNormalizer:
             transformed = transformed.drop("vol")
 
         return transformed, rejected
+
+
+def _normalize_taiwan_memory_units(
+    df: pl.DataFrame,
+    *,
+    runtime: DataRuntimeContext | None,
+) -> pl.DataFrame:
+    """将 MOPS 千元新台币营收统一为百万新台币并派生美元口径。"""
+    normalizer = UnitNormalizer("industry", "semiconductor_memory_taiwan_lead", runtime=runtime)
+    normalized = normalizer._normalize_configured_units(df)
+    if "revenue_ntd_million" not in normalized.columns:
+        return normalized
+    if "revenue_usd_million" not in normalized.columns:
+        rates: dict[str, float | None] = {}
+        usd_values: list[float | None] = []
+        for revenue, report_month in zip(
+            normalized["revenue_ntd_million"].to_list(),
+            normalized["report_month"].to_list(),
+            strict=False,
+        ):
+            month = str(report_month)
+            if month not in rates:
+                rates[month] = monthly_usdtwd_rate(month, runtime=runtime)
+            rate = rates[month]
+            usd_values.append(
+                round(float(revenue) / rate, 2)
+                if revenue is not None and rate is not None and rate > 0
+                else None
+            )
+        normalized = normalized.with_columns(
+            pl.Series("revenue_usd_million", usd_values, dtype=pl.Float64)
+        )
+    return normalized
+
+
+def monthly_usdtwd_rate(
+    report_month: str, runtime: DataRuntimeContext | None = None
+) -> float | None:
+    """读取指定月份美元兑新台币月均汇率（TWD/USD）。"""
+    try:
+        from stock_data.catalog import DataCatalog
+        from stock_data.core.settings import data_settings
+
+        active_runtime = runtime or data_settings.runtime_context
+        cat = DataCatalog(data_source="fred", runtime=active_runtime)
+        df = cat.load_dataset("macro_indicators", symbols=["DEXTAUS"])
+        if df.is_empty():
+            return None
+        df = df.filter(pl.col("symbol") == "DEXTAUS")
+        if df.is_empty():
+            return None
+
+        year, month = _parse_report_month(report_month)
+        target = f"{year:04d}-{month:02d}"
+        sub = df.filter(pl.col("trade_date").dt.strftime("%Y-%m") == target)
+        if sub.is_empty():
+            return None
+        mean_val = sub["close"].mean()
+        return round(float(str(mean_val)), 4) if mean_val is not None else None
+    except Exception as exc:  # noqa: BLE001
+        logger.warning("读取 FRED DEXTAUS 汇率失败，NTD -> USD 营收保持缺失: %s", exc)
+        return None
+
+
+def convert_ntd_to_usd(
+    revenue_ntd_million: float,
+    report_month: str,
+    runtime: DataRuntimeContext | None = None,
+) -> float | None:
+    """按当月真实汇率将百万新台币营收折算为百万美元。"""
+    rate = monthly_usdtwd_rate(report_month, runtime=runtime)
+    if rate is None or rate <= 0:
+        return None
+    return round(revenue_ntd_million / rate, 2)
+
+
+def _parse_report_month(report_month: str) -> tuple[int, int]:
+    year, month = str(report_month).strip().split("-", 1)
+    return int(year), int(month)

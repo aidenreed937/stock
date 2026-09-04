@@ -10,11 +10,13 @@ from stock_data.fetcher.industry.runner import (
 from stock_data.fetcher.industry.semiconductor.collectors import (
     ChannelInventoryCollector,
     ChipLeadTimeCollector,
+    DataTrackMemoryPriceCollector,
     FoundryUtilizationCollector,
     MemoryPriceCollector,
     SeajEquipmentCollector,
     SemiconductorCollector,
     SemiEquipmentCollector,
+    TaiwanMemoryLeadCollector,
     TsmcLeadCollector,
 )
 from stock_data.fetcher.industry.semiconductor.collectors.inventory import (
@@ -33,13 +35,17 @@ from stock_data.fetcher.industry.semiconductor.transforms import (
     build_semi_equipment_curated_frame,
     build_semi_equipment_raw_frame,
     records_to_chip_lead_time_frame,
+    records_to_memory_benchmark_frame,
     records_to_raw_chip_lead_time_frame,
+    records_to_raw_memory_benchmark_frame,
     records_to_raw_semiconductor_equipment_frame,
     records_to_raw_semiconductor_frame,
     records_to_raw_semiconductor_lead_frame,
+    records_to_raw_taiwan_memory_lead_frame,
     records_to_semiconductor_equipment_frame,
     records_to_semiconductor_frame,
     records_to_semiconductor_lead_frame,
+    records_to_taiwan_memory_lead_frame,
 )
 from stock_data.fetcher.industry.semiconductor.workflows import backfill_semiconductor_china
 
@@ -152,5 +158,27 @@ ENDPOINT_SPECS: tuple[IndustryEndpointSpec, ...] = (
             "table_index",
             "item_raw",
         ],
+    ),
+    record_endpoint(
+        endpoint="semiconductor_memory_benchmark",
+        domain="semiconductor",
+        collect=collector(DataTrackMemoryPriceCollector),
+        transform=records_to_memory_benchmark_frame,
+        target_file="semiconductor_memory_benchmark.parquet",
+        primary_keys=["report_month", "product_family", "indicator_id"],
+        raw_subdir=SEMICONDUCTOR_RAW_SUBDIR,
+        raw_transform=records_to_raw_memory_benchmark_frame,
+        raw_primary_keys=["report_month", "product_family", "indicator_id_raw"],
+    ),
+    record_endpoint(
+        endpoint="semiconductor_memory_taiwan_lead",
+        domain="semiconductor",
+        collect=collector(TaiwanMemoryLeadCollector),
+        transform=records_to_taiwan_memory_lead_frame,
+        target_file="semiconductor_memory_taiwan_lead.parquet",
+        primary_keys=["report_month", "symbol"],
+        raw_subdir=SEMICONDUCTOR_RAW_SUBDIR,
+        raw_transform=records_to_raw_taiwan_memory_lead_frame,
+        raw_primary_keys=["report_month", "symbol"],
     ),
 )

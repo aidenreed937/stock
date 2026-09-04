@@ -32,6 +32,8 @@ _CHANGE_RAW_COLUMNS = (
     "low_change_raw",
 )
 
+_UTC_DATETIME = pl.Datetime(time_unit="us", time_zone="UTC")
+
 
 def build_memory_price_raw_frame(items: Sequence[dict[str, Any]] | pl.DataFrame) -> pl.DataFrame:
     """将 TrendForce HTML 解析结果整理为源端字段/字符串值优先的 RAW 帧。"""
@@ -80,7 +82,7 @@ def build_memory_price_curated_frame(df_raw: pl.DataFrame) -> pl.DataFrame:
     ]
     return (
         raw.with_columns(
-            pl.col("updated_at_raw").alias("updated_at"),
+            _updated_at_utc_expr().alias("updated_at"),
             pl.col("item_raw").str.strip_chars().alias("item"),
             *price_exprs,
             *change_exprs,
@@ -95,6 +97,24 @@ def build_memory_price_curated_frame(df_raw: pl.DataFrame) -> pl.DataFrame:
         )
         .sort(["trade_date", "product_family", "price_scope", "table_index", "item"])
     )
+
+
+def _updated_at_utc_expr() -> pl.Expr:
+    raw = pl.col("updated_at_raw").cast(pl.String, strict=False).str.strip_chars()
+    with_offset = raw.str.replace(r"\s*\(GMT\+8\)$", "+0800")
+    timestamp = with_offset.str.to_datetime(
+        format="%Y-%m-%d %H:%M%z",
+        strict=False,
+    ).cast(_UTC_DATETIME, strict=False)
+    date_only = (
+        raw.str.slice(0, 10)
+        .str.to_date("%Y-%m-%d", strict=False)
+        .cast(pl.Datetime("us"), strict=False)
+        .dt.replace_time_zone("Asia/Shanghai")
+        .dt.convert_time_zone("UTC")
+        .cast(_UTC_DATETIME, strict=False)
+    )
+    return pl.coalesce([timestamp, date_only]).cast(_UTC_DATETIME, strict=False)
 
 
 def _with_missing_columns(df: pl.DataFrame, schema: dict[str, Any]) -> pl.DataFrame:

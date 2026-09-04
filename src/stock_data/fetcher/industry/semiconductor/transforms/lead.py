@@ -2,54 +2,33 @@
 
 from __future__ import annotations
 
-import logging
 from collections.abc import Sequence
 
-import polars as pl
-
+from stock_data.core.runtime import DataRuntimeContext
 from stock_data.fetcher.industry.common import parse_month_string
 from stock_data.fetcher.industry.semiconductor.models import SemiconductorLeadRecord
+from stock_data.pipeline.normalizer.unit_normalizer import (
+    convert_ntd_to_usd as _convert_ntd_to_usd,
+)
+from stock_data.pipeline.normalizer.unit_normalizer import (
+    monthly_usdtwd_rate as _monthly_usdtwd_rate,
+)
 
-logger = logging.getLogger(__name__)
 
-_FRED_READ_WARNED = False
-
-
-def monthly_usdtwd_rate(report_month: str) -> float | None:
+def monthly_usdtwd_rate(
+    report_month: str, runtime: DataRuntimeContext | None = None
+) -> float | None:
     """读取指定月份美元兑新台币月均汇率（TWD/USD）。"""
-    global _FRED_READ_WARNED
-    try:
-        from stock_data.catalog import DataCatalog
-        from stock_data.core.runtime import DataRuntimeContext
-
-        cat = DataCatalog(data_source="fred", runtime=DataRuntimeContext.from_root("data"))
-        df = cat.load_dataset("macro_indicators", symbols=["DEXTAUS"])
-        if df.is_empty():
-            return None
-        df = df.filter(pl.col("symbol") == "DEXTAUS")
-        if df.is_empty():
-            return None
-
-        year, month = parse_month_string(report_month)
-        target = f"{year:04d}-{month:02d}"
-        sub = df.filter(pl.col("trade_date").dt.strftime("%Y-%m") == target)
-        if sub.is_empty():
-            return None
-        mean_val = sub["close"].mean()
-        return round(float(str(mean_val)), 4) if mean_val is not None else None
-    except Exception as exc:  # noqa: BLE001
-        if not _FRED_READ_WARNED:
-            logger.warning("读取 FRED DEXTAUS 汇率失败，TSMC USD 营收保持缺失: %s", exc)
-            _FRED_READ_WARNED = True
-        return None
+    return _monthly_usdtwd_rate(report_month, runtime=runtime)
 
 
-def convert_ntd_to_usd(revenue_ntd_million: float, report_month: str) -> float | None:
+def convert_ntd_to_usd(
+    revenue_ntd_million: float,
+    report_month: str,
+    runtime: DataRuntimeContext | None = None,
+) -> float | None:
     """按当月真实汇率将 NTD 百万营收折算为 USD 百万。"""
-    rate = monthly_usdtwd_rate(report_month)
-    if rate is None or rate <= 0:
-        return None
-    return round(revenue_ntd_million / rate, 2)
+    return _convert_ntd_to_usd(revenue_ntd_million, report_month, runtime=runtime)
 
 
 def derive_tsmc_mom(records: Sequence[SemiconductorLeadRecord]) -> dict[str, float | None]:

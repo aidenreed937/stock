@@ -12,6 +12,8 @@ SEAJ_RAW_SUBDIR = "seaj"
 SEMI_RAW_SUBDIR = "semi"
 FOUNDRY_RAW_SUBDIR = "foundry"
 INVENTORY_RAW_SUBDIR = "inventory"
+DATATRACK_RAW_SUBDIR = "datatrack"
+TAIWAN_MEMORY_RAW_SUBDIR = "taiwan_memory"
 
 INVENTORY_RAW_FILENAME = "idm_quarterly_financials_10y.csv"
 TSMC_REVENUE_HTML_SUBDIR = "tsmc"
@@ -38,3 +40,5 @@ class SemiconductorRawPaths:
         self.inventory_sec_dir = self.inventory_dir / "sec_submissions"
         self.inventory_csv = self.inventory_dir / INVENTORY_RAW_FILENAME
         self.tsmc_monthly_html_dir = self.raw_root / TSMC_REVENUE_HTML_SUBDIR
+        self.datatrack_dir = self.semiconductor_dir / DATATRACK_RAW_SUBDIR
+        self.taiwan_memory_dir = self.semiconductor_dir / TAIWAN_MEMORY_RAW_SUBDIR

@@ -136,3 +136,68 @@ class ChipLeadTimeRecord:
     raw_snapshot_path: str = ""
     lead_time_raw: str | None = None
     sku_details_raw: str | None = None
+
+
+@dataclass(frozen=True)
+class MemoryPriceBenchmarkRecord:
+    """TrendForce DataTrack 内存现货月度基准价格记录。"""
+
+    report_month: str
+    trade_date: date
+    product_family: str
+    indicator_id: int
+    indicator_name: str
+    price_usd: float
+    unit: str = "USD"
+    source: str = "TrendForce"
+    source_url: str = ""
+    release_date: date | None = None
+    release_date_raw: str | None = None
+    release_date_status: str = "unavailable"
+    data_status: str = "actual"
+    collected_at: str = ""
+    raw_content_sha256: str = ""
+    raw_snapshot_path: str = ""
+    indicator_id_raw: str | None = None
+    indicator_name_raw: str | None = None
+    period_raw: str | None = None
+    value_raw: str | None = None
+    freq_raw: str | None = None
+    unit_raw: str | None = None
+    data_source_raw: str | None = None
+    inferenced_raw: str | None = None
+
+
+@dataclass(frozen=True)
+class TaiwanMemoryLeadRecord:
+    """台湾存储龙头 (南亚科/威刚) 月度营运营收先导指标记录。"""
+
+    report_month: str
+    trade_date: date
+    symbol: str
+    company_name: str
+    revenue_ntd_thousand: float | None = None
+    revenue_ntd_million: float | None = None
+    revenue_usd_million: float | None = None
+    revenue_yoy: float | None = None
+    revenue_mom: float | None = None
+    revenue_3mma_usd: float | None = None
+    unit: str = "thousand_ntd"
+    source: str = "MOPS"
+    source_url: str = ""
+    release_date: date | None = None
+    release_date_raw: str | None = None
+    release_date_status: str = "unavailable"
+    source_response_datetime_raw: str | None = None
+    data_status: str = "actual"
+    collected_at: str = ""
+    raw_content_sha256: str = ""
+    raw_snapshot_path: str = ""
+    company_name_raw: str | None = None
+    report_month_raw: str | None = None
+    net_revenue_raw: str | None = None
+    last_year_revenue_raw: str | None = None
+    yoy_change_raw: str | None = None
+    mom_change_raw: str | None = None
+    cumulative_revenue_raw: str | None = None
+    cumulative_yoy_raw: str | None = None

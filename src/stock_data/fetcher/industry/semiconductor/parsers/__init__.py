@@ -3,6 +3,9 @@
 from stock_data.fetcher.industry.semiconductor.parsers.channel_inventory import (
     parse_channel_inventory_companyfacts,
 )
+from stock_data.fetcher.industry.semiconductor.parsers.datatrack_memory import (
+    parse_datatrack_memory_price_json,
+)
 from stock_data.fetcher.industry.semiconductor.parsers.foundry import (
     extract_smic_announcement_links,
     extract_smic_announcement_targets,
@@ -46,6 +49,9 @@ from stock_data.fetcher.industry.semiconductor.parsers.semi import (
     extract_semi_press_release_links,
     parse_semi_article_text,
 )
+from stock_data.fetcher.industry.semiconductor.parsers.taiwan_memory import (
+    parse_taiwan_memory_monthly_revenue_dict,
+)
 from stock_data.fetcher.industry.semiconductor.parsers.tsmc import (
     parse_tsmc_monthly_revenue_html,
 )
@@ -71,6 +77,7 @@ __all__ = [
     "load_sia_news_enrichments",
     "parse_channel_inventory_companyfacts",
     "parse_companyfacts_inventory",
+    "parse_datatrack_memory_price_json",
     "parse_lead_time_string_to_weeks",
     "parse_seaj_historical_xls",
     "parse_seaj_historical_xls_url",
@@ -83,6 +90,7 @@ __all__ = [
     "parse_sia_china_and_date",
     "parse_smic_operating_pdf_bytes",
     "parse_smic_operating_text",
+    "parse_taiwan_memory_monthly_revenue_dict",
     "parse_trendforce_memory_price_html",
     "parse_tsmc_monthly_revenue_html",
     "parse_tsmc_quarterly_report_pdf_bytes",
