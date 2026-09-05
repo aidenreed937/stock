@@ -68,6 +68,7 @@ class CatalogReadMixin:
     storage_dir: Path
 
     def _parquet_files(self, dataset: str | None = None, market: str | None = None) -> list[Path]:
+        """发现逻辑数据集；未命中别名时支持源目录下的安全相对路径。"""
         source_dir = self.storage_dir / self.data_source
         if dataset is None:
             return _list_parquet_files(source_dir, market=market)

@@ -180,3 +180,19 @@ def test_industry_energy_subdir_addressing(tmp_path) -> None:
     assert entries["energy"].files  # 聚合数据集仍存在
     assert len(entries["energy"].files) == 2
     assert "global_power_generation" not in entries  # 不新增独立注册名
+
+
+def test_industry_unregistered_relative_subdir_path(tmp_path) -> None:
+    """未登记别名的多级文件可按 industry 根目录相对路径读取。"""
+    target = tmp_path / "industry" / "energy" / "new" / "deep_asset.parquet"
+    target.parent.mkdir(parents=True, exist_ok=True)
+    pl.DataFrame({"trade_date": [date(2025, 1, 1)], "value": [1.0]}).write_parquet(target)
+
+    catalog = DataCatalog(data_source="industry", storage_dir=tmp_path)
+
+    direct = catalog.load_dataset("energy/new/deep_asset", dedup=False)
+    with_suffix = catalog.load_dataset("energy/new/deep_asset.parquet", dedup=False)
+
+    assert direct.equals(with_suffix)
+    assert direct["value"].to_list() == [1.0]
+    assert catalog.load_dataset("../industry/energy/new/deep_asset", dedup=False).is_empty()

@@ -126,13 +126,8 @@ def list_parquet_files(
             continue
         if dataset is not None:
             if "/" in dataset:
-                # 形如 "energy/global_power_generation" 的子目录定位,
-                # 支持业务子目录内文件按文件名独立寻址。
-                subdir, _, stem = dataset.partition("/")
-                if not (
-                    path.parent.name.casefold() == subdir.casefold()
-                    and path.stem.casefold() == stem.casefold()
-                ):
+                requested = _relative_dataset_parts(dataset)
+                if requested is None or _relative_dataset_key(path, base_dir) != requested:
                     continue
             elif dataset_name(path).casefold() != dataset.casefold():
                 continue
@@ -140,6 +135,40 @@ def list_parquet_files(
             continue
         files.append(path)
     return sorted(files)
+
+
+def _relative_dataset_parts(dataset: str) -> tuple[str, ...] | None:
+    """将安全的相对数据集路径拆分为不含 parquet 后缀的路径片段。"""
+    candidate = Path(dataset)
+    if (
+        not dataset
+        or candidate.is_absolute()
+        or any(part in {".", ".."} for part in candidate.parts)
+    ):
+        return None
+    if candidate.suffix.casefold() == ".parquet":
+        candidate = candidate.with_suffix("")
+    return tuple(part.casefold() for part in candidate.parts) or None
+
+
+def _relative_dataset_key(path: Path, base_dir: Path) -> tuple[str, ...] | None:
+    """返回文件相对数据源根目录的逻辑路径，兼容直接文件和日期分区文件。"""
+    try:
+        parts = list(path.relative_to(base_dir).parts)
+    except ValueError:
+        return None
+    if not parts:
+        return None
+    filename = Path(parts.pop())
+    if filename.suffix.casefold() != ".parquet":
+        return None
+    while parts and (
+        parts[-1].casefold().startswith("year=") or parts[-1].casefold().startswith("month=")
+    ):
+        parts.pop()
+    if filename.stem.casefold() != "data" or not parts:
+        parts.append(filename.stem)
+    return tuple(part.casefold() for part in parts) or None
 
 
 def read_dataset_files(

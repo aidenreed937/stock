@@ -139,6 +139,59 @@ df_ts_history = load_index_member_for_classification(
 
 黄金表未物化时，先用 `cat_derived.list_datasets()` 检查；应通过 `make rebuild-sw-industry-golden` 先 dry-run，再按 `data-pipeline` 的人工确认规则执行 `APPLY=1`。如果发现旧文件仍是 `src=SW2021` 与 `evidence_source` 结构，说明物化结果落后于当前契约，应先重建，不能把旧 `src` 当作证据来源。
 
+### 1.2 `industry/energy` 多级目录读取
+
+`data/curated/industry/energy/` 是 `industry` 数据源下的业务子目录，不是独立的 `data_source`。目录结构类似：
+
+```text
+data/curated/industry/
+├── semiconductor_sales.parquet
+└── energy/
+    ├── global_energy_macro_baseline.parquet
+    ├── global_oil_gas_balance.parquet
+    ├── global_power_generation.parquet
+    ├── global_renewable_capacity.parquet
+    └── energy_cross_source_audit.parquet
+```
+
+使用 `DataCatalog(data_source="industry")` 时，按以下规则寻址：
+
+| 读取目标 | `load_dataset()` 参数 | 物理定位 | 说明 |
+| :--- | :--- | :--- | :--- |
+| energy 子目录中的单个逻辑数据集 | `"global_power_generation"` 等 | `energy/global_power_generation.parquet` | 通过 `StorageCompat` 自动映射；推荐用于分析 |
+| energy 子目录全部文件聚合 | `"energy"` | `energy/*.parquet` | 仅用于有意进行跨表探索；异构列会按列并集合并，缺失列为 null |
+| 未登记别名的多级数据集 | `"energy/new/deep_asset"` | `energy/new/deep_asset.parquet` | 未命中别名时直接按相对于 `data/curated/industry/` 的路径定位，不需要先加别名 |
+| 显式子路径定位 | `"energy/global_power_generation"` | `energy/global_power_generation.parquet` | 受支持的精确定位写法；不要传入 `data/curated/...` 完整物理路径 |
+
+推荐调用：
+
+```python
+from datetime import date
+
+from stock_data.catalog import DataCatalog
+
+cat_industry = DataCatalog(data_source="industry", runtime=runtime)
+
+# 单表读取：使用逻辑数据集名，按需做时间和列裁剪
+df_generation = cat_industry.load_dataset(
+    "global_power_generation",
+    start_date=date(2025, 1, 1),
+    end_date=date(2026, 9, 4),
+    columns=("geo_code", "trade_date", "technology", "generation_twh"),
+)
+
+# 聚合读取：只有在明确需要合并 energy 下多个异构表时使用
+df_energy = cat_industry.load_dataset("energy", dedup=False)
+
+# 没有别名时：直接传相对于 data/curated/industry/ 的安全相对路径
+df_new = cat_industry.load_dataset(
+    "energy/new/deep_asset",
+    columns=("trade_date", "value"),
+)
+```
+
+当前正式登记的 energy 短名别名只有：`global_energy_macro_baseline`、`global_oil_gas_balance`、`global_power_generation`、`global_renewable_capacity`、`energy_cross_source_audit`。未登记别名的数据集不需要修改别名表，直接使用相对于 `data/curated/industry/` 的安全路径即可；路径不能是绝对路径，也不能包含 `.` 或 `..` 越界片段。`list_datasets()` / `available_datasets()` 会将当前 energy 直系文件按物理父目录展示为一个逻辑数据集 `energy`，因此列表中看不到单个文件名不代表文件缺失。若要让新数据集进入采集、质量、去重和正式目录契约，仍需补充任务注册与测试。
+
 运行时通过 `DataRuntimeContext` 统一注入 `data/raw`、`data/curated` 和 `data/cache`；下游读取 Curated 仍使用 `DataCatalog`。`market_daily`、Feature 长表与领域 Mart 不属于 DataCatalog 数据集目录，统一通过 `stock_analytics.features` 的 `FeatureStore` 读取，例如 `FeatureStore().get_domain_mart("repurchase_daily")`。
 
 ---
@@ -154,6 +207,7 @@ df_ts_history = load_index_member_for_classification(
 | **申万行业行情** | `sw_daily` | `tushare` | `symbol`, `trade_date`, `classification`, `industry_level`, `industry_code`, `close`, `amount`；按 `SW2021 + L1/L2/L3` 筛选 |
 | **申万行业维度/成分** | `sw_2021_industry_dimension_golden`, `sw_2021_industry_member_golden` | `derived` | 版本化维度、父子层级、历史有效期、当前快照、来源裁决与冲突标记 |
 | **申万行业估值/财报** | `sw_2021_fundamental`, `sw_2021_l2_fundamental`, `sw_2021_fs_*` | `lixinger` | 一级/二级行业估值与行业合并财报；不替代黄金成分表 |
+| **垂直产业数据** | 顶层逻辑数据集及 `energy/<dataset>` 子目录数据集 | `industry` | 通过 `DataCatalog(data_source="industry")` 按逻辑名读取；`energy` 仅表示子目录聚合 |
 | **卖方预测与业绩** | `report_rc`, `forecast`, `express` | `tushare` | 一致预期盈利预测 (`np`, `tp`)、业绩预告与快报 |
 | **场内基金与 ETF** | `fund_daily`, `fund_adj`, `etf_share_size` | `tushare` | 63 只核心 ETF 全历史日线、复权因子(含分红)与份额规模 |
 | **可转债与期权** | `cb_basic`, `cb_daily`, `opt_basic`, `opt_daily` | `tushare` | 可转债静态/日行情、期权合约静态/日行情 |

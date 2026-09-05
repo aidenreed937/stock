@@ -6,8 +6,8 @@ from pathlib import Path
 
 from stock_data.core.task_registry import resolve_task
 
-# industry 数据源下按业务子目录存储、但仍需按文件名独立寻址的数据集。
-# 子目录名与文件名的映射关系与 dataset_name (catalog/ops.py) 的目录聚合规则配套。
+# industry 数据源下按业务子目录存储、但仍需按文件名独立寻址的数据集快捷别名。
+# 未登记的多级目录可由 DataCatalog 直接使用安全相对路径寻址。
 INDUSTRY_SUBDIR_DATASETS: frozenset[str] = frozenset(
     {
         "energy_cross_source_audit",
