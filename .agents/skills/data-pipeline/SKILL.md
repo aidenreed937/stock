@@ -1,11 +1,11 @@
 ---
 name: data-pipeline
-description: 涵盖项目全部真实数据源（TuShare、理杏仁 LiXinger、Yahoo Finance yfinance、美联储 FRED、Alpha Vantage）的数据工程操作指南：新接口注册、历史数据回填 (Backfill)、基于水位/发布时间窗口/RAW 缓存的每日增量采集 (Sync)、清洗转换、质量门禁与多维审计对账。
+description: 涵盖项目全部 6 大真实数据源（TuShare、理杏仁 LiXinger、Yahoo Finance yfinance、美联储 FRED、Alpha Vantage、Industry 垂直产业数据）的数据工程操作指南：新接口注册、历史数据回填 (Backfill)、基于水位/发布时间窗口/RAW 缓存的每日增量采集 (Sync)、清洗转换、质量门禁与多维审计对账。
 ---
 
 # 核心数据管道 (Data Pipeline) 工作流指南
 
-本技能为量化投研系统提供 **5 大真实数据源**（TuShare、理杏仁、Yahoo Finance、FRED、Alpha Vantage）的生命周期数据工程标准化操作指南。
+本技能为量化投研系统提供 **6 大真实数据源**（TuShare、理杏仁、Yahoo Finance、FRED、Alpha Vantage、Industry 垂直产业数据）的生命周期数据工程标准化操作指南。
 
 遵循**渐进式披露**原则，本入口聚合日常高频运维操作闭环，深度配置与排错请查阅对应专题。
 
@@ -26,16 +26,16 @@ flowchart LR
 
 | 核心操作环节 | 目标与职责 | 核心 CLI 命令 / 关键入口 | 详细指引文档 |
 | :--- | :--- | :--- | :--- |
-| **① 注册新接口** | 定义 API 元数据、单位倍率与任务路由 | [`src/stock_data/core/task_registry.py`](file:///Users/mac/workspace/personal/finance/stock/src/stock_data/core/task_registry.py) | [接口注册 5 步流水线](file:///Users/mac/workspace/personal/finance/stock/.agents/skills/data-pipeline/references/01_endpoint_registration.md) |
-| **② 历史全量回填** | 12 年 K 线/估值/宏观批量拉取与 2-Tier ETL | `make backfill START=... END=... SOURCE=...` | [5 大数据源回填手册](file:///Users/mac/workspace/personal/finance/stock/.agents/skills/data-pipeline/references/02_backfill_recipes.md) |
-| **③ 每日增量采集** | 盘后水位自动嗅探、波次保护与增量对账 | `make sync SOURCE=tushare` / `make sync SOURCE=lixinger` / `make sync SOURCE=all`（跨源串行） | [增量同步与调度模板](file:///Users/mac/workspace/personal/finance/stock/.agents/skills/data-pipeline/references/03_sync_and_scheduling.md) |
-| **④ 清洗与标准化** | RAW 原始保真，Curated 统一金额/股本为标准单位 | `src/stock_data/pipeline/normalizer/unit_normalizer.py` | [单位与 Schema 规范](file:///Users/mac/workspace/personal/finance/stock/.agents/skills/data-pipeline/references/04_audit_ops_troubleshooting.md#②-单位口径与数值倍率原则) |
-| **⑤ 质量与门禁** | 运行时隔离区检查与数据源探针健康检测 | `make probe` / `make validate` | [质量门禁与隔离区机制](file:///Users/mac/workspace/personal/finance/stock/.agents/skills/data-pipeline/references/05_quality_and_quarantine.md) |
-| **⑥ 审计与对账** | RAW/Curated/隔离区与领域 Mart 的可解释对账、全库资产盘点 | `make master-audit` / `make audit TYPE=reconciliation` | [审计与对账 CLI 指南](file:///Users/mac/workspace/personal/finance/stock/.agents/skills/data-pipeline/references/04_audit_ops_troubleshooting.md#1-统一数据审计与对账-cli-audit-cli) |
+| **① 注册新接口** | 定义 Provider 元数据、项目任务名、单位倍率、任务包与自检门禁 | `UV_CACHE_DIR=.uv_cache UV_PYTHON_INSTALL_DIR=.uv_python uv run python -m stock_cli.task_health --provider <source>` / [`docs/architecture/task-management.md`](../../../docs/architecture/task-management.md) | [接口注册流水线](references/01_endpoint_registration.md) |
+| **② 历史全量回填** | 12 年 K 线/估值/宏观/产业数据批量拉取与 2-Tier ETL | `make backfill START=... END=... SOURCE=...` | [多数据源回填手册](references/02_backfill_recipes.md) |
+| **③ 每日增量采集** | 盘后水位自动嗅探、波次保护与增量对账 | `make sync SOURCE=tushare` / `make sync SOURCE=lixinger` / `make sync SOURCE=all`（跨源串行） | [增量同步与调度模板](references/03_sync_and_scheduling.md) |
+| **④ 清洗与标准化** | RAW 原始保真，Curated 统一金额/股本为标准单位 | `src/stock_data/pipeline/normalizer/unit_normalizer.py` | [单位与 Schema 规范](references/04_audit_ops_troubleshooting.md#②-单位口径与数值倍率原则) |
+| **⑤ 质量与门禁** | 运行时隔离区检查与数据源探针健康检测 | `make probe` / `make validate` | [质量门禁与隔离区机制](references/05_quality_and_quarantine.md) |
+| **⑥ 审计与对账** | RAW/Curated/隔离区与领域 Mart 的可解释对账、全库资产盘点 | `make master-audit` / `make audit TYPE=reconciliation` | [审计与对账 CLI 指南](references/04_audit_ops_troubleshooting.md#1-统一数据审计与对账-cli-audit-cli) |
 
 ---
 
-## 2. 常用 Makefile 高频指令集锦
+## 2. 常用命令集锦
 
 ```bash
 # ==================== [历史回填 Backfill] ====================
@@ -70,6 +70,7 @@ make audit TYPE=valuation
 make audit TYPE=factor
 make audit TYPE=factor DATE=YYYY-MM-DD
 make probe
+UV_CACHE_DIR=.uv_cache UV_PYTHON_INSTALL_DIR=.uv_python uv run python -m stock_cli.task_health --provider tushare
 make backfill-accept ENDPOINT=stock_daily_bar SOURCE=tushare START=YYYY-MM-DD END=YYYY-MM-DD
 make features-build TARGET=domain_marts START=YYYY-MM-DD END=YYYY-MM-DD
 make validate
@@ -106,10 +107,34 @@ make sync SOURCE=lixinger ENDPOINT=unlock_summary
 
 | 数据源 | 任务包 |
 | :--- | :--- |
-| TuShare | `daily_market_bundle`、`fund_daily_bundle`、`hsgt_flow_bundle`、`financial_statement_bundle`、`pit_bundle`、`macro_daily_bundle`、`macro_monthly_bundle`、`metadata_bundle`、`corporate_action_bundle`、`shareholder_event_bundle`、`research_daily_bundle`、`market_behavior_bundle` |
-| LiXinger | `market_bundle`、`industry_bundle`、`company_bundle`、`macro_daily_bundle`、`macro_monthly_bundle` |
+| TuShare | `daily_market_bundle`、`fund_daily_bundle`、`fund_portfolio_bundle`、`hsgt_flow_bundle`、`financial_statement_bundle`、`pit_bundle`、`macro_daily_bundle`、`macro_monthly_bundle`、`metadata_bundle`、`corporate_action_bundle`、`shareholder_event_bundle`、`research_daily_bundle`、`market_behavior_bundle`、`pledge_bundle` |
+| LiXinger | `market_bundle`、`industry_bundle`（申万成分与估值）、`industry_financial_bundle`（申万季度合并财报）、`company_bundle`、`company_risk_event_bundle`、`macro_daily_bundle`、`macro_monthly_bundle` |
 | yfinance | `fundamental_bundle`、`corporate_action_bundle`、`research_daily_bundle`、`research_event_bundle` |
 | FRED | `macro_monthly_bundle` |
+| **Industry** | **`industry_tech_bundle`** (半导体销售/设备出货/芯片交期/TSMC营收/晶圆代工产能利用率/云Capex/消费电子)<br>**`industry_energy_bundle`** (光伏装机/价格链/有色金属/煤炭/化工10年实物产量/10年产能利用率/高频周度开工与库存/理论加工费/期货仓单/期货龙虎榜)<br>**`industry_consume_bundle`** (生猪存栏与出栏价/白酒批价/创新药BD License-out)<br>**`industry_macro_bundle`** (航运BDI/工程机械/新能源车月度产销)<br>**`industry_gacc_bundle`** (海关进出口)<br>**`industry_monthly_bundle`**、**`industry_all_bundle`** |
+
+### 垂直产业 (Industry) 2-Tier 严格分层与调度规范
+
+1. **严格 2-Tier ETL 分层**：
+   - **RAW 层**：100% 原始源头保真（如官方公告 PDF、NBS 统计快照、交易所仓单过磅），**绝对不掺杂任何派生计算、加权公式或状态机分析逻辑**；
+   - **Curated 层**：在标准转换中计算加权指标（如晶圆加权利用率、双吨理论利润）并划分状态机（如 `tight_overheated` / `slump` / `profitable`）。
+2. **发布时间窗口守卫 (Release Time Window Guard)**：
+   - 垂直产业端点按法定/商业发布周期配置了发布延迟与更新时间（如日频期货龙虎榜 17:00 CST、半导体季报 20:00 CST、月度产量 18:00 CST）；未到窗口时由 `DailySyncEngine` 安全判定为 `SKIPPED`，杜绝早盘空转或假报错。
+3. **零硬编码数据数组**：
+   - 严禁在 Python 代码中定义静态历史数据列表，所有历史事实表必须物化为本地 RAW 文件（CSV/JSON/PDF），由 Fetcher 从 RAW 文件解析并物化为 Curated Parquet。
+
+### LiXinger 申万行业季度财报与批量请求
+
+`industry_bundle` 只负责申万 2021 成分与估值；季度行业合并财报使用独立的
+`industry_financial_bundle`。`sw_2021_fs_*`、`sw_2021_l2_fs_*` 和 `sw_2021_l3_fs_*` 已注册为
+`fetch_mode=per_period`、`frequency=quarterly`、`query_mode=period`，历史回填与同步均对齐到自然季度末，
+并以报告期水位推进。历史回填按“季度末 × 行业代码批次”拆成可恢复原子任务；单报告期请求使用 `date` 搭配 `stockCodes`，
+按理杏仁上限每批最多 100 个行业代码，不使用带 `startDate` 的多代码历史区间请求。理杏仁返回的是行业内公司已合并的财报，Fetcher 只纵向拼接行业代码批次，
+不在本地再次按公司聚合。
+
+一级证券/保险 API 虽有文档，但当前申万目录将可用根节点挂在二级；一级任务仍保留其业务语义，
+Fetcher 在没有一级节点时选择对应二级根代码 `490100` / `490200`。二级行业明细继续使用
+`sw_2021_l2_fs_security` / `sw_2021_l2_fs_insurance`，不要把一级任务改写成二级任务。
 
 TuShare 新增研究接口默认不进入无端点的全源同步；按需显式运行研究 bundle，题材成分接口使用原子任务
 `dc_concept_cons`，避免高权限、大体量数据在日常同步中被意外触发。
@@ -120,7 +145,7 @@ TuShare 新增研究接口默认不进入无端点的全源同步；按需显式
 
 TuShare 的 `income`、`fina_indicator`、`balancesheet`、`cashflow` 是项目任务名，统一通过
 `financial_statement_bundle` 调度；底层 `*_vip` 只是上游内部 API 名，禁止直接作为 CLI
-`ENDPOINT`。这些任务及 `top10_floatholders`（前十大流通股东）、`stk_holdernumber`（股东户数）在 `TaskRegistry` 中均为 `fetch_mode=per_period`，`cyq_perf`（每日筹码胜率与成本）为 `fetch_mode=per_day`，已全面解绑 5,500+ 个股逐个轮询：
+`ENDPOINT`。这些任务及 `top10_floatholders`（前十大流通股东）、`stk_holdernumber`（股东户数）解析后的 `TaskSpec` 均为 `fetch_mode=per_period`，`cyq_perf`（每日筹码胜率与成本）为 `fetch_mode=per_day`，已全面解绑 5,500+ 个股逐个轮询：
 
 1. **历史回填**：`make backfill SOURCE=tushare ENDPOINT=top10_floatholders,stk_holdernumber START=... END=...` 自动按区间内所有自然季度末报告期（`period`）批量并发拉取全市场数据；
 2. **日常增量同步**：`make sync DATE=YYYY-MM-DD ENDPOINT=top10_floatholders,stk_holdernumber` 自动以当日公告日期（`ann_date`）单次拉取当天所有新披露公司，单次请求即可完成（耗时 < 1 秒）；
@@ -131,7 +156,7 @@ TuShare 的 `income`、`fina_indicator`、`balancesheet`、`cashflow` 是项目�
 6. 财报、流通股东与股东户数按全市场 `stock_basic` 股票池批量请求，`SYMBOL=watchlist` 不应被误当成全市场池；
 7. Fetcher 返回后由 `src/stock_data/pipeline/date_clipper.py` 按 `end_date` 所属季度裁剪，
    不能用 `ann_date` 把披露日误当成报告期；
-8. RAW/Curated 验收仍按任务注册的复合主键处理，重述记录不能因为同一报告期而被错误去重。
+8. RAW/Curated 验收仍按 `TaskSpec` 复合主键处理，重述记录不能因为同一报告期而被错误去重。
 
 因此，财报与股东类同步结果应同时查看报告期水位、RAW 刷新状态和 `make backfill-accept` 的主键/缺口
 检查，不能只看交易日最新水位。
@@ -154,21 +179,29 @@ make audit TYPE=all DATE=YYYY-MM-DD
 
 ### 增量同步判定与缓存语义
 
-`make sync SOURCE=<source>` 未指定 `ENDPOINT` 时，会从 `TaskRegistry` 展开该数据源默认公开原子任务；LiXinger 的监管措施、交易所问询和限售解禁属于显式风险任务，不会进入默认同步。显式指定风险端点或 bundle 时，监管措施和问询函仅按观察池股票执行；展开后的每个原子任务独立维护 Curated 水位、增量区间和失败状态。
+`make sync SOURCE=<source>` 未指定 `ENDPOINT` 时，会通过 `public_tasks.py` / `task_catalog.py` 展开该数据源默认公开原子任务；LiXinger 的监管措施、交易所问询和限售解禁属于显式风险任务，不会进入默认同步。显式指定风险端点或 bundle 时，监管措施和问询函仅按观察池股票执行；展开后的每个原子任务独立维护 Curated 水位、增量区间和失败状态。
 
 同步计划按以下顺序判定：
 
-1. 根据任务注册的主日期字段读取落盘水位；日频任务通常从水位次日开始，月频/季频任务推进到下一业务期间。TuShare 公司行为事件任务按业务日期读取水位，并在缺口时按端点注册的有限回看窗口补拉。
+1. 根据 `TaskSpec.date_columns` 读取落盘水位；日频任务通常从水位次日开始，月频/季频任务推进到下一业务期间。TuShare 公司行为事件任务按端点契约的有限回看窗口补拉缺口。
 2. 检查任务的发布时间窗口。窗口未到时标记为 `SKIPPED`，属于安全跳过，不是同步失败，也不会发起上游请求。
 3. 普通任务水位已覆盖目标日时标记为 `UP_TO_DATE`；注册了事件回看窗口的 TuShare 公司行为任务在窗口就绪后仍标记为 `PENDING`，以吸收上游迟到数据。
 4. 普通待执行任务默认先检查 RAW 缓存；公司行为事件刷新任务显式绕过 RAW 命中，但仍按主键幂等合并落盘。
 5. `FORCE=1` 同时绕过发布时间窗口、水位判断和 RAW 缓存，才用于确认上游当前响应或强制刷新。
 
+### 显式目标日与最近已发布交易日
+
+- 日频任务显式传入 `DATE=YYYY-MM-DD` 时，表示只同步该业务日；若该日尚未通过发布时间窗口，任务标记为 `SKIPPED`，不会自动回退到前一已发布交易日。
+- 日常定时同步应省略 `DATE`，由调度器结合交易日历、发布时间窗口和数据水位选择最近可用交易日；需要查看判定时使用 `UV_CACHE_DIR=.uv_cache UV_PYTHON_INSTALL_DIR=.uv_python uv run python -m stock_data.pipeline.scheduler --source <source> --date YYYY-MM-DD`。
+- 手动补数时，`DATE` 必须填写实际缺失的数据日。例如运行日为 `2026-09-04`、需要补齐 `2026-09-03` 时，应使用 `DATE=2026-09-03`，不能把运行日当作数据日。
+- 同步命令退出码为 0 不代表目标日已落盘；必须检查结构化任务摘要中的 `SUCCESS` / `UP_TO_DATE` / `SKIPPED` 状态和关键数据集最新水位。`SKIPPED` 只能表示安全跳过，不能作为数据已就绪的证据。
+- 下游构建使用实际落盘的有效基准日 `effective_as_of`，而不是命令传入的目标日。确认关键 Curated 数据达到该日期后，才允许构建 Domain Mart、宏观风险因子或研报；若关键输入落后，应先补齐数据或明确披露落后日期。
+
 `SOURCE=all` 当前只是在 CLI 中按数据源顺序循环执行；单个数据源内部仍可按配置使用线程池。需要跨数据源并行时，应启动多个独立的 `make sync SOURCE=...` 进程，不能把 `SOURCE=all` 视为跨源并行入口。
 
 ### 日期字段与最新水位核对
 
-历史 RAW/Curated 兼容表可能使用 `date` 或 `Date`，Curated 加载时会归一为 `trade_date`。水位扫描会按任务注册表的 `date_columns` 同时兼容这些字段，因此摘要显示 `N/A` 时不能直接判定为没有数据；应使用 `DataCatalog.latest_trade_dates()` 或 `get_latest_trade_date()`，并结合任务频率判断。事件型、静态型任务本身也不一定存在统一的日度 `trade_date`。
+历史 RAW/Curated 兼容表可能使用 `date` 或 `Date`，Curated 加载时会归一为 `trade_date`。水位扫描会按 `TaskSpec.date_columns` 同时兼容这些字段，因此摘要显示 `N/A` 时不能直接判定为没有数据；应使用 `DataCatalog.latest_trade_dates()` 或 `get_latest_trade_date()`，并结合任务频率判断。事件型、静态型任务本身也不一定存在统一的日度 `trade_date`。
 
 ### LiXinger 增量同步边界
 
@@ -181,16 +214,16 @@ make audit TYPE=all DATE=YYYY-MM-DD
 ## 3. 核心设计原则 (Golden Rules)
 
 1. **统一自选池单一信任源**：
-   标的代码与上市基准日集中于 [`config/universe/watchlist.yaml`](file:///Users/mac/workspace/personal/finance/stock/config/universe/watchlist.yaml)，回填传入 `SYMBOL=watchlist` 时自动路由并按 `base_date` 截断。
-2. **零配置任务自发现 (`TaskRegistry`)**：
-   任务技术属性集中于 [`src/stock_data/core/task_registry.py`](file:///Users/mac/workspace/personal/finance/stock/src/stock_data/core/task_registry.py)；CLI 的 `ENDPOINT` 一律使用项目任务名（如 `index_daily_bar`），不要直接使用上游底层 API 名。财报 `income` / `fina_indicator` / `balancesheet` / `cashflow` 及其 `financial_statement_bundle` 也遵循此规则；`*_vip` 仅是内部路由名。
+   标的代码与上市基准日集中于 [`config/universe/watchlist.yaml`](../../../config/universe/watchlist.yaml)，回填传入 `SYMBOL=watchlist` 时自动路由并按 `base_date` 截断。
+2. **零配置任务自发现 (`TaskSpec`)**：
+   普通端点优先在 `fetcher/<provider>/registry.py` 或 `endpoints/` 元数据中写足 `frequency`、`fetch_mode`、`partitioned`、`is_single_sync`、`dataset`、`required_pool`、`query_mode` 等调度事实，由 `task_derivation.py` 自动推导 `TaskSpec`；项目短任务名、上游 API 改名和特殊契约放入对应 `*_manual_tasks.py` 或领域任务模块；任务包放入 `*_bundle_specs.py`；别名和停用清单放入 `task_aliases.py` / `task_bundle_aliases.py`。`task_registry.py` 仅保留旧导入兼容，禁止新增业务逻辑。注册后必须运行 `UV_CACHE_DIR=.uv_cache UV_PYTHON_INSTALL_DIR=.uv_python uv run python -m stock_cli.task_health --provider <source>`。CLI 的 `ENDPOINT` 一律使用项目任务名（如 `index_daily_bar`），不要直接使用上游底层 API 名。财报 `income` / `fina_indicator` / `balancesheet` / `cashflow` 及其 `financial_statement_bundle` 也遵循此规则；`*_vip` 仅是内部路由名。
 3. **显式单位标准化原则**：
    * RAW 原始保真，不乘倍率；
    * Curated 层统一为标准单位（金额/市值统一为**元**，成交量统一为**股/份**）；
-   * 倍率转换只能在 [`src/stock_data/pipeline/normalizer/unit_normalizer.py`](file:///Users/mac/workspace/personal/finance/stock/src/stock_data/pipeline/normalizer/unit_normalizer.py) 执行；
+   * 倍率转换只能在 [`src/stock_data/pipeline/normalizer/unit_normalizer.py`](../../../src/stock_data/pipeline/normalizer/unit_normalizer.py) 执行；
    * **分析层代码严禁根据数据源反向乘除倍率**。
 4. **Schema 零猜测与探针先行 (Ground Truth First)**：
-   严禁凭记忆猜测字段名、主键与单位。注册新接口前，必须查阅官方文档（或对应 Skill）并**运行单行 Python 命令实际请求 1 条真实数据**核验原始 Schema（详见 [01_注册指南 步骤 0](file:///Users/mac/workspace/personal/finance/stock/.agents/skills/data-pipeline/references/01_endpoint_registration.md#步骤-0官方文档查验与真实响应单步探测-ground-truth-first)）。
+   严禁凭记忆猜测字段名、主键与单位。注册新接口前，必须查阅官方文档（或对应 Skill）并**运行单行 Python 命令实际请求 1 条真实数据**核验原始 Schema（详见 [01_注册指南 步骤 0](references/01_endpoint_registration.md#步骤-0官方文档查验与真实响应单步探测-ground-truth-first)）。
 5. **高危写操作与物理删除必须人工授权审查 (Fail-Safe & Non-Destructive)**：
    凡涉及直接修改、覆写或物理删除磁盘数据的命令（带 `APPLY=1`，如 `make migrate-data APPLY=1`、`make cleanup-data APPLY=1`、`repair-* APPLY=1`），**严禁大模型擅自自动执行**！必须先运行无参数 Dry-run 预览命令向用户汇报影响范围，并获得用户明确确认后方可执行。
 6. **沙箱环境约束**：
@@ -205,14 +238,14 @@ make audit TYPE=all DATE=YYYY-MM-DD
 8. **领域 Mart 质量闭环**：
    领域 Mart 由 `stock_analytics.marts` 的 `DomainMartBuilder` 经 `make features-build TARGET=domain_marts` 构建，随后由 `make validate` 检查日期类型、主键唯一性、非有限数值和领域输入契约；`make audit TYPE=all` 再完成资产与来源审计。输入缺失时不得用默认值伪造 Mart 数据。
 9. **按业务日期裁剪而不是按字段名猜测**：
-   `clip_endpoint_date_range()` 先读取任务注册的 `fetch_mode`、`frequency` 和分区契约；静态/事件/非分区任务不强行裁剪，季度财报以 `end_date` 的季度裁剪，其余任务再按 `trade_date`、`date`、`month` 等注册/兼容字段处理。发现范围外记录时保留告警并在验收中归因。
+   `clip_endpoint_date_range()` 先读取 `TaskSpec.fetch_mode`、`frequency` 和分区契约；静态/事件/非分区任务不强行裁剪，季度财报以 `end_date` 的季度裁剪，其余任务再按 `trade_date`、`date`、`month` 等 `TaskSpec.date_columns` 或兼容字段处理。发现范围外记录时保留告警并在验收中归因。
 
 ---
 
 ## 4. 专题进阶手册 (Deep-Dive References)
 
-* 📘 [01_注册新数据接口标准流水线](file:///Users/mac/workspace/personal/finance/stock/.agents/skills/data-pipeline/references/01_endpoint_registration.md)：5 步接入新上游 API 的注册规范与模板。
-* 📘 [02_五大数据源历史全量回填手册](file:///Users/mac/workspace/personal/finance/stock/.agents/skills/data-pipeline/references/02_backfill_recipes.md)：TuShare / 理杏仁 / Yahoo Finance / FRED / Alpha Vantage 详细回填实操与限频约束。
-* 📘 [03_每日增量采集与定时调度指南](file:///Users/mac/workspace/personal/finance/stock/.agents/skills/data-pipeline/references/03_sync_and_scheduling.md)：水位感知增量更新、TaskBundle 组合调度与生产 Crontab 3 波次模板。
-* 📘 [04_数据审计、离线治理与故障排查](file:///Users/mac/workspace/personal/finance/stock/.agents/skills/data-pipeline/references/04_audit_ops_troubleshooting.md)：多维对账、Schema 演进报错解法、落盘验证脚本与探针诊断。
-* 📘 [05_数据质量门禁与异常隔离区机制](file:///Users/mac/workspace/personal/finance/stock/.agents/skills/data-pipeline/references/05_quality_and_quarantine.md)：QualityGate 物理断言清单、两融跨交易所覆盖规则与 QuarantineStore 排查实操。
+* 📘 [01_注册新采集任务标准流水线](references/01_endpoint_registration.md)：查验、注册、自检、回填验证的新上游 API 接入规范。
+* 📘 [02_多数据源历史全量回填手册](references/02_backfill_recipes.md)：TuShare / 理杏仁 / Yahoo Finance / FRED / Alpha Vantage / Industry 回填实操与限频约束。
+* 📘 [03_每日增量采集与定时调度指南](references/03_sync_and_scheduling.md)：水位感知增量更新、TaskBundle 组合调度与生产 Crontab 3 波次模板。
+* 📘 [04_数据审计、离线治理与故障排查](references/04_audit_ops_troubleshooting.md)：多维对账、Schema 演进报错解法、落盘验证脚本与探针诊断。
+* 📘 [05_数据质量门禁与异常隔离区机制](references/05_quality_and_quarantine.md)：QualityGate 物理断言清单、两融跨交易所覆盖规则与 QuarantineStore 排查实操。

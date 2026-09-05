@@ -6,7 +6,7 @@
 
 ## 1. 全库数据质量门禁 (`QualityGate`)
 
-* **源码位置**：[`src/stock_data/governance/quality/gate.py`](file:///Users/mac/workspace/personal/finance/stock/src/stock_data/governance/quality/gate.py)
+* **源码位置**：[`src/stock_data/governance/quality/gate.py`](../../../../src/stock_data/governance/quality/gate.py)
 * **执行命令**：`make validate`
 
 ### ① K 线数据 (Bar Data) 物理有效性断言
@@ -19,10 +19,10 @@
 3. **量价非负性**：$\text{amount} \ge 0$, $\text{volume} \ge 0$。
 
 ### ② 两融数据 (Margin Data) 质量与覆盖断言
-* **数值质量**（[`src/stock_data/governance/quality/margin_quality.py`](file:///Users/mac/workspace/personal/finance/stock/src/stock_data/governance/quality/margin_quality.py)）：
+* **数值质量**（[`src/stock_data/governance/quality/margin_quality.py`](../../../../src/stock_data/governance/quality/margin_quality.py)）：
   * 融资余额 (`rzye`)、融券余量 (`rqyl`) $\ge 0$；
   * 买入额与偿还额的时序逻辑与极值波动跳变预警。
-* **交易所覆盖完整性**（[`src/stock_data/governance/quality/margin_coverage.py`](file:///Users/mac/workspace/personal/finance/stock/src/stock_data/governance/quality/margin_coverage.py)）：
+* **交易所覆盖完整性**（[`src/stock_data/governance/quality/margin_coverage.py`](../../../../src/stock_data/governance/quality/margin_coverage.py)）：
   * 动态依据交易所历史真实上线基准日进行截面完整性检查：
     * **SSE (上交所)**: 2010-03-31 至今
     * **SZSE (深交所)**: 2010-03-31 至今
@@ -33,7 +33,7 @@
 
 ## 2. 异常数据隔离区 (`QuarantineStore`)
 
-* **源码位置**：[`src/stock_data/governance/quality/quarantine.py`](file:///Users/mac/workspace/personal/finance/stock/src/stock_data/governance/quality/quarantine.py)
+* **源码位置**：[`src/stock_data/governance/quality/quarantine.py`](../../../../src/stock_data/governance/quality/quarantine.py)
 * **物理落盘路径**：`data/quarantine/`
 
 ### ① 为什么使用隔离区（拒绝静默丢弃）

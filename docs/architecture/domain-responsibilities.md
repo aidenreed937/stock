@@ -23,7 +23,7 @@ stock_cli 负责参数、任务编排和终端交互
 | 领域 | 代码入口 | 负责内容 | 不负责内容 |
 | --- | --- | --- | --- |
 | 基础契约 | `src/stock_core/` | 数据契约、领域模型、配置、常量、异常和运行时上下文 | 业务指标、报告和数据源请求 |
-| 数据工程 | `src/stock_data/` | Fetcher、TaskRegistry、RAW/Curated ETL、存储、质量、审计和数据目录 | 指标解释、策略信号和报告渲染 |
+| 数据工程 | `src/stock_data/` | Fetcher、任务解析/TaskSpec、RAW/Curated ETL、存储、质量、审计和数据目录 | 指标解释、策略信号和报告渲染 |
 | 分析计算 | `src/stock_analytics/` | 纯算子、通用指标、可复用特征、领域事实和分析管线 | 远程 API 采集和最终交易执行 |
 | 策略研究 | `src/stock_strategy/` | 策略上下文、信号生成、组合/回测运行器；`application` 提供研究应用 Facade | 自己维护数据源和分析层内部实现；应用 Facade 只调用公开数据管线 |
 | 报告视图 | `src/stock_reporting/` | 模板、解释规则、Markdown/JSON 渲染 | 重新计算事实和指标 |
@@ -80,7 +80,7 @@ stock_cli 负责参数、任务编排和终端交互
 
 ```text
 外部数据源
-  → stock_data Fetcher / TaskRegistry
+  → stock_data Fetcher / 任务解析与 TaskSpec
   → data/raw/ 原始快照
   → Cleaner / Normalizer / Quality Gate
   → data/curated/ 标准化事实
@@ -99,7 +99,7 @@ stock_cli 负责参数、任务编排和终端交互
 
 | 新需求 | 首选落点 | 判断标准 |
 | --- | --- | --- |
-| 接入新上游 API 或新增数据集 | `stock_data` + TaskRegistry/Fetcher | 先落 RAW/Curated，再让分析层消费 |
+| 接入新上游 API 或新增数据集 | `stock_data` + Fetcher/TaskSpec | 先落 RAW/Curated，再让分析层消费 |
 | 新增公式或统计方法 | `stock_analytics/primitives` | 没有目录访问、业务状态或持久化 |
 | 新增可复用指标 | `stock_analytics/metrics` | 按 MetricSpec、窗口和实体粒度计算，不直接写 Mart |
 | 新增可复用特征 | `stock_analytics/features` | 需要版本、血缘、水位或物化宽表/长表 |

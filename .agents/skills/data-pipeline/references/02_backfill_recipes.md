@@ -1,4 +1,4 @@
-# 五大数据源历史全量回填实操指南 (Backfill Recipes)
+# 多数据源历史全量回填实操指南 (Backfill Recipes)
 
 统一 CLI 回填命令规范：
 ```bash
@@ -48,7 +48,7 @@ make backfill START=2024-01-01 END=2026-08-14 SOURCE=tushare ENDPOINT=cyq_perf
 
 ## 2. 理杏仁 LiXinger (`SOURCE=lixinger`)
 
-* **数据特性**：指数基本面估值、申万 2021 行业图谱与估值、行业四大财报、国债收益率与社融。
+* **数据特性**：指数基本面估值、申万 2021 行业图谱与估值、申万季度合并财报、国债收益率与社融。
 * **限频与限制**：30 次/分；单次请求跨度 $\le 10$ 年（系统内部已内建 9 年时间分片自动切片）。
 
 ```bash
@@ -61,9 +61,15 @@ make backfill SOURCE=lixinger ENDPOINT=sw_2021_constituents
 # 3. 回填申万 31 个一级与 162 个二级行业全历史估值序列
 make backfill START=2014-08-01 END=2026-08-14 SOURCE=lixinger ENDPOINT=sw_2021_fundamental,sw_2021_l2_fundamental
 
-# 4. 回填申万行业四大专属合并财务报表 (2020 年至今非金融/银行/证券/保险)
-make backfill START=2020-01-01 END=2026-08-14 SOURCE=lixinger ENDPOINT=sw_2021_fs_non_financial,sw_2021_fs_bank,sw_2021_fs_security,sw_2021_fs_insurance
+# 4. 回填申万行业季度合并财报（按报告期请求；2020 年至今）
+make backfill START=2020-01-01 END=2026-08-14 SOURCE=lixinger ENDPOINT=industry_financial_bundle
 ```
+
+`sw_2021_fs_*`、`sw_2021_l2_fs_*` 与 `sw_2021_l3_fs_*` 的回填/增量均按自然季度报告期调度。历史回填会将区间拆成季度末原子任务，
+每个季度再按最多 100 个行业代码批量请求 `date + stockCodes`；不使用带 `startDate` 的多代码历史区间请求。理杏仁返回已按行业合并的公司财报，项目不再做公司级二次聚合。
+当前申万目录将证券、保险的可用根节点挂在二级；一级 `sw_2021_fs_security` /
+`sw_2021_fs_insurance` 会在缺少一级节点时自动选择对应二级根代码 `490100` / `490200`，
+而 `sw_2021_l2_fs_*` 仍用于二级行业明细。
 
 ---
 
@@ -111,7 +117,31 @@ export ALPHA_VANTAGE_API_KEY='你的真实API_KEY'
 make backfill START=2014-08-01 END=2026-08-14 SOURCE=alphavantage ENDPOINT=fx_daily SYMBOL='CNH=X' FORCE_REFRESH=1
 ```
 
-## 6. 回填后的真实数据验收
+---
+
+## 6. 垂直产业 Industry (`SOURCE=industry`)
+
+* **数据特性**：半导体、光伏、化工、有色、煤炭、消费、海关、航运、工程机械、新能源车等产业事实表。
+* **分层规则**：RAW 保留原始物理量、公告/PDF/CSV/JSON 快照；Curated 再做标准化、派生指标和状态字段。
+* **注册要求**：任务契约按 `industry_*_task_specs.py` 分域维护；任务包在 `industry_bundle_specs.py`；新增或调整后先运行 `stock_cli.task_health`。
+
+```bash
+# 1. 回填科技产业链数据（半导体、云 Capex、消费电子）
+make backfill START=YYYY-MM-DD END=YYYY-MM-DD SOURCE=industry ENDPOINT=industry_tech_bundle
+
+# 2. 回填能源与周期数据（光伏、化工、有色、煤炭、期货库存/龙虎榜）
+make backfill START=YYYY-MM-DD END=YYYY-MM-DD SOURCE=industry ENDPOINT=industry_energy_bundle
+
+# 3. 回填海关进出口数据
+make backfill START=YYYY-MM-DD END=YYYY-MM-DD SOURCE=industry ENDPOINT=industry_gacc_bundle
+
+# 4. 回填全部垂直产业任务
+make backfill START=YYYY-MM-DD END=YYYY-MM-DD SOURCE=industry ENDPOINT=industry_all_bundle
+```
+
+---
+
+## 7. 回填后的真实数据验收
 
 回填完成后按以下顺序验收；`backfill-accept` 只读检查 RAW 与 Curated 的范围、主键和可解释缺口，不替代质量门禁：
 

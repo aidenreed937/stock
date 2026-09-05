@@ -1,75 +1,65 @@
-# 数据接口注册完整开发规范与 Checklist
+# 数据接口注册开发规范与 Checklist
 
-为了避免在新增数据接口（TuShare、理杏仁、yfinance、FRED、Alpha Vantage 等）时发生配置遗漏或参数错误，系统确立了标准的 **5 步注册流水线**。任何新端点的接入必须按顺序完整覆盖以下 5 个模块。
+为了避免新增数据接口（TuShare、理杏仁、yfinance、FRED、Alpha Vantage、Industry 等）时发生配置遗漏或参数错误，当前统一执行 **步骤 0 查验探测 + 步骤 1~6 注册流水线**。
 
----
-
-## 5 步注册标准 Checklist
-
-```
-[ ] 步骤 1: Fetcher 接口元数据定义 (EndpointMeta)
-[ ] 步骤 2: 质量与单位 Profile 绑定 (Registry Profiles + UnitNormalizer)
-[ ] 步骤 3: 项目任务路由契约 (TaskRegistry / TaskSpec)
-[ ] 步骤 4: 观察池与单次同步策略 (BackfillPlanner)
-[ ] 步骤 5: 自动化测试与 Lint 门禁验证 (pytest & make lint)
-```
+详细操作以 [data-pipeline 注册流水线](../../.agents/skills/data-pipeline/references/01_endpoint_registration.md) 和 [任务管理架构](../architecture/task-management.md) 为准；本文只保留仓库级引用入口和稳定检查项。
 
 ---
 
-## 步骤 1：Fetcher 接口元数据定义
+## 注册标准 Checklist
 
-不同数据源的接口元数据在各自的 `fetcher` 目录下定义。
-
-### TuShare
-- **文件路径**：[`src/stock_data/fetcher/tushare/endpoints/finance.py`](../../src/stock_data/fetcher/tushare/endpoints/finance.py) 或 [`market.py`](../../src/stock_data/fetcher/tushare/endpoints/market.py)
-- **规则**：
-  - 实例化 `EndpointMeta`，明确 `primary_keys`、`date_columns` 和 `required_columns`。
-  - ⚠️ **禁止项**：不要将 `fetch_mode` 作为参数传入 `EndpointMeta`（它属于任务调度层）。
-
-```python
-"shibor": EndpointMeta(
-    api_name="shibor",
-    description="Shibor 银行间同业拆放利率",
-    frequency="daily",
-    group="macro_data",
-    primary_keys=["date"],
-    date_columns=["date"],
-    required_columns=["date"],
-),
+```text
+[ ] 步骤 0: 官方文档查验与真实响应单步探测
+[ ] 步骤 1: Provider 接口元数据定义
+[ ] 步骤 2: 质量与单位 Profile 绑定
+[ ] 步骤 3: 项目任务名与特殊契约登记
+[ ] 步骤 4: 观察池与回填规划适配
+[ ] 步骤 5: 任务注册健康检查
+[ ] 步骤 6: 自动化门禁与重放验证
 ```
 
-### 理杏仁 (LiXinger)
-- **文件路径**：[`src/stock_data/fetcher/lixinger/registry.py`](../../src/stock_data/fetcher/lixinger/registry.py)
-- **规则**：
-  - 在 `LIXINGER_API_REGISTRY` 中注册完整 API 路径（如 `macro/national-debt`），并设置 `default_metrics` 与 `default_params`。
-  - 在 `TaskRegistry` 中注册公开短 task，并通过 `TaskSpec.api_name` 映射到完整 API 路径；不要在 Provider registry 中重复添加短 key。
+---
 
-### Alpha Vantage
-- **文件路径**：[`src/stock_data/fetcher/alphavantage/registry.py`](../../src/stock_data/fetcher/alphavantage/registry.py)
-- **规则**：
-  - `fx_daily` 是项目公开任务名，`TaskSpec.api_name` 映射到上游 `FX_DAILY`；CLI 不直接使用上游函数名。
-  - `CNH=X` 映射为 `from_symbol=USD`、`to_symbol=CNH`，使用 `outputsize=full` 拉取一次完整历史后按请求日期裁剪。
-  - 数据集复用 `macro_indicators`，市场固定为 `GLOBAL`，API key 从 `ALPHA_VANTAGE_API_KEY` 读取。
-  - `config/data.yaml` 配置为每分钟 5 次请求；回填默认使用 1 个 Worker，增量同步需显式传入 `WORKERS=1`。
+## 步骤 0：官方文档查验与真实响应探测
+
+字段名、主键组合、日期字段名、空值表现形式以及数值单位必须来自官方文档或真实 API 响应，不得凭记忆猜测。
+
+| 数据源 | 推荐查询方式 | 官方接口文档入口 |
+| :--- | :--- | :--- |
+| `tushare` | 读取 [tushare-data skill](../../.agents/skills/tushare-data/SKILL.md) | [TuShare 官方数据字典](https://tushare.pro/document/2) |
+| `lixinger` | 读取 [lixinger-open-skill](../../.agents/skills/lixinger-open-skill/SKILL.md) | [理杏仁开放平台文档](https://open.lixinger.com/api/doc) |
+| `industry` | 查阅 `config/data_sources/*_registry.yaml` | 国家统计局、海关总署、交易所、Mysteel、InfoLink 等源头 |
+| `yfinance` | 查阅 yfinance 当前文档或源码 | [yfinance 文档](https://ranaroussi.github.io/yfinance/) |
+| `fred` | 查阅 FRED Series ID | [FRED API 文档](https://fred.stlouisfed.org/docs/api/fred/) |
+| `alphavantage` | 查阅 Alpha Vantage function | [Alpha Vantage 文档](https://www.alphavantage.co/documentation/) |
+
+真实响应探测应使用项目环境运行，并只抓取小样本：
+
+```bash
+UV_CACHE_DIR=.uv_cache UV_PYTHON_INSTALL_DIR=.uv_python uv run python -c '
+from stock_data.core.factory import get_shared_fetcher
+fetcher = get_shared_fetcher("<source>")
+# 按待注册接口执行 1 条样本请求，打印字段、主键候选和单位样例
+'
+```
+
+---
+
+## 步骤 1：Provider 接口元数据定义
+
+普通端点优先在对应 Provider 的 `registry.py` 或 `endpoints/` 元数据中写足接口事实和调度事实：
+
+- 上游身份与接口契约：`api_name` / `series_id`、`primary_keys`、`date_columns`、`required_columns`、`units`、`update_time`、`update_delay_days`、`rate_limit_per_min`；
+- 调度与存储契约：`frequency`、`fetch_mode`、`partitioned`、`is_single_sync`、`dataset`、`required_pool`、`query_mode`；
+- `task_derivation.py` 会从 Provider 元数据推导 `TaskSpec`，不要新增中心任务名白名单。
 
 ---
 
 ## 步骤 2：质量与单位 Profile 绑定
 
-- **文件路径**：[`src/stock_data/fetcher/tushare/registry.py`](../../src/stock_data/fetcher/tushare/registry.py)
-- **规则**：
-  - 在 `_TUSHARE_PROFILES` 字典中为新接口声明必需列、单位映射（如 `CNY100m`、`percent`、`point`）以及质检 Profile 类型（如 `bar`、`macro_monthly`、`macro_rate`、`financial_statement`）。
-  - 对存在源端非标准单位的数值字段，必须同时在 [`src/stock_data/pipeline/normalizer/unit_normalizer.py`](../../src/stock_data/pipeline/normalizer/unit_normalizer.py) 声明 RAW -> Curated 倍率规则；Provider registry 负责记录源单位语义，`UnitNormalizer` 负责执行倍率转换。
-  - 单位处理遵循 **RAW 保真、Curated 标准单位、分析层无倍率**：RAW 只保留 API 原始响应；Curated 统一为元、股/份、强类型日期和标准 metadata；分析指标、因子、回测和扫描代码不得再按数据源字段补乘或补除倍率。
-
-```python
-"shibor": (["date"], {"on": "percent", "1w": "percent", "1m": "percent", "1y": "percent"}, "macro_rate"),
-"fut_index_daily": (
-    ["ts_code", "trade_date", "open", "high", "low", "close"],
-    {"close": "point", "vol": "share", "amount": "CNY"},
-    "bar",
-),
-```
+- 在 Provider 的 Profile 字典中为新端点声明必需列、单位映射和质检 Profile；
+- 对存在源端非标准单位的数值字段，必须在 [UnitNormalizer](../../src/stock_data/pipeline/normalizer/unit_normalizer.py) 显式声明 RAW -> Curated 倍率规则；
+- 单位处理遵循 **RAW 保真、Curated 标准单位、分析层无倍率**：RAW 不改原值，Curated 统一为元、股/份、强类型日期和标准 metadata，分析层不得按数据源字段补乘或补除倍率。
 
 常见单位转换位置：
 
@@ -80,52 +70,53 @@
 | `moneyflow` 金额字段 | TuShare 万元 | 元 | `UnitNormalizer` |
 | `moneyflow_hsgt` 金额字段 | TuShare 百万元 | 元 | `UnitNormalizer` |
 
-若已有 Curated 口径错误，修复顺序必须是：先改 registry 与 `UnitNormalizer`，再从 RAW 全历史重放 Curated，最后验收 RAW/Curated 主键、行数、日期范围、字段类型、metadata 与样例倍率。不要修改 RAW 原值，也不要在分析层补偿倍率。
+---
+
+## 步骤 3：项目任务名与特殊契约登记
+
+按 [任务管理架构](../architecture/task-management.md) 选择落点。`task_registry.py` 只保留旧导入兼容，新增业务逻辑不得写回兼容门面。
+
+| 场景 | 修改位置 |
+| :--- | :--- |
+| 任务名与上游 API 名一致，且 Provider 元数据已足够推导 | Provider registry / endpoints |
+| 公开项目短任务名需要映射到不同上游 API | 对应 `*_manual_tasks.py` |
+| 垂直产业任务 | `industry_*_task_specs.py`，任务包在 `industry_bundle_specs.py` |
+| 新增正式任务包 | 对应 `*_bundle_specs.py` |
+| 兼容历史任务名或任务包名 | `task_aliases.py` / `task_bundle_aliases.py` |
+
+CLI、文档和调度器统一使用项目任务名，例如 `index_daily_bar`；底层 API 名只作为 `TaskSpec.api_name` 的路由事实。
 
 ---
 
-## 步骤 3：任务路由与分区分流 (`TaskRegistry`)
+## 步骤 4：观察池与回填规划适配
 
-- **文件路径**：[`src/stock_data/core/task_registry.py`](../../src/stock_data/core/task_registry.py)
-- **规则**：
-  1. **公开项目任务名 (`task_name`)**：CLI、文档和调度器统一使用项目任务名，例如 `index_daily_bar`；不要把上游 API 名（如 TuShare `index_daily`）直接写进操作示例。
-  2. **底层 API 路由 (`api_name`)**：在 `TaskSpec` 中显式记录项目任务到上游 API 的映射，确保 `index_daily_bar -> index_daily` 这类解耦关系清晰可测。
-  3. **落盘数据集名 (`dataset`)**：明确 RAW/Curated 的标准数据集目录名，通常与 `task_name` 一致。
-  4. **调度与存储契约**：按接口真实行为设置 `fetch_mode`、`partitioned`、`is_single_sync` 和 `required_pool`。需要本地基础池的任务必须设置 `required_pool`，避免空池静默回填。
-  5. **历史兼容别名 (`_ALIASES`)**：只用于兼容旧 API 名或外部路径；新增文档和 CLI 示例必须使用 `TaskSpec.task_name`。
+默认先通过 `TaskSpec.fetch_mode`、`required_pool`、`query_mode` 和 `date_columns` 驱动已有 Planner：
+
+- `per_symbol` 任务必须确认使用的标的池，并按需对齐 `config/universe/watchlist.yaml` 或 Provider 默认股票/基金池；
+- 需要按标的回填的任务必须能读取 `base_date` 并截断无效历史区间；
+- 只有新增调度维度、标的池类型或报告期推进语义时，才修改 `src/stock_data/pipeline/planner.py` / `sync_planner.py`。
 
 ---
 
-## 步骤 4：观察池与单次同步策略 (`BackfillPlanner`)
+## 步骤 5：任务注册健康检查
 
-- **文件路径**：[`src/stock_data/pipeline/planner.py`](../../src/stock_data/pipeline/planner.py)
-- **规则**：
-  1. **观察池路由**：确认 `_watchlist_symbols()` 能按数据源和资产类别解析正确标的池，例如 A 股股票、指数、基金、FRED 宏观序列或 yfinance 宏观资产。
-  2. **单标的基准日**：需要按标的回填的任务必须能读取 `base_date` 并截断无效历史区间。
-  3. **`per_symbol + is_single_sync` 展开策略**：若接口虽然是单文件落盘，但源端仍要求按标的请求，必须由 `_should_expand_single_sync()` 返回 `True`，拆成多个原子任务；真正的行业/宏观批量端点才保留空标的单任务。
-  4. **增量同步一致性**：每日增量同样按单标的水位与 `base_date` 规划。新增端点后需要验证 `DailySyncEngine` 不会传空标的或把任务名误当 API 标的。
-
----
-
-## 步骤 5：自动化测试与 Lint 门禁验证
-
-每次注册完成后，必须依次执行以下门禁命令：
+注册或调整任务后先运行只读架构自检，确认任务包、别名、公开目录和 `TaskSpec` 没有悬空引用或旧入口回流：
 
 ```bash
-# 1. 运行数据模块单元测试 (确保无 TypeError 或路由解析失败)
-uv run pytest tests/unit/data/ --no-cov
-
-# 2. 运行项目全局代码规范与类型检查
-make lint
+UV_CACHE_DIR=.uv_cache UV_PYTHON_INSTALL_DIR=.uv_python uv run python -m stock_cli.task_health --provider <source>
 ```
 
-涉及单位规则的接口还必须补充以下验收：
+---
+
+## 步骤 6：自动化门禁与重放验证
+
+按影响范围运行测试和小区间重放：
 
 ```bash
-# 从 RAW 重放或强制刷新后，执行回填验收
-make backfill-accept ENDPOINT=<task_name> SOURCE=<data_source>
+UV_CACHE_DIR=.uv_cache UV_PYTHON_INSTALL_DIR=.uv_python uv run pytest tests/unit/stock_data/core/test_task_health.py tests/unit/stock_data/core/test_task_registry.py --no-cov
+UV_CACHE_DIR=.uv_cache UV_PYTHON_INSTALL_DIR=.uv_python uv run pytest tests/unit/stock_data/fetcher/ -q --no-cov
+make backfill START=YYYY-MM-DD END=YYYY-MM-DD SOURCE=<source> ENDPOINT=<task_name>
+make backfill-accept ENDPOINT=<task_name> SOURCE=<source> START=YYYY-MM-DD END=YYYY-MM-DD
 ```
 
-验收时至少确认：RAW/Curated 主键集合一致、行数一致、日期范围一致、Curated 金额/成交量字段类型正确、`market/currency/exchange` metadata 正确、抽样值符合源单位到 Curated 标准单位的倍率。
-
-通过以上 5 步即可保证新接口在采集、质检、存储、任务调度与下游分析各环节的一致性与稳定性。
+验收时至少确认：RAW/Curated 主键集合、日期范围、字段类型、关键字段非空率、metadata 和样例倍率。若已有 Curated 口径错误，应先修 registry 与 `UnitNormalizer`，再从 RAW 重放 Curated，最后验收，不要修改 RAW 原值，也不要在分析层补偿倍率。

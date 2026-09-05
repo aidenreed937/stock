@@ -76,14 +76,14 @@ Curated 文件 [...] schema 不匹配: 已有列 [...]，新数据列 [...]
 ```
 **原因与解法**：
 * 这是旧 Parquet 宽表与新增合法业务列集合不一致，**切勿删除已有 Parquet 后重跑**；
-* 优先在 [`src/stock_data/storage/partition_writer.py`](file:///Users/mac/workspace/personal/finance/stock/src/stock_data/storage/partition_writer.py) 为该数据集的已知合法新增列做受控对齐；
-* 若历史残留冗余 dummy 列，在 [`src/stock_data/storage/compat.py`](file:///Users/mac/workspace/personal/finance/stock/src/stock_data/storage/compat.py) 的 `StorageCompat.post_process_dataset()` 中做确定性后处理删除；
+* 优先在 [`src/stock_data/storage/partition_writer.py`](../../../../src/stock_data/storage/partition_writer.py) 为该数据集的已知合法新增列做受控对齐；
+* 若历史残留冗余 dummy 列，在 [`src/stock_data/storage/compat.py`](../../../../src/stock_data/storage/compat.py) 的 `StorageCompat.post_process_dataset()` 中做确定性后处理删除；
 * 修复后直接重跑 `make backfill ... FORCE_REFRESH=1`。
 
 ### ② 单位口径与数值倍率原则
 * **RAW 保真**：RAW 只保留上游原始数值和单位，不做任何乘除；
 * **Curated 标准单位**：Curated 层金额统一为**元**、成交量统一为**股/份**、市值统一为**元**；
-* **倍率规则位置**：所有倍率规则必须在 [`src/stock_data/pipeline/normalizer/unit_normalizer.py`](file:///Users/mac/workspace/personal/finance/stock/src/stock_data/pipeline/normalizer/unit_normalizer.py) 中显式定义；
+* **倍率规则位置**：所有倍率规则必须在 [`src/stock_data/pipeline/normalizer/unit_normalizer.py`](../../../../src/stock_data/pipeline/normalizer/unit_normalizer.py) 中显式定义；
 * **分析层无倍率**：分析层代码严禁根据数据源编写 `* 10000` 或 `* 1_000_000`。
 
 ### ③ 理杏仁 403 权限/额度耗尽

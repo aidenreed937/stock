@@ -18,7 +18,7 @@
 
 ### 3. 🚀 开发者指南 (`docs/guides/`)
 - [快速上手指南 (Getting Started)](guides/getting_started.md) — 基于 `uv` 的环境搭建、本地运行、测试与 Lint 常用指令
-- [数据接口注册完整开发规范与 Checklist](guides/endpoint_registration_guide.md) — 新增数据源/端点的 5 步标准注册流程与防漏防错清单
+- [数据接口注册开发规范与 Checklist](guides/endpoint_registration_guide.md) — 新增数据源/端点的 0+6 步注册流程、任务健康检查与防漏防错清单
 - [多品类市场数据摄取与调度规则手册 (Market Data Ingestion Rules)](guides/market_data_ingestion_rules.md) — 股票/指数/ETF/行业摄取范式、全市场截面与观察池范围抓取
 
 ### 4. 🧭 实施计划 (`docs/plan/`)

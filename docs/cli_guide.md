@@ -87,17 +87,20 @@ make backfill \
 # 默认同步指定数据源的常规公开原子任务；高消耗个股风险接口不包含在内
 make sync SOURCE=lixinger
 
-# 使用 TaskBundle 调度 LiXinger 行业相关任务
+# 使用 TaskBundle 调度 LiXinger 行业成分与估值任务
 make sync SOURCE=lixinger ENDPOINT=industry_bundle
+
+# 单独调度季度行业合并财报（历史回填按季度末 × 行业代码批次请求）
+make sync SOURCE=lixinger ENDPOINT=industry_financial_bundle
 
 # 多个 bundle 或原子 task 可混合传入；展开后仍逐个任务独立执行
 make sync SOURCE=lixinger ENDPOINT=market_bundle,macro_monthly_bundle
 
 # 或直接调用 Python 模块
-uv run python -m stock_cli.sync --source lixinger --endpoint industry_bundle
+UV_CACHE_DIR=.uv_cache UV_PYTHON_INSTALL_DIR=.uv_python uv run python -m stock_cli.sync --source lixinger --endpoint industry_bundle
 ```
 
-可用 LiXinger bundle：`market_bundle`、`industry_bundle`、`company_bundle`、`macro_daily_bundle`、`macro_monthly_bundle`。`index_fundamental` 任务只有一个原子接口，继续直接传入；历史名称 `macro_bundle`、`index_bundle` 已移除。bundle 仅是调度输入，不合并数据集、水位或失败状态。
+可用 LiXinger bundle：`market_bundle`、`industry_bundle`（申万成分与估值）、`industry_financial_bundle`（申万一/二/三级季度合并财报）、`company_bundle`、`company_risk_event_bundle`、`macro_daily_bundle`、`macro_monthly_bundle`。`index_fundamental` 任务只有一个原子接口，继续直接传入；历史名称 `macro_bundle`、`index_bundle` 已移除。bundle 仅是调度输入，不合并数据集、水位或失败状态。
 
 监管措施、交易所问询和限售解禁风险接口属于高消耗任务，已注册但不进入默认
 `make sync SOURCE=lixinger`。显式指定时默认仅采集 LiXinger 观察池：
@@ -114,10 +117,11 @@ make backfill SOURCE=lixinger ENDPOINT=regulatory_measures SYMBOL=600519 \
 
 其他数据源的推荐 bundle：
 
-- TuShare：`daily_market_bundle`、`fund_daily_bundle`、`hsgt_flow_bundle`、`financial_statement_bundle`、`pit_bundle`、`macro_daily_bundle`、`macro_monthly_bundle`、`metadata_bundle`、`corporate_action_bundle`、`shareholder_event_bundle`、`research_daily_bundle`、`market_behavior_bundle`。
-- LiXinger：`market_bundle`、`industry_bundle`、`company_bundle`、`macro_daily_bundle`、`macro_monthly_bundle`；`index_fundamental` 继续作为原子任务。
+- TuShare：`daily_market_bundle`、`fund_daily_bundle`、`fund_portfolio_bundle`、`hsgt_flow_bundle`、`financial_statement_bundle`、`pit_bundle`、`macro_daily_bundle`、`macro_monthly_bundle`、`metadata_bundle`、`corporate_action_bundle`、`shareholder_event_bundle`、`research_daily_bundle`、`market_behavior_bundle`、`pledge_bundle`。
+- LiXinger：`market_bundle`、`industry_bundle`（申万成分与估值）、`industry_financial_bundle`（申万季度合并财报）、`company_bundle`、`company_risk_event_bundle`、`macro_daily_bundle`、`macro_monthly_bundle`；`index_fundamental` 继续作为原子任务。
 - yfinance：`fundamental_bundle`、`corporate_action_bundle`、`research_daily_bundle`、`research_event_bundle`。
 - FRED：`macro_monthly_bundle`。日频、季频和周频目前各只有一个序列，继续使用原子任务；聚合任务 `macro_indicators` 仅保留显式调用，避免重复请求。
+- Industry：`industry_tech_bundle`、`industry_energy_bundle`、`industry_consume_bundle`、`industry_macro_bundle`、`industry_gacc_bundle`、`industry_monthly_bundle`、`industry_all_bundle`。
 
 新注册的高消耗研究接口默认不进入 `make sync SOURCE=tushare`；需要时显式运行对应 bundle，或单独指定 `dc_concept_cons`：
 

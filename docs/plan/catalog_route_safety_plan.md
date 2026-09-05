@@ -8,7 +8,7 @@
 
 本次误判的根因不是 `index_daily_bar` 数据没有更新，而是核查绕过了项目的事实入口，直接读取了旧物理目录：
 
-- 项目任务名是 `index_daily_bar`，上游 API 名是 `index_daily`；二者由 `TaskRegistry` 解耦。
+- 项目任务名是 `index_daily_bar`，上游 API 名是 `index_daily`；二者由任务解析层和 `TaskSpec` 解耦。
 - `StorageCompat.canonical_dataset_name("index_daily", "tushare")` 返回 `index_daily_bar`。
 - `DataCatalog.load_dataset("index_daily")` 会解析到规范数据集，并读取运行时实际消费的规范文件。
 - 物理目录中仍有历史 `index_daily/` 分区。直接使用 `glob/rglob` 或 DuckDB 扫描时，旧目录与规范目录容易被误当成同一份当前事实。
@@ -24,7 +24,7 @@
 
 | 位置 | 当前行为 | 风险 |
 | :--- | :--- | :--- |
-| `src/stock_data/core/task_registry.py` | `index_daily -> index_daily_bar` | 路由本身正确，需继续作为唯一任务映射来源 |
+| `src/stock_data/core/task_resolution.py` / `TaskSpec` | `index_daily -> index_daily_bar` | 路由本身正确，需继续作为规范任务映射来源 |
 | `src/stock_data/catalog/service_methods.py` | `load_dataset()` 按规范名及允许别名找文件 | 业务读取正确；`available_datasets()` 仍按物理目录名分组 |
 | `src/stock_data/governance/audit/reconciliation.py` | RAW/Curated 对账存在独立物理扫描 | 可用于存储对账，但必须明确 canonical 优先和 legacy 角色 |
 | `src/stock_data/governance/audit/reconciliation.py` | `run_index_audit()` 扫描并要求 `year=/month=` | 当前非分区 `index_daily_bar/data.parquet` 可能被完全漏掉 |
@@ -76,7 +76,7 @@
 - 保留观察池 `base_dates` 截断规则；将“无规范文件”“规范文件读取失败”“目标日无记录”区分为可解释状态。
 - 对 Tushare、yfinance 和其他支持该任务的数据源统一走同一读取协议。
 
-这一步必须优先完成，因为当前任务注册表明确将 Tushare `index_daily_bar` 定义为非分区数据集，而现有指数审计的物理扫描条件只匹配分区目录。
+这一步必须优先完成，因为当前 `TaskSpec` 明确将 Tushare `index_daily_bar` 定义为非分区数据集，而现有指数审计的物理扫描条件只匹配分区目录。
 
 #### 4.3 收紧分布审计和回填验收的别名行为
 
