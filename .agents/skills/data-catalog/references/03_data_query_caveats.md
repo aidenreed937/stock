@@ -68,8 +68,26 @@
 | **`moneyflow`** | TuShare | 当天 T 日 22:00 / T+1 | **T+0 晚间** | 收盘刚结束时可能尚未入库，应动态取 `cat.get_latest_trade_date("moneyflow")` |
 | **`moneyflow_hsgt`** | TuShare | 当天 T 日 18:30 | **T+0 盘后** | 北向每日净买入资金流 |
 | **`index_fundamental`** | 理杏仁 | 当天 T 日 20:00 | **T+0 晚间** | 申万行业与核心指数估值、股息率序列 |
+| **`sw_daily`** | TuShare | 当天 T 日盘后 | **T+0 盘后** | 先筛 `classification=SW2021`，再按 `industry_level` 使用 L1/L2/L3 |
+| **`sw_2021_constituents`** | 理杏仁 | 源端快照更新时 | **无历史有效期** | 仅作为当前快照输入；当前成分查询走 `derived` 黄金成员表 |
+| **`sw_2021_industry_member_golden`** | derived | 相关源表同步成功后重建 | **跨源派生** | `current_only=True` 取最新截面，`as_of_date` 取有效期；需显式 `level` |
 | **`national_debt`** | 理杏仁 | 当天 T 日 18:00 | **T+0 盘后** | 1Y/2Y/5Y/10Y/30Y 中国官方国债收益率 |
 | **`macro_indicators`** | FRED / YFinance | 美东时间盘后 / 月度公布 | **跨时区 / 低频** | 美债 `^TNX` 存在中美时差；月度指标（CPI/非农）需前向填充 (forward fill) |
+
+### 2.1 申万行业版本、层级与来源隔离
+
+申万查询必须先确定查询对象，再选表：
+
+| 查询对象 | 正确入口 | 过滤规则 |
+| :--- | :--- | :--- |
+| 日行情 | `tushare.sw_daily` | `classification="SW2021"`，再筛 `industry_level="L1"`/`"L2"`/`"L3"` |
+| 行业维度 | `derived.sw_2021_industry_dimension_golden` | `classification="SW2021"`，按 `level`；维度表 `src` 是来源覆盖状态 |
+| 当前成分 | `derived.sw_2021_industry_member_golden` | `current_only=True`、`canonical_only=True`、明确 `level` |
+| 历史成分 | `derived.sw_2021_industry_member_golden` | `as_of_date=...` 且建议 `src="TUSHARE"`；理杏仁快照无历史有效期 |
+| TuShare 版本审计 | `tushare.index_member_versioned` | 通过 `load_index_member_for_classification(..., classification="SW2021")` 读取 |
+| 行业估值 | `lixinger.sw_2021_fundamental` / `sw_2021_l2_fundamental` | `symbol` 是行业代码，按 `trade_date` 裁剪 |
+
+注意：`index_member` 是 TuShare 成员事实，不含申万版本；`index_classify.src` 才是版本信息。黄金成员表中成员证据来源使用 `src=TUSHARE`/`LIXINGER`，分类版本使用 `classification=SW2021`，两者不能混用。`canonical_only=False` 仅供跨源冲突审计；下游聚合必须先按层级筛选，再按黄金表的 canonical 记录去重。
 
 ---
 
@@ -134,7 +152,7 @@
 | **行业日度行情与成交** | 扫描全部个股 `stock_daily_bar` 汇总 | 直接读取 `sw_daily` (申万一级/二级行情) |
 | **全市场两融总规模** | 扫描数千只标的 `margin_detail` 求和 | 直接读取 `margin` (交易所日度汇总表) |
 | **北向资金流动大盘时钟** | 扫描个股微观资金流汇总 | 直接读取 `moneyflow_hsgt` (北向每日净额) |
-| **行业成份股持仓聚合** | 逐只股票查询分类标签 | 读取 `sw_2021_constituents` 图谱执行单次 `explode` Join |
+| **行业成份股持仓聚合** | 逐只股票查询分类标签，或直接展开未经裁决的源快照 | 读取 `load_sw_2021_industry_members(..., current_only=True, canonical_only=True, level="L2")` 后再 Join |
 
 ### ② 计算引擎与工具选型指南
 根据数据规模与计算拓扑选择最匹配的工具：

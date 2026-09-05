@@ -11,6 +11,8 @@ description: 本地落盘数据资产统一目录 (DataCatalog) 与极速查询�
 
 领域职责与分析层落点以 [`docs/architecture/domain-responsibilities.md`](../../../docs/architecture/domain-responsibilities.md) 为准：`DataCatalog` 负责 Curated 黄金数据集查询，`FeatureStore` 负责 `market_daily`、Feature 长表和领域 Mart；本技能不改变上游采集边界，也不要求领域 Mart 直接请求远程 API。
 
+申万行业是例外的跨源查询场景：行业行情和估值仍读取各自源表，但 SW2021 行业维度与股票成分统一读取 `derived` 下的跨源黄金表。查询时必须区分“分类版本”（`classification=SW2021`）与“证据来源”（黄金表的 `src=TUSHARE` / `LIXINGER`），不能再从裸 `index_member` 或理杏仁快照的 `symbol` 字段猜版本。
+
 ---
 
 ## 1. 核心 Python API 极速速查 (SSOT)
@@ -26,6 +28,7 @@ from stock_data.core.runtime import DataRuntimeContext
 runtime = DataRuntimeContext.from_root("data")
 cat_ts = DataCatalog(data_source="tushare", runtime=runtime)
 cat_lx = DataCatalog(data_source="lixinger", runtime=runtime)
+cat_derived = DataCatalog(data_source="derived", runtime=runtime)
 
 # 2. 获取某数据集最新落盘交易日 (防时滞错位)
 latest_date = cat_ts.get_latest_trade_date("stock_daily_bar")
@@ -49,6 +52,93 @@ df_basic = cat_ts.load_dataset(
 df_summary = DataCatalog().summary()
 ```
 
+### 1.1 申万行业数据读取路由（SW2021）
+
+| 查询目标 | 推荐 `data_source` | 推荐数据集/入口 | 必要口径 |
+| :--- | :--- | :--- | :--- |
+| 行业日行情、成交、行业 PE/PB | `tushare` | `cat_ts.load_dataset("sw_daily", ...)` | 只保留 `classification=SW2021`，再按 `industry_level` 选择 `L1`/`L2`/`L3`；不要把层级混算 |
+| 行业维度、代码、名称、父子层级 | `derived` | `load_sw_2021_industry_dimension(...)` | 默认 `classification=SW2021`；按 `level` 筛选；`src` 是证据覆盖来源 |
+| 当前或历史股票成分 | `derived` | `load_sw_2021_industry_members(...)` | 当前截面用 `current_only=True`；历史时点用 `as_of_date=...`；默认 `canonical_only=True` |
+| 指定行业当前股票代码 | `derived` | `load_sw_2021_industry_symbols(...)` | `industry_code` 与 `level` 必须同时指定/确认；返回六位股票代码 |
+| TuShare 内部的 SW2021 历史成分 | `tushare` | `load_index_member_for_classification(cat_ts, classification="SW2021")` | 优先读 `index_member_versioned`；它由 `index_member + index_classify` 派生 |
+| 申万一级/二级估值序列 | `lixinger` | `sw_2021_fundamental` / `sw_2021_l2_fundamental` | `symbol` 是行业代码；按 `trade_date` 裁剪；当前没有把它当作成分表 |
+| 理杏仁原始成分快照（仅血缘/回退） | `lixinger` | `sw_2021_constituents` | 原表 `industryCode` 是行业代码、`symbol` 是六位股票代码；不直接作为统一下游成分接口 |
+
+推荐调用方式：
+
+```python
+from datetime import date
+
+import polars as pl
+
+from stock_data.catalog import DataCatalog, load_index_member_for_classification
+from stock_data.core.runtime import DataRuntimeContext
+from stock_data.catalog.sw_industry_golden import (
+    load_sw_2021_industry_dimension,
+    load_sw_2021_industry_members,
+    load_sw_2021_industry_symbols,
+)
+
+runtime = DataRuntimeContext.from_root("data")
+cat_ts = DataCatalog(data_source="tushare", runtime=runtime)
+cat_derived = DataCatalog(data_source="derived", runtime=runtime)
+
+# 行情：先做时间/列裁剪，再隔离 SW2021 与行业层级
+df_sw_daily_l1 = cat_ts.load_dataset(
+    "sw_daily",
+    start_date=date(2026, 8, 1),
+    end_date=date(2026, 8, 14),
+    columns=(
+        "symbol",
+        "trade_date",
+        "close",
+        "amount",
+        "classification",
+        "industry_level",
+        "industry_code",
+    ),
+).filter(
+    (pl.col("classification") == "SW2021") & (pl.col("industry_level") == "L1")
+)
+
+# 维度：不依赖名称猜测，按层级读取
+df_l2 = load_sw_2021_industry_dimension(
+    cat_derived,
+    level="L2",
+    columns=("industry_code", "industry_name", "index_code", "level", "src"),
+)
+
+# 当前截面：只取 canonical 归属，避免同一股票在同一层级重复
+df_members = load_sw_2021_industry_members(
+    cat_derived,
+    current_only=True,
+    level="L2",
+    canonical_only=True,
+    columns=("symbol", "industry_code", "industry_name", "level", "src"),
+)
+
+# 历史时点：TuShare 有效期优先，理杏仁无日期快照不能伪装成历史
+df_members_at_date = load_sw_2021_industry_members(
+    cat_derived,
+    as_of_date=date(2025, 12, 31),
+    level="L2",
+    src="TUSHARE",
+    canonical_only=True,
+    columns=("symbol", "industry_code", "level", "valid_from", "valid_to", "src"),
+)
+
+stock_codes = load_sw_2021_industry_symbols(cat_derived, "110100", level="L2")
+df_ts_history = load_index_member_for_classification(
+    cat_ts,
+    classification="SW2021",
+    columns=("src", "index_code", "con_code", "in_date", "out_date"),
+)
+```
+
+黄金表的 `src` 取值含义如下：维度表可能是 `TUSHARE`、`LIXINGER` 或 `TUSHARE+LIXINGER`（后者表示两边均有该行业代码）；成员表的证据行是 `TUSHARE` 或 `LIXINGER`，用 `canonical_source`、`source_status`、`is_canonical` 和 `conflict_flag` 表示裁决结果。`canonical_only=False` 只用于审计两侧证据，不能直接拿来做下游聚合。
+
+黄金表未物化时，先用 `cat_derived.list_datasets()` 检查；应通过 `make rebuild-sw-industry-golden` 先 dry-run，再按 `data-pipeline` 的人工确认规则执行 `APPLY=1`。如果发现旧文件仍是 `src=SW2021` 与 `evidence_source` 结构，说明物化结果落后于当前契约，应先重建，不能把旧 `src` 当作证据来源。
+
 运行时通过 `DataRuntimeContext` 统一注入 `data/raw`、`data/curated` 和 `data/cache`；下游读取 Curated 仍使用 `DataCatalog`。`market_daily`、Feature 长表与领域 Mart 不属于 DataCatalog 数据集目录，统一通过 `stock_analytics.features` 的 `FeatureStore` 读取，例如 `FeatureStore().get_domain_mart("repurchase_daily")`。
 
 ---
@@ -61,7 +151,9 @@ df_summary = DataCatalog().summary()
 | **A 股每日估值** | `daily_basic` | `tushare` | `pe_ttm`, `pb`, `ps_ttm`, `dv_ttm`, `total_mv(元)`, `turnover_rate` |
 | **微观资金流向** | `moneyflow`, `moneyflow_hsgt` | `tushare` | `buy_elg_amount`, `buy_lg_amount`, `net_mf_amount` (均为元) |
 | **指数基本面估值** | `index_fundamental`, `national_debt` | `lixinger` | `pe_ttm.mcw`, `pb.mcw`, `dyr.mcw`, `tcm_y10`(10年国债) |
-| **申万行业体系** | `sw_daily`, `sw_2021_fundamental`, `sw_2021_constituents` | `tushare` / `lixinger` | 31 行业行情、估值序列与 797 行业成份股图谱 |
+| **申万行业行情** | `sw_daily` | `tushare` | `symbol`, `trade_date`, `classification`, `industry_level`, `industry_code`, `close`, `amount`；按 `SW2021 + L1/L2/L3` 筛选 |
+| **申万行业维度/成分** | `sw_2021_industry_dimension_golden`, `sw_2021_industry_member_golden` | `derived` | 版本化维度、父子层级、历史有效期、当前快照、来源裁决与冲突标记 |
+| **申万行业估值/财报** | `sw_2021_fundamental`, `sw_2021_l2_fundamental`, `sw_2021_fs_*` | `lixinger` | 一级/二级行业估值与行业合并财报；不替代黄金成分表 |
 | **卖方预测与业绩** | `report_rc`, `forecast`, `express` | `tushare` | 一致预期盈利预测 (`np`, `tp`)、业绩预告与快报 |
 | **场内基金与 ETF** | `fund_daily`, `fund_adj`, `etf_share_size` | `tushare` | 63 只核心 ETF 全历史日线、复权因子(含分红)与份额规模 |
 | **可转债与期权** | `cb_basic`, `cb_daily`, `opt_basic`, `opt_daily` | `tushare` | 可转债静态/日行情、期权合约静态/日行情 |
@@ -83,11 +175,16 @@ df_summary = DataCatalog().summary()
    不同数据集入库时间不同（日 K 线 17:00、估值 18:00、外盘次日 06:00）。多表 Join 前，必须通过 `cat.get_latest_trade_date()` 取交集基准日。
 5. **禁止通配符读取**：
    禁止手写 `moneyflow*` 或 `margin*` 通配符遍历目录，必须使用 `DataCatalog.load_dataset()` 精确加载。
-6. **性能与内存裁剪（按需加载）**：
+6. **申万版本与来源必须显式筛选**：
+   * `index_classify` / `index_member_versioned` 中的 `src` 表示分类版本，申万 2021 使用 `src="SW2021"`；
+   * 黄金维度/成员表中 `classification` 表示分类版本，`src` 表示证据来源；成员查询默认使用 `canonical_only=True`，并明确 `level`；
+   * 需要历史成员时使用 `as_of_date` 或 `load_index_member_for_classification`，不能把无日期的 `sw_2021_constituents` 快照回填成历史；
+   * 成分股票与行业行情/资金流联接前，确认代码格式（黄金成员是六位代码，TuShare 行情通常带交易所后缀），不要直接假定字符串可等值连接。
+7. **性能与内存裁剪（按需加载）**：
    调用 `load_bars` 或 `load_dataset` 时，**必须优先指定 `start_date`、`end_date`、`symbols` 与 `columns`**，利用 Hive 年月物理分区裁剪与 Polars 列投影，避免无过滤加载全历史全市场数千万行数据造成内存溢出或 CPU 假死。
-7. **临时脚本与衍生数据隔离 (Scratch Cleanliness)**：
+8. **临时脚本与衍生数据隔离 (Scratch Cleanliness)**：
    为回答用户问题编写的一次性分析脚本、测试排查代码或生成的临时中间结果（`.py`, `.csv`, `.parquet`），**严禁直接写在项目源码区（`src/`）或数据核心区（`data/`）**；必须统一输出至临时目录（如 scratch 目录），用完及时清理，保持 Git 工作区干净。
-8. **大表跨表聚合优先与引擎选型 (Rollup First & Tool Selection)**：
+9. **大表跨表聚合优先与引擎选型 (Rollup First & Tool Selection)**：
    * **聚合表优先**：分析大盘估值、行业轮动或宏观时钟时，**优先消费现成的上层聚合表**（如行业估值 `sw_2021_fundamental`、指数估值 `index_fundamental`、北向资金 `moneyflow_hsgt`、两融大盘 `margin`），避免无谓拿千万级底层个股明细表（`stock_daily_bar` / `moneyflow`）进行沉重扫表；
    * **合适工具下推**：海量数据跨表关联或复杂 Group By 聚合时，选用合适工具（内存轻量分析用 **Polars Lazy/DataFrame**；复杂跨多分区大表关联可用 **DuckDB 向量化 SQL**），最大化节省计算资源与响应时间。
 

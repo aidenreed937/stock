@@ -10,25 +10,49 @@
 from datetime import date
 import polars as pl
 from stock_data.catalog import DataCatalog
+from stock_data.catalog.sw_industry_golden import load_sw_2021_industry_members
 
-cat_lx = DataCatalog(data_source="lixinger")
 cat_ts = DataCatalog(data_source="tushare")
+cat_lx = DataCatalog(data_source="lixinger")
+cat_derived = DataCatalog(data_source="derived")
 
-# 1. 加载申万 2021 行业成份股图谱与二级行业估值
-df_map = cat_lx.load_dataset("sw_2021_constituents")
-df_val = cat_lx.load_dataset("sw_2021_l2_fundamental", start_date=date(2026, 8, 1))
+# 1. 统一从 SW2021 黄金成员表读取当前二级行业成分
+df_map = load_sw_2021_industry_members(
+    cat_derived,
+    current_only=True,
+    level="L2",
+    canonical_only=True,
+    columns=("symbol", "industry_code", "industry_name", "level"),
+).rename({"symbol": "stock_code"})
 
-# 2. 加载近 5 日全市场微观个股资金流
-df_mf = cat_ts.load_dataset("moneyflow", start_date=date(2026, 8, 8))
-
-# 3. 展开成份股并按二级行业聚合主力资金净流入 (超大单 + 大单)
-df_exploded = df_map.explode("constituents").rename(
-    {"symbol": "industry_code", "constituents": "stock_symbol"}
+# 2. 加载二级行业估值与近 5 日个股微观资金流
+df_val = cat_lx.load_dataset(
+    "sw_2021_l2_fundamental",
+    start_date=date(2026, 8, 1),
+    end_date=date(2026, 8, 14),
+    columns=["symbol", "trade_date", "pe_ttm.ew", "pb.ew"],
 )
 
-df_joined = df_mf.join(
-    df_exploded, left_on="symbol", right_on="stock_symbol", how="inner"
+# 资金流 symbol 可能带 .SH/.SZ；先归一为六位代码再 Join
+df_mf = cat_ts.load_dataset(
+    "moneyflow",
+    start_date=date(2026, 8, 8),
+    end_date=date(2026, 8, 14),
+    columns=[
+        "symbol",
+        "trade_date",
+        "buy_elg_amount",
+        "sell_elg_amount",
+        "buy_lg_amount",
+        "sell_lg_amount",
+        "net_mf_amount",
+    ],
+).with_columns(
+    pl.col("symbol").cast(pl.String).str.split(".").list.first().alias("stock_code")
 )
+
+# 3. 按二级行业聚合主力资金净流入（超大单 + 大单）
+df_joined = df_mf.join(df_map, on="stock_code", how="inner")
 
 df_rank = (
     df_joined.group_by("industry_code")
@@ -41,6 +65,21 @@ df_rank = (
     )
     .sort("net_inflow_yuan", descending=True)
 )
+
+# 4. 每个行业取估值表最新一条，再与资金流排名合并
+df_val_latest = (
+    df_val.sort("trade_date")
+    .group_by("symbol", maintain_order=True)
+    .agg(
+        [
+            pl.col("trade_date").last(),
+            pl.col("pe_ttm.ew").last(),
+            pl.col("pb.ew").last(),
+        ]
+    )
+    .rename({"symbol": "industry_code"})
+)
+df_rank = df_rank.join(df_val_latest, on="industry_code", how="left")
 
 print("=== 申万二级行业主力资金净流入 Top 5 (亿元) ===")
 print(df_rank.head(5).with_columns((pl.col("net_inflow_yuan") / 1e8).round(2)))
