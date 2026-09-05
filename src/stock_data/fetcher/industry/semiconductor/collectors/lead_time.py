@@ -1,7 +1,8 @@
-"""芯片交付周期 (Chip Lead Time / 货期) 月度先导指标采集器 (ChipLeadTimeCollector)。
+"""芯片交付周期的 Mouser 兼容采集器 (ChipLeadTimeCollector)。
 
 芯片交期是半导体产业物理世界最敏感的供需先行指标 (领先公司财报 2~4 个季度)。
-本采集器为纯真实数据驱动与配置化设计:
+正式 ``chip_lead_time`` 行业端点使用 ``SusquehannaLeadTimeCollector``；本类保留
+Mouser 在线 API 与历史 RAW 重放能力，供旧调用方兼容使用。本采集器为纯真实数据驱动与配置化设计:
 1. 配置驱动: 从 config/industry/chip_lead_time.yaml 加载标杆 SKU 篮子、品类权重与状态判定阈值；
 2. 在线实时模式: 轮询 Mouser API 获取标杆芯片 SKU 的原厂货期 (Lead Time)，并归档至 RAW 快照；
 3. 本地 RAW 重放模式: 离线重放调用方传入的 RAW 根目录下的 Mouser JSON 快照。
@@ -29,6 +30,7 @@ from stock_data.fetcher.industry.semiconductor.lineage import (
 )
 from stock_data.fetcher.industry.semiconductor.models import ChipLeadTimeRecord
 from stock_data.fetcher.industry.semiconductor.parsers.lead_time_raw import (
+    aggregate_category_lead_times,
     archive_lead_time_raw_snapshot,
     determine_lead_time_status,
     extract_lead_time_release_date,
@@ -117,13 +119,11 @@ class ChipLeadTimeCollector:
         if not api_key:
             return []
 
-        cat_averages: dict[str, float] = {}
         sku_details: dict[str, dict[str, Any]] = {}
         missing_release_skus: list[str] = []
 
         for cat, cat_cfg in self.categories.items():
             skus = cat_cfg.get("skus", [])
-            cat_leads: list[float] = []
             for sku in skus:
                 try:
                     url = f"https://api.mouser.com/api/v1/search/partnumber?apiKey={api_key}"
@@ -140,30 +140,23 @@ class ChipLeadTimeCollector:
                         if parts:
                             lt_str = parts[0].get("LeadTime", "")
                             w = parse_lead_time_string_to_weeks(lt_str)
-                            if w is not None:
-                                cat_leads.append(w)
-                                release_date = extract_lead_time_release_date(res_json)
-                                if release_date is None:
-                                    missing_release_skus.append(sku)
-                                sku_details[sku] = {
-                                    "category": cat,
-                                    "lead_time_raw": lt_str,
-                                    "lead_time_weeks": w,
-                                    "manufacturer": parts[0].get("Manufacturer", ""),
-                                    "release_date": (
-                                        release_date.isoformat()
-                                        if release_date is not None
-                                        else None
-                                    ),
-                                }
+                            release_date = extract_lead_time_release_date(res_json)
+                            if release_date is None:
+                                missing_release_skus.append(sku)
+                            sku_details[sku] = {
+                                "category": cat,
+                                "lead_time_raw": lt_str,
+                                "lead_time_weeks": w,
+                                "manufacturer": parts[0].get("Manufacturer", ""),
+                                "release_date": (
+                                    release_date.isoformat() if release_date is not None else None
+                                ),
+                            }
                 except Exception as e:
                     logger.debug("Mouser API 查询 SKU [%s] 异常: %s", sku, e)
 
-            if cat_leads:
-                cat_averages[cat] = round(sum(cat_leads) / len(cat_leads), 1)
-
-        if not cat_averages:
-            logger.warning("未能从 Mouser API 获取到任何有效标杆芯片交期数据")
+        if not sku_details:
+            logger.warning("未能从 Mouser API 获取到任何标杆芯片交期数据")
             return []
         if missing_release_skus:
             logger.warning(
@@ -181,13 +174,15 @@ class ChipLeadTimeCollector:
             logger.warning("Mouser 交期响应未提供真实 release_date，拒绝生成 RAW")
             return []
 
-        # 计算加权均值
-        weights = {c: float(self.categories.get(c, {}).get("weight", 1.0)) for c in cat_averages}
-        total_weight = sum(weights.values()) or 1.0
-        avg_val = round(
-            sum(cat_averages[c] * weights[c] for c in cat_averages) / total_weight,
-            2,
+        # 计算加权均值（0 天缺货标记与 >=52 周封顶值不参与聚合）
+        cat_averages, avg_val, excluded = aggregate_category_lead_times(
+            sku_details, self.categories
         )
+        if not cat_averages or avg_val is None:
+            logger.warning("清洗后无有效 SKU 交期可聚合，拒绝生成 RAW")
+            return []
+        if excluded:
+            logger.warning("剔除无效交期 SKU（0 天/封顶）: %s", ", ".join(excluded))
 
         today = date.today()
         release_date = max(release_dates)
@@ -229,6 +224,7 @@ class ChipLeadTimeCollector:
             record=record,
             cat_averages=cat_averages,
             sku_details=sku_details,
+            excluded_skus=excluded,
         )
         record = replace(
             record,
@@ -243,4 +239,6 @@ class ChipLeadTimeCollector:
 
     def load_from_raw_snapshots(self) -> list[ChipLeadTimeRecord]:
         """从本地 RAW 快照目录加载所有历史月度 JSON 快照。"""
-        return load_lead_time_raw_records(self.lead_time_raw_dir, self.thresholds)
+        return load_lead_time_raw_records(
+            self.lead_time_raw_dir, self.thresholds, categories=self.categories
+        )

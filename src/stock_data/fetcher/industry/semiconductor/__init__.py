@@ -11,6 +11,7 @@ from stock_data.fetcher.industry.semiconductor.collectors import (
     SemiconductorInventoryCollector,
     SemiEquipmentCollector,
     SemiEquipmentCrawler,
+    SusquehannaLeadTimeCollector,
     TsmcLeadCollector,
 )
 from stock_data.fetcher.industry.semiconductor.models import (
@@ -118,6 +119,7 @@ __all__ = [
     "SemiconductorLeadRecord",
     "SemiconductorRawPaths",
     "SemiconductorSalesRecord",
+    "SusquehannaLeadTimeCollector",
     "TsmcLeadCollector",
     "build_channel_inventory_curated_frame",
     "build_channel_inventory_raw_frame",

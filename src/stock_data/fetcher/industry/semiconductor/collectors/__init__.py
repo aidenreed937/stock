@@ -21,6 +21,9 @@ from stock_data.fetcher.industry.semiconductor.collectors.sales import Semicondu
 from stock_data.fetcher.industry.semiconductor.collectors.seaj import SeajEquipmentCollector
 from stock_data.fetcher.industry.semiconductor.collectors.semi import SemiEquipmentCollector
 from stock_data.fetcher.industry.semiconductor.collectors.semi_crawler import SemiEquipmentCrawler
+from stock_data.fetcher.industry.semiconductor.collectors.susquehanna import (
+    SusquehannaLeadTimeCollector,
+)
 from stock_data.fetcher.industry.semiconductor.collectors.taiwan_memory import (
     TaiwanMemoryLeadCollector,
 )
@@ -38,6 +41,7 @@ __all__ = [
     "SemiEquipmentCrawler",
     "SemiconductorCollector",
     "SemiconductorInventoryCollector",
+    "SusquehannaLeadTimeCollector",
     "TaiwanMemoryLeadCollector",
     "TsmcLeadCollector",
 ]

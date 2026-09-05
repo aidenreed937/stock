@@ -10,6 +10,12 @@ from stock_data.fetcher.industry.semiconductor.transforms.china_series import (
     parse_sia_raw_dir,
     save_china_series,
 )
+from stock_data.fetcher.industry.semiconductor.transforms.chip_lead_time import (
+    empty_chip_lead_time,
+    empty_raw_chip_lead_time,
+    records_to_chip_lead_time_frame,
+    records_to_raw_chip_lead_time_frame,
+)
 from stock_data.fetcher.industry.semiconductor.transforms.equipment_facts import (
     empty_raw_semiconductor_equipment,
     empty_semiconductor_equipment,
@@ -17,14 +23,10 @@ from stock_data.fetcher.industry.semiconductor.transforms.equipment_facts import
     records_to_semiconductor_equipment_frame,
 )
 from stock_data.fetcher.industry.semiconductor.transforms.facts import (
-    empty_chip_lead_time,
-    empty_raw_chip_lead_time,
     empty_raw_semiconductor_lead,
     empty_raw_semiconductor_sales,
     empty_semiconductor_lead,
     empty_semiconductor_sales,
-    records_to_chip_lead_time_frame,
-    records_to_raw_chip_lead_time_frame,
     records_to_raw_semiconductor_frame,
     records_to_raw_semiconductor_lead_frame,
     records_to_raw_semiconductor_sales_frame,

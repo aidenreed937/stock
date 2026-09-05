@@ -9,13 +9,13 @@ from stock_data.fetcher.industry.runner import (
 )
 from stock_data.fetcher.industry.semiconductor.collectors import (
     ChannelInventoryCollector,
-    ChipLeadTimeCollector,
     DataTrackMemoryPriceCollector,
     FoundryUtilizationCollector,
     MemoryPriceCollector,
     SeajEquipmentCollector,
     SemiconductorCollector,
     SemiEquipmentCollector,
+    SusquehannaLeadTimeCollector,
     TaiwanMemoryLeadCollector,
     TsmcLeadCollector,
 )
@@ -89,7 +89,7 @@ ENDPOINT_SPECS: tuple[IndustryEndpointSpec, ...] = (
     record_endpoint(
         endpoint="chip_lead_time",
         domain="semiconductor",
-        collect=collector(ChipLeadTimeCollector),
+        collect=collector(SusquehannaLeadTimeCollector),
         transform=records_to_chip_lead_time_frame,
         target_file="chip_lead_time.parquet",
         primary_keys=["report_month"],

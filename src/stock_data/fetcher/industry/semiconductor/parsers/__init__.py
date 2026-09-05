@@ -24,7 +24,9 @@ from stock_data.fetcher.industry.semiconductor.parsers.inventory_online import (
     parse_sec_6k_inventory,
 )
 from stock_data.fetcher.industry.semiconductor.parsers.lead_time_raw import (
+    aggregate_category_lead_times,
     extract_lead_time_release_date,
+    is_valid_lead_time_weeks,
     parse_lead_time_string_to_weeks,
 )
 from stock_data.fetcher.industry.semiconductor.parsers.memory_price import (
@@ -49,6 +51,13 @@ from stock_data.fetcher.industry.semiconductor.parsers.semi import (
     extract_semi_press_release_links,
     parse_semi_article_text,
 )
+from stock_data.fetcher.industry.semiconductor.parsers.susquehanna import (
+    archive_susquehanna_raw_snapshot,
+    html_to_visible_text,
+    parse_susquehanna_lead_time_article,
+    parse_susquehanna_published_date,
+    parse_susquehanna_rss_feed,
+)
 from stock_data.fetcher.industry.semiconductor.parsers.taiwan_memory import (
     parse_taiwan_memory_monthly_revenue_dict,
 )
@@ -64,6 +73,8 @@ from stock_data.fetcher.industry.semiconductor.parsers.tsmc_foundry import (
 __all__ = [
     "SeajPdfParser",
     "SecFiling",
+    "aggregate_category_lead_times",
+    "archive_susquehanna_raw_snapshot",
     "build_inventory_release_date_map",
     "extract_lead_time_release_date",
     "extract_sec_filings",
@@ -73,6 +84,8 @@ __all__ = [
     "extract_smic_announcement_targets",
     "extract_smic_financial_report_links",
     "extract_tsmc_quarterly_report_links",
+    "html_to_visible_text",
+    "is_valid_lead_time_weeks",
     "load_inventory_raw_csv",
     "load_sia_news_enrichments",
     "parse_channel_inventory_companyfacts",
@@ -90,6 +103,9 @@ __all__ = [
     "parse_sia_china_and_date",
     "parse_smic_operating_pdf_bytes",
     "parse_smic_operating_text",
+    "parse_susquehanna_lead_time_article",
+    "parse_susquehanna_published_date",
+    "parse_susquehanna_rss_feed",
     "parse_taiwan_memory_monthly_revenue_dict",
     "parse_trendforce_memory_price_html",
     "parse_tsmc_monthly_revenue_html",
