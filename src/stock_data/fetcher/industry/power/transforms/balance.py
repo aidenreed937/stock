@@ -4,34 +4,21 @@ from datetime import UTC, datetime
 
 import polars as pl
 
-POLYSILICON_BALANCE_MONTHLY_SCHEMA = {
-    "report_month": pl.String,
-    "trade_date": pl.Date,
-    "domestic_production_w_tons": pl.Float64,
-    "net_imports_w_tons": pl.Float64,
-    "total_supply_w_tons": pl.Float64,
-    "implied_demand_w_tons": pl.Float64,
-    "theoretical_surplus_w_tons": pl.Float64,
-    "observed_inventory_w_tons": pl.Float64,
-    "observed_inventory_change_w_tons": pl.Float64,
-    "inventory_weeks": pl.Float64,
-    "reconciliation_residual_w_tons": pl.Float64,
-    "supply_yoy": pl.Float64,
-    "demand_yoy": pl.Float64,
-    "scissors_spread_yoy": pl.Float64,
-    "cycle_score": pl.Float64,
-    "unit": pl.String,
-    "source": pl.String,
-    "source_url": pl.String,
-    "release_date": pl.Date,
-    "data_status": pl.String,
-    "collected_at": pl.String,
-}
+from stock_data.fetcher.industry.power.schemas import POLYSILICON_BALANCE_MONTHLY_SCHEMA
 
 
 def empty_polysilicon_balance() -> pl.DataFrame:
     """构造多晶硅供需平衡空事实表骨架。"""
     return pl.DataFrame(schema=POLYSILICON_BALANCE_MONTHLY_SCHEMA)
+
+
+def _derived_collected_at(*frames: pl.DataFrame) -> str:
+    """沿用上游事实的最新采集时间，避免无输入变化时制造假更新。"""
+    values: list[str] = []
+    for frame in frames:
+        if "collected_at" in frame.columns:
+            values.extend(str(value) for value in frame["collected_at"].drop_nulls().to_list())
+    return max(values) if values else datetime.now(UTC).isoformat()
 
 
 def build_polysilicon_balance_frame(
@@ -78,11 +65,13 @@ def build_polysilicon_balance_frame(
                 )
                 merged = merged.join(c_agg, on="report_month", how="left")
             else:
-                merged = merged.with_columns(pl.lit(0.0).alias("net_imports_w_tons"))
+                merged = merged.with_columns(
+                    pl.lit(None).cast(pl.Float64).alias("net_imports_w_tons")
+                )
         else:
-            merged = merged.with_columns(pl.lit(0.0).alias("net_imports_w_tons"))
+            merged = merged.with_columns(pl.lit(None).cast(pl.Float64).alias("net_imports_w_tons"))
     else:
-        merged = merged.with_columns(pl.lit(0.0).alias("net_imports_w_tons"))
+        merged = merged.with_columns(pl.lit(None).cast(pl.Float64).alias("net_imports_w_tons"))
 
     if inventory_df is not None and not inventory_df.is_empty():
         i_sub = inventory_df.select(
@@ -99,10 +88,13 @@ def build_polysilicon_balance_frame(
             pl.lit(None).cast(pl.Float64).alias("observed_inventory_change_w_tons"),
         )
 
-    now_iso = datetime.now(UTC).isoformat()
+    collected_at = _derived_collected_at(
+        supply_df,
+        wafer_df,
+        inventory_df if inventory_df is not None else pl.DataFrame(),
+    )
     return (
         merged.with_columns(
-            pl.col("net_imports_w_tons").fill_null(0.0),
             (pl.col("domestic_production_w_tons") + pl.col("net_imports_w_tons").fill_null(0.0))
             .round(4)
             .alias("total_supply_w_tons"),
@@ -140,21 +132,22 @@ def build_polysilicon_balance_frame(
             )
             .otherwise(None)
             .alias("reconciliation_residual_w_tons"),
-            pl.when(pl.col("scissors_spread_yoy").is_not_null())
+            pl.when(
+                pl.col("scissors_spread_yoy").is_not_null()
+                & pl.col("inventory_weeks").is_not_null()
+            )
             .then(
-                (
-                    pl.col("scissors_spread_yoy") * 0.5
-                    - (pl.col("inventory_weeks").fill_null(2.5) - 2.0) * 8.0
-                )
+                (pl.col("scissors_spread_yoy") * 0.5 - (pl.col("inventory_weeks") - 2.0) * 8.0)
                 .clip(-100.0, 100.0)
                 .round(2)
             )
-            .otherwise(0.0)
+            .otherwise(None)
             .alias("cycle_score"),
             pl.lit("ten_thousand_tons/gw/percent").alias("unit"),
             pl.lit("Derived_Polysilicon_Balance").alias("source"),
             pl.lit("").alias("source_url"),
-            pl.lit(now_iso).alias("collected_at"),
+            pl.lit("derived").alias("data_status"),
+            pl.lit(collected_at).alias("collected_at"),
         )
         .select(list(POLYSILICON_BALANCE_MONTHLY_SCHEMA.keys()))
         .sort("trade_date")

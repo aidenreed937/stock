@@ -1,0 +1,120 @@
+"""电力设备与光伏产业端点注册。"""
+
+from stock_data.fetcher.industry.contracts import IndustryEndpointSpec
+from stock_data.fetcher.industry.power.collectors import (
+    NbsSolarCellCollector,
+    PvPriceChainCollector,
+    SiliconBranchCollector,
+    SolarCollector,
+)
+from stock_data.fetcher.industry.power.paths import POWER_RAW_SUBDIR
+from stock_data.fetcher.industry.power.transforms import (
+    build_polysilicon_inventory_from_silicon_frame,
+    build_polysilicon_supply_from_silicon_frame,
+    build_pv_wafer_from_silicon_frame,
+    records_to_raw_silicon_wafer_monthly_frame,
+    records_to_raw_solar_cell_nbs_frame,
+    records_to_raw_solar_frame,
+    records_to_raw_solar_price_chain_frame,
+    records_to_silicon_wafer_monthly_frame,
+    records_to_solar_cell_nbs_frame,
+    records_to_solar_frame,
+    records_to_solar_price_chain_frame,
+)
+from stock_data.fetcher.industry.power.workflows import (
+    collect_polysilicon_balance,
+    collect_solar_supply_demand,
+    read_silicon_curated,
+)
+from stock_data.fetcher.industry.runner import collector, frame_endpoint, record_endpoint
+
+ENDPOINT_SPECS: tuple[IndustryEndpointSpec, ...] = (
+    record_endpoint(
+        endpoint="solar_capacity",
+        domain="power",
+        collect=collector(SolarCollector),
+        transform=records_to_solar_frame,
+        target_file="solar_capacity.parquet",
+        primary_keys=["report_month"],
+        raw_subdir=POWER_RAW_SUBDIR,
+        raw_transform=records_to_raw_solar_frame,
+        require_context_coverage=True,
+    ),
+    record_endpoint(
+        endpoint="solar_price_chain",
+        domain="power",
+        collect=collector(PvPriceChainCollector),
+        transform=records_to_solar_price_chain_frame,
+        target_file="solar_price_chain.parquet",
+        primary_keys=["report_date"],
+        raw_subdir=POWER_RAW_SUBDIR,
+        raw_transform=records_to_raw_solar_price_chain_frame,
+        require_context_coverage=True,
+        context_coverage_frequency="weekly",
+    ),
+    record_endpoint(
+        endpoint="solar_cell_nbs",
+        domain="power",
+        collect=collector(NbsSolarCellCollector),
+        transform=records_to_solar_cell_nbs_frame,
+        target_file="solar_cell_production.parquet",
+        primary_keys=["report_month"],
+        raw_subdir=POWER_RAW_SUBDIR,
+        raw_transform=records_to_raw_solar_cell_nbs_frame,
+        require_context_coverage=True,
+    ),
+    record_endpoint(
+        endpoint="silicon_wafer_monthly",
+        domain="power",
+        collect=collector(SiliconBranchCollector),
+        transform=records_to_silicon_wafer_monthly_frame,
+        target_file="silicon_wafer_monthly.parquet",
+        primary_keys=["report_month"],
+        raw_subdir=POWER_RAW_SUBDIR,
+        raw_transform=records_to_raw_silicon_wafer_monthly_frame,
+        require_context_coverage=True,
+    ),
+    frame_endpoint(
+        endpoint="polysilicon_supply_monthly",
+        domain="power",
+        context_collect=read_silicon_curated,
+        transform=build_polysilicon_supply_from_silicon_frame,
+        target_file="polysilicon_supply_monthly.parquet",
+        primary_keys=["report_month"],
+        require_context_coverage=True,
+    ),
+    frame_endpoint(
+        endpoint="polysilicon_inventory_monthly",
+        domain="power",
+        context_collect=read_silicon_curated,
+        transform=build_polysilicon_inventory_from_silicon_frame,
+        target_file="polysilicon_inventory_monthly.parquet",
+        primary_keys=["report_month"],
+        require_context_coverage=True,
+    ),
+    frame_endpoint(
+        endpoint="pv_wafer_monthly",
+        domain="power",
+        context_collect=read_silicon_curated,
+        transform=build_pv_wafer_from_silicon_frame,
+        target_file="pv_wafer_monthly.parquet",
+        primary_keys=["report_month"],
+        require_context_coverage=True,
+    ),
+    frame_endpoint(
+        endpoint="polysilicon_balance",
+        domain="power",
+        context_collect=collect_polysilicon_balance,
+        target_file="polysilicon_balance.parquet",
+        primary_keys=["report_month"],
+        require_context_coverage=True,
+    ),
+    frame_endpoint(
+        endpoint="solar_supply_demand",
+        domain="power",
+        context_collect=collect_solar_supply_demand,
+        target_file="solar_supply_demand.parquet",
+        primary_keys=["report_month"],
+        require_context_coverage=True,
+    ),
+)
