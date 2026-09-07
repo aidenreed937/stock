@@ -640,7 +640,7 @@ def test_html_parser_protocol_conformance_and_injection(tmp_path: Path) -> None:
 
 def test_comtrade_incremental_period_calculation() -> None:
     """验证 ComtradeCollector._calculate_periods 在增量与默认模式下的计算。"""
-    from stock_data.fetcher.industry.customs.collector import _calculate_periods
+    from stock_data.fetcher.industry.customs.collectors.comtrade import _calculate_periods
 
     # 1. 增量区间模式
     p1 = _calculate_periods(start_month="2026-03", end_month="2026-06")

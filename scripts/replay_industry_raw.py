@@ -166,7 +166,7 @@ def _load_cloud_capex_from_raw(raw_root: Path) -> list[Any]:
 
 def _load_customs_from_raw(raw_root: Path) -> list[Any]:
     """从 UN Comtrade JSON 快照 + GACC CSV 聚合海关贸易记录 (GACC 优先去重)。"""
-    from stock_data.fetcher.industry.customs.collector import ComtradeCollector
+    from stock_data.fetcher.industry.customs.collectors.comtrade import ComtradeCollector
     from stock_data.fetcher.industry.models import CustomsTradeRecord
 
     comtrade_dir = raw_root / "customs" / "comtrade"
@@ -218,7 +218,7 @@ def _build_metric_plan() -> dict[str, dict[str, Any]]:
     from stock_data.fetcher.industry.coal.transform import records_to_coal_market_frame
     from stock_data.fetcher.industry.consumer.collector import LiquorWholesaleCollector
     from stock_data.fetcher.industry.consumer.transform import records_to_liquor_wholesale_frame
-    from stock_data.fetcher.industry.customs.transform import records_to_customs_trade_frame
+    from stock_data.fetcher.industry.customs.transforms.customs_trade import records_to_customs_trade_frame
     from stock_data.fetcher.industry.electronics.collector import ConsumerElectronicsCollector
     from stock_data.fetcher.industry.electronics.transform import (
         records_to_consumer_electronics_frame,

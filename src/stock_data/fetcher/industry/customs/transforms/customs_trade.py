@@ -4,35 +4,12 @@ from collections.abc import Sequence
 
 import polars as pl
 
-from stock_data.fetcher.industry.models import CustomsTradeRecord
-
-CUSTOMS_TRADE_SCHEMA = {
-    "category_key": pl.Utf8,
-    "category_name": pl.Utf8,
-    "product_key": pl.Utf8,
-    "product_name": pl.Utf8,
-    "hs_code": pl.Utf8,
-    "hs_name": pl.Utf8,
-    "report_month": pl.Utf8,
-    "trade_date": pl.Date,
-    "trade_direction": pl.Utf8,
-    "export_value_usd": pl.Float64,
-    "export_volume": pl.Float64,
-    "quantity_unit": pl.Utf8,
-    "export_asp_usd": pl.Float64,
-    "target_l1_code": pl.Utf8,
-    "target_l1_name": pl.Utf8,
-    "target_l2_codes": pl.Utf8,
-    "target_l2_names": pl.Utf8,
-    "export_value_3mma": pl.Float64,
-    "yoy_growth_3mma": pl.Float64,
-    "mom_growth_3mma": pl.Float64,
-    "source": pl.Utf8,
-    "source_url": pl.Utf8,
-    "release_date": pl.Date,
-    "data_status": pl.Utf8,
-    "collected_at": pl.Utf8,
-}
+from stock_data.fetcher.industry.customs.models import CustomsTradeRecord
+from stock_data.fetcher.industry.customs.schemas import CUSTOMS_TRADE_SCHEMA
+from stock_data.fetcher.industry.customs.transforms.volume_price import (
+    flag_volume_aggregable,
+    normalize_quantity_unit,
+)
 
 
 def empty_customs_trade() -> pl.DataFrame:
@@ -49,6 +26,13 @@ def records_to_customs_trade_frame(records: Sequence[CustomsTradeRecord]) -> pl.
        （同一品类多税号先求和，跨 HS 版本演进保持序列连续）后计算 3 个月移动平均
     3. yoy_growth_3mma: 3MMA 出口金额同比增速 (lag 12 个月)
     4. mom_growth_3mma: 3MMA 出口金额月环比增速 (lag 1 个月)
+
+    单位标注（2026-09 量价分离核查落地）:
+    5. quantity_unit_norm / unit_known: 计量单位同义归一（千克→kg、台/个/辆→units），
+       未知单位保留原值并标记
+    6. volume_aggregable: 产品级数量可加总标注——产品在其全部行中单位归一去重后
+       唯一且已知才为 True；真混用（如半导体设备 units vs kg）或含未知单位的产品
+       数量跨 HS 加总无意义，下游聚合 `export_volume` 前必须先过滤该列。
     """
     if not records:
         return empty_customs_trade()
@@ -61,6 +45,8 @@ def records_to_customs_trade_frame(records: Sequence[CustomsTradeRecord]) -> pl.
             "product_name": r.product_name,
             "hs_code": r.hs_code,
             "hs_name": r.hs_name,
+            "hs_level": r.hs_level,
+            "hs_parent_code": r.hs_parent_code,
             "report_month": r.report_month,
             "trade_date": r.trade_date,
             "trade_direction": r.trade_direction,
@@ -72,6 +58,8 @@ def records_to_customs_trade_frame(records: Sequence[CustomsTradeRecord]) -> pl.
             "target_l1_name": r.target_l1_name,
             "target_l2_codes": r.target_l2_codes,
             "target_l2_names": r.target_l2_names,
+            "target_l3_codes": r.target_l3_codes,
+            "target_l3_names": r.target_l3_names,
             "export_value_3mma": r.export_value_3mma,
             "yoy_growth_3mma": r.yoy_growth_3mma,
             "mom_growth_3mma": r.mom_growth_3mma,
@@ -80,6 +68,9 @@ def records_to_customs_trade_frame(records: Sequence[CustomsTradeRecord]) -> pl.
             "release_date": r.release_date,
             "data_status": r.data_status,
             "collected_at": r.collected_at,
+            "trade_value_currency": r.trade_value_currency,
+            "raw_content_sha256": r.raw_content_sha256,
+            "raw_snapshot_path": r.raw_snapshot_path,
         }
         for r in records
     ]
@@ -100,7 +91,7 @@ def records_to_customs_trade_frame(records: Sequence[CustomsTradeRecord]) -> pl.
     )
 
     # 2. 品类级月度聚合：同一 product 多税号先求和（跨 HS 版本演进连续），再算 3MMA/YoY/MoM
-    agg_cols = ["product_key", "trade_date", "trade_direction"]
+    agg_cols = ["product_key", "trade_date", "trade_direction", "trade_value_currency"]
     prod = (
         df.group_by(agg_cols)
         .agg(pl.col("export_value_usd").sum().alias("export_value_usd"))
@@ -108,28 +99,46 @@ def records_to_customs_trade_frame(records: Sequence[CustomsTradeRecord]) -> pl.
         .with_columns(
             pl.col("export_value_usd")
             .rolling_mean(window_size=3, min_samples=1)
-            .over(["product_key", "trade_direction"])
+            .over(["product_key", "trade_direction", "trade_value_currency"])
             .alias("export_value_3mma")
         )
     )
     prod = prod.with_columns(
-        pl.when(pl.col("export_value_3mma").shift(12).over(["product_key", "trade_direction"]) > 0)
+        pl.when(
+            pl.col("export_value_3mma")
+            .shift(12)
+            .over(["product_key", "trade_direction", "trade_value_currency"])
+            > 0
+        )
         .then(
             (
                 pl.col("export_value_3mma")
-                - pl.col("export_value_3mma").shift(12).over(["product_key", "trade_direction"])
+                - pl.col("export_value_3mma")
+                .shift(12)
+                .over(["product_key", "trade_direction", "trade_value_currency"])
             )
-            / pl.col("export_value_3mma").shift(12).over(["product_key", "trade_direction"])
+            / pl.col("export_value_3mma")
+            .shift(12)
+            .over(["product_key", "trade_direction", "trade_value_currency"])
         )
         .otherwise(None)
         .alias("yoy_growth_3mma"),
-        pl.when(pl.col("export_value_3mma").shift(1).over(["product_key", "trade_direction"]) > 0)
+        pl.when(
+            pl.col("export_value_3mma")
+            .shift(1)
+            .over(["product_key", "trade_direction", "trade_value_currency"])
+            > 0
+        )
         .then(
             (
                 pl.col("export_value_3mma")
-                - pl.col("export_value_3mma").shift(1).over(["product_key", "trade_direction"])
+                - pl.col("export_value_3mma")
+                .shift(1)
+                .over(["product_key", "trade_direction", "trade_value_currency"])
             )
-            / pl.col("export_value_3mma").shift(1).over(["product_key", "trade_direction"])
+            / pl.col("export_value_3mma")
+            .shift(1)
+            .over(["product_key", "trade_direction", "trade_value_currency"])
         )
         .otherwise(None)
         .alias("mom_growth_3mma"),
@@ -142,13 +151,21 @@ def records_to_customs_trade_frame(records: Sequence[CustomsTradeRecord]) -> pl.
                 "product_key",
                 "trade_date",
                 "trade_direction",
+                "trade_value_currency",
                 "export_value_3mma",
                 "yoy_growth_3mma",
                 "mom_growth_3mma",
             ]
         ),
-        on=["product_key", "trade_date", "trade_direction"],
+        on=["product_key", "trade_date", "trade_direction", "trade_value_currency"],
         how="left",
     )
 
+    # 4. 单位归一 + 产品级数量可加总标注（量价分离核查落地）
+    df = normalize_quantity_unit(df)
+    df = flag_volume_aggregable(df).with_columns(pl.col("volume_aggregable").fill_null(False))
+
     return df
+
+
+__all__ = ["CUSTOMS_TRADE_SCHEMA", "empty_customs_trade", "records_to_customs_trade_frame"]
