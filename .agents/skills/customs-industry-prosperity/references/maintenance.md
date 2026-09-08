@@ -88,6 +88,17 @@
 - 产物路径：`data/analytics/industry/customs_company_exposure.parquet`（全序列）/
   `customs_company_exposure_latest.csv`（最新月公司快照，含 segment_minus_product 区分度列）。
 
+### 信号/回测脚本（2026-09 新增，消费公司观察表产物）
+
+- `build_customs_company_signal.py` → `customs_company_signal_latest.csv`：三层信号
+  （出口段级 × 资金 moneyflow/margin_detail × 财报 fina_indicator）→ A/B/C/D/回避 评级；
+  输入依赖公司观察表 CSV，改了观察表口径需重跑；
+- `backtest_customs_company_signal.py` / `backtest_customs_multi.py` → `customs_signal_backtest*.parquet`
+  （transformer 单产品）与 `customs_signal_multi.parquet`（10 产品横向）：研究验证工具，
+  数据源为本地行情/指数/资金/财报 curated 表，无配置维护面；
+- 信号口径与回测结论（含普适性局限）固化在 `company_linkage.md` §4b-4d，**改动口径
+  （确认月数/质量门/三腿阈值）需同步更新该文档并重跑回测**。
+
 ## 桥接强制规则（L2/L3，2026-09 审计 + §6.5 定稿）
 
 - 映射唯一源 `config/data/customs/hs_codes_catalog.csv`（400 行 / 109 产品，2026-09-08 完成 catalog 码对齐：旧"00 补齐父级码"替换为 277 个 hs8 现行税则细分码，其中 248 个有自身 8 位数据）；raw 不含映射；

@@ -1,6 +1,6 @@
 ---
 name: customs-industry-prosperity
-description: 申万行业 × 海关出口数据前瞻景气研究方法技能。研究商品量价拐点（量最领先、价确认、金额合成）如何驱动申万二级/三级行业景气度变化，财报 TTM 仅作后视验证；产出行业出口量价观察表与月度前瞻观察报告，并可下沉到受益公司（暴露度 × 税号段级出口景气）。当用户询问海关出口景气、申万行业量价拐点、出口驱动行业景气、L2/L3 行业出口前瞻、出口受益公司、公司出口景气、外需与行业财报关系、出口量价齐升/量驱动/价驱动/双弱分类，或要求按定稿方法论（非方向分等旧思路）生成行业/公司景气观察时使用此技能。该方法论定稿见 docs/research/customs_export_forward/METHODOLOGY_FINAL.md，为唯一权威口径，明确排除 direction_score 方向分等已证伪信号。
+description: 申万行业 × 海关出口数据前瞻景气研究方法技能。研究商品量价拐点（量最领先、价确认、金额合成）如何驱动申万二级/三级行业景气度变化，财报 TTM 仅作后视验证；产出行业出口量价观察表与月度前瞻观察报告，并可下沉到受益公司（暴露度 × 税号段级出口景气 → 三层信号评级 → 择时回测）。当用户询问海关出口景气、申万行业量价拐点、出口驱动行业景气、L2/L3 行业出口前瞻、出口受益公司、公司出口景气、三层信号/评级、顶背离、出口择时回测、分批建仓、信号胜率、外需与行业财报关系、出口量价齐升/量驱动/价驱动/双弱分类，或要求按定稿方法论（非方向分等旧思路）生成行业/公司景气观察时使用此技能。该方法论定稿见 docs/research/customs_export_forward/METHODOLOGY_FINAL.md，为唯一权威口径，明确排除 direction_score 方向分等已证伪信号。
 ---
 
 # Customs Industry Prosperity (申万行业 × 海关出口量价景气研究)
@@ -29,6 +29,15 @@ uv run python .agents/skills/customs-industry-prosperity/scripts/three_leg_entry
 
 # 6. 公司级出口景气观察表（暴露度 × 税号段级序列 → 受益公司排序；见 company_linkage.md）
 uv run python scripts/build_customs_company_exposure.py
+
+# 7. 公司三层信号（出口前瞻 × 资金确认 × 财报真扩张 → A/B/C/D/回避 评级）
+uv run python scripts/build_customs_company_signal.py
+
+# 8. 择时回测（分批建仓 3 批 / 见顶回落减半 / yoy≤0 清仓 → 胜率与持有收益）
+uv run python scripts/backtest_customs_company_signal.py --quality-gate
+
+# 9. 多产品横向回测（信号普适性检验：10 产品 × 基础/质量两版）
+uv run python scripts/backtest_customs_multi.py --detail
 ```
 
 ## 标准执行 SOP（月度，数据发布后约每月 8 月下旬）
@@ -48,7 +57,12 @@ uv run python scripts/build_customs_company_exposure.py
 5. **验证**：桥接审计断言通过（L3 归属一致、组合码已跳过）再落报告；
 6. **（可选但推荐）公司下沉**：跑命令速查 6 → 读公司级出口景气观察表，
    按 `references/company_linkage.md` 判读受益公司（行业层区分度不足时，
-   段级 yoy 是公司间差异信号，如 transformer 产品 +34% 内部 ultra 段 +111%）。
+   段级 yoy 是公司间差异信号，如 transformer 产品 +34% 内部 ultra 段 +111%）；
+7. **（交易信号）三层共振与择时**：跑命令速查 7 → 取 `rating=="A强机会"`
+   （出口×资金×财报三腿共振）建观察池、`risk_flag=="顶背离⚠"` 一律回避；
+   回测口径见命令速查 8/9 与 `references/company_linkage.md` §4b-4d
+   （分批建仓 → 景气松动减仓 → 胜率/持有收益；10 产品普适性：产业趋势型
+   产品 9/10 平均超额为正，快周期商品锂/铜/银不可用）。
 
 ## 按需加载的参考（references/，遇相关任务再读）
 

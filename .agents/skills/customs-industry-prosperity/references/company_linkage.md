@@ -48,6 +48,15 @@ uv run python scripts/calibrate_company_exposure.py --period 2026-06-30 --apply
 
 # 公司级出口景气观察表（段级聚合 + 3MMA yoy + 驱动/拐点 + 产品级对照）
 uv run python scripts/build_customs_company_exposure.py
+
+# 公司三层信号（出口前瞻 × 资金确认 × 财报真扩张）→ A/B/C/D/回避 评级
+uv run python scripts/build_customs_company_signal.py
+
+# 择时回测（分批建仓 / 景气松动分批减仓 → 胜率/持有收益）
+uv run python scripts/backtest_customs_company_signal.py --quality-gate
+
+# 多产品横向回测（信号普适性检验，10 产品 × 基础/质量两版）
+uv run python scripts/backtest_customs_multi.py --detail
 ```
 
 `build_customs_company_exposure.py` 输出：
@@ -70,6 +79,65 @@ uv run python scripts/build_customs_company_exposure.py
 3. **拐点/二阶导**：见顶拐点 + 量增速回落 = 顶部前兆，公司层面同判；
 4. **组合视角**：一家公司绑定多产品（如特变电工 transformer+polysilicon）时逐产品看，避免单一产品误判；
 5. **财报验证**：用 fina_mainbz 主营占比（`calibrate_company_exposure.py` 产物）做暴露度确认，公司财报 yoy 仅后视。
+
+## 4b. 三层信号与择时交易（2026-09 新增）
+
+**产品**：`build_customs_company_signal.py` → `customs_company_signal_latest.csv`（402 行/341 家），
+把公司观察表与三腿信号合并：`f1_state`（出口段级）/ `f2_state`（资金）/ `f3_state`（财报）+
+`rating`（A强机会/B确认中/C兑现中/D前瞻观察/观望/回避）+ `risk_flag`（顶背离⚠）。
+
+| 腿 | 信号 | 数据源 | 口径 |
+| :-- | :-- | :-- | :-- |
+| 腿1 出口前瞻 | 公司段级 3MMA yoy + 驱动 + 拐点 | 公司观察表 | 强正（yoy≥30% 且量价齐升/量驱动）> 正 > 弱/负 |
+| 腿2 资金确认 | 主力净流入 + 两融杠杆 | moneyflow + margin_detail | 近 20 日主力净流入强度、融资余额变化率（任一 >0 确认） |
+| 腿3 财报真扩张 | 营收/净利 yoy | fina_indicator（最新报告期） | 双正=真扩张；营收正净利负=增收不增利 |
+
+评级操作含义：**A** 三腿共振（重点跟踪）/ **B** 出口+资金已动财报未出（前瞻仓位）/
+**C** 出口+财报双正资金未跟（警惕透支）/ **D** 仅出口正（观察池）/
+**回避·顶背离⚠**（出口见顶/回落 + 资金负 + 财报仍正 = 最危险，减仓回避）。
+
+## 4c. 回测验证：分批建仓 / 景气松动分批减仓（2026-09 实证）
+
+**交易规则**（`backtest_customs_company_signal.py`，无未来函数）：
+- 建仓：产品出口 3MMA yoy 连续 2 月 >0（可加 `--quality-gate` 要求量价齐升/量驱动）→
+  分 3 批建仓（每月 1/3）；
+- 减仓：满仓后 yoy 连续 2 月环比下降（见顶回落）→ 减半；yoy≤0 → 清仓。
+
+**transformer 回测（2016-2026，6 家受益公司等权 vs 沪深300）**：
+
+| 版本 | 轮次 | 胜率 | 跑赢基准 | 平均轮收益 | 平均超额 | 持有 |
+| :-- | :-- | :-- | :-- | :-- | :-- | :-- |
+| 基础版 | 6 | 33% | 50% | +14.0% | +21.1pp | 12.5 月 |
+| 质量过滤版 | 7 | **57%** | **86%** | +4.6% | +7.5pp | 5.9 月 |
+
+基础版 2022-08 大轮 +124.6%（超额 +125pp，42 个月）撑高均值；质量版过滤 2017/2022
+价驱动伪景气轮（2017-2018 亏损 -30% 轮消失），胜率显著提升。
+
+**多产品普适性**（`backtest_customs_multi.py`，10 产品 × 两版，2016-2026）：
+
+| 产品 | 最佳版 | 胜率 | 平均超额 | 结论 |
+| :-- | :-- | :-- | :-- | :-- |
+| battery / semiconductor_equipment | base | 100% | +137~176pp | 长景气轮全胜（样本少） |
+| cathode_material | base | 100% | +19.9pp | 强信号 |
+| transformer / aluminum_unwrought | quality | 57~60% | +6~8pp | 质量过滤有效 |
+| wind_turbine / solar_cell | base | 40~62% | +13~35pp | 趋势钱（solar 盈亏比 8.7） |
+| copper / lithium / silver | — | 30~75% | +0~7pp | **信号不适用**：快周期商品节奏不匹配 / 公司池错配 |
+
+结论：**9/10 产品平均超额为正**（仅 silver≈0）——出口景气信号在产业趋势型产品上普适；
+质量过滤提升 7/10 产品胜率；铜/锂/银等快周期商品不可用（月度确认滞后于商品脉冲）。
+
+## 4d. 抓机会手册（月度执行）
+
+1. **8 月下旬**：刷黄金表 → 跑 4 个 build（skill SOP 1-4）→ `build_customs_company_exposure.py`
+   → `build_customs_company_signal.py`；
+2. **选池**：`rating=="A强机会"`（三腿共振）优先；`B确认中` 做前瞻仓；
+   `risk_flag=="顶背离⚠"` 一律回避（出口仍强但资金撤 = 利好兑现）；
+3. **建仓**：产品出口 yoy 连续 2 月 >0 且量价齐升/量驱动 → 分 3 批建仓（月度 1/3）；
+4. **监控**：月度看段级 yoy 二阶导——连续 2 月回落减半、转负清仓；
+   同时盯 `f2_state`：主力/融资由正转负 = 资金背离预警（即便出口仍正）；
+5. **组合纪律**：多产品分散（transformer/battery/semi/cathode/wind 信号强的池子），
+   单产品不重仓；快周期商品（锂/铜/银）不用本信号；
+6. **后视确认**：财报双正（f3=真扩张）验证"真扩张"，增收不增利（净利负）降级。
 
 ## 5. 别名表再生成流程（fina_mainbz 新报告期）
 
