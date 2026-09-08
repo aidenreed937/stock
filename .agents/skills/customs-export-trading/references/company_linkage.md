@@ -1,6 +1,9 @@
 # 出口商品 → 公司景气度下沉（Company Linkage）
 
-> 2026-09 新增。行业层（L2/L3）区分度不足时，把商品量价拐点下沉到受益公司：
+> 2026-09 新增，本文件为 customs-export-trading skill 的参考。
+> 行业研究方法论见 sibling skill [`customs-industry-prosperity`](../../customs-industry-prosperity/SKILL.md)。
+> 2026-09 由 customs-industry-prosperity 迁入（资产与脚本保持原位，不复制）。
+行业层（L2/L3）区分度不足时，把商品量价拐点下沉到受益公司：
 > **商品拐点（前瞻）→ 暴露度找公司 → 税号段级序列修正 → 公司出口景气排序 → 财报后视验证**。
 > 口径延续 METHODOLOGY_FINAL §2（3MMA yoy 四象限/拐点/二阶导）与 §6.5 桥接规则。
 

@@ -71,7 +71,7 @@
 - **合规**：修复落点是数据层（ETL 清洗），符合"有问题的产品标注问题本身、不删行掩盖"原则
   （§7.5）；金额全程保留，仅剔除不可信数量。
 
-## 公司下沉资产维护（2026-09 新增，见 company_linkage.md）
+## 公司下沉资产维护（2026-09 新增；2026-09 起细节迁至 customs-export-trading/references/company_linkage.md）
 
 - **3 个新文件纳入维护**（不再是"只需维护 2 个文件"的例外，属公司层链路）：
   1. `config/data/customs/company_exposure_map.csv`——109 产品 → 393 公司暴露度；
@@ -96,7 +96,8 @@
 - `backtest_customs_company_signal.py` / `backtest_customs_multi.py` → `customs_signal_backtest*.parquet`
   （transformer 单产品）与 `customs_signal_multi.parquet`（10 产品横向）：研究验证工具，
   数据源为本地行情/指数/资金/财报 curated 表，无配置维护面；
-- 信号口径与回测结论（含普适性局限）固化在 `company_linkage.md` §4b-4d，**改动口径
+- 信号口径与回测结论（含普适性局限）固化在
+  `../customs-export-trading/references/company_linkage.md` §4b-4d，**改动口径
   （确认月数/质量门/三腿阈值）需同步更新该文档并重跑回测**。
 
 ## 桥接强制规则（L2/L3，2026-09 审计 + §6.5 定稿）
