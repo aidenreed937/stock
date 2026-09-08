@@ -212,12 +212,17 @@ class ClsBatteryClient:
                 break
 
             try:
-                raw_text = getattr(response, "text", "")
+                raw_text = getattr(response, "text", None)
+                raw_content = getattr(response, "content", None)
                 if isinstance(raw_text, str) and raw_text.strip():
                     payload = json.loads(raw_text)
-                else:
-                    json_fn = response.json
+                elif isinstance(raw_content, (bytes, bytearray)) and raw_content:
+                    payload = json.loads(raw_content.decode("utf-8"))
+                elif callable(getattr(response, "json", None)):
+                    json_fn: Any = response.json
                     payload = json_fn()
+                else:
+                    payload = {}
             except Exception as exc:  # noqa: BLE001
                 msg = f"财联社电报接口 JSON 解析失败: {exc}"
                 logger.warning(msg)
