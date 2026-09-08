@@ -1,0 +1,20 @@
+# 公司层出口交易信号管线配置（customs_company）
+# 方法论：METHODOLOGY_COMPANY_FINAL.md（暴露度×税号段 → 三层信号评级 A/B/C/D/回避-顶背离）。
+# 产物与既有脚本契约一致（data/analytics/industry/customs_company_*），供抓机会手册消费。
+
+schema_version: 1
+title: "公司层出口交易信号管线（暴露度×税号段 → 三层信号评级）"
+artifact_root: "data/analytics/industry"
+
+# 数据源
+customs_trade_path: "data/curated/industry/customs_trade.parquet"
+exposure_map_path: "config/data/customs/company_exposure_map.csv"
+hs_catalog_path: "config/data/customs/hs_codes_catalog.csv"
+segments_path: "config/data/customs/taxline_segments.csv"
+moneyflow_path: "data/curated/tushare/market=CN/moneyflow"
+margin_path: "data/curated/tushare/market=CN/margin_detail"
+fina_path: "data/curated/tushare/market=CN/fina_indicator"
+
+# 资金腿口径（腿2 资金确认）
+fund_window: 20        # 近 N 交易日
+margin_chg_th: 2.0     # 融资余额 20 日变化率阈值（%）
