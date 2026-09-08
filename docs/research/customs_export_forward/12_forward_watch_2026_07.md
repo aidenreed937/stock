@@ -206,14 +206,13 @@
 ## 7. 复现
 
 ```bash
-# 1. 刷新出口金额面板（基于最新主表，含桥接组合码跳过）
-uv run python .agents/skills/customs-industry-prosperity/scripts/build_customs_export_prosperity.py
-# 2. 刷新出口量价分解面板（L2 组合码跳过、L3 保留单一码）
-uv run python .agents/skills/customs-industry-prosperity/scripts/build_customs_l2_volume_price.py
-# 3. 刷新商品级量价拐点面板
-uv run python .agents/skills/customs-industry-prosperity/scripts/build_customs_product_volume_price.py
-# 4. 观察总表（L2/L3 双层）
-uv run python .agents/skills/customs-industry-prosperity/scripts/build_customs_forward_watch.py
-#    产物: data/analytics/industry/customs_forward_watch_l2.parquet
+# 月度 SOP 四步一键（金额面板 → 量价分解 → 商品拐点 → 观察表 + Manifest；
+# 内部按 §6.5 桥接规则执行组合码跳过与 L3 归属校验）
+uv run python -m stock_cli.customs_prosperity
+#    产物: data/analytics/industry/customs_export_prosperity_panel.parquet
+#          data/analytics/industry/customs_l2_volume_price_monthly.parquet
+#          data/analytics/industry/customs_product_volume_price.parquet
+#          data/analytics/industry/customs_forward_watch_l2.parquet
 #          data/analytics/industry/customs_forward_watch_l3.parquet
+#          data/analytics/industry/customs_prosperity_manifest.json
 ```

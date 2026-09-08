@@ -185,7 +185,7 @@ data/curated/industry/customs_trade.parquet（target_l1/l2/l3_* 映射列）
 5. **空映射行**：L2/L3 映射任一为空的产品行，行业级面板中剔除并在报告标注
    （catalog 当前 L3 无空值，规则作为防御）。
 6. **复用校验函数**：`stock_data.fetcher.industry.customs.parsers.catalog` 或
-   `.agents/skills/customs-industry-prosperity/scripts/build_customs_export_prosperity.py`
+   `src/stock_analytics/pipelines/customs_prosperity/product_panel.validate_bridge`
    的 bridge/join 逻辑不在新脚本中复制，统一 import（防口径漂移）。
 
 ---
@@ -194,13 +194,13 @@ data/curated/industry/customs_trade.parquet（target_l1/l2/l3_* 映射列）
 
 ```
 raw (UN_Comtrade 2016-2024 + GACC 2025+)  →  customs_trade 黄金表（含产品→L1/L2/L3 映射）
-      │ build_customs_export_prosperity.py      │ build_customs_l2_volume_price.py
+      │ customs_prosperity 管线（uv run python -m stock_cli.customs_prosperity）
       ▼ (金额面板, hs8/L3/L2)                   ▼ (量价分解面板, L2/L3)
    customs_export_prosperity_panel.parquet   customs_l2_volume_price_monthly.parquet
-      │ build_customs_product_volume_price.py（新增：商品级量价拐点）
-      ▼
+      │ (商品级量价拐点)                          │
+      ▼                                        ▼
    customs_product_volume_price.parquet（product_key 粒度：量价三yoy + 驱动 + 拐点）
-      │ build_customs_forward_watch.py（新增：观察表生成，12 号报告脚本化）
+      │ (观察表生成，12 号报告脚本化)
       ▼
    customs_forward_watch_l2.parquet / _l3.parquet（金额/量/价/驱动/分位/财报yoy/一致率）
       │
@@ -208,13 +208,14 @@ raw (UN_Comtrade 2016-2024 + GACC 2025+)  →  customs_trade 黄金表（含产�
    月度前瞻观察报告（docs/research/customs_export_forward/12_forward_watch_<yyyymm>.md）
 ```
 
-| 脚本 | 职责 | 输出 |
+| 管线模块 | 职责 | 输出 |
 | :--- | :--- | :--- |
-| `build_customs_export_prosperity.py`（已有） | 金额面板：hs8 桥接、月序补全、3MMA yoy | `customs_export_prosperity_panel.parquet` |
-| `build_customs_l2_volume_price.py`（已有） | 量价分解：单位归一、四象限驱动、L2/L3 | `customs_l2_volume_price_monthly.parquet` |
-| `build_customs_product_volume_price.py`（新增） | **商品级量价拐点**：product 粒度三 yoy + 驱动 + 拐点/二阶导 + 行业映射 | `customs_product_volume_price.parquet` |
-| `build_customs_forward_watch.py`（新增） | 观察表：金额/量/价/驱动/36 月分位/财报 yoy/一致率分级，L2 与 L3 双层 | `customs_forward_watch_l2(_l3).parquet` |
-| `three_leg_entry_and.py`（已有） | 三腿 AND 入场前置（L2），无前视窗口 | 共振清单 |
+| `pipelines/customs_prosperity/amount_panel.py` | 金额面板：hs8 桥接、月序补全、3MMA yoy | `customs_export_prosperity_panel.parquet` |
+| `pipelines/customs_prosperity/volume_price.py` | 量价分解：单位归一、四象限驱动、L2/L3 | `customs_l2_volume_price_monthly.parquet` |
+| `pipelines/customs_prosperity/product_panel.py` | **商品级量价拐点**：product 粒度三 yoy + 驱动 + 拐点/二阶导 + 行业映射（含桥接校验） | `customs_product_volume_price.parquet` |
+| `pipelines/customs_prosperity/forward_watch.py` | 观察表：金额/量/价/驱动/36 月分位/财报 yoy/一致率分级，L2 与 L3 双层 | `customs_forward_watch_l2(_l3).parquet` |
+| `pipelines/customs_prosperity/pipeline.py` | 月度 SOP 编排 + Manifest（水位/桥接审计） | `customs_prosperity_manifest.json` |
+| `three_leg_entry_and.py`（skill scripts） | 三腿 AND 入场前置（L2），无前视窗口 | 共振清单 |
 
 ---
 
@@ -245,11 +246,9 @@ raw (UN_Comtrade 2016-2024 + GACC 2025+)  →  customs_trade 黄金表（含产�
 
 ```
 1. 更新 raw（GACC/Comtrade 当月）→ 刷 customs_trade 黄金表（data-pipeline skill）
-2. uv run python .agents/skills/customs-industry-prosperity/scripts/build_customs_export_prosperity.py    # 金额面板（含桥接校验）
-3. uv run python .agents/skills/customs-industry-prosperity/scripts/build_customs_l2_volume_price.py      # 量价分解面板（含单位归一）
-4. uv run python .agents/skills/customs-industry-prosperity/scripts/build_customs_product_volume_price.py # 商品级量价拐点（新增）
-5. uv run python .agents/skills/customs-industry-prosperity/scripts/build_customs_forward_watch.py        # L2/L3 观察表（新增）
-6. 基于观察表更新 docs/research/customs_export_forward/12_forward_watch_<最新月>.md
+2. uv run python -m stock_cli.customs_prosperity   # 月度 SOP 四步（金额→量价→商品拐点→观察表 + Manifest）
+3. 检查 Manifest（桥接审计：L3 归属一致、组合码已跳过；数据水位 2026-07）
+4. 基于观察表更新 docs/research/customs_export_forward/12_forward_watch_<最新月>.md
    （四阶段定位、量价驱动分层、拐点预警卡）
 ```
 
@@ -266,3 +265,37 @@ raw (UN_Comtrade 2016-2024 + GACC 2025+)  →  customs_trade 黄金表（含产�
 | L3 只作分化观察 | L3 三腿超额 −1.80%（09 文档 §3.6） |
 | 出口持续 → 趋势牛 | 传导链 107 例：持续组 12m +14.5% vs 不持续 +0.6%（10 文档） |
 | 出口前瞻的是营收方向 | 光伏：出口 +6.3% 财报仍 −12.2%，出口≠盈利≠股价（00 文档） |
+
+---
+
+## 10. 外部佐证（2026-09 检索，外部背景非本地实证）
+
+> **信息分级**：本节为外部研究佐证（web 检索，2026-09），用于交叉印证本方法论
+> 的机制与时滞方向；口径以本地可复现实证（§1-§9）为准，外部数字仅作参照，
+> 不与本地实证混同。来源与时效见各条目。
+
+传导链经济规律（外需订单 → 工厂生产 → 出口 → 公司营收 → 利润）的外部实证：
+
+| 环节 | 外部证据 | 来源（2026-09 检索） |
+| :-- | :-- | :-- |
+| 订单 → 出口（前置期） | 外销订单至货物出口通常 1-3 个月；外销订单（国内生产部分）领先出口最相关期数 1 个月、相关系数 0.97 | [台湾行政院经贸研究报告《出口领先指标初探》](https://ws.ndc.gov.tw/Download.ashx?icon=.pdf&n=MeiHuueBo%2BWHuuWPo%2BmgmOWFiOaMh%2BaomeWIneaOoi5wZGY%3D&u=LzAwMS9hZG1pbmlzdHJhdG9yLzEwL3JlbGZpbGUvMC8xMDczNC9iY2EyODU1MS1hNWIzLTQxNGYtYTVmOS0wNTEyZTBiZGM5ZDAucGRm) |
+| 订单 → 出口（机制） | 海外新订单须先被处理（orders must be processed first）→ 领先出口；出口额月频发布远早于季度国民账户（约滞后 2 个月） | [ifo Export Climate, CESifo Forum 2019](https://www.ifo.de/DocDL/CESifo-Forum-2019-4-grimme-lehmann-ifo-export-climate-december.pdf) |
+| 生产 → 出口 | 信息电子工业产出指数领先出口 1-3 个月（相关 0.90）；SEMI 接单出货比领先约 4-7 个月 | 同上（台湾经济研究） |
+| 出口领先链 | 韩国出口领先中国出口；集装箱吞吐量（周频）领先出口约 1 个月以内；港口 AIS 日频作辅助；运价滞后于出口（先报关后定价） | [开源证券《有效跟踪出口的方法探索》](https://www.baogao.com)（何宁/郭晓彬，S0790522110002） |
+| 出口 → 企业营收 | 海外营收占比越高行业，A 股盈利增速高于规上工业利润增速越多；出口链公司海外营收同比 9.9% vs 全 A 非金融 −0.5% | [财通证券《上市公司的盈利亮点》](https://www.sgpjbg.com.cn/baogao/1124083.html)（2026-02）；[出口链海内外业务相对优势](https://www.baogao.com/jigou/1427948.html)（2024-09） |
+| 营收 → 利润 | 工业企业营收与 PPI 同步；利润与营收约 1-2 个月内同步；利润 → 库存约 3 个季度 | [东方财富《补库周期开始了吗？》](https://max.book118.com/html/2026/0702/6213011222012153.shtm)（2026-01） |
+| 出口 → 库存（旁证时滞） | 出口回升一般领先库存回升约 1-2 个季度 | 同上 |
+| 盈利兑现（2026 实证） | 2026 中报：中际旭创海外营收 +209.9%、净利 +241.7%；电子工业企业利润上半年 +96.9% | [人民日报海外版：A股盈利](https://peoplesdaily.pdnews.cn/business/er/30053001976)（2026-08）；[SSE 2026 中报综述](https://english.sse.com.cn/news/newsrelease/c/c_20260904_10831295.shtml)（2026-09） |
+
+**与本地口径的对照**（一致性与差异）：
+1. **方向一致**：外部"订单→出口 1-3 个月、生产→出口 1-3 个月、出口→补库 1-2 季度、
+   出口→营收→利润"链条逐步确认，支持 §1 核心命题（出口是行业基本面前瞻代理）；
+2. **量级不同（不冲突）**：外部测的是到"生产/库存"端的较短时滞（1-3 个月至 1-2 季度）；
+   本地测的是到"财报 TTM 拐点"（3-13 个月、中位 3-9 个月）——后者叠加了季度披露 + TTM
+   平滑，故更长。两者互补：本地口径更严格（直达财报）；
+3. **量价关系**：开源证券对运价滞后性的解释（先报关后定价）支持"量领先、价确认"；
+   台湾研究显示生产量（产出指数）领先出口，支持"量先动"；
+4. **链可断**：财通/中信"温差"（盈利改善依赖流动性）、出口强但出口企业资本开支骤降
+   （12.7%→2.0%）是"链条断在信心→扩产/风格"的旁证，与 §5 反例、10 文档 §5 边界一致；
+5. **差异注意**：外部"新出口订单 PMI 与出口无稳定领先滞后关系"（开源证券）——本地以
+   海关黄金表实读为准而非 PMI，方向正确。

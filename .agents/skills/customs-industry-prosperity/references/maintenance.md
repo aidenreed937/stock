@@ -71,7 +71,7 @@
 - **合规**：修复落点是数据层（ETL 清洗），符合"有问题的产品标注问题本身、不删行掩盖"原则
   （§7.5）；金额全程保留，仅剔除不可信数量。
 
-## 公司下沉资产维护（2026-09 新增；2026-09 起细节迁至 customs-export-trading/references/company_linkage.md）
+## 公司下沉资产维护（2026-09 新增；2026-09 起细节迁至 customs-export-trading 操作手册与 docs 方法论定稿）
 
 - **3 个新文件纳入维护**（不再是"只需维护 2 个文件"的例外，属公司层链路）：
   1. `config/data/customs/company_exposure_map.csv`——109 产品 → 393 公司暴露度；
@@ -97,7 +97,8 @@
   （transformer 单产品）与 `customs_signal_multi.parquet`（10 产品横向）：研究验证工具，
   数据源为本地行情/指数/资金/财报 curated 表，无配置维护面；
 - 信号口径与回测结论（含普适性局限）固化在
-  `../customs-export-trading/references/company_linkage.md` §4b-4d，**改动口径
+  `docs/research/customs_export_forward/METHODOLOGY_COMPANY_FINAL.md` §5-6、§8
+  （操作细节见 `../../customs-export-trading/references/company_linkage.md`），**改动口径
   （确认月数/质量门/三腿阈值）需同步更新该文档并重跑回测**。
 
 ## 桥接强制规则（L2/L3，2026-09 审计 + §6.5 定稿）
@@ -108,5 +109,10 @@
 - **组合码（`;` 多映射行）在行业聚合中跳过**（`801033.SI;801034.SI` 化学原料;化学制品、
   `tio2` 钛白粉，主表 786 行），报告披露被跳过产品与规模；
 - **空映射行**：L2/L3 映射任一为空的产品行，行业级面板剔除并在报告标注（当前 L3 无空值，防御规则）；
-- **复用校验函数**：`stock_data.fetcher.industry.customs.parsers.catalog` 或 `build_customs_export_prosperity.py` 的 bridge/join 逻辑不在新脚本中复制，统一 import（防口径漂移）；
-- 审计基线：L3 73/73 存在、归属 109/109 一致（curated hs8 出口层）；L3 归属断言**单点内置于 `build_customs_product_volume_price.py`**（parent_code == L2 码，不一致即报错，不静默产出），上游金额/量价/观察表面板均经其校验；新增脚本沿用该口径（§6.5 规则 6：校验逻辑不在脚本间复制，统一复用）。
+- **复用校验函数**：`stock_data.fetcher.industry.customs.parsers.catalog` 或
+  `src/stock_analytics/pipelines/customs_prosperity/product_panel.validate_bridge`
+  的 bridge/join 逻辑不在新脚本中复制，统一 import（防口径漂移）；
+- 审计基线：L3 73/73 存在、归属 109/109 一致（curated hs8 出口层）；L3 归属断言**单点内置于
+  `pipelines/customs_prosperity/product_panel.validate_bridge`**（parent_code == L2 码，
+  不一致即报错，不静默产出），上游金额/量价/观察表面板均经其校验；新增脚本沿用该口径
+  （§6.5 规则 6：校验逻辑不在脚本间复制，统一复用）。

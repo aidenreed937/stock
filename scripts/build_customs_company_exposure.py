@@ -15,7 +15,7 @@
   3. 段级/产品级月度聚合：金额全量；数量仅段内已知单位唯一时加总（否则置空）；
   4. 补全月序（2016-01~末月）重算 3MMA 金额/量/价(ASP) yoy、驱动四象限、
      拐点（金额 yoy 符号翻转）与二阶导（量 yoy 见顶回落）——与
-     build_customs_product_volume_price._derive 同口径；
+     stock_analytics.pipelines.customs_prosperity.product_panel._derive 同口径；
   5. 公司观察表：每 (company, product, 绑定段) 一行，空段绑定=产品级；
      附产品级 yoy 对照列（段-产品差即"产品内部分化"）。
 
@@ -51,8 +51,9 @@ DEFAULT_SEGMENTS = Path("config/data/customs/taxline_segments.csv")
 def load_catalog_hs_codes(catalog_path: Path, golden: pl.DataFrame) -> dict[str, list[str]]:
     """catalog 产品 → hs 码集合（8 位行优先；纯 6 位产品取其 8 位子码）。
 
-    口径与 build_customs_product_volume_price 一致：聚合用黄金表 hs_level=8 行，
-    6 位父码经 hs_parent_code 匹配其 8 位子码（如 zinc 790111 → 790111xx）。
+    口径与 stock_analytics.pipelines.customs_prosperity.product_panel 一致：
+    聚合用黄金表 hs_level=8 行，6 位父码经 hs_parent_code 匹配其 8 位子码
+    （如 zinc 790111 → 790111xx）。
 
     两个数据坑（2026-09 修复）：
     - 前导 0：catalog 6 位码 030323 按数值列读取会丢前导 0（变 30323），与

@@ -1,7 +1,8 @@
 #!/usr/bin/env python3
 """公司级三层信号合成：出口前瞻 × 资金确认 × 财报真扩张。
 
-把出口景气研究链升级为可交易信号（2026-09，配合 company_linkage.md §1b）：
+把出口景气研究链升级为可交易信号（2026-09，配合
+docs/research/customs_export_forward/METHODOLOGY_COMPANY_FINAL.md §3 股价验证）：
 - **腿1 出口前瞻**：公司段级出口 3MMA yoy + 驱动质量 + 拐点/二阶导
   （来自 build_customs_company_exposure.py 的公司观察表）；
 - **腿2 资金确认**：个股双资金信号——主力净流入（tushare moneyflow，近 20

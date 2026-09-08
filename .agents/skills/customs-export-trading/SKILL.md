@@ -90,6 +90,10 @@ cathode_material（+15.7% 全胜）、transformer、aluminum_unwrought；wind_tu
 
 ## 按需加载的参考
 
-- [`references/company_linkage.md`](references/company_linkage.md)——全部细节：实证锚点、
-  股价验证（2020-2026 受益公司独立大盘）、资产清单与维护边界、三层信号口径、
-  回测两版与多产品普适性表、别名表再生成流程。
+- **方法论权威（唯一口径）**：
+  [`docs/research/customs_export_forward/METHODOLOGY_COMPANY_FINAL.md`](../../../docs/research/customs_export_forward/METHODOLOGY_COMPANY_FINAL.md)
+  ——为什么下沉、股价验证（2020-2026 受益公司独立大盘）、判读口径、三层信号与评级、
+  择时回测两版与多产品普适性表、排除清单；
+- **操作手册**：
+  [`references/company_linkage.md`](references/company_linkage.md)——资产清单与维护边界、
+  命令与产物 schema、抓机会手册、别名表再生成流程（方法论细节指向权威文档，不重复）。

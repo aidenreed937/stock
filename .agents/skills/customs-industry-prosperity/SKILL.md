@@ -12,19 +12,17 @@ description: 申万行业 × 海关出口数据前瞻景气研究方法技能。
 ## 常用命令速查 (CLI Cheat Sheet)
 
 ```bash
-# 1. 金额面板（hs8 桥接 + 月序补全 + 3MMA yoy，含桥接校验）
-uv run python .agents/skills/customs-industry-prosperity/scripts/build_customs_export_prosperity.py
+# 月度 SOP 四步（金额面板 → 量价分解 → 商品拐点 → 观察表）一键执行
+# 产物 data/analytics/industry/customs_*.parquet + Manifest，YAML 配置见
+# config/analytics/customs_prosperity.yaml
+uv run python -m stock_cli.customs_prosperity
 
-# 2. 量价分解面板（单位归一 + 四象限驱动 + L2/L3）
-uv run python .agents/skills/customs-industry-prosperity/scripts/build_customs_l2_volume_price.py
+# 可选参数：
+uv run python -m stock_cli.customs_prosperity --config config/analytics/customs_prosperity.yaml
+uv run python -m stock_cli.customs_prosperity --skip-product   # 仅金额/量价/观察表
+uv run python -m stock_cli.customs_prosperity --skip-forward  # 仅三个面板（观察表依赖前两者产物）
 
-# 3. 商品级量价拐点面板（product 粒度三 yoy + 驱动 + 拐点/二阶导 + 行业映射）
-uv run python .agents/skills/customs-industry-prosperity/scripts/build_customs_product_volume_price.py
-
-# 4. L2/L3 观察表（金额/量/价/驱动/36 月分位/财报 yoy/一致率分级）
-uv run python .agents/skills/customs-industry-prosperity/scripts/build_customs_forward_watch.py
-
-# 5. 三腿 AND 入场前置（L2，无前视窗口）——可选加载，非本 skill 主流程
+# 三腿 AND 入场前置（L2，无前视窗口）——可选加载，非本 skill 主流程
 uv run python .agents/skills/customs-industry-prosperity/scripts/three_leg_entry_and.py --level L2
 ```
 
@@ -36,7 +34,9 @@ uv run python .agents/skills/customs-industry-prosperity/scripts/three_leg_entry
 
 1. **刷海关黄金表**：GACC/Comtrade 当月 raw 更新 → `customs_trade.parquet`
    （见 data-pipeline skill，不在此重复）；
-2. **跑 4 个 build 脚本**（命令速查 1-4），顺序固定：金额 → 量价 → 商品拐点 → 观察表；
+2. **跑月度管线**（命令速查 1）：`uv run python -m stock_cli.customs_prosperity`
+   ——内部按固定顺序执行金额 → 量价 → 商品拐点 → 观察表，并校验桥接审计
+   （L3 归属一致、组合码跳过）后产出 Manifest；
 3. **读观察表判景气**（L2 判景气，L3 看分化）：
    - 四象限：量价齐升 ✓ / 量驱动 / 价驱动 ⚠ / 双弱 ✗；
    - 二阶导：量 yoy 见顶回落 = 顶部前兆；量回落 × 财报仍加速 = 最危险组合；
@@ -46,7 +46,7 @@ uv run python .agents/skills/customs-industry-prosperity/scripts/three_leg_entry
    （四阶段定位表、量价驱动分层、拐点预警卡；格式与必含要素见
    [`references/methodology.md`](references/methodology.md)，样例
    [`12_forward_watch_2026_07.md`](../../../docs/research/customs_export_forward/12_forward_watch_2026_07.md)）；
-5. **验证**：桥接审计断言通过（L3 归属一致、组合码已跳过）再落报告；
+5. **验证**：Manifest 桥接审计通过（L3 归属一致、组合码已跳过）再落报告；
 6. **（可选）公司层交易信号**：行业观察判景气后如需下沉受益公司与择时，
    见独立 skill [`customs-export-trading`](../customs-export-trading/SKILL.md)
    （公司段级观察表 → 三层信号评级 → 分批建仓/景气松动减仓 → 回测）。
@@ -57,4 +57,7 @@ uv run python .agents/skills/customs-industry-prosperity/scripts/three_leg_entry
 - [`references/data_basics.md`](references/data_basics.md)——数据底座黄金表与面板路径清单、财报/维度黄金表；
 - [`references/maintenance.md`](references/maintenance.md)——维护边界（2 文件 / 645 码 / 73 断点）、已知数据质量限制、税则切换解冻流程、品目污染修复防复发、桥接强制规则与审计基线；
 - [`references/global_resonance.md`](references/global_resonance.md)——全球资本开支共振辅助（通信设备光模块歧义结构定性，6 信号表 + 命令）；
-- 公司层资产与信号细节见 [`customs-export-trading/references/company_linkage.md`](../customs-export-trading/references/company_linkage.md)（2026-09 起迁出）。
+- 公司层交易信号方法论权威：
+  [`docs/research/customs_export_forward/METHODOLOGY_COMPANY_FINAL.md`](../../../docs/research/customs_export_forward/METHODOLOGY_COMPANY_FINAL.md)
+  （2026-09 起定稿）；公司层操作手册（资产/命令/维护）见
+  [`customs-export-trading/references/company_linkage.md`](../customs-export-trading/references/company_linkage.md)。
