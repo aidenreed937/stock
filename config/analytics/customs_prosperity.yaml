@@ -1,0 +1,72 @@
+# 海关出口景气研究管线配置（customs_prosperity）
+# 月度 SOP：金额面板 → 量价分解 → 商品拐点 → 观察表（METHODOLOGY_FINAL §8）。
+# 产物与既有脚本路径一致（data/analytics/industry/customs_*.parquet），
+# 供 three_leg_entry_and 与公司层管线（customs-export-trading）消费。
+
+schema_version: 1
+title: "海关出口景气研究管线（金额面板→量价分解→商品拐点→观察表）"
+artifact_root: "data/analytics/industry"
+
+# 数据源（黄金事实表与配置类资产）
+customs_trade_path: "data/curated/industry/customs_trade.parquet"
+hs_catalog_path: "config/data/customs/hs_codes_catalog.csv"
+
+# L2 聚合跳过组合码（METHODOLOGY §6.5 强制规则 4：`;` 多映射行不并入单行业）
+skip_l2:
+  - "801033.SI;801034.SI"
+
+# 行业聚合层量价置空的伪影产品（METHODOLOGY §7.5：单代码 ASP 伪影，
+# 量价 yoy 在行业层不可用，金额保留；商品级面板保留原始量价供诊断）
+skip_vp:
+  - "hydrogen_electrolyzer"
+
+# 财报后视验证数据源（data-catalog §1.3 口径：官方优先、派生兜底）
+l2_financial_datasets:
+  - "sw_2021_l2_fs_non_financial"
+  - "sw_2021_l2_fs_bank"
+  - "sw_2021_l2_fs_security"
+  - "sw_2021_l2_fs_insurance"
+l3_financial_dataset: "sw_2021_l3_fs_non_financial"
+
+# 一致率分级（02 文档口径，仅 L2）：idx_code -> [一致率, 分级]
+consistency_table:
+  "801738.SI": [1.00, "A"]
+  "801963.SI": [1.00, "A"]
+  "801735.SI": [0.92, "A"]
+  "801952.SI": [0.92, "A"]
+  "801737.SI": [0.92, "A"]
+  "801081.SI": [0.85, "A"]
+  "801095.SI": [0.77, "B"]
+  "801153.SI": [0.77, "B"]
+  "801101.SI": [0.77, "B"]
+  "801951.SI": [0.77, "B"]
+  "801112.SI": [0.77, "B"]
+  "801881.SI": [0.77, "B"]
+  "801093.SI": [0.73, "B"]
+  "801072.SI": [0.73, "B"]
+  "801044.SI": [0.69, "B"]
+  "801038.SI": [0.69, "B"]
+  "801151.SI": [0.69, "B"]
+  "801744.SI": [0.69, "B"]
+  "801053.SI": [0.65, "B"]
+  "801713.SI": [0.65, "B"]
+  "801733.SI": [0.65, "B"]
+  "801155.SI": [0.65, "B"]
+  "801111.SI": [0.65, "B"]
+  "801083.SI": [0.62, "B"]
+  "801132.SI": [0.62, "B"]
+  "801033.SI": [0.62, "B"]
+  "801096.SI": [0.62, "B"]
+  "801032.SI": [0.62, "B"]
+  "801131.SI": [0.58, "C"]
+  "801015.SI": [0.58, "C"]
+  "801712.SI": [0.54, "C"]
+  "801113.SI": [0.54, "C"]
+  "801077.SI": [0.46, "C"]
+  "801055.SI": [0.46, "C"]
+  "801085.SI": [0.42, "C"]
+  "801102.SI": [0.42, "C"]
+  "801142.SI": [0.35, "C"]
+  "801736.SI": [0.31, "C"]
+  "801045.SI": [0.23, "C"]
+  "801114.SI": [0.38, "C"]
