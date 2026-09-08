@@ -63,7 +63,7 @@
 
 ## 5. 三层信号与评级（唯一口径）
 
-把公司观察表与三腿信号合并（`build_customs_company_signal.py` → `customs_company_signal_latest.csv`，
+把公司观察表与三腿信号合并（`stock_cli.customs_company` → `customs_company_signal_latest.csv`，
 402 行/341 家）：`f1_state`（出口段级）/ `f2_state`（资金）/ `f3_state`（财报）+
 `rating`（A强机会/B确认中/C兑现中/D前瞻观察/观望/回避）+ `risk_flag`（顶背离⚠）。
 
@@ -117,9 +117,13 @@
 - **数据资产**（共享，不复制）：全部在 `config/data/customs/` 与
   `src/stock_data/fetcher/industry/customs/parsers/company_exposure.py`，清单与维护边界见
   skill 操作手册 `customs-export-trading/references/company_linkage.md` §1、§5；
-- **脚本链路**（研究工具，消费本地 curated 表）：`calibrate_company_exposure.py`（暴露度
-  校准）→ `build_customs_company_exposure.py`（公司观察表）→ `build_customs_company_signal.py`
-  （三层信号）→ `backtest_customs_company_signal.py` / `backtest_customs_multi.py`（回测验证）；
+- **管线链路**（`stock_cli.customs_company`，月度抓机会例行）：公司观察表（暴露度×税号段）→
+  三层信号合成，产物 `customs_company_exposure.parquet/_latest.csv` +
+  `customs_company_signal.parquet/_latest.csv` + Manifest；实现见
+  `stock_analytics/pipelines/customs_company/`（exposure_panel + signal），YAML 配置
+  `config/analytics/customs_company.yaml`；
+- **研究工具**（消费本地 curated 表，非例行）：`calibrate_company_exposure.py`（暴露度校准）→
+  `backtest_customs_company_signal.py` / `backtest_customs_multi.py`（回测验证）；
   产物路径与列定义见 skill 操作手册 §2；
 - **执行节奏**：月度约 8 月下旬随行业 SOP 后执行，流程见 skill 操作手册 §3（抓机会手册）。
 

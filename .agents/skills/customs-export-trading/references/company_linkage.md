@@ -27,11 +27,10 @@
 # 暴露度校准（fina_mainbz type=P 主营构成 → exposure；dry-run 先看差异）
 uv run python scripts/calibrate_company_exposure.py --period 2026-06-30 --apply
 
-# 公司级出口景气观察表（段级聚合 + 3MMA yoy + 驱动/拐点 + 产品级对照）
-uv run python scripts/build_customs_company_exposure.py
-
-# 公司三层信号（出口前瞻 × 资金确认 × 财报真扩张）→ A/B/C/D/回避 评级
-uv run python scripts/build_customs_company_signal.py
+# 公司观察表 + 三层信号（月度抓机会）一键执行（管线路径见
+# src/stock_analytics/pipelines/customs_company/，配置 config/analytics/customs_company.yaml）
+uv run python -m stock_cli.customs_company
+#    --skip-signal 仅公司观察表
 
 # 择时回测（分批建仓 / 景气松动分批减仓 → 胜率/持有收益）
 uv run python scripts/backtest_customs_company_signal.py --quality-gate
@@ -40,12 +39,14 @@ uv run python scripts/backtest_customs_company_signal.py --quality-gate
 uv run python scripts/backtest_customs_multi.py --detail
 ```
 
-`build_customs_company_exposure.py` 输出：
+`stock_cli.customs_company` 输出：
 - `data/analytics/industry/customs_company_exposure.parquet`——全序列（key × 月，3MMA yoy/驱动/拐点）；
 - `data/analytics/industry/customs_company_exposure_latest.csv`——最新月公司快照：
   `company_name / stock_code / product_key / exposure / bind_segment / segment_name /
   value_yoy_3mma / volume_yoy_3mma / price_yoy_3mma / 驱动类型 / 拐点 / 二阶导 /
-  product_value_yoy / segment_minus_product`。
+  product_value_yoy / segment_minus_product`；
+- `customs_company_signal.parquet / _latest.csv`——三层信号（f1/f2/f3_state + rating/risk_flag）；
+- `customs_company_manifest.json`——产物与数据水位。
 
 口径要点：
 - 聚合仅用黄金表 `trade_direction=export` + `hs_level=8` 行；
@@ -56,8 +57,8 @@ uv run python scripts/backtest_customs_multi.py --detail
 
 ## 3. 抓机会手册（月度执行）
 
-1. **8 月下旬**：刷黄金表 → 跑行业 4 个 build（见 customs-industry-prosperity SOP 1-4）
-   → `build_customs_company_exposure.py` → `build_customs_company_signal.py`；
+1. **8 月下旬**：刷黄金表 → 跑行业管线（见 customs-industry-prosperity SOP）
+   → `uv run python -m stock_cli.customs_company`（公司观察表 + 三层信号）；
 2. **选池**：`rating=="A强机会"`（三腿共振）优先；`B确认中` 做前瞻仓；
    `risk_flag=="顶背离⚠"` 一律回避（出口仍强但资金撤 = 利好兑现）；
 3. **建仓**：产品出口 yoy 连续 2 月 >0 且量价齐升/量驱动 → 分 3 批建仓（月度 1/3）；

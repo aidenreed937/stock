@@ -81,18 +81,21 @@
   3. `config/data/customs/bz_item_alias_map.csv`——LLM 语义别名表（1395 条），`bz_item` → product_key；
 - **别名表再生成**：fina_mainbz 新报告期 → 提取每公司最新期 bz_item → LLM 批量归一化 →
   合并校验（product_key 必须为 catalog 键、条数全覆盖）→ 落盘后重跑
-  `scripts/calibrate_company_exposure.py` 与 `scripts/build_customs_company_exposure.py`；
+  `scripts/calibrate_company_exposure.py`（exposure 校准）与 `stock_cli.customs_company`
+  （公司观察表管线）；
 - **段引用非法即报错**：公司 `taxline_segment` 不在段定义表时 loader 直接 ValueError，防手误静默失效；
-- **消费方唯一**：`calibrate_company_exposure.py`（exposure 校准）+ `build_customs_company_exposure.py`
-  （公司观察表）——改动任一 CSV 后重跑两者验证，不静默漂移；
+- **消费方唯一**：`scripts/calibrate_company_exposure.py`（exposure 校准）+
+  `src/stock_analytics/pipelines/customs_company/`（公司观察表管线）——改动任一 CSV 后
+  重跑两者验证，不静默漂移；
 - 产物路径：`data/analytics/industry/customs_company_exposure.parquet`（全序列）/
   `customs_company_exposure_latest.csv`（最新月公司快照，含 segment_minus_product 区分度列）。
 
 ### 信号/回测脚本（2026-09 新增，消费公司观察表产物）
 
-- `build_customs_company_signal.py` → `customs_company_signal_latest.csv`：三层信号
+- `stock_cli.customs_company`（管线）→ `customs_company_signal_latest.csv`：三层信号
   （出口段级 × 资金 moneyflow/margin_detail × 财报 fina_indicator）→ A/B/C/D/回避 评级；
-  输入依赖公司观察表 CSV，改了观察表口径需重跑；
+  输入依赖公司观察表 CSV，改了观察表口径需重跑；实现见
+  `src/stock_analytics/pipelines/customs_company/signal.py`；
 - `backtest_customs_company_signal.py` / `backtest_customs_multi.py` → `customs_signal_backtest*.parquet`
   （transformer 单产品）与 `customs_signal_multi.parquet`（10 产品横向）：研究验证工具，
   数据源为本地行情/指数/资金/财报 curated 表，无配置维护面；

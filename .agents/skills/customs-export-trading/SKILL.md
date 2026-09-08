@@ -19,11 +19,11 @@ METHODOLOGY_FINAL §2（3MMA yoy 四象限/拐点/二阶导）与 §6.5 桥接�
 # 1. 暴露度校准（fina_mainbz 主营构成 → exposure；先 dry-run 看差异）
 uv run python scripts/calibrate_company_exposure.py --period 2026-06-30 --apply
 
-# 2. 公司级出口景气观察表（段级聚合 + 3MMA yoy + 驱动/拐点 + 产品级对照）
-uv run python scripts/build_customs_company_exposure.py
-
-# 3. 公司三层信号（出口前瞻 × 资金确认 × 财报真扩张 → A/B/C/D/回避 评级）
-uv run python scripts/build_customs_company_signal.py
+# 2-3. 公司观察表 + 三层信号（月度抓机会）一键执行
+#    产物 data/analytics/industry/customs_company_*.parquet/csv + Manifest，
+#    YAML 配置见 config/analytics/customs_company.yaml
+uv run python -m stock_cli.customs_company
+#    可选：--skip-signal 仅公司观察表
 
 # 4. 择时回测（分批建仓 3 批 / 见顶回落减半 / yoy≤0 清仓 → 胜率与持有收益）
 uv run python scripts/backtest_customs_company_signal.py --quality-gate
