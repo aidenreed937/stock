@@ -1,0 +1,15 @@
+product_key,segment_key,segment_name,hs_codes,description
+transformer,transformer_small,中小容量(≤650kVA),85042100,额定容量≤650kVA液体介质变压器
+transformer,transformer_mid,中容量(650kVA-10MVA),85042200,650kVA<额定容量≤10000kVA液体介质变压器
+transformer,transformer_main,主力段(10-220MVA),85042311,10MVA<额定容量<220MVA液体介质变压器
+transformer,transformer_ultra,特高压大容量(≥220MVA),85042312;85042313;85042321;85042329,220MVA及以上液体介质变压器
+semiconductor_equipment,semi_fab_wafer,晶圆制造设备,84861010;84861020;84861030;84861040;84861090,制造晶圆或硅片的机器及装置
+semiconductor_equipment,semi_fab_device,器件制造设备,84862010;84862021;84862022;84862029;84862031;84862039;84862041;84862049;84862050;84862090,制造半导体器件或集成电路的机器及装置
+semiconductor_equipment,semi_parts,设备零件及附件,84869010;84869020;84869091;84869099,半导体设备零件及附件
+lithium_chemicals,lithium_carbonate,碳酸锂,28369100,碳酸锂
+lithium_chemicals,lithium_hydroxide,氢氧化锂,28252010,氢氧化锂
+lithium_chemicals,lithium_other,其他锂化合物,28252090,未列名锂的氧化物及氢氧化物
+silver,silver_unwrought,未锻轧银,71069110;71069190,未锻轧白银
+silver,silver_wrought,银制品半成品,71069210;71069290,银粉/银制品
+cathode_material,cathode_ncm,三元正极(NCM),28419000;28429011;28429019;28429020;28429030;28429050;28429060;28429090,锂镍钴锰氧化物及金属酸盐
+cathode_material,cathode_lfp,磷酸铁锂正极(LFP),28429040,磷酸铁锂

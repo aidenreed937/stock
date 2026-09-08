@@ -9,6 +9,17 @@ from stock_data.fetcher.industry.customs.parsers.catalog import (
     parse_comtrade_items,
     parse_raw_csv_rows,
 )
+from stock_data.fetcher.industry.customs.parsers.company_exposure import (
+    ALLOWED_EMPTY_PRODUCTS,
+    COMPANY_EXPOSURE_REQUIRED_COLUMNS,
+    TAXLINE_SEGMENT_REQUIRED_COLUMNS,
+    CompanyExposureEntry,
+    CompanyExposureMap,
+    TaxlineSegment,
+    TaxlineSegmentMap,
+    load_company_exposure_map,
+    load_taxline_segments,
+)
 from stock_data.fetcher.industry.customs.parsers.gacc import parse_gacc_csv
 from stock_data.fetcher.industry.customs.parsers.gacc_catalog import (
     GACC_CATALOG_REQUIRED_COLUMNS,
@@ -23,16 +34,25 @@ from stock_data.fetcher.industry.customs.parsers.gacc_catalog import (
 )
 
 __all__ = [
+    "ALLOWED_EMPTY_PRODUCTS",
+    "COMPANY_EXPOSURE_REQUIRED_COLUMNS",
     "GACC_CATALOG_REQUIRED_COLUMNS",
     "GACC_CODES_CSV_COLUMNS",
     "HS_CATALOG_HIERARCHY_COLUMNS",
+    "TAXLINE_SEGMENT_REQUIRED_COLUMNS",
+    "CompanyExposureEntry",
+    "CompanyExposureMap",
+    "TaxlineSegment",
+    "TaxlineSegmentMap",
     "derive_gacc_code_catalog",
     "get_gacc_hs_codes",
     "get_hs6_query_list",
     "is_queryable_gacc_code",
+    "load_company_exposure_map",
     "load_gacc_code_catalog",
     "load_hs_catalog",
     "load_hs_catalog_rows",
+    "load_taxline_segments",
     "normalize_hs_catalog_row",
     "parse_comtrade_items",
     "parse_gacc_csv",
