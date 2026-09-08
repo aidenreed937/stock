@@ -59,6 +59,71 @@ def test_load_catalog_hs_codes_expands_six_digit_products(tmp_path: Path) -> Non
     assert set(out["transformer"]) == {"85042100"}
 
 
+def test_load_catalog_hs_codes_keeps_leading_zero_parent(tmp_path: Path) -> None:
+    """水产品 030323 型前导 0 码：schema_overrides 保证与黄金表 hs_parent_code 匹配。"""
+    catalog = tmp_path / "catalog.csv"
+    catalog.write_text(
+        "product_key,product_name,hs_code,hs_level,hs_parent_code\n"
+        "aquatic_products,水产品,030323,6,0303\n",
+        encoding="utf-8-sig",
+    )
+    golden = tmp_path / "golden.parquet"
+    _write_golden(
+        golden,
+        [
+            {
+                "hs_level": "8",
+                "hs_parent_code": "030323",
+                "hs_code": "03032300",
+                "report_month": "2026-01",
+                "trade_direction": "export",
+                "export_value_usd": 1.0,
+                "export_volume": 1.0,
+            },
+        ],
+    )
+    out = load_catalog_hs_codes(catalog, pl.read_parquet(golden))
+    assert out["aquatic_products"] == ["03032300"]
+
+
+def test_load_catalog_hs_codes_merges_legacy_8_and_six_digit_children(tmp_path: Path) -> None:
+    """疫苗型：catalog 8 位历史码（30022000）与 6 位父码现行子码（30024100）合并去重。"""
+    catalog = tmp_path / "catalog.csv"
+    catalog.write_text(
+        "product_key,product_name,hs_code,hs_level,hs_parent_code\n"
+        "pharma_vaccines,疫苗,30022000,8,300220\n"
+        "pharma_vaccines,疫苗,300220,6,3002\n"
+        "pharma_vaccines,疫苗,300241,6,3002\n",
+        encoding="utf-8-sig",
+    )
+    golden = tmp_path / "golden.parquet"
+    _write_golden(
+        golden,
+        [
+            {
+                "hs_level": "8",
+                "hs_parent_code": "300220",
+                "hs_code": "30022000",
+                "report_month": "2026-01",
+                "trade_direction": "export",
+                "export_value_usd": 1.0,
+                "export_volume": 1.0,
+            },
+            {
+                "hs_level": "8",
+                "hs_parent_code": "300241",
+                "hs_code": "30024100",
+                "report_month": "2026-01",
+                "trade_direction": "export",
+                "export_value_usd": 2.0,
+                "export_volume": 1.0,
+            },
+        ],
+    )
+    out = load_catalog_hs_codes(catalog, pl.read_parquet(golden))
+    assert set(out["pharma_vaccines"]) == {"30022000", "30024100"}
+
+
 def test_build_segment_key_map_covers_segment_and_product(tmp_path: Path) -> None:
     seg_rows = [
         ("transformer", "transformer_ultra", "特高压", "85042312;85042313", "u"),

@@ -53,12 +53,19 @@ def load_catalog_hs_codes(catalog_path: Path, golden: pl.DataFrame) -> dict[str,
 
     口径与 build_customs_product_volume_price 一致：聚合用黄金表 hs_level=8 行，
     6 位父码经 hs_parent_code 匹配其 8 位子码（如 zinc 790111 → 790111xx）。
+
+    两个数据坑（2026-09 修复）：
+    - 前导 0：catalog 6 位码 030323 按数值列读取会丢前导 0（变 30323），与
+      黄金表 hs_parent_code（字符串带 0）失配——schema_overrides 保字符串；
+    - 新旧码并存：产品同时有 catalog 8 位历史码（如疫苗 30022000，数据止
+      2021-12）与 6 位父码的现行 8 位子码（30024100）时合并去重，避免
+      历史码截断序列。
     """
-    cat = (
-        pl.read_csv(catalog_path)
-        .select(["product_key", "hs_code", "hs_level"])
-        .with_columns(pl.col("hs_code").cast(pl.String), pl.col("hs_level").cast(pl.String))
-    )
+    cat = pl.read_csv(
+        catalog_path,
+        schema_overrides={"hs_code": pl.String, "hs_parent_code": pl.String},
+    ).select(["product_key", "hs_code", "hs_level"])
+    cat = cat.with_columns(pl.col("hs_level").cast(pl.String))
     cat8 = cat.filter(pl.col("hs_level") == "8")
     out: dict[str, list[str]] = {
         r["product_key"]: r["hs_code"]
@@ -86,11 +93,8 @@ def load_catalog_hs_codes(catalog_path: Path, golden: pl.DataFrame) -> dict[str,
     ):
         product: str = row["product_key"]
         parents: Iterable[str] = row["hs_code"]
-        if product in out:
-            continue  # 已有 8 位码，不叠加
-        codes = [c for p in parents for c in six_map.get(p, [])]
-        if codes:
-            out[product] = sorted(set(codes))
+        extra = sorted({c for p in parents for c in six_map.get(p, [])})
+        out[product] = sorted(set(out.get(product, [])) | set(extra))
     return out
 
 
@@ -268,8 +272,12 @@ def main() -> int:
     out_pq.parent.mkdir(parents=True, exist_ok=True)
     panel.write_parquet(out_pq)
 
-    # 公司观察表（最新月快照）
-    latest = panel.filter(pl.col("report_month") == latest_month)
+    # 公司观察表：每键取"最近可用月"读数（robot_vacuum 等采集缺口产品不丢行，
+    # report_month 列反映实际读数月）
+    def _last_obs(key: str) -> dict[str, Any] | None:
+        sub = panel.filter(pl.col("key") == key)
+        return sub.sort("report_month").tail(1).row(0, named=True) if not sub.is_empty() else None
+
     rows_out = []
     n_no_series = 0
     for e in map_.entries:
@@ -284,13 +292,11 @@ def main() -> int:
             if key_meta is None:
                 n_no_series += 1
                 continue
-            r = latest.filter(pl.col("key") == k)
-            if r.is_empty():
+            row = _last_obs(k)
+            if row is None:
                 n_no_series += 1
                 continue
-            rp = latest.filter(pl.col("key") == prod_key)
-            row = r.row(0, named=True)
-            prod_row = rp.row(0, named=True) if not rp.is_empty() else None
+            prod_row = _last_obs(prod_key)
             rows_out.append(
                 {
                     "company_name": e.company_name,
@@ -300,7 +306,7 @@ def main() -> int:
                     "bind_segment": seg if seg != "product" else "",
                     "segment_name": key_meta["segment_name"],
                     "n_hs_codes": len(key_meta["hs_codes"]),
-                    "report_month": latest_month,
+                    "report_month": row["report_month"],
                     "value_yoy_3mma": row["value_yoy_3mma"],
                     "volume_yoy_3mma": row["volume_yoy_3mma"],
                     "price_yoy_3mma": row["price_yoy_3mma"],
