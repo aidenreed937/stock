@@ -66,7 +66,7 @@
 - [01_methodology.md](01_methodology.md) —— 方法论：映射血缘、版本桥接、3MMA YoY、拐点对齐、方向一致率
 - [02_effectiveness_matrix.md](02_effectiveness_matrix.md) —— 40 行业方向一致率全表与分级
 - [03_status_panel.md](03_status_panel.md) —— 近端状态面板（出口 vs 财报 符号对照）
-- [04_data_gaps_and_repairs.md](04_data_gaps_and_repairs.md) —— 数据缺口与修复记录（含 2026-09 映射修复）
+- [04_data_gaps_and_repairs.md](../04_data_gaps_and_repairs.md) —— 数据缺口与修复记录（含 2026-09 映射修复）
 - [05_timing_and_resource_exit.md](05_timing_and_resource_exit.md) —— 资金定价时序（三梯队抢跑分类）+ 资源品止盈三档规则（持有/慢慢止盈/清仓扳机）
 - [06_three_leg_framework.md](06_three_leg_framework.md) —— 三腿框架：海关出口（候选池）× 资金吸筹（右侧启动时机）★ × 财报兑现（质检）
 - [07_export_finance_consistency.md](07_export_finance_consistency.md) —— 出口拐点 × 财报落地一致性核查（方向一致率、兑现率、产业数据领先时序）

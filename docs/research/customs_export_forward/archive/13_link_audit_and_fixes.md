@@ -2,7 +2,7 @@
 
 > 审计对象：`customs-industry-prosperity` 技能全链路——SKILL.md、METHODOLOGY_FINAL.md、
 > 4 个 build 脚本、`hs_codes_catalog.csv`、5 个 parquet 产物、月度报告
-> `12_forward_watch_2026_07.md` 与 02/04 证据文档。
+> `../12_forward_watch_2026_07.md` 与 02/04 证据文档。
 >
 > 审计方式：读全脚本与文档 → 实跑 4 个 build 脚本（临时目录，不覆盖现产物，结果与
 > 现产物逐列一致）→ 产物交叉对账（金额/量价/商品/观察表/财报/维度表）→ 定位差异根因。
@@ -58,7 +58,7 @@
 39 个与观察表 join 后可观测行业一致，但缺 801114.SI（catalog 无产品映射到厨卫电器 → 金额面板
 无该行业 → 观察表无该行，属映射缺口而非脚本 bug，但需披露）。
 
-### P3-1 月度报告 12_forward_watch_2026_07.md 未随 HS2027 修复更新
+### P3-1 月度报告 ../12_forward_watch_2026_07.md 未随 HS2027 修复更新
 
 | 项 | 内容 |
 | :--- | :--- |
@@ -179,7 +179,7 @@ l2_src = monthly.filter(
 
 ### 3.5 P3-1 / P3-2：报告更新
 
-- 重跑后更新 `12_forward_watch_2026_07.md`：炼化 +47.9%（36m 分位 100）、乘用车 +88.3%/
+- 重跑后更新 `../12_forward_watch_2026_07.md`：炼化 +47.9%（36m 分位 100）、乘用车 +88.3%/
   91.7 等；版本说明改为"HS2027 对齐后口径（2026-09-07）"；
 - 数据底座移除方向分或标注"已排除，仅历史背景"。
 
@@ -215,7 +215,7 @@ l2_src = monthly.filter(
 | P1-1 | `build_customs_export_prosperity.py`：L2 聚合前 filter 组合码并披露 | 金额面板 L2 43→42 行业、行数 96012→95885，无 `;` 组残留 |
 | P1-2 | `build_customs_l2_volume_price.py`：SKIP_L2 移至 L2 聚合层（L3 保留 850326.SI）；`build_customs_product_volume_price.py`：商品级保留组合码行（tio2 恢复） | 量价面板 L3 72→73（钛白粉量价齐升 +36.1%/+20.0%/+13.4%）；商品面板 107→108 产品 |
 | P2-1 | 脚本 CONSISTENCY 补 `801114.SI (0.38, C)`；02 文档 §1 与 METHODOLOGY §2.4 更正为 A6/B22/C12 | 字典与 02 全表一致（40 行业）；观察表 grade 39 + 3 无级披露 |
-| P3-1/2 | `12_forward_watch_2026_07.md`：炼化 -83.0%→+47.9%（移出双弱）、乘用车 +117.1%→+88.3%、四阶段表/决策卡/复现段更新；移除方向分引用 | 报告数字与最新观察表逐行一致 |
+| P3-1/2 | `../12_forward_watch_2026_07.md`：炼化 -83.0%→+47.9%（移出双弱）、乘用车 +117.1%→+88.3%、四阶段表/决策卡/复现段更新；移除方向分引用 | 报告数字与最新观察表逐行一致 |
 | P4-1 | `.gitignore` 第 41 行 `data/` → `/data/` | `git check-ignore` 不再命中 catalog；catalog 进入 untracked 可入库 |
 | P4-2 | SKILL + METHODOLOGY 行数 253 → 256（+3 系 HS2027 新码） | 与 catalog 实际行数一致 |
 | P4-3 | 删除旧产物 `customs_forward_watch_202607.parquet`（含已排除列） | 无任何脚本/文档再引用；仅 l2/l3 命名保留 |
@@ -236,6 +236,6 @@ l2_src = monthly.filter(
 
 - 脚本：`scripts/build_comm_global_resonance.py`
 - 产物：`data/analytics/industry/comm_global_resonance_panel.parquet`
-- 专题：`14_comm_global_resonance.md`（含月度跟踪三道闸升级阈值）
+- 专题：`../14_comm_global_resonance.md`（含月度跟踪三道闸升级阈值）
 - 2026-07 当前判定：6 信号全部扩张、拐点预警无——光模块量能回落 = 涨价换量的暂歇，
   非趋势反转（云 CapEx +87% 加速、SEMI 设备 +35.4% 五连升、台积电 +44.7%）。
