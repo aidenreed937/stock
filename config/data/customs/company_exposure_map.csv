@@ -91,10 +91,10 @@ battery_separator,锂电池隔膜,002812.SZ,恩捷股份,0.90,包装印刷;化�
 battery_separator,锂电池隔膜,300568.SZ,星源材质,1.00,化学制品;化学原料;电池,"fina_mainbz 2026-06-30 主营构成(LLM别名表): 锂离子电池隔膜新能源材料(26亿,alias)",verified,
 battery_separator,锂电池隔膜,002080.SZ,中材科技,0.17,化学制品;玻璃玻纤,"fina_mainbz 2026-06-30 主营构成(LLM别名表): 膜材料制品(5亿,ambiguous)|锂电池隔膜(22亿,alias)",verified,
 bev,纯电动乘用车,002594.SZ,比亚迪,0.80,乘用车,"fina_mainbz 2026-06-30 主营构成(LLM别名表): 汽车(2753亿,ambiguous)",verified,
-cathode_material,三元正极材料,688779.SH,长远锂科,1.00,电池,"fina_mainbz 2026-06-30 主营构成(LLM别名表): 正极材料(77亿,alias)",verified,
-cathode_material,三元正极材料,688005.SH,容百科技,0.94,电池,"fina_mainbz 2026-06-30 主营构成(LLM别名表): 正极材料(81亿,alias)",verified,
-cathode_material,三元正极材料,300073.SZ,当升科技,0.99,化学制品;电池,"fina_mainbz 2026-06-30 主营构成(LLM别名表): 磷酸（锰）铁锂、钠电正极材料(28亿,alias)|钴酸锂(7亿,ambiguous)|多元材料(66亿,alias)",verified,
-cathode_material,三元正极材料,688778.SH,厦钨新能,0.6,电池,主营构成人工估计，待 fina_mainbz 采集校准,estimated,
+cathode_material,三元正极材料,688779.SH,长远锂科,1.00,电池,"fina_mainbz 2026-06-30 主营构成(LLM别名表): 正极材料(77亿,alias)",verified,cathode_ncm
+cathode_material,三元正极材料,688005.SH,容百科技,0.94,电池,"fina_mainbz 2026-06-30 主营构成(LLM别名表): 正极材料(81亿,alias)",verified,cathode_ncm
+cathode_material,三元正极材料,300073.SZ,当升科技,0.99,化学制品;电池,"fina_mainbz 2026-06-30 主营构成(LLM别名表): 磷酸（锰）铁锂、钠电正极材料(28亿,alias)|钴酸锂(7亿,ambiguous)|多元材料(66亿,alias)",verified,cathode_ncm;cathode_lfp
+cathode_material,三元正极材料,688778.SH,厦钨新能,0.6,电池,主营构成人工估计，待 fina_mainbz 采集校准,estimated,cathode_ncm
 cathode_precursor,三元前驱体,300919.SZ,中伟股份,0.32,化学制品;电池,"fina_mainbz 2026-06-30 主营构成(LLM别名表): 钴系材料(26亿,ambiguous)|新能源金属(101亿,ambiguous)|磷系材料(10亿,ambiguous)",verified,
 cathode_precursor,三元前驱体,002340.SZ,格林美,0.39,电池;金属新材料,"fina_mainbz 2026-06-30 主营构成(LLM别名表): 四氧化三钴(21亿,ambiguous)|三元前驱体(49亿,alias)",verified,
 cathode_precursor,三元前驱体,603799.SH,华友钴业,0.13,小金属;能源金属,"fina_mainbz 2026-06-30 主营构成(LLM别名表): 三元前驱体(38亿,alias)|钴产品(37亿,ambiguous)",verified,
@@ -194,11 +194,11 @@ knit_apparel,针织T恤,601339.SH,百隆东方,0.5,纺织制造,主营构成人�
 laptop,笔记本电脑,603296.SH,华勤技术,0.6,消费电子,笔记本 ODM 龙头，主营构成人工估计待校准,estimated,
 laptop,笔记本电脑,603341.SH,龙旗科技,0.12,消费电子,"fina_mainbz 2026-06-30 主营构成(LLM别名表): 平板电脑(23亿,ambiguous)",verified,
 laptop,笔记本电脑,688036.SH,传音控股,0.2,消费电子,含笔电产品线，主营构成人工估计待校准,estimated,
-lithium_chemicals,锂盐,002466.SZ,天齐锂业,0.58,小金属;能源金属,"fina_mainbz 2026-06-30 主营构成(LLM别名表): 锂化合物及衍生品(71亿,alias)",verified,
-lithium_chemicals,锂盐,002460.SZ,赣锋锂业,0.64,小金属;能源金属,"fina_mainbz 2026-06-30 主营构成(LLM别名表): 锂系列产品(142亿,ambiguous)",verified,
-lithium_chemicals,锂盐,002756.SZ,永兴材料,0.41,特钢Ⅱ;能源金属,"fina_mainbz 2026-06-30 主营构成(LLM别名表): 碳酸锂(20亿,alias)",verified,
-lithium_chemicals,锂盐,002738.SZ,中矿资源,0.6,小金属,主营构成人工估计，待 fina_mainbz 采集校准,estimated,
-lithium_chemicals,锂盐,000792.SZ,盐湖股份,0.44,农化制品;化学制品,"fina_mainbz 2026-06-30 主营构成(LLM别名表): 锂产品(56亿,ambiguous)",verified,
+lithium_chemicals,锂盐,002466.SZ,天齐锂业,0.58,小金属;能源金属,"fina_mainbz 2026-06-30 主营构成(LLM别名表): 锂化合物及衍生品(71亿,alias)",verified,lithium_carbonate;lithium_hydroxide
+lithium_chemicals,锂盐,002460.SZ,赣锋锂业,0.64,小金属;能源金属,"fina_mainbz 2026-06-30 主营构成(LLM别名表): 锂系列产品(142亿,ambiguous)",verified,lithium_carbonate;lithium_hydroxide
+lithium_chemicals,锂盐,002756.SZ,永兴材料,0.41,特钢Ⅱ;能源金属,"fina_mainbz 2026-06-30 主营构成(LLM别名表): 碳酸锂(20亿,alias)",verified,lithium_carbonate
+lithium_chemicals,锂盐,002738.SZ,中矿资源,0.6,小金属,主营构成人工估计，待 fina_mainbz 采集校准,estimated,lithium_carbonate;lithium_hydroxide
+lithium_chemicals,锂盐,000792.SZ,盐湖股份,0.44,农化制品;化学制品,"fina_mainbz 2026-06-30 主营构成(LLM别名表): 锂产品(56亿,ambiguous)",verified,lithium_carbonate
 machine_tool,机床,601882.SH,海天精工,0.99,通用设备,"fina_mainbz 2026-06-30 主营构成(LLM别名表): 机床销售(20亿,alias)",verified,
 machine_tool,机床,688577.SH,浙海德曼,0.99,通用设备,"fina_mainbz 2026-06-30 主营构成(LLM别名表): 自动化生产线(1亿,ambiguous)|高端型数控车床(4亿,alias)|普及型数控车床(0亿,alias)|并行复合加工中心(0亿,alias)",verified,
 machine_tool,机床,300083.SZ,创世纪,0.98,其他电子Ⅱ;消费电子;自动化设备,"fina_mainbz 2026-06-30 主营构成(LLM别名表): 数控机床等高端装备(31亿,ambiguous)",verified,
@@ -300,12 +300,12 @@ seamless_steel_tube,无缝钢管,000932.SZ,华菱钢铁,0.09,普钢,"fina_mainbz
 seating,可转换床座椅,603709.SH,中源家居,1.00,家居用品,"fina_mainbz 2026-06-30 主营构成(LLM别名表): 功能沙发(7亿,alias)|固定沙发(2亿,alias)",verified,
 seating,可转换床座椅,603661.SH,恒林股份,0.12,家居用品,"fina_mainbz 2026-06-30 主营构成(LLM别名表): 软体家具(7亿,ambiguous)",verified,
 seating,可转换床座椅,603600.SH,永艺股份,0.91,家居用品,"fina_mainbz 2026-06-30 主营构成(LLM别名表): 沙发(4亿,ambiguous)|休闲椅(0亿,alias)|办公椅(16亿,alias)|按摩椅椅身(1亿,ambiguous)",verified,
-semiconductor_equipment,半导体设备,688012.SH,中微公司,0.9,半导体,主营构成人工估计，待 fina_mainbz 采集校准,estimated,
-semiconductor_equipment,半导体设备,688072.SH,拓荆科技,0.9,半导体,主营构成人工估计，待 fina_mainbz 采集校准,estimated,
-semiconductor_equipment,半导体设备,688082.SH,盛美上海,0.9,半导体,主营构成人工估计，待 fina_mainbz 采集校准,estimated,
-semiconductor_equipment,半导体设备,688120.SH,华海清科,0.9,半导体,主营构成人工估计，待 fina_mainbz 采集校准,estimated,
-semiconductor_equipment,半导体设备,002371.SZ,北方华创,0.95,半导体,"fina_mainbz 2026-06-30 主营构成(LLM别名表): 电子工艺装备(192亿,ambiguous)",verified,
-semiconductor_equipment,半导体设备,688037.SH,芯源微,0.8,半导体,主营构成人工估计，待 fina_mainbz 采集校准,estimated,
+semiconductor_equipment,半导体设备,688012.SH,中微公司,0.9,半导体,主营构成人工估计，待 fina_mainbz 采集校准,estimated,semi_fab_device
+semiconductor_equipment,半导体设备,688072.SH,拓荆科技,0.9,半导体,主营构成人工估计，待 fina_mainbz 采集校准,estimated,semi_fab_device
+semiconductor_equipment,半导体设备,688082.SH,盛美上海,0.9,半导体,主营构成人工估计，待 fina_mainbz 采集校准,estimated,semi_fab_device
+semiconductor_equipment,半导体设备,688120.SH,华海清科,0.9,半导体,主营构成人工估计，待 fina_mainbz 采集校准,estimated,semi_fab_wafer
+semiconductor_equipment,半导体设备,002371.SZ,北方华创,0.95,半导体,"fina_mainbz 2026-06-30 主营构成(LLM别名表): 电子工艺装备(192亿,ambiguous)",verified,semi_fab_device
+semiconductor_equipment,半导体设备,688037.SH,芯源微,0.8,半导体,主营构成人工估计，待 fina_mainbz 采集校准,estimated,semi_fab_device
 semiconductor_ic,集成电路芯片,688347.SH,华虹公司,0.99,半导体,"fina_mainbz 2026-06-30 主营构成(LLM别名表): 集成电路晶圆代工(92亿,ambiguous)",verified,
 semiconductor_ic,集成电路芯片,688981.SH,中芯国际,0.93,半导体,"fina_mainbz 2026-06-30 主营构成(LLM别名表): 集成电路晶圆代工(359亿,ambiguous)",verified,
 semiconductor_ic,集成电路芯片,688008.SH,澜起科技,1.00,半导体,"fina_mainbz 2026-06-30 主营构成(LLM别名表): 津逮产品(2亿,ambiguous)|内存接口芯片(31亿,alias)",verified,
@@ -318,9 +318,9 @@ server,服务器及计算机处理单元,000938.SZ,紫光股份,0.3,IT服务Ⅱ;
 shipbuilding,船舶制造,600150.SH,中国船舶,0.89,航海装备Ⅱ;通用设备,"fina_mainbz 2026-06-30 主营构成(LLM别名表): 船舶修造及海洋工程(815亿,ambiguous)",verified,
 shipbuilding,船舶制造,600685.SH,中船防务,0.92,航海装备Ⅱ,"fina_mainbz 2026-06-30 主营构成(LLM别名表): 特种船及其他(70亿,alias)|船舶产品：集装箱船(13亿,alias)|船舶产品(94亿,alias)|散货船(11亿,alias)",verified,
 shipbuilding,船舶制造,600482.SH,中国动力,0.4,其他电源设备Ⅱ;汽车零部件;航海装备Ⅱ,主营构成人工估计，待 fina_mainbz 采集校准,estimated,
-silver,白银,000603.SZ,盛达资源,0.5,医疗器械;工业金属,主营构成人工估计，待 fina_mainbz 采集校准,estimated,
-silver,白银,000426.SZ,兴业银锡,0.59,工业金属;电力,"fina_mainbz 2026-06-30 主营构成(LLM别名表): 矿产银(25亿,alias)",verified,
-silver,白银,000688.SZ,国城矿业,0.3,小金属;工业金属;计算机设备,主营构成人工估计，待 fina_mainbz 采集校准,estimated,
+silver,白银,000603.SZ,盛达资源,0.5,医疗器械;工业金属,主营构成人工估计，待 fina_mainbz 采集校准,estimated,silver_unwrought
+silver,白银,000426.SZ,兴业银锡,0.59,工业金属;电力,"fina_mainbz 2026-06-30 主营构成(LLM别名表): 矿产银(25亿,alias)",verified,silver_unwrought
+silver,白银,000688.SZ,国城矿业,0.3,小金属;工业金属;计算机设备,主营构成人工估计，待 fina_mainbz 采集校准,estimated,silver_unwrought
 small_appliance,厨房电热器具,002705.SZ,新宝股份,0.86,小家电;白色家电,"fina_mainbz 2026-06-30 主营构成(LLM别名表): 家居电器(10亿,ambiguous)|厨房电器(52亿,alias)",verified,
 small_appliance,厨房电热器具,002959.SZ,小熊电器,0.91,小家电;白色家电,"fina_mainbz 2026-06-30 主营构成(LLM别名表): 个护小家电(3亿,ambiguous)|母婴小家电(1亿,alias)|生活小家电(2亿,alias)|厨房小家电(15亿,alias)",verified,
 small_appliance,厨房电热器具,002032.SZ,苏泊尔,0.85,家居用品;小家电;白色家电,"fina_mainbz 2026-06-30 主营构成(LLM别名表): 食物料理电器(19亿,alias)|炊具及用具(33亿,ambiguous)|烹饪电器(45亿,alias)",verified,
