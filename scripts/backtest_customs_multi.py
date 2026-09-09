@@ -24,6 +24,10 @@ from typing import Any, cast
 import polars as pl
 
 sys.path.insert(0, str(Path(__file__).resolve().parent))
+_PROJECT_ROOT = Path(__file__).resolve().parent.parent
+if str(_PROJECT_ROOT) not in sys.path:
+    sys.path.insert(0, str(_PROJECT_ROOT))
+
 from backtest_customs_company_signal import (  # noqa: E402
     DEFAULT_FINA,
     build_weight_plan,
@@ -32,6 +36,8 @@ from backtest_customs_company_signal import (  # noqa: E402
     load_quality_layers,
     split_trades,
 )
+
+from stock_data.fetcher.industry.customs.release_calendar import effective_month  # noqa: E402
 
 DEFAULT_YOY = Path("data/analytics/industry/customs_product_volume_price.parquet")
 DEFAULT_MAP = Path("config/data/customs/company_exposure_map.csv")
@@ -106,7 +112,8 @@ def backtest_product(
         .agg(pl.col("ret").mean().alias("combo_ret"), pl.col("bench_ret").first())
         .sort("month")
     )
-    return split_trades(months, weights, port)  # type: ignore[no-any-return]  # 跨脚本 import，mypy 无法解析
+    effective_months = [effective_month(m) for m in months]
+    return split_trades(effective_months, weights, port)  # type: ignore[no-any-return]  # 跨脚本 import，mypy 无法解析
 
 
 def summarize(trades: list[dict[str, Any]]) -> dict[str, Any]:

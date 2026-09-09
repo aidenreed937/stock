@@ -30,4 +30,16 @@ def release_date_for(report_month: str) -> date:
     return date(year, month + 1, 20)
 
 
-__all__ = ["release_date_for"]
+def effective_month(report_month: str) -> str:
+    """信号生效月：report_month 数据发布后，下一个完整月才可交易。
+
+    即 release_date 所在月的下一个月，返回 ``YYYY-MM``。消除回测中
+    "用 M 月数据在 M 月建仓"的约 1 个月发布时滞前视（见 release_date_for）。
+    """
+    rd = release_date_for(report_month)
+    if rd.month == 12:
+        return f"{rd.year + 1:04d}-01"
+    return f"{rd.year:04d}-{rd.month + 1:02d}"
+
+
+__all__ = ["effective_month", "release_date_for"]

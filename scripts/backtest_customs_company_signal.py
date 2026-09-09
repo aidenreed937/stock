@@ -22,11 +22,18 @@ import argparse
 import csv
 import glob
 import statistics
+import sys
 from datetime import date
 from pathlib import Path
 from typing import Any, cast
 
 import polars as pl
+
+_PROJECT_ROOT = Path(__file__).resolve().parent.parent
+if str(_PROJECT_ROOT) not in sys.path:
+    sys.path.insert(0, str(_PROJECT_ROOT))
+
+from stock_data.fetcher.industry.customs.release_calendar import effective_month  # noqa: E402
 
 DEFAULT_YOY = Path("data/analytics/industry/customs_product_volume_price.parquet")
 DEFAULT_TRANSFORMER = ["600089.SH", "601179.SH", "002028.SZ", "002270.SZ", "688676.SH", "301291.SZ"]
@@ -109,7 +116,7 @@ def load_quality_layers(
             and med_gp < PRODUCT_GP_OK
             and med_roe < PRODUCT_ROE_OK
         ):
-            quality[product] = {s: "低毛利产品" for s in syms}
+            quality[product] = dict.fromkeys(syms, "低毛利产品")
             continue
         q: dict[str, str] = {}
         for s in syms:
@@ -334,7 +341,10 @@ def main() -> int:
         .agg(pl.col("ret").mean().alias("combo_ret"), pl.col("bench_ret").first())
         .sort("month")
     )
-    trades = split_trades(months, weights, port)
+    # 信号按 release_date 对齐：report_month 数据在次月 20 日发布，信号在
+    # 发布后的下一个完整月生效（消除"用 M 月数据在 M 月建仓"的发布时滞前视）。
+    effective_months = [effective_month(m) for m in months]
+    trades = split_trades(effective_months, weights, port)
     if not trades:
         print("[FAIL] 信号未触发任何交易轮次")
         return 1
@@ -360,9 +370,13 @@ def main() -> int:
     n = tdf.height
     wins = tdf.filter(pl.col("win")).height
     beats = tdf.filter(pl.col("beat_bench")).height
-    mean_pos = cast("float", tdf.filter(pl.col("trade_ret") > 0)["trade_ret"].mean())
-    mean_neg = cast("float", tdf.filter(pl.col("trade_ret") <= 0)["trade_ret"].mean())
-    pl_ratio = mean_pos / abs(mean_neg) if mean_neg != 0 else float("nan")
+    mean_pos = tdf.filter(pl.col("trade_ret") > 0)["trade_ret"].mean()
+    mean_neg = tdf.filter(pl.col("trade_ret") <= 0)["trade_ret"].mean()
+    pl_ratio = (
+        mean_pos / abs(mean_neg)
+        if mean_pos is not None and mean_neg is not None and mean_neg != 0
+        else float("nan")
+    )
     avg_ret = cast("float", tdf["trade_ret"].mean())
     avg_excess = cast("float", tdf["excess"].mean())
     avg_hold = cast("float", tdf["n_months"].mean())

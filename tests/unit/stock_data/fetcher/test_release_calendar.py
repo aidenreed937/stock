@@ -6,7 +6,10 @@
 
 from datetime import date
 
-from stock_data.fetcher.industry.customs.release_calendar import release_date_for
+from stock_data.fetcher.industry.customs.release_calendar import (
+    effective_month,
+    release_date_for,
+)
 
 
 def test_jan_and_feb_merge_to_march():
@@ -27,3 +30,10 @@ def test_regular_month_next_month_20th():
 def test_historical_year_uses_same_rule():
     assert release_date_for("2019-01") == date(2019, 3, 20)
     assert release_date_for("2019-12") == date(2020, 1, 20)
+
+
+def test_effective_month_is_release_next_month():
+    assert effective_month("2026-03") == "2026-05"  # 4/20 发布 → 5 月生效
+    assert effective_month("2026-01") == "2026-04"  # 3/20 发布 → 4 月生效
+    assert effective_month("2025-12") == "2026-02"  # 次年 1/20 发布 → 2 月生效
+    assert effective_month("2026-07") == "2026-09"  # 8/20 发布 → 9 月生效
