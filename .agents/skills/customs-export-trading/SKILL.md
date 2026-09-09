@@ -57,20 +57,19 @@ uv run python scripts/backtest_customs_multi.py --quality-filter --product-gate 
 
 ## 择时规则（当前口径）
 
-**交易规则**（`backtest_customs_company_signal.py`，无未来函数）：
-- 建仓：产品出口 3MMA yoy 连续 2 月 >0 → 分 3 批建仓（每月 1/3）；加 `--quality-gate`
+**交易规则**（`backtest_customs_company_signal.py`，已按 release_date 对齐消除发布时滞前视）：
+- 建仓：产品出口 3MMA yoy 连续 2 月 >0 → 分 3 批建仓（每月 1/3）；可加 `--quality-gate`
   要求量 yoy>0（量拐）入场；
 - 减仓：满仓后 yoy 连续 2 月环比下降（见顶回落）→ 减半（可再加回）；
 - 清仓：yoy≤0。
 
-**正交验证结论（19/20/21 号文档，已落档）**：
-- 入场加量拐确认优于纯金额转正（胜率 59%→70%、超额 +29.6→+33pp）；
-- 量只入门、不管出（量≤0 不清仓，否则 whipsaw）；
-- 离场见顶减半 + 可再加回最优（直接清仓/锁仓更差）；
-- **统一量拐门（量 yoy>0 入场 + 金额离场）为当前可用最优门**（全池 +21.3pp、4.50 盈亏比）。
+**对齐后回测结论（26 号文档，GACC 全池 108 产品）**：
+- 量拐门（quality）与无门（base）**打平**（全池均 +7.9pp），量拐门不再是"最优门"；
+- "量只入门、不管出"（量≤0 不清仓，否则 whipsaw）的离场修正仍有效（机制不受前视影响）；
+- 竞争力过滤（quality_filter）仍略优（+8.6pp vs +7.9pp）。
 
 回测证据（transformer / 多产品 / 全池三版、竞争力过滤、产品门）与后续研究（产品级
-细分质量门，缺分类轴）见 `METHODOLOGY_COMPANY_FINAL.md` §5.4/§6/§8。
+细分质量门，缺分类轴）见 `METHODOLOGY_COMPANY_FINAL.md` §5.4/§6/§8 与 26 号文档。
 
 ## 抓机会手册（月度执行）
 
