@@ -21,6 +21,7 @@ from stock_data.fetcher.industry.customs.parsers.catalog import (
     _catalog_info_for_product_key,
 )
 from stock_data.fetcher.industry.customs.parsers.gacc_catalog import is_queryable_gacc_code
+from stock_data.fetcher.industry.customs.release_calendar import release_date_for
 
 
 def _normalize_header(value: str) -> str:
@@ -253,7 +254,7 @@ def parse_gacc_csv(
                 target_l3_names=info.get("target_l3_names", ""),
                 source="GACC",
                 source_url=source_url,
-                release_date=None,
+                release_date=release_date_for(report_month),
                 data_status="actual",
                 collected_at=now_iso,
                 raw_content_sha256=raw_hash,
