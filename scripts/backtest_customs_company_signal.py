@@ -148,8 +148,9 @@ def build_weight_plan(
 ) -> list[float]:
     """状态机权重计划：0 → 1/3 → 2/3 → 1（建仓）→ 0.5（见顶减半）→ 0（清仓）。
 
-    quality_gate=True 时入场还需驱动类型为量价齐升/量驱动（质量过滤，规避
-    价驱动/低基数伪景气——2017-2018、2022 初回测亏损轮的共同特征）。
+    离场只看金额 yoy（≤0 清仓、见顶回落减半）；quality_gate=True 时**入场**还需
+    驱动类型为量价齐升/量驱动（量拐质量门，只入门、不管出——正交验证见 19 号文档：
+    量确认用在离场会导致 whipsaw）。
     """
     allowed = {"量价齐升", "量驱动"}
     n = len(vals)
@@ -161,17 +162,18 @@ def build_weight_plan(
     for i in range(n):
         y = vals[i]
         d = drives[i] if drives else None
-        up = y is not None and y > 0 and d in allowed if quality_gate else y is not None and y > 0
-        if not up:
+        # 离场：金额 yoy≤0 清仓（不因驱动类型清仓）
+        if y is None or y <= 0:
+            pos = 0.0
             up_streak = 0
             drop_streak = 0
-            if pos > 0:
-                pos = 0.0  # 信号恶化清仓
-            w[i] = pos
+            w[i] = 0.0
             continue
-        up_streak += 1
+        # 入场确认：金额>0 已保证；quality_gate 要求量价齐升/量驱动
+        entry_ok = d in allowed if quality_gate else True
+        up_streak = up_streak + 1 if entry_ok else 0
         prev = vals[i - 1] if i > 0 else None
-        new_drop = prev is not None and y is not None and y < prev
+        new_drop = prev is not None and y < prev
         drop_streak = drop_streak + 1 if new_drop else 0
         if pos == 0.0:
             if up_streak >= entry_confirm:
