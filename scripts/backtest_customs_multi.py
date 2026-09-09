@@ -169,13 +169,19 @@ def main() -> int:
         help="按同产品竞争力分层过滤受益公司（§5.4 修订：剔除亏损型 + 净利率/毛利率均低于"
         "同产品中位数的低竞争力公司），输出追加 filter 版对比",
     )
+    parser.add_argument(
+        "--product-gate",
+        action="store_true",
+        help="叠加产品级低毛利排除（中位毛利率<15% 且 ROE<10% 整产品剔除，仅静态组合下行保护）",
+    )
     parser.add_argument("--output", default=str(DEFAULT_OUTPUT))
     parser.add_argument("--detail", action="store_true", help="打印每产品轮次明细")
     args = parser.parse_args()
 
     pv = pl.read_parquet(args.yoy)
     quality: dict[str, dict[str, str]] | None = (
-        load_quality_layers(args.fina, args.map) if args.quality_filter else None
+        load_quality_layers(args.fina, args.map, product_gate=args.product_gate)
+        if args.quality_filter else None
     )
     # 一次性加载：全部目标公司月收益 + 基准（avoid 每产品重载全量行情）。
     # 注意：必须用未过滤的全池加载，base/quality/quality_filter 各 variant 再按

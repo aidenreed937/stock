@@ -34,34 +34,40 @@ DEFAULT_BENCH = "000300.SH"
 DEFAULT_OUTPUT = Path("data/analytics/industry/customs_signal_backtest.parquet")
 DEFAULT_FINA = Path("data/curated/tushare/market=CN/fina_indicator")
 
-# 竞争力分层（§5.4 修订：同产品内部相对比较，净利率 × 毛利率）
+# 竞争力分层（§5.4 修订：同产品内部相对比较；产品级低毛利排除为可选开关）
 DEFAULT_MAP = Path("config/data/customs/company_exposure_map.csv")
-QUALITY_KEEP = {"正常"}  # 保留层（剔除亏损型/低竞争力）
+QUALITY_KEEP = {"正常"}  # 保留层（剔除亏损型/低竞争力，可选低毛利产品）
+PRODUCT_GP_OK = 15.0  # 产品级中位毛利率门槛（%）
+PRODUCT_ROE_OK = 10.0  # 产品级中位 ROE 门槛（%）
 
 
 def load_quality_layers(
     fina_root: Path | str = DEFAULT_FINA,
     map_path: Path | str = DEFAULT_MAP,
+    product_gate: bool = False,
 ) -> dict[str, dict[str, str]]:
-    """构建 产品 → {公司 → 竞争力分层}（同产品内部相对比较，§5.4 修订）。
+    """构建 产品 → {公司 → 竞争力分层}（§5.4 修订：同产品内部相对比较）。
 
-    口径：最近一期年报（end_date 为最新 12-31）的 netprofit_margin / grossprofit_margin
-    （单期值）。分层规则：
-      - 亏损型：netprofit_margin < 0（绝对硬事实，跨产品统一剔除）；
-      - 低竞争力：同产品内 netprofit_margin 与 grossprofit_margin **均低于同产品中位数**
-        （bottom-left 象限，相对同产品竞争组），且非亏损型；
+    口径：最近一期年报（end_date 为最新 12-31）的 netprofit_margin / grossprofit_margin /
+    roe（单期值）。分层规则：
+      - 亏损型（公司级）：netprofit_margin < 0（绝对硬事实，跨产品统一剔除）；
+      - 低竞争力（公司级）：同产品内 netprofit_margin 与 grossprofit_margin **均低于同产品
+        中位数**（bottom-left 象限，相对同产品竞争组），且非亏损型；
+      - 低毛利产品（产品级，product_gate=True 才启用）：产品中位 grossprofit_margin <15%
+        且中位 roe <10%（价格战/产能过剩环节），整产品剔除——仅静态组合下行保护用，
+        择时回测默认关闭（择时已由 yoy≤0 清仓做下行保护，产品级排除会误伤上行赢家）；
       - 正常：其余（保留）。
     无财务数据或单公司产品（无法相对比较）→ 仅套用亏损型绝对标记，其余归"正常"。
 
     Returns:
-        {product_key: {stock_code: 分层名}}，分层 ∈ {亏损型, 低竞争力, 正常}。
+        {product_key: {stock_code: 分层名}}，分层 ∈ {低毛利产品, 亏损型, 低竞争力, 正常}。
     """
     frames = []
     for f in sorted(glob.glob(str(Path(fina_root) / "year=*" / "month=*" / "data.parquet"))):
         try:
             frames.append(
                 pl.read_parquet(f).select(
-                    ["symbol", "end_date", "netprofit_margin", "grossprofit_margin"]
+                    ["symbol", "end_date", "netprofit_margin", "grossprofit_margin", "roe"]
                 )
             )
         except Exception:
@@ -72,14 +78,16 @@ def load_quality_layers(
         (pl.col("end_date").dt.month() == 12)
         & pl.col("netprofit_margin").is_not_null()
         & pl.col("grossprofit_margin").is_not_null()
+        & pl.col("roe").is_not_null()
     )
     latest = fin.group_by("symbol").agg(pl.col("end_date").max())
     fin = fin.join(latest, on=["symbol", "end_date"], how="inner")
     agg = fin.group_by("symbol").agg(
         pl.col("netprofit_margin").mean().alias("np"),
         pl.col("grossprofit_margin").mean().alias("gp"),
+        pl.col("roe").mean().alias("roe"),
     )
-    per_sym = {r["symbol"]: (r["np"], r["gp"]) for r in agg.iter_rows(named=True)}
+    per_sym = {r["symbol"]: (r["np"], r["gp"], r["roe"]) for r in agg.iter_rows(named=True)}
 
     # 产品 → 公司集合（暴露度映射）
     product_syms: dict[str, set[str]] = {}
@@ -92,13 +100,24 @@ def load_quality_layers(
         rows = {s: per_sym[s] for s in syms if s in per_sym}
         med_np = statistics.median(v[0] for v in rows.values()) if len(rows) >= 2 else None
         med_gp = statistics.median(v[1] for v in rows.values()) if len(rows) >= 2 else None
+        med_roe = statistics.median(v[2] for v in rows.values()) if len(rows) >= 2 else None
+        # 产品级（可选）：中位毛利率低 且 中位 ROE 低 = 价格战/产能过剩环节，整产品剔除
+        if (
+            product_gate
+            and med_gp is not None
+            and med_roe is not None
+            and med_gp < PRODUCT_GP_OK
+            and med_roe < PRODUCT_ROE_OK
+        ):
+            quality[product] = {s: "低毛利产品" for s in syms}
+            continue
         q: dict[str, str] = {}
         for s in syms:
             v = rows.get(s)
             if v is None:
                 q[s] = "正常"  # 无财报覆盖不误杀
                 continue
-            np, gp = v
+            np, gp, _roe = v
             if np < 0:
                 q[s] = "亏损型"
             elif med_np is not None and np < med_np and gp < med_gp:
@@ -112,7 +131,7 @@ def load_quality_layers(
 def filter_quality_for_product(
     product: str, symbols: list[str], quality: dict[str, dict[str, str]]
 ) -> list[str]:
-    """按同产品竞争力分层过滤公司池（剔除亏损型/低竞争力，保留正常）。"""
+    """按竞争力分层过滤公司池（剔除低毛利产品/亏损型/低竞争力，保留正常）。"""
     q = quality.get(product, {})
     return [s for s in symbols if q.get(s, "正常") in QUALITY_KEEP]
 
@@ -260,13 +279,20 @@ def main() -> int:
     parser.add_argument(
         "--quality-filter",
         action="store_true",
-        help="按竞争力分层过滤公司池（§5.4：剔除亏损型/低竞争力，保留正常/高周转型）",
+        help="按竞争力分层过滤公司池（§5.4：剔除亏损型 + 净利率/毛利率均低于同产品中位数的低竞争力）",
+    )
+    parser.add_argument(
+        "--product-gate",
+        action="store_true",
+        help="叠加产品级低毛利排除（中位毛利率<15% 且 ROE<10% 整产品剔除，仅静态组合下行保护）",
     )
     args = parser.parse_args()
 
     symbols = args.symbols
     if args.quality_filter:
-        quality = load_quality_layers(fina_root=DEFAULT_FINA, map_path=DEFAULT_MAP)
+        quality = load_quality_layers(
+            fina_root=DEFAULT_FINA, map_path=DEFAULT_MAP, product_gate=args.product_gate
+        )
         symbols = filter_quality_for_product(args.product, symbols, quality)
         print(
             f"[quality-filter] 公司池 {len(args.symbols)} → {len(symbols)} 家"

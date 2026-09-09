@@ -29,9 +29,11 @@ uv run python -m stock_cli.customs_company
 uv run python scripts/backtest_customs_company_signal.py --quality-gate
 
 # 5. 多产品横向回测（信号普适性检验：10 产品 × 基础/质量两版；
-#    加 --quality-filter 追加竞争力过滤版：剔除亏损型/低竞争力公司，§5.4）
+#    加 --quality-filter 追加竞争力过滤版：同产品内剔除亏损型/低竞争力，§5.4）
+#    --product-gate 追加产品级低毛利排除（静态组合下行保护用，择时默认关）
 uv run python scripts/backtest_customs_multi.py --detail
 uv run python scripts/backtest_customs_multi.py --quality-filter --detail
+uv run python scripts/backtest_customs_multi.py --quality-filter --product-gate --detail
 ```
 
 ## 数据资产（共享，不复制）
@@ -86,7 +88,9 @@ semiconductor_equipment（+154pp 全胜）、cathode_material（+23pp 全胜）�
 净利率×毛利率均低于同产品中位数剔除）在 quality 门上是**弱正向选股精化**（平均 +3.2pp、
 中位 ≈0、51% 产品更优），且不再整池误杀（清空仅 1 产品 coke，旧绝对口径清空 16 产品）。
 故竞争力过滤定位为 **quality 门之上的"同产品选股精化层"（本质下行保护）**，不作全池
-强制前置。
+强制前置。产品级低毛利排除（`--product-gate`，中位毛利率<15% 且 ROE<10%）只用于静态
+组合下行保护（强信号池 21 家累计 +550%，见 16 号文档），择时回测默认关闭——择时已由
+yoy≤0 清仓做下行保护，产品级排除会误伤低毛利产品的上行赢家。
 
 ## 抓机会手册（月度执行）
 
