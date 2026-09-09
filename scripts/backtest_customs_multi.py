@@ -25,8 +25,11 @@ import polars as pl
 
 sys.path.insert(0, str(Path(__file__).resolve().parent))
 from backtest_customs_company_signal import (  # noqa: E402
+    DEFAULT_FINA,
     build_weight_plan,
+    filter_quality_for_product,
     load_monthly_ret,
+    load_quality_layers,
     split_trades,
 )
 
@@ -48,9 +51,15 @@ DEFAULT_PRODUCTS = [
 ]
 
 
-def companies_for(map_path: Path, product: str) -> list[str]:
+def companies_for(
+    map_path: Path, product: str, quality: dict[str, dict[str, str]] | None = None
+) -> list[str]:
+    """产品受益公司（可选按同产品竞争力分层过滤，§5.4 修订）。"""
     with map_path.open("r", encoding="utf-8-sig", newline="") as f:
-        return sorted({r["stock_code"] for r in csv.DictReader(f) if r["product_key"] == product})
+        syms = sorted({r["stock_code"] for r in csv.DictReader(f) if r["product_key"] == product})
+    if quality is None:
+        return syms
+    return filter_quality_for_product(product, syms, quality)
 
 
 def product_series(
@@ -153,13 +162,25 @@ def main() -> int:
     parser.add_argument("--products", nargs="*", default=DEFAULT_PRODUCTS)
     parser.add_argument("--yoy", default=str(DEFAULT_YOY))
     parser.add_argument("--map", type=Path, default=DEFAULT_MAP)
+    parser.add_argument("--fina", type=Path, default=DEFAULT_FINA, help="fina_indicator 根目录")
+    parser.add_argument(
+        "--quality-filter",
+        action="store_true",
+        help="按同产品竞争力分层过滤受益公司（§5.4 修订：剔除亏损型 + 净利率/毛利率均低于"
+        "同产品中位数的低竞争力公司），输出追加 filter 版对比",
+    )
     parser.add_argument("--output", default=str(DEFAULT_OUTPUT))
     parser.add_argument("--detail", action="store_true", help="打印每产品轮次明细")
     args = parser.parse_args()
 
     pv = pl.read_parquet(args.yoy)
-    # 一次性加载：全部目标公司月收益 + 基准（避免每产品重载全量行情）
-    all_symbols = sorted({s for p in args.products for s in companies_for(args.map, p)})
+    quality: dict[str, dict[str, str]] | None = (
+        load_quality_layers(args.fina, args.map) if args.quality_filter else None
+    )
+    # 一次性加载：全部目标公司月收益 + 基准（avoid 每产品重载全量行情）。
+    # 注意：必须用未过滤的全池加载，base/quality/quality_filter 各 variant 再按
+    # 自己的公司池从 retdf_all 中过滤，否则过滤会污染基础版对比。
+    all_symbols = sorted({s for p in args.products for s in companies_for(args.map, p, None)})
     retdf_all = load_monthly_ret(
         "data/curated/tushare/market=CN/stock_daily_bar/year=2*/**/*.parquet", all_symbols
     )
@@ -174,17 +195,30 @@ def main() -> int:
     )
     summary_rows = []
     for product in args.products:
-        symbols = companies_for(args.map, product)
+        symbols = companies_for(args.map, product, None)
         months, vals, drives = product_series(pv, product)
         if not symbols:
             print(f"[SKIP] {product}: 无受益公司")
             continue
-        for quality, label in ((False, "base"), (True, "quality")):
+        # 基础/质量两版（全池），+ 竞争力过滤版（quality 版再过滤）
+        variants: list[tuple[list[str], str]] = [(symbols, "base"), (symbols, "quality")]
+        if quality is not None:
+            filt = companies_for(args.map, product, quality)
+            variants.append((filt, "quality_filter"))
+        for syms, label in variants:
             trades = backtest_product(
-                product, symbols, months, vals, drives, quality, retdf_all, benchdf
+                product,
+                syms,
+                months,
+                vals,
+                drives,
+                label == "quality" or label == "quality_filter",
+                retdf_all,
+                benchdf,
             )
             s = summarize(trades)
             s["product"], s["version"] = product, label
+            s["n_symbols"] = len(syms)
             summary_rows.append(s)
             if args.detail and trades:
                 detail = pl.DataFrame(
@@ -206,10 +240,11 @@ def main() -> int:
     Path(args.output).parent.mkdir(parents=True, exist_ok=True)
     out.write_parquet(args.output)
 
-    print("\n=== 多产品横向对比（基础版 vs 质量过滤版，2016-2026）===")
+    print("\n=== 多产品横向对比（基础版 vs 质量过滤版 vs 竞争力过滤版，GACC 口径 2019-2026）===")
     cols = [
         "product",
         "version",
+        "n_symbols",
         "n_trades",
         "win_rate",
         "beat_rate",
@@ -221,6 +256,9 @@ def main() -> int:
     print(
         out.select(cols)
         .with_columns(
+            pl.col("n_symbols")
+            .map_elements(lambda x: _fmt(x, "d"), return_dtype=pl.String)
+            .alias("n_symbols"),
             pl.col("win_rate")
             .map_elements(lambda x: _fmt(x, ".0%"), return_dtype=pl.String)
             .alias("win_rate"),

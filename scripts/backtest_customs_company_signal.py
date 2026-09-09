@@ -19,7 +19,9 @@
 from __future__ import annotations
 
 import argparse
+import csv
 import glob
+import statistics
 from datetime import date
 from pathlib import Path
 from typing import Any, cast
@@ -30,6 +32,91 @@ DEFAULT_YOY = Path("data/analytics/industry/customs_product_volume_price.parquet
 DEFAULT_TRANSFORMER = ["600089.SH", "601179.SH", "002028.SZ", "002270.SZ", "688676.SH", "301291.SZ"]
 DEFAULT_BENCH = "000300.SH"
 DEFAULT_OUTPUT = Path("data/analytics/industry/customs_signal_backtest.parquet")
+DEFAULT_FINA = Path("data/curated/tushare/market=CN/fina_indicator")
+
+# 竞争力分层（§5.4 修订：同产品内部相对比较，净利率 × 毛利率）
+DEFAULT_MAP = Path("config/data/customs/company_exposure_map.csv")
+QUALITY_KEEP = {"正常"}  # 保留层（剔除亏损型/低竞争力）
+
+
+def load_quality_layers(
+    fina_root: Path | str = DEFAULT_FINA,
+    map_path: Path | str = DEFAULT_MAP,
+) -> dict[str, dict[str, str]]:
+    """构建 产品 → {公司 → 竞争力分层}（同产品内部相对比较，§5.4 修订）。
+
+    口径：最近一期年报（end_date 为最新 12-31）的 netprofit_margin / grossprofit_margin
+    （单期值）。分层规则：
+      - 亏损型：netprofit_margin < 0（绝对硬事实，跨产品统一剔除）；
+      - 低竞争力：同产品内 netprofit_margin 与 grossprofit_margin **均低于同产品中位数**
+        （bottom-left 象限，相对同产品竞争组），且非亏损型；
+      - 正常：其余（保留）。
+    无财务数据或单公司产品（无法相对比较）→ 仅套用亏损型绝对标记，其余归"正常"。
+
+    Returns:
+        {product_key: {stock_code: 分层名}}，分层 ∈ {亏损型, 低竞争力, 正常}。
+    """
+    frames = []
+    for f in sorted(glob.glob(str(Path(fina_root) / "year=*" / "month=*" / "data.parquet"))):
+        try:
+            frames.append(
+                pl.read_parquet(f).select(
+                    ["symbol", "end_date", "netprofit_margin", "grossprofit_margin"]
+                )
+            )
+        except Exception:
+            continue
+    if not frames:
+        return {}
+    fin = pl.concat(frames).filter(
+        (pl.col("end_date").dt.month() == 12)
+        & pl.col("netprofit_margin").is_not_null()
+        & pl.col("grossprofit_margin").is_not_null()
+    )
+    latest = fin.group_by("symbol").agg(pl.col("end_date").max())
+    fin = fin.join(latest, on=["symbol", "end_date"], how="inner")
+    agg = fin.group_by("symbol").agg(
+        pl.col("netprofit_margin").mean().alias("np"),
+        pl.col("grossprofit_margin").mean().alias("gp"),
+    )
+    per_sym = {r["symbol"]: (r["np"], r["gp"]) for r in agg.iter_rows(named=True)}
+
+    # 产品 → 公司集合（暴露度映射）
+    product_syms: dict[str, set[str]] = {}
+    with Path(map_path).open("r", encoding="utf-8-sig", newline="") as fh:
+        for r in csv.DictReader(fh):
+            product_syms.setdefault(r["product_key"], set()).add(r["stock_code"])
+
+    quality: dict[str, dict[str, str]] = {}
+    for product, syms in product_syms.items():
+        rows = {s: per_sym[s] for s in syms if s in per_sym}
+        med_np = statistics.median(v[0] for v in rows.values()) if len(rows) >= 2 else None
+        med_gp = statistics.median(v[1] for v in rows.values()) if len(rows) >= 2 else None
+        q: dict[str, str] = {}
+        for s in syms:
+            v = rows.get(s)
+            if v is None:
+                q[s] = "正常"  # 无财报覆盖不误杀
+                continue
+            np, gp = v
+            if np < 0:
+                q[s] = "亏损型"
+            elif med_np is not None and np < med_np and gp < med_gp:
+                q[s] = "低竞争力"
+            else:
+                q[s] = "正常"
+        quality[product] = q
+    return quality
+
+
+def filter_quality_for_product(
+    product: str, symbols: list[str], quality: dict[str, dict[str, str]]
+) -> list[str]:
+    """按同产品竞争力分层过滤公司池（剔除亏损型/低竞争力，保留正常）。"""
+    q = quality.get(product, {})
+    return [s for s in symbols if q.get(s, "正常") in QUALITY_KEEP]
+
+
 BUILD_LOTS = 3  # 建仓批数
 
 
@@ -79,7 +166,7 @@ def build_weight_plan(
 
 
 def load_monthly_ret(pattern: str, want: list[str] | None, use_adj: bool = True) -> pl.DataFrame:
-    """前复权月收益（2016-01 起）：日线 × 复权因子 → 月末价 → pct_change。
+    """前复权月收益（数据起点起，GACC 口径 2019-01）：日线 × 复权因子 → 月末价 → pct_change。
 
     use_adj=False 用于指数（无股票复权因子，直接收盘价）。
     """
@@ -113,6 +200,7 @@ def load_monthly_ret(pattern: str, want: list[str] | None, use_adj: bool = True)
     px = (
         px.with_columns((pl.col("close") * pl.col("adj_factor")).alias("px"))
         .filter(pl.col("px").is_not_null(), pl.col("trade_date") >= pl.lit(date(2016, 1, 1)))
+        .sort(["symbol", "trade_date"])  # 月末价取每月最后交易日：group_by 前必须按日排序
         .with_columns(pl.col("trade_date").dt.strftime("%Y-%m").alias("month"))
         .group_by(["symbol", "month"])
         .agg(pl.col("px").last())
@@ -169,7 +257,21 @@ def main() -> int:
     parser.add_argument(
         "--quality-gate", action="store_true", help="入场要求量价齐升/量驱动（质量过滤）"
     )
+    parser.add_argument(
+        "--quality-filter",
+        action="store_true",
+        help="按竞争力分层过滤公司池（§5.4：剔除亏损型/低竞争力，保留正常/高周转型）",
+    )
     args = parser.parse_args()
+
+    symbols = args.symbols
+    if args.quality_filter:
+        quality = load_quality_layers(fina_root=DEFAULT_FINA, map_path=DEFAULT_MAP)
+        symbols = filter_quality_for_product(args.product, symbols, quality)
+        print(
+            f"[quality-filter] 公司池 {len(args.symbols)} → {len(symbols)} 家"
+            f"（剔除: {sorted(set(args.symbols) - set(symbols))}）"
+        )
 
     # 1) 产品出口 yoy（units 段全月序）+ 驱动类型（质量过滤用）
     pv = pl.read_parquet(args.yoy)
@@ -187,7 +289,7 @@ def main() -> int:
 
     # 2) 公司月收益与基准
     retdf = load_monthly_ret(
-        "data/curated/tushare/market=CN/stock_daily_bar/year=2*/**/*.parquet", args.symbols
+        "data/curated/tushare/market=CN/stock_daily_bar/year=2*/**/*.parquet", symbols
     )
     benchdf = (
         load_monthly_ret(
