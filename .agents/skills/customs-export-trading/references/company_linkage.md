@@ -32,11 +32,16 @@ uv run python scripts/calibrate_company_exposure.py --period 2026-06-30 --apply
 uv run python -m stock_cli.customs_company
 #    --skip-signal 仅公司观察表
 
-# 择时回测（分批建仓 / 景气松动分批减仓 → 胜率/持有收益）
+# 择时回测（分批建仓 / 景气松动分批减仓 → 胜率/持有收益；base=纯金额 yoy 择时默认，
+#    --quality-gate 加量拐门（中性）、--quality-filter 竞争力过滤（§5.4），可叠加）
+uv run python scripts/backtest_customs_company_signal.py
 uv run python scripts/backtest_customs_company_signal.py --quality-gate
+uv run python scripts/backtest_customs_company_signal.py --quality-gate --quality-filter
 
-# 多产品横向回测（信号普适性检验，10 产品 × 基础/质量两版）
+# 多产品横向回测（信号普适性检验，10 产品 × 基础/质量两版
+#    + --quality-filter 竞争力过滤版）
 uv run python scripts/backtest_customs_multi.py --detail
+uv run python scripts/backtest_customs_multi.py --quality-filter --detail
 ```
 
 `stock_cli.customs_company` 输出：
@@ -51,7 +56,7 @@ uv run python scripts/backtest_customs_multi.py --detail
 口径要点：
 - 聚合仅用黄金表 `trade_direction=export` + `hs_level=8` 行；
 - 数量仅段内已知单位唯一时加总（否则置空，驱动不判）；金额全量；
-- 补全月序（2016-01~末月）重算 3MMA yoy，与
+- 补全月序（GACC 黄金表起点 2019-01~末月）重算 3MMA yoy，与
   `stock_analytics.pipelines.customs_prosperity.product_panel._derive` 同口径；
 - 公司多段绑定 → 每 (company, product, segment) 一行；空段 → 产品级序列（对比基线）。
 
@@ -61,11 +66,13 @@ uv run python scripts/backtest_customs_multi.py --detail
    → `uv run python -m stock_cli.customs_company`（公司观察表 + 三层信号）；
 2. **选池**：`rating=="A强机会"`（三腿共振）优先；`B确认中` 做前瞻仓；
    `risk_flag=="顶背离⚠"` 一律回避（出口仍强但资金撤 = 利好兑现）；
-3. **建仓**：产品出口 yoy 连续 2 月 >0 且量价齐升/量驱动 → 分 3 批建仓（月度 1/3）；
+3. **建仓**：产品出口**金额** yoy 连续 2 月 >0 → 分 3 批建仓（月度 1/3，base 基线）；
+   量拐门（量价齐升/量驱动）为可选中性层（对齐后 base=quality 打平，见 METHODOLOGY §6 / 26 号文档）；
 4. **监控**：月度看段级 yoy 二阶导——连续 2 月回落减半、转负清仓；
    同时盯 `f2_state`：主力/融资由正转负 = 资金背离预警（即便出口仍正）；
 5. **组合纪律**：多产品分散（transformer/battery/semi/cathode/wind 信号强的池子），
-   单产品不重仓；快周期商品（锂/铜/银）不用本信号；
+   单产品不重仓；快周期商品（锂/铜/银）不用本信号（GACC 口径回测轮次少、表现分化，
+   维持排除，观察 2-3 个新景气轮后评估，见 METHODOLOGY_COMPANY_FINAL §8.1）；
 6. **后视确认**：财报双正（f3=真扩张）验证"真扩张"，增收不增利（净利负）降级。
 
 ## 4. 别名表再生成流程（fina_mainbz 新报告期）

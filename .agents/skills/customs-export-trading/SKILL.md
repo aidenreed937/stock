@@ -22,7 +22,8 @@ uv run python scripts/calibrate_company_exposure.py --period 2026-06-30 --apply
 uv run python -m stock_cli.customs_company
 #    可选：--skip-signal 仅公司观察表
 
-# 4. 择时回测（量拐门，规则见下）
+# 4. 择时回测（base=纯金额 yoy 择时，默认；--quality-gate 加量拐门，规则见下）
+uv run python scripts/backtest_customs_company_signal.py
 uv run python scripts/backtest_customs_company_signal.py --quality-gate
 
 # 5. 多产品横向回测（信号普适性检验；--quality-filter/--product-gate 语义见 METHODOLOGY §5.4）
@@ -57,16 +58,25 @@ uv run python scripts/backtest_customs_multi.py --quality-filter --product-gate 
 
 ## 择时规则（当前口径）
 
-**交易规则**（`backtest_customs_company_signal.py`，已按 release_date 对齐消除发布时滞前视）：
-- 建仓：产品出口 3MMA yoy 连续 2 月 >0 → 分 3 批建仓（每月 1/3）；可加 `--quality-gate`
-  要求量 yoy>0（量拐）入场；
-- 减仓：满仓后 yoy 连续 2 月环比下降（见顶回落）→ 减半（可再加回）；
-- 清仓：yoy≤0。
+**base（纯金额 yoy 择时，最简基线版）**——`build_weight_plan(vals, quality_gate=False)`，
+`backtest_customs_company_signal.py` 默认（不加 `--quality-gate`），只看**金额 yoy**一个量：
+
+| 动作 | 触发条件 |
+| :-- | :-- |
+| 建仓 | 产品出口**金额** 3MMA yoy 连续 2 月 >0 → 分 3 批建仓（每月 1/3） |
+| 减仓 | 满仓后金额 yoy 连续 2 月环比下降（见顶回落）→ 减半（可再加回） |
+| 清仓 | 金额 yoy ≤0 |
+
+**base 与 quality 的唯一区别 = 入场要不要量确认**：quality（`--quality-gate`）在 base
+基础上，入场还要求驱动类型 ∈ {量价齐升, 量驱动}（量 yoy>0 的量拐门，`entry_ok` 判门）；
+两者**离场完全一样**（都只看金额：见顶减半、yoy≤0 清仓）。（均已按 release_date 对齐
+消除发布时滞前视。）
 
 **对齐后回测结论（26 号文档，GACC 全池 108 产品）**：
-- 量拐门（quality）与无门（base）**打平**（全池均 +7.9pp），量拐门不再是"最优门"；
+- 量拐门（quality）与无门（base）**打平**（全池均 +7.9pp），量确认是中性门（既不增强
+  也不拖累）；base 正超额占比最高（81% vs 79%），是**对齐后最简洁的等价选择**；
 - "量只入门、不管出"（量≤0 不清仓，否则 whipsaw）的离场修正仍有效（机制不受前视影响）；
-- 竞争力过滤（quality_filter）仍略优（+8.6pp vs +7.9pp）。
+- 竞争力过滤（quality_filter）仍略优（+8.6pp vs +7.9pp），要叠加才用得上。
 
 回测证据（transformer / 多产品 / 全池三版、竞争力过滤、产品门）与后续研究（产品级
 细分质量门，缺分类轴）见 `METHODOLOGY_COMPANY_FINAL.md` §5.4/§6/§8 与 26 号文档。
@@ -78,7 +88,8 @@ uv run python scripts/backtest_customs_multi.py --quality-filter --product-gate 
 2. **选池**：`rating=="A强机会"` 优先；`B确认中` 前瞻仓；`顶背离⚠` 一律回避；
    入池前查价格位置（1 年/3 年涨幅 + 52 周高低点，长牛/低位/反弹/崩盘四形态分流，
    见 METHODOLOGY §5.1）；
-3. **建仓**：产品出口 yoy 连续 2 月 >0 且量 yoy>0（量拐）→ 分 3 批建仓（月度 1/3）；
+3. **建仓**：产品出口**金额** yoy 连续 2 月 >0 → 分 3 批建仓（月度 1/3，base 基线）；
+   量拐门（量 yoy>0）为可选中性层（对齐后 base=quality，不加不减，见上）；
    **每批建仓/加仓前重查资金与价格**：主力流出 + 融资堆积（杠杆堆积，见 §5.5）→
    降权/停止加仓（即便 `f2_state` 仍正）；价格涨高或长牛高位 → 停止加仓；
 4. **监控**：段级 yoy 二阶导连续 2 月回落减半、转负清仓；`f2_state` 由正转负 =
