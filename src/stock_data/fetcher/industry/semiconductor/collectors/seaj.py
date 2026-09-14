@@ -8,7 +8,7 @@
 from __future__ import annotations
 
 import logging
-from datetime import date
+from datetime import date, timedelta
 from pathlib import Path
 from typing import Any
 
@@ -73,8 +73,16 @@ class SeajEquipmentCollector:
         self.impersonate = impersonate
         self.pdf_parser = SeajPdfParser()
 
-    def collect(self) -> list[SemiconductorEquipmentRecord]:
-        """在线重建 SEAJ 月度设备出货原始记录。"""
+    def collect(
+        self,
+        start_date: date | None = None,
+        end_date: date | None = None,
+    ) -> list[SemiconductorEquipmentRecord]:
+        """在线采集 SEAJ 月度设备出货原始记录。
+
+        窄的近期窗口只抓首页指向的最新速报 PDF；历史 Excel 仅在全量或
+        较宽回填窗口使用，避免每次日常同步都重新下载整段历史。
+        """
         self.paths.semiconductor_dir.mkdir(parents=True, exist_ok=True)
 
         index_response = self._get(SEAJ_BASE_URL)
@@ -98,17 +106,25 @@ class SeajEquipmentCollector:
         release_dates = self._fetch_release_dates()
         collected_at = now_utc_iso()
 
-        records = self._collect_historical(
-            historical_url,
-            release_dates=release_dates,
-            collected_at=collected_at,
-        )
+        records: list[SemiconductorEquipmentRecord] = []
+        if _should_fetch_historical(start_date=start_date, end_date=end_date):
+            records.extend(
+                self._collect_historical(
+                    historical_url,
+                    release_dates=release_dates,
+                    collected_at=collected_at,
+                    start_date=start_date,
+                    end_date=end_date,
+                )
+            )
         records.extend(
             self._collect_latest_pdf(
                 target.pdf_url,
                 target.release_date,
                 release_dates=release_dates,
                 collected_at=collected_at,
+                start_date=start_date,
+                end_date=end_date,
             )
         )
 
@@ -157,6 +173,8 @@ class SeajEquipmentCollector:
         *,
         release_dates: dict[str, date],
         collected_at: str,
+        start_date: date | None = None,
+        end_date: date | None = None,
     ) -> list[SemiconductorEquipmentRecord]:
         if not source_url:
             logger.warning("SEAJ statistics 首页未找到历史设备出货 Excel 链接")
@@ -182,7 +200,7 @@ class SeajEquipmentCollector:
             start_year=START_YEAR,
             end_year=date.today().year,
         )
-        return [
+        records = [
             self._record_from_item(
                 row,
                 source_url=source_url,
@@ -193,6 +211,7 @@ class SeajEquipmentCollector:
             )
             for row in rows
         ]
+        return _filter_records(records, start_date=start_date, end_date=end_date)
 
     def _collect_latest_pdf(
         self,
@@ -201,6 +220,8 @@ class SeajEquipmentCollector:
         *,
         release_dates: dict[str, date],
         collected_at: str,
+        start_date: date | None = None,
+        end_date: date | None = None,
     ) -> list[SemiconductorEquipmentRecord]:
         if not source_url:
             return []
@@ -224,7 +245,7 @@ class SeajEquipmentCollector:
             release_date=listing_release_date,
             release_dates=release_dates,
         )
-        return [
+        records = [
             self._record_from_item(
                 row,
                 source_url=source_url,
@@ -235,6 +256,7 @@ class SeajEquipmentCollector:
             )
             for row in rows
         ]
+        return _filter_records(records, start_date=start_date, end_date=end_date)
 
     def _record_from_item(
         self,
@@ -300,3 +322,35 @@ def _next_month_release_date(report_month: str) -> date:
     if month == 12:
         return date(year + 1, 1, 25)
     return date(year, month + 1, 25)
+
+
+def _should_fetch_historical(
+    *,
+    start_date: date | None,
+    end_date: date | None,
+) -> bool:
+    """判断本次请求是否需要 SEAJ 全历史 Excel。
+
+    SEAJ 最新速报适合日常同步；宽窗口或无窗口请求才需要历史底表。历史底表
+    没有按月份查询参数，因此不能把它当作日常增量源反复下载。
+    """
+    if start_date is None or end_date is None:
+        return True
+    if start_date > end_date:
+        raise ValueError(f"SEAJ 月度设备日期范围无效: {start_date} > {end_date}")
+    recent_cutoff = date.today() - timedelta(days=180)
+    return (end_date - start_date).days > 180 or end_date < recent_cutoff
+
+
+def _filter_records(
+    records: list[SemiconductorEquipmentRecord],
+    *,
+    start_date: date | None,
+    end_date: date | None,
+) -> list[SemiconductorEquipmentRecord]:
+    return [
+        record
+        for record in records
+        if (start_date is None or record.trade_date >= start_date)
+        and (end_date is None or record.trade_date <= end_date)
+    ]

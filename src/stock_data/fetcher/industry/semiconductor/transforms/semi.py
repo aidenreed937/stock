@@ -155,36 +155,26 @@ def build_semi_equipment_curated_frame(df_raw: pl.DataFrame) -> pl.DataFrame:
     df = _append_derived_q4_from_annual_sources(df)
     df = df.filter(pl.col("source_record_type") != "annual_source").sort("trade_date")
 
-    df = (
-        df.with_columns(
-            pl.col("global_billings_billion_usd").pct_change(4).round(4).alias("_yoy"),
-            pl.col("global_billings_billion_usd").pct_change(1).round(4).alias("_qoq"),
+    # YoY/QoQ 一律由季度出货额序列 pct_change 自算，不采信源端增速字符串。
+    # SEMI 新闻稿页脚/侧栏的"相关新闻"标题带年度或他期增速（实测 2018-2020
+    # 各季度 yoy 被侧栏 "23% Year-Over-Year in Q2 2026" 全文误抓污染），源端
+    # 增速仅保留在 RAW 层作血统，不进入 Curated，保证同口径可复现。
+    df = df.with_columns(
+        pl.col("global_billings_billion_usd").pct_change(4).round(4).alias("yoy_growth"),
+        pl.col("global_billings_billion_usd").pct_change(1).round(4).alias("qoq_growth"),
+    ).with_columns(
+        pl.when(
+            pl.col("china_share_pct").is_null()
+            & pl.col("china_billings_billion_usd").is_not_null()
+            & (pl.col("global_billings_billion_usd") > 0)
         )
-        .with_columns(
-            pl.when(pl.col("yoy_growth").is_null())
-            .then(pl.col("_yoy"))
-            .otherwise(pl.col("yoy_growth"))
-            .alias("yoy_growth"),
-            pl.when(pl.col("qoq_growth").is_null())
-            .then(pl.col("_qoq"))
-            .otherwise(pl.col("qoq_growth"))
-            .alias("qoq_growth"),
-            pl.when(
-                pl.col("china_share_pct").is_null()
-                & pl.col("china_billings_billion_usd").is_not_null()
-                & (pl.col("global_billings_billion_usd") > 0)
-            )
-            .then(
-                (
-                    pl.col("china_billings_billion_usd")
-                    / pl.col("global_billings_billion_usd")
-                    * 100.0
-                ).round(2)
-            )
-            .otherwise(pl.col("china_share_pct"))
-            .alias("china_share_pct"),
+        .then(
+            (
+                pl.col("china_billings_billion_usd") / pl.col("global_billings_billion_usd") * 100.0
+            ).round(2)
         )
-        .drop(["_yoy", "_qoq"])
+        .otherwise(pl.col("china_share_pct"))
+        .alias("china_share_pct"),
     )
     return df.select(list(SEMI_EQUIPMENT_CURATED_SCHEMA)).with_columns(
         [

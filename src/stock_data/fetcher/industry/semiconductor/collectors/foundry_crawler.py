@@ -434,7 +434,7 @@ class FoundryUtilizationCrawler:
                 "foundry",
                 filename,
                 content_bytes,
-                base_dir=self.paths.legacy_semiconductor_dir,
+                base_dir=self.paths.semiconductor_dir,
                 compress=compress,
             )
             return (

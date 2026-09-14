@@ -27,6 +27,7 @@ from stock_data.fetcher.industry.semiconductor.lineage import (
 from stock_data.fetcher.industry.semiconductor.models import SemiconductorSalesRecord
 from stock_data.fetcher.industry.semiconductor.parsers import (
     extract_sia_sales_article_links,
+    extract_wsts_excel_download_url,
     load_sia_news_enrichments,
     parse_sia_china_and_date,
     parse_wsts_excel_file,
@@ -35,7 +36,10 @@ from stock_data.fetcher.industry.semiconductor.paths import SemiconductorRawPath
 
 logger = logging.getLogger(__name__)
 
-WSTS_EXCEL_URL = "https://www.wsts.org/esraCMS/extension/media/f/WST/7735/WSTS-Historical-Billings-Report-Jun_2026.xlsx"
+WSTS_REPORT_PAGE_URL = "https://www.wsts.org/67/Historical-Billings-Report"
+DEFAULT_WSTS_EXCEL_URL = "https://www.wsts.org/esraCMS/extension/media/f/WST/7735/WSTS-Historical-Billings-Report-Jun_2026.xlsx"
+DEFAULT_WSTS_EXCEL_FILENAME = "WSTS-Historical-Billings-Report-Jun_2026.xlsx"
+WSTS_EXCEL_URL = DEFAULT_WSTS_EXCEL_URL
 
 
 class SemiconductorCollector:
@@ -126,19 +130,38 @@ class SemiconductorCollector:
         logger.info("WSTS/SIA 半导体协同采集完成: 共 %d 个月度连续数据", len(final_records))
         return final_records
 
+    def _discover_wsts_excel_target(self) -> tuple[str, str]:
+        """在线嗅探 WSTS 官方 Historical Billings Report 最新 Excel 下载链接与文件名。"""
+        try:
+            resp = requests.get(
+                WSTS_REPORT_PAGE_URL,
+                impersonate=self.impersonate,
+                timeout=self.timeout,
+            )
+            if resp.status_code == 200:
+                html_text = getattr(resp, "text", "") or response_content_bytes(resp).decode(
+                    "utf-8", errors="ignore"
+                )
+                discovered = extract_wsts_excel_download_url(html_text)
+                if discovered:
+                    logger.info("在线嗅探到 WSTS 最新 Excel: %s (%s)", discovered[1], discovered[0])
+                    return discovered
+        except Exception as exc:  # noqa: BLE001
+            logger.warning("嗅探 WSTS 最新 Excel 下载链接异常: %s，将回退默认配置", exc)
+        return DEFAULT_WSTS_EXCEL_URL, DEFAULT_WSTS_EXCEL_FILENAME
+
     def _fetch_and_parse_wsts_history(
         self,
         *,
         release_dates: Mapping[str, date] | None = None,
         force: bool = False,
     ) -> list[SemiconductorSalesRecord]:
-        """下载并解析 WSTS 官方 Historical Billings Report。"""
-        excel_path = self.sia_raw_dir / "WSTS-Historical-Billings-Report-Jun_2026.xlsx"
+        """在线嗅探、下载并解析 WSTS 官方 Historical Billings Report。"""
+        target_url, target_filename = self._discover_wsts_excel_target()
+        excel_path = self.sia_raw_dir / target_filename
         if force or not excel_path.exists():
             try:
-                resp = requests.get(
-                    WSTS_EXCEL_URL, impersonate=self.impersonate, timeout=self.timeout
-                )
+                resp = requests.get(target_url, impersonate=self.impersonate, timeout=self.timeout)
                 if resp.status_code == 200 and response_content_bytes(resp):
                     content_bytes = response_content_bytes(resp)
                     self.sia_raw_dir.mkdir(parents=True, exist_ok=True)
@@ -146,14 +169,22 @@ class SemiconductorCollector:
                         "sia",
                         excel_path.name,
                         content_bytes,
-                        base_dir=self.paths.raw_root,
+                        base_dir=self.paths.semiconductor_dir,
                     )
-            except Exception as exc:
-                logger.warning("下载 WSTS 官方 Excel 失败: %s", exc)
+                    logger.info("成功在线下载 WSTS 官方 Excel: %s", excel_path.name)
+            except Exception as exc:  # noqa: BLE001
+                logger.warning("下载 WSTS 官方 Excel 失败 [%s]: %s", target_url, exc)
 
         if not excel_path.exists():
-            logger.error("未找到 WSTS 官方历史 Excel 文件: %s", excel_path)
-            return []
+            existing_excels = sorted(
+                self.sia_raw_dir.glob("WSTS-Historical-Billings-Report-*.xlsx")
+            )
+            if existing_excels:
+                excel_path = existing_excels[-1]
+                logger.info("未拉取到目标 Excel，回退使用本地已有版本: %s", excel_path.name)
+            else:
+                logger.error("未找到任何 WSTS 官方历史 Excel 文件: %s", excel_path)
+                return []
 
         content_bytes = excel_path.read_bytes()
         content_hash = raw_content_sha256(content_bytes)
@@ -178,7 +209,7 @@ class SemiconductorCollector:
                     "sia",
                     "latest_news_list.html",
                     list_bytes,
-                    base_dir=self.paths.raw_root,
+                    base_dir=self.paths.semiconductor_dir,
                     compress=True,
                 )
                 for link in extract_sia_sales_article_links(list_text)[:10]:
@@ -196,7 +227,7 @@ class SemiconductorCollector:
                                 "sia",
                                 f"{slug}.html",
                                 article_bytes,
-                                base_dir=self.paths.raw_root,
+                                base_dir=self.paths.semiconductor_dir,
                                 compress=True,
                             )
                             parsed = parse_sia_china_and_date(article_text, link)

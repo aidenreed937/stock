@@ -65,6 +65,8 @@ def empty_semiconductor_equipment() -> pl.DataFrame:
 
 def records_to_semiconductor_equipment_frame(
     records: Sequence[SemiconductorEquipmentRecord],
+    *,
+    existing_df: pl.DataFrame | None = None,
 ) -> pl.DataFrame:
     """将半导体设备出货记录转换为 Curated 表并补算缺失的 3MMA 增速。"""
     if not records:
@@ -101,11 +103,14 @@ def records_to_semiconductor_equipment_frame(
         "collected_at": [r.collected_at or now_iso for r in ordered_records],
     }
 
-    df = (
-        pl.DataFrame(data, schema=SEMICONDUCTOR_EQUIPMENT_SCHEMA)
-        .unique(subset=["report_month"], keep="last")
-        .sort("trade_date")
-    )
+    new_df = pl.DataFrame(data, schema=SEMICONDUCTOR_EQUIPMENT_SCHEMA)
+    if existing_df is not None and not existing_df.is_empty():
+        df = pl.concat([existing_df, new_df], how="diagonal_relaxed").select(
+            list(SEMICONDUCTOR_EQUIPMENT_SCHEMA)
+        )
+    else:
+        df = new_df
+    df = df.unique(subset=["report_month"], keep="last").sort("trade_date")
     return _fill_semiconductor_equipment_growth(df)
 
 

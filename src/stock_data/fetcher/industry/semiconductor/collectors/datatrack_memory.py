@@ -74,6 +74,8 @@ class DataTrackMemoryPriceCollector:
     ) -> list[MemoryPriceBenchmarkRecord]:
         """在线采集 TrendForce DataTrack 内存月度现货价格历史与最新基准记录。"""
         del force  # DataTrack 当前无本地响应缓存；强制刷新由上层保留并传递到此。
+        if start_date is not None and end_date is not None and start_date > end_date:
+            raise ValueError(f"DataTrack 内存基准日期范围无效: {start_date} > {end_date}")
         self.paths.datatrack_dir.mkdir(parents=True, exist_ok=True)
         records: list[MemoryPriceBenchmarkRecord] = []
 

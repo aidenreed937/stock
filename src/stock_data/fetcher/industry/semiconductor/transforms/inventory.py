@@ -7,6 +7,7 @@ from collections.abc import Sequence
 import polars as pl
 
 from stock_data.fetcher.industry.common import now_utc_iso
+from stock_data.fetcher.industry.semiconductor.fx import derive_fx_normalized_amounts
 from stock_data.fetcher.industry.semiconductor.models import SemiconductorInventoryRecord
 from stock_data.fetcher.industry.semiconductor.schemas import (
     INVENTORY_CURATED_SCHEMA,
@@ -15,6 +16,22 @@ from stock_data.fetcher.industry.semiconductor.schemas import (
 from stock_data.fetcher.industry.semiconductor.transforms.release_date import (
     require_raw_release_dates,
 )
+
+# 周期样本分组；005930.KS_DS 是 DS 半导体整体代理，纯 Memory 库存未披露。
+MEMORY_SYMBOLS = frozenset({"MU", "000660.KS", "005930.KS_DS"})
+ANALOG_AUTO_SYMBOLS = frozenset({"TXN", "ADI", "STM", "NXPI"})
+
+#: 季度级 DOI 聚合（等权/加权）与库存相态所需的最少主体数。
+#:
+#: 7 家 IDM 面板的半数。季度主体数低于该值时，该季度视为**不完整**，
+#: 季度级聚合值与相态一律留空——避免把单家公司的财务比率当作行业级口径输出。
+#: 真实案例：2026Q3 仅 ADI 一家（财季→自然季映射所致），此前会输出一个
+#: "7 家 IDM 加权"的 132.3 天，实为 ADI 单家值。
+#:
+#: 取 4 的边界校验：当前数据季度主体数分布为 {1: 1 期, 5: 13 期, 6: 17 期, 7: 12 期}，
+#: 故 2~5 中任一取值都只会影响 2026Q3 这一期，不改动任何历史值。
+#: 注意：本守卫只覆盖**季度级**口径；子行业级（memory 早年 13 个季度仅 1 家）不在本次范围。
+MIN_INVENTORY_CONSTITUENTS = 4
 
 
 def determine_inventory_regime(weighted_doi: float | None) -> str | None:
@@ -47,6 +64,7 @@ def records_to_raw_inventory_frame(
         "symbol": [record.symbol for record in records],
         "report_quarter": [record.report_quarter for record in records],
         "trade_date": [record.trade_date for record in records],
+        "subsector": [record.subsector for record in records],
         "source_period_end": [record.source_period_end for record in records],
         "fiscal_period_raw": [record.fiscal_period for record in records],
         "inventory_usd_raw": [
@@ -58,6 +76,11 @@ def records_to_raw_inventory_frame(
         ],
         "cost_of_revenue_annual_raw": [record.cost_of_revenue_annual_raw for record in records],
         "cost_of_revenue_derivation": [record.cost_of_revenue_derivation for record in records],
+        "ds_revenue_krw_raw": [record.ds_revenue_krw_raw for record in records],
+        "ds_operating_profit_krw_raw": [record.ds_operating_profit_krw_raw for record in records],
+        "cost_of_revenue_source": [record.cost_of_revenue_source for record in records],
+        "inventory_scope": [record.inventory_scope for record in records],
+        "memory_inventory_status": [record.memory_inventory_status for record in records],
         "release_date": [record.release_date for record in records],
         "source": [record.source or "SEC_EDGAR_10Q_10K_20F_6K" for record in records],
         "source_url": [record.source_url for record in records],
@@ -90,12 +113,18 @@ def build_inventory_raw_frame(
         "symbol",
         "report_quarter",
         "trade_date",
+        "subsector",
         "source_period_end",
         "fiscal_period_raw",
         "inventory_usd_raw",
         "cost_of_revenue_usd_raw",
         "cost_of_revenue_annual_raw",
         "cost_of_revenue_derivation",
+        "ds_revenue_krw_raw",
+        "ds_operating_profit_krw_raw",
+        "cost_of_revenue_source",
+        "inventory_scope",
+        "memory_inventory_status",
         "release_date",
         "source",
         "source_url",
@@ -107,6 +136,13 @@ def build_inventory_raw_frame(
     ]
     df = raw_rows
     additions: list[pl.Expr] = []
+    if "subsector" not in df.columns:
+        additions.append(
+            pl.when(pl.col("symbol").str.to_uppercase().is_in(list(MEMORY_SYMBOLS)))
+            .then(pl.lit("memory"))
+            .otherwise(pl.lit("analog_auto"))
+            .alias("subsector")
+        )
     if "source_period_end" not in df.columns:
         additions.append(pl.lit(None, dtype=pl.Date).alias("source_period_end"))
     if "fiscal_period_raw" not in df.columns:
@@ -125,6 +161,16 @@ def build_inventory_raw_frame(
         additions.append(pl.lit(None, dtype=pl.String).alias("cost_of_revenue_annual_raw"))
     if "cost_of_revenue_derivation" not in df.columns:
         additions.append(pl.lit("").alias("cost_of_revenue_derivation"))
+    if "ds_revenue_krw_raw" not in df.columns:
+        additions.append(pl.lit(None, dtype=pl.String).alias("ds_revenue_krw_raw"))
+    if "ds_operating_profit_krw_raw" not in df.columns:
+        additions.append(pl.lit(None, dtype=pl.String).alias("ds_operating_profit_krw_raw"))
+    if "cost_of_revenue_source" not in df.columns:
+        additions.append(pl.lit("").alias("cost_of_revenue_source"))
+    if "inventory_scope" not in df.columns:
+        additions.append(pl.lit("").alias("inventory_scope"))
+    if "memory_inventory_status" not in df.columns:
+        additions.append(pl.lit("").alias("memory_inventory_status"))
     if "source" not in df.columns:
         additions.append(pl.lit("SEC_EDGAR_10Q_10K_20F_6K").alias("source"))
     if "source_url" not in df.columns:
@@ -164,16 +210,14 @@ def build_inventory_days_frame(
     if df_raw.is_empty():
         return pl.DataFrame(schema=INVENTORY_CURATED_SCHEMA)
 
-    source_unit_scale = (
-        pl.when(pl.col("unit").str.to_uppercase() == "USD").then(1_000_000.0).otherwise(1.0)
-    )
+    inv_usd_series, cogs_usd_series = derive_fx_normalized_amounts(df_raw)
     df_raw = df_raw.with_columns(
-        (_numeric_expr_from_raw("inventory_usd_raw") / source_unit_scale).alias(
-            "inventory_usd_million"
-        ),
-        (_numeric_expr_from_raw("cost_of_revenue_usd_raw") / source_unit_scale).alias(
-            "cost_of_revenue_usd_million"
-        ),
+        inv_usd_series,
+        cogs_usd_series,
+        pl.when(pl.col("symbol").str.to_uppercase().is_in(list(MEMORY_SYMBOLS)))
+        .then(pl.lit("memory"))
+        .otherwise(pl.lit("analog_auto"))
+        .alias("subsector"),
     )
     df_curated_base = df_raw.with_columns(
         pl.when(pl.col("cost_of_revenue_usd_million") > 0)
@@ -185,26 +229,66 @@ def build_inventory_days_frame(
         .otherwise(None)
         .alias("doi_days")
     )
+    analog_mask = pl.col("subsector") == "analog_auto"
+    memory_mask = pl.col("subsector") == "memory"
+    # 季度主体数充足性守卫：不足时季度级聚合与相态留空（见 MIN_INVENTORY_CONSTITUENTS）
+    sufficient = pl.col("_n_constituents") >= MIN_INVENTORY_CONSTITUENTS
+
     q_agg = (
         df_curated_base.group_by("report_quarter")
         .agg(
             pl.col("inventory_usd_million").sum().alias("total_inventory_usd_million"),
             pl.col("cost_of_revenue_usd_million").sum().alias("total_cost_of_revenue_usd_million"),
             pl.col("doi_days").mean().round(1).alias("idm_equal_doi_days"),
+            pl.col("inventory_usd_million").filter(analog_mask).sum().alias("analog_inv_sum"),
+            pl.col("cost_of_revenue_usd_million")
+            .filter(analog_mask)
+            .sum()
+            .alias("analog_cogs_sum"),
+            pl.col("inventory_usd_million").filter(memory_mask).sum().alias("memory_inv_sum"),
+            pl.col("cost_of_revenue_usd_million")
+            .filter(memory_mask)
+            .sum()
+            .alias("memory_cogs_sum"),
+            pl.len().alias("_n_constituents"),
         )
         .with_columns(
-            (
-                pl.col("total_inventory_usd_million")
-                / pl.col("total_cost_of_revenue_usd_million")
-                * 90.0
+            pl.when(sufficient)
+            .then(pl.col("idm_equal_doi_days"))
+            .otherwise(None)
+            .alias("idm_equal_doi_days"),
+            pl.when(sufficient)
+            .then(
+                (
+                    pl.col("total_inventory_usd_million")
+                    / pl.col("total_cost_of_revenue_usd_million")
+                    * 90.0
+                ).round(1)
             )
-            .round(1)
-            .alias("idm_weighted_doi_days")
+            .otherwise(None)
+            .alias("idm_weighted_doi_days"),
+            pl.when(sufficient & (pl.col("analog_cogs_sum") > 0))
+            .then((pl.col("analog_inv_sum") / pl.col("analog_cogs_sum") * 90.0).round(1))
+            .otherwise(None)
+            .alias("analog_weighted_doi_days"),
+            pl.when(sufficient & (pl.col("memory_cogs_sum") > 0))
+            .then((pl.col("memory_inv_sum") / pl.col("memory_cogs_sum") * 90.0).round(1))
+            .otherwise(None)
+            .alias("memory_weighted_doi_days"),
         )
         .with_columns(
             pl.col("idm_weighted_doi_days")
             .map_elements(determine_inventory_regime, return_dtype=pl.String)
             .alias("inventory_regime")
+        )
+        .drop(
+            [
+                "_n_constituents",
+                "analog_inv_sum",
+                "analog_cogs_sum",
+                "memory_inv_sum",
+                "memory_cogs_sum",
+            ]
         )
     )
 

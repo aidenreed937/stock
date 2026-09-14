@@ -6,6 +6,7 @@
 
 from __future__ import annotations
 
+import csv
 import logging
 import re
 from datetime import date
@@ -38,6 +39,8 @@ SEMI_EQUIPMENT_ARTICLE_ARCHIVE_URL = (
 )
 PRNEWSWIRE_SEMI_URL = "https://www.prnewswire.com/news-releases/semi-reports-news-list/"
 DEFAULT_HISTORY_MAX_PAGES = 12
+SEMI_REGIONAL_IMAGE_LEDGER_FILENAME = "regional_billings_image_ledger.csv"
+REGIONAL_RECONCILIATION_TOLERANCE_BILLION_USD = 0.05
 SEMI_SOURCES = (
     (SEMI_EQUIPMENT_MARKET_URL, "https://www.semi.org"),
     (SEMI_EQUIPMENT_ARTICLE_ARCHIVE_URL, "https://www.semi.org"),
@@ -80,6 +83,7 @@ class SemiEquipmentCrawler:
         self.snapshot_dir = self.paths.semi_dir
         self.timeout = timeout
         self.impersonate = impersonate
+        self._regional_image_ledger: dict[str, dict[str, str]] | None = None
 
     def fetch_latest(self, force: bool = False) -> list[dict[str, Any]]:
         """在线抓取 SEMI 官方新闻主页或 PR Newswire 镜像并解析最新 WWSEMS 公报。
@@ -237,9 +241,69 @@ class SemiEquipmentCrawler:
             default_date=_response_last_modified_date(art_resp),
         )
         if parsed:
+            parsed = self._apply_regional_image_ledger(parsed)
             parsed["raw_content_sha256"] = content_hash
             parsed["raw_snapshot_path"] = snapshot_ref
         return parsed
+
+    def _apply_regional_image_ledger(self, parsed: dict[str, Any]) -> dict[str, Any]:
+        """把人工核对的官方区域图片值叠加到季度解析结果。"""
+        report_quarter = str(parsed.get("report_quarter") or "")
+        ledger_row = self._load_regional_image_ledger().get(report_quarter)
+        if ledger_row is None:
+            return parsed
+
+        china_raw = ledger_row.get("china_billings_billion_usd")
+        global_raw = ledger_row.get("global_billings_billion_usd")
+        diff_raw = ledger_row.get("reconciliation_diff_billion_usd")
+        try:
+            china_value = float(china_raw or "")
+            ledger_global = float(global_raw or "")
+            reconciliation_diff = float(diff_raw or "")
+        except (TypeError, ValueError) as exc:
+            raise ValueError(f"SEMI 区域图片 ledger 数值无效: {report_quarter}") from exc
+
+        parsed_global = parsed.get("global_billings_billion_usd")
+        if parsed_global is not None and abs(float(parsed_global) - ledger_global) > (
+            REGIONAL_RECONCILIATION_TOLERANCE_BILLION_USD
+        ):
+            raise ValueError(f"SEMI 区域图片 ledger 全球额不匹配: {report_quarter}")
+        if abs(reconciliation_diff) > REGIONAL_RECONCILIATION_TOLERANCE_BILLION_USD:
+            raise ValueError(f"SEMI 区域图片 ledger 合计对账失败: {report_quarter}")
+
+        enriched = dict(parsed)
+        enriched["china_billings_billion_usd"] = china_value
+        enriched["china_billings_raw"] = f"{china_value:.2f}"
+        return enriched
+
+    def _load_regional_image_ledger(self) -> dict[str, dict[str, str]]:
+        """读取并校验官方区域图片人工核对 ledger。"""
+        if self._regional_image_ledger is not None:
+            return self._regional_image_ledger
+
+        ledger_path = self.snapshot_dir / SEMI_REGIONAL_IMAGE_LEDGER_FILENAME
+        if not ledger_path.exists():
+            self._regional_image_ledger = {}
+            return self._regional_image_ledger
+
+        rows: dict[str, dict[str, str]] = {}
+        with ledger_path.open(newline="", encoding="utf-8") as handle:
+            for row in csv.DictReader(handle):
+                report_quarter = str(row.get("report_quarter") or "").strip()
+                if not report_quarter:
+                    continue
+                image_path_raw = str(row.get("image_snapshot_path") or "").strip()
+                image_hash = str(row.get("image_sha256") or "").strip()
+                image_path = self.paths.raw_root / image_path_raw
+                if not image_path.exists():
+                    raise FileNotFoundError(f"SEMI 区域图片快照不存在: {image_path}")
+                actual_hash = raw_content_sha256(raw_snapshot_content_bytes(image_path))
+                if image_hash and actual_hash != image_hash:
+                    raise ValueError(f"SEMI 区域图片 SHA-256 不匹配: {image_path}")
+                rows[report_quarter] = row
+
+        self._regional_image_ledger = rows
+        return rows
 
     def replay_cached_snapshots(self) -> list[dict[str, Any]]:
         """从本地 SEMI HTML 快照离线重放 RAW 字段，仅用于手工对账或 replay 脚本。"""
@@ -255,6 +319,7 @@ class SemiEquipmentCrawler:
                 html_text = content_bytes.decode("utf-8", errors="ignore")
                 parsed = parse_semi_article_text(html_text)
                 if parsed:
+                    parsed = self._apply_regional_image_ledger(parsed)
                     parsed["raw_content_sha256"] = raw_content_sha256(content_bytes)
                     parsed["raw_snapshot_path"] = raw_snapshot_path_value(
                         html_file, self.paths.raw_root

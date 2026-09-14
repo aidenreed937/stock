@@ -2,8 +2,8 @@
 
 数据源: https://investor.tsmc.com/english/monthly-revenue/{year}
 TSMC 每月 10 日前后披露上月合并营收，比 SIA 全球销售额提前约 25 天，是全球晶圆代工与
-AI 算力最高频、最前瞻的景气指标。采集时逐年拉取英文投资者年度页面，得到全年 12 个月
-营收与 YoY；原始 HTML 以 Gzip 归档仅作对账校验，不以快照作为解析来源 (2-Tier ETL)。
+AI 算力最高频、最前瞻的景气指标。采集时按请求窗口涉及的年度页面拉取月度营收与 YoY；
+原始 HTML 以 Gzip 归档仅作对账校验，不以快照作为解析来源 (2-Tier ETL)。
 """
 
 from __future__ import annotations
@@ -47,8 +47,8 @@ def _next_month_release_date(report_month: str) -> date:
 class TsmcLeadCollector:
     """台积电月度营运营收景气采集适配器。
 
-    逐年拉取英文投资者年度页面 (START_YEAR ~ 当前年)，解析官方月度营收与 YoY，
-    并将原始 HTML Gzip 归档供对账校验。USD、MoM 和 3MMA 在 Curated 转换阶段计算。
+    按请求窗口涉及的年度页面解析官方月度营收与 YoY，并将原始 HTML Gzip 归档供对账校验。
+    未指定窗口时保留全历史回填行为；USD、MoM 和 3MMA 在 Curated 转换阶段计算。
     """
 
     def __init__(
@@ -62,14 +62,26 @@ class TsmcLeadCollector:
         self.timeout = timeout
         self.impersonate = impersonate
 
-    def collect(self) -> list[SemiconductorLeadRecord]:
-        """在线采集台积电英文年度月度营收原始记录。"""
+    def collect(
+        self,
+        start_date: date | None = None,
+        end_date: date | None = None,
+    ) -> list[SemiconductorLeadRecord]:
+        """在线采集台积电英文年度月度营收原始记录。
+
+        TSMC 官网按年度页面提供数据，因此按请求窗口只访问涉及的年度页面，
+        再将页面内月份裁剪到 ``start_date`` / ``end_date``。
+        """
         self.paths.semiconductor_dir.mkdir(parents=True, exist_ok=True)
 
-        current_year = date.today().year
+        first_year = start_date.year if start_date is not None else START_YEAR
+        last_year = end_date.year if end_date is not None else date.today().year
+        if start_date is not None and end_date is not None and start_date > end_date:
+            raise ValueError(f"TSMC 月营收日期范围无效: {start_date} > {end_date}")
+
         records: list[SemiconductorLeadRecord] = []
-        for year in range(START_YEAR, current_year + 1):
-            records.extend(self._collect_year(year))
+        for year in range(first_year, last_year + 1):
+            records.extend(self._collect_year(year, start_date=start_date, end_date=end_date))
 
         if not records:
             logger.info("未抓取到任何台积电月度营收数据")
@@ -78,7 +90,13 @@ class TsmcLeadCollector:
         logger.info("TSMC 英文投资者月度营收采集完成: 共 %d 个月度记录", len(records))
         return sorted(records, key=lambda r: r.report_month)
 
-    def _collect_year(self, year: int) -> list[SemiconductorLeadRecord]:
+    def _collect_year(
+        self,
+        year: int,
+        *,
+        start_date: date | None = None,
+        end_date: date | None = None,
+    ) -> list[SemiconductorLeadRecord]:
         url = TSMC_MONTHLY_REVENUE_URL.format(year=year)
         try:
             resp = requests.get(url, impersonate=self.impersonate, timeout=self.timeout)
@@ -96,7 +114,7 @@ class TsmcLeadCollector:
             TSMC_SOURCE_NAME,
             f"tsmc_monthly_revenue_{year}.html.gz",
             content_bytes,
-            base_dir=self.raw_root,
+            base_dir=self.paths.semiconductor_dir,
             compress=True,
         )
         content_hash = raw_content_sha256(content_bytes)
@@ -131,5 +149,16 @@ class TsmcLeadCollector:
                 )
             )
 
-        logger.info("成功抓取 TSMC %d 年度月度营收: 共 %d 个月", year, len(year_records))
-        return year_records
+        filtered_records = [
+            record
+            for record in year_records
+            if (start_date is None or record.trade_date >= start_date)
+            and (end_date is None or record.trade_date <= end_date)
+        ]
+        logger.info(
+            "成功抓取 TSMC %d 年度月度营收: 页面 %d 个月, 请求窗口返回 %d 个月",
+            year,
+            len(year_records),
+            len(filtered_records),
+        )
+        return filtered_records

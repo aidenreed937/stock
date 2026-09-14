@@ -72,6 +72,7 @@ class SemiconductorInventoryRecord:
     trade_date: date
     inventory_usd_million: float
     cost_of_revenue_usd_million: float
+    subsector: str = "analog_auto"
     unit: str = "million_usd"
     source: str = "SEC_EDGAR_10Q_10K_20F_6K"
     source_url: str = ""
@@ -86,6 +87,11 @@ class SemiconductorInventoryRecord:
     raw_snapshot_path: str = ""
     cost_of_revenue_annual_raw: str | None = None
     cost_of_revenue_derivation: str = ""
+    ds_revenue_krw_raw: str | None = None
+    ds_operating_profit_krw_raw: str | None = None
+    cost_of_revenue_source: str = ""
+    inventory_scope: str = ""
+    memory_inventory_status: str = ""
 
 
 @dataclass(frozen=True)
@@ -201,3 +207,49 @@ class TaiwanMemoryLeadRecord:
     mom_change_raw: str | None = None
     cumulative_revenue_raw: str | None = None
     cumulative_yoy_raw: str | None = None
+
+
+@dataclass(frozen=True)
+class TsmcAdvancedPackagingRevenueRecord:
+    """台积电官方财务事实记录（先进封装、测试与晶圆制造拆解）。"""
+
+    symbol: str
+    report_quarter: str
+    trade_date: date
+    release_date: date
+    net_revenue_ntd_bn: float
+    net_revenue_usd_bn: float | None = None
+    advanced_wafer_pct: float | None = None
+    hpc_platform_pct: float | None = None
+    packaging_testing_others_pct: float | None = None
+    packaging_testing_others_ntd_bn: float | None = None
+    revenue_yoy: float | None = None
+    revenue_qoq: float | None = None
+    data_status: str = "actual"
+    source: str = "TSMC_OFFICIAL_MANAGEMENT_REPORT"
+    source_url: str = ""
+    collected_at: str = ""
+    raw_content_sha256: str = ""
+    raw_snapshot_path: str = ""
+
+
+@dataclass(frozen=True)
+class CowosCapacityEstimateRecord:
+    """智库 CoWoS 产能前瞻推演与供需瓶颈记录。"""
+
+    symbol: str
+    report_quarter: str
+    trade_date: date
+    agency: str
+    published_date: date
+    monthly_capacity_kwpm: float
+    lead_time_months: float | None = None
+    capacity_yoy: float | None = None
+    capacity_qoq: float | None = None
+    bottleneck_regime: str | None = None
+    data_status: str = "forecast"
+    source: str = "TrendForce_Press_Release"
+    source_url: str = ""
+    collected_at: str = ""
+    raw_content_sha256: str = ""
+    raw_snapshot_path: str = ""

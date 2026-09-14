@@ -55,7 +55,7 @@ TAIWAN_MEMORY_TARGETS: tuple[dict[str, str], ...] = (
     },
 )
 TAIWAN_MEMORY_SOURCE_NAME = "taiwan_memory"
-DEFAULT_START_YEAR = 2024
+DEFAULT_START_YEAR = 2016
 
 
 class TaiwanMemoryLeadCollector:
@@ -82,6 +82,8 @@ class TaiwanMemoryLeadCollector:
     ) -> list[TaiwanMemoryLeadRecord]:
         """在线采集南亚科技与威刚科技的月度营运营收原始记录。"""
         del force  # MOPS 当前无本地响应缓存；强制刷新由上层保留并传递到此。
+        if start_date is not None and end_date is not None and start_date > end_date:
+            raise ValueError(f"台湾存储营收日期范围无效: {start_date} > {end_date}")
         self.paths.taiwan_memory_dir.mkdir(parents=True, exist_ok=True)
         first_year = start_date.year if start_date is not None else start_year
         last_year = end_date.year if end_date is not None else end_year or date.today().year

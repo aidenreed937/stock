@@ -219,7 +219,7 @@ class ChipLeadTimeCollector:
 
         # 归档 RAW 快照
         snapshot_path = archive_lead_time_raw_snapshot(
-            raw_dir=self.paths.raw_root,
+            raw_dir=self.paths.semiconductor_dir,
             month_key=m_key,
             record=record,
             cat_averages=cat_averages,

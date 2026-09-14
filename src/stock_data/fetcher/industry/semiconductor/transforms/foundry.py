@@ -11,6 +11,9 @@ from typing import Any
 import polars as pl
 
 from stock_data.fetcher.industry.common import now_utc_iso
+from stock_data.fetcher.industry.semiconductor.baseline import (
+    apply_tsmc_utilization_baseline,
+)
 from stock_data.fetcher.industry.semiconductor.schemas import (
     FOUNDRY_CURATED_SCHEMA,
     FOUNDRY_RAW_SCHEMA,
@@ -109,7 +112,8 @@ def build_foundry_raw_frame(
 def _build_foundry_raw_frame(df_raw: pl.DataFrame) -> pl.DataFrame:
     return require_raw_release_dates(
         (
-            df_raw.select(list(FOUNDRY_RAW_SCHEMA))
+            apply_tsmc_utilization_baseline(df_raw)
+            .select(list(FOUNDRY_RAW_SCHEMA))
             .with_columns(
                 [pl.col(name).cast(dtype).alias(name) for name, dtype in FOUNDRY_RAW_SCHEMA.items()]
             )
@@ -250,6 +254,8 @@ def build_foundry_utilization_frame(
             tsmc_util,
             smic_util,
             weights,
+            tsmc_shipment=tsmc_shipments,
+            smic_shipment=smic_shipments,
         )
         common_source_url = _source_value(raw_row.get("source_url"))
         tsmc_source_url = _source_value(raw_row.get("tsmc_source_url"))
@@ -393,7 +399,7 @@ def _first_number(value: object) -> float | None:
 
 def _normalise_utilization_status(value: object, utilization: float | None) -> str:
     status = (_source_value(value) or "").lower()
-    if status in {"reported", "derived", "unavailable"}:
+    if status in {"reported", "derived", "unavailable", "legacy_baseline"}:
         if status == "unavailable" and utilization is not None:
             return "reported"
         return status
@@ -411,15 +417,42 @@ def _normalise_proxy_weights(weights: dict[str, float] | None) -> dict[str, floa
     return {"tsmc": tsmc / total, "smic": smic / total}
 
 
+_TSMC_12INCH_AREA_RATIO = 2.25  # 12 寸晶圆面积 / 8 寸晶圆面积 = (150/100)^2
+
+
 def _build_proxy_value(
     tsmc_util: float | None,
     smic_util: float | None,
     weights: dict[str, float],
+    *,
+    tsmc_shipment: float | None = None,
+    smic_shipment: float | None = None,
 ) -> tuple[float | None, str, str]:
+    """计算两家公司的代表性产能利用率代理值。
+
+    优先按晶圆出货面积体量加权（TSMC 12 寸、SMIC 8 寸，面积比 2.25:1），去体量
+    通胀；出货量缺失时回退等权/配置权重。TSMC 侧利用率官方不再公布数字，缺失时由
+    :mod:`stock_data.fetcher.industry.semiconductor.baseline` 的历史基线补齐并标注
+    ``legacy_baseline`` 状态（基线唯一信任源是
+    ``config/industry/semiconductor/tsmc_utilization_baseline.yaml``）。
+    """
     if tsmc_util is None and smic_util is None:
         return None, "none", "unavailable"
     if tsmc_util is None or smic_util is None:
         return None, "none", "partial"
+    if (
+        tsmc_shipment is not None
+        and smic_shipment is not None
+        and tsmc_shipment > 0
+        and smic_shipment > 0
+    ):
+        tsmc_weight = tsmc_shipment * _TSMC_12INCH_AREA_RATIO
+        smic_weight = smic_shipment
+        value = round(
+            (tsmc_util * tsmc_weight + smic_util * smic_weight) / (tsmc_weight + smic_weight),
+            2,
+        )
+        return value, "shipment_weighted_mean", "proxy"
     method = (
         "equal_company_mean"
         if weights == {"tsmc": 0.5, "smic": 0.5}

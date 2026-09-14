@@ -36,6 +36,30 @@ _MONTH_NAMES = [
     "December",
 ]
 
+# 区域表的规范区域名映射（同一区域在不同期公报里写法不一）。
+_REGION_ALIASES = {
+    "china": "China",
+    "korea": "Korea",
+    "south korea": "Korea",
+    "taiwan": "Taiwan",
+    "japan": "Japan",
+    "europe": "Europe",
+    "north america": "North America",
+    "rest of the world": "Rest of World",
+    "rest of world": "Rest of World",
+    "row": "Rest of World",
+}
+
+# 区域表只出现在部分期次的文本表格里；该短语用于快速筛掉无关页面。
+_REGIONAL_TABLE_GATE = re.compile(r"by\s+region", re.IGNORECASE)
+
+# 表头季度标签的三种写法：Q12020 / 1Q2018 / 1Q18。
+_QUARTER_LABEL_PATTERNS = (
+    re.compile(r"q([1-4])(20\d{2})", re.IGNORECASE),
+    re.compile(r"([1-4])q(20\d{2})", re.IGNORECASE),
+    re.compile(r"([1-4])q(\d{2})", re.IGNORECASE),
+)
+
 
 def parse_semi_article_text(
     text: str,
@@ -84,36 +108,172 @@ def parse_semi_article_text(
             source_url=source_url,
             default_date=default_date,
         )
-    best = min(candidates, key=lambda item: item["distance"])
+    return _build_quarterly_record(
+        text,
+        min(candidates, key=lambda item: item["distance"]),
+        source_url=source_url,
+        default_date=default_date,
+    )
 
+
+def _build_quarterly_record(
+    text: str,
+    best: dict[str, Any],
+    *,
+    source_url: str,
+    default_date: date | None,
+) -> dict[str, Any]:
+    """由选定的季度候选组装季度记录。
+
+    China 出货额优先取**区域表**（当季列），只有表格不存在时才回退到正文里
+    ``China … $X billion`` 的措辞。原因见 :func:`_extract_regional_billings`。
+    """
+    report_quarter = f"{best['year']}-Q{best['q_num']}"
     china_match = re.search(
         r"China[^\.\n]*?(?:spending|investments|sales|billings)?[^\.\n]*?"
         r"(\$[\d\.]+\s*billion)",
         text[best["win_start"] : best["win_end"]],
         re.IGNORECASE,
     )
-
+    regional_billings, regional_header_raw = _extract_regional_billings(text, report_quarter)
+    china = (regional_billings or {}).get("China")
     month_end = best["q_num"] * 3
     day_end = 31 if month_end in (3, 12) else 30
-    trade_date = date(best["year"], month_end, day_end)
 
     return {
-        "report_quarter": f"{best['year']}-Q{best['q_num']}",
-        "trade_date": trade_date,
+        "report_quarter": report_quarter,
+        "trade_date": date(best["year"], month_end, day_end),
         "source_record_type": "quarterly_actual",
         "report_year": str(best["year"]),
         "global_billings_billion_usd": _parse_billion_amount(best["billings_match"].group(1)),
-        "china_billings_billion_usd": (
-            _parse_billion_amount(china_match.group(1)) if china_match else None
-        ),
         "global_billings_raw": best["billings_match"].group(1).strip(),
-        "china_billings_raw": china_match.group(1).strip() if china_match else None,
+        "china_billings_billion_usd": (
+            china["billings_billion_usd"]
+            if china is not None
+            else (_parse_billion_amount(china_match.group(1)) if china_match else None)
+        ),
+        "china_billings_raw": (
+            china["billings_raw"]
+            if china is not None
+            else (china_match.group(1).strip() if china_match else None)
+        ),
         "annual_billings_raw": None,
-        "yoy_growth_raw": _extract_growth_raw(text, "year-over-year"),
-        "qoq_growth_raw": _extract_growth_raw(text, "quarter-over-quarter"),
+        # 增速只在「季度金额所在窗口」内提取，避免页脚/侧栏"相关新闻"链接标题的
+        # 年度或他期增速（如 "23% Year-Over-Year in Q2 2026"）污染当前季度值。
+        "yoy_growth_raw": _extract_growth_raw(
+            text[best["win_start"] : best["win_end"]], "year-over-year"
+        ),
+        "qoq_growth_raw": _extract_growth_raw(
+            text[best["win_start"] : best["win_end"]], "quarter-over-quarter"
+        ),
         "release_date": _parse_english_release_date(text) or default_date,
         "source_url": source_url or _extract_source_url(text) or "",
+        "regional_billings": regional_billings,
+        "regional_billings_header_raw": regional_header_raw,
     }
+
+
+def _extract_regional_billings(
+    html_text: str,
+    report_quarter: str,
+) -> tuple[dict[str, dict[str, Any]] | None, str | None]:
+    """解析新闻稿里的「分区域季度出货额」文本表格。
+
+    只有早期公报把区域表以**文本表格**发布（2018-Q1~2020-Q1 共 7 期）；2021 年起
+    SEMI 改为**内嵌图片**（``alt="Semiconductor Equipment Billings by region"``），
+    表格在 HTML 里并不存在，此时返回 ``(None, None)``。
+
+    提取前校验表头首列季度与本次解析出的报告期一致，避免把"相关新闻"里的他期
+    表格当成当季。只取当季列与两个披露增速；上季/去年同期列可从相邻季度行的
+    当季列取得，原始快照仍是完整血统。
+
+    返回 ``(区域名 -> 取值映射, 表头原文)``。
+    """
+    if not html_text or _REGIONAL_TABLE_GATE.search(html_text) is None:
+        return None, None
+    soup = BeautifulSoup(html_text, "html.parser")
+    for table in soup.find_all("table"):
+        parsed = _parse_region_table(table, report_quarter)
+        if parsed is not None:
+            return parsed
+    return None, None
+
+
+def _parse_region_table(
+    table: Tag,
+    report_quarter: str,
+) -> tuple[dict[str, dict[str, Any]], str] | None:
+    """把单个 ``<table>`` 解析为区域取值映射；不像区域表则返回 ``None``。"""
+    rows = table.find_all("tr")
+    if len(rows) < 3:
+        return None
+    header_cells = _row_cells(rows[0])
+    labelled = next(
+        (q for q in (_quarter_from_column_label(cell) for cell in header_cells[:3]) if q),
+        None,
+    )
+    if labelled is not None and labelled != report_quarter:
+        return None
+
+    regions: dict[str, dict[str, Any]] = {}
+    for row in rows[1:]:
+        cells = _row_cells(row)
+        region = _normalise_region_label(cells[0]) if cells else None
+        if region is None or len(cells) < 2:
+            continue
+        billings = _to_float(cells[1])
+        if billings is None:
+            continue
+        regions[region] = {
+            "billings_raw": cells[1],
+            "billings_billion_usd": billings,
+            "qoq_raw": cells[4] if len(cells) > 4 else None,
+            "yoy_raw": cells[5] if len(cells) > 5 else None,
+        }
+    if len(regions) < 4:
+        return None
+    return regions, " | ".join(header_cells)
+
+
+def _row_cells(row: Tag) -> list[str]:
+    """取一行里的非空单元格文本。"""
+    cells: list[str] = []
+    for cell in row.find_all(["td", "th"]):
+        text = re.sub(r"\s+", " ", cell.get_text(" ", strip=True)).strip()
+        if text:
+            cells.append(text)
+    return cells
+
+
+def _normalise_region_label(value: str) -> str | None:
+    """把区域标签规范化为统一名称，非区域行（如 ``Total``）返回 ``None``。"""
+    return _REGION_ALIASES.get(re.sub(r"\s+", " ", value or "").strip().lower())
+
+
+def _quarter_from_column_label(value: str) -> str | None:
+    """把表头季度标签（Q12020 / 1Q2018 / 1Q18）规范化为 ``2018-Q1`` 形式。"""
+    label = re.sub(r"\s+", "", value or "")
+    for index, pattern in enumerate(_QUARTER_LABEL_PATTERNS):
+        match = pattern.fullmatch(label)
+        if match is None:
+            continue
+        quarter, year = match.group(1), match.group(2)
+        if index == 2:
+            year = f"20{year}"
+        return f"{year}-Q{quarter}"
+    return None
+
+
+def _to_float(value: str | None) -> float | None:
+    if value is None:
+        return None
+    match = re.search(r"[-+]?\d+(?:\.\d+)?", value.replace(",", ""))
+    if match is None:
+        return None
+    try:
+        return float(match.group(0))
+    except ValueError:
+        return None
 
 
 _SENTENCE_SPLIT_RE = re.compile(r"(?<=[.!?;])\s+(?=[A-Z\"'(])")
@@ -206,7 +366,10 @@ def _parse_semi_annual_article_text(
     annual = _extract_annual_claim(text)
     if annual is None:
         return None
-    year, amount_raw = annual
+    year, amount_raw, claim_start, claim_end = annual
+    table_total = _extract_annual_total_from_table(text, year)
+    if table_total:
+        amount_raw = table_total
     china_amount_raw = _extract_annual_china_amount(text, year)
 
     return {
@@ -222,7 +385,9 @@ def _parse_semi_annual_article_text(
         "china_billings_raw": china_amount_raw,
         "annual_billings_raw": amount_raw,
         "annual_billings_billion_usd": _parse_billion_amount(amount_raw),
-        "yoy_growth_raw": _extract_growth_raw(text, "year-over-year"),
+        # 增速只在「年度声明本句」内提取：页脚/侧栏"相关新闻"标题的增速
+        # （实测 "23% Year-Over-Year in Q2 2026"）会污染年度值，宁可留空。
+        "yoy_growth_raw": _extract_growth_raw(text[claim_start:claim_end], "year-over-year"),
         "qoq_growth_raw": None,
         "release_date": _parse_english_release_date(text) or default_date,
         "source_url": source_url or _extract_source_url(text) or "",
@@ -230,11 +395,15 @@ def _parse_semi_annual_article_text(
     }
 
 
-def _extract_annual_claim(text: str) -> tuple[int, str] | None:
-    """年度公报：在「含金额」的句子内提取报告年份与年度总额。
+def _extract_annual_claim(text: str) -> tuple[int, str, int, int] | None:
+    """年度公报：在「含金额」的句子内提取报告年份、年度总额与该句在原文中的窗口。
+
+    返回 ``(year, amount_raw, sentence_start, sentence_end)``。
 
     同样要求句子级绑定（年度词与金额同句），避免页面侧栏"相关新闻"链接标题
-    （如 "…in Q2 2026"）污染年份提取。
+    （如 "…in Q2 2026"）污染年份提取。额外返回句子边界，是为了让增速提取也
+    落在**年度声明本句**内——否则页脚/侧栏的 "23% Year-Over-Year in Q2 2026"
+    会被写成该年度的同比。
     """
     year_patterns = (
         r"\b(20\d{2})\s+(?:global|worldwide)\s+"
@@ -250,13 +419,15 @@ def _extract_annual_claim(text: str) -> tuple[int, str] | None:
     )
     prev_end = 0
     for m in _SENTENCE_SPLIT_RE.finditer(text):
-        sent = text[prev_end : m.start()]
+        sent_start, sent_end = prev_end, m.start()
         prev_end = m.end()
-        claim = _annual_claim_in_sentence(sent, year_patterns)
+        claim = _annual_claim_in_sentence(text[sent_start:sent_end], year_patterns)
         if claim is not None:
-            return claim
+            return (*claim, sent_start, sent_end)
     claim = _annual_claim_in_sentence(text[prev_end:], year_patterns)
-    return claim
+    if claim is None:
+        return None
+    return (*claim, prev_end, len(text))
 
 
 def _annual_claim_in_sentence(
@@ -324,6 +495,42 @@ def _extract_annual_china_amount(text: str, year: int) -> str | None:
 
         for row in rows:
             if not row or row[0].strip().casefold() != "china":
+                continue
+            candidates = (
+                [row[target_index]]
+                if target_index is not None and target_index < len(row)
+                else row[1:]
+            )
+            for candidate in candidates:
+                if re.fullmatch(r"(?:US)?\$?[\d,]+(?:\.\d+)?(?:\s+billion)?", candidate):
+                    return str(candidate).strip()
+    return None
+
+
+def _extract_annual_total_from_table(text: str, year: int) -> str | None:
+    """提取年度公报表格中的 Total / Worldwide 汇总金额（保持两位小数精度）。"""
+    soup = BeautifulSoup(text, "html.parser")
+    for table in soup.find_all("table"):
+        rows = [
+            [cell.get_text(" ", strip=True) for cell in row.find_all(["th", "td"])]
+            for row in table.find_all("tr")
+        ]
+        rows = [row for row in rows if row]
+        table_text = " ".join(cell for row in rows for cell in row)
+        if str(year) not in table_text:
+            continue
+
+        target_index: int | None = None
+        for row in rows:
+            for index, cell in enumerate(row):
+                if cell.strip() == str(year):
+                    target_index = index
+                    break
+            if target_index is not None:
+                break
+
+        for row in rows:
+            if not row or row[0].strip().casefold() not in ("total", "worldwide"):
                 continue
             candidates = (
                 [row[target_index]]

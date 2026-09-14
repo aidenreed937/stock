@@ -75,7 +75,7 @@ class SusquehannaLeadTimeCollector:
             if "susquehanna" in record.source.lower()
         }
         fetched, errors = collect_susquehanna_online(
-            raw_root=self.paths.raw_root,
+            raw_root=self.paths.semiconductor_dir,
             rss_urls=self.rss_urls,
             source_domains=self.source_domains,
             target_months=target_months,

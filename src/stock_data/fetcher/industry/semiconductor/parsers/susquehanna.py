@@ -266,6 +266,7 @@ def archive_susquehanna_raw_snapshot(
         content=source_content,
         base_dir=raw_dir,
     )
+    base_root = raw_dir.parent if raw_dir.name == "semiconductor" else raw_dir
     metadata = {
         "report_month": record.report_month,
         "trade_date": record.trade_date.isoformat(),
@@ -278,7 +279,7 @@ def archive_susquehanna_raw_snapshot(
         "data_status": record.data_status,
         "collected_at": record.collected_at,
         "raw_content_sha256": content_hash,
-        "raw_snapshot_path": raw_snapshot_path_value(source_path, raw_dir),
+        "raw_snapshot_path": raw_snapshot_path_value(source_path, base_root),
         "source_kind": source_kind,
         "report_month_inferred": report_month_inferred,
     }

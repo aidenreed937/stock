@@ -691,3 +691,20 @@ def _extract_china_sales_raw(html_text: str) -> str | None:
         re.IGNORECASE,
     )
     return match.group(1).strip() if match else None
+
+
+def extract_wsts_excel_download_url(
+    html_text: str,
+    base_url: str = "https://www.wsts.org",
+) -> tuple[str, str] | None:
+    """从 WSTS Historical Billings Report 页面 HTML 中提取最新 Excel 下载 URL 与文件名。"""
+    soup = BeautifulSoup(html_text, "html.parser")
+    for link in soup.find_all("a", href=True):
+        href = str(link["href"]).strip()
+        if "historical-billings-report" in href.lower() and href.lower().endswith(".xlsx"):
+            full_url = (
+                href if href.startswith("http") else f"{base_url.rstrip('/')}/{href.lstrip('/')}"
+            )
+            filename = href.split("/")[-1]
+            return full_url, filename
+    return None

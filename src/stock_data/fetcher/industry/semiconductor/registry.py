@@ -1,6 +1,6 @@
 """半导体产业端点注册。"""
 
-from stock_data.fetcher.industry.contracts import IndustryEndpointSpec, IndustryRunContext
+from stock_data.fetcher.industry.contracts import IndustryEndpointSpec
 from stock_data.fetcher.industry.runner import (
     collector,
     context_collector,
@@ -8,24 +8,43 @@ from stock_data.fetcher.industry.runner import (
     record_endpoint,
 )
 from stock_data.fetcher.industry.semiconductor.collectors import (
+    AmatEquipmentGmCollector,
     ChannelInventoryCollector,
+    CowosCapacityEstimatesCollector,
     DataTrackMemoryPriceCollector,
     FoundryUtilizationCollector,
+    KlacEquipmentGmCollector,
+    LrcxEquipmentGmCollector,
     MemoryPriceCollector,
     SeajEquipmentCollector,
     SemiconductorCollector,
     SemiEquipmentCollector,
     SusquehannaLeadTimeCollector,
     TaiwanMemoryLeadCollector,
+    TelEquipmentGmCollector,
+    TsmcAdvancedPackagingRevenueCollector,
     TsmcLeadCollector,
 )
 from stock_data.fetcher.industry.semiconductor.collectors.inventory import (
     SemiconductorInventoryCollector,
 )
-from stock_data.fetcher.industry.semiconductor.paths import SEMICONDUCTOR_RAW_SUBDIR
+from stock_data.fetcher.industry.semiconductor.paths import (
+    SEMICONDUCTOR_CAPACITY_CURATED_SUBDIR,
+    SEMICONDUCTOR_CAPACITY_RAW_SUBDIR,
+    SEMICONDUCTOR_EQUIPMENT_CURATED_SUBDIR,
+    SEMICONDUCTOR_EQUIPMENT_RAW_SUBDIR,
+    SEMICONDUCTOR_INVENTORY_CURATED_SUBDIR,
+    SEMICONDUCTOR_INVENTORY_RAW_SUBDIR,
+    SEMICONDUCTOR_PRICE_CURATED_SUBDIR,
+    SEMICONDUCTOR_PRICE_RAW_SUBDIR,
+    SEMICONDUCTOR_SALES_CURATED_SUBDIR,
+    SEMICONDUCTOR_SALES_RAW_SUBDIR,
+)
 from stock_data.fetcher.industry.semiconductor.transforms import (
     build_channel_inventory_curated_frame,
     build_channel_inventory_raw_frame,
+    build_cowos_capacity_estimates_curated_frame,
+    build_cowos_capacity_estimates_raw_frame,
     build_foundry_raw_frame,
     build_foundry_utilization_frame,
     build_inventory_days_frame,
@@ -34,6 +53,8 @@ from stock_data.fetcher.industry.semiconductor.transforms import (
     build_memory_price_raw_frame,
     build_semi_equipment_curated_frame,
     build_semi_equipment_raw_frame,
+    build_tsmc_adv_pkg_revenue_curated_frame,
+    build_tsmc_adv_pkg_revenue_raw_frame,
     records_to_chip_lead_time_frame,
     records_to_memory_benchmark_frame,
     records_to_raw_chip_lead_time_frame,
@@ -47,12 +68,6 @@ from stock_data.fetcher.industry.semiconductor.transforms import (
     records_to_semiconductor_lead_frame,
     records_to_taiwan_memory_lead_frame,
 )
-from stock_data.fetcher.industry.semiconductor.workflows import backfill_semiconductor_china
-
-
-def _backfill_china_sales(context: IndustryRunContext, _count: int) -> None:
-    backfill_semiconductor_china(context.curated_dir, context.raw_dir)
-
 
 ENDPOINT_SPECS: tuple[IndustryEndpointSpec, ...] = (
     record_endpoint(
@@ -60,30 +75,63 @@ ENDPOINT_SPECS: tuple[IndustryEndpointSpec, ...] = (
         domain="semiconductor",
         collect=collector(SemiconductorCollector),
         transform=records_to_semiconductor_frame,
-        target_file="semiconductor_sales.parquet",
+        target_file=f"{SEMICONDUCTOR_SALES_CURATED_SUBDIR}/semiconductor_sales.parquet",
         primary_keys=["report_month"],
-        raw_subdir=SEMICONDUCTOR_RAW_SUBDIR,
+        raw_subdir=SEMICONDUCTOR_SALES_RAW_SUBDIR,
         raw_transform=records_to_raw_semiconductor_frame,
-        after_success=_backfill_china_sales,
     ),
     record_endpoint(
         endpoint="semiconductor_equipment",
         domain="semiconductor",
         collect=collector(SeajEquipmentCollector),
         transform=records_to_semiconductor_equipment_frame,
-        target_file="semiconductor_equipment.parquet",
+        target_file=f"{SEMICONDUCTOR_EQUIPMENT_CURATED_SUBDIR}/semiconductor_equipment.parquet",
         primary_keys=["report_month"],
-        raw_subdir=SEMICONDUCTOR_RAW_SUBDIR,
+        raw_subdir=SEMICONDUCTOR_EQUIPMENT_RAW_SUBDIR,
         raw_transform=records_to_raw_semiconductor_equipment_frame,
+    ),
+    frame_endpoint(
+        endpoint="semiconductor_equipment_gm_amat",
+        domain="semiconductor",
+        context_collect=context_collector(AmatEquipmentGmCollector, "collect_raw"),
+        target_file=(
+            f"{SEMICONDUCTOR_EQUIPMENT_CURATED_SUBDIR}/semiconductor_equipment_gm_amat.parquet"
+        ),
+        primary_keys=["company", "report_quarter"],
+    ),
+    frame_endpoint(
+        endpoint="semiconductor_equipment_gm_lrcx",
+        domain="semiconductor",
+        context_collect=context_collector(LrcxEquipmentGmCollector, "collect_raw"),
+        target_file=(
+            f"{SEMICONDUCTOR_EQUIPMENT_CURATED_SUBDIR}/semiconductor_equipment_gm_lrcx.parquet"
+        ),
+        primary_keys=["company", "report_quarter"],
+    ),
+    frame_endpoint(
+        endpoint="semiconductor_equipment_gm_klac",
+        domain="semiconductor",
+        context_collect=context_collector(KlacEquipmentGmCollector, "collect_raw"),
+        target_file=(
+            f"{SEMICONDUCTOR_EQUIPMENT_CURATED_SUBDIR}/semiconductor_equipment_gm_klac.parquet"
+        ),
+        primary_keys=["company", "report_quarter"],
+    ),
+    frame_endpoint(
+        endpoint="tel_gm_quarterly",
+        domain="semiconductor",
+        context_collect=context_collector(TelEquipmentGmCollector, "collect_raw"),
+        target_file=f"{SEMICONDUCTOR_EQUIPMENT_CURATED_SUBDIR}/tel_gm_quarterly.parquet",
+        primary_keys=["report_quarter"],
     ),
     record_endpoint(
         endpoint="semiconductor_lead",
         domain="semiconductor",
         collect=collector(TsmcLeadCollector),
         transform=records_to_semiconductor_lead_frame,
-        target_file="semiconductor_lead.parquet",
+        target_file=f"{SEMICONDUCTOR_SALES_CURATED_SUBDIR}/semiconductor_lead.parquet",
         primary_keys=["report_month"],
-        raw_subdir=SEMICONDUCTOR_RAW_SUBDIR,
+        raw_subdir=SEMICONDUCTOR_SALES_RAW_SUBDIR,
         raw_transform=records_to_raw_semiconductor_lead_frame,
     ),
     record_endpoint(
@@ -91,56 +139,56 @@ ENDPOINT_SPECS: tuple[IndustryEndpointSpec, ...] = (
         domain="semiconductor",
         collect=collector(SusquehannaLeadTimeCollector),
         transform=records_to_chip_lead_time_frame,
-        target_file="chip_lead_time.parquet",
+        target_file=f"{SEMICONDUCTOR_CAPACITY_CURATED_SUBDIR}/chip_lead_time.parquet",
         primary_keys=["report_month"],
-        raw_subdir=SEMICONDUCTOR_RAW_SUBDIR,
+        raw_subdir=SEMICONDUCTOR_CAPACITY_RAW_SUBDIR,
         raw_transform=records_to_raw_chip_lead_time_frame,
     ),
     frame_endpoint(
         endpoint="semiconductor_equipment_semi",
         domain="semiconductor",
         context_collect=context_collector(SemiEquipmentCollector, "collect_raw"),
-        target_file="semiconductor_equipment_semi.parquet",
+        target_file=f"{SEMICONDUCTOR_EQUIPMENT_CURATED_SUBDIR}/semiconductor_equipment_semi.parquet",
         primary_keys=["report_quarter"],
         transform=build_semi_equipment_curated_frame,
-        raw_subdir=SEMICONDUCTOR_RAW_SUBDIR,
+        raw_subdir=SEMICONDUCTOR_EQUIPMENT_RAW_SUBDIR,
         raw_transform=build_semi_equipment_raw_frame,
     ),
     frame_endpoint(
         endpoint="foundry_capacity_utilization",
         domain="semiconductor",
         context_collect=context_collector(FoundryUtilizationCollector, "collect_raw"),
-        target_file="foundry_capacity_utilization.parquet",
+        target_file=f"{SEMICONDUCTOR_CAPACITY_CURATED_SUBDIR}/foundry_capacity_utilization.parquet",
         primary_keys=["report_quarter"],
         transform=build_foundry_utilization_frame,
-        raw_subdir=SEMICONDUCTOR_RAW_SUBDIR,
+        raw_subdir=SEMICONDUCTOR_CAPACITY_RAW_SUBDIR,
         raw_transform=build_foundry_raw_frame,
     ),
     frame_endpoint(
         endpoint="semiconductor_inventory_days",
         domain="semiconductor",
         context_collect=context_collector(SemiconductorInventoryCollector, "collect_raw"),
-        target_file="semiconductor_inventory_days.parquet",
+        target_file=f"{SEMICONDUCTOR_INVENTORY_CURATED_SUBDIR}/semiconductor_inventory_days.parquet",
         primary_keys=["report_quarter", "symbol"],
         transform=build_inventory_days_frame,
-        raw_subdir=SEMICONDUCTOR_RAW_SUBDIR,
+        raw_subdir=SEMICONDUCTOR_INVENTORY_RAW_SUBDIR,
         raw_transform=build_inventory_raw_frame,
     ),
     frame_endpoint(
         endpoint="semiconductor_channel_inventory",
         domain="semiconductor",
         context_collect=context_collector(ChannelInventoryCollector, "collect_raw"),
-        target_file="semiconductor_channel_inventory.parquet",
+        target_file=f"{SEMICONDUCTOR_INVENTORY_CURATED_SUBDIR}/semiconductor_channel_inventory.parquet",
         primary_keys=["report_quarter", "symbol"],
         transform=build_channel_inventory_curated_frame,
-        raw_subdir=SEMICONDUCTOR_RAW_SUBDIR,
+        raw_subdir=SEMICONDUCTOR_INVENTORY_RAW_SUBDIR,
         raw_transform=build_channel_inventory_raw_frame,
     ),
     frame_endpoint(
         endpoint="semiconductor_memory_price",
         domain="semiconductor",
         context_collect=context_collector(MemoryPriceCollector, "collect_raw"),
-        target_file="semiconductor_memory_price.parquet",
+        target_file=f"{SEMICONDUCTOR_PRICE_CURATED_SUBDIR}/semiconductor_memory_price.parquet",
         primary_keys=[
             "trade_date",
             "product_family",
@@ -149,7 +197,7 @@ ENDPOINT_SPECS: tuple[IndustryEndpointSpec, ...] = (
             "item",
         ],
         transform=build_memory_price_curated_frame,
-        raw_subdir=SEMICONDUCTOR_RAW_SUBDIR,
+        raw_subdir=SEMICONDUCTOR_PRICE_RAW_SUBDIR,
         raw_transform=build_memory_price_raw_frame,
         raw_primary_keys=[
             "trade_date",
@@ -164,9 +212,9 @@ ENDPOINT_SPECS: tuple[IndustryEndpointSpec, ...] = (
         domain="semiconductor",
         collect=collector(DataTrackMemoryPriceCollector),
         transform=records_to_memory_benchmark_frame,
-        target_file="semiconductor_memory_benchmark.parquet",
+        target_file=f"{SEMICONDUCTOR_PRICE_CURATED_SUBDIR}/semiconductor_memory_benchmark.parquet",
         primary_keys=["report_month", "product_family", "indicator_id"],
-        raw_subdir=SEMICONDUCTOR_RAW_SUBDIR,
+        raw_subdir=SEMICONDUCTOR_PRICE_RAW_SUBDIR,
         raw_transform=records_to_raw_memory_benchmark_frame,
         raw_primary_keys=["report_month", "product_family", "indicator_id_raw"],
     ),
@@ -175,10 +223,32 @@ ENDPOINT_SPECS: tuple[IndustryEndpointSpec, ...] = (
         domain="semiconductor",
         collect=collector(TaiwanMemoryLeadCollector),
         transform=records_to_taiwan_memory_lead_frame,
-        target_file="semiconductor_memory_taiwan_lead.parquet",
+        target_file=f"{SEMICONDUCTOR_PRICE_CURATED_SUBDIR}/semiconductor_memory_taiwan_lead.parquet",
         primary_keys=["report_month", "symbol"],
-        raw_subdir=SEMICONDUCTOR_RAW_SUBDIR,
+        raw_subdir=SEMICONDUCTOR_PRICE_RAW_SUBDIR,
         raw_transform=records_to_raw_taiwan_memory_lead_frame,
         raw_primary_keys=["report_month", "symbol"],
+    ),
+    record_endpoint(
+        endpoint="tsmc_advanced_packaging_revenue",
+        domain="semiconductor",
+        collect=collector(TsmcAdvancedPackagingRevenueCollector),
+        transform=build_tsmc_adv_pkg_revenue_curated_frame,
+        target_file=f"{SEMICONDUCTOR_CAPACITY_CURATED_SUBDIR}/tsmc_advanced_packaging_revenue.parquet",
+        primary_keys=["symbol", "report_quarter"],
+        raw_subdir=SEMICONDUCTOR_CAPACITY_RAW_SUBDIR,
+        raw_transform=build_tsmc_adv_pkg_revenue_raw_frame,
+        raw_primary_keys=["symbol", "report_quarter"],
+    ),
+    record_endpoint(
+        endpoint="tsmc_cowos_capacity_estimates",
+        domain="semiconductor",
+        collect=collector(CowosCapacityEstimatesCollector),
+        transform=build_cowos_capacity_estimates_curated_frame,
+        target_file=f"{SEMICONDUCTOR_CAPACITY_CURATED_SUBDIR}/tsmc_cowos_capacity_estimates.parquet",
+        primary_keys=["symbol", "agency", "published_date", "report_quarter"],
+        raw_subdir=SEMICONDUCTOR_CAPACITY_RAW_SUBDIR,
+        raw_transform=build_cowos_capacity_estimates_raw_frame,
+        raw_primary_keys=["symbol", "agency", "published_date", "report_quarter"],
     ),
 )

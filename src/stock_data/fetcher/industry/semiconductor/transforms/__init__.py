@@ -1,20 +1,22 @@
 """半导体产业 Curated 转换器。"""
 
+from stock_data.fetcher.industry.semiconductor.transforms.adv_pkg_revenue import (
+    build_tsmc_adv_pkg_revenue_curated_frame,
+    build_tsmc_adv_pkg_revenue_raw_frame,
+)
 from stock_data.fetcher.industry.semiconductor.transforms.channel_inventory import (
     build_channel_inventory_curated_frame,
     build_channel_inventory_raw_frame,
-)
-from stock_data.fetcher.industry.semiconductor.transforms.china_series import (
-    build_china_series,
-    parse_sia_china_enriched,
-    parse_sia_raw_dir,
-    save_china_series,
 )
 from stock_data.fetcher.industry.semiconductor.transforms.chip_lead_time import (
     empty_chip_lead_time,
     empty_raw_chip_lead_time,
     records_to_chip_lead_time_frame,
     records_to_raw_chip_lead_time_frame,
+)
+from stock_data.fetcher.industry.semiconductor.transforms.cowos_estimates import (
+    build_cowos_capacity_estimates_curated_frame,
+    build_cowos_capacity_estimates_raw_frame,
 )
 from stock_data.fetcher.industry.semiconductor.transforms.equipment_facts import (
     empty_raw_semiconductor_equipment,
@@ -69,7 +71,8 @@ from stock_data.fetcher.industry.semiconductor.transforms.taiwan_memory import (
 __all__ = [
     "build_channel_inventory_curated_frame",
     "build_channel_inventory_raw_frame",
-    "build_china_series",
+    "build_cowos_capacity_estimates_curated_frame",
+    "build_cowos_capacity_estimates_raw_frame",
     "build_foundry_raw_frame",
     "build_foundry_utilization_frame",
     "build_inventory_days_frame",
@@ -78,6 +81,8 @@ __all__ = [
     "build_memory_price_raw_frame",
     "build_semi_equipment_curated_frame",
     "build_semi_equipment_raw_frame",
+    "build_tsmc_adv_pkg_revenue_curated_frame",
+    "build_tsmc_adv_pkg_revenue_raw_frame",
     "determine_foundry_utilization_regime",
     "determine_inventory_regime",
     "empty_chip_lead_time",
@@ -93,8 +98,6 @@ __all__ = [
     "empty_semiconductor_lead",
     "empty_semiconductor_sales",
     "empty_taiwan_memory_lead",
-    "parse_sia_china_enriched",
-    "parse_sia_raw_dir",
     "records_to_chip_lead_time_frame",
     "records_to_memory_benchmark_frame",
     "records_to_raw_chip_lead_time_frame",
@@ -109,5 +112,4 @@ __all__ = [
     "records_to_semiconductor_frame",
     "records_to_semiconductor_lead_frame",
     "records_to_taiwan_memory_lead_frame",
-    "save_china_series",
 ]

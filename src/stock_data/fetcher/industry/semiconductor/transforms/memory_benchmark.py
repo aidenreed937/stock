@@ -3,11 +3,14 @@
 from __future__ import annotations
 
 from collections.abc import Sequence
-from datetime import UTC, datetime
+from datetime import UTC, date, datetime
 
 import polars as pl
 
 from stock_data.fetcher.industry.common import parse_month_string
+from stock_data.fetcher.industry.semiconductor.datatrack_calendar import (
+    load_datatrack_release_calendar,
+)
 from stock_data.fetcher.industry.semiconductor.models import MemoryPriceBenchmarkRecord
 from stock_data.fetcher.industry.semiconductor.transforms.release_date import (
     require_raw_release_dates,
@@ -116,8 +119,23 @@ def records_to_memory_benchmark_frame(
     if not records:
         return empty_memory_benchmark()
 
+    calendar = load_datatrack_release_calendar()
     records = sorted(records, key=lambda r: (r.product_family, r.indicator_id, r.trade_date))
     now_iso = datetime.now(UTC).isoformat()
+
+    curated_release_dates: list[date | None] = []
+    curated_release_statuses: list[str] = []
+    for r in records:
+        if r.release_date is not None:
+            curated_release_dates.append(r.release_date)
+            curated_release_statuses.append(r.release_date_status or "reported")
+        elif r.report_month in calendar:
+            curated_release_dates.append(calendar[r.report_month])
+            curated_release_statuses.append("proxy_calendar")
+        else:
+            curated_release_dates.append(None)
+            curated_release_statuses.append(r.release_date_status or "unavailable")
+
     data = {
         "report_month": [r.report_month for r in records],
         "trade_date": [r.trade_date for r in records],
@@ -130,8 +148,8 @@ def records_to_memory_benchmark_frame(
         "unit": [r.unit or "USD" for r in records],
         "source": [r.source or "TrendForce" for r in records],
         "source_url": [r.source_url or "" for r in records],
-        "release_date": [r.release_date for r in records],
-        "release_date_status": [r.release_date_status for r in records],
+        "release_date": curated_release_dates,
+        "release_date_status": curated_release_statuses,
         "data_status": [r.data_status or "actual" for r in records],
         "collected_at": [r.collected_at or now_iso for r in records],
     }
@@ -144,6 +162,30 @@ def records_to_memory_benchmark_frame(
             how="diagonal_relaxed",
         ).select(list(MEMORY_BENCHMARK_CURATED_SCHEMA))
     )
+
+    if calendar and df["release_date"].is_null().any():
+        cal_map_df = pl.DataFrame(
+            {
+                "report_month": list(calendar.keys()),
+                "_proxy_rd": list(calendar.values()),
+            },
+            schema={"report_month": pl.String, "_proxy_rd": pl.Date},
+        )
+        df = (
+            df.join(cal_map_df, on="report_month", how="left")
+            .with_columns(
+                pl.when(pl.col("release_date").is_null() & pl.col("_proxy_rd").is_not_null())
+                .then(pl.col("_proxy_rd"))
+                .otherwise(pl.col("release_date"))
+                .alias("release_date"),
+                pl.when(pl.col("release_date").is_null() & pl.col("_proxy_rd").is_not_null())
+                .then(pl.lit("proxy_calendar"))
+                .otherwise(pl.col("release_date_status"))
+                .alias("release_date_status"),
+            )
+            .drop("_proxy_rd")
+        )
+
     df = df.unique(subset=["report_month", "product_family", "indicator_id"], keep="last").sort(
         ["product_family", "indicator_id", "trade_date"]
     )

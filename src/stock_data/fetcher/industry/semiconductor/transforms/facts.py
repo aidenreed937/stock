@@ -27,6 +27,9 @@ from stock_data.fetcher.industry.semiconductor.transforms.release_date import (
     require_raw_release_dates,
 )
 
+#: SIA/WSTS 分区域销售额列前缀（与 Curated schema 的 ``{region}_sales_usd`` 对应）
+REGION_COLUMNS = ("americas", "europe", "japan", "asia_pacific")
+
 
 def _source_string(value: Any) -> str | None:
     if value is None:
@@ -89,7 +92,12 @@ def empty_semiconductor_sales() -> pl.DataFrame:
 def records_to_semiconductor_frame(
     records: Sequence[SemiconductorSalesRecord],
 ) -> pl.DataFrame:
-    """从销售额 RAW 字段构建 Curated 表，并计算全球销售额 YoY/MoM。"""
+    """从销售额 RAW 字段构建 Curated 表，并计算全球与分区域销售额 YoY/MoM。
+
+    分区域 YoY（`{region}_yoy_growth`）供周期框架的"分区域增速分化"分析使用
+    （见 ``semiconductor-cycle-research`` 的驱动源识别），口径与全球 ``yoy_growth``
+    完全一致：同一 ``report_month`` 序列上做 12 个月同比。
+    """
     if not records:
         return empty_semiconductor_sales()
 
@@ -118,6 +126,10 @@ def records_to_semiconductor_frame(
         "asia_pacific_sales_usd": [
             _wsts_billion_usd(r.asia_pacific_raw, r.asia_pacific_sales_usd) for r in records
         ],
+        "americas_yoy_growth": [None] * len(records),
+        "europe_yoy_growth": [None] * len(records),
+        "japan_yoy_growth": [None] * len(records),
+        "asia_pacific_yoy_growth": [None] * len(records),
         "yoy_growth": [None] * len(records),
         "mom_growth": [None] * len(records),
         "unit": ["billion_usd"] * len(records),
@@ -132,17 +144,30 @@ def records_to_semiconductor_frame(
         .unique(subset=["report_month"], keep="last")
         .sort("trade_date")
     )
-    sales_by_month = {
-        str(row["report_month"]): row["global_sales_usd"]
-        for row in df.select(["report_month", "global_sales_usd"]).to_dicts()
-        if row["global_sales_usd"] is not None
-    }
-    yoy = [_growth_for_month(month, sales_by_month, 12) for month in df["report_month"]]
-    mom = [_growth_for_month(month, sales_by_month, 1) for month in df["report_month"]]
-    return df.with_columns(
-        pl.Series("yoy_growth", yoy, dtype=pl.Float64),
-        pl.Series("mom_growth", mom, dtype=pl.Float64),
-    )
+    months = df["report_month"]
+    global_by_month = _month_value_map(df, "global_sales_usd")
+    growth_columns = [
+        pl.Series(
+            "yoy_growth",
+            [_growth_for_month(month, global_by_month, 12) for month in months],
+            dtype=pl.Float64,
+        ),
+        pl.Series(
+            "mom_growth",
+            [_growth_for_month(month, global_by_month, 1) for month in months],
+            dtype=pl.Float64,
+        ),
+    ]
+    for region in REGION_COLUMNS:
+        region_by_month = _month_value_map(df, f"{region}_sales_usd")
+        growth_columns.append(
+            pl.Series(
+                f"{region}_yoy_growth",
+                [_growth_for_month(month, region_by_month, 12) for month in months],
+                dtype=pl.Float64,
+            )
+        )
+    return df.with_columns(*growth_columns)
 
 
 def _wsts_billion_usd(raw_value: str | None, fallback: float | None) -> float | None:
@@ -184,6 +209,15 @@ def _parse_number(value: object) -> float | None:
         return float(match.group(0))
     except ValueError:
         return None
+
+
+def _month_value_map(df: pl.DataFrame, value_column: str) -> dict[str, float]:
+    """按 ``report_month`` 构建取值字典，供跨月增长率计算复用。"""
+    return {
+        str(row["report_month"]): row[value_column]
+        for row in df.select(["report_month", value_column]).to_dicts()
+        if row[value_column] is not None
+    }
 
 
 def _growth_for_month(
@@ -249,6 +283,7 @@ def records_to_semiconductor_lead_frame(
     records: Sequence[SemiconductorLeadRecord],
     *,
     runtime: DataRuntimeContext | None = None,
+    existing_df: pl.DataFrame | None = None,
 ) -> pl.DataFrame:
     """将半导体先导指标记录转换为强类型 Polars DataFrame，并计算 3MMA。"""
     if not records:
@@ -281,21 +316,44 @@ def records_to_semiconductor_lead_frame(
         "collected_at": [r.collected_at or now_iso for r in records],
     }
 
-    df = (
-        pl.DataFrame(data, schema=SEMICONDUCTOR_LEAD_SCHEMA)
-        .unique(subset=["report_month"], keep="last")
-        .sort("trade_date")
-    )
+    new_df = pl.DataFrame(data, schema=SEMICONDUCTOR_LEAD_SCHEMA)
+    if existing_df is not None and not existing_df.is_empty():
+        df = pl.concat([existing_df, new_df], how="diagonal_relaxed").select(
+            list(SEMICONDUCTOR_LEAD_SCHEMA)
+        )
+    else:
+        df = new_df
+    df = df.unique(subset=["report_month"], keep="last").sort("trade_date")
 
-    if (
-        df["tsmc_revenue_3mma_usd"].is_null().all()
-        and df["tsmc_revenue_usd_million"].is_not_null().any()
-    ):
+    # 增量采集通常只返回一个月，必须把它与既有序列合并后再计算环比和 3MMA，
+    # 否则最新月份会因缺少前一月而产生合法但错误的 NULL。
+    revenue_by_month = {
+        str(row["report_month"]): row["tsmc_revenue_ntd_million"]
+        for row in df.select(["report_month", "tsmc_revenue_ntd_million"]).to_dicts()
+        if row["tsmc_revenue_ntd_million"] is not None
+    }
+    mom_values: list[float | None] = []
+    for row in df.select(["report_month", "tsmc_revenue_mom"]).to_dicts():
+        mom = row["tsmc_revenue_mom"]
+        if mom is None:
+            year, month = parse_month_string(str(row["report_month"]))
+            previous_index = year * 12 + month - 2
+            previous_month = f"{previous_index // 12:04d}-{previous_index % 12 + 1:02d}"
+            current = revenue_by_month.get(str(row["report_month"]))
+            previous = revenue_by_month.get(previous_month)
+            if current is not None and previous is not None and previous > 0:
+                mom = round(float(current) / float(previous) - 1.0, 4)
+        mom_values.append(mom)
+    df = df.with_columns(pl.Series("tsmc_revenue_mom", mom_values, dtype=pl.Float64))
+
+    if df["tsmc_revenue_usd_million"].is_not_null().any():
+        rolling_3mma = (
+            pl.col("tsmc_revenue_usd_million").rolling_mean(window_size=3, min_samples=1).round(2)
+        )
         df = df.with_columns(
-            pl.col("tsmc_revenue_usd_million")
-            .rolling_mean(window_size=3, min_samples=1)
-            .round(2)
-            .alias("tsmc_revenue_3mma_usd")
+            pl.coalesce([pl.col("tsmc_revenue_3mma_usd"), rolling_3mma]).alias(
+                "tsmc_revenue_3mma_usd"
+            )
         )
 
     return df

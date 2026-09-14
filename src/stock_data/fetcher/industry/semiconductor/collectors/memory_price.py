@@ -83,16 +83,30 @@ class MemoryPriceCollector:
     ) -> pl.DataFrame:
         """在线抓取 TrendForce 价格页，并返回源端字段优先的 RAW DataFrame。"""
         del force
-        del start_date
-        del end_date
+        if start_date is not None and end_date is not None and start_date > end_date:
+            raise ValueError(f"TrendForce 内存价格日期范围无效: {start_date} > {end_date}")
         self.paths.semiconductor_dir.mkdir(parents=True, exist_ok=True)
         collected_at = now_utc_iso()
         rows: list[dict[str, Any]] = []
         for page in TRENDFORCE_PRICE_PAGES:
-            rows.extend(self._collect_page(page, collected_at=collected_at))
+            rows.extend(
+                self._collect_page(
+                    page,
+                    collected_at=collected_at,
+                    start_date=start_date,
+                    end_date=end_date,
+                )
+            )
         return build_memory_price_raw_frame(rows)
 
-    def _collect_page(self, page: dict[str, str], *, collected_at: str) -> list[dict[str, Any]]:
+    def _collect_page(
+        self,
+        page: dict[str, str],
+        *,
+        collected_at: str,
+        start_date: date | None = None,
+        end_date: date | None = None,
+    ) -> list[dict[str, Any]]:
         source_url = page["url"]
         response = self._get(source_url)
         if response is None:
@@ -110,7 +124,7 @@ class MemoryPriceCollector:
             compress=True,
         )
         html_text = getattr(response, "text", "") or content_bytes.decode("utf-8", errors="ignore")
-        return parse_trendforce_memory_price_html(
+        rows = parse_trendforce_memory_price_html(
             html_text,
             product_family=page["product_family"],
             price_scope=page["price_scope"],
@@ -120,6 +134,12 @@ class MemoryPriceCollector:
             raw_content_hash=raw_content_sha256(content_bytes),
             raw_snapshot_path=raw_snapshot_path_value(snapshot_path, self.raw_root),
         )
+        return [
+            row
+            for row in rows
+            if (start_date is None or row["trade_date"] >= start_date)
+            and (end_date is None or row["trade_date"] <= end_date)
+        ]
 
     def _get(self, url: str) -> Any | None:
         try:

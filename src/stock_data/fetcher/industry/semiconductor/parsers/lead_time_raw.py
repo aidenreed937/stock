@@ -171,6 +171,7 @@ def load_lead_time_raw_records(
 
     records_map: dict[str, ChipLeadTimeRecord] = {}
     raw_root = lead_time_raw_dir.parent
+    industry_root = raw_root.parent if raw_root.name == "semiconductor" else raw_root
 
     for json_file in sorted(lead_time_raw_dir.glob("*.json")):
         try:
@@ -213,17 +214,17 @@ def load_lead_time_raw_records(
                 sku_details_raw = json.dumps(sku_details, ensure_ascii=False, sort_keys=True)
 
             source_snapshot = _resolve_source_snapshot_path(
-                data.get("raw_snapshot_path"), lead_time_raw_dir, raw_root
+                data.get("raw_snapshot_path"), lead_time_raw_dir, industry_root
             )
             if source_snapshot is not None and source_snapshot.exists():
                 source_bytes = raw_snapshot_content_bytes(source_snapshot)
                 content_hash = raw_content_sha256(source_bytes)
-                snapshot_path = raw_snapshot_path_value(source_snapshot, raw_root)
+                snapshot_path = raw_snapshot_path_value(source_snapshot, industry_root)
             else:
                 content_hash = str(data.get("raw_content_sha256") or "")
                 if not content_hash:
                     content_hash = raw_content_sha256(metadata_bytes)
-                snapshot_path = raw_snapshot_path_value(json_file, raw_root)
+                snapshot_path = raw_snapshot_path_value(json_file, industry_root)
 
             if lead_time_raw is None and data.get("lead_time_raw") is not None:
                 lead_time_raw = str(data["lead_time_raw"])
@@ -270,10 +271,11 @@ def _resolve_source_snapshot_path(
     candidate = Path(str(value))
     if candidate.is_absolute():
         return candidate
-    root_candidate = raw_root / candidate
-    if root_candidate.exists():
-        return root_candidate
-    return lead_time_raw_dir / candidate
+    for base in (raw_root, raw_root / "semiconductor", lead_time_raw_dir):
+        probe = base / candidate
+        if probe.exists():
+            return probe
+    return lead_time_raw_dir / candidate.name
 
 
 def _parse_iso_date(value: object) -> date | None:

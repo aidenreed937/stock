@@ -23,6 +23,7 @@ COMPANYFACTS_COGS_TAGS = {
     "TXN": ("CostOfRevenue", "CostOfGoodsAndServicesSold", "CostOfGoodsSold"),
     "ADI": ("CostOfGoodsSold", "CostOfGoodsAndServicesSold", "CostOfRevenue"),
     "NXPI": ("CostOfRevenue", "CostOfGoodsAndServicesSold", "CostOfGoodsSold"),
+    "MU": ("CostOfGoodsAndServicesSold", "CostOfRevenue", "CostOfGoodsSold"),
 }
 MONTHS = {
     name: index
@@ -92,11 +93,15 @@ def parse_companyfacts_inventory(
             data_status = "actual"
             derivation = ""
             annual_raw: str | None = None
-            if quarter == 4 and cogs_fact is None:
+            is_fiscal_year_end = (quarter == 3) if symbol.upper() == "MU" else (quarter == 4)
+            if is_fiscal_year_end and cogs_fact is None:
                 annual_fact = _pick_earliest(annual_by_quarter.get(key, ()))
+                if symbol.upper() == "MU":
+                    previous_keys = [(year - 1, 4), (year, 1), (year, 2)]
+                else:
+                    previous_keys = [(year, 1), (year, 2), (year, 3)]
                 previous_values = [
-                    _pick_earliest(short_by_quarter.get((year, previous_quarter), ()))
-                    for previous_quarter in (1, 2, 3)
+                    _pick_earliest(short_by_quarter.get(prev_key, ())) for prev_key in previous_keys
                 ]
                 if annual_fact is not None and all(previous_values):
                     cogs_fact = _FactValue(
@@ -110,8 +115,12 @@ def parse_companyfacts_inventory(
                         form=annual_fact.form,
                         accession=annual_fact.accession,
                     )
-                    data_status = "derived_q4"
-                    derivation = "annual_minus_q1_q2_q3"
+                    data_status = f"derived_q{quarter}"
+                    derivation = (
+                        "annual_minus_previous_3q"
+                        if symbol.upper() == "MU"
+                        else "annual_minus_q1_q2_q3"
+                    )
                     annual_raw = _raw_number(annual_fact.value)
             if cogs_fact is None:
                 continue
@@ -121,6 +130,7 @@ def parse_companyfacts_inventory(
                 continue
             record_url = _accession_url(symbol, inventory_fact.accession) or source_url
             release_date = max(inventory_fact.filed, cogs_fact.filed)
+            subsector = "memory" if symbol.upper() == "MU" else "analog_auto"
             records.append(
                 SemiconductorInventoryRecord(
                     symbol=symbol.upper(),
@@ -128,6 +138,7 @@ def parse_companyfacts_inventory(
                     trade_date=trade_date,
                     inventory_usd_million=inventory_fact.value / 1_000_000.0,
                     cost_of_revenue_usd_million=cogs_fact.value / 1_000_000.0,
+                    subsector=subsector,
                     unit="USD",
                     source="SEC_companyfacts",
                     source_url=record_url,
@@ -189,6 +200,7 @@ def parse_sec_6k_inventory(
         trade_date=_quarter_trade_date(year, quarter),
         inventory_usd_million=_number_value(inventory_raw),
         cost_of_revenue_usd_million=_number_value(cost_raw),
+        subsector="analog_auto",
         unit="million_usd",
         source="SEC_6K",
         source_url=source_url,
@@ -284,7 +296,7 @@ def _split_cogs(
         if 70 <= duration <= 110:
             short[quarter].append(fact)
         elif 300 <= duration <= 400:
-            annual[(quarter[0], 4)].append(fact)
+            annual[quarter].append(fact)
     return short, annual
 
 
@@ -423,9 +435,13 @@ def _in_date_range(
 def _accession_url(symbol: str, accession: str) -> str:
     if not accession:
         return ""
-    cik = {"TXN": "97476", "ADI": "6281", "STM": "932787", "NXPI": "1413447"}.get(
-        symbol.upper(), ""
-    )
+    cik = {
+        "TXN": "97476",
+        "ADI": "6281",
+        "STM": "932787",
+        "NXPI": "1413447",
+        "MU": "723125",
+    }.get(symbol.upper(), "")
     return f"https://www.sec.gov/Archives/edgar/data/{cik}/{accession.replace('-', '')}/index.json"
 
 

@@ -28,6 +28,10 @@ SEMICONDUCTOR_SALES_SCHEMA = {
     "europe_sales_usd": pl.Float64,
     "japan_sales_usd": pl.Float64,
     "asia_pacific_sales_usd": pl.Float64,
+    "americas_yoy_growth": pl.Float64,
+    "europe_yoy_growth": pl.Float64,
+    "japan_yoy_growth": pl.Float64,
+    "asia_pacific_yoy_growth": pl.Float64,
     "yoy_growth": pl.Float64,
     "mom_growth": pl.Float64,
     "unit": pl.String,
@@ -244,12 +248,18 @@ INVENTORY_RAW_SCHEMA = {
     "symbol": pl.String,
     "report_quarter": pl.String,
     "trade_date": pl.Date,
+    "subsector": pl.String,
     "source_period_end": pl.Date,
     "fiscal_period_raw": pl.String,
     "inventory_usd_raw": pl.String,
     "cost_of_revenue_usd_raw": pl.String,
     "cost_of_revenue_annual_raw": pl.String,
     "cost_of_revenue_derivation": pl.String,
+    "ds_revenue_krw_raw": pl.String,
+    "ds_operating_profit_krw_raw": pl.String,
+    "cost_of_revenue_source": pl.String,
+    "inventory_scope": pl.String,
+    "memory_inventory_status": pl.String,
     "release_date": pl.Date,
     "source": pl.String,
     "source_url": pl.String,
@@ -266,6 +276,9 @@ INVENTORY_CURATED_SCHEMA = {
     "trade_date": pl.Date,
     "inventory_usd_million": pl.Float64,
     "cost_of_revenue_usd_million": pl.Float64,
+    "cost_of_revenue_source": pl.String,
+    "inventory_scope": pl.String,
+    "memory_inventory_status": pl.String,
     "release_date": pl.Date,
     "source": pl.String,
     "unit": pl.String,
@@ -277,6 +290,9 @@ INVENTORY_CURATED_SCHEMA = {
     "idm_equal_doi_days": pl.Float64,
     "idm_weighted_doi_days": pl.Float64,
     "inventory_regime": pl.String,
+    "subsector": pl.String,
+    "analog_weighted_doi_days": pl.Float64,
+    "memory_weighted_doi_days": pl.Float64,
 }
 
 CHANNEL_INVENTORY_RAW_SCHEMA = {
@@ -375,3 +391,148 @@ MEMORY_PRICE_CURATED_SCHEMA: dict[str, Any] = {
     "data_status": pl.String,
     "collected_at": pl.String,
 }
+
+TSMC_ADV_PKG_REVENUE_RAW_SCHEMA = pl.Schema(
+    {
+        "symbol": pl.String,
+        "report_quarter": pl.String,
+        "trade_date": pl.Date,
+        "release_date": pl.Date,
+        "net_revenue_ntd_bn": pl.Float64,
+        "net_revenue_usd_bn": pl.Float64,
+        "advanced_wafer_pct": pl.Float64,
+        "hpc_platform_pct": pl.Float64,
+        "packaging_testing_others_pct": pl.Float64,
+        "data_status": pl.String,
+        "source": pl.String,
+        "source_url": pl.String,
+        "collected_at": pl.String,
+        "raw_content_sha256": pl.String,
+        "raw_snapshot_path": pl.String,
+    }
+)
+
+TSMC_ADV_PKG_REVENUE_CURATED_SCHEMA = pl.Schema(
+    {
+        "symbol": pl.String,
+        "report_quarter": pl.String,
+        "trade_date": pl.Date,
+        "release_date": pl.Date,
+        "net_revenue_ntd_bn": pl.Float64,
+        "net_revenue_usd_bn": pl.Float64,
+        "packaging_testing_others_ntd_bn": pl.Float64,
+        "advanced_wafer_pct": pl.Float64,
+        "hpc_platform_pct": pl.Float64,
+        "packaging_testing_others_pct": pl.Float64,
+        "revenue_yoy": pl.Float64,
+        "revenue_qoq": pl.Float64,
+        "unit": pl.String,
+        "source": pl.String,
+        "source_url": pl.String,
+        "data_status": pl.String,
+        "collected_at": pl.String,
+    }
+)
+
+COWOS_CAPACITY_ESTIMATES_RAW_SCHEMA = pl.Schema(
+    {
+        "symbol": pl.String,
+        "report_quarter": pl.String,
+        "trade_date": pl.Date,
+        "agency": pl.String,
+        "published_date": pl.Date,
+        "monthly_capacity_kwpm": pl.Float64,
+        "lead_time_months": pl.Float64,
+        "data_status": pl.String,
+        "source": pl.String,
+        "source_url": pl.String,
+        "collected_at": pl.String,
+        "raw_content_sha256": pl.String,
+        "raw_snapshot_path": pl.String,
+    }
+)
+
+COWOS_CAPACITY_ESTIMATES_CURATED_SCHEMA = pl.Schema(
+    {
+        "symbol": pl.String,
+        "report_quarter": pl.String,
+        "trade_date": pl.Date,
+        "agency": pl.String,
+        "published_date": pl.Date,
+        "monthly_capacity_kwpm": pl.Float64,
+        "lead_time_months": pl.Float64,
+        "capacity_yoy": pl.Float64,
+        "capacity_qoq": pl.Float64,
+        "bottleneck_regime": pl.String,
+        "unit": pl.String,
+        "source": pl.String,
+        "source_url": pl.String,
+        "data_status": pl.String,
+        "collected_at": pl.String,
+    }
+)
+
+SEMICONDUCTOR_EQUIPMENT_GM_SCHEMA = pl.Schema(
+    {
+        "report_quarter": pl.String,
+        "trade_date": pl.Date,
+        "net_sales_eur_m": pl.Float64,
+        "gross_profit_eur_m": pl.Float64,
+        "gross_margin_pct": pl.Float64,
+        "net_income_eur_m": pl.Float64,
+        "ibm_sales_eur_m": pl.Float64,
+        "new_litho_units": pl.Float64,
+        "used_litho_units": pl.Float64,
+        "net_bookings_eur_m": pl.Float64,
+        "systems_backlog_eur_m": pl.Float64,
+        "gm_guidance_next_pct": pl.Float64,
+        "net_sales_guidance_next_eur_m": pl.Float64,
+        "release_date": pl.Date,
+        "source": pl.String,
+        "source_url": pl.String,
+        "data_status": pl.String,
+        "collected_at": pl.String,
+    }
+)
+
+SEMICONDUCTOR_EQUIPMENT_GM_MULTI_SCHEMA = pl.Schema(
+    {
+        "company": pl.String,
+        "report_quarter": pl.String,
+        "release_date": pl.Date,
+        "gross_margin_pct": pl.Float64,
+        "gm_guidance_next_pct": pl.Float64,
+        "services_share_pct": pl.Float64,
+        "source": pl.String,
+        "data_status": pl.String,
+    }
+)
+
+EQUIPMENT_GM_ATOMIC_SCHEMA = pl.Schema(
+    {
+        "company": pl.String,
+        "report_quarter": pl.String,
+        "report_period_end": pl.Date,
+        "release_date": pl.Date,
+        "gross_margin_pct": pl.Float64,
+        "gm_guidance_next_pct": pl.Float64,
+        "services_share_pct": pl.Float64,
+        "source": pl.String,
+        "data_status": pl.String,
+    }
+)
+
+TEL_GM_QUARTERLY_SCHEMA = pl.Schema(
+    {
+        "company": pl.String,
+        "report_quarter": pl.String,
+        "fiscal_year": pl.Int64,
+        "fy_q": pl.Int32,
+        "period_end": pl.String,
+        "net_sales_jpy_m": pl.Float64,
+        "gross_profit_jpy_m": pl.Float64,
+        "gross_margin_pct": pl.Float64,
+        "release_date": pl.Date,
+        "file": pl.String,
+    }
+)

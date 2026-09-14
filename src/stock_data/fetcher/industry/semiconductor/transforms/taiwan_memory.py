@@ -48,6 +48,7 @@ TAIWAN_MEMORY_LEAD_CURATED_SCHEMA = {
     "revenue_ntd_million": pl.Float64,
     "revenue_usd_million": pl.Float64,
     "revenue_yoy": pl.Float64,
+    "revenue_yoy_derived": pl.Float64,
     "revenue_mom": pl.Float64,
     "revenue_3mma_usd": pl.Float64,
     "unit": pl.String,
@@ -134,6 +135,7 @@ def records_to_taiwan_memory_lead_frame(
         "company_name": [r.company_name for r in records],
         "revenue_ntd_thousand": [r.revenue_ntd_thousand for r in records],
         "revenue_yoy": [r.revenue_yoy for r in records],
+        "revenue_yoy_derived": [None] * len(records),
         "revenue_mom": [r.revenue_mom for r in records],
         "revenue_3mma_usd": [None] * len(records),
         "unit": ["million_ntd/usd"] * len(records),
@@ -162,11 +164,13 @@ def records_to_taiwan_memory_lead_frame(
         months = sub_df["report_month"].to_list()
         ntd = sub_df["revenue_ntd_million"].to_list()
         usd = sub_df["revenue_usd_million"].to_list()
+        yoy_derived: list[float | None] = [None] * len(sub_df)
         mom = sub_df["revenue_mom"].to_list()
         mma3: list[float | None] = [None] * len(sub_df)
 
         ntd_by_month = {m: float(v) for m, v in zip(months, ntd, strict=False) if v is not None}
         for i in range(len(sub_df)):
+            yoy_derived[i] = _growth_for_month(months[i], ntd_by_month, 12)
             # 补齐未自带的 MoM
             if mom[i] is None:
                 mom[i] = _growth_for_month(months[i], ntd_by_month, 1)
@@ -178,6 +182,7 @@ def records_to_taiwan_memory_lead_frame(
 
         frames.append(
             sub_df.with_columns(
+                pl.Series("revenue_yoy_derived", yoy_derived, dtype=pl.Float64),
                 pl.Series("revenue_mom", mom, dtype=pl.Float64),
                 pl.Series("revenue_3mma_usd", mma3, dtype=pl.Float64),
             )

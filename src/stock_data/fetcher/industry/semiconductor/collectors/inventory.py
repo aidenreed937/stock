@@ -30,6 +30,9 @@ import polars as pl
 from curl_cffi import requests as curl_requests
 
 from stock_data.fetcher.industry.common import now_utc_iso, save_raw_snapshot
+from stock_data.fetcher.industry.semiconductor.collectors.korea_memory_dart import (
+    KoreaMemoryDartCollector,
+)
 from stock_data.fetcher.industry.semiconductor.lineage import (
     raw_content_sha256,
     raw_snapshot_content_bytes,
@@ -37,7 +40,10 @@ from stock_data.fetcher.industry.semiconductor.lineage import (
     response_content_bytes,
 )
 from stock_data.fetcher.industry.semiconductor.models import SemiconductorInventoryRecord
-from stock_data.fetcher.industry.semiconductor.parsers import load_inventory_raw_csv
+from stock_data.fetcher.industry.semiconductor.parsers import (
+    load_inventory_raw_csv,
+    load_korea_memory_raw_csv,
+)
 from stock_data.fetcher.industry.semiconductor.parsers.inventory import (
     SecFiling,
     build_inventory_release_date_map,
@@ -63,6 +69,7 @@ INVENTORY_CIK = {
     "ADI": "0000006281",
     "STM": "0000932787",
     "NXPI": "0001413447",
+    "MU": "0000723125",
 }
 SEC_COMPANYFACTS_URL = "https://data.sec.gov/api/xbrl/companyfacts/CIK{cik}.json"
 SEC_ARCHIVE_CIK = {
@@ -70,8 +77,11 @@ SEC_ARCHIVE_CIK = {
     "ADI": "6281",
     "STM": "932787",
     "NXPI": "1413447",
+    "MU": "723125",
 }
 INVENTORY_SYMBOLS = tuple(INVENTORY_CIK)
+KOREA_MEMORY_SYMBOLS = ("000660.KS", "005930.KS_DS")
+ALL_INVENTORY_SYMBOLS = INVENTORY_SYMBOLS + KOREA_MEMORY_SYMBOLS
 INVENTORY_START_DATE = date(2016, 1, 1)
 
 
@@ -81,7 +91,16 @@ class SemiconductorInventoryCollector:
     def __init__(self, raw_dir: Path | str) -> None:
         self.paths = SemiconductorRawPaths(raw_dir)
         self.raw_csv = self.paths.inventory_csv
-        self.raw_parquet = self.paths.semiconductor_dir / "semiconductor_inventory_days.parquet"
+        self.korea_dart = KoreaMemoryDartCollector(raw_dir)
+        canonical_raw_parquet = (
+            self.paths.semiconductor_dir / "inventory" / "semiconductor_inventory_days.parquet"
+        )
+        legacy_raw_parquet = self.paths.semiconductor_dir / "semiconductor_inventory_days.parquet"
+        self.raw_parquet = (
+            canonical_raw_parquet
+            if canonical_raw_parquet.exists() or not legacy_raw_parquet.exists()
+            else legacy_raw_parquet
+        )
 
     def collect_raw(
         self,
@@ -89,7 +108,7 @@ class SemiconductorInventoryCollector:
         start_date: date | None = None,
         end_date: date | None = None,
     ) -> pl.DataFrame:
-        """按运行窗口优先解析 SEC 官方在线源，失败时回退本地 RAW。"""
+        """按运行窗口增量更新 DART/SEC 官方源，失败时回退本地 RAW。"""
         try:
             local = self._load_raw_frame(
                 force=False,
@@ -102,6 +121,29 @@ class SemiconductorInventoryCollector:
                 raise
             logger.warning("本地 IDM RAW 不可直接使用，继续尝试官方在线源: %s", exc)
             local = build_inventory_raw_frame(pl.DataFrame())
+
+        # 韩国双雄不是 SEC 标的：DART 负责发现最新定期报告、抓取修订版并把
+        # 快照/Manifest/季度事实写回韩国 RAW。默认季度同步只检查近期窗口；
+        # 历史回填通过 start_date/end_date 显式扩大窗口，避免每次任务扫描全史。
+        # 只有项目已有韩国存证目录/RAW 时才启用 DART。这样隔离的临时 RAW
+        # 或只测试美股 SEC 逻辑的运行不会因日期窗口意外触网并写入韩国事实。
+        if self.paths.korea_memory_csv.exists() or self.korea_dart.filings_dir.exists():
+            try:
+                korea_changed = self.korea_dart.collect_raw(
+                    force=force,
+                    start_date=start_date,
+                    end_date=end_date,
+                )
+            except Exception as exc:  # noqa: BLE001
+                logger.warning("韩国双雄 DART 增量采集失败，保留已有 RAW: %s", exc)
+                korea_changed = 0
+            if korea_changed:
+                local = self._load_raw_frame(
+                    force=False,
+                    start_date=start_date,
+                    end_date=end_date,
+                    allow_network=False,
+                )
         if not force and start_date is None and end_date is None:
             return local
         targets = _target_quarters(start_date=start_date, end_date=end_date)
@@ -147,37 +189,46 @@ class SemiconductorInventoryCollector:
         end_date: date | None,
         allow_network: bool,
     ) -> pl.DataFrame:
+        frame: pl.DataFrame
         if self.raw_parquet.exists():
             try:
                 frame = pl.read_parquet(self.raw_parquet)
                 frame = _filter_frame_date_range(frame, start_date=start_date, end_date=end_date)
-                return build_inventory_raw_frame(frame)
+                frame = build_inventory_raw_frame(frame)
             except (OSError, pl.exceptions.PolarsError, ValueError) as exc:
                 logger.warning(
                     "读取 IDM RAW Parquet 失败，回退 CSV [%s]: %s", self.raw_parquet, exc
                 )
+                frame = build_inventory_raw_frame(pl.DataFrame())
+        elif self.raw_csv.exists():
+            records = load_inventory_raw_csv(self.raw_csv)
+            records = _filter_record_date_range(records, start_date=start_date, end_date=end_date)
+            if any(record.release_date is None for record in records):
+                release_dates = self._resolve_release_dates(
+                    records,
+                    force=force,
+                    allow_network=allow_network,
+                )
+                records = load_inventory_raw_csv(self.raw_csv, release_dates=release_dates)
+                records = _filter_record_date_range(
+                    records,
+                    start_date=start_date,
+                    end_date=end_date,
+                )
+            frame = build_inventory_raw_frame(records)
+        else:
+            frame = build_inventory_raw_frame(pl.DataFrame())
 
-        if not self.raw_csv.exists():
-            return build_inventory_raw_frame(pl.DataFrame())
-
-        records = load_inventory_raw_csv(self.raw_csv)
-        records = _filter_record_date_range(records, start_date=start_date, end_date=end_date)
-        if not records:
-            return build_inventory_raw_frame(records)
-
-        if any(record.release_date is None for record in records):
-            release_dates = self._resolve_release_dates(
-                records,
-                force=force,
-                allow_network=allow_network,
+        if self.paths.korea_memory_csv.exists():
+            korea_records = load_korea_memory_raw_csv(self.paths.korea_memory_csv)
+            korea_records = _filter_record_date_range(
+                korea_records, start_date=start_date, end_date=end_date
             )
-            records = load_inventory_raw_csv(self.raw_csv, release_dates=release_dates)
-            records = _filter_record_date_range(
-                records,
-                start_date=start_date,
-                end_date=end_date,
-            )
-        return build_inventory_raw_frame(records)
+            if korea_records:
+                korea_frame = build_inventory_raw_frame(korea_records)
+                frame = _merge_raw_frames(frame, korea_frame)
+
+        return frame
 
     def _collect_online(
         self,
@@ -193,7 +244,7 @@ class SemiconductorInventoryCollector:
         collected_at = now_utc_iso()
         records: list[SemiconductorInventoryRecord] = []
         available_by_symbol: dict[str, set[str]] = {}
-        for symbol in ("TXN", "ADI", "NXPI"):
+        for symbol in ("TXN", "ADI", "NXPI", "MU"):
             payload_info = self._load_companyfacts(symbol, force=force)
             if payload_info is None:
                 available_by_symbol[symbol] = set()
@@ -656,7 +707,7 @@ def _contains_all_targets(frame: pl.DataFrame, targets: set[str]) -> bool:
     if frame.is_empty() or not {"symbol", "report_quarter"}.issubset(frame.columns):
         return False
     actual = set(zip(frame["symbol"].to_list(), frame["report_quarter"].to_list()))
-    expected = {(symbol, quarter) for symbol in INVENTORY_SYMBOLS for quarter in targets}
+    expected = {(symbol, quarter) for symbol in ALL_INVENTORY_SYMBOLS for quarter in targets}
     return expected.issubset(actual)
 
 
