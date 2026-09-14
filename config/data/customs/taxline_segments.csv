@@ -1,15 +1,32 @@
 product_key,segment_key,segment_name,hs_codes,description
-transformer,transformer_small,中小容量(≤650kVA),85042100,额定容量≤650kVA液体介质变压器
-transformer,transformer_mid,中容量(650kVA-10MVA),85042200,650kVA<额定容量≤10000kVA液体介质变压器
-transformer,transformer_main,主力段(10-220MVA),85042311,10MVA<额定容量<220MVA液体介质变压器
-transformer,transformer_ultra,特高压大容量(≥220MVA),85042312;85042313;85042321;85042329,220MVA及以上液体介质变压器
-semiconductor_equipment,semi_fab_wafer,晶圆制造设备,84861010;84861020;84861030;84861040;84861090,制造晶圆或硅片的机器及装置
-semiconductor_equipment,semi_fab_device,器件制造设备,84862010;84862021;84862022;84862029;84862031;84862039;84862041;84862049;84862050;84862090,制造半导体器件或集成电路的机器及装置
-semiconductor_equipment,semi_parts,设备零件及附件,84869010;84869020;84869091;84869099,半导体设备零件及附件
+auto_parts,auto_parts_cooling,散热/冷却件,87089110;87089120;87089190,自 exposure Mart 精确恢复（2026-09-13），待人工复核
+auto_parts,auto_parts_exhaust,消声器及排气管,87089200,自 good_h8_codes 归类(2026-09-13)，待人工复核
+auto_parts,auto_parts_rest,其他零部件,87089910;87089921;87089929;87089931;87089939;87089941;87089949;87089951;87089959;87089960;87089991;87089992;87089999,自 exposure Mart 精确恢复（2026-09-13），待人工复核
+auto_parts,auto_parts_safety,安全气囊及零件,87089500,自 good_h8_codes 归类(2026-09-13)，待人工复核
+battery,battery_flow,全钒液流电池,85078030,自 good_h8_codes 归类(2026-09-13)，待人工复核
+battery,battery_lithium,锂离子电池,85076000,自 exposure Mart 精确恢复（2026-09-13），待人工复核
+battery,battery_other,其他蓄电池,85078090,自 exposure Mart 精确恢复（2026-09-13），待人工复核
+cathode_material,cathode_lfp,磷酸铁锂正极(LFP),28429040,磷酸铁锂
+cathode_material,cathode_ncm,三元正极(NCM),28419000;28429011;28429019;28429020;28429030;28429050;28429060;28429090,锂镍钴锰氧化物及金属酸盐
+electronic_cigarette,ecig_device,电子烟整机,85434000,自 exposure Mart 精确恢复（2026-09-13），待人工复核
+inverter,inverter_other,其他静止变流器,85044013;85044014;85044015;85044019;85044091;85044099,自 exposure Mart 集合差推导（2026-09-13），待人工复核
+inverter,inverter_pv,光伏逆变器,85044030,自 exposure Mart 精确恢复（2026-09-13），待人工复核
+inverter,inverter_ups,不间断电源,85044020,自 exposure Mart 集合差推导（2026-09-13），待人工复核
 lithium_chemicals,lithium_carbonate,碳酸锂,28369100,碳酸锂
 lithium_chemicals,lithium_hydroxide,氢氧化锂,28252010,氢氧化锂
 lithium_chemicals,lithium_other,其他锂化合物,28252090,未列名锂的氧化物及氢氧化物
+power_cable,cable_hv,高压电缆(>1kV),85446012;85446013;85446014;85446019;85446090,自 exposure Mart 精确恢复（2026-09-13），待人工复核
+power_cable,cable_lv,低压电缆(≤1kV),85444211;85444219;85444221;85444229;85444911;85444919;85444921;85444929,自 exposure Mart 精确恢复（2026-09-13），待人工复核
+semiconductor_equipment,semi_fab_device,器件制造设备,84862010;84862021;84862022;84862029;84862031;84862039;84862041;84862049;84862050;84862090,制造半导体器件或集成电路的机器及装置
+semiconductor_equipment,semi_fab_wafer,晶圆制造设备,84861010;84861020;84861030;84861040;84861090,制造晶圆或硅片的机器及装置
+semiconductor_equipment,semi_parts,设备零件及附件,84869010;84869020;84869091;84869099,半导体设备零件及附件
 silver,silver_unwrought,未锻轧银,71069110;71069190,未锻轧白银
 silver,silver_wrought,银制品半成品,71069210;71069290,银粉/银制品
-cathode_material,cathode_ncm,三元正极(NCM),28419000;28429011;28429019;28429020;28429030;28429050;28429060;28429090,锂镍钴锰氧化物及金属酸盐
-cathode_material,cathode_lfp,磷酸铁锂正极(LFP),28429040,磷酸铁锂
+solar_cell,solar_cell,光伏电池片,85414200,自 exposure Mart 集合差推导（2026-09-13），待人工复核
+solar_cell,solar_module,光伏组件,85414300,自 exposure Mart 精确恢复（2026-09-13），待人工复核
+transformer,transformer_main,主力段(10-220MVA),85042311,10MVA<额定容量<220MVA液体介质变压器
+transformer,transformer_mid,中容量(650kVA-10MVA),85042200,650kVA<额定容量≤10000kVA液体介质变压器
+transformer,transformer_small,中小容量(≤650kVA),85042100,额定容量≤650kVA液体介质变压器
+transformer,transformer_ultra,特高压大容量(≥220MVA),85042312;85042313;85042321;85042329,220MVA及以上液体介质变压器
+uav_drone,uav_other,其他无人机,88069110;88069190;88069290;88069310;88069390;88069410;88069490;88069900,自 exposure Mart 精确恢复（2026-09-13），待人工复核
+uav_drone,uav_remote,遥控无人机,88062110;88062190;88062210;88062290;88062310;88062390;88062490;88062990,自 exposure Mart 精确恢复（2026-09-13），待人工复核
