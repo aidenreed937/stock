@@ -18,7 +18,7 @@
     $$\text{证券化率} = \frac{\text{A 股总市值}}{\text{滚动 4 季度 GDP TTM}} \times 100\%$$
     *   **A 股本土化标尺**：$< 56\% \sim 65\%$ 为历史大底黄金建仓带；$> 86\% \sim 102\%$ 为极端泡沫过热区。*(数据源: `tushare/daily_basic`, `tushare/cn_gdp`)*
 *   **海外宏观与全球流动性潮汐**：
-    *   美联储基准利率 (`FEDFUNDS`)、10 年期美债收益率 (`^TNX`)、美元指数 (`DX-Y.NYB`) 与恐慌指数 (`^VIX`)，用于监控外资 Risk-On / Risk-Off 情绪与中美利差压力。*(数据源: `fred`, `yfinance`)*
+    *   美联储有效利率 (`DFF`)、10 年期美债收益率 (`^TNX`)、美元指数 (`DX-Y.NYB`) 与恐慌指数 (`^VIX`)，用于监控外资 Risk-On / Risk-Off 情绪与中美利差压力。*(数据源: `fred`, `yfinance`)*
 
 ### 2. 中观行业景气度与拥挤度风控（寻找结构性主线）
 

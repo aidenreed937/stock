@@ -15,6 +15,7 @@
 | **[5. 领域职责地图](domain-responsibilities.md)** | 顶级领域、Analytics 分层、业务域和外部调用入口 | `src/stock_*` |
 | **[6. Analytics 分层边界](analytics-boundaries.md)** | 依赖方向、公共导入和拆分门禁 | `src/stock_analytics/`, `scripts/lint_analytics_boundaries.py` |
 | **[7. 量化投研管线设计规范](pipeline_design.md)** | 分析管线设计原则、五段式生命周期、产物治理与最佳实践 | `src/stock_analytics/pipelines/` |
+| **[8. 任务注册与任务包架构](task-management.md)** | 数据采集任务、任务包、别名、Provider registry 的边界与依赖方向 | `src/stock_data/core/task_*.py`, `src/stock_data/fetcher/*/registry.py` |
 
 ---
 

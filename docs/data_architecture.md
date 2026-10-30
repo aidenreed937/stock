@@ -56,6 +56,42 @@
 | **`data/curated/mart/`** | **领域派生层**<br>(Mart/Feature Zone) | `data/curated/mart/*.parquet` | 由 Curated 构建的可重建宽表、领域 Mart 和特征物化，不替代 Curated 事实。 |
 | **`data/analytics/`** | **分析产物层**<br>(Analytics Artifact Zone) | `data/analytics/<artifact>/runs/...` | 保存分析运行目录、Manifest、报告和 `latest` 展示副本；具体文件清单以 Manifest 为准。 |
 
+### 2.1 申万行业成分版本血缘
+
+`index_member` 是 TuShare 成分接口的原始/标准化成员事实，本身不携带申万版本；版本信息来自
+`index_classify.src`。本地重建器将两者按 `index_code` 组合为独立的 Curated 数据集：
+
+```text
+data/curated/tushare/market=CN/index_member
+                         ├─ index_member ─┐
+                         └─ index_classify ─┴─> index_member_versioned
+```
+
+输出路径为 `data/curated/tushare/market=CN/index_member_versioned/data.parquet`，主键为
+`src + index_code + con_code + in_date + out_date`。同一行业代码同时出现在 SW2014/SW2021
+时保留两条记录；无法在分类表中关联的成员保留为 `src=UNRESOLVED`、`src_status=unresolved`。
+`RAW` 不写入推断的 `src`，因此不会破坏源端保真和 RAW-Curated 逐键对账；该派生表通过
+  `source_endpoint=derived:index_member+index_classify`、`field_provenance` 和 `request_id`
+  保留输入血缘。行业分析默认读取 `src=SW2021`。
+
+### 2.2 TuShare/LiXinger 申万 2021 跨源黄金层
+
+`index_member_versioned` 只解决 TuShare 内部版本归属，不能直接把无日期的理杏仁快照当作历史成员。
+跨源黄金层单独放在 `data/curated/derived/market=CN/`，包含：
+
+- `sw_2021_industry_dimension_golden`：以 TuShare `index_classify` 的行业代码、层级和名称为身份基准，补充
+  `tushare_present`、`lixinger_present` 与 `mapping_status`；理杏仁独有代码保留，但名称为空并标记为
+  `lixinger_only`，避免按名称猜测映射。
+- `sw_2021_industry_member_golden`：保留 TuShare 历史有效期和理杏仁当前快照，同时记录
+  `classification=SW2021`、`src`（`TUSHARE`/`LIXINGER`）、`canonical_source`、`source_status`、
+  `is_canonical` 与 `conflict_flag`。
+
+默认规则是：历史时点只采用 TuShare；当前截面 TuShare 优先，理杏仁仅补充 TuShare 缺失的股票-层级归属；
+两源冲突保留双方证据，但只有 TuShare 行是 canonical。下游必须按 `level` 过滤后再做股票唯一化，不能把
+L1/L2/L3 混在一起去重。重建命令为 `make rebuild-sw-industry-golden`（dry-run），确认结果后使用
+`make rebuild-sw-industry-golden APPLY=1` 写入；TuShare `index_classify/index_member` 或理杏仁
+`sw_2021_constituents` 成功同步后会自动刷新该黄金层。
+
 ---
 
 ## 3. RAW 层时间分区设计规范 (Time Partitioning Rules)

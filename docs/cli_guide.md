@@ -64,10 +64,12 @@ uv run python -m stock_cli.backfill \
 
 #### 场景 5：使用 Alpha Vantage 回填 `CNH=X` 离岸人民币历史
 
-Alpha Vantage 的 `fx_daily` 使用 `FX_DAILY` 接口，回填默认配置为每分钟 5 次请求、1 个 Worker；需要先配置 API key：
+Alpha Vantage 的 `fx_daily` 使用 `FX_DAILY` 接口，回填默认配置为每分钟 5 次请求、1 个 Worker；需要先配置 API key。若有多个已授权 Key，可用 JSON 数组配置 Key 池，客户端会按额度/服务失败切换，不会在成功请求之间轮换：
 
 ```bash
 export ALPHA_VANTAGE_API_KEY="你的真实API_KEY"
+# 可选：多个已授权 Key
+export ALPHA_VANTAGE_API_KEYS='["主Key","备用Key"]'
 make backfill \
     START=2014-08-01 \
     END=2026-08-14 \
@@ -78,6 +80,26 @@ make backfill \
 ```
 
 回填后可检查 `data/curated/alphavantage/market=GLOBAL/macro_indicators/data.parquet` 的日期覆盖和行数。
+
+美股个股日线使用 `stock_daily_bar`，底层调用 `TIME_SERIES_DAILY`。免费额度按最近 100 个交易日窗口设计，适合增量同步，不适合全历史回填：
+
+```bash
+make sync SOURCE=alphavantage ENDPOINT=stock_daily_bar WORKERS=1
+```
+
+结果落在 `data/curated/alphavantage/market=US/stock_daily_bar/`。Alpha Vantage 与 yfinance 使用独立 Provider 和目录，可以分别同步或交叉校验；系统不会自动用一个来源无规则覆盖另一个来源。
+
+需要“先补 yfinance、再用 Alpha Vantage 最少次数兜底”时使用混合回填入口。它按标的/交易日检查缺口，Alpha Vantage 只对近期仍有缺口的标的各请求一次；免费 `compact` 无法覆盖最近 100 个交易日以前的历史缺口，会在摘要中披露：
+
+```bash
+make backfill \
+    SOURCE=us_hybrid \
+    ENDPOINT=stock_daily_bar \
+    SYMBOL=watchlist \
+    START=2014-08-01 \
+    END=2026-10-07 \
+    WORKERS=1
+```
 
 ---
 
@@ -100,7 +122,27 @@ make sync SOURCE=lixinger ENDPOINT=market_bundle,macro_monthly_bundle
 UV_CACHE_DIR=.uv_cache UV_PYTHON_INSTALL_DIR=.uv_python uv run python -m stock_cli.sync --source lixinger --endpoint industry_bundle
 ```
 
-可用 LiXinger bundle：`market_bundle`、`industry_bundle`（申万成分与估值）、`industry_financial_bundle`（申万一/二/三级季度合并财报）、`company_bundle`、`company_risk_event_bundle`、`macro_daily_bundle`、`macro_monthly_bundle`。`index_fundamental` 任务只有一个原子接口，继续直接传入；历史名称 `macro_bundle`、`index_bundle` 已移除。bundle 仅是调度输入，不合并数据集、水位或失败状态。
+理杏仁支持多个已授权 Token 的 profile 配置。`.env` 中使用 JSON 配置表，并通过
+`LIXINGER_PROFILE` 为当前进程显式选择一个 Token；未配置时继续兼容 `LIXINGER_TOKEN`。
+不在收到 403 额度耗尽时自动轮换 Token：
+
+```bash
+LIXINGER_TOKENS='{"primary":"...","backup":"..."}'
+LIXINGER_PROFILE=primary
+
+LIXINGER_PROFILE=backup make backfill \
+  START=2020-01-01 END=2026-06-30 \
+  SOURCE=lixinger ENDPOINT=industry_financial_bundle
+```
+
+可用 LiXinger bundle：`market_bundle`、`industry_bundle`（申万成分与估值）、`industry_financial_bundle`（申万一/二/三级季度合并财报）、`company_bundle`、`company_risk_event_bundle`、`macro_daily_bundle`（含 `gold_price`：伦敦金与上海金）、`macro_monthly_bundle`。`index_fundamental` 任务只有一个原子接口，继续直接传入；历史名称 `macro_bundle`、`index_bundle` 已移除。bundle 仅是调度输入，不合并数据集、水位或失败状态。
+
+黄金替代源可单独回填：
+
+```bash
+make backfill SOURCE=lixinger ENDPOINT=gold_price \
+  START=2025-10-01 END=2026-10-08 WORKERS=1
+```
 
 监管措施、交易所问询和限售解禁风险接口属于高消耗任务，已注册但不进入默认
 `make sync SOURCE=lixinger`。显式指定时默认仅采集 LiXinger 观察池：
@@ -118,10 +160,14 @@ make backfill SOURCE=lixinger ENDPOINT=regulatory_measures SYMBOL=600519 \
 其他数据源的推荐 bundle：
 
 - TuShare：`daily_market_bundle`、`fund_daily_bundle`、`fund_portfolio_bundle`、`hsgt_flow_bundle`、`financial_statement_bundle`、`pit_bundle`、`macro_daily_bundle`、`macro_monthly_bundle`、`metadata_bundle`、`corporate_action_bundle`、`shareholder_event_bundle`、`research_daily_bundle`、`market_behavior_bundle`、`pledge_bundle`。
-- LiXinger：`market_bundle`、`industry_bundle`（申万成分与估值）、`industry_financial_bundle`（申万季度合并财报）、`company_bundle`、`company_risk_event_bundle`、`macro_daily_bundle`、`macro_monthly_bundle`；`index_fundamental` 继续作为原子任务。
+- LiXinger：`market_bundle`、`industry_bundle`（申万成分与估值）、`industry_financial_bundle`（申万季度合并财报）、`company_bundle`、`company_risk_event_bundle`、`macro_daily_bundle`（含 `gold_price`：伦敦金与上海金）、`macro_monthly_bundle`；`index_fundamental` 继续作为原子任务。
 - yfinance：`fundamental_bundle`、`corporate_action_bundle`、`research_daily_bundle`、`research_event_bundle`。
-- FRED：`macro_monthly_bundle`。日频、季频和周频目前各只有一个序列，继续使用原子任务；聚合任务 `macro_indicators` 仅保留显式调用，避免重复请求。
-- Industry：`industry_tech_bundle`、`industry_energy_bundle`、`industry_consume_bundle`、`industry_macro_bundle`、`industry_gacc_bundle`、`industry_monthly_bundle`、`industry_all_bundle`。
+- FRED：`global_macro_daily_bundle`（DGS10、DGS3MO、T10Y2Y、VIXCLS、WTI、广义美元指数、月频铜价）和 `macro_monthly_bundle`；聚合任务 `macro_indicators` 仅保留显式调用，避免重复请求。
+- Industry：`semiconductor_bundle`（半导体 13 个在线/存证端点）、`industry_tech_bundle`、`chemical_industry_bundle`、`industry_energy_bundle`、`industry_consume_bundle`、`industry_macro_bundle`、`industry_gacc_bundle`、`industry_monthly_bundle`、`industry_all_bundle`。
+
+半导体专项同步应使用 `semiconductor_bundle` 或 `make sync-semiconductor`；`industry_tech_bundle` 只用于跨行业科技数据，不包含先进封装与 CoWoS 两个半导体专项端点。
+
+化工专项同步使用 `chemical_industry_bundle` 或 `make sync-chemical`；利润腿和 10 年产能利用率仍属于手工存证任务，不进入该自动同步包。
 
 新注册的高消耗研究接口默认不进入 `make sync SOURCE=tushare`；需要时显式运行对应 bundle，或单独指定 `dc_concept_cons`：
 
@@ -149,11 +195,17 @@ make backfill START=2020-01-01 END=2026-08-14 SOURCE=tushare ENDPOINT=top10_floa
 make backfill START=2024-01-01 END=2026-08-14 SOURCE=tushare ENDPOINT=cyq_perf
 ```
 
-Alpha Vantage 增量同步只有 `fx_daily` 一个任务。同步 CLI 默认读取 `config/data.yaml` 中的数据源并发配置；当前 Alpha Vantage 配置为单并发，直接执行即可：
+Alpha Vantage 增量同步包含 `stock_daily_bar`、`fx_daily` 和公司基本面任务。公司基本面使用独立的 `alphavantage` 数据目录，不覆盖 yfinance 的同名数据集；当前 Alpha Vantage 配置为单并发，直接执行即可：
 
 ```bash
+make sync SOURCE=alphavantage ENDPOINT=stock_daily_bar WORKERS=1
 make sync SOURCE=alphavantage ENDPOINT=fx_daily WORKERS=1
+# 免费优先：EARNINGS、INCOME_STATEMENT、BALANCE_SHEET、CASH_FLOW
+make sync SOURCE=alphavantage ENDPOINT=fundamental_bundle WORKERS=1
 ```
+
+可单独执行的公司数据任务为 `company_overview`、`earnings`、`financials`、`balance_sheet`、`cashflow`。
+其中 `company_overview` 对应 Alpha Vantage 的 `OVERVIEW`，官方文档标为 Premium，默认任务包不会执行；需要 Premium 权限时使用 `premium_fundamental_bundle` 显式调用。其余四项返回年度与季度报告，实际可用性仍受账户额度和接口策略约束。
 
 ---
 
