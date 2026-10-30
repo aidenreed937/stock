@@ -27,6 +27,12 @@ class EndpointMeta:
     max_range_days: int | None = 3650
     pagination_required: bool = False
     frequency: str = "daily"
+    fetch_mode: str | None = None
+    partitioned: bool | None = False
+    is_single_sync: bool | None = None
+    max_codes_per_request: int | None = None
+    dataset: str | None = None
+    required_pool: str | None = None
 
 
 # 常用理杏仁 API 接口元数据注册表 (全局统一由 LixingerClient / data.yaml 控制限频)
@@ -151,10 +157,14 @@ LIXINGER_API_REGISTRY: dict[str, EndpointMeta] = {
         required_columns=["stockCode", "date"],
         update_time="18:00",
         update_delay_days=0,
+        frequency="quarterly",
         code_param_name="stockCodes",
+        max_codes_per_request=100,
         default_metrics=[
             "q.ps.toi.c_y2y",
             "q.ps.np.c_y2y",
+            "q.ps.toi.t",
+            "q.ps.np.t",
             "q.ps.gp_m.ttm",
             "q.m.roe.ttm",
             "q.ps.toi.ttm_y2y",
@@ -171,10 +181,14 @@ LIXINGER_API_REGISTRY: dict[str, EndpointMeta] = {
         required_columns=["stockCode", "date"],
         update_time="18:00",
         update_delay_days=0,
+        frequency="quarterly",
         code_param_name="stockCodes",
+        max_codes_per_request=100,
         default_metrics=[
             "q.ps.toi.c_y2y",
             "q.ps.np.c_y2y",
+            "q.ps.toi.t",
+            "q.ps.np.t",
             "q.m.roe.ttm",
             "q.ps.toi.ttm_y2y",
             "q.ps.np.ttm_y2y",
@@ -190,10 +204,14 @@ LIXINGER_API_REGISTRY: dict[str, EndpointMeta] = {
         required_columns=["stockCode", "date"],
         update_time="18:00",
         update_delay_days=0,
+        frequency="quarterly",
         code_param_name="stockCodes",
+        max_codes_per_request=100,
         default_metrics=[
             "q.ps.toi.c_y2y",
             "q.ps.np.c_y2y",
+            "q.ps.toi.t",
+            "q.ps.np.t",
             "q.m.roe.ttm",
             "q.ps.toi.ttm_y2y",
             "q.ps.np.ttm_y2y",
@@ -209,10 +227,14 @@ LIXINGER_API_REGISTRY: dict[str, EndpointMeta] = {
         required_columns=["stockCode", "date"],
         update_time="18:00",
         update_delay_days=0,
+        frequency="quarterly",
         code_param_name="stockCodes",
+        max_codes_per_request=100,
         default_metrics=[
             "q.ps.toi.c_y2y",
             "q.ps.np.c_y2y",
+            "q.ps.toi.t",
+            "q.ps.np.t",
             "q.m.roe.ttm",
             "q.ps.toi.ttm_y2y",
             "q.ps.np.ttm_y2y",

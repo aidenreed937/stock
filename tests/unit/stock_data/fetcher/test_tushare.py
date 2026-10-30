@@ -56,6 +56,20 @@ def test_tushare_registry() -> None:
     assert TUSHARE_API_REGISTRY["pledge_stat"].max_rows_per_request == 1000
     assert TUSHARE_API_REGISTRY["pledge_stat"].query_mode == "end_date"
 
+    mainbz = TUSHARE_API_REGISTRY["fina_mainbz"]
+    assert mainbz.api_name == "fina_mainbz_vip"
+    assert mainbz.primary_keys == ["ts_code", "end_date", "bz_code", "bz_item"]
+    assert mainbz.required_columns == [
+        "ts_code",
+        "end_date",
+        "bz_code",
+        "bz_item",
+        "bz_sales",
+    ]
+    assert mainbz.units == {"bz_sales": "CNY", "bz_profit": "CNY", "bz_cost": "CNY"}
+    assert TUSHARE_API_REGISTRY["fina_mainbz_vip"] is mainbz
+    assert mainbz.replace_raw_on_refresh is True
+
     for endpoint in (
         "stk_holdernumber",
         "top10_floatholders",
@@ -150,7 +164,9 @@ def test_low_frequency_tushare_query_uses_endpoint_parameters(
     assert query_kwargs == expected
 
 
-@pytest.mark.parametrize("endpoint", ["income", "fina_indicator", "balancesheet", "cashflow"])
+@pytest.mark.parametrize(
+    "endpoint", ["income", "fina_indicator", "fina_mainbz", "balancesheet", "cashflow"]
+)
 def test_tushare_financial_statement_routes_to_vip_period_query(endpoint: str) -> None:
     api_name, query_kwargs = build_tushare_query(
         TUSHARE_API_REGISTRY[endpoint],
@@ -162,6 +178,19 @@ def test_tushare_financial_statement_routes_to_vip_period_query(endpoint: str) -
 
     assert api_name == f"{endpoint}_vip"
     assert query_kwargs == {"period": "20260630"}
+
+
+def test_tushare_fina_mainbz_period_query_preserves_business_type() -> None:
+    api_name, query_kwargs = build_tushare_query(
+        TUSHARE_API_REGISTRY["fina_mainbz"],
+        "",
+        date(2026, 6, 30),
+        date(2026, 6, 30),
+        {"type": "D"},
+    )
+
+    assert api_name == "fina_mainbz_vip"
+    assert query_kwargs == {"type": "D", "period": "20260630"}
 
 
 def test_tushare_financial_statement_period_query_rejects_date_range() -> None:
@@ -302,6 +331,62 @@ def test_tushare_fetcher_financial_statement_uses_all_market_periods() -> None:
     assert fetcher.client._pro_api.query.call_args_list == [
         call("income_vip", period="20260331"),
         call("income_vip", period="20260630"),
+    ]
+
+
+def test_tushare_fina_mainbz_fetches_product_and_region_dimensions() -> None:
+    fetcher = TuShareDataFetcher(token="test_token")
+    fetcher.client.query = MagicMock(
+        side_effect=[
+            pd.DataFrame(
+                {
+                    "ts_code": ["000001.SZ"],
+                    "end_date": ["20260331"],
+                    "bz_item": ["产品A"],
+                    "bz_sales": [100.0],
+                }
+            ),
+            pd.DataFrame(
+                {
+                    "ts_code": ["000001.SZ"],
+                    "end_date": ["20260331"],
+                    "bz_item": ["境外"],
+                    "bz_sales": [80.0],
+                }
+            ),
+            pd.DataFrame(
+                {
+                    "ts_code": ["000001.SZ"],
+                    "end_date": ["20260630"],
+                    "bz_item": ["产品A"],
+                    "bz_sales": [120.0],
+                }
+            ),
+            pd.DataFrame(
+                {
+                    "ts_code": ["000001.SZ"],
+                    "end_date": ["20260630"],
+                    "bz_item": ["境外"],
+                    "bz_sales": [90.0],
+                }
+            ),
+        ]
+    )
+
+    result = fetcher.fetch_daily_bars_df(
+        "",
+        date(2026, 1, 1),
+        date(2026, 6, 30),
+        endpoint="fina_mainbz",
+    )
+
+    assert len(result) == 4
+    assert set(result["bz_code"].to_list()) == {"P", "D"}
+    assert fetcher.client.query.call_args_list == [
+        call("fina_mainbz_vip", period="20260331", type="P"),
+        call("fina_mainbz_vip", period="20260331", type="D"),
+        call("fina_mainbz_vip", period="20260630", type="P"),
+        call("fina_mainbz_vip", period="20260630", type="D"),
     ]
 
 
@@ -843,7 +928,7 @@ def test_tushare_stk_holdernumber_daily_sync_uses_ann_date() -> None:
     assert kwargs.get("pagination_limit") == 3000
 
 
-def test_tushare_stk_holdernumber_quarter_end_uses_end_date() -> None:
+def test_tushare_stk_holdernumber_quarter_end_uses_enddate() -> None:
     fetcher = TuShareDataFetcher(token="test_token")
     fetcher.client.query = MagicMock(
         return_value=pd.DataFrame(
@@ -866,7 +951,8 @@ def test_tushare_stk_holdernumber_quarter_end_uses_end_date() -> None:
     assert not result.is_empty()
     fetcher.client.query.assert_called_once()
     kwargs = fetcher.client.query.call_args.kwargs
-    assert kwargs.get("end_date") == "20260630"
+    assert kwargs.get("enddate") == "20260630"
+    assert "end_date" not in kwargs
     assert "ann_date" not in kwargs
     assert "ts_code" not in kwargs
 
@@ -893,7 +979,7 @@ def test_tushare_stk_holdernumber_multi_quarter_backfill() -> None:
 
     assert not result.is_empty()
     assert fetcher.client.query.call_count == 2
-    periods_queried = [call.kwargs.get("end_date") for call in fetcher.client.query.call_args_list]
+    periods_queried = [call.kwargs.get("enddate") for call in fetcher.client.query.call_args_list]
     assert set(periods_queried) == {"20260331", "20260630"}
 
 

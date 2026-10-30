@@ -6,21 +6,6 @@ from collections.abc import Callable
 from dataclasses import replace
 from typing import Any
 
-PARTITIONED_EVENT_TASKS: frozenset[str] = frozenset(
-    {
-        "stk_holdertrade",
-        "repurchase",
-        "block_trade",
-        "share_float",
-        "margin_detail",
-        "stk_holdernumber",
-        "top10_floatholders",
-        "dividend",
-        "stk_managers",
-        "stk_surv",
-    }
-)
-
 
 def normalize_units(value: Any) -> dict[str, str]:
     """将不同 Provider 的单位描述收敛为统一的字段映射。"""
@@ -57,7 +42,30 @@ def contract_fields(meta: Any, defaults: Any | None = None) -> dict[str, Any]:
             else getattr(defaults, "sync_lookback_days", None)
         ),
         "max_rows_per_request": getattr(meta, "max_rows_per_request", None),
+        "max_codes_per_request": getattr(meta, "max_codes_per_request", None),
         "request_fields": getattr(meta, "request_fields", None),
+        "refresh_current_period": bool(
+            getattr(
+                meta,
+                "refresh_current_period",
+                getattr(defaults, "refresh_current_period", True),
+            )
+        ),
+        "watermark_column": getattr(
+            meta, "watermark_column", getattr(defaults, "watermark_column", None)
+        ),
+        "sync_policy": str(
+            getattr(meta, "sync_policy", getattr(defaults, "sync_policy", "incremental"))
+        ),
+        "max_increment_days": (
+            getattr(meta, "max_increment_days", None)
+            if getattr(meta, "max_increment_days", None) is not None
+            else getattr(defaults, "max_increment_days", None)
+        ),
+        "identity_renames": {
+            str(key): str(value)
+            for key, value in (getattr(meta, "identity_renames", None) or {}).items()
+        },
     }
 
 
@@ -72,4 +80,4 @@ def enrich_task_spec(spec: Any, provider_registry: Callable[[str], dict[str, Any
     return replace(spec, **contract_fields(meta, defaults=spec))
 
 
-__all__ = ["PARTITIONED_EVENT_TASKS", "contract_fields", "enrich_task_spec", "normalize_units"]
+__all__ = ["contract_fields", "enrich_task_spec", "normalize_units"]

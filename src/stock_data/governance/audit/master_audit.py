@@ -19,6 +19,9 @@ LOW_VOLUME_DATASETS = {
     "sf_month",
     "index_classify",
     "index_member",
+    "index_member_versioned",
+    "sw_2021_industry_dimension_golden",
+    "sw_2021_industry_member_golden",
 }
 
 logger = logging.getLogger(__name__)

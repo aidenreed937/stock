@@ -4,7 +4,7 @@ from __future__ import annotations
 
 from typing import TYPE_CHECKING
 
-from stock_data.core.task_registry import resolve_task
+from stock_data.core.task_resolution import resolve_task
 from stock_data.fetcher.yfinance.client import YFinanceClient
 from stock_data.fetcher.yfinance.global_fetcher import YFinanceDataFetcher
 from stock_data.fetcher.yfinance.registry import YFINANCE_API_REGISTRY

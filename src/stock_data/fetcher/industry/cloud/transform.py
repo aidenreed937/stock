@@ -142,6 +142,7 @@ def build_cloud_capex_raw_frame(
 
 def build_cloud_capex_curated_frame(
     raw_rows: pl.DataFrame | Sequence[CloudCapexRecord],
+    existing_df: pl.DataFrame | None = None,
 ) -> pl.DataFrame:
     """从云 CapEx RAW 字段计算合计、同比、环比和合成生效日。"""
     df_raw = build_cloud_capex_raw_frame(raw_rows)
@@ -170,7 +171,20 @@ def build_cloud_capex_curated_frame(
         .otherwise(None)
         .alias("release_date"),
     ).sort("trade_date")
-    df = df.with_columns(
+
+    base_columns = [
+        col for col in CLOUD_CAPEX_CURATED_SCHEMA if col not in ("yoy_growth", "qoq_growth")
+    ]
+    df_base = df.select([c for c in base_columns if c in df.columns])
+    if existing_df is not None and not existing_df.is_empty():
+        existing_base = existing_df.select([c for c in base_columns if c in existing_df.columns])
+        df_base = (
+            pl.concat([existing_base, df_base], how="diagonal_relaxed")
+            .unique(subset=["report_quarter"], keep="last")
+            .sort("trade_date")
+        )
+
+    df_result = df_base.with_columns(
         (
             pl.col("total_capex_billion_usd") / pl.col("total_capex_billion_usd").shift(4) - 1.0
         ).alias("yoy_growth"),
@@ -178,12 +192,15 @@ def build_cloud_capex_curated_frame(
             pl.col("total_capex_billion_usd") / pl.col("total_capex_billion_usd").shift(1) - 1.0
         ).alias("qoq_growth"),
     )
-    return df.select(list(CLOUD_CAPEX_CURATED_SCHEMA))
+    return df_result.select(list(CLOUD_CAPEX_CURATED_SCHEMA))
 
 
-def records_to_cloud_capex_frame(records: Sequence[CloudCapexRecord]) -> pl.DataFrame:
+def records_to_cloud_capex_frame(
+    records: Sequence[CloudCapexRecord],
+    existing_df: pl.DataFrame | None = None,
+) -> pl.DataFrame:
     """兼容旧调用方：将记录转换为云 CapEx Curated 帧。"""
-    return build_cloud_capex_curated_frame(records)
+    return build_cloud_capex_curated_frame(records, existing_df=existing_df)
 
 
 def _raw_value(raw_value: str | None, numeric_value: float | None) -> str | None:

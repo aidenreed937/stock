@@ -219,6 +219,15 @@ def merge_and_save_parquet(
             )
             for df in dfs
         ]
+        existing = StorageCompat.normalize_lixinger_industry_financial_q(
+            dataset_name, existing, include_derived=True
+        )
+        normalized_dfs = [
+            StorageCompat.normalize_lixinger_industry_financial_q(
+                dataset_name, df, include_derived=True
+            )
+            for df in normalized_dfs
+        ]
         reference_frames = [existing, *normalized_dfs]
         existing = StorageCompat.normalize_nested_columns(
             existing, reference_frames=reference_frames

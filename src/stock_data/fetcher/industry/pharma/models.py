@@ -10,8 +10,8 @@ class PharmaLicenseOutRecord:
 
     report_month: str
     trade_date: date
-    upfront_cash_million_usd: float = 0.0
-    potential_total_deal_million_usd: float = 0.0
+    upfront_cash_million_usd: float | None = None
+    potential_total_deal_million_usd: float | None = None
     deal_count: int = 0
     asset_count: int = 0
     mnc_deal_count: int = 0
@@ -40,11 +40,11 @@ class PharmaLicenseOutRecord:
     monthly_total_deal_million_usd: float | None = None
 
     def __post_init__(self) -> None:
-        if self.monthly_upfront_million_usd is not None and self.upfront_cash_million_usd == 0.0:
+        if self.monthly_upfront_million_usd is not None and self.upfront_cash_million_usd is None:
             object.__setattr__(self, "upfront_cash_million_usd", self.monthly_upfront_million_usd)
         if (
             self.monthly_total_deal_million_usd is not None
-            and self.potential_total_deal_million_usd == 0.0
+            and self.potential_total_deal_million_usd is None
         ):
             object.__setattr__(
                 self, "potential_total_deal_million_usd", self.monthly_total_deal_million_usd
@@ -95,11 +95,11 @@ class PharmaBdEventRecord:
     deal_id: str
     event_type: str
     event_date: date
-    upfront_cash_usd: float = 0.0
-    equity_investment_usd: float = 0.0
-    option_payment_usd: float = 0.0
-    near_term_milestone_usd: float = 0.0
-    potential_total_deal_usd: float = 0.0
+    upfront_cash_usd: float | None = None
+    equity_investment_usd: float | None = None
+    option_payment_usd: float | None = None
+    near_term_milestone_usd: float | None = None
+    potential_total_deal_usd: float | None = None
     equity_stake_pct: float | None = None
     original_currency: str = "USD"
     notes: str = ""

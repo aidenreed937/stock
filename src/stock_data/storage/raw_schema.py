@@ -117,7 +117,7 @@ def resolve_raw_primary_keys(key: DatasetKey, df: pl.DataFrame) -> list[str]:
     from typing import Any
 
     from stock_core.utils.logger import logger
-    from stock_data.core.task_registry import resolve_task
+    from stock_data.core.task_resolution import resolve_task
 
     meta: Any = None
     try:
@@ -183,11 +183,22 @@ def deduplicate_raw_merged_frame(
     if registered_keys:
         for registered_key in registered_keys:
             if registered_key in date_present:
-                if "_dedup_date" not in dedup_subset:
-                    raw_date_exprs = [normalize_raw_date_series(pl.col(c)) for c in date_present]
-                    merged = merged.with_columns(pl.coalesce(raw_date_exprs).alias("_dedup_date"))
-                    dedup_subset.append("_dedup_date")
-                    temp_cols.append("_dedup_date")
+                dedup_date = f"_dedup_{registered_key}"
+                if dedup_date not in dedup_subset:
+                    source = next(
+                        (
+                            column
+                            for column in (registered_key, *RAW_DATE_CANDIDATE_COLUMNS)
+                            if column in merged.columns
+                        ),
+                        None,
+                    )
+                    if source is not None:
+                        merged = merged.with_columns(
+                            normalize_raw_date_series(pl.col(source)).alias(dedup_date)
+                        )
+                        dedup_subset.append(dedup_date)
+                        temp_cols.append(dedup_date)
             elif registered_key in RAW_ENTITY_COLUMNS:
                 if len(entity_present) > 1:
                     if "_dedup_entity" not in dedup_subset:

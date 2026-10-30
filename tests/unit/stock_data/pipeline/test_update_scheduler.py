@@ -16,6 +16,23 @@ def test_default_monthly_sync_targets_previous_complete_period() -> None:
     ) == date(2026, 7, 1)
 
 
+def test_seaj_equipment_window_matches_official_august_release() -> None:
+    target_date = date(2026, 8, 31)
+
+    assert not DataUpdateScheduler.is_data_ready(
+        "semiconductor_equipment",
+        target_date,
+        datetime(2026, 9, 17, 18, 0),
+        data_source="industry",
+    )
+    assert DataUpdateScheduler.is_data_ready(
+        "semiconductor_equipment",
+        target_date,
+        datetime(2026, 9, 22, 18, 0),
+        data_source="industry",
+    )
+
+
 def test_default_quarterly_sync_targets_previous_complete_period() -> None:
     assert resolve_sync_target_date(
         "fred", "GDP", date(2026, 8, 18), target_date_is_explicit=False
@@ -35,6 +52,42 @@ def test_tushare_financial_sync_targets_report_period_end_without_trading_day() 
         date(2026, 6, 30),
         target_date_is_explicit=True,
     ) == date(2026, 6, 30)
+
+
+def test_lixinger_financial_sync_targets_report_period_end_without_trading_day() -> None:
+    assert resolve_sync_target_date(
+        "lixinger",
+        "sw_2021_fs_non_financial",
+        date(2026, 8, 20),
+        target_date_is_explicit=False,
+    ) == date(2026, 6, 30)
+
+
+def test_industry_monthly_per_period_task_keeps_monthly_target() -> None:
+    assert resolve_sync_target_date(
+        "industry",
+        "construction_machinery",
+        date(2026, 8, 31),
+        target_date_is_explicit=False,
+    ) == date(2026, 7, 31)
+
+
+def test_default_industry_monthly_sync_uses_latest_ready_period() -> None:
+    ready_periods = {date(2026, 7, 31)}
+
+    with patch.object(
+        DataUpdateScheduler,
+        "is_data_ready",
+        side_effect=lambda *, target_date, **_: target_date in ready_periods,
+    ):
+        target = resolve_sync_target_date(
+            "industry",
+            "semiconductor_sales",
+            date(2026, 9, 13),
+            target_date_is_explicit=False,
+        )
+
+    assert target == date(2026, 7, 31)
 
 
 def test_default_weekly_sync_targets_previous_complete_week() -> None:

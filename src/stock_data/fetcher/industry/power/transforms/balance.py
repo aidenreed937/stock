@@ -59,9 +59,34 @@ def build_polysilicon_balance_frame(
                 (pl.col("category_key") == "polysilicon")
                 | (pl.col("hs_code").str.starts_with("280461"))
             )
-            if not poly_c.is_empty():
+            if not poly_c.is_empty() and "trade_direction" in poly_c.columns:
+                if {"source", "report_month", "hs_code"}.issubset(poly_c.columns):
+                    poly_c = poly_c.with_columns(pl.col("hs_code").str.slice(0, 6).alias("_hs6"))
+                    gacc_keys = (
+                        poly_c.filter(pl.col("source") == "GACC")
+                        .select(["_hs6", "report_month", "trade_direction"])
+                        .unique()
+                        .with_columns(pl.lit(True).alias("_has_gacc"))
+                    )
+                    if not gacc_keys.is_empty():
+                        poly_c = (
+                            poly_c.join(
+                                gacc_keys,
+                                on=["_hs6", "report_month", "trade_direction"],
+                                how="left",
+                            )
+                            .filter(pl.col("_has_gacc").is_null() | (pl.col("source") == "GACC"))
+                            .drop(["_hs6", "_has_gacc"])
+                        )
+                signed_volume = (
+                    pl.when(pl.col("trade_direction") == "import")
+                    .then(pl.col("export_volume").fill_null(0.0))
+                    .when(pl.col("trade_direction") == "export")
+                    .then(-pl.col("export_volume").fill_null(0.0))
+                    .otherwise(0.0)
+                )
                 c_agg = poly_c.group_by("report_month").agg(
-                    (pl.col("export_volume").sum() / 10000.0).alias("net_imports_w_tons")
+                    (signed_volume.sum() / 10_000_000.0).alias("net_imports_w_tons")
                 )
                 merged = merged.join(c_agg, on="report_month", how="left")
             else:
@@ -115,7 +140,7 @@ def build_polysilicon_balance_frame(
             .otherwise(None)
             .alias("inventory_weeks"),
             pl.when(pl.col("demand_yoy").is_not_null() & pl.col("supply_yoy").is_not_null())
-            .then((pl.col("demand_yoy") - pl.col("supply_yoy")).round(2))
+            .then((pl.col("demand_yoy") - pl.col("supply_yoy")).round(4))
             .otherwise(None)
             .alias("scissors_spread_yoy"),
         )
@@ -137,13 +162,13 @@ def build_polysilicon_balance_frame(
                 & pl.col("inventory_weeks").is_not_null()
             )
             .then(
-                (pl.col("scissors_spread_yoy") * 0.5 - (pl.col("inventory_weeks") - 2.0) * 8.0)
+                (pl.col("scissors_spread_yoy") * 50.0 - (pl.col("inventory_weeks") - 2.0) * 8.0)
                 .clip(-100.0, 100.0)
                 .round(2)
             )
             .otherwise(None)
             .alias("cycle_score"),
-            pl.lit("ten_thousand_tons/gw/percent").alias("unit"),
+            pl.lit("ten_thousand_tons/gw/ratio").alias("unit"),
             pl.lit("Derived_Polysilicon_Balance").alias("source"),
             pl.lit("").alias("source_url"),
             pl.lit("derived").alias("data_status"),

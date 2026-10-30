@@ -6,6 +6,7 @@ import re
 
 import polars as pl
 
+from stock_core.utils.logger import logger
 from stock_data.storage.compat_rules import (
     _KNOWN_DATE_COLUMNS,
     _KNOWN_FLOAT_COLUMNS,
@@ -27,15 +28,16 @@ class ColumnCompatMixin:
                 continue
             if "symbol" not in normalized.columns:
                 normalized = normalized.rename({alias: "symbol"})
-            else:
-                normalized = normalized.with_columns(
-                    pl.coalesce(
-                        [
-                            pl.col(alias).cast(pl.Utf8, strict=False),
-                            pl.col("symbol").cast(pl.Utf8, strict=False),
-                        ]
-                    ).alias("symbol")
-                ).drop(alias)
+                continue
+            ColumnCompatMixin._warn_on_identity_alias_conflict(normalized, alias)
+            normalized = normalized.with_columns(
+                pl.coalesce(
+                    [
+                        pl.col(alias).cast(pl.Utf8, strict=False),
+                        pl.col("symbol").cast(pl.Utf8, strict=False),
+                    ]
+                ).alias("symbol")
+            ).drop(alias)
         if "code" in normalized.columns:
             if "symbol" not in normalized.columns:
                 normalized = normalized.rename({"code": "symbol"})
@@ -73,6 +75,38 @@ class ColumnCompatMixin:
                     ).alias("as_of_date")
                 ).drop("asOfDate")
         return normalized
+
+    @staticmethod
+    def count_foreign_identity_alias_rows(
+        df: pl.DataFrame, alias: str, target: str = "symbol"
+    ) -> int:
+        """统计别名列与目标标识列「并非同一标的的不同写法」的冲突行数。
+
+        源端 ``ts_code`` 往往只是 ``symbol`` 的规范化写法（如 symbol="000001"、
+        ts_code="000001.SZ"），此时用 ``ts_code`` 覆盖 symbol 是预期行为；
+        但若两者都非空、且去掉交易所后缀后仍不同（如 fund_portfolio 的
+        基金代码与 ``symbol`` 的被持有股票代码），``coalesce`` 会静默丢弃其中一方。
+        """
+        if df.is_empty() or alias not in df.columns or target not in df.columns:
+            return 0
+        alias_base = pl.col(alias).cast(pl.Utf8, strict=False).str.split(".").list.first()
+        target_base = pl.col(target).cast(pl.Utf8, strict=False).str.split(".").list.first()
+        foreign = alias_base.is_not_null() & target_base.is_not_null() & (alias_base != target_base)
+        return int(df.select(foreign.sum()).item() or 0)
+
+    @classmethod
+    def _warn_on_identity_alias_conflict(
+        cls, df: pl.DataFrame, alias: str, target: str = "symbol"
+    ) -> None:
+        """当归一化会覆盖「另一标识」时告警，但保持既有提升语义不变。"""
+        rows = cls.count_foreign_identity_alias_rows(df, alias, target)
+        if rows:
+            logger.warning(
+                f"标识列归一将用 {alias} 覆盖 {rows} 行 {target} 的取值，"
+                f"且 {alias} 并非 {target} 的规范化写法；"
+                "若两者确为不同标识（如基金代码 vs 被持有股票代码），"
+                "请在端点契约声明 identity_renames 以保留双列"
+            )
 
     @classmethod
     def normalize_financial_statement_columns(

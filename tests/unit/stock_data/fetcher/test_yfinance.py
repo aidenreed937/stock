@@ -158,7 +158,8 @@ def test_yfinance_extended_endpoint_does_not_turn_request_error_into_no_data() -
             )
 
 
-def test_yfinance_proxy_pool_rotates_on_retry(tmp_path) -> None:
+def test_yfinance_proxy_pool_rotates_on_retry(monkeypatch, tmp_path) -> None:
+    monkeypatch.setattr("stock_data.fetcher.yfinance.client.data_settings.yfinance_proxy", "")
     pool_file = tmp_path / "yfinance.txt"
     pool_file.write_text(
         "http://proxy-a\n# disabled\nhttp://proxy-b\nhttp://proxy-a\n",
@@ -199,7 +200,24 @@ def test_yfinance_proxy_pool_rotates_on_retry(tmp_path) -> None:
     assert selected_proxies == ["http://proxy-a", "http://proxy-b"]
 
 
-def test_yfinance_rate_limit_uses_exponential_backoff_and_more_proxies(tmp_path) -> None:
+def test_yfinance_env_proxy_takes_priority_over_proxy_pool(monkeypatch, tmp_path) -> None:
+    pool_file = tmp_path / "yfinance.txt"
+    pool_file.write_text("http://pool-proxy\n", encoding="utf-8")
+    monkeypatch.setattr(
+        "stock_data.fetcher.yfinance.client.data_settings.yfinance_proxy",
+        "http://env-proxy",
+    )
+
+    client = YFinanceClient(proxy_pool_file=pool_file)
+
+    assert client.proxy == "http://env-proxy"
+    assert client.proxy_pool == ("http://env-proxy",)
+
+
+def test_yfinance_rate_limit_uses_exponential_backoff_and_more_proxies(
+    monkeypatch, tmp_path
+) -> None:
+    monkeypatch.setattr("stock_data.fetcher.yfinance.client.data_settings.yfinance_proxy", "")
     pool_file = tmp_path / "yfinance.txt"
     pool_file.write_text(
         "http://proxy-a\nhttp://proxy-b\nhttp://proxy-c\n",
@@ -242,7 +260,8 @@ def test_yfinance_rate_limit_uses_exponential_backoff_and_more_proxies(tmp_path)
     }
 
 
-def test_yfinance_proxy_pool_loads_txt_files_from_directory(tmp_path) -> None:
+def test_yfinance_proxy_pool_loads_txt_files_from_directory(monkeypatch, tmp_path) -> None:
+    monkeypatch.setattr("stock_data.fetcher.yfinance.client.data_settings.yfinance_proxy", "")
     pool_dir = tmp_path / "proxy"
     pool_dir.mkdir()
     (pool_dir / "100个节点.txt").write_text(
@@ -454,7 +473,7 @@ def test_fetch_daily_bars_df_dispatches_macro_indicators() -> None:
     )
 
 
-def test_yfinance_macro_registry_declares_global_hg_f_route() -> None:
+def test_yfinance_macro_registry_excludes_hg_f_when_lixinger_is_primary() -> None:
     meta = YFINANCE_API_REGISTRY["macro_indicators"]
     assert meta.market == "GLOBAL"
     assert meta.group == "macro_data"
@@ -470,7 +489,7 @@ def test_yfinance_macro_registry_declares_global_hg_f_route() -> None:
     assert "CNH=X" not in symbols
     assert "GC=F" in symbols
     assert "CL=F" in symbols
-    assert "HG=F" in symbols
+    assert "HG=F" not in symbols
 
 
 def test_yfinance_fetcher_trade_cal() -> None:

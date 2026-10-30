@@ -10,6 +10,7 @@ class YFinanceEndpointMeta:
     market: str = "US"
     frequency: str = "daily"  # daily, monthly, quarterly, event
     group: str = "market_data"
+    query_mode: str = "trade_date"
     primary_keys: list[str] = field(default_factory=list)
     rate_limit_per_min: int = 40
     update_time: str = "06:00"
@@ -17,6 +18,11 @@ class YFinanceEndpointMeta:
     date_columns: list[str] = field(default_factory=list)
     required_columns: list[str] = field(default_factory=list)
     max_range_days: int | None = None
+    fetch_mode: str = "per_symbol"
+    partitioned: bool = True
+    is_single_sync: bool | None = None
+    quality_profile: str = "generic"
+    dataset: str | None = None
 
 
 # YFinance 接口元数据注册表 (全局统一由 YFinanceClient / data.yaml 控制限频)
@@ -42,10 +48,13 @@ YFINANCE_API_REGISTRY: dict[str, YFinanceEndpointMeta] = {
         required_columns=["symbol", "trade_date"],
         update_time="06:00",
         update_delay_days=0,
+        fetch_mode="per_day",
+        partitioned=False,
+        is_single_sync=True,
     ),
     "macro_indicators": YFinanceEndpointMeta(
         api_name="macro_indicators",
-        description="全球宏观资产日线行情（含 GC=F 黄金、CL=F 原油和 HG=F 铜期货）",
+        description="全球宏观资产日线行情（兼容 GC=F 黄金与 CL=F 原油；铜价主源为 LiXinger）",
         market="GLOBAL",
         frequency="daily",
         group="macro_data",
@@ -54,33 +63,45 @@ YFINANCE_API_REGISTRY: dict[str, YFinanceEndpointMeta] = {
         required_columns=["symbol", "trade_date"],
         update_time="06:00",
         update_delay_days=1,
+        partitioned=False,
+        is_single_sync=True,
+        quality_profile="macro",
     ),
     "financials": YFinanceEndpointMeta(
         api_name="financials",
         description="利润表 (包含营收、净利润、毛利、EBITDA)",
         frequency="quarterly",
         group="financial_reports",
+        query_mode="period",
         primary_keys=["symbol", "as_of_date"],
         date_columns=["as_of_date"],
         required_columns=["symbol", "as_of_date"],
+        partitioned=False,
+        is_single_sync=True,
     ),
     "balance_sheet": YFinanceEndpointMeta(
         api_name="balance_sheet",
         description="资产负债表 (包含总资产、总负债、股东权益、现金)",
         frequency="quarterly",
         group="financial_reports",
+        query_mode="period",
         primary_keys=["symbol", "as_of_date"],
         date_columns=["as_of_date"],
         required_columns=["symbol", "as_of_date"],
+        partitioned=False,
+        is_single_sync=True,
     ),
     "cashflow": YFinanceEndpointMeta(
         api_name="cashflow",
         description="现金流量表 (包含经营现金流、资本支出、自由现金流 FCF)",
         frequency="quarterly",
         group="financial_reports",
+        query_mode="period",
         primary_keys=["symbol", "as_of_date"],
         date_columns=["as_of_date"],
         required_columns=["symbol", "as_of_date"],
+        partitioned=False,
+        is_single_sync=True,
     ),
     "dividends": YFinanceEndpointMeta(
         api_name="dividends",
@@ -90,6 +111,8 @@ YFINANCE_API_REGISTRY: dict[str, YFinanceEndpointMeta] = {
         primary_keys=["symbol", "trade_date"],
         date_columns=["trade_date"],
         required_columns=["symbol", "trade_date"],
+        partitioned=False,
+        is_single_sync=True,
     ),
     "splits": YFinanceEndpointMeta(
         api_name="splits",
@@ -99,6 +122,8 @@ YFINANCE_API_REGISTRY: dict[str, YFinanceEndpointMeta] = {
         primary_keys=["symbol", "trade_date"],
         date_columns=["trade_date"],
         required_columns=["symbol", "trade_date"],
+        partitioned=False,
+        is_single_sync=True,
     ),
     "analyst_price_target": YFinanceEndpointMeta(
         api_name="analyst_price_target",
@@ -116,6 +141,8 @@ YFINANCE_API_REGISTRY: dict[str, YFinanceEndpointMeta] = {
         group="market_indicators",
         primary_keys=["symbol", "period"],
         required_columns=["symbol", "period"],
+        partitioned=False,
+        is_single_sync=True,
     ),
     "institutional_holders": YFinanceEndpointMeta(
         api_name="institutional_holders",
@@ -124,6 +151,7 @@ YFINANCE_API_REGISTRY: dict[str, YFinanceEndpointMeta] = {
         group="holders_info",
         primary_keys=["symbol", "Holder"],
         required_columns=["symbol", "Holder"],
+        is_single_sync=True,
     ),
     "insider_transactions": YFinanceEndpointMeta(
         api_name="insider_transactions",
@@ -133,6 +161,8 @@ YFINANCE_API_REGISTRY: dict[str, YFinanceEndpointMeta] = {
         primary_keys=["symbol", "Start Date", "Insider"],
         date_columns=["Start Date"],
         required_columns=["symbol", "Start Date", "Insider"],
+        partitioned=False,
+        is_single_sync=True,
     ),
     "fast_info": YFinanceEndpointMeta(
         api_name="fast_info",

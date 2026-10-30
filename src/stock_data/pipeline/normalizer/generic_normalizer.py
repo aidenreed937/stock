@@ -1,6 +1,6 @@
 """通用数据标准化器，适用于非 K 线（如基本面估值、指数基本面等）接口。"""
 
-from collections.abc import Sequence
+from collections.abc import Mapping, Sequence
 
 import polars as pl
 
@@ -12,15 +12,39 @@ from stock_data.pipeline.normalizer.base import BaseDataNormalizer
 class GenericNormalizer(BaseDataNormalizer):
     """通用数据标准化器，负责日期转换与通用列对齐。"""
 
-    def __init__(self, date_columns: Sequence[str] | None = None) -> None:
+    def __init__(
+        self,
+        date_columns: Sequence[str] | None = None,
+        identity_renames: Mapping[str, str] | None = None,
+    ) -> None:
         """初始化标准化器。"""
         self.date_columns = tuple(date_columns or ())
+        self.identity_renames = dict(identity_renames or {})
 
     def normalize(self, df: pl.DataFrame) -> pl.DataFrame:
         if df.is_empty():
             return df
 
         normalized_df = df
+
+        # 0. 源端标识列改名：由端点契约显式声明，仅当目标列不存在时生效。
+        #    用于源端存在语义不同的多个标识列（如 fund_portfolio 的 ts_code=基金代码、
+        #    symbol=被持有股票代码），避免后续 coalesce 把其中一列覆盖丢失。
+        for source, target in self.identity_renames.items():
+            if source not in normalized_df.columns:
+                continue
+            if target in normalized_df.columns:
+                logger.warning(f"标识列改名跳过：目标列 {target} 已存在，源列 {source} 补齐后丢弃")
+                normalized_df = normalized_df.with_columns(
+                    pl.coalesce(
+                        [
+                            pl.col(target).cast(pl.Utf8, strict=False),
+                            pl.col(source).cast(pl.Utf8, strict=False),
+                        ]
+                    ).alias(target)
+                ).drop(source)
+                continue
+            normalized_df = normalized_df.rename({source: target})
 
         # 1. 统一标的与日期列名；历史数据可能同时包含标准列和源端别名。
         # ts_code/stockCode 是权威标识，code 只用于填充缺失的标准标识。

@@ -7,7 +7,7 @@ import polars as pl
 
 from stock_core.config.loader import load_data_config
 from stock_core.exceptions import DataFetchError
-from stock_data.core.task_registry import resolve_task
+from stock_data.core.task_resolution import resolve_task
 from stock_data.fetcher.lixinger import query_helpers
 from stock_data.fetcher.lixinger.client import LixingerClient
 from stock_data.fetcher.lixinger.registry import EndpointMeta

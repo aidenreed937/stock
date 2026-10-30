@@ -7,7 +7,7 @@ import polars as pl
 
 from stock_core.contracts import DatasetKey, instrument_for_symbol
 from stock_core.utils.logger import logger
-from stock_data.core.task_registry import resolve_task
+from stock_data.core.task_resolution import resolve_task
 from stock_data.fetcher.base import BaseDataFetcher
 from stock_data.pipeline.cleaner.bar_cleaner import BarDataCleaner
 from stock_data.pipeline.cleaner.base import BaseDataCleaner
@@ -75,7 +75,10 @@ class MarketDataPipeline:
             else (
                 BarDataNormalizer()
                 if profile == "bar"
-                else GenericNormalizer(date_columns=list(task.date_columns) or None)
+                else GenericNormalizer(
+                    date_columns=list(task.date_columns) or None,
+                    identity_renames=getattr(task, "identity_renames", None),
+                )
             )
         )
         self.store = store if store is not None else DuckDBMarketStore(data_source=data_source)

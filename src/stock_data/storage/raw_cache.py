@@ -6,7 +6,7 @@ from typing import Any
 import polars as pl
 
 from stock_core.utils.logger import logger
-from stock_data.core.task_registry import get_endpoint_market, resolve_task
+from stock_data.core.task_resolution import get_endpoint_market, resolve_task
 from stock_data.governance.quality.margin_coverage import is_margin_date_complete
 from stock_data.storage.raw_schema import (
     RAW_ARTIFACT_SUFFIXES,

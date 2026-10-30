@@ -13,7 +13,7 @@ import yaml
 
 from stock_core.config.loader import load_data_config
 from stock_core.utils.logger import logger
-from stock_data.core.task_registry import is_per_symbol_task
+from stock_data.core.task_resolution import is_per_symbol_task
 from stock_data.pipeline import backfill_batches
 from stock_data.pipeline.planner import BackfillPlanner, BackfillTask
 
@@ -246,6 +246,19 @@ def run_backfill(
             config.concurrency.default_max_workers,
         )
     workers = workers or 1
+    if data_source == "us_hybrid":
+        if endpoints and set(endpoints) != {"stock_daily_bar"}:
+            raise ValueError("us_hybrid 仅支持 ENDPOINT=stock_daily_bar")
+        from stock_data.pipeline.us_hybrid_backfill import run_us_hybrid_backfill
+
+        return run_us_hybrid_backfill(
+            symbol=symbol,
+            start_date=start_date,
+            end_date=end_date,
+            data_cfg=config,
+            force_refresh=force_refresh,
+            max_workers=workers,
+        )
     tasks = BackfillPlanner.plan_tasks(
         data_source=data_source,
         endpoints=endpoints,

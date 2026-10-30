@@ -102,25 +102,25 @@ def records_to_pharma_bd_frame(records: Sequence[PharmaLicenseOutRecord]) -> pl.
         "upfront_cash_million_usd": [
             r.upfront_cash_million_usd
             if r.upfront_cash_million_usd is not None
-            else (r.monthly_upfront_million_usd or 0.0)
+            else r.monthly_upfront_million_usd
             for r in records
         ],
         "potential_total_deal_million_usd": [
             r.potential_total_deal_million_usd
             if r.potential_total_deal_million_usd is not None
-            else (r.monthly_total_deal_million_usd or 0.0)
+            else r.monthly_total_deal_million_usd
             for r in records
         ],
         "monthly_upfront_million_usd": [
             r.upfront_cash_million_usd
             if r.upfront_cash_million_usd is not None
-            else (r.monthly_upfront_million_usd or 0.0)
+            else r.monthly_upfront_million_usd
             for r in records
         ],
         "monthly_total_deal_million_usd": [
             r.potential_total_deal_million_usd
             if r.potential_total_deal_million_usd is not None
-            else (r.monthly_total_deal_million_usd or 0.0)
+            else r.monthly_total_deal_million_usd
             for r in records
         ],
         "deal_count": [r.deal_count for r in records],
@@ -179,13 +179,13 @@ def records_to_pharma_bd_frame(records: Sequence[PharmaLicenseOutRecord]) -> pl.
             pl.when(prev_12 > 0)
             .then(pl.col("upfront_3mma") / prev_12 - 1.0)
             .when(prev_12 == 0)
-            .then(pl.when(pl.col("upfront_3mma") > 0).then(1.0).otherwise(0.0))
+            .then(pl.when(pl.col("upfront_3mma") > 0).then(1.0).otherwise(None))
             .otherwise(None)
             .alias("yoy_growth_3mma"),
             pl.when(prev_1 > 0)
             .then(pl.col("upfront_3mma") / prev_1 - 1.0)
             .when(prev_1 == 0)
-            .then(pl.when(pl.col("upfront_3mma") > 0).then(1.0).otherwise(0.0))
+            .then(pl.when(pl.col("upfront_3mma") > 0).then(1.0).otherwise(None))
             .otherwise(None)
             .alias("mom_growth_3mma"),
         )
@@ -194,15 +194,15 @@ def records_to_pharma_bd_frame(records: Sequence[PharmaLicenseOutRecord]) -> pl.
     df = df.with_columns(
         pl.when(pl.col("potential_total_deal_million_usd") > 0)
         .then(pl.col("upfront_cash_million_usd") / pl.col("potential_total_deal_million_usd"))
-        .otherwise(0.0)
+        .otherwise(None)
         .alias("upfront_to_total_ratio"),
         pl.when(pl.col("deal_count") > 0)
         .then(pl.col("global_deal_count") / pl.col("deal_count"))
-        .otherwise(0.0)
+        .otherwise(None)
         .alias("global_rights_ratio"),
         pl.when(pl.col("deal_count") > 0)
         .then(pl.col("mnc_deal_count") / pl.col("deal_count"))
-        .otherwise(0.0)
+        .otherwise(None)
         .alias("mnc_ratio"),
     )
 

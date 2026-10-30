@@ -52,9 +52,10 @@ def commit_batch_contexts(batch_contexts: dict[tuple[str, str], dict[str, Any]])
 
 
 def commit_completed_chunk(batch_context: dict[str, Any], task: BackfillTask) -> None:
-    """提交年度分块并关闭当前批次，下一块开始前再开启。"""
+    """提交时间分块并关闭当前批次，下一块开始前再开启。"""
     logger.info(
-        f"提交年度分块 [{task.chunk_index}/{task.chunk_count}] "
+        f"提交{('季度' if task.chunk_frequency == 'quarterly' else '年度')}分块 "
+        f"[{task.chunk_index}/{task.chunk_count}] "
         f"[{task.data_source}/{task.endpoint}] 区间: [{task.start_date} ~ {task.end_date}]"
     )
     commit_batch_targets(batch_context["batch_targets"])

@@ -61,6 +61,75 @@ def _is_quarter_end(d: date) -> bool:
     return (d.month, d.day) in {(3, 31), (6, 30), (9, 30), (12, 31)}
 
 
+def _quarter_ends(start_date: date, end_date: date) -> list[date]:
+    """列出区间内（含端点）的自然季度末日期。"""
+    ends: list[date] = []
+    for year in range(start_date.year, end_date.year + 1):
+        for month, day in ((3, 31), (6, 30), (9, 30), (12, 31)):
+            quarter_end = date(year, month, day)
+            if start_date <= quarter_end <= end_date:
+                ends.append(quarter_end)
+    return ends
+
+
+def fetch_fund_portfolio_data(
+    client: TuShareClient,
+    symbol: str,
+    start_date: date,
+    end_date: date,
+    meta: EndpointMeta,
+    extra_kwargs: dict[str, Any],
+) -> pl.DataFrame:
+    """按基金代码采集持仓明细（季报前十大，半年报/年报全部持仓）。
+
+    上游语义（2026-10 实测，Ground Truth First）：
+    - 只接受 ``ts_code`` / ``ann_date`` / ``start_date`` / ``end_date``；
+    - ``period`` 参数不存在，传入会被静默忽略并退化成「默认排序的前 8000 行」切片，
+      这正是历史 Curated 每只基金每报告期只剩 1 条持仓的根因；
+    - ``start_date`` / ``end_date`` 过滤的是公告日 ``ann_date``，不是报告期；
+    - 单次返回上限 8000 行，需依赖 client 的 limit/offset 游标分页。
+
+    因此：有基金代码时逐只查询（一次取回该基金全部历史），无代码时按季度末的公告
+    窗口批量拉取全市场，绝不回退到 ``period`` 查询。
+    """
+    is_real_symbol = bool(symbol and symbol != meta.api_name)
+    base_kwargs = dict(extra_kwargs)
+    if meta.request_fields:
+        base_kwargs.setdefault("fields", meta.request_fields)
+
+    if is_real_symbol:
+        query_kwargs = dict(base_kwargs)
+        query_kwargs["ts_code"] = symbol
+        query_kwargs["start_date"] = start_date.strftime("%Y%m%d")
+        query_kwargs["end_date"] = end_date.strftime("%Y%m%d")
+        frame = client.query(
+            "fund_portfolio",
+            pagination_limit=meta.max_rows_per_request,
+            **query_kwargs,
+        )
+        return post_process_tushare_frame(frame, meta, symbol)
+
+    # 无基金代码：按季度末公告窗口批量拉全市场。窗口固定为季度末起 75 天，
+    # 覆盖法定披露期（季报 15 个工作日、年报/半年报 2~3 个月），不随回填区间收窄，
+    # 否则单季度回填（start==end）会把窗口压成一个公告日而漏数。
+    frames: list[pd.DataFrame] = []
+    for quarter_end in _quarter_ends(start_date, end_date):
+        query_kwargs = dict(base_kwargs)
+        query_kwargs["start_date"] = quarter_end.strftime("%Y%m%d")
+        window_end = date.fromordinal(quarter_end.toordinal() + 75)
+        query_kwargs["end_date"] = window_end.strftime("%Y%m%d")
+        frame = client.query(
+            "fund_portfolio",
+            pagination_limit=meta.max_rows_per_request,
+            **query_kwargs,
+        )
+        if not frame.empty:
+            frames.append(frame)
+    if not frames:
+        return pl.DataFrame()
+    return post_process_tushare_frame(pd.concat(frames, ignore_index=True), meta, symbol)
+
+
 def fetch_top10_floatholders_data(
     client: TuShareClient,
     symbol: str,
@@ -147,7 +216,10 @@ def fetch_stk_holdernumber_data(
         query_kwargs["ts_code"] = symbol
         if start_date == end_date:
             if _is_quarter_end(start_date):
-                query_kwargs["end_date"] = start_date.strftime("%Y%m%d")
+                # TuShare 的 stk_holdernumber 使用 enddate 表示报告截止期；
+                # end_date 是公告日期范围的结束日，不能用于季度报告期查询。
+                query_kwargs.pop("end_date", None)
+                query_kwargs["enddate"] = start_date.strftime("%Y%m%d")
             else:
                 query_kwargs["ann_date"] = start_date.strftime("%Y%m%d")
         else:
@@ -175,9 +247,17 @@ def fetch_stk_holdernumber_data(
 
     # 3. 全市场查询：单季度报告期末
     if start_date == end_date and _is_quarter_end(start_date):
-        for key in ("ts_code", "start_date", "trade_date", "ann_date", "report_date", "period"):
+        for key in (
+            "ts_code",
+            "start_date",
+            "end_date",
+            "trade_date",
+            "ann_date",
+            "report_date",
+            "period",
+        ):
             query_kwargs.pop(key, None)
-        query_kwargs["end_date"] = start_date.strftime("%Y%m%d")
+        query_kwargs["enddate"] = start_date.strftime("%Y%m%d")
         pdf = client.query(
             "stk_holdernumber",
             pagination_limit=meta.max_rows_per_request,
@@ -196,7 +276,7 @@ def fetch_stk_holdernumber_data(
     for p in periods:
         pdf = client.query(
             "stk_holdernumber",
-            end_date=p.strftime("%Y%m%d"),
+            enddate=p.strftime("%Y%m%d"),
             pagination_limit=meta.max_rows_per_request,
             **base_kwargs,
         )

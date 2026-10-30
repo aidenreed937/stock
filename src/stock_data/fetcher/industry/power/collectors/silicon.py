@@ -36,6 +36,11 @@ from stock_data.fetcher.industry.power.parsers.silicon import parse_silicon_bran
 from stock_data.fetcher.industry.power.paths import PowerRawPaths
 
 
+def _source_rate_to_ratio(value: float | None) -> float | None:
+    """将硅业分会源端百分数同比转为派生记录的小数比例。"""
+    return value / 100.0 if value is not None else None
+
+
 class SiliconBranchCollector:
     """硅业分会多晶硅与单晶硅片月度基本面数据采集器。"""
 
@@ -232,7 +237,7 @@ def _collect_supply(
                 report_month=record.report_month,
                 trade_date=record.trade_date,
                 production_w_tons=record.polysilicon_output_w_tons,
-                production_yoy=record.polysilicon_output_yoy,
+                production_yoy=_source_rate_to_ratio(record.polysilicon_output_yoy),
                 production_mom=None,
                 capacity_annual_w_tons=capacity,
                 operating_rate=record.polysilicon_operating_rate,
@@ -281,7 +286,7 @@ def _collect_wafer(collector: SiliconBranchCollector) -> list[PvWaferMonthlyReco
             report_month=record.report_month,
             trade_date=record.trade_date,
             wafer_output_gw=record.wafer_output_gw,
-            wafer_output_yoy=record.wafer_output_yoy,
+            wafer_output_yoy=_source_rate_to_ratio(record.wafer_output_yoy),
             wafer_operating_rate=record.wafer_operating_rate,
             derived_wafer_utilization_rate=record.derived_wafer_utilization_rate,
             silicon_consumption_ratio=None,

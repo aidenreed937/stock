@@ -4,7 +4,7 @@ from __future__ import annotations
 
 from typing import TYPE_CHECKING
 
-from stock_data.core.task_registry import resolve_task
+from stock_data.core.task_resolution import resolve_task
 from stock_data.fetcher.lixinger.facade import LixingerDataFetcher
 from stock_data.fetcher.lixinger.registry import LIXINGER_API_REGISTRY
 
@@ -13,15 +13,16 @@ if TYPE_CHECKING:
 
 
 def create_lixinger_fetcher(
-    token: str | None = None, url: str | None = None
+    token: str | None = None, url: str | None = None, profile: str | None = None
 ) -> LixingerDataFetcher:
     """创建 LixingerDataFetcher 实例。"""
-    return LixingerDataFetcher(token=token, url=url)
+    return LixingerDataFetcher(token=token, url=url, profile=profile)
 
 
 def create_lixinger_pipeline(
     endpoint: str = "company_fundamental",
     fetcher: LixingerDataFetcher | None = None,
+    profile: str | None = None,
 ) -> MarketDataPipeline:
     """按项目任务名创建理杏仁 Pipeline。"""
     from stock_data.pipeline.cleaner.bar_cleaner import BarDataCleaner
@@ -37,7 +38,7 @@ def create_lixinger_pipeline(
     )
     from stock_data.pipeline.pipeline import MarketDataPipeline
 
-    active_fetcher = fetcher if fetcher is not None else create_lixinger_fetcher()
+    active_fetcher = fetcher if fetcher is not None else create_lixinger_fetcher(profile=profile)
     cleaner: BaseDataCleaner
     normalizer: BaseDataNormalizer
 

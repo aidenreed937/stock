@@ -42,6 +42,8 @@ CPCA_HEADERS = {
         "AppleWebKit/537.36 (KHTML, like Gecko) Chrome/120.0.0.0 Safari/537.36"
     ),
 }
+_CPCA_MAX_ATTEMPTS = 2
+_CPCA_RETRY_STATUS_CODES = frozenset({429, 500, 502, 503, 504})
 
 
 class CpcaReportArchiveClient:
@@ -148,20 +150,32 @@ class CpcaReportArchiveClient:
         return parsed
 
     def _get(self, url: str, description: str) -> Any | None:
-        try:
-            response = requests.get(
-                url,
-                headers=CPCA_HEADERS,
-                timeout=self.timeout,
-                impersonate=self.impersonate,
-            )
-        except Exception as exc:  # noqa: BLE001
-            self._add_error(f"{description}请求失败 [{url}]: {exc}")
-            return None
-        if getattr(response, "status_code", 0) != 200:
-            self._add_error(f"{description} HTTP {getattr(response, 'status_code', 'unknown')}")
-            return None
-        return response
+        last_error: Exception | None = None
+        for attempt in range(_CPCA_MAX_ATTEMPTS):
+            try:
+                response = requests.get(
+                    url,
+                    headers=CPCA_HEADERS,
+                    timeout=self.timeout,
+                    impersonate=self.impersonate,
+                )
+            except Exception as exc:  # noqa: BLE001
+                last_error = exc
+                if attempt + 1 < _CPCA_MAX_ATTEMPTS:
+                    logger.debug("%s暂时失败，准备重试 [%s]", description, url)
+                    continue
+                self._add_error(f"{description}请求失败 [{url}]: {exc}")
+                return None
+            status_code = getattr(response, "status_code", 0)
+            if status_code == 200:
+                return response
+            if status_code not in _CPCA_RETRY_STATUS_CODES or attempt + 1 >= _CPCA_MAX_ATTEMPTS:
+                self._add_error(f"{description} HTTP {status_code}")
+                return None
+            logger.debug("%s暂时返回 HTTP %s，准备重试 [%s]", description, status_code, url)
+        if last_error is not None:
+            self._add_error(f"{description}请求失败 [{url}]: {last_error}")
+        return None
 
     def _save_snapshot(self, filename: str, content: bytes, *, compress: bool) -> Path:
         return save_raw_snapshot(

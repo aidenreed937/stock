@@ -8,13 +8,14 @@ import pandas as pd
 import pytest
 
 from stock_core.exceptions import DataFetchError
+from stock_data.core.settings import DataSettings
 from stock_data.fetcher.lixinger import (
     LixingerClient,
     LixingerDataFetcher,
     LixingerStockFetcher,
     create_lixinger_pipeline,
 )
-from stock_data.fetcher.lixinger.client import _SHARED_LIMITERS
+from stock_data.fetcher.lixinger.client import _PROFILE_COOLDOWNS, _SHARED_LIMITERS
 from stock_data.fetcher.lixinger.registry import LIXINGER_API_REGISTRY
 from stock_data.pipeline.scheduler import DataUpdateScheduler
 
@@ -64,6 +65,108 @@ def test_lixinger_client_requires_token() -> None:
         client.query("cn/index/fundamental")
 
 
+def test_lixinger_client_selects_token_profile() -> None:
+    configured = DataSettings(
+        lixinger_tokens={"primary": "primary-token", "backup": "backup-token"},
+        lixinger_profile="primary",
+    )
+
+    with patch("stock_data.fetcher.lixinger.client.data_settings", configured):
+        default_client = LixingerClient()
+        explicit_client = LixingerClient(profile="backup")
+
+    assert default_client.profile == "primary"
+    assert default_client.token == "primary-token"
+    assert explicit_client.profile == "backup"
+    assert explicit_client.token == "backup-token"
+
+
+def test_lixinger_client_switches_fallback_profile_on_quota_403() -> None:
+    _PROFILE_COOLDOWNS.clear()
+    configured = DataSettings(
+        lixinger_tokens={
+            "primary": "primary-token",
+            "backup_1": "backup-token-1",
+            "backup_2": "backup-token-2",
+        },
+        lixinger_profile="primary",
+        lixinger_fallback_profiles=["backup_1", "backup_2"],
+    )
+    mock_403 = MagicMock()
+    mock_403.status_code = 403
+    mock_403.text = '{"error":{"name":"ForbiddenError","message":"Exceed maximum access time, please purchase Open API."}}'
+    mock_200 = MagicMock()
+    mock_200.status_code = 200
+    mock_200.json.return_value = {"code": 0, "data": [{"stockCode": "600519"}]}
+
+    with patch("stock_data.fetcher.lixinger.client.data_settings", configured):
+        client = LixingerClient()
+        with patch.object(client._session, "post", side_effect=[mock_403, mock_200]) as post:
+            frame = client.query("cn/company/fundamental/non_financial")
+
+    assert len(frame) == 1
+    assert client.profile == "backup_1"
+    assert post.call_args_list[0].kwargs["json"]["token"] == "primary-token"
+    assert post.call_args_list[1].kwargs["json"]["token"] == "backup-token-1"
+    _PROFILE_COOLDOWNS.clear()
+
+
+def test_lixinger_client_does_not_switch_on_generic_403() -> None:
+    _PROFILE_COOLDOWNS.clear()
+    configured = DataSettings(
+        lixinger_tokens={"primary": "primary-token", "backup": "backup-token"},
+        lixinger_profile="primary",
+        lixinger_fallback_profiles=["backup"],
+    )
+    mock_403 = MagicMock()
+    mock_403.status_code = 403
+    mock_403.text = "endpoint permission denied"
+
+    with patch("stock_data.fetcher.lixinger.client.data_settings", configured):
+        client = LixingerClient()
+        with patch.object(client._session, "post", return_value=mock_403) as post:
+            with pytest.raises(DataFetchError, match="权限不足"):
+                client.query("cn/company/fundamental/non_financial")
+
+    assert post.call_count == 1
+    assert client.profile == "primary"
+
+
+def test_lixinger_client_walks_all_fallback_profiles() -> None:
+    _PROFILE_COOLDOWNS.clear()
+    configured = DataSettings(
+        lixinger_tokens={
+            "primary": "primary-token",
+            "backup_1": "backup-token-1",
+            "backup_2": "backup-token-2",
+        },
+        lixinger_profile="primary",
+        lixinger_fallback_profiles=["backup_1", "backup_2"],
+    )
+    mock_403 = MagicMock()
+    mock_403.status_code = 403
+    mock_403.text = "Exceed maximum access time, please purchase Open API."
+    mock_200 = MagicMock()
+    mock_200.status_code = 200
+    mock_200.json.return_value = {"code": 0, "data": [{"stockCode": "600519"}]}
+
+    with patch("stock_data.fetcher.lixinger.client.data_settings", configured):
+        client = LixingerClient()
+        with patch.object(
+            client._session, "post", side_effect=[mock_403, mock_403, mock_200]
+        ) as post:
+            frame = client.query("cn/company/fundamental/non_financial")
+
+    assert len(frame) == 1
+    assert client.profile == "backup_2"
+    assert [call.kwargs["json"]["token"] for call in post.call_args_list] == [
+        "primary-token",
+        "backup-token-1",
+        "backup-token-2",
+    ]
+    _PROFILE_COOLDOWNS.clear()
+
+
 def test_lixinger_pledge_contract_uses_last_data_date() -> None:
     meta = LIXINGER_API_REGISTRY["cn/company/hot/ple"]
 
@@ -94,6 +197,7 @@ def test_lixinger_risk_event_contracts(api_name: str) -> None:
     [
         ("macro/energy", "solar_ep"),
         ("macro/price-index", "pmi_mfg"),
+        ("macro/gold-price", "lbma_pm_usd"),
     ],
 )
 def test_lixinger_macro_industry_contracts(api_name: str, expected_metric: str) -> None:
@@ -102,8 +206,24 @@ def test_lixinger_macro_industry_contracts(api_name: str, expected_metric: str) 
     assert meta.primary_keys == ["date"]
     assert meta.date_columns == ["date"]
     assert meta.required_columns == ["date"]
-    assert meta.frequency == "monthly"
+    assert meta.frequency == ("daily" if api_name == "macro/gold-price" else "monthly")
     assert expected_metric in meta.default_metrics
+
+
+@pytest.mark.parametrize(
+    "api_name",
+    [
+        "cn/industry/fs/sw_2021/non_financial",
+        "cn/industry/fs/sw_2021/bank",
+        "cn/industry/fs/sw_2021/security",
+        "cn/industry/fs/sw_2021/insurance",
+    ],
+)
+def test_lixinger_industry_financial_defaults_include_cumulative_amounts(api_name: str) -> None:
+    meta = LIXINGER_API_REGISTRY[api_name]
+
+    assert "q.ps.toi.t" in meta.default_metrics
+    assert "q.ps.np.t" in meta.default_metrics
 
 
 @pytest.mark.parametrize("endpoint", ["regulatory_measures", "exchange_inquiry"])

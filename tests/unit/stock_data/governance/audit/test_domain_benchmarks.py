@@ -49,6 +49,16 @@ def test_registry_lookup() -> None:
     assert spec_unknown.frequency == AuditFrequency.DAILY
 
 
+def test_semiconductor_sales_audit_contract_is_monthly_raw_backed() -> None:
+    spec = get_audit_spec("semiconductor_sales", data_source="industry")
+
+    assert spec.domain == AuditDomain.INDUSTRY
+    assert spec.frequency == AuditFrequency.MONTHLY
+    assert spec.is_partitioned is False
+    assert spec.lineage_status == "raw_backed"
+    assert spec.source_endpoint == "WSTS/SIA"
+
+
 def test_equity_benchmark_provider() -> None:
     mock_catalog = MagicMock()
     # 模拟真实落盘中 suspend_d 的 trade_date 为 Date 类型

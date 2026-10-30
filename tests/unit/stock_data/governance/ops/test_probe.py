@@ -30,7 +30,7 @@ def test_global_probe_yfinance():
     probe = GlobalDataProbe(yfinance_fetcher=mock_yf)
     results = probe.probe_yfinance()
 
-    assert len(results) == 4
+    assert len(results) == 3
     assert all(r["status"] == "SUCCESS" for r in results)
 
 
@@ -42,7 +42,7 @@ def test_global_probe_fred():
     probe = GlobalDataProbe(fred_fetcher=mock_fred)
     results = probe.probe_fred()
 
-    assert len(results) == 3
+    assert len(results) == 4
     assert all(r["status"] == "SUCCESS" for r in results)
 
 

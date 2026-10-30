@@ -37,6 +37,24 @@ DEFAULT_DATASET_NUMERIC_COLS: dict[str, list[str]] = {
     ],
     "fund_daily": ["amount", "volume", "close"],
     "moneyflow": ["buy_sm_amount", "sell_sm_amount", "net_mf_amount"],
+    "foundry_capacity_utilization": [
+        "tsmc_utilization_pct",
+        "tsmc_wafer_shipments_12in_kpcs",
+        "tsmc_capacity_12in_kpcs",
+        "smic_utilization_pct",
+        "smic_monthly_capacity_8inch_kw",
+        "smic_wafer_shipment_kw",
+        "foundry_proxy_utilization_pct",
+    ],
+    "semiconductor_inventory_days": [
+        "inventory_usd_million",
+        "cost_of_revenue_usd_million",
+        "doi_days",
+        "total_inventory_usd_million",
+        "total_cost_of_revenue_usd_million",
+        "idm_equal_doi_days",
+        "idm_weighted_doi_days",
+    ],
 }
 
 NON_NEGATIVE_COLUMNS: set[str] = {
@@ -56,6 +74,17 @@ NON_NEGATIVE_COLUMNS: set[str] = {
     "rqye",
     "buy_sm_amount",
     "sell_sm_amount",
+    "tsmc_wafer_shipments_12in_kpcs",
+    "tsmc_capacity_12in_kpcs",
+    "smic_monthly_capacity_8inch_kw",
+    "smic_wafer_shipment_kw",
+    "inventory_usd_million",
+    "cost_of_revenue_usd_million",
+    "doi_days",
+    "total_inventory_usd_million",
+    "total_cost_of_revenue_usd_million",
+    "idm_equal_doi_days",
+    "idm_weighted_doi_days",
 }
 
 

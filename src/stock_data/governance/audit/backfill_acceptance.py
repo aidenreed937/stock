@@ -26,7 +26,14 @@ from stock_data.storage.dataset_paths import (
 )
 from stock_data.storage.dataset_paths import path_contains_dataset as _path_contains_dataset
 
-_KNOWN_PROVIDERS = {"tushare", "lixinger", "yfinance", "fred", "alphavantage"}
+_KNOWN_PROVIDERS = {
+    "tushare",
+    "lixinger",
+    "yfinance",
+    "fred",
+    "alphavantage",
+    "industry",
+}
 
 _SYMBOL_ALIASES = ("symbol", "ts_code", "stockCode", "index_id")
 _TRADE_DATE_ALIASES = ("trade_date", "date", "Date")
@@ -38,12 +45,19 @@ _KEY_ALIASES = {
     "trade_date": _TRADE_DATE_ALIASES,
     "date": _TRADE_DATE_ALIASES,
     "Date": _TRADE_DATE_ALIASES,
+    "item": ("item", "item_raw"),
+    "indicator_id": ("indicator_id", "indicator_id_raw"),
 }
 
 
 def _keys(endpoint: str, columns: list[str], data_source: str = "tushare") -> list[str]:
     try:
-        from stock_data.core.task_registry import resolve_task
+        from stock_data.core.derived_datasets import resolve_derived_dataset
+        from stock_data.core.task_resolution import resolve_task
+
+        derived = resolve_derived_dataset(data_source, endpoint)
+        if derived is not None:
+            return [key for key in derived.primary_keys if key in columns]
 
         meta = _meta(endpoint, data_source=data_source)
         task = resolve_task(data_source, endpoint)
@@ -78,30 +92,25 @@ def _key_frame(endpoint: str, frame: pl.DataFrame, data_source: str = "tushare")
     keys = _keys(endpoint, frame.columns, data_source=data_source)
     expressions: list[pl.Expr] = []
     for key in keys:
-        source: str | None
-        if key == "symbol":
-            source = next(
-                (column for column in _SYMBOL_ALIASES if column in frame.columns),
-                None,
+        sources = [column for column in _KEY_ALIASES.get(key, (key,)) if column in frame.columns]
+        if sources:
+            expressions.append(
+                pl.coalesce(
+                    [pl.col(source).cast(pl.Utf8, strict=False) for source in sources]
+                ).alias(key)
             )
-        elif key == "trade_date":
-            source = next(
-                (column for column in _TRADE_DATE_ALIASES if column in frame.columns),
-                None,
-            )
-        else:
-            source = key if key in frame.columns else None
-        if source:
-            expressions.append(pl.col(source).cast(pl.Utf8, strict=False).alias(key))
     return frame.select(expressions) if expressions else pl.DataFrame()
 
 
 def _meta(endpoint: str, data_source: str = "tushare") -> Any:
     try:
-        from stock_data.core.task_registry import _provider_registry, resolve_task
+        from stock_data.core.provider_registry import provider_registry
+        from stock_data.core.task_resolution import resolve_task
 
         task = resolve_task(data_source, endpoint)
-        return _provider_registry(data_source).get(task.api_name)
+        if data_source == "industry":
+            return task
+        return provider_registry(data_source).get(task.api_name)
     except Exception:
         pass
     return None
@@ -111,7 +120,7 @@ def _endpoint_aliases(endpoint: str, data_source: str) -> set[str]:
     """返回验收所对应的项目任务目录名。"""
     aliases = {*StorageCompat.dataset_aliases(endpoint, data_source), endpoint}
     try:
-        from stock_data.core.task_registry import resolve_task
+        from stock_data.core.task_resolution import resolve_task
 
         task = resolve_task(data_source, endpoint)
         aliases.add(task.dataset)
@@ -256,9 +265,10 @@ def accept_backfill(
                     for column in getattr(meta, "required_columns", [])
                     if not _column_present(column, frame.columns)
                 )
-                for lineage in ("data_source", "source_endpoint", "request_id", "updated_at"):
-                    if lineage not in frame.columns:
-                        lineage_errors.append(f"{path}: missing {lineage}")
+                if data_source != "industry":
+                    for lineage in ("data_source", "source_endpoint", "request_id", "updated_at"):
+                        if lineage not in frame.columns:
+                            lineage_errors.append(f"{path}: missing {lineage}")
             keys = _keys(endpoint, frame.columns, data_source=data_source)
             if keys:
                 key_frames.append(

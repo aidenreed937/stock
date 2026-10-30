@@ -1,7 +1,7 @@
 """光伏产业链价格 RAW/Curated 转换器。"""
 
 from collections.abc import Sequence
-from datetime import UTC, datetime
+from datetime import UTC, date, datetime
 
 import polars as pl
 
@@ -29,6 +29,11 @@ def _raw_number(raw_value: str | None, fallback: float | None) -> float | None:
     return fallback
 
 
+def _parse_report_date(value: str | date) -> date:
+    """将价格链报告日期转换为 Curated 的自然日。"""
+    return value if isinstance(value, date) else date.fromisoformat(str(value))
+
+
 def empty_solar_price_chain() -> pl.DataFrame:
     """构造光伏产业链价格空事实表骨架。"""
     return pl.DataFrame(schema=SOLAR_PRICE_CHAIN_SCHEMA)
@@ -44,7 +49,7 @@ def records_to_solar_price_chain_frame(
     ordered_records = sorted(records, key=lambda record: record.trade_date)
     now_iso = datetime.now(UTC).isoformat()
     data = {
-        "report_date": [r.report_date for r in ordered_records],
+        "report_date": [_parse_report_date(r.report_date) for r in ordered_records],
         "trade_date": [r.trade_date for r in ordered_records],
         "polysilicon_price_cny_kg": [
             _raw_number(r.polysilicon_price_cny_kg_raw, r.polysilicon_price_cny_kg)
@@ -78,6 +83,7 @@ def records_to_solar_price_chain_frame(
         .sort("trade_date")
     )
     return df.with_columns(
+        pl.col("price_cycle_stage").forward_fill().alias("price_cycle_stage"),
         pl.when(
             pl.col("module_price_cny_watt").is_not_null()
             & (pl.col("module_price_cny_watt").shift(1) > 0)

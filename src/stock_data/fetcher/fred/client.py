@@ -1,8 +1,11 @@
 import io
 import logging
+import os
 import time
 from collections.abc import Callable
 from typing import Any
+from xml.etree import ElementTree
+from zipfile import ZipFile
 
 import pandas as pd
 from curl_cffi import requests
@@ -16,6 +19,7 @@ class FredClient:
     """FRED (Federal Reserve Economic Data) 官方宏观经济数据客户端。"""
 
     BASE_CSV_URL = "https://fred.stlouisfed.org/graph/fredgraph.csv"
+    H15_XML_URL = "https://www.federalreserve.gov/releases/h15/data/FRB_h15_xml.zip"
 
     def __init__(
         self,
@@ -34,7 +38,7 @@ class FredClient:
             backoff_factor: 指数退避的基础等待时间（秒）。
             sleep_fn: 可注入的等待函数，便于测试。
         """
-        self.proxy = proxy
+        self.proxy = proxy or os.environ.get("FRED_PROXY") or os.environ.get("ALL_PROXY")
         self.max_retries = max(0, int(max_retries))
         self.timeout = timeout
         self.backoff_factor = max(0.0, float(backoff_factor))
@@ -44,7 +48,7 @@ class FredClient:
             self.session.proxies = {"http": self.proxy, "https": self.proxy}
 
     def fetch_series_raw(self, series_id: str) -> pd.DataFrame:
-        """根据 FRED series_id (如 FEDFUNDS, CPIAUCSL) 下载完整历史数据表。"""
+        """根据 FRED series_id (如 DFF, FEDFUNDS, CPIAUCSL) 下载完整历史数据表。"""
         params = {"id": series_id}
         for attempt in range(self.max_retries + 1):
             try:
@@ -59,6 +63,9 @@ class FredClient:
                 if attempt < self.max_retries:
                     self._sleep_before_retry(attempt, None, series_id, exc)
                     continue
+                if series_id.upper() == "DFF":
+                    logger.warning("FRED DFF CSV 请求失败，回退到联储 H.15 官方 XML: %s", exc)
+                    return self._fetch_dff_from_h15()
                 logger.error("FRED 请求宏观序列失败 [%s]: %s", series_id, exc)
                 raise DataFetchError(
                     f"FRED 请求宏观序列失败 [{series_id}]，重试 {self.max_retries} 次后仍失败: {exc}"
@@ -69,6 +76,9 @@ class FredClient:
                 if attempt < self.max_retries:
                     self._sleep_before_retry(attempt, response, series_id, status)
                     continue
+                if series_id.upper() == "DFF":
+                    logger.warning("FRED DFF CSV 返回 HTTP %s，回退到联储 H.15 官方 XML", status)
+                    return self._fetch_dff_from_h15()
                 raise DataFetchError(
                     f"FRED 请求宏观序列失败 [{series_id}]，HTTP {status}，"
                     f"重试 {self.max_retries} 次后仍失败"
@@ -77,6 +87,9 @@ class FredClient:
             try:
                 response.raise_for_status()
             except Exception as exc:
+                if series_id.upper() == "DFF":
+                    logger.warning("FRED DFF CSV 响应异常，回退到联储 H.15 官方 XML: %s", exc)
+                    return self._fetch_dff_from_h15()
                 raise DataFetchError(f"FRED 请求宏观序列失败 [{series_id}]: {exc}") from exc
 
             try:
@@ -97,13 +110,62 @@ class FredClient:
                 if val_col not in df.columns:
                     raise DataFetchError(f"FRED 响应缺少序列列 [{series_id}/{val_col}]")
                 df[val_col] = pd.to_numeric(df[val_col], errors="coerce")
-                return df.dropna(subset=[val_col])
-            except DataFetchError:
+                df = df.dropna(subset=[val_col])
+                if not df.empty or series_id.upper() != "DFF":
+                    return df
+                logger.warning("FRED DFF CSV 没有有效观测，回退到联储 H.15 官方 XML")
+                return self._fetch_dff_from_h15()
+            except DataFetchError as exc:
+                if series_id.upper() == "DFF":
+                    logger.warning("FRED DFF CSV 解析失败，回退到联储 H.15 官方 XML: %s", exc)
+                    return self._fetch_dff_from_h15()
                 raise
             except Exception as exc:
+                if series_id.upper() == "DFF":
+                    logger.warning("FRED DFF CSV 解析失败，回退到联储 H.15 官方 XML: %s", exc)
+                    return self._fetch_dff_from_h15()
                 raise DataFetchError(f"FRED 响应解析失败 [{series_id}]: {exc}") from exc
 
         raise DataFetchError(f"FRED 请求宏观序列失败 [{series_id}]")
+
+    def _fetch_dff_from_h15(self) -> pd.DataFrame:
+        """在 FRED Graph CSV 不可用时，从联储 H.15 官方归档读取 DFF。"""
+        try:
+            response = self.session.get(self.H15_XML_URL, timeout=max(self.timeout, 60.0))
+            response.raise_for_status()
+            archive_data = io.BytesIO(response.content)
+            observations: list[tuple[str, float]] = []
+            with ZipFile(archive_data) as archive:
+                xml_name = next(
+                    name for name in archive.namelist() if name.rsplit("/", 1)[-1] == "H15_data.xml"
+                )
+                with archive.open(xml_name) as xml_file:
+                    in_dff_series = False
+                    for event, element in ElementTree.iterparse(  # noqa: S314 - official Fed archive
+                        xml_file, events=("start", "end")
+                    ):
+                        local_name = element.tag.rsplit("}", 1)[-1]
+                        if event == "start" and local_name == "Series":
+                            in_dff_series = element.attrib.get("SERIES_NAME") == "RIFSPFF_N.B"
+                        elif event == "end" and in_dff_series and local_name == "Obs":
+                            if element.attrib.get("OBS_STATUS") == "A":
+                                date_value = element.attrib.get("TIME_PERIOD")
+                                value = element.attrib.get("OBS_VALUE")
+                                if date_value and value:
+                                    observations.append((date_value, float(value)))
+                            element.clear()
+                        elif event == "end" and local_name == "Series":
+                            if in_dff_series:
+                                break
+                            element.clear()
+
+            if not observations:
+                raise DataFetchError("联储 H.15 官方 XML 中没有 DFF 有效观测")
+            return pd.DataFrame(observations, columns=["DATE", "DFF"])
+        except DataFetchError:
+            raise
+        except Exception as exc:
+            raise DataFetchError(f"从联储 H.15 官方 XML 获取 DFF 失败: {exc}") from exc
 
     def _sleep_before_retry(self, attempt: int, response: Any, series_id: str, detail: Any) -> None:
         retry_after = None

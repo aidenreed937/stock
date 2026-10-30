@@ -18,6 +18,12 @@ def merge_raw_frames(
     backup_legacy_file: Callable[[], None],
 ) -> pl.DataFrame:
     """归一 RAW 嵌套列、合并新旧帧并按注册主键去重。"""
+    dataset_name = items[0][0].dataset if items else ""
+    existing = StorageCompat.normalize_lixinger_industry_financial_q(dataset_name, existing)
+    items = [
+        (key, StorageCompat.normalize_lixinger_industry_financial_q(key.dataset, frame))
+        for key, frame in items
+    ]
     reference_frames = [existing, *(frame for _, frame in items)]
     existing = StorageCompat.normalize_nested_columns(existing, reference_frames=reference_frames)
     normalized_items = [
@@ -27,12 +33,7 @@ def merge_raw_frames(
         )
         for key, frame in items
     ]
-    incoming_columns = {column for _, frame in normalized_items for column in frame.columns}
-    if (
-        replace_existing
-        and not existing.is_empty()
-        and not incoming_columns.issubset(existing.columns)
-    ):
+    if replace_existing and not existing.is_empty():
         backup_legacy_file()
         existing = pl.DataFrame()
 

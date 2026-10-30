@@ -6,7 +6,7 @@ from typing import Any
 
 import polars as pl
 
-from stock_data.core.task_registry import resolve_task
+from stock_data.core.task_resolution import resolve_task
 
 
 def _resolve_dedup_keys(
@@ -19,6 +19,14 @@ def _resolve_dedup_keys(
         "index_daily_bar",
     ),
 ) -> list[str]:
+    try:
+        from stock_data.core.derived_datasets import resolve_derived_dataset
+
+        derived = resolve_derived_dataset(source or data_source or "tushare", dataset_name)
+        if derived is not None:
+            return [column for column in derived.primary_keys if column in merged.columns]
+    except Exception:
+        pass
     if dataset_name in bar_datasets:
         return [column for column in ("market", "symbol", "trade_date") if column in merged.columns]
 
@@ -50,8 +58,16 @@ def _resolve_dedup_keys(
         pass
 
     if meta_keys:
+        # 源端标识列若已在归一化阶段改名（如 fund_portfolio 的 ts_code→fund_code），
+        # 必须优先使用改名后的列；否则 ts_code 会退回候选 symbol，而 symbol 是
+        # 「被持有股票代码」，会把不同基金持有同一股票在同一天公告的记录错误折叠。
+        renames: dict[str, str] = getattr(meta, "identity_renames", None) or {}
         mapped_keys: list[str] = []
         for key in meta_keys:
+            renamed = renames.get(key)
+            if renamed and renamed in merged.columns:
+                mapped_keys.append(renamed)
+                continue
             if key in {
                 "ts_code",
                 "stockCode",
@@ -104,6 +120,8 @@ def _resolve_dedup_keys(
             "index_id",
             "industry_id",
             "exchange_id",
+            "product_key",
+            "hs_code",
         )
         if column in merged.columns
     ]

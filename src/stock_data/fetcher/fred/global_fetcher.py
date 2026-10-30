@@ -40,7 +40,7 @@ class FredDataFetcher(BaseDataFetcher):
         return self.fetch_series_df(symbol, start_date, end_date)
 
     def fetch_series_df(self, series_id: str, start_date: date, end_date: date) -> pl.DataFrame:
-        """抓取指定 FRED 宏观序列 (如 FEDFUNDS, CPIAUCSL, UNRATE) 并过滤时间切片。"""
+        """抓取指定 FRED 宏观序列 (如 DFF, FEDFUNDS, CPIAUCSL) 并过滤时间切片。"""
         raw_df = self.client.fetch_series_raw(series_id)
         if raw_df.empty:
             return pl.DataFrame()
@@ -96,7 +96,9 @@ class FredDataFetcher(BaseDataFetcher):
         series_ids: list[str] | None = None,
     ) -> pl.DataFrame:
         """一行代码批量同步抓取 FRED 核心宏观指标。"""
-        default_series = ["FEDFUNDS", "CPIAUCSL", "UNRATE", "T10Y2Y", "WALCL"]
+        default_series = [
+            series_id for series_id in FRED_API_REGISTRY if series_id != "macro_indicators"
+        ]
         targets = series_ids or default_series
 
         frames: list[pl.DataFrame] = []

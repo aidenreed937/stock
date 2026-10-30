@@ -4,7 +4,7 @@ from __future__ import annotations
 
 from pathlib import Path
 
-from stock_data.core.task_registry import resolve_task
+from stock_data.core.task_resolution import resolve_task
 
 # industry 数据源下按业务子目录存储、但仍需按文件名独立寻址的数据集快捷别名。
 # 未登记的多级目录可由 DataCatalog 直接使用安全相对路径寻址。
@@ -17,6 +17,31 @@ INDUSTRY_SUBDIR_DATASETS: frozenset[str] = frozenset(
         "global_renewable_capacity",
     }
 )
+
+# industry 数据源下半导体按 5 大产研业务子目录存储的黄金事实表映射表。
+SEMICONDUCTOR_SUBDIR_DATASETS: dict[str, str] = {
+    # sales (销售与产出)
+    "semiconductor_sales": "semiconductor/sales/semiconductor_sales",
+    "semiconductor_lead": "semiconductor/sales/semiconductor_lead",
+    # inventory (库存与出清)
+    "semiconductor_inventory_days": "semiconductor/inventory/semiconductor_inventory_days",
+    "semiconductor_channel_inventory": "semiconductor/inventory/semiconductor_channel_inventory",
+    # equipment (设备与资本开支)
+    "semiconductor_equipment": "semiconductor/equipment/semiconductor_equipment",
+    "semiconductor_equipment_semi": "semiconductor/equipment/semiconductor_equipment_semi",
+    "semiconductor_equipment_gm": "semiconductor/equipment/semiconductor_equipment_gm",
+    "semiconductor_equipment_gm_multi": "semiconductor/equipment/semiconductor_equipment_gm_multi",
+    "tel_gm_quarterly": "semiconductor/equipment/tel_gm_quarterly",
+    # capacity (供给约束与晶圆制造/先进封装)
+    "foundry_capacity_utilization": "semiconductor/capacity/foundry_capacity_utilization",
+    "chip_lead_time": "semiconductor/capacity/chip_lead_time",
+    "tsmc_advanced_packaging_revenue": "semiconductor/capacity/tsmc_advanced_packaging_revenue",
+    "tsmc_cowos_capacity_estimates": "semiconductor/capacity/tsmc_cowos_capacity_estimates",
+    # price (价格与存储基准)
+    "semiconductor_memory_price": "semiconductor/price/semiconductor_memory_price",
+    "semiconductor_memory_benchmark": "semiconductor/price/semiconductor_memory_benchmark",
+    "semiconductor_memory_taiwan_lead": "semiconductor/price/semiconductor_memory_taiwan_lead",
+}
 
 
 class DatasetAliasMixin:
@@ -71,8 +96,11 @@ class DatasetAliasMixin:
         DuckDB 查询等依赖目录聚合语义的调用方。
         """
         if provider is not None and provider.lower() == "industry":
-            if endpoint.casefold() in INDUSTRY_SUBDIR_DATASETS:
+            ep = endpoint.casefold()
+            if ep in INDUSTRY_SUBDIR_DATASETS:
                 return (f"energy/{endpoint}",)
+            if ep in SEMICONDUCTOR_SUBDIR_DATASETS:
+                return (SEMICONDUCTOR_SUBDIR_DATASETS[ep],)
         return ()
 
     @staticmethod

@@ -12,6 +12,14 @@ from stock_data.storage.compat_rules import (
     numeric_columns_for_dataset,
 )
 
+_LIXINGER_INDUSTRY_FINANCIAL_DATASETS = frozenset(
+    {
+        f"sw_2021_{level}fs_{sector}"
+        for level in ("", "l2_", "l3_")
+        for sector in ("non_financial", "bank", "security", "insurance")
+    }
+)
+
 
 def requires_read_normalization(path: Path, dataset_name: str) -> bool:
     """判断 Parquet 是否需要先经过统一读取兼容层。"""
@@ -22,6 +30,8 @@ def requires_read_normalization(path: Path, dataset_name: str) -> bool:
     if _IDENTITY_ALIASES.intersection(schema):
         return True
     if dataset_name in {"hk_hold", "margin", "moneyflow_hsgt", "sw_daily"}:
+        return True
+    if dataset_name in _LIXINGER_INDUSTRY_FINANCIAL_DATASETS:
         return True
     if dataset_name == "interest_rates":
         return any(column in schema for column in ("lpr_y1", "lpr_y5"))

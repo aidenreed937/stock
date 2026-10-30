@@ -13,17 +13,17 @@ from stock_data.core.factory import (
     create_pipeline,
     get_shared_fetcher,
 )
+from stock_data.core.public_tasks import resolve_public_task
 from stock_data.core.runtime import DataRuntimeContext
 from stock_data.core.settings import DataSettings, data_settings
 from stock_data.core.task_bundles import TASK_BUNDLES, TaskBundle
-from stock_data.core.task_registry import (
-    TaskSpec,
+from stock_data.core.task_resolution import (
     expand_task_targets,
     is_per_symbol_task,
     list_available_tasks,
-    resolve_public_task,
     resolve_task,
 )
+from stock_data.core.task_types import TaskSpec
 
 __all__ = [
     "DATA_SOURCE_CAPABILITY_REGISTRY",

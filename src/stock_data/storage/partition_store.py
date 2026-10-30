@@ -10,7 +10,7 @@ from stock_core.exceptions import DataValidationError
 from stock_core.utils.logger import logger
 from stock_data.core.runtime import DataRuntimeContext
 from stock_data.core.settings import data_settings
-from stock_data.core.task_registry import get_endpoint_market, is_task_partitioned, resolve_task
+from stock_data.core.task_resolution import get_endpoint_market, is_task_partitioned, resolve_task
 from stock_data.governance.quality.margin_coverage import (
     is_margin_complete,
     is_margin_date_complete,

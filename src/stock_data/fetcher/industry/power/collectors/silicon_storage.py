@@ -20,7 +20,49 @@ CAPACITY_RAW_CANDIDATES = (
     "energy/polysilicon_wafer_capacity_annual.csv",
     "polysilicon_wafer_capacity_annual.csv",
 )
+INVENTORY_PATCH_RAW_CANDIDATES = (
+    "power/polysilicon_inventory_patch.csv",
+    "silicon_branch/polysilicon_inventory_patch.csv",
+    "polysilicon_inventory_patch.csv",
+)
 SILICON_WAFER_FIELDNAMES = list(SILICON_WAFER_RAW_SCHEMA)
+
+
+def load_inventory_patch_map(raw_dir: Path | str) -> dict[str, dict[str, Any]]:
+    """从 RAW 补丁 CSV 读取多晶硅历史库存校准补丁，按 report_month 索引。"""
+    raw_root = Path(raw_dir)
+    paths = PowerRawPaths(raw_root)
+    candidates = (paths.polysilicon_inventory_patch_csv,) + tuple(
+        raw_root / rel_path for rel_path in INVENTORY_PATCH_RAW_CANDIDATES
+    )
+    seen: set[Path] = set()
+    for patch_csv in candidates:
+        if patch_csv in seen:
+            continue
+        seen.add(patch_csv)
+        if not patch_csv.exists():
+            continue
+        patch_map: dict[str, dict[str, Any]] = {}
+        with patch_csv.open("r", encoding="utf-8") as f:
+            reader = csv.DictReader(f)
+            for row in reader:
+                month = (row.get("report_month") or "").strip()
+                inv = safe_float(row.get("inventory_w_tons"))
+                if month and inv is not None:
+                    patch_map[month] = {
+                        "inventory_w_tons": inv,
+                        "inventory_scope": (row.get("inventory_scope") or "").strip(),
+                        "source": (row.get("source") or "").strip(),
+                        "source_url": (row.get("source_url") or "").strip(),
+                        "data_status": (row.get("data_status") or "").strip()
+                        or "verified_industry_report",
+                        "release_date": (row.get("release_date") or "").strip(),
+                        "note": (row.get("note") or "").strip(),
+                    }
+        if patch_map:
+            logger.info("已加载多晶硅历史库存校准补丁 %d 条 (RAW: %s)", len(patch_map), patch_csv)
+            return patch_map
+    return {}
 
 
 def safe_float(val: object) -> float | None:
@@ -110,13 +152,12 @@ def load_silicon_records_from_raw_csv(
         return []
 
     content_hash, snapshot_ref = file_lineage(p, Path(raw_dir))
+    patch_map = load_inventory_patch_map(raw_dir)
     records: list[SiliconWaferMonthlyRecord] = []
     with p.open("r", encoding="utf-8") as f:
         reader = csv.DictReader(f)
         for row in reader:
             data_status = str(row.get("data_status") or "").strip() or "actual"
-            if not include_unverified and data_status not in ACTUAL_SILICON_DATA_STATUSES:
-                continue
             m_str = row["report_month"].strip()
             yr, mo = parse_month_string(m_str)
             rel_d = None
@@ -125,6 +166,32 @@ def load_silicon_records_from_raw_csv(
                     rel_d = date.fromisoformat(row["release_date"].strip())
                 except ValueError:
                     pass
+
+            row_inv_raw = row.get("polysilicon_inventory_w_tons_raw") or row.get(
+                "polysilicon_inventory_w_tons"
+            )
+            inv_val = safe_float(row_inv_raw)
+            row_source = row.get("source") or "Silicon_Branch_Antaike"
+            row_source_url = row.get("source_url") or "http://www.silicon.net.cn/"
+
+            if inv_val is None and m_str in patch_map:
+                patch = patch_map[m_str]
+                inv_val = patch["inventory_w_tons"]
+                row_inv_raw = str(patch["inventory_w_tons"])
+                row_source = f"{row_source}/{patch['source']}"
+                if patch["source_url"]:
+                    row_source_url = patch["source_url"]
+                if rel_d is None and patch["release_date"]:
+                    try:
+                        rel_d = date.fromisoformat(patch["release_date"])
+                    except ValueError:
+                        pass
+                if data_status == "actual":
+                    data_status = patch["data_status"]
+
+            if not include_unverified and data_status not in ACTUAL_SILICON_DATA_STATUSES:
+                continue
+
             records.append(
                 SiliconWaferMonthlyRecord(
                     report_month=m_str,
@@ -155,13 +222,10 @@ def load_silicon_records_from_raw_csv(
                     derived_wafer_utilization_rate=safe_float(
                         row.get("derived_wafer_utilization_rate")
                     ),
-                    polysilicon_inventory_w_tons=safe_float(
-                        row.get("polysilicon_inventory_w_tons_raw")
-                        or row.get("polysilicon_inventory_w_tons")
-                    ),
+                    polysilicon_inventory_w_tons=inv_val,
                     unit=row.get("unit") or "ten_thousand_tons_and_gw",
-                    source=row.get("source") or "Silicon_Branch_Antaike",
-                    source_url=row.get("source_url") or "http://www.silicon.net.cn/",
+                    source=row_source,
+                    source_url=row_source_url,
                     release_date=rel_d,
                     data_status=data_status,
                     collected_at=row.get("collected_at") or now_utc_iso(),
@@ -327,6 +391,7 @@ __all__ = [
     "get_polysilicon_annual_capacity",
     "get_wafer_annual_capacity",
     "load_capacity_row",
+    "load_inventory_patch_map",
     "load_silicon_records_from_raw_csv",
     "records_from_online",
     "safe_float",

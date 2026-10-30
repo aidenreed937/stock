@@ -5,7 +5,7 @@ from datetime import UTC, datetime
 
 import polars as pl
 
-from stock_data.fetcher.industry.models import ConsumerElectronicsRecord
+from stock_data.fetcher.industry.electronics.models import ConsumerElectronicsRecord
 
 CONSUMER_ELECTRONICS_SCHEMA = {
     "report_quarter": pl.String,

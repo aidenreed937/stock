@@ -7,13 +7,15 @@ from zoneinfo import ZoneInfo
 
 import polars as pl
 
+from stock_data.core.provider_registry import provider_registry
 from stock_data.core.settings import data_settings
-from stock_data.core.task_registry import _provider_registry, resolve_task
+from stock_data.core.task_resolution import resolve_task
 from stock_data.pipeline.cleaner.date_utils import parse_mixed_date
 
 logger = logging.getLogger(__name__)
 
 _DEFAULT_TZ = ZoneInfo("Asia/Shanghai")
+_SEMI_EQUIPMENT_Q4_UPDATE_DELAY_DAYS = 105
 DATA_SOURCE_TIMEZONES: dict[str, ZoneInfo] = {
     "tushare": ZoneInfo("Asia/Shanghai"),
     "lixinger": ZoneInfo("Asia/Shanghai"),
@@ -86,7 +88,7 @@ class DataUpdateScheduler:
         target_tz = DATA_SOURCE_TIMEZONES.get(data_source, _DEFAULT_TZ)
         task = resolve_task(data_source, endpoint)
 
-        meta = (_provider_registry(data_source) or _provider_registry("tushare")).get(task.api_name)
+        meta = (provider_registry(data_source) or provider_registry("tushare")).get(task.api_name)
         update_time_str, update_delay_days, delay_in_trading_days, freq = _resolve_update_values(
             task, meta
         )
@@ -106,6 +108,16 @@ class DataUpdateScheduler:
             delay_in_trading_days=delay_in_trading_days,
             timezone=target_tz,
         )
+
+    @staticmethod
+    def effective_update_delay_days(meta: EndpointUpdateMeta, target_date: date) -> int:
+        """返回该报告期适用的发布时间延迟。"""
+        if (
+            meta.task_name == "semiconductor_equipment_semi"
+            and (target_date.month - 1) // 3 + 1 == 4
+        ):
+            return _SEMI_EQUIPMENT_Q4_UPDATE_DELAY_DAYS
+        return meta.update_delay_days
 
     @classmethod
     def get_expected_ready_date(
@@ -148,13 +160,12 @@ class DataUpdateScheduler:
         meta: EndpointUpdateMeta,
         data_source: str,
     ) -> date | None:
-        if meta.update_delay_days <= 0:
+        delay_days = cls.effective_update_delay_days(meta, target_date)
+        if delay_days <= 0:
             return target_date
         if not meta.delay_in_trading_days:
-            return target_date + timedelta(days=meta.update_delay_days)
-        return cls._advance_trading_days(
-            target_date, meta.update_delay_days, data_source=data_source
-        )
+            return target_date + timedelta(days=delay_days)
+        return cls._advance_trading_days(target_date, delay_days, data_source=data_source)
 
     @classmethod
     def _advance_trading_days(
@@ -287,7 +298,7 @@ class DataUpdateScheduler:
         current_datetime: datetime | None = None,
     ) -> pl.DataFrame:
         """批量检查指定数据源全部端点在目标日期的就绪状态。"""
-        from stock_data.core.task_registry import list_available_tasks
+        from stock_data.core.task_resolution import list_available_tasks
 
         t_date = target_date or date.today()
         endpoints = list_available_tasks(data_source)
@@ -296,6 +307,7 @@ class DataUpdateScheduler:
             meta = cls.get_endpoint_update_meta(data_source, ep)
             ready = cls.is_data_ready(ep, t_date, current_datetime, data_source=data_source)
             expected_date = cls._resolve_expected_ready_date(t_date, meta, data_source)
+            delay_days = cls.effective_update_delay_days(meta, t_date)
             delay_unit = "交易日" if meta.delay_in_trading_days else "日历日"
             if expected_date is None:
                 readiness = "未就绪 (交易日历不可用)"
@@ -308,7 +320,7 @@ class DataUpdateScheduler:
                     "任务名称": meta.task_name,
                     "上游API": meta.api_name,
                     "频率": meta.frequency,
-                    "更新窗口": f"{meta.update_time} (T+{meta.update_delay_days}{delay_unit})",
+                    "更新窗口": f"{meta.update_time} (T+{delay_days}{delay_unit})",
                     "理论就绪时间": expected_label,
                     "状态": readiness,
                 }

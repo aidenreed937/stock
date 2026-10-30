@@ -293,6 +293,28 @@ def test_quality_gate_checks_analysis_mart_keys(tmp_path: Path) -> None:
     assert not gate.assert_domain_mart_quality(gate._active_parquet_files())
 
 
+def test_quality_gate_checks_smart_money_mart_keys(tmp_path: Path) -> None:
+    mart_dir = tmp_path / "mart"
+    mart_dir.mkdir(parents=True)
+    valid = pl.DataFrame(
+        {
+            "trade_date": [date(2026, 8, 28)],
+            "insider_score": [79.8],
+            "block_score": [0.0],
+            "nat_score": [31.3],
+            "smart_money_score": [37.0],
+        }
+    )
+    valid.write_parquet(mart_dir / "smart_money_daily.parquet")
+
+    gate = QualityGate(tmp_path)
+    assert gate.assert_domain_mart_quality(gate._active_parquet_files())
+
+    invalid = pl.concat([valid, valid])
+    invalid.write_parquet(mart_dir / "smart_money_daily.parquet")
+    assert not gate.assert_domain_mart_quality(gate._active_parquet_files())
+
+
 def test_quality_gate_checks_domain_input_contracts(tmp_path: Path) -> None:
     target_dir = tmp_path / "tushare" / "market=CN" / "block_trade"
     target_dir.mkdir(parents=True)
@@ -315,6 +337,58 @@ def test_quality_gate_checks_domain_input_contracts(tmp_path: Path) -> None:
     assert not gate.assert_domain_input_quality(gate._active_parquet_files())
 
 
+def test_quality_gate_checks_foundry_units_and_proxy_status(tmp_path: Path) -> None:
+    target_dir = tmp_path / "industry"
+    target_dir.mkdir(parents=True)
+    valid = pl.DataFrame(
+        {
+            "report_quarter": ["2026Q2"],
+            "trade_date": [date(2026, 6, 30)],
+            "tsmc_utilization_pct": [None],
+            "tsmc_wafer_shipments_12in_kpcs": [4336.0],
+            "tsmc_capacity_12in_kpcs": [None],
+            "tsmc_utilization_status": ["unavailable"],
+            "smic_utilization_pct": [93.7],
+            "smic_monthly_capacity_8inch_kw": [1096.5],
+            "smic_wafer_shipment_kw": [2869.495],
+            "smic_utilization_status": ["reported"],
+            "source": ["TSMC_IR/SMIC_IR"],
+            "source_url": ["tsmc;smic"],
+            "release_date": [date(2026, 8, 13)],
+            "data_status": ["actual"],
+            "collected_at": ["2026-08-13T00:00:00Z"],
+            "tsmc_source_url": ["https://investor.tsmc.com/report.pdf"],
+            "tsmc_release_date": [date(2026, 7, 16)],
+            "smic_source_url": ["https://www.smics.com/report"],
+            "smic_release_date": [date(2026, 8, 13)],
+            "foundry_proxy_utilization_pct": [None],
+            "foundry_weighted_utilization_pct": [None],
+            "proxy_method": ["none"],
+            "proxy_status": ["partial"],
+            "utilization_regime": [None],
+        }
+    ).with_columns(
+        pl.col("tsmc_utilization_pct").cast(pl.Float64),
+        pl.col("tsmc_capacity_12in_kpcs").cast(pl.Float64),
+        pl.col("foundry_proxy_utilization_pct").cast(pl.Float64),
+        pl.col("foundry_weighted_utilization_pct").cast(pl.Float64),
+    )
+    path = target_dir / "foundry_capacity_utilization.parquet"
+    valid.write_parquet(path)
+
+    gate = QualityGate(tmp_path)
+    files = gate._active_parquet_files()
+    assert gate.assert_schema_contracts(files)
+    assert gate.assert_foundry_quality(files)
+    assert gate.assert_no_duplicate_keys(files)
+
+    invalid = valid.with_columns(pl.lit(111.0).alias("tsmc_utilization_pct")).with_columns(
+        pl.lit("reported").alias("tsmc_utilization_status")
+    )
+    invalid.write_parquet(path)
+    assert not gate.assert_foundry_quality(files)
+
+
 def test_quality_gate_checks_repurchase_vol_alias(tmp_path: Path) -> None:
     target_dir = tmp_path / "tushare" / "market=CN" / "repurchase" / "year=2020" / "month=04"
     target_dir.mkdir(parents=True)
@@ -335,6 +409,84 @@ def test_quality_gate_checks_repurchase_vol_alias(tmp_path: Path) -> None:
     invalid = valid.with_columns(pl.lit(-1.0).alias("vol"))
     invalid.write_parquet(target_dir / "data.parquet")
     assert not gate.assert_domain_input_quality(gate._active_parquet_files())
+
+
+def test_quality_gate_checks_semiconductor_inventory_derivations(tmp_path: Path) -> None:
+    target_dir = tmp_path / "industry"
+    target_dir.mkdir(parents=True)
+    valid = pl.DataFrame(
+        {
+            "symbol": ["TXN", "ADI", "STM", "NXPI"],
+            "report_quarter": ["2026Q1"] * 4,
+            "trade_date": [date(2026, 3, 31)] * 4,
+            "inventory_usd_million": [3910.0, 1767.1, 3173.0, 2450.0],
+            "cost_of_revenue_usd_million": [1840.0, 1115.3, 2050.0, 1430.0],
+            "release_date": [
+                date(2026, 4, 24),
+                date(2026, 2, 18),
+                date(2026, 4, 15),
+                date(2026, 4, 28),
+            ],
+            "unit": ["days"] * 4,
+            "data_status": ["actual"] * 4,
+            "doi_days": [191.2, 142.6, 139.3, 154.2],
+            "total_inventory_usd_million": [11300.1] * 4,
+            "total_cost_of_revenue_usd_million": [6435.3] * 4,
+            "idm_equal_doi_days": [156.8] * 4,
+            "idm_weighted_doi_days": [158.0] * 4,
+            "inventory_regime": ["high_overstocked"] * 4,
+        }
+    )
+    path = target_dir / "semiconductor_inventory_days.parquet"
+    valid.write_parquet(path)
+
+    gate = QualityGate(tmp_path)
+    files = gate._active_parquet_files()
+    assert gate.assert_inventory_quality(files)
+
+    invalid = valid.with_columns(pl.lit(180.0).alias("doi_days"))
+    invalid.write_parquet(path)
+    assert not gate.assert_inventory_quality(files)
+
+
+def test_quality_gate_checks_under_covered_inventory_quarter(tmp_path: Path) -> None:
+    """季度主体数不足时季度级聚合力应为空；若带值则门禁必须拦截。"""
+    target_dir = tmp_path / "industry"
+    target_dir.mkdir(parents=True)
+    under = pl.DataFrame(
+        {
+            "symbol": ["ADI"],
+            "report_quarter": ["2026Q3"],
+            "trade_date": [date(2026, 9, 30)],
+            "inventory_usd_million": [1767.1],
+            "cost_of_revenue_usd_million": [1115.3],
+            "release_date": [date(2026, 8, 19)],
+            "unit": ["days"],
+            "data_status": ["actual"],
+            "doi_days": [142.6],
+            "total_inventory_usd_million": [1767.1],
+            "total_cost_of_revenue_usd_million": [1115.3],
+            "idm_equal_doi_days": pl.Series([None], dtype=pl.Float64),
+            "idm_weighted_doi_days": pl.Series([None], dtype=pl.Float64),
+            "inventory_regime": pl.Series([None], dtype=pl.String),
+        }
+    )
+    path = target_dir / "semiconductor_inventory_days.parquet"
+    under.write_parquet(path)
+
+    gate = QualityGate(tmp_path)
+    files = gate._active_parquet_files()
+    # 单家主体、聚合留空 → 合法
+    assert gate.assert_inventory_quality(files)
+
+    # 单家主体却输出季度级聚合值与相态 → 必须拦截
+    leaked = under.with_columns(
+        pl.lit(142.6).alias("idm_equal_doi_days"),
+        pl.lit(142.6).alias("idm_weighted_doi_days"),
+        pl.lit("elevated_destocking").alias("inventory_regime"),
+    )
+    leaked.write_parquet(path)
+    assert not gate.assert_inventory_quality(files)
 
 
 def test_quality_gate_fails_on_mixed_adjustment(tmp_path: Path) -> None:

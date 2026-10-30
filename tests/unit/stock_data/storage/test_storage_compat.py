@@ -1,9 +1,10 @@
 """StorageCompat 单元测试。"""
 
-from datetime import UTC, datetime
+from datetime import UTC, date, datetime
 from pathlib import Path
 
 import polars as pl
+import pytest
 
 from stock_data.storage.compat import StorageCompat
 
@@ -33,11 +34,73 @@ def test_normalize_identity_columns() -> None:
     assert normalized["trade_date"][0] == "2026-08-10"
 
 
+def test_normalize_identity_columns_promotes_qualified_ts_code_over_bare_symbol() -> None:
+    """ts_code 是 symbol 的规范化写法时按既有语义提升（stock_basic 场景）。"""
+    df = pl.DataFrame({"ts_code": ["000001.SZ", "600000.SH"], "symbol": ["000001", "600000"]})
+
+    normalized = StorageCompat.normalize_identity_columns(df)
+
+    assert normalized["symbol"].to_list() == ["000001.SZ", "600000.SH"]
+    assert "ts_code" not in normalized.columns
+
+
+def test_normalize_identity_columns_keeps_promoting_over_placeholder_symbol() -> None:
+    """symbol 为占位符时仍由源端代码覆盖（adj_factor 场景），既有语义不变。"""
+    df = pl.DataFrame({"ts_code": ["600000.SH"], "symbol": ["ADJ_FACTOR"]})
+
+    normalized = StorageCompat.normalize_identity_columns(df)
+
+    assert normalized["symbol"].to_list() == ["600000.SH"]
+    assert "ts_code" not in normalized.columns
+
+
+def test_normalize_identity_columns_fills_symbol_from_alias_when_symbol_is_null() -> None:
+    df = pl.DataFrame({"ts_code": ["000001.SZ", "000002.SZ"], "symbol": [None, None]})
+
+    normalized = StorageCompat.normalize_identity_columns(df)
+
+    assert normalized["symbol"].to_list() == ["000001.SZ", "000002.SZ"]
+    assert "ts_code" not in normalized.columns
+
+
+def test_count_foreign_identity_alias_rows_flags_second_identifier() -> None:
+    """基金代码 vs 被持有股票代码：去掉交易所后缀后仍不同，属「另一标识」。"""
+    df = pl.DataFrame({"ts_code": ["159645.SZ", "260116.OF"], "symbol": ["002050.SZ", "600519.SH"]})
+
+    assert StorageCompat.count_foreign_identity_alias_rows(df, "ts_code") == 2
+
+
+def test_count_foreign_identity_alias_rows_ignores_format_variants_and_nulls() -> None:
+    """同一标的的不同写法、以及其中一列为空时不触发告警，避免误报噪声。"""
+    same_entity = pl.DataFrame({"ts_code": ["000001.SZ"], "symbol": ["000001"]})
+    assert StorageCompat.count_foreign_identity_alias_rows(same_entity, "ts_code") == 0
+
+    null_symbol = pl.DataFrame({"ts_code": ["000001.SZ"], "symbol": [None]})
+    assert StorageCompat.count_foreign_identity_alias_rows(null_symbol, "ts_code") == 0
+
+
 def test_normalize_datetime_columns() -> None:
     now_naive = datetime(2026, 8, 10, 12, 0, 0)
     df = pl.DataFrame({"updated_at": [now_naive]})
     normalized = StorageCompat.normalize_datetime_columns(df)
     assert normalized.schema["updated_at"] == pl.Datetime("us", "UTC")
+
+
+def test_normalize_date_columns_casts_alphavantage_report_dates() -> None:
+    """Alpha Vantage 报表期间列必须落为 pl.Date，而不是原始字符串。"""
+    df = pl.DataFrame(
+        {
+            "fiscal_date_ending": ["2026-06-30"],
+            "reported_date": ["2026-08-01"],
+            "symbol": ["IBM"],
+        }
+    )
+
+    normalized = StorageCompat.normalize_date_columns(df)
+
+    assert normalized.schema["fiscal_date_ending"] == pl.Date
+    assert normalized.schema["reported_date"] == pl.Date
+    assert normalized["fiscal_date_ending"][0].isoformat() == "2026-06-30"
 
 
 def test_normalize_numeric_columns() -> None:
@@ -142,6 +205,85 @@ def test_normalize_nested_columns_casts_empty_struct_to_stable_reference() -> No
     assert normalized["q"].to_list() == [{"metrics": {"roe": None}}]
 
 
+def test_normalize_lixinger_industry_q_restores_legacy_string_shape() -> None:
+    normalized = StorageCompat.normalize_lixinger_industry_financial_q(
+        "sw_2021_l3_fs_bank",
+        pl.DataFrame({"q": ["{{{0.1,0.2},{0.3,0.4}},{{0.5}}}"]}),
+    )
+
+    assert normalized.schema["q"] == pl.Struct(
+        {
+            "ps": pl.Struct(
+                {
+                    "toi": pl.Struct({"t": pl.Int64, "c_y2y": pl.Float64, "ttm_y2y": pl.Float64}),
+                    "np": pl.Struct({"t": pl.Int64, "c_y2y": pl.Float64, "ttm_y2y": pl.Float64}),
+                }
+            ),
+            "m": pl.Struct({"roe": pl.Struct({"ttm": pl.Float64})}),
+        }
+    )
+    value = normalized["q"].item()
+    assert value["ps"]["toi"] == {"t": None, "c_y2y": 0.1, "ttm_y2y": 0.2}
+    assert value["ps"]["np"] == {"t": None, "c_y2y": 0.3, "ttm_y2y": 0.4}
+    assert value["m"]["roe"] == {"ttm": 0.5}
+
+
+def test_curated_lixinger_industry_q_derives_missing_ttm_y2y() -> None:
+    report_types = [
+        "first_quarterly_report",
+        "interim_report",
+        "third_quarterly_report",
+        "annual_report",
+    ] * 2
+    standard_dates = [
+        "2021-03-31",
+        "2021-06-30",
+        "2021-09-30",
+        "2021-12-31",
+        "2022-03-31",
+        "2022-06-30",
+        "2022-09-30",
+        "2022-12-31",
+    ]
+    cumulative = [100, 220, 340, 480, 110, 250, 400, 560]
+    frame = pl.DataFrame(
+        {
+            "symbol": ["110101"] * 8,
+            "reportType": report_types,
+            "standardDate": standard_dates,
+            "q": [
+                {
+                    "ps": {
+                        "toi": {"t": value, "c_y2y": None, "ttm_y2y": None},
+                        "np": {"t": value, "c_y2y": None, "ttm_y2y": None},
+                    },
+                    "m": {"roe": {"ttm": None}},
+                }
+                for value in cumulative
+            ],
+        }
+    )
+
+    curated = StorageCompat.post_process_dataset("sw_2021_l3_fs_bank", frame)
+    toi_derived = curated.select(
+        pl.col("q").struct.field("ps").struct.field("toi").struct.field("ttm_y2y_derived")
+    ).to_series()
+    np_derived = curated.select(
+        pl.col("q").struct.field("ps").struct.field("np").struct.field("ttm_y2y_derived")
+    ).to_series()
+
+    assert toi_derived[:7].null_count() == 7
+    assert toi_derived[7] == pytest.approx(560 / 480 - 1)
+    assert np_derived[7] == pytest.approx(560 / 480 - 1)
+
+    raw_compatible = StorageCompat.normalize_lixinger_industry_financial_q(
+        "sw_2021_l3_fs_bank", frame
+    )
+    assert "ttm_y2y_derived" not in {
+        field.name for field in raw_compatible.schema["q"].fields[0].dtype.fields
+    }
+
+
 def test_safe_normalize_frame() -> None:
     df = pl.DataFrame(
         {
@@ -188,6 +330,15 @@ def test_post_process_adds_stable_identity_for_period_macro_dataset() -> None:
     assert normalized["symbol"].to_list() == ["sf_month"]
 
 
+def test_post_process_adds_stable_identity_for_metadata_dataset() -> None:
+    for dataset in ("index_classify", "index_member"):
+        normalized = StorageCompat.post_process_dataset(
+            dataset, pl.DataFrame({"index_code": ["801001.SI"]})
+        )
+
+        assert normalized["symbol"].to_list() == [dataset]
+
+
 def test_post_process_interest_rates_drops_retired_lpr_columns() -> None:
     df = pl.DataFrame(
         {
@@ -221,3 +372,28 @@ def test_optional_columns_for_macro_and_commodity_datasets() -> None:
     assert "wti_co_sp" in optional_columns_for_dataset("crude_oil")
     assert "l_cu_p" in optional_columns_for_dataset("non_ferrous_metals")
     assert "ps_mc" in optional_columns_for_dataset("pledge_info")
+
+
+def test_resolve_dedup_keys_prefers_renamed_identity_column() -> None:
+    """fund_portfolio 的 ts_code 已改名为 fund_code，去重键不能用 symbol 顶替。
+
+    历史缺陷：ts_code 在 Curated 侧已改名为 fund_code，去重键解析退回候选 symbol，
+    而 symbol 是「被持有股票代码」，于是不同基金持有同一股票、同一天公告的记录被折叠，
+    341,908 行读成 119,000 行。修复后必须保留 fund_code。
+    """
+    frame = pl.DataFrame(
+        {
+            "market": ["CN", "CN"],
+            "fund_code": ["005827.OF", "110011.OF"],
+            "symbol": ["600519.SH", "600519.SH"],
+            "ann_date": [date(2026, 1, 22), date(2026, 1, 22)],
+            "end_date": [date(2025, 12, 31), date(2025, 12, 31)],
+        }
+    )
+
+    keys = StorageCompat.resolve_dedup_keys("fund_portfolio", "tushare", "tushare", frame)
+
+    assert "fund_code" in keys
+    assert "symbol" in keys
+    # 关键断言：两只基金持有同一只股票不能被折叠
+    assert frame.unique(subset=keys, keep="last").height == 2

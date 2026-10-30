@@ -8,9 +8,21 @@ if TYPE_CHECKING:
         BackfillRequest,
         run_backfill,
     )
+    from stock_data.pipeline.index_member_versioned import (
+        build_index_member_versioned,
+        materialize_index_member_versioned,
+    )
     from stock_data.pipeline.pipeline import MarketDataPipeline
     from stock_data.pipeline.planner import BackfillPlanner, BackfillTask
     from stock_data.pipeline.scheduler import DataUpdateScheduler
+    from stock_data.pipeline.sw_industry_golden import (
+        build_sw_2021_industry_dimension,
+        build_sw_2021_industry_golden,
+        build_sw_2021_industry_member_golden,
+        load_sw_2021_industry_dimension,
+        load_sw_2021_industry_symbols,
+        materialize_sw_2021_industry_golden,
+    )
     from stock_data.pipeline.sync import (
         DailySyncEngine,
         SyncExecutionResult,
@@ -29,6 +41,14 @@ __all__ = [
     "SyncExecutionResult",
     "SyncSourceRun",
     "SyncTaskItem",
+    "build_index_member_versioned",
+    "build_sw_2021_industry_dimension",
+    "build_sw_2021_industry_golden",
+    "build_sw_2021_industry_member_golden",
+    "load_sw_2021_industry_dimension",
+    "load_sw_2021_industry_symbols",
+    "materialize_index_member_versioned",
+    "materialize_sw_2021_industry_golden",
     "run_backfill",
     "run_sync",
 ]
@@ -46,6 +66,38 @@ _EXPORT_MAP: dict[str, tuple[str, str]] = {
     "SyncTaskItem": ("stock_data.pipeline.sync", "SyncTaskItem"),
     "SyncSourceRun": ("stock_data.pipeline.sync_runner", "SyncSourceRun"),
     "run_sync": ("stock_data.pipeline.sync_runner", "run_sync"),
+    "build_index_member_versioned": (
+        "stock_data.pipeline.index_member_versioned",
+        "build_index_member_versioned",
+    ),
+    "materialize_index_member_versioned": (
+        "stock_data.pipeline.index_member_versioned",
+        "materialize_index_member_versioned",
+    ),
+    "build_sw_2021_industry_dimension": (
+        "stock_data.pipeline.sw_industry_golden",
+        "build_sw_2021_industry_dimension",
+    ),
+    "build_sw_2021_industry_golden": (
+        "stock_data.pipeline.sw_industry_golden",
+        "build_sw_2021_industry_golden",
+    ),
+    "build_sw_2021_industry_member_golden": (
+        "stock_data.pipeline.sw_industry_golden",
+        "build_sw_2021_industry_member_golden",
+    ),
+    "materialize_sw_2021_industry_golden": (
+        "stock_data.pipeline.sw_industry_golden",
+        "materialize_sw_2021_industry_golden",
+    ),
+    "load_sw_2021_industry_symbols": (
+        "stock_data.pipeline.sw_industry_golden",
+        "load_sw_2021_industry_symbols",
+    ),
+    "load_sw_2021_industry_dimension": (
+        "stock_data.pipeline.sw_industry_golden",
+        "load_sw_2021_industry_dimension",
+    ),
 }
 
 

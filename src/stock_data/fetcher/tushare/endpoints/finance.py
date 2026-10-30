@@ -27,6 +27,8 @@ FINANCE_ENDPOINTS: dict[str, EndpointMeta] = {
             "ts_code,ann_date,holder_name,holder_type,in_de,change_vol,change_ratio,"
             "after_share,after_ratio,avg_price,total_share,begin_date,close_date"
         ),
+        partitioned=True,
+        is_single_sync=False,
     ),
     "repurchase": EndpointMeta(
         api_name="repurchase",
@@ -47,6 +49,8 @@ FINANCE_ENDPOINTS: dict[str, EndpointMeta] = {
         sync_lookback_days=31,
         max_rows_per_request=2000,
         request_fields=("ts_code,ann_date,end_date,proc,exp_date,vol,amount,high_limit,low_limit"),
+        partitioned=True,
+        is_single_sync=False,
     ),
     "block_trade": EndpointMeta(
         api_name="block_trade",
@@ -67,6 +71,8 @@ FINANCE_ENDPOINTS: dict[str, EndpointMeta] = {
         sync_lookback_days=5,
         max_rows_per_request=1000,
         request_fields="ts_code,trade_date,price,vol,amount,buyer,seller",
+        partitioned=True,
+        is_single_sync=False,
     ),
     "share_float": EndpointMeta(
         api_name="share_float",
@@ -88,6 +94,8 @@ FINANCE_ENDPOINTS: dict[str, EndpointMeta] = {
         request_fields=(
             "ts_code,ann_date,float_date,float_share,float_ratio,holder_name,share_type"
         ),
+        partitioned=True,
+        is_single_sync=False,
     ),
     "pledge_detail": EndpointMeta(
         api_name="pledge_detail",
@@ -143,6 +151,9 @@ FINANCE_ENDPOINTS: dict[str, EndpointMeta] = {
         primary_keys=["ts_code", "end_date"],
         date_columns=["end_date"],
         required_columns=["ts_code", "end_date"],
+        fetch_mode="per_period",
+        partitioned=True,
+        is_single_sync=False,
     ),
     "fina_indicator": EndpointMeta(
         api_name="fina_indicator_vip",
@@ -153,6 +164,30 @@ FINANCE_ENDPOINTS: dict[str, EndpointMeta] = {
         primary_keys=["ts_code", "end_date"],
         date_columns=["end_date"],
         required_columns=["ts_code", "end_date"],
+        fetch_mode="per_period",
+        partitioned=True,
+        is_single_sync=False,
+    ),
+    "fina_mainbz": EndpointMeta(
+        api_name="fina_mainbz_vip",
+        description="上市公司主营业务构成",
+        frequency="quarterly",
+        query_mode="period",
+        group="financial_statements",
+        primary_keys=["ts_code", "end_date", "bz_code", "bz_item"],
+        date_columns=["end_date"],
+        required_columns=["ts_code", "end_date", "bz_code", "bz_item", "bz_sales"],
+        units={
+            "bz_sales": "CNY",
+            "bz_profit": "CNY",
+            "bz_cost": "CNY",
+        },
+        fetch_mode="per_period",
+        partitioned=True,
+        is_single_sync=False,
+        period_query_variants=((("type", "P"),), (("type", "D"),)),
+        period_query_variant_columns={"type": "bz_code"},
+        replace_raw_on_refresh=True,
     ),
     "moneyflow": EndpointMeta(
         api_name="moneyflow",
@@ -184,6 +219,8 @@ FINANCE_ENDPOINTS: dict[str, EndpointMeta] = {
         update_delay_days=1,
         delay_in_trading_days=True,
         request_window_days=90,
+        partitioned=False,
+        is_single_sync=True,
     ),
     "margin_detail": EndpointMeta(
         api_name="margin_detail",
@@ -198,6 +235,7 @@ FINANCE_ENDPOINTS: dict[str, EndpointMeta] = {
         delay_in_trading_days=True,
         request_window_days=365,
         max_rows_per_request=6000,
+        fetch_mode="per_day",
     ),
     "moneyflow_hsgt": EndpointMeta(
         api_name="moneyflow_hsgt",
@@ -206,6 +244,8 @@ FINANCE_ENDPOINTS: dict[str, EndpointMeta] = {
         group="money_flow",
         primary_keys=["trade_date"],
         update_time="20:00",
+        partitioned=False,
+        is_single_sync=True,
     ),
     "hsgt_top10": EndpointMeta(
         api_name="hsgt_top10",
@@ -217,6 +257,8 @@ FINANCE_ENDPOINTS: dict[str, EndpointMeta] = {
         required_columns=["ts_code", "trade_date", "market_type"],
         update_time="20:00",
         request_window_days=30,
+        partitioned=False,
+        is_single_sync=True,
     ),
     "cn_gdp": EndpointMeta(
         api_name="cn_gdp",
@@ -225,6 +267,8 @@ FINANCE_ENDPOINTS: dict[str, EndpointMeta] = {
         group="macro_data",
         primary_keys=["quarter"],
         query_mode="quarter",
+        partitioned=False,
+        is_single_sync=True,
     ),
     "cn_cpi": EndpointMeta(
         api_name="cn_cpi",
@@ -233,6 +277,8 @@ FINANCE_ENDPOINTS: dict[str, EndpointMeta] = {
         group="macro_data",
         primary_keys=["month"],
         query_mode="month",
+        partitioned=False,
+        is_single_sync=True,
     ),
     "cn_ppi": EndpointMeta(
         api_name="cn_ppi",
@@ -241,6 +287,8 @@ FINANCE_ENDPOINTS: dict[str, EndpointMeta] = {
         group="macro_data",
         primary_keys=["month"],
         query_mode="month",
+        partitioned=False,
+        is_single_sync=True,
     ),
     "cn_pmi": EndpointMeta(
         api_name="cn_pmi",
@@ -249,6 +297,8 @@ FINANCE_ENDPOINTS: dict[str, EndpointMeta] = {
         group="macro_data",
         primary_keys=["month"],
         query_mode="month",
+        partitioned=False,
+        is_single_sync=True,
     ),
     "cn_m": EndpointMeta(
         api_name="cn_m",
@@ -257,6 +307,8 @@ FINANCE_ENDPOINTS: dict[str, EndpointMeta] = {
         group="macro_data",
         primary_keys=["month"],
         query_mode="month",
+        partitioned=False,
+        is_single_sync=True,
     ),
     "sf_month": EndpointMeta(
         api_name="sf_month",
@@ -265,6 +317,8 @@ FINANCE_ENDPOINTS: dict[str, EndpointMeta] = {
         group="macro_data",
         primary_keys=["month"],
         query_mode="month",
+        partitioned=False,
+        is_single_sync=True,
     ),
     "shibor": EndpointMeta(
         api_name="shibor",
@@ -275,6 +329,8 @@ FINANCE_ENDPOINTS: dict[str, EndpointMeta] = {
         query_mode="date",
         date_columns=["date"],
         required_columns=["date"],
+        partitioned=False,
+        is_single_sync=True,
     ),
     "shibor_lpr": EndpointMeta(
         api_name="shibor_lpr",
@@ -285,6 +341,8 @@ FINANCE_ENDPOINTS: dict[str, EndpointMeta] = {
         query_mode="date",
         date_columns=["date"],
         required_columns=["date"],
+        partitioned=False,
+        is_single_sync=True,
     ),
     "cn_schedule": EndpointMeta(
         api_name="cn_schedule",
@@ -295,6 +353,8 @@ FINANCE_ENDPOINTS: dict[str, EndpointMeta] = {
         query_mode="month",
         date_columns=["month", "publish_date"],
         required_columns=["publish_date", "title"],
+        partitioned=False,
+        is_single_sync=True,
     ),
     "forecast": EndpointMeta(
         api_name="forecast",
@@ -323,6 +383,9 @@ FINANCE_ENDPOINTS: dict[str, EndpointMeta] = {
         primary_keys=["ts_code", "ann_date", "end_date"],
         date_columns=["end_date", "ann_date"],
         required_columns=["ts_code", "ann_date", "end_date"],
+        fetch_mode="per_period",
+        partitioned=True,
+        is_single_sync=False,
     ),
     "cashflow": EndpointMeta(
         api_name="cashflow_vip",
@@ -333,6 +396,9 @@ FINANCE_ENDPOINTS: dict[str, EndpointMeta] = {
         primary_keys=["ts_code", "ann_date", "end_date"],
         date_columns=["end_date", "ann_date"],
         required_columns=["ts_code", "ann_date", "end_date"],
+        fetch_mode="per_period",
+        partitioned=True,
+        is_single_sync=False,
     ),
     "report_rc": EndpointMeta(
         api_name="report_rc",
@@ -355,13 +421,20 @@ FINANCE_ENDPOINTS: dict[str, EndpointMeta] = {
     ),
     "fund_portfolio": EndpointMeta(
         api_name="fund_portfolio",
-        description="公募基金持仓数据（季报 Top10 重仓股及全部持仓）",
+        description="公募基金持仓数据（季报前十大重仓股，半年报/年报全部持仓）",
         frequency="quarterly",
-        query_mode="period",
+        # 上游该接口按【基金代码 ts_code】查询，返回该基金全部历史报告期持仓；
+        # 它没有 period 参数（传入会被静默忽略并退化为默认排序的前 8000 行切片），
+        # start_date/end_date 过滤的是【公告日 ann_date】而非报告期，故采用 per_symbol。
+        query_mode="symbol",
         group="fund_holdings",
+        # 主键按【源端列名】声明：契约校验、抓取去重与清洗去重均发生在改名之前。
         primary_keys=["ts_code", "ann_date", "end_date", "symbol"],
         date_columns=["ann_date", "end_date"],
         required_columns=["ts_code", "ann_date", "end_date", "symbol"],
+        # 源端 ts_code=基金自身代码、symbol=被持有股票代码，语义不同不可 coalesce。
+        # 清洗后由归一化器改名为 fund_code，与 symbol 并存落盘（避免被读取路径再次合并）。
+        identity_renames={"ts_code": "fund_code"},
         units={
             "mkv": "CNY",
             "amount": "share",
@@ -370,6 +443,12 @@ FINANCE_ENDPOINTS: dict[str, EndpointMeta] = {
         },
         max_rows_per_request=5000,
         request_fields="ts_code,ann_date,end_date,symbol,mkv,amount,stk_mkv_ratio,stk_float_ratio",
+        fetch_mode="per_symbol",
+        partitioned=True,
+        is_single_sync=False,
+        # 标的池取 fund_basic 全量（含已终止基金），不能沿用观察池或历史持仓表里出现过的基金，
+        # 否则新发基金会长期缺席（实测 2025 年股混基金覆盖率仅约 70%）。
+        required_pool="fund_basic",
     ),
 }
 
@@ -378,6 +457,7 @@ FINANCE_ENDPOINTS: dict[str, EndpointMeta] = {
 _VIP_FINANCIAL_STATEMENT_APIS = {
     "income": "income_vip",
     "fina_indicator": "fina_indicator_vip",
+    "fina_mainbz": "fina_mainbz_vip",
     "balancesheet": "balancesheet_vip",
     "cashflow": "cashflow_vip",
 }

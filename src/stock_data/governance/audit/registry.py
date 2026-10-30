@@ -126,6 +126,36 @@ AUDIT_DATASET_REGISTRY: dict[str, DatasetAuditSpec] = {
         source_endpoint="cn/industry/fundamental/sw_2021",
         industry_level="L2",
     ),
+    "semiconductor_sales": DatasetAuditSpec(
+        dataset="semiconductor_sales",
+        data_source="industry",
+        domain=AuditDomain.INDUSTRY,
+        frequency=AuditFrequency.MONTHLY,
+        min_expected_ratio=1.0,
+        is_partitioned=False,
+        lineage_status="raw_backed",
+        source_endpoint="WSTS/SIA",
+    ),
+    "foundry_capacity_utilization": DatasetAuditSpec(
+        dataset="foundry_capacity_utilization",
+        data_source="industry",
+        domain=AuditDomain.INDUSTRY,
+        frequency=AuditFrequency.QUARTERLY,
+        min_expected_ratio=1.0,
+        is_partitioned=False,
+        lineage_status="raw_backed",
+        source_endpoint="TSMC_IR/SMIC_IR",
+    ),
+    "semiconductor_inventory_days": DatasetAuditSpec(
+        dataset="semiconductor_inventory_days",
+        data_source="industry",
+        domain=AuditDomain.INDUSTRY,
+        frequency=AuditFrequency.QUARTERLY,
+        min_expected_ratio=1.0,
+        is_partitioned=False,
+        lineage_status="raw_backed",
+        source_endpoint="SEC_EDGAR_10Q_10K_20F_6K",
+    ),
     # 3. 大盘指数领域 (INDEX - DAILY)
     "index_daily": DatasetAuditSpec(
         dataset="index_daily",
@@ -267,6 +297,46 @@ AUDIT_DATASET_REGISTRY: dict[str, DatasetAuditSpec] = {
         domain=AuditDomain.METADATA,
         frequency=AuditFrequency.STATIC,
         is_partitioned=False,
+    ),
+    "index_member_versioned": DatasetAuditSpec(
+        dataset="index_member_versioned",
+        data_source="tushare",
+        domain=AuditDomain.METADATA,
+        frequency=AuditFrequency.STATIC,
+        min_expected_ratio=0.0,
+        is_partitioned=False,
+        raw_reconciliation_exempt=True,
+        raw_reconciliation_reason=(
+            "由 Curated index_member 与 index_classify 派生；RAW 保持原表，不对派生表做逐键对账"
+        ),
+        lineage_status="derived_curated",
+        source_endpoint="derived:index_member+index_classify",
+    ),
+    "sw_2021_industry_dimension_golden": DatasetAuditSpec(
+        dataset="sw_2021_industry_dimension_golden",
+        data_source="derived",
+        domain=AuditDomain.METADATA,
+        frequency=AuditFrequency.STATIC,
+        min_expected_ratio=0.0,
+        is_partitioned=False,
+        raw_reconciliation_exempt=True,
+        raw_reconciliation_reason="由 TuShare 行业字典与理杏仁申万成分快照派生，无对应单一 RAW 源表",
+        lineage_status="derived_curated",
+        source_endpoint="derived:tushare.index_classify+lixinger.sw_2021_constituents",
+    ),
+    "sw_2021_industry_member_golden": DatasetAuditSpec(
+        dataset="sw_2021_industry_member_golden",
+        data_source="derived",
+        domain=AuditDomain.METADATA,
+        frequency=AuditFrequency.STATIC,
+        min_expected_ratio=0.0,
+        is_partitioned=False,
+        raw_reconciliation_exempt=True,
+        raw_reconciliation_reason="由 TuShare 成员历史与理杏仁当前快照派生，源差异通过 conflict_flag 保留",
+        lineage_status="derived_curated",
+        source_endpoint=(
+            "derived:tushare.index_classify+index_member+lixinger.sw_2021_constituents"
+        ),
     ),
 }
 

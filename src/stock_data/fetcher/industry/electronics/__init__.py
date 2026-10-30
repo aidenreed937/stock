@@ -9,6 +9,7 @@ from stock_data.fetcher.industry.electronics.crawler import (
     parse_idc_smartphone_pr,
     parse_idc_vendor_table,
 )
+from stock_data.fetcher.industry.electronics.models import ConsumerElectronicsRecord
 from stock_data.fetcher.industry.electronics.transform import (
     CONSUMER_ELECTRONICS_SCHEMA,
     empty_consumer_electronics,
@@ -19,6 +20,7 @@ __all__ = [
     "CONSUMER_ELECTRONICS_SCHEMA",
     "ConsumerElectronicsCollector",
     "ConsumerElectronicsCrawler",
+    "ConsumerElectronicsRecord",
     "IdcElectronicsHtmlParser",
     "empty_consumer_electronics",
     "parse_idc_china_pr",

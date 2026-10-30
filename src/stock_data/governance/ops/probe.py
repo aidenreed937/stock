@@ -191,37 +191,6 @@ class GlobalDataProbe:
                 }
             )
 
-        # 4. 全球宏观资产 (美债10Y / 黄金 / VIX)
-        start_t = time.monotonic()
-        try:
-            df = self.yfinance_fetcher.fetch_macro_indicators_df(
-                target_date, today, symbols=["^TNX", "GC=F", "^VIX"]
-            )
-            lat = (time.monotonic() - start_t) * 1000
-            results.append(
-                {
-                    "source": "yfinance",
-                    "endpoint": "macro_indicators (全球宏观)",
-                    "freq": "daily",
-                    "status": "SUCCESS" if not df.is_empty() else "EMPTY",
-                    "rows": len(df),
-                    "cols": len(df.columns),
-                    "latency_ms": round(lat, 2),
-                }
-            )
-        except Exception as e:
-            lat = (time.monotonic() - start_t) * 1000
-            results.append(
-                {
-                    "source": "yfinance",
-                    "endpoint": "macro_indicators",
-                    "freq": "daily",
-                    "status": "FAILED",
-                    "error": str(e),
-                    "latency_ms": round(lat, 2),
-                }
-            )
-
         return results
 
     def probe_fred(self) -> list[dict[str, Any]]:
@@ -259,16 +228,16 @@ class GlobalDataProbe:
                 }
             )
 
-        # 2. 月频美联储有效利率 (FEDFUNDS)
+        # 2. 日频美联储有效利率 (DFF)
         start_t = time.monotonic()
         try:
-            df = self.fred_fetcher.fetch_series_df("FEDFUNDS", start_d, today)
+            df = self.fred_fetcher.fetch_series_df("DFF", start_d, today)
             lat = (time.monotonic() - start_t) * 1000
             results.append(
                 {
                     "source": "fred",
-                    "endpoint": "FEDFUNDS (美联储利率)",
-                    "freq": "monthly",
+                    "endpoint": "DFF (美联储有效利率)",
+                    "freq": "daily",
                     "status": "SUCCESS" if not df.is_empty() else "EMPTY",
                     "rows": len(df),
                     "cols": len(df.columns),
@@ -280,8 +249,8 @@ class GlobalDataProbe:
             results.append(
                 {
                     "source": "fred",
-                    "endpoint": "FEDFUNDS",
-                    "freq": "monthly",
+                    "endpoint": "DFF",
+                    "freq": "daily",
                     "status": "FAILED",
                     "error": str(e),
                     "latency_ms": round(lat, 2),
@@ -310,6 +279,35 @@ class GlobalDataProbe:
                 {
                     "source": "fred",
                     "endpoint": "T10Y2Y",
+                    "freq": "daily",
+                    "status": "FAILED",
+                    "error": str(e),
+                    "latency_ms": round(lat, 2),
+                }
+            )
+
+        # 4. FRED 官方外部环境代表序列 (VIXCLS)
+        start_t = time.monotonic()
+        try:
+            df = self.fred_fetcher.fetch_series_df("VIXCLS", start_d, today)
+            lat = (time.monotonic() - start_t) * 1000
+            results.append(
+                {
+                    "source": "fred",
+                    "endpoint": "VIXCLS (官方VIX收盘)",
+                    "freq": "daily",
+                    "status": "SUCCESS" if not df.is_empty() else "EMPTY",
+                    "rows": len(df),
+                    "cols": len(df.columns),
+                    "latency_ms": round(lat, 2),
+                }
+            )
+        except Exception as e:
+            lat = (time.monotonic() - start_t) * 1000
+            results.append(
+                {
+                    "source": "fred",
+                    "endpoint": "VIXCLS",
                     "freq": "daily",
                     "status": "FAILED",
                     "error": str(e),

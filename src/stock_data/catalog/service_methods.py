@@ -215,7 +215,7 @@ class CatalogReadMixin:
 
             catalog = DataCatalog(source, self.storage_dir)
         try:
-            from stock_data.core.task_registry import resolve_task
+            from stock_data.core.task_resolution import resolve_task
 
             date_columns = resolve_task(source, dataset).date_columns
             date_column = date_columns[0] if date_columns else None

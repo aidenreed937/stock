@@ -7,7 +7,11 @@ from datetime import date, datetime, timedelta
 from typing import Any
 
 from stock_data.catalog import DataCatalog
-from stock_data.core.task_registry import expand_task_targets, resolve_task
+from stock_data.core.task_resolution import expand_task_targets, resolve_task
+from stock_data.pipeline.report_probe import (
+    YFINANCE_FINANCIAL_PROBE_EPOCH,
+    ReportProbeDecision,
+)
 from stock_data.pipeline.scheduler import DataUpdateScheduler
 from stock_data.pipeline.sync_models import SyncTaskItem
 from stock_data.pipeline.sync_target import normalize_watermark_date
@@ -33,6 +37,7 @@ def build_sync_plan(
     symbol_base_date: Callable[[str, str, str], date | None],
     expand_task_targets_fn: Callable[..., list[str]] = expand_task_targets,
     resolve_task_fn: Callable[..., Any] = resolve_task,
+    report_probe_decision: Callable[..., ReportProbeDecision] | None = None,
 ) -> list[SyncTaskItem]:
     """结合落盘水位与更新时间窗口，生成最小必要增量同步任务计划。"""
     target = target_date or date.today()
@@ -108,7 +113,8 @@ def build_sync_plan(
 
         for symbol in symbols:
             scheduled_endpoint = schedule_endpoint(data_source, endpoint, symbol)
-            is_period_task = task.fetch_mode == "per_period"
+            is_period_task = task.fetch_mode == "per_period" or task.query_mode == "period"
+            is_yfinance_report_probe = data_source == "yfinance" and task.query_mode == "period"
             sync_target = _resolve_sync_target_date(
                 data_source,
                 scheduled_endpoint,
@@ -131,6 +137,8 @@ def build_sync_plan(
                 if watermark is not None
                 else None
             )
+            if is_yfinance_report_probe:
+                sync_target = period_watermark or YFINANCE_FINANCIAL_PROBE_EPOCH
             if sync_target is None:
                 plan.append(
                     SyncTaskItem(
@@ -143,6 +151,27 @@ def build_sync_plan(
                         status="SKIPPED",
                         is_ready=False,
                         reason="交易日历不可用",
+                        symbol=symbol,
+                    )
+                )
+                continue
+
+            if (
+                not force
+                and getattr(task, "sync_policy", "incremental") == "manual_snapshot"
+                and watermark is not None
+            ):
+                plan.append(
+                    SyncTaskItem(
+                        data_source=data_source,
+                        endpoint=endpoint,
+                        dataset=task.dataset,
+                        start_date=sync_target,
+                        end_date=sync_target,
+                        watermark=watermark,
+                        status="UP_TO_DATE",
+                        is_ready=True,
+                        reason="手工存证任务已有发布日期水位；新增或修订请显式 FORCE=1",
                         symbol=symbol,
                     )
                 )
@@ -166,13 +195,19 @@ def build_sync_plan(
                         watermark=watermark,
                         status="SKIPPED",
                         is_ready=False,
-                        reason=f"窗口未到 ({meta.update_time} T+{meta.update_delay_days})",
+                        reason=(
+                            f"窗口未到 ({meta.update_time} T+"
+                            f"{DataUpdateScheduler.effective_update_delay_days(meta, sync_target)})"
+                        ),
                         symbol=symbol,
                     )
                 )
                 continue
             current_period_refresh = (
-                is_period_task and period_watermark is not None and period_watermark == sync_target
+                task.fetch_mode == "per_period"
+                and getattr(task, "refresh_current_period", True)
+                and period_watermark is not None
+                and period_watermark == sync_target
             )
             sync_lookback_days = getattr(task, "sync_lookback_days", None)
             if sync_lookback_days is not None:
@@ -201,6 +236,7 @@ def build_sync_plan(
                 continue
             if (
                 not force
+                and not is_yfinance_report_probe
                 and period_watermark is not None
                 and period_watermark >= sync_target
                 and not current_period_refresh
@@ -221,6 +257,57 @@ def build_sync_plan(
                 )
                 continue
 
+            if is_yfinance_report_probe:
+                if not force and report_probe_decision is not None:
+                    decision = report_probe_decision(
+                        endpoint,
+                        symbol,
+                        sync_target,
+                        current_datetime,
+                    )
+                    if not decision.due:
+                        next_probe = (
+                            decision.next_probe_at.isoformat()
+                            if decision.next_probe_at is not None
+                            else "稍后"
+                        )
+                        plan.append(
+                            SyncTaskItem(
+                                data_source=data_source,
+                                endpoint=endpoint,
+                                dataset=task.dataset,
+                                start_date=sync_target,
+                                end_date=sync_target,
+                                watermark=watermark,
+                                status="SKIPPED",
+                                is_ready=True,
+                                reason=f"财报基准期 {sync_target} 已检查，冷却至 {next_probe}",
+                                symbol=symbol,
+                            )
+                        )
+                        continue
+
+                plan.append(
+                    SyncTaskItem(
+                        data_source=data_source,
+                        endpoint=endpoint,
+                        dataset=task.dataset,
+                        start_date=sync_target,
+                        end_date=sync_target,
+                        watermark=watermark,
+                        status="PENDING",
+                        is_ready=True,
+                        reason=(
+                            f"首次探测财报 ({sync_target})"
+                            if watermark is None
+                            else f"周期性探测财报 ({sync_target})"
+                        ),
+                        symbol=symbol,
+                        refresh_raw_cache=True,
+                    )
+                )
+                continue
+
             if period_watermark is not None:
                 if is_period_task and period_watermark >= sync_target:
                     start = sync_target
@@ -236,6 +323,9 @@ def build_sync_plan(
             else:
                 base_date = symbol_base_date(data_source, symbol, endpoint)
                 start = base_date if base_date and base_date <= sync_target else sync_target
+            max_increment_days = getattr(task, "max_increment_days", None)
+            if max_increment_days is not None and start < sync_target:
+                start = max(start, sync_target - timedelta(days=max(int(max_increment_days), 0)))
             plan.append(
                 SyncTaskItem(
                     data_source=data_source,

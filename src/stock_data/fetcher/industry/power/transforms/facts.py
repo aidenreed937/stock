@@ -202,7 +202,7 @@ def records_to_solar_frame(records: Sequence[SolarCapacityRecord]) -> pl.DataFra
         "yoy_growth": [_raw_number(r.yoy_growth_raw, r.yoy_growth) for r in ordered_records],
         "yoy_growth_3mma": [None] * len(ordered_records),
         "mom_growth_3mma": [None] * len(ordered_records),
-        "unit": [r.unit or "gw" for r in ordered_records],
+        "unit": ["gw/ratio" for _ in ordered_records],
         "source": [r.source or "NEA" for r in ordered_records],
         "source_url": [r.source_url or "" for r in ordered_records],
         "release_date": [r.release_date for r in ordered_records],

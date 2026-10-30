@@ -42,6 +42,7 @@ TUSHARE_TASK_REGISTRY: dict[str, EndpointMeta] = {
     "stk_surv": TUSHARE_API_REGISTRY["stk_surv"],
     "income": TUSHARE_API_REGISTRY["income"],
     "fina_indicator": TUSHARE_API_REGISTRY["fina_indicator"],
+    "fina_mainbz": TUSHARE_API_REGISTRY["fina_mainbz"],
     "balancesheet": TUSHARE_API_REGISTRY["balancesheet"],
     "cashflow": TUSHARE_API_REGISTRY["cashflow"],
     "fund_portfolio": TUSHARE_API_REGISTRY["fund_portfolio"],
@@ -71,6 +72,11 @@ _TUSHARE_PROFILES: dict[str, tuple[list[str], dict[str, str], str]] = {
             "vol": "share",
             "amount": "CNY",
         },
+        "bar",
+    ),
+    "us_daily": (
+        ["ts_code", "trade_date", "open", "high", "low", "close", "vol", "amount"],
+        {},
         "bar",
     ),
     "index_daily": (
@@ -155,6 +161,15 @@ _TUSHARE_PROFILES: dict[str, tuple[list[str], dict[str, str], str]] = {
             "netprofit_margin": "percent",
         },
         "financial_indicator",
+    ),
+    "fina_mainbz": (
+        ["ts_code", "end_date", "bz_code", "bz_item", "bz_sales"],
+        {
+            "bz_sales": "CNY",
+            "bz_profit": "CNY",
+            "bz_cost": "CNY",
+        },
+        "financial_statement",
     ),
     "suspend_d": (["ts_code", "trade_date"], {}, "event"),
     "index_weight": (

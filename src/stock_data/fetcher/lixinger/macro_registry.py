@@ -51,6 +51,17 @@ LIXINGER_MACRO_ENDPOINT_SPECS: dict[str, dict[str, Any]] = {
         "default_metrics": ["wti_co_sp", "brent_co_sp"],
         "default_params": {"areaCode": "us"},
     },
+    "macro/gold-price": {
+        "description": "黄金现货价格数据 (伦敦金与上海金)",
+        "group": "macro_data",
+        "primary_keys": ["date"],
+        "date_columns": ["date"],
+        "required_columns": ["date"],
+        "update_time": "18:00",
+        "default_metrics": ["lbma_pm_usd", "sge_pm_cny"],
+        "default_params": {"areaCode": "us"},
+        "max_range_days": 3650,
+    },
     "macro/investor": {
         "description": "A 股投资者存量与新增账户数据",
         "frequency": "monthly",

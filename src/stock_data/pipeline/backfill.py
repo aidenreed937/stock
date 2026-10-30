@@ -11,7 +11,7 @@ from typing import Any
 from stock_core.exceptions import DataFetchError
 from stock_core.utils.logger import logger
 from stock_data.core.factory import create_pipeline
-from stock_data.core.task_registry import resolve_public_task
+from stock_data.core.public_tasks import resolve_public_task
 from stock_data.fetcher.base import BaseDataFetcher
 from stock_data.pipeline.pipeline import MarketDataPipeline
 from stock_data.pipeline.planner import (
@@ -55,11 +55,23 @@ def _sync_pipeline(
 
 
 def _resolve_calendar_dates(
-    fetcher: BaseDataFetcher | None, data_source: str, start_date: date, end_date: date
+    fetcher: BaseDataFetcher | None,
+    data_source: str,
+    start_date: date,
+    end_date: date,
+    endpoint: str = "",
 ) -> list[date]:
     """获取开市有效交易日列表，缺少可信交易日历时 fail-closed。"""
     if data_source.lower() in {"fred", "industry"}:
         return [start_date + timedelta(days=i) for i in range((end_date - start_date).days + 1)]
+
+    if data_source.lower() == "tushare" and endpoint == "us_stock_daily_bar":
+        import exchange_calendars as xcals
+
+        sessions = xcals.get_calendar("XNYS").sessions_in_range(
+            start_date.isoformat(), end_date.isoformat()
+        )
+        return [session.date() for session in sessions]
 
     if data_source.lower() in {"tushare", "lixinger"}:
         try:
@@ -179,7 +191,13 @@ class HistoricalBackfiller:
         if use_cache and cache_key in self._calendar_cache:
             return self._calendar_cache[cache_key]
 
-        dates = _resolve_calendar_dates(self.fetcher, self.data_source, start_date, end_date)
+        dates = _resolve_calendar_dates(
+            self.fetcher,
+            self.data_source,
+            start_date,
+            end_date,
+            endpoint=self.endpoint,
+        )
         self._calendar_cache[cache_key] = dates
         return dates
 

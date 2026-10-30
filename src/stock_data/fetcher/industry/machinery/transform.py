@@ -5,7 +5,7 @@ from datetime import UTC, datetime
 
 import polars as pl
 
-from stock_data.fetcher.industry.models import ConstructionMachineryRecord
+from stock_data.fetcher.industry.machinery.models import ConstructionMachineryRecord
 
 CONSTRUCTION_MACHINERY_SCHEMA = {
     "report_month": pl.String,

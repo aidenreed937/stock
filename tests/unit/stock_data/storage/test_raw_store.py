@@ -660,3 +660,38 @@ def test_raw_storage_heterogeneous_schema_coalesced_dedup(tmp_path: Path) -> Non
     )
     assert len(row_801010) == 1
     assert row_801010["close"][0] == 105.0
+
+
+def test_raw_storage_preserves_multiple_registered_date_keys(tmp_path: Path) -> None:
+    """注册主键含多个日期字段时，RAW 去重不能折叠不同公告记录。"""
+    store = RawDataStorage(base_dir=tmp_path)
+    target_date = date(2026, 6, 30)
+    key = DatasetKey(
+        provider="tushare",
+        dataset="stk_holdernumber",
+        endpoint="stk_holdernumber",
+        start_date=target_date,
+        end_date=target_date,
+    )
+    store.save_dataset(
+        key,
+        pl.DataFrame(
+            {
+                "ts_code": ["000001.SZ", "000001.SZ"],
+                "ann_date": ["20260701", "20260702"],
+                "end_date": ["20260630", "20260630"],
+                "holder_num": [100, 110],
+            }
+        ),
+    )
+
+    loaded = pl.read_parquet(
+        tmp_path
+        / "tushare"
+        / "market=CN"
+        / "stk_holdernumber"
+        / "year=2026"
+        / "month=07"
+        / "data.parquet"
+    )
+    assert len(loaded) == 2

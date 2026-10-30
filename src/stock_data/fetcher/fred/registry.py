@@ -16,15 +16,38 @@ class FREDEndpointMeta:
     rate_limit_per_min: int = 120
     units: str = "index"
     max_range_days: int | None = None
+    query_mode: str = "trade_date"
+    fetch_mode: str = "per_symbol"
+    partitioned: bool = False
+    is_single_sync: bool = True
+    dataset: str = "macro_indicators"
+    quality_profile: str = "generic"
+    update_time: str = "18:00"
+    update_delay_days: int = 0
 
 
 # FRED 常用核心官方宏观指标注册表
 FRED_API_REGISTRY: dict[str, FREDEndpointMeta] = {
+    "macro_indicators": FREDEndpointMeta(
+        series_id="macro_indicators",
+        description="FRED 核心宏观指标聚合任务",
+        frequency="monthly",
+        group="macro_data",
+        quality_profile="macro",
+    ),
     "FEDFUNDS": FREDEndpointMeta(
         series_id="FEDFUNDS",
         description="美联储联邦基金有效利率 (Effective Federal Funds Rate)",
         frequency="monthly",
         units="percent",
+    ),
+    "DFF": FREDEndpointMeta(
+        series_id="DFF",
+        description="美联储联邦基金有效利率（日频，Effective Federal Funds Rate）",
+        frequency="daily",
+        units="percent",
+        update_time="18:00",
+        update_delay_days=1,
     ),
     "CPIAUCSL": FREDEndpointMeta(
         series_id="CPIAUCSL",
@@ -104,5 +127,71 @@ FRED_API_REGISTRY: dict[str, FREDEndpointMeta] = {
         frequency="daily",
         units="twd_per_usd",
         max_range_days=3650,
+    ),
+    "DEXCHUS": FREDEndpointMeta(
+        series_id="DEXCHUS",
+        description="美元兑在岸人民币即期汇率 (China / U.S. Foreign Exchange Rate, H.10 日频)",
+        frequency="daily",
+        units="cny_per_usd",
+        max_range_days=3650,
+    ),
+    "DEXJPUS": FREDEndpointMeta(
+        series_id="DEXJPUS",
+        description="美元兑日元即期汇率 (Japan / U.S. Foreign Exchange Rate, H.10 日频)",
+        frequency="daily",
+        units="jpy_per_usd",
+        max_range_days=3650,
+    ),
+    "DEXUSEU": FREDEndpointMeta(
+        series_id="DEXUSEU",
+        description="欧元兑美元即期汇率 (U.S. / Euro Foreign Exchange Rate, H.10 日频)",
+        frequency="daily",
+        units="usd_per_eur",
+        max_range_days=3650,
+    ),
+    "DEXKOUS": FREDEndpointMeta(
+        series_id="DEXKOUS",
+        description="美元兑韩元即期汇率 (South Korean Won to U.S. Dollar Spot Exchange Rate, H.10 日频)",
+        frequency="daily",
+        units="krw_per_usd",
+        max_range_days=3650,
+    ),
+    "DGS10": FREDEndpointMeta(
+        series_id="DGS10",
+        description="美国 10 年期国债常数到期收益率 (Treasury Constant Maturity Rate)",
+        frequency="daily",
+        units="percent",
+    ),
+    "DGS3MO": FREDEndpointMeta(
+        series_id="DGS3MO",
+        description="美国 3 个月国债恒定期限市场收益率 (3-Month Treasury Constant Maturity)",
+        frequency="daily",
+        units="percent",
+    ),
+    "VIXCLS": FREDEndpointMeta(
+        series_id="VIXCLS",
+        description="CBOE VIX 恐慌指数收盘值",
+        frequency="daily",
+        units="index",
+        update_time="23:00",
+        update_delay_days=1,
+    ),
+    "DCOILWTICO": FREDEndpointMeta(
+        series_id="DCOILWTICO",
+        description="WTI 西德州中质原油现货价格",
+        frequency="daily",
+        units="dollars_per_barrel",
+    ),
+    "DTWEXBGS": FREDEndpointMeta(
+        series_id="DTWEXBGS",
+        description="名义广义美元指数",
+        frequency="daily",
+        units="index_jan_2006_100",
+    ),
+    "PCOPPUSDM": FREDEndpointMeta(
+        series_id="PCOPPUSDM",
+        description="全球铜价格（月频，美元/公吨）",
+        frequency="monthly",
+        units="dollars_per_metric_ton",
     ),
 }

@@ -27,6 +27,20 @@ NEA_HEADERS = {
     "User-Agent": "Mozilla/5.0 (Macintosh; Intel Mac OS X 10_15_7) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/120.0.0.0 Safari/537.36",
     "Accept": "text/html,application/xhtml+xml,application/xml;q=0.9,*/*;q=0.8",
 }
+# 站内搜索接口缺少同源浏览器请求头时返回 403，必须补齐 Referer/Origin/X-Requested-With。
+NEA_SEARCH_HEADERS = {
+    **NEA_HEADERS,
+    "Accept": "application/json, text/javascript, */*; q=0.01",
+    "X-Requested-With": "XMLHttpRequest",
+    "Referer": f"{NEA_BASE_URL}/",
+    "Origin": NEA_BASE_URL,
+}
+# 通报标题命名自 2026 年起由「全国电力工业统计数据」改为「全国电力统计数据」，
+# 两套关键字的结果集互不覆盖（前者最新到 2025-11，后者才含 2026 年各月），必须同时检索。
+NEA_SEARCH_KEYWORDS = ("全国电力统计数据", "全国电力工业统计数据")
+# 未显式指定日期范围时只扫站内搜索第 1 页，既覆盖近月通报又避免每次同步都翻页。
+NEA_SEARCH_DEFAULT_PAGES = 1
+NEA_SEARCH_MAX_PAGES = 20
 
 
 class NeaBulletinCrawler:
@@ -141,8 +155,19 @@ class NeaBulletinCrawler:
             logger.warning("访问国家能源局首页异常: %s", e)
             errors.append(str(e))
 
-        if start_date is not None or end_date is not None:
-            news_candidates.extend(self._search_bulletins(start_date=start_date, end_date=end_date))
+        # 首页列表滚动很快：通报离开首页后就再也发现不了，因此站内搜索始终启用，
+        # 兜底补齐「同步跑晚了」漏掉的月份；显式传日期范围时加深翻页。
+        news_candidates.extend(
+            self._search_bulletins(
+                start_date=start_date,
+                end_date=end_date,
+                max_pages=(
+                    NEA_SEARCH_MAX_PAGES
+                    if start_date is not None or end_date is not None
+                    else NEA_SEARCH_DEFAULT_PAGES
+                ),
+            )
+        )
 
         # 合并首页发现的链接与历史 manifest 中已有的 URL，支持指定范围强刷。
         known_candidates = {
@@ -213,39 +238,29 @@ class NeaBulletinCrawler:
         *,
         start_date: date | None,
         end_date: date | None,
+        max_pages: int = NEA_SEARCH_DEFAULT_PAGES,
     ) -> list[tuple[str, str]]:
         """通过 NEA 官方站内搜索补充首页未展示的历史统计通报。"""
-        return _search_bulletins(start_date=start_date, end_date=end_date)
+        return _search_bulletins(start_date=start_date, end_date=end_date, max_pages=max_pages)
 
 
 def _search_bulletins(
     *,
     start_date: date | None,
     end_date: date | None,
+    max_pages: int = NEA_SEARCH_DEFAULT_PAGES,
 ) -> list[tuple[str, str]]:
-    """通过 NEA 官方站内搜索补充首页未展示的历史统计通报。"""
+    """通过 NEA 官方站内搜索补充首页未展示的统计通报。
+
+    站内搜索覆盖面远大于首页（可回溯多年），是「同步跑晚、通报已滚出首页」场景下
+    唯一可用的兜底发现路径。
+    """
     del start_date, end_date
     candidates: list[tuple[str, str]] = []
-    for page in range(1, 21):
-        try:
-            response = requests.get(
-                NEA_SEARCH_URL,
-                params={
-                    "pageNo": str(page),
-                    "pageSize": "50",
-                    "siteId": "11200",
-                    "keyword": "全国电力工业统计数据",
-                    "sort": "1",
-                    "isInclude": "1",
-                    "neac": "",
-                },
-                headers=NEA_HEADERS,
-                timeout=10,
-            )
-            if response.status_code != 200:
-                continue
-            payload = response.json()
-            rows = payload.get("content", {}).get("result", [])
+    seen_urls: set[str] = set()
+    for keyword in NEA_SEARCH_KEYWORDS:
+        for page in range(1, max(max_pages, 1) + 1):
+            rows = _search_page(keyword=keyword, page=page)
             if not rows:
                 break
             for row in rows:
@@ -254,32 +269,92 @@ def _search_bulletins(
                 )
                 url_values = row.get("originUrl") or []
                 url = str(url_values[0]) if url_values else ""
-                if not url or _extract_month_key(title) is None:
+                if not url or url in seen_urls or _extract_month_key(title) is None:
                     continue
+                seen_urls.add(url)
                 candidates.append((title, url))
-        except Exception as exc:  # noqa: BLE001
-            logger.debug("NEA 站内历史搜索失败 (page=%d): %s", page, exc)
-            break
     return candidates
 
 
-def _extract_release_date(text: str) -> str | None:
-    match = re.search(r"(20\d{2})[年\-/](\d{1,2})[月\-/](\d{1,2})日?", text)
-    if match is None:
-        return None
-    year, month, day = (int(value) for value in match.groups())
+def _search_page(*, keyword: str, page: int) -> list[dict[str, Any]]:
+    """请求站内搜索单页结果；异常或非 200 返回空列表（缺口如实留给上层）。"""
     try:
-        return date(year, month, day).isoformat()
-    except ValueError:
-        return None
+        response = requests.get(
+            NEA_SEARCH_URL,
+            params={
+                "pageNo": str(page),
+                "pageSize": "50",
+                "siteId": "11200",
+                "keyword": keyword,
+                "sort": "1",
+                "isInclude": "1",
+                "neac": "",
+            },
+            headers=NEA_SEARCH_HEADERS,
+            timeout=10,
+        )
+    except Exception as exc:  # noqa: BLE001
+        logger.debug("NEA 站内搜索异常 (keyword=%s page=%d): %s", keyword, page, exc)
+        return []
+    if response.status_code != 200:
+        logger.debug(
+            "NEA 站内搜索 HTTP %s (keyword=%s page=%d)", response.status_code, keyword, page
+        )
+        return []
+    try:
+        content = response.json().get("content")
+    except Exception as exc:  # noqa: BLE001
+        logger.debug("NEA 站内搜索响应解析失败 (keyword=%s page=%d): %s", keyword, page, exc)
+        return []
+    if not isinstance(content, dict):
+        return []
+    rows = content.get("result")
+    return rows if isinstance(rows, list) else []
+
+
+def _extract_release_date(text: str) -> str | None:
+    """从通报页面提取发布日期 (ISO)。
+
+    必须优先锚定「发布时间：」标注：正文标题里的报告期区间（如「2026年1-6月份」）会被
+    通用日期正则误读成 2026-01-06，污染下游的 release_date 生效时点。
+    """
+    patterns = (
+        r"发布时间[：:\s]*(20\d{2})[-/年](\d{1,2})[-/月](\d{1,2})",
+        r"(20\d{2})年(\d{1,2})月(\d{1,2})日",
+        r"(20\d{2})-(\d{1,2})-(\d{1,2})",
+    )
+    for pattern in patterns:
+        match = re.search(pattern, text)
+        if match is None:
+            continue
+        year, month, day = (int(value) for value in match.groups())
+        try:
+            return date(year, month, day).isoformat()
+        except ValueError:
+            continue
+    return None
 
 
 def _extract_month_key(title: str) -> str | None:
-    match = re.search(r"(20\d{2})年(?:1-)?(\d{1,2})月份", title)
+    """从通报标题解析报告月份 (YYYY-MM)。
+
+    区间分隔符可能是半角连字符（1-7月份）或全角破折号（1—8月份）等，需一并识别；
+    年份通报（「2025年全国电力统计数据」）回退为 12 月。
+    """
+    match = re.search(r"(20\d{2})年(?:1\s*[-—–－~～至/]\s*)?(\d{1,2})月份", title)
     if match:
         return f"{int(match.group(1)):04d}-{int(match.group(2)):02d}"
-    year_match = re.search(r"(20\d{2})年全国电力工业统计数据", title)
+    year_match = re.search(r"(20\d{2})年(?:全国电力(?:工业)?统计数据)", title)
     return f"{int(year_match.group(1)):04d}-12" if year_match else None
 
 
-__all__ = ["NEA_BASE_URL", "NEA_HEADERS", "NEA_SEARCH_URL", "NeaBulletinCrawler"]
+__all__ = [
+    "NEA_BASE_URL",
+    "NEA_HEADERS",
+    "NEA_SEARCH_DEFAULT_PAGES",
+    "NEA_SEARCH_HEADERS",
+    "NEA_SEARCH_KEYWORDS",
+    "NEA_SEARCH_MAX_PAGES",
+    "NEA_SEARCH_URL",
+    "NeaBulletinCrawler",
+]

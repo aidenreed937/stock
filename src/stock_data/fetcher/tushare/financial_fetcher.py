@@ -67,20 +67,32 @@ def fetch_report_periods(
         query_kwargs.pop(key, None)
 
     periods = _report_periods(start_date, end_date)
+    variant_specs = getattr(meta, "period_query_variants", ()) or ((),)
+    variant_columns = getattr(meta, "period_query_variant_columns", {}) or {}
+    requests = [(period, dict(variant)) for period in periods for variant in variant_specs]
 
-    def query_period(period: date) -> Any:
-        return client.query(meta.api_name, period=period.strftime("%Y%m%d"), **query_kwargs)
+    def query_period(request: tuple[date, dict[str, str]]) -> Any:
+        period, variant = request
+        request_kwargs = dict(query_kwargs)
+        request_kwargs.update(variant)
+        frame = client.query(meta.api_name, period=period.strftime("%Y%m%d"), **request_kwargs)
+        for query_column, response_column in variant_columns.items():
+            variant_value = variant.get(query_column)
+            if variant_value is not None and response_column not in frame.columns:
+                frame = frame.copy()
+                frame[response_column] = variant_value
+        return frame
 
     worker_count = max(1, min(int(max_workers), 8))
-    if worker_count > 1 and len(periods) > 1:
+    if worker_count > 1 and len(requests) > 1:
         logger.info(
             f"TuShare 财务报告期请求启用并发: 接口={meta.api_name}, "
-            f"报告期={len(periods)}, Worker={worker_count}"
+            f"报告期={len(periods)}, 维度={len(variant_specs)}, Worker={worker_count}"
         )
         with ThreadPoolExecutor(max_workers=worker_count) as executor:
-            responses = list(executor.map(query_period, periods))
+            responses = list(executor.map(query_period, requests))
     else:
-        responses = [query_period(period) for period in periods]
+        responses = [query_period(request) for request in requests]
 
     frames = [
         post_process_tushare_frame(pandas_df, meta, "")

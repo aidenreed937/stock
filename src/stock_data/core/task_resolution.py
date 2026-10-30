@@ -108,7 +108,7 @@ def resolve_public_task(provider: str, task_name: str, symbol: str = "") -> Task
     """解析 CLI/配置公开任务名，拒绝别名、路径和未注册任务。"""
     from stock_data.core.public_tasks import resolve_public_task as _resolve_public_task
 
-    return cast("TaskSpec", _resolve_public_task(provider, task_name, symbol))
+    return _resolve_public_task(provider, task_name, symbol)
 
 
 def expand_public_task_targets(provider: str, endpoints: list[str] | None = None) -> list[str]:

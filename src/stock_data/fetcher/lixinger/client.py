@@ -16,9 +16,12 @@ from stock_data.core.settings import data_settings
 from stock_data.fetcher.rate_limiter import RateLimiter
 
 MAX_STOCK_CODES = 100
+_PROFILE_COOLDOWN_SECONDS = 600.0
 
-_SHARED_LIMITERS: dict[int, RateLimiter] = {}
+_SHARED_LIMITERS: dict[tuple[str, int], RateLimiter] = {}
 _SHARED_LIMITERS_LOCK = threading.Lock()
+_PROFILE_COOLDOWNS: dict[tuple[str, str], float] = {}
+_PROFILE_COOLDOWNS_LOCK = threading.Lock()
 
 
 def _retry_after_seconds(response: requests.Response) -> float | None:
@@ -56,19 +59,43 @@ class LixingerClient:
         rate_limit_per_min: int | None = None,
         max_retries: int = 5,
         timeout: float = 15.0,
+        profile: str | None = None,
     ) -> None:
         """初始化理杏仁客户端。
 
         Args:
-            token: 理杏仁 API Token。若为 None，从 data_settings.lixinger_token 读取。
+            token: 理杏仁 API Token。若为 None，按 profile 从配置读取。
             url: 理杏仁 API 域名。若为 None，从 data_settings.lixinger_url 读取。
+            profile: 理杏仁 Token profile。若为 None，使用配置中的 LIXINGER_PROFILE。
             rate_limit_per_min: 每分钟最大请求次数。若为 None，从 data_cfg 读取。
             max_retries: 429 或 5xx 错误的最大退避重试次数。
             timeout: HTTP 请求超时时间（秒）。
         """
         data_cfg = load_data_config()
-        self.token = token if token is not None else data_settings.effective_lixinger_token
+        selected_profile = (profile or data_settings.lixinger_profile).strip()
+        self.profile = selected_profile or None
+        primary_token = (
+            token
+            if token is not None
+            else data_settings.resolve_lixinger_token(selected_profile or None)
+        )
         self.url = (url if url is not None else data_settings.effective_lixinger_url).rstrip("/")
+        fallback_profiles = (
+            getattr(data_settings, "lixinger_fallback_profiles", []) or [] if token is None else []
+        )
+        profile_entries: list[tuple[str | None, str]] = [(self.profile, primary_token)]
+        seen_profiles = {self.profile}
+        for fallback_profile in fallback_profiles:
+            name = str(fallback_profile).strip()
+            if not name or name in seen_profiles:
+                continue
+            fallback_token = data_settings.resolve_lixinger_token(name)
+            if fallback_token:
+                profile_entries.append((name, fallback_token))
+                seen_profiles.add(name)
+        self._profile_entries = profile_entries
+        self._profile_index = self._select_initial_profile()
+        self.profile, self.token = self._profile_entries[self._profile_index]
         self.default_rate_limit = (
             rate_limit_per_min
             if rate_limit_per_min is not None
@@ -81,13 +108,65 @@ class LixingerClient:
     def _get_rate_limiter(self, api_path: str) -> RateLimiter:
         """获取当前进程共享的理杏仁全局限流器。"""
         del api_path
-        limiter_key = self.default_rate_limit
+        limiter_key = (self.profile or "__legacy__", self.default_rate_limit)
         with _SHARED_LIMITERS_LOCK:
             limiter = _SHARED_LIMITERS.get(limiter_key)
             if limiter is None:
-                limiter = RateLimiter(max_requests=limiter_key)
+                limiter = RateLimiter(max_requests=self.default_rate_limit)
                 _SHARED_LIMITERS[limiter_key] = limiter
             return limiter
+
+    def _profile_key(self, profile: str | None) -> tuple[str, str]:
+        return self.url, profile or "__legacy__"
+
+    def _is_profile_available(self, profile: str | None) -> bool:
+        key = self._profile_key(profile)
+        now = time.monotonic()
+        with _PROFILE_COOLDOWNS_LOCK:
+            expires_at = _PROFILE_COOLDOWNS.get(key)
+            if expires_at is None:
+                return True
+            if expires_at <= now:
+                _PROFILE_COOLDOWNS.pop(key, None)
+                return True
+            return False
+
+    def _select_initial_profile(self) -> int:
+        for index, (profile, token) in enumerate(self._profile_entries):
+            if token and self._is_profile_available(profile):
+                return index
+        for index, (_, token) in enumerate(self._profile_entries):
+            if token:
+                return index
+        return 0
+
+    def _switch_to_fallback_profile(self) -> bool:
+        current_profile = self.profile
+        with _PROFILE_COOLDOWNS_LOCK:
+            _PROFILE_COOLDOWNS[self._profile_key(current_profile)] = (
+                time.monotonic() + _PROFILE_COOLDOWN_SECONDS
+            )
+
+        for index in range(self._profile_index + 1, len(self._profile_entries)):
+            profile, token = self._profile_entries[index]
+            if not token or not self._is_profile_available(profile):
+                continue
+            self._profile_index = index
+            self.profile = profile
+            self.token = token
+            logger.warning(
+                f"理杏仁 Token profile 已切换: {current_profile or '__legacy__'} -> "
+                f"{profile or '__legacy__'}，原因=额度型 403"
+            )
+            return True
+        return False
+
+    @staticmethod
+    def _is_quota_exhausted_403(response: requests.Response) -> bool:
+        body = response.text.lower()
+        return "exceed maximum access time" in body or (
+            "forbiddenerror" in body and "purchase open api" in body
+        )
 
     def query(self, api_path: str, **kwargs: Any) -> pd.DataFrame:
         """执行理杏仁 API POST 查询请求并转化为 pandas DataFrame。
@@ -103,7 +182,10 @@ class LixingerClient:
             DataFetchError: 当缺少 Token、请求校验失败、Token 无效或重试用尽时抛出。
         """
         if not self.token:
-            raise DataFetchError("未配置理杏仁 API Token！请在 .env 文件中设置 LIXINGER_TOKEN")
+            profile_hint = f" profile [{self.profile}]" if self.profile else ""
+            raise DataFetchError(
+                f"未配置理杏仁 API Token{profile_hint}！请在 .env 文件中设置 LIXINGER_TOKEN"
+            )
 
         self._validate_date_range(api_path, kwargs)
 
@@ -115,91 +197,104 @@ class LixingerClient:
             "Accept-Encoding": "gzip, deflate, br, zstd",
         }
 
-        body_data = {"token": self.token, **kwargs}
+        while True:
+            body_data = {"token": self.token, **kwargs}
+            retry_delays = [1, 2, 4, 8, 16]
+            limiter = self._get_rate_limiter(api_path)
+            switched_profile = False
 
-        retry_delays = [1, 2, 4, 8, 16]
+            for attempt in range(self.max_retries + 1):
+                limiter.acquire()
+                logger.debug(f"理杏仁请求 [{attempt + 1}/{self.max_retries + 1}]: url={full_url}")
 
-        limiter = self._get_rate_limiter(api_path)
+                try:
+                    response = self._session.post(
+                        full_url, json=body_data, headers=headers, timeout=self.timeout
+                    )
+                except requests.RequestException as exc:
+                    if attempt < self.max_retries:
+                        delay = retry_delays[min(attempt, len(retry_delays) - 1)]
+                        logger.warning(f"理杏仁网络请求失败: {exc}，将在 {delay} 秒后重试...")
+                        time.sleep(delay)
+                        continue
+                    raise DataFetchError(
+                        f"理杏仁网络请求失败，已重试 {self.max_retries} 次: {exc}"
+                    ) from exc
 
-        for attempt in range(self.max_retries + 1):
-            limiter.acquire()
-            logger.debug(f"理杏仁请求 [{attempt + 1}/{self.max_retries + 1}]: url={full_url}")
+                status = response.status_code
 
-            try:
-                response = self._session.post(
-                    full_url, json=body_data, headers=headers, timeout=self.timeout
-                )
-            except requests.RequestException as exc:
-                if attempt < self.max_retries:
-                    delay = retry_delays[min(attempt, len(retry_delays) - 1)]
-                    logger.warning(f"理杏仁网络请求失败: {exc}，将在 {delay} 秒后重试...")
-                    time.sleep(delay)
-                    continue
-                raise DataFetchError(
-                    f"理杏仁网络请求失败，已重试 {self.max_retries} 次: {exc}"
-                ) from exc
+                if status == 400:
+                    msg = f"理杏仁 API 参数验证失败 (400): {response.text}"
+                    logger.error(msg)
+                    raise DataFetchError(msg)
+                if status == 401:
+                    msg = (
+                        f"理杏仁 Token 验证失效 (401)，请检查 LIXINGER_TOKEN 配置: {response.text}"
+                    )
+                    logger.error(msg)
+                    raise DataFetchError(msg)
+                if status == 403:
+                    if (
+                        self._is_quota_exhausted_403(response)
+                        and self._switch_to_fallback_profile()
+                    ):
+                        switched_profile = True
+                        break
+                    msg = f"理杏仁 API 权限不足或额度耗尽 (403): {response.text}"
+                    logger.error(msg)
+                    raise DataFetchError(msg)
+                if status == 429:
+                    if attempt < self.max_retries:
+                        delay_seconds = _retry_after_seconds(response)
+                        if delay_seconds is None:
+                            delay_seconds = float(retry_delays[min(attempt, len(retry_delays) - 1)])
+                        logger.warning(
+                            f"理杏仁 API 触发限流 (429)，等待 {delay_seconds} 秒后重试..."
+                        )
+                        time.sleep(delay_seconds)
+                        continue
+                    raise DataFetchError(f"理杏仁 API 限流重试次数超限 ({self.max_retries} 次)")
 
-            status = response.status_code
+                if status >= 500:
+                    if attempt < self.max_retries:
+                        delay = retry_delays[min(attempt, len(retry_delays) - 1)]
+                        logger.warning(
+                            f"理杏仁 API 服务器错误 ({status})，等待 {delay} 秒后重试..."
+                        )
+                        time.sleep(delay)
+                        continue
+                    raise DataFetchError(f"理杏仁 API 服务器响应异常 ({status}): {response.text}")
 
-            if status == 400:
-                msg = f"理杏仁 API 参数验证失败 (400): {response.text}"
-                logger.error(msg)
-                raise DataFetchError(msg)
-            if status == 401:
-                msg = f"理杏仁 Token 验证失效 (401)，请检查 LIXINGER_TOKEN 配置: {response.text}"
-                logger.error(msg)
-                raise DataFetchError(msg)
-            if status == 403:
-                msg = f"理杏仁 API 权限不足或额度耗尽 (403): {response.text}"
-                logger.error(msg)
-                raise DataFetchError(msg)
-            if status == 429:
-                if attempt < self.max_retries:
-                    delay_seconds = _retry_after_seconds(response)
-                    if delay_seconds is None:
-                        delay_seconds = float(retry_delays[min(attempt, len(retry_delays) - 1)])
-                    logger.warning(f"理杏仁 API 触发限流 (429)，等待 {delay_seconds} 秒后重试...")
-                    time.sleep(delay_seconds)
-                    continue
-                raise DataFetchError(f"理杏仁 API 限流重试次数超限 ({self.max_retries} 次)")
+                try:
+                    res_json = response.json()
+                except ValueError as exc:
+                    raise DataFetchError(f"理杏仁 API 响应解析 JSON 失败: {response.text}") from exc
 
-            if status >= 500:
-                if attempt < self.max_retries:
-                    delay = retry_delays[min(attempt, len(retry_delays) - 1)]
-                    logger.warning(f"理杏仁 API 服务器错误 ({status})，等待 {delay} 秒后重试...")
-                    time.sleep(delay)
-                    continue
-                raise DataFetchError(f"理杏仁 API 服务器响应异常 ({status}): {response.text}")
+                # 理杏仁 API 协议返回格式判定
+                if isinstance(res_json, dict):
+                    if "error" in res_json:
+                        err_info = res_json.get("error")
+                        code = res_json.get("code", 0)
+                        raise DataFetchError(f"理杏仁 API 返回业务错误 [{code}]: {err_info}")
 
-            try:
-                res_json = response.json()
-            except ValueError as exc:
-                raise DataFetchError(f"理杏仁 API 响应解析 JSON 失败: {response.text}") from exc
+                    data = res_json.get("data")
+                    if data is None and res_json.get("code") not in (1, 200, 0):
+                        code = res_json.get("code")
+                        msg_text = res_json.get("msg") or res_json.get("message", "")
+                        raise DataFetchError(f"理杏仁 API 返回业务错误 [{code}]: {msg_text}")
 
-            # 理杏仁 API 协议返回格式判定
-            if isinstance(res_json, dict):
-                if "error" in res_json:
-                    err_info = res_json.get("error")
-                    code = res_json.get("code", 0)
-                    raise DataFetchError(f"理杏仁 API 返回业务错误 [{code}]: {err_info}")
+                    if isinstance(data, list):
+                        return pd.DataFrame(data)
+                    if isinstance(data, dict):
+                        return pd.DataFrame([data])
+                    return pd.DataFrame(res_json)
+                if isinstance(res_json, list):
+                    return pd.DataFrame(res_json)
 
-                data = res_json.get("data")
-                if data is None and res_json.get("code") not in (1, 200, 0):
-                    code = res_json.get("code")
-                    msg_text = res_json.get("msg") or res_json.get("message", "")
-                    raise DataFetchError(f"理杏仁 API 返回业务错误 [{code}]: {msg_text}")
+                return pd.DataFrame()
 
-                if isinstance(data, list):
-                    return pd.DataFrame(data)
-                if isinstance(data, dict):
-                    return pd.DataFrame([data])
-                return pd.DataFrame(res_json)
-            if isinstance(res_json, list):
-                return pd.DataFrame(res_json)
-
-            return pd.DataFrame()
-
-        return pd.DataFrame()
+            if switched_profile:
+                continue
 
     def query_batch(
         self, api_path: str, stock_codes: list[str] | tuple[str, ...], **kwargs: Any

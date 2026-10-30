@@ -159,6 +159,28 @@ class CloudCapexCollector:
         merged = build_cloud_capex_raw_frame(pl.concat([local, snapshots], how="diagonal_relaxed"))
         return _select_quarters(merged, required) if required else merged
 
+    def load_company_facts_snapshot(self, ticker: str) -> dict[str, Any]:
+        """离线读取指定云厂商的 SEC CompanyFacts 快照。
+
+        财报派生层使用该入口消费已经落盘的官方 RAW；不会触发网络请求。
+        CompanyFacts 的刷新仍由云产业采集器的在线流程负责。
+        """
+        if ticker not in CSP_CIK_MAP:
+            raise ValueError(f"未知云厂商 ticker: {ticker}")
+
+        previous_force = self._force_refresh
+        previous_allow_network = self._allow_network
+        previous_lineage = self._company_lineage
+        self._force_refresh = False
+        self._allow_network = False
+        self._company_lineage = {}
+        try:
+            return self._load_company_facts(ticker, CSP_CIK_MAP[ticker])
+        finally:
+            self._force_refresh = previous_force
+            self._allow_network = previous_allow_network
+            self._company_lineage = previous_lineage
+
     def _collect_records(
         self,
         *,

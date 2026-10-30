@@ -111,3 +111,26 @@ def test_machinery_collector_network_error_returns_empty(tmp_path: Path) -> None
         records = collector.collect()
 
     assert records == []
+
+
+def test_machinery_collector_replays_cached_csv_on_network_error(tmp_path: Path) -> None:
+    raw_dir = tmp_path / "raw_industry"
+    machinery_dir = raw_dir / "machinery"
+    machinery_dir.mkdir(parents=True)
+    (machinery_dir / "excavator_monthly.csv").write_text(
+        "report_month,trade_date,excavator_total_units,excavator_domestic_units,"
+        "excavator_export_units,komatsu_hours_china,unit,source,source_url,release_date,"
+        "data_status,collected_at\n"
+        "2026-07,2026-07-31,19521.0,7608.0,11913.0,90.8,units/hours,CCMA/Komatsu,"
+        "http://www.cncma.org/,2026-08-07,actual,2026-08-08T00:00:00Z\n",
+        encoding="utf-8",
+    )
+
+    collector = MachineryCollector(raw_dir=raw_dir)
+
+    with patch("curl_cffi.requests.get", side_effect=Exception("Network unreachable")):
+        records = collector.collect()
+
+    assert len(records) == 1
+    assert records[0].report_month == "2026-07"
+    assert records[0].excavator_total_units == 19521.0

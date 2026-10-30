@@ -149,7 +149,7 @@ def extract_money_usd(text: str) -> tuple[float | None, float | None]:
 def extract_modality_and_target(text: str) -> tuple[str, str]:
     """提取药物模态 (Modality) 与生物靶点 (Target)。"""
     lower_t = text.lower()
-    modality = "small_molecule"
+    modality = ""
     if "adc" in lower_t or "抗体偶联" in lower_t or "抗体药物偶联物" in lower_t:
         modality = "adc"
     elif "双抗" in lower_t or "双特异性" in lower_t or "bispecific" in lower_t:
@@ -157,7 +157,7 @@ def extract_modality_and_target(text: str) -> tuple[str, str]:
     elif "单抗" in lower_t or "单克隆抗体" in lower_t or "monoclonal" in lower_t:
         modality = "monoclonal"
     elif "glp-1" in lower_t or "减重" in lower_t or "降糖" in lower_t or "代谢" in lower_t:
-        modality = "small_molecule"
+        modality = "metabolic"
     elif "car-t" in lower_t or "细胞治疗" in lower_t:
         modality = "cell_therapy"
 
@@ -182,7 +182,7 @@ def extract_modality_and_target(text: str) -> tuple[str, str]:
         if m:
             targets.append(m.group(0).upper())
 
-    target_str = "/".join(sorted(set(targets))) if targets else "Novel Oncology Target"
+    target_str = "/".join(sorted(set(targets))) if targets else ""
     return modality, target_str
 
 
@@ -199,7 +199,7 @@ def match_mnc_licensee(text: str) -> tuple[str, bool]:
     )
     if buyer_m:
         return buyer_m.group(1).strip(), False
-    return "Global Partner", False
+    return "", False
 
 
 class PharmaAnnouncementCrawler:
@@ -266,8 +266,19 @@ class PharmaAnnouncementCrawler:
                 import json
 
                 data = json.loads(resp.text)
-                ann_list = data.get("announcements", [])
+                if not isinstance(data, dict):
+                    logger.warning("巨潮资讯公告接口返回非预期结构: %s", type(data).__name__)
+                    return deals
+                ann_list = data.get("announcements") or []
+                if not isinstance(ann_list, list):
+                    logger.warning(
+                        "巨潮资讯公告接口 announcements 字段类型异常: %s",
+                        type(ann_list).__name__,
+                    )
+                    ann_list = []
                 for item in ann_list:
+                    if not isinstance(item, dict):
+                        continue
                     parsed = self.parse_announcement_item(item)
                     if parsed:
                         deals.append(parsed)
@@ -288,7 +299,7 @@ class PharmaAnnouncementCrawler:
 
             ann_d = datetime.datetime.fromtimestamp(ann_time_ms / 1000.0, tz=datetime.UTC).date()
         else:
-            ann_d = date.today()
+            return None
 
         # 过滤非许可类公告
         if not any(k in title for k in ("许可", "授权", "合作", "License", "出海", "对外")):
@@ -298,9 +309,6 @@ class PharmaAnnouncementCrawler:
         upfront_usd, total_usd = extract_money_usd(content)
         modality, target = extract_modality_and_target(content)
         licensee, is_mnc = match_mnc_licensee(content)
-
-        upfront_val = upfront_usd or 50_000_000.0
-        total_val = total_usd or (upfront_val * 8.0)
 
         deal_id = (
             f"DEAL-{ann_d.strftime('%Y-%m')}-{sec_name}-{licensee[:6].upper().replace(' ', '')}"
@@ -312,7 +320,7 @@ class PharmaAnnouncementCrawler:
             "licensee": licensee,
             "is_mnc": is_mnc,
             "transaction_type": "license_out",
-            "territory_scope": "global_ex_china",
+            "territory_scope": "",
             "announcement_date": ann_d.isoformat(),
             "effective_date": ann_d.isoformat(),
             "source_filing": "CNINFO / Listed Company Announcement",
@@ -323,8 +331,8 @@ class PharmaAnnouncementCrawler:
                     "drug_name_code": title[:30],
                     "target": target,
                     "modality": modality,
-                    "stage": "phase_1",
-                    "indication": "Oncology / Solid Tumors",
+                    "stage": "",
+                    "indication": "",
                 }
             ],
             "events": [
@@ -332,8 +340,8 @@ class PharmaAnnouncementCrawler:
                     "event_id": f"EVT-{deal_id}-01",
                     "event_type": "initial_deal",
                     "event_date": ann_d.isoformat(),
-                    "upfront_cash_usd": upfront_val,
-                    "potential_total_deal_usd": total_val,
+                    "upfront_cash_usd": upfront_usd,
+                    "potential_total_deal_usd": total_usd,
                     "original_currency": "USD",
                 }
             ],

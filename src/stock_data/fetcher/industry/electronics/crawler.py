@@ -12,7 +12,6 @@ from __future__ import annotations
 
 import logging
 import re
-from datetime import date
 from pathlib import Path
 from typing import Any
 
@@ -249,7 +248,7 @@ class ConsumerElectronicsCrawler:
         if merged:
             merged["source"] = "IDC"
             merged["source_url"] = IDC_GETDOC_URL.format(cid=IDC_PR_IDS["smartphone_global"])
-            merged["release_date"] = date.today().isoformat()
+            merged["release_date"] = None
             merged["data_status"] = "actual"
             merged["collected_at"] = now_utc_iso()
         return merged

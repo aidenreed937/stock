@@ -30,6 +30,12 @@ def _raw_number(raw_value: str | None, fallback: float | None) -> float | None:
     return fallback
 
 
+def _raw_rate_ratio(raw_value: str | None, fallback: float | None) -> float | None:
+    """将源端百分数同比/环比转为 Curated 小数比例。"""
+    value = _raw_number(raw_value, fallback)
+    return round(value / 100.0, 6) if value is not None else None
+
+
 def _derived_utilization(
     output: float | None,
     capacity: float | None,
@@ -154,7 +160,7 @@ def records_to_silicon_wafer_monthly_frame(
         "trade_date": [r.trade_date for r in ordered_records],
         "polysilicon_output_w_tons": list(polysilicon_outputs),
         "polysilicon_output_yoy": [
-            _raw_number(r.polysilicon_output_yoy_raw, r.polysilicon_output_yoy)
+            _raw_rate_ratio(r.polysilicon_output_yoy_raw, r.polysilicon_output_yoy)
             for r in ordered_records
         ],
         "polysilicon_operating_rate": [
@@ -172,7 +178,7 @@ def records_to_silicon_wafer_monthly_frame(
         ],
         "wafer_output_gw": list(wafer_outputs),
         "wafer_output_yoy": [
-            _raw_number(r.wafer_output_yoy_raw, r.wafer_output_yoy) for r in ordered_records
+            _raw_rate_ratio(r.wafer_output_yoy_raw, r.wafer_output_yoy) for r in ordered_records
         ],
         "wafer_operating_rate": [
             _raw_number(r.wafer_operating_rate_raw, r.wafer_operating_rate) for r in ordered_records
@@ -191,7 +197,7 @@ def records_to_silicon_wafer_monthly_frame(
         ],
         "polysilicon_capacity_annual_w_tons": list(polysilicon_capacities),
         "wafer_capacity_annual_gw": list(wafer_capacities),
-        "unit": [r.unit or "ten_thousand_tons_and_gw" for r in ordered_records],
+        "unit": ["ten_thousand_tons/gw/ratio" for _ in ordered_records],
         "source": [r.source or "Silicon_Branch_Antaike" for r in ordered_records],
         "source_url": [r.source_url or "http://www.silicon.net.cn/" for r in ordered_records],
         "release_date": [r.release_date for r in ordered_records],
@@ -256,19 +262,17 @@ def build_solar_supply_demand_frame(
             .round(4)
             .alias("monthly_surplus_gw"),
             pl.when(pl.col("supply_cell_gw") > 0)
-            .then((pl.col("demand_install_gw") / pl.col("supply_cell_gw") * 100.0).round(2))
+            .then((pl.col("demand_install_gw") / pl.col("supply_cell_gw")).round(4))
             .otherwise(None)
             .alias("domestic_absorption_ratio"),
             pl.when(
                 pl.col("demand_install_yoy").is_not_null() & pl.col("supply_cell_yoy").is_not_null()
             )
-            # 口径说明：demand_install_yoy 来自 solar_capacity.yoy_growth（NEA 源口径为小数比率，
-            # 如 0.161=16.1%），supply_cell_yoy 来自 solar_cell_production.output_yoy（百分数，
-            # 如 -1.8=-1.8%)。统一转为百分数后相减，输出与 polysilicon_balance 剪刀差同口径。
-            .then(((pl.col("demand_install_yoy") * 100.0) - pl.col("supply_cell_yoy")).round(2))
+            # 口径说明：两侧同比均为 Curated 小数比例，剪刀差也保持小数比例。
+            .then((pl.col("demand_install_yoy") - pl.col("supply_cell_yoy")).round(4))
             .otherwise(None)
             .alias("scissors_spread_yoy"),
-            pl.lit("gw_and_percent").alias("unit"),
+            pl.lit("gw/ratio").alias("unit"),
             pl.lit("Derived_From_NBS_And_NEA").alias("source"),
             pl.lit("").alias("source_url"),
             pl.lit("derived").alias("data_status"),

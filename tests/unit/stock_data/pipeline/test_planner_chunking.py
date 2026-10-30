@@ -3,10 +3,13 @@
 from datetime import date
 from unittest.mock import MagicMock
 
+import polars as pl
+
 from stock_data.core.settings import data_settings
 from stock_data.pipeline.planner import (
     BackfillPlanner,
     _has_curated_range,
+    _split_date_range_by_quarter,
     _split_date_range_by_year,
 )
 
@@ -25,6 +28,97 @@ def test_split_date_range_by_year_multi_year() -> None:
     assert chunks[1] == (date(2019, 1, 1), date(2019, 12, 31))
     assert chunks[2] == (date(2020, 1, 1), date(2020, 12, 31))
     assert chunks[3] == (date(2021, 1, 1), date(2021, 8, 14))
+
+
+def test_split_date_range_by_quarter_keeps_only_report_period_ends() -> None:
+    """测试季度财报只生成范围内的自然季度末。"""
+    chunks = _split_date_range_by_quarter(date(2024, 2, 1), date(2025, 8, 14))
+    assert chunks == [
+        (date(2024, 3, 31), date(2024, 3, 31)),
+        (date(2024, 6, 30), date(2024, 6, 30)),
+        (date(2024, 9, 30), date(2024, 9, 30)),
+        (date(2024, 12, 31), date(2024, 12, 31)),
+        (date(2025, 3, 31), date(2025, 3, 31)),
+        (date(2025, 6, 30), date(2025, 6, 30)),
+    ]
+
+
+def test_plan_tasks_lixinger_industry_financial_uses_quarter_chunks() -> None:
+    """测试理杏仁行业财报回填按季度末生成原子任务。"""
+    mock_cfg = MagicMock()
+    mock_cfg.watchlists = None
+    mock_cfg.endpoint_start_date_overrides = {}
+
+    tasks = BackfillPlanner.plan_tasks(
+        data_source="lixinger",
+        endpoints=["sw_2021_l2_fs_non_financial"],
+        symbol=None,
+        start_date=date(2024, 2, 1),
+        end_date=date(2024, 8, 14),
+        start_specified=True,
+        data_cfg=mock_cfg,
+    )
+
+    assert [(task.start_date, task.end_date) for task in tasks] == [
+        (date(2024, 3, 31), date(2024, 3, 31)),
+        (date(2024, 6, 30), date(2024, 6, 30)),
+    ]
+    assert all(task.is_chunked for task in tasks)
+    assert all(task.chunk_frequency == "quarterly" for task in tasks)
+    assert [task.chunk_index for task in tasks] == [1, 2]
+    assert all(task.chunk_count == 2 for task in tasks)
+
+
+def test_plan_tasks_lixinger_bank_industry_uses_source_history_floor() -> None:
+    """测试理杏仁银行 L2/L3 财报不规划源端无历史数据的季度。"""
+    mock_cfg = MagicMock()
+    mock_cfg.watchlists = None
+    mock_cfg.endpoint_start_date_overrides = {}
+
+    for endpoint in ("sw_2021_l2_fs_bank", "sw_2021_l3_fs_bank"):
+        tasks = BackfillPlanner.plan_tasks(
+            data_source="lixinger",
+            endpoints=[endpoint],
+            symbol=None,
+            start_date=date(2020, 1, 1),
+            end_date=date(2021, 12, 31),
+            start_specified=True,
+            data_cfg=mock_cfg,
+        )
+
+        assert [task.start_date for task in tasks] == [date(2021, 9, 30), date(2021, 12, 31)]
+
+
+def test_plan_tasks_lixinger_industry_financial_skips_existing_quarter(
+    tmp_path, monkeypatch
+) -> None:
+    """测试非分区行业财报文件按报告期精确跳过已有季度。"""
+    curated_root = tmp_path / "curated"
+    monkeypatch.setattr(data_settings, "curated_data_dir", curated_root)
+    dataset_dir = curated_root / "lixinger" / "market=CN" / "sw_2021_l2_fs_non_financial"
+    dataset_dir.mkdir(parents=True)
+    pl.DataFrame(
+        {
+            "symbol": ["110100"],
+            "trade_date": [date(2024, 3, 31)],
+            "data_source": ["lixinger"],
+        }
+    ).write_parquet(dataset_dir / "data.parquet")
+
+    mock_cfg = MagicMock()
+    mock_cfg.watchlists = None
+    mock_cfg.endpoint_start_date_overrides = {}
+    tasks = BackfillPlanner.plan_tasks(
+        data_source="lixinger",
+        endpoints=["sw_2021_l2_fs_non_financial"],
+        symbol=None,
+        start_date=date(2024, 1, 1),
+        end_date=date(2024, 6, 30),
+        start_specified=True,
+        data_cfg=mock_cfg,
+    )
+
+    assert [task.skip_existing for task in tasks] == [True, False]
 
 
 def test_plan_tasks_chunking_market_wide_event() -> None:

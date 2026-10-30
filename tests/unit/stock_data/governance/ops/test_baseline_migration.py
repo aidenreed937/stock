@@ -692,6 +692,44 @@ def test_backfill_acceptance_reconciles_cleaned_raw_history(tmp_path: Path) -> N
     assert report["status"] == "PASSED"
 
 
+def test_backfill_acceptance_maps_raw_item_to_curated_item(tmp_path: Path) -> None:
+    raw_dir = tmp_path / "raw" / "industry" / "semiconductor" / "semiconductor_memory_price"
+    curated_dir = tmp_path / "curated" / "industry" / "semiconductor_memory_price"
+    raw_dir.mkdir(parents=True)
+    curated_dir.mkdir(parents=True)
+
+    pl.DataFrame(
+        {
+            "trade_date": ["2026-09-04"],
+            "product_family": ["DRAM"],
+            "price_scope": ["contract"],
+            "table_index": ["0"],
+            "item_raw": ["DDR4 8Gb"],
+        }
+    ).write_parquet(raw_dir / "data.parquet")
+    pl.DataFrame(
+        {
+            "trade_date": ["2026-09-04"],
+            "product_family": ["DRAM"],
+            "price_scope": ["contract"],
+            "table_index": ["0"],
+            "item": ["DDR4 8Gb"],
+        }
+    ).write_parquet(curated_dir / "data.parquet")
+
+    report = accept_backfill(
+        str(tmp_path / "curated"),
+        "semiconductor_memory_price",
+        data_source="industry",
+        raw_root=str(tmp_path / "raw"),
+    )
+
+    assert report["raw_curated_status"] == "PASSED"
+    assert report["raw_missing_in_curated_count"] == 0
+    assert report["raw_extra_in_curated_count"] == 0
+    assert report["status"] == "PASSED"
+
+
 def test_backfill_acceptance_reports_independent_raw_daily_gap(tmp_path: Path) -> None:
     raw_dir = tmp_path / "raw" / "tushare" / "adj_factor"
     curated_dir = tmp_path / "curated" / "tushare" / "adj_factor"

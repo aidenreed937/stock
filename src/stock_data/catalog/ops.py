@@ -38,7 +38,7 @@ from stock_data.storage.read_compat import (
 def _dataset_date_columns(data_source: str, dataset: str) -> tuple[str, ...]:
     """读取任务契约中的业务日期列，并保留历史数据集的兼容候选。"""
     try:
-        from stock_data.core.task_registry import resolve_task
+        from stock_data.core.task_resolution import resolve_task
 
         task_columns = tuple(resolve_task(data_source, dataset).date_columns)
     except Exception:
@@ -95,6 +95,10 @@ def dataset_name(path: Path) -> str:
             return parts[i - 2]
         if parts[i].startswith("year=") and i >= 1:
             return parts[i - 1]
+    stem = path.stem.split(".", 1)[0]
+    # 半导体 5 大产研分类维度下的黄金表，dataset_name 始终为其自身独立表名 (stem)
+    if "semiconductor" in parts:
+        return stem
     if path.parent.name in {
         "industry",
         "curated",
@@ -106,10 +110,10 @@ def dataset_name(path: Path) -> str:
         "yfinance",
         "alphavantage",
     }:
-        return path.stem.split(".", 1)[0]
+        return stem
     if not path.parent.name.startswith("market=") and not path.parent.name.startswith("year="):
         return path.parent.name
-    return path.stem.split(".", 1)[0]
+    return stem
 
 
 def list_parquet_files(

@@ -9,7 +9,7 @@ from stock_core.config.loader import load_data_config
 from stock_core.exceptions import DataFetchError
 from stock_core.models.market import DailyBar
 from stock_core.utils.logger import logger
-from stock_data.core.task_registry import resolve_task
+from stock_data.core.task_resolution import resolve_task
 from stock_data.fetcher.lixinger import query_helpers
 from stock_data.fetcher.lixinger.bar_converter import fetch_daily_bars as _fetch_daily_bars
 from stock_data.fetcher.lixinger.client import LixingerClient
@@ -123,6 +123,13 @@ def _resolve_sw_2021_industry_codes(
             if f"/{key}" in endpoint:
                 if has_fs:
                     mask = (df_ind["fsTableType"] == key) & (df_ind["level"] == target_level)
+                    # 申万 2021 目录将证券、保险的可用根节点挂在二级，
+                    # 但对应 API 仍按独立的一级财报任务暴露。
+                    if target_level == "one" and key in {"security", "insurance"}:
+                        level_two_mask = (df_ind["fsTableType"] == key) & (df_ind["level"] == "two")
+                        if not df_ind[mask].empty:
+                            return select_codes(mask)
+                        return select_codes(level_two_mask)
                 elif key == "non_financial":
                     mask = ~df_ind["name"].str.contains(
                         "银行|非银|证券|保险|多元金融", na=False
@@ -207,15 +214,30 @@ def _fetch_batch_sw_industries(
     query_kwargs: dict[str, Any],
     level: str | None = None,
 ) -> pl.DataFrame:
-    """按 API 约束抓取申万行业数据；同日请求按最多 100 个代码批量合并。"""
-    target_level = level or ("two" if "l2" in endpoint.lower() else "one")
+    """按 API 约束抓取申万行业数据；单报告期请求按最多 100 个代码批量合并。"""
+    endpoint_lower = endpoint.lower()
+    target_level = level or (
+        "three" if "l3" in endpoint_lower else "two" if "l2" in endpoint_lower else "one"
+    )
     codes = _resolve_sw_2021_industry_codes(client, endpoint=endpoint, level=target_level)
-    same_day = query_kwargs.get("startDate") == query_kwargs.get("endDate")
-    if same_day and query_kwargs.get("startDate"):
+    same_report_period = query_kwargs.get("startDate") == query_kwargs.get("endDate")
+    is_quarterly_financial = meta.frequency == "quarterly" and endpoint.startswith(
+        "cn/industry/fs/sw_2021/"
+    )
+    if is_quarterly_financial and not same_report_period:
+        raise DataFetchError(
+            f"理杏仁行业财报接口 [{meta.api_name}] 必须按单报告期使用 date + stockCodes 请求"
+        )
+    if same_report_period and query_kwargs.get("startDate"):
         batch_kwargs = dict(query_kwargs)
         batch_kwargs["date"] = batch_kwargs.pop("startDate")
         batch_kwargs.pop("endDate", None)
-        code_groups = [codes[i : i + 100] for i in range(0, len(codes), 100)]
+        batch_size = meta.max_codes_per_request or 100
+        if batch_size < 1:
+            raise DataFetchError(
+                f"理杏仁行业接口 [{meta.api_name}] 配置的代码批量上限无效: {batch_size}"
+            )
+        code_groups = [codes[i : i + batch_size] for i in range(0, len(codes), batch_size)]
     else:
         batch_kwargs = query_kwargs
         code_groups = [[code] for code in codes]
@@ -323,7 +345,14 @@ class LixingerStockFetcher:
                 if endpoint == "cn/index/fundamental":
                     return _fetch_batch_index_fundamentals(self.client, meta, query_kwargs)
                 if "industry" in endpoint or "sw_2021" in endpoint:
-                    industry_level = "two" if "l2" in requested_endpoint.lower() else None
+                    requested_endpoint_lower = requested_endpoint.lower()
+                    industry_level = (
+                        "three"
+                        if "l3" in requested_endpoint_lower
+                        else "two"
+                        if "l2" in requested_endpoint_lower
+                        else None
+                    )
                     return _fetch_batch_sw_industries(
                         self.client, meta, endpoint, query_kwargs, level=industry_level
                     )

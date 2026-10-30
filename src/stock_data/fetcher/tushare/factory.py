@@ -4,7 +4,7 @@ from __future__ import annotations
 
 from typing import TYPE_CHECKING
 
-from stock_data.core.task_registry import resolve_task
+from stock_data.core.task_resolution import resolve_task
 from stock_data.fetcher.tushare.facade import TuShareDataFetcher
 from stock_data.fetcher.tushare.registry import TUSHARE_API_REGISTRY
 

@@ -12,7 +12,8 @@ from stock_core.contracts import (
 )
 from stock_core.exceptions import DataValidationError
 from stock_core.utils.logger import logger
-from stock_data.core.task_registry import _provider_registry, resolve_task
+from stock_data.core.provider_registry import provider_registry
+from stock_data.core.task_resolution import resolve_task
 from stock_data.fetcher.base import BaseDataFetcher
 from stock_data.governance.quality.margin_coverage import is_margin_complete, margin_coverage_issues
 from stock_data.governance.quality.margin_quality import (
@@ -21,6 +22,7 @@ from stock_data.governance.quality.margin_quality import (
 )
 from stock_data.governance.quality.quarantine import QuarantineStore
 from stock_data.pipeline.cleaner.base import BaseDataCleaner
+from stock_data.pipeline.cleaner.fund_cleaner import sanitize_fund_portfolio_ratios
 from stock_data.pipeline.date_clipper import clip_endpoint_date_range
 from stock_data.pipeline.normalizer.bar_normalizer import (
     infer_metadata_expressions,
@@ -76,6 +78,13 @@ class FetcherStage:
         raw_df: pl.DataFrame | None = None
         batch_df: pl.DataFrame | None = None
         force_raw_replace = False
+        if force_refresh:
+            try:
+                task = resolve_task(self.data_source, endpoint_name)
+                meta = provider_registry(self.data_source).get(task.api_name)
+                force_raw_replace = bool(getattr(meta, "replace_raw_on_refresh", False))
+            except Exception:
+                force_raw_replace = False
         if use_raw_cache and not force_refresh:
             cached_df = self.raw_store.load_dataset(key)
             if cached_df is not None and not cached_df.is_empty():
@@ -181,7 +190,7 @@ class FetcherStage:
         meta: Any | None = None
         try:
             task = resolve_task(self.data_source, endpoint)
-            meta = _provider_registry(self.data_source).get(task.api_name)
+            meta = provider_registry(self.data_source).get(task.api_name)
         except Exception:
             meta = None
         if not meta:
@@ -246,6 +255,8 @@ class CleanerStage:
     ) -> pl.DataFrame:
         if self.data_source == "tushare" and dataset == "sw_daily":
             raw_df = normalize_sw_daily_identity(raw_df)
+        if self.data_source == "tushare" and dataset == "fund_portfolio":
+            raw_df = sanitize_fund_portfolio_ratios(raw_df, endpoint=dataset)
         unit_normalizer = UnitNormalizer(self.data_source, api_name)
         unit_df, unit_rejected = unit_normalizer.normalize_units_with_quarantine(raw_df)
 
@@ -304,7 +315,9 @@ class NormalizerStage:
         )
 
         now_utc = datetime.now(UTC)
-        source_endpoint = dataset or api_name
+        source_endpoint = (
+            api_name if api_name in {"us_daily", "TIME_SERIES_DAILY"} else dataset or api_name
+        )
         decorated = normalized_df.with_columns(
             [
                 pl.lit(self.data_source).alias("data_source"),

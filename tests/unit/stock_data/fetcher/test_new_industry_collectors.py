@@ -12,6 +12,8 @@
 from datetime import date
 from pathlib import Path
 
+import polars as pl
+
 from stock_data.fetcher.industry import (
     AGRICULTURE_PORK_SCHEMA,
     CHEMICAL_MARKET_SCHEMA,
@@ -55,9 +57,6 @@ def test_semiconductor_lead_frame_conversion() -> None:
             tsmc_revenue_ntd_million=372000.0,
             tsmc_revenue_usd_million=11809.5,
             tsmc_revenue_yoy=0.169,
-            tsmc_revenue_mom=0.011,
-            dram_dxi_index=48000.0,
-            dram_spot_price_usd=4.95,
         ),
         SemiconductorLeadRecord(
             report_month="2026-06",
@@ -65,9 +64,6 @@ def test_semiconductor_lead_frame_conversion() -> None:
             tsmc_revenue_ntd_million=360000.0,
             tsmc_revenue_usd_million=11428.6,
             tsmc_revenue_yoy=0.205,
-            tsmc_revenue_mom=-0.032,
-            dram_dxi_index=49500.0,
-            dram_spot_price_usd=4.86,
         ),
     ]
 
@@ -77,6 +73,7 @@ def test_semiconductor_lead_frame_conversion() -> None:
     assert "tsmc_revenue_ntd_million" in df.columns
     assert "tsmc_revenue_3mma_usd" in df.columns
     assert df["tsmc_revenue_ntd_million"][0] == 372000.0
+    assert df["tsmc_revenue_mom"].to_list() == [None, -0.0323]
     assert df["unit"][0] == "million_ntd/usd"
 
 
@@ -87,34 +84,36 @@ def test_chemical_market_frame_conversion() -> None:
         ChemicalMarketRecord(
             report_month="2026-05",
             trade_date=date(2026, 5, 31),
-            mdi_operating_rate=73.5,
-            tio2_operating_rate=69.0,
-            refrigerant_r32_operating_rate=62.0,
-            mdi_gross_spread_cny=9600.0,
-            tio2_spread_cny=3950.0,
-            refrigerant_r32_price_cny=38500.0,
-            chemical_inventory_days=26.5,
+            soda_ash_production=310.5,
+            caustic_soda_production=340.0,
+            synthetic_fiber_production=580.0,
+            chemical_fertilizer_production=490.0,
+            plastics_production=980.0,
+            plate_glass_production=8200.0,
+            spot_soda_ash_price_cny=1450.0,
+            spot_pta_price_cny=5850.0,
         ),
         ChemicalMarketRecord(
             report_month="2026-06",
             trade_date=date(2026, 6, 30),
-            mdi_operating_rate=75.0,
-            tio2_operating_rate=70.5,
-            refrigerant_r32_operating_rate=64.0,
-            mdi_gross_spread_cny=9800.0,
-            tio2_spread_cny=4000.0,
-            refrigerant_r32_price_cny=39000.0,
-            chemical_inventory_days=25.8,
+            soda_ash_production=315.0,
+            caustic_soda_production=345.0,
+            synthetic_fiber_production=590.0,
+            chemical_fertilizer_production=495.0,
+            plastics_production=990.0,
+            plate_glass_production=8250.0,
+            spot_soda_ash_price_cny=1400.0,
+            spot_pta_price_cny=5920.0,
         ),
     ]
 
     df = records_to_chemical_market_frame(records)
     assert not df.is_empty()
     assert df.height == 2
-    assert "mdi_operating_rate" in df.columns
-    assert "refrigerant_r32_price_cny" in df.columns
-    assert df["mdi_operating_rate"][1] == 75.0
-    assert df["unit"][0] == "percent/cny_per_ton"
+    assert "soda_ash_production" in df.columns
+    assert "caustic_soda_production" in df.columns
+    assert df["soda_ash_production"][1] == 315.0
+    assert df["spot_pta_price_cny"][1] == 5920.0
 
 
 def test_solar_price_chain_frame_conversion() -> None:
@@ -128,7 +127,6 @@ def test_solar_price_chain_frame_conversion() -> None:
             wafer_price_cny_piece=1.41,
             cell_price_cny_watt=0.354,
             module_price_cny_watt=0.81,
-            price_cycle_stage="bottom_rebound",
         ),
         SolarPriceChainRecord(
             report_date="2026-06-24",
@@ -137,26 +135,29 @@ def test_solar_price_chain_frame_conversion() -> None:
             wafer_price_cny_piece=1.42,
             cell_price_cny_watt=0.356,
             module_price_cny_watt=0.815,
-            price_cycle_stage="bottom_rebound",
         ),
     ]
 
     df = records_to_solar_price_chain_frame(records)
     assert not df.is_empty()
     assert df.height == 2
+    assert df["report_date"].dtype == pl.Date
+    assert df["report_date"][0] == date(2026, 6, 17)
     assert "polysilicon_price_cny_kg" in df.columns
     assert "module_price_cny_watt" in df.columns
     assert df["module_price_cny_watt"][1] == 0.815
 
 
 def test_infolink_spot_price_parser() -> None:
-    from stock_data.fetcher.industry.power.pv_price_collector import (
+    from stock_data.fetcher.industry.power.parsers.infolink import (
+        InfoLinkSpotPriceHtmlParser,
         parse_infolink_spot_price_html,
     )
 
     sample_html = """
     <div>
-        <p>*InfoLink 公示价格时间区间主要为前周周四至本周周三(8.20-8.26)，截至本周三仍在执行和新签订的合约价格范围。</p>
+        <p>*InfoLink 公示价格时间区间主要为前周周四至本周三(8.20-8.26)，截至本周三仍在执行和新签订的合约价格范围。</p>
+        <p>发布日期：2026年8月26日</p>
         <table>
             <caption><strong class="h2">多晶硅</strong><small>（kg）</small></caption>
             <tr><th>项目</th><th>高点</th><th>低点</th><th>均价</th></tr>
@@ -181,11 +182,28 @@ def test_infolink_spot_price_parser() -> None:
     """
     res = parse_infolink_spot_price_html(sample_html)
     assert res is not None
-    assert res["trade_date"] == date(date.today().year, 8, 26)
+    assert res["trade_date"] == date(2026, 8, 26)
     assert res["polysilicon_price_cny_kg"] == 40.0
     assert res["wafer_price_cny_piece"] == 1.100
     assert res["cell_price_cny_watt"] == 0.330
     assert res["module_price_cny_watt"] == 0.723
+
+    range_only_html = sample_html.replace("<p>发布日期：2026年8月26日</p>", "")
+    assert parse_infolink_spot_price_html(range_only_html) is None
+    assert InfoLinkSpotPriceHtmlParser().parse(range_only_html, reference_year=2026) is not None
+
+
+def test_liquor_price_parser_requires_source_date() -> None:
+    from stock_data.fetcher.industry.consumer.parsers import parse_liquor_price_text
+
+    no_date = "今日飞天散瓶 2310，原箱 2520，普五 945，国窖1573 875"
+    assert parse_liquor_price_text(no_date) is None
+
+    with_date = "2026年8月28日 今日飞天散瓶 2310，原箱 2520，普五 945，国窖1573 875"
+    parsed = parse_liquor_price_text(with_date)
+    assert parsed is not None
+    assert parsed["report_date"] == "2026-08-28"
+    assert parsed["trade_date"] == date(2026, 8, 28)
 
 
 def test_agriculture_pork_frame_conversion() -> None:
@@ -244,6 +262,8 @@ def test_liquor_wholesale_frame_conversion() -> None:
     df = records_to_liquor_wholesale_frame(records)
     assert not df.is_empty()
     assert df.height == 2
+    assert df["report_date"].dtype == pl.Date
+    assert df["report_date"][0] == date(2026, 6, 19)
     assert "moutai_loose_price_cny" in df.columns
     assert "wuliangye_puwu_price_cny" in df.columns
     assert df["moutai_loose_price_cny"][1] == 2335.0
@@ -316,6 +336,8 @@ def test_coal_market_frame_conversion() -> None:
     df = records_to_coal_market_frame(records)
     assert not df.is_empty()
     assert df.height == 2
+    assert df["report_date"].dtype == pl.Date
+    assert df["report_date"][0] == date(2026, 6, 19)
     assert "q5500_fob_price_cny" in df.columns
     assert "power_plant_available_days" in df.columns
     assert df["q5500_fob_price_cny"][1] == 842.0
@@ -327,41 +349,54 @@ def test_sync_all_industry_metrics_with_new_metrics(tmp_path: Path, monkeypatch)
     curated_dir = tmp_path / "curated_industry"
 
     # mock 全部在线采集源 (纯在线模式, 以最新采集为准)
-    from stock_data.fetcher.industry.agriculture.crawler import MaraPorkCrawler
-    from stock_data.fetcher.industry.chemicals.crawler import ChemicalsCrawler
-    from stock_data.fetcher.industry.coal.crawler import CoalMarketCrawler
-    from stock_data.fetcher.industry.consumer.collector import LiquorPriceCrawler
+    from stock_data.fetcher.industry.agriculture.collectors import MaraPorkCrawler
+    from stock_data.fetcher.industry.coal.collectors import CoalMarketCrawler
     from stock_data.fetcher.industry.electronics.crawler import ConsumerElectronicsCrawler
-    from stock_data.fetcher.industry.power.pv_price_collector import InfoLinkPvPriceCrawler
-    from stock_data.fetcher.industry.semiconductor.tsmc_collector import TsmcMonthlyRevenueCrawler
+    from stock_data.fetcher.industry.power.collectors.infolink import InfoLinkPvPriceCrawler
+    from stock_data.fetcher.industry.semiconductor.collectors.tsmc import TsmcLeadCollector
+    from stock_data.fetcher.industry.semiconductor.models import SemiconductorLeadRecord
 
     monkeypatch.setattr(
-        TsmcMonthlyRevenueCrawler,
-        "fetch_latest_revenue",
-        lambda self, *args, **kwargs: {
-            "report_month": "2026-06",
-            "release_date": "2026-07-10",
-            "tsmc_revenue_ntd_million": 442680.0,
-            "tsmc_revenue_usd_million": 14053.33,
-            "tsmc_revenue_yoy": 0.35,
-            "tsmc_revenue_mom": 0.05,
-            "source": "TWSE/TSMC",
-            "source_url": "",
-            "collected_at": "2026-07-10T00:00:00Z",
-        },
+        TsmcLeadCollector,
+        "collect",
+        lambda self, *args, **kwargs: [
+            SemiconductorLeadRecord(
+                report_month="2026-06",
+                trade_date=date(2026, 6, 30),
+                tsmc_revenue_ntd_million=442680.0,
+                tsmc_revenue_usd_million=14053.33,
+                tsmc_revenue_yoy=0.35,
+                tsmc_revenue_mom=0.05,
+                source="TSMC",
+                source_url="https://investor.tsmc.com/english/monthly-revenue/2026",
+                release_date=date(2026, 7, 10),
+                data_status="actual",
+                collected_at="2026-07-10T00:00:00Z",
+            )
+        ],
     )
+    from stock_data.fetcher.industry.chemicals import ChemicalsCollector
+    from stock_data.fetcher.industry.models import ChemicalMarketRecord
+
     monkeypatch.setattr(
-        ChemicalsCrawler,
-        "fetch_latest_prices",
-        lambda self, *args, **kwargs: {
-            "mdi_price_cny": 9600.0,
-            "tio2_price_cny": 3950.0,
-            "source": "100ppi",
-            "source_url": "",
-            "release_date": "2026-07-05",
-            "data_status": "actual",
-            "collected_at": "2026-07-05T00:00:00Z",
-        },
+        ChemicalsCollector,
+        "collect",
+        lambda self, *args, **kwargs: [
+            ChemicalMarketRecord(
+                report_month="2026-06",
+                trade_date=date(2026, 6, 30),
+                soda_ash_production=315.0,
+                caustic_soda_production=345.0,
+                synthetic_fiber_production=590.0,
+                chemical_fertilizer_production=495.0,
+                plastics_production=990.0,
+                plate_glass_production=8250.0,
+                spot_soda_ash_price_cny=1400.0,
+                spot_pta_price_cny=5920.0,
+                source="NBS/CZCE/100ppi",
+                release_date=date(2026, 7, 18),
+            )
+        ],
     )
     monkeypatch.setattr(
         InfoLinkPvPriceCrawler,
@@ -373,7 +408,6 @@ def test_sync_all_industry_metrics_with_new_metrics(tmp_path: Path, monkeypatch)
             "wafer_price_cny_piece": 1.1,
             "cell_price_cny_watt": 0.33,
             "module_price_cny_watt": 0.723,
-            "price_cycle_stage": "bottom_rebound",
             "source": "InfoLink Consulting",
             "source_url": "",
             "collected_at": "2026-08-26T00:00:00Z",
@@ -393,22 +427,6 @@ def test_sync_all_industry_metrics_with_new_metrics(tmp_path: Path, monkeypatch)
             "release_date": "2026-07-18",
             "data_status": "actual",
             "collected_at": "2026-07-18T00:00:00Z",
-        },
-    )
-    monkeypatch.setattr(
-        LiquorPriceCrawler,
-        "fetch_latest_liquor_price",
-        lambda self, *args, **kwargs: {
-            "report_date": "2026-08-28",
-            "trade_date": date(2026, 8, 28),
-            "moutai_loose_price_cny": 2310.0,
-            "moutai_boxed_price_cny": 2520.0,
-            "wuliangye_puwu_price_cny": 945.0,
-            "guojiao1573_price_cny": 875.0,
-            "source": "TodayLiquorPrice",
-            "source_url": "",
-            "release_date": date(2026, 8, 28),
-            "collected_at": "2026-08-28T00:00:00Z",
         },
     )
     monkeypatch.setattr(
@@ -449,7 +467,6 @@ def test_sync_all_industry_metrics_with_new_metrics(tmp_path: Path, monkeypatch)
         "chemical_market",
         "solar_price_chain",
         "agriculture_pork",
-        "liquor_wholesale",
         "consumer_electronics",
         "coal_market",
     ]
@@ -469,12 +486,15 @@ def test_sync_all_industry_metrics_with_new_metrics(tmp_path: Path, monkeypatch)
         curated_dir=curated_dir,
         metrics=new_metrics,
         force=True,
+        target_date=date(2026, 8, 26),
     )
 
     for metric in new_metrics:
         assert metric in res
         assert res[metric] > 0
-        assert (curated_dir / f"{metric}.parquet").exists()
+        # 落盘位置以各指标重放计划声明的相对路径为准：半导体等指标已下沉到子目录，
+        # 因此不能在顶层直接拼 {metric}.parquet。
+        assert list(curated_dir.rglob(f"{metric}.parquet")), f"{metric} 未落盘到 {curated_dir}"
 
 
 # ---------- 新增在线采集爬虫解析器测试 (纯函数, 无需网络) ----------
@@ -496,9 +516,6 @@ MARA_TABLE_HTML_FIXTURE = """
 <tr><td>2026年7月份散养生猪每头净利润（元）</td><td>420</td><td>2%</td></tr>
 </table></div></body></html>
 """
-
-MDI_HTML_FIXTURE = "[ MDI ] 8月31日，聚合MDI参考价为16866.67，与8月1日(17866.67)相比，下降了5.6% 2026-08-31 16:38:13"
-TIO2_HTML_FIXTURE = "[ 钛白粉 ] 8月31日，钛白粉参考价为14060.00，与8月1日(15460.00)相比，下降了9.06% 2026-08-31 16:38:13"
 
 IDC_SMARTPHONE_HTML_FIXTURE = """
 <html><body>
@@ -525,7 +542,7 @@ IDC_CHINA_HTML_FIXTURE = (
 
 
 def test_parse_cctd_q5500() -> None:
-    from stock_data.fetcher.industry.coal.crawler import parse_cctd_q5500
+    from stock_data.fetcher.industry.coal.parsers import parse_cctd_q5500
 
     res = parse_cctd_q5500(CCTD_HTML_FIXTURE)
     assert res is not None
@@ -533,8 +550,26 @@ def test_parse_cctd_q5500() -> None:
     assert res["q5500_fob_price_cny"] == 731.0
 
 
+def test_coal_collector_skips_non_iso_report_date(tmp_path: Path, monkeypatch) -> None:
+    from stock_data.fetcher.industry.coal.collectors import CoalMarketCollector
+
+    collector = CoalMarketCollector(raw_dir=tmp_path)
+    monkeypatch.setattr(
+        collector.crawler,
+        "fetch_latest_q5500",
+        lambda force=False: {
+            "report_date": "2026年8月28日",
+            "q5500_fob_price_cny": 731.0,
+            "source": "CCTD",
+            "source_url": "",
+        },
+    )
+
+    assert collector.collect(force=False) == []
+
+
 def test_parse_mara_monthly_table() -> None:
-    from stock_data.fetcher.industry.agriculture.crawler import parse_mara_monthly_table
+    from stock_data.fetcher.industry.agriculture.parsers import parse_mara_monthly_table
 
     res = parse_mara_monthly_table(MARA_TABLE_HTML_FIXTURE)
     assert res is not None
@@ -543,16 +578,6 @@ def test_parse_mara_monthly_table() -> None:
     assert res["pig_price_cny_per_kg"] == 18.5
     assert res["hog_to_grain_ratio"] == 7.4
     assert res["pig_farming_profit_cny_head"] == 420.0
-
-
-def test_parse_100ppi_reference_prices() -> None:
-    from stock_data.fetcher.industry.chemicals.crawler import (
-        parse_mdi_reference_price,
-        parse_tio2_reference_price,
-    )
-
-    assert parse_mdi_reference_price(MDI_HTML_FIXTURE) == 16866.67
-    assert parse_tio2_reference_price(TIO2_HTML_FIXTURE) == 14060.0
 
 
 def test_parse_idc_smartphone_pr() -> None:
@@ -591,29 +616,25 @@ def test_html_parser_protocol_conformance_and_injection(tmp_path: Path) -> None:
     """验证所有解析器策略类均符合 HtmlParserProtocol 协议，且各 Crawler 均支持解析器注入。"""
     from stock_data.fetcher.industry import (
         CctdCoalPriceHtmlParser,
-        Chemicals100PpiHtmlParser,
         HtmlParserProtocol,
         IdcElectronicsHtmlParser,
         InfoLinkPvPriceCrawler,
         InfoLinkSpotPriceHtmlParser,
         MaraPorkHtmlParser,
     )
-    from stock_data.fetcher.industry.agriculture.crawler import MaraPorkCrawler
-    from stock_data.fetcher.industry.chemicals.crawler import ChemicalsCrawler
-    from stock_data.fetcher.industry.coal.crawler import CoalMarketCrawler
+    from stock_data.fetcher.industry.agriculture.collectors import MaraPorkCrawler
+    from stock_data.fetcher.industry.coal.collectors import CoalMarketCrawler
     from stock_data.fetcher.industry.electronics.crawler import ConsumerElectronicsCrawler
 
     # 1. 协议实现检查
     p1 = MaraPorkHtmlParser()
     p2 = InfoLinkSpotPriceHtmlParser()
     p3 = CctdCoalPriceHtmlParser()
-    p4 = Chemicals100PpiHtmlParser()
     p5 = IdcElectronicsHtmlParser()
 
     assert isinstance(p1, HtmlParserProtocol)
     assert isinstance(p2, HtmlParserProtocol)
     assert isinstance(p3, HtmlParserProtocol)
-    assert isinstance(p4, HtmlParserProtocol)
     assert isinstance(p5, HtmlParserProtocol)
 
     # 2. 注入自定义测试解析器
@@ -630,9 +651,6 @@ def test_html_parser_protocol_conformance_and_injection(tmp_path: Path) -> None:
 
     crawler_coal = CoalMarketCrawler(raw_dir=tmp_path, parser=mock_parser)
     assert crawler_coal.parser is mock_parser
-
-    crawler_chem = ChemicalsCrawler(raw_dir=tmp_path, parser=p4)
-    assert crawler_chem.parser is p4
 
     crawler_elec = ConsumerElectronicsCrawler(raw_dir=tmp_path, parser=p5)
     assert crawler_elec.parser is p5
@@ -657,8 +675,8 @@ def test_comtrade_incremental_period_calculation() -> None:
 
 def test_crawler_cache_hit_without_network(tmp_path: Path) -> None:
     """验证爬虫类源在本地 RAW 快照已存在时命中缓存，不发起任何网络请求。"""
-    from stock_data.fetcher.industry.coal.crawler import CoalMarketCrawler
-    from stock_data.fetcher.industry.power.pv_price_collector import InfoLinkPvPriceCrawler
+    from stock_data.fetcher.industry.coal.collectors import CoalMarketCrawler
+    from stock_data.fetcher.industry.power.collectors.infolink import InfoLinkPvPriceCrawler
 
     # 1. CoalMarketCrawler 命中快照
     coal_dir = tmp_path / "coal" / "cctd"
@@ -708,7 +726,7 @@ def test_execute_single_industry_task_dispatcher(tmp_path: Path, monkeypatch) ->
         CoalMarketRecord,
         execute_single_industry_task,
     )
-    from stock_data.fetcher.industry.coal.collector import CoalMarketCollector
+    from stock_data.fetcher.industry.coal.collectors import CoalMarketCollector
 
     # Mock coal collector
     def mock_collect(self, force: bool = False):
@@ -751,6 +769,8 @@ def test_industry_task_bundles_expansion() -> None:
     tech_tasks = expand_task_targets("industry", ["industry_tech"])
     assert "semiconductor_sales" in tech_tasks
     assert "semiconductor_lead" in tech_tasks
+    assert "semiconductor_channel_inventory" in tech_tasks
+    assert "semiconductor_memory_price" in tech_tasks
     assert "cloud_capex_quarterly" in tech_tasks
     assert "consumer_electronics" in tech_tasks
 
@@ -758,20 +778,29 @@ def test_industry_task_bundles_expansion() -> None:
     energy_tasks = expand_task_targets("industry", ["industry_energy"])
     assert "solar_capacity" in energy_tasks
     assert "solar_price_chain" in energy_tasks
+    assert "solar_cell_nbs" in energy_tasks
     assert "non_ferrous_metals" in energy_tasks
     assert "coal_market" in energy_tasks
-    assert "chemical_market" in energy_tasks
+    assert "chemical_market" not in energy_tasks
+
+    # 2b. 化工包（chemical_market 归属化工包，不在能源包）
+    chemical_tasks = expand_task_targets("industry", ["industry_chemical"])
+    assert "chemical_market" in chemical_tasks
 
     # 3. 消费医药包
     consume_tasks = expand_task_targets("industry", ["industry_consume"])
     assert "agriculture_pork" in consume_tasks
-    assert "liquor_wholesale" in consume_tasks
     assert "pharma_license_out" in consume_tasks
 
     # 4. 全产业大包
     all_tasks = expand_task_targets("industry", ["industry_all"])
-    assert len(all_tasks) == 17
+    assert len(all_tasks) == 22
     assert "chip_lead_time" in all_tasks
+    assert "semiconductor_equipment_semi" in all_tasks
+    assert "semiconductor_inventory_days" in all_tasks
+    assert "semiconductor_channel_inventory" in all_tasks
+    assert "semiconductor_memory_price" in all_tasks
+    assert "solar_cell_nbs" in all_tasks
 
 
 def test_sync_all_industry_metrics_bundle_orchestration(tmp_path: Path, monkeypatch) -> None:
@@ -806,11 +835,27 @@ def test_sync_all_industry_metrics_bundle_orchestration(tmp_path: Path, monkeypa
     assert "chip_lead_time" in res
     assert "cloud_capex_quarterly" in res
     assert "consumer_electronics" in res
-    assert len(res) == 5
+    assert "semiconductor_equipment" in res
+    assert "semiconductor_equipment_semi" in res
+    assert "foundry_capacity_utilization" in res
+    assert "semiconductor_inventory_days" in res
+    assert "semiconductor_channel_inventory" in res
+    assert "semiconductor_memory_price" in res
+    assert "semiconductor_memory_benchmark" in res
+    assert "semiconductor_memory_taiwan_lead" in res
+    assert len(res) == 13
     assert set(executed_endpoints) == {
         "semiconductor_sales",
         "semiconductor_lead",
+        "semiconductor_equipment",
+        "semiconductor_equipment_semi",
         "chip_lead_time",
+        "foundry_capacity_utilization",
+        "semiconductor_inventory_days",
+        "semiconductor_channel_inventory",
+        "semiconductor_memory_price",
+        "semiconductor_memory_benchmark",
+        "semiconductor_memory_taiwan_lead",
         "cloud_capex_quarterly",
         "consumer_electronics",
     }

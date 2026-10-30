@@ -1,8 +1,15 @@
 """UnitNormalizer 单元测试。"""
 
+from datetime import date
+from unittest.mock import patch
+
 import polars as pl
 
-from stock_data.pipeline.normalizer.unit_normalizer import UnitNormalizer
+from stock_data.core.runtime import DataRuntimeContext
+from stock_data.pipeline.normalizer.unit_normalizer import (
+    UnitNormalizer,
+    monthly_usdtwd_rate,
+)
 
 
 def test_unit_normalizer_tushare_daily() -> None:
@@ -225,3 +232,50 @@ def test_unit_normalizer_empty_and_unknown() -> None:
     unknown_normalizer = UnitNormalizer("unknown_source", "unknown_endpoint")
     df = pl.DataFrame({"a": [1]})
     assert unknown_normalizer.normalize_units(df).equals(df)
+
+
+def test_unit_normalizer_taiwan_memory_uses_explicit_source_unit_and_runtime(tmp_path) -> None:
+    runtime = DataRuntimeContext.from_root(tmp_path / "runtime")
+    raw_df = pl.DataFrame(
+        {
+            "report_month": ["2026-07"],
+            "revenue_ntd_thousand": [18_379_079.0],
+        }
+    )
+
+    with patch(
+        "stock_data.pipeline.normalizer.unit_normalizer.monthly_usdtwd_rate",
+        return_value=32.0,
+    ) as rate:
+        normalized = UnitNormalizer(
+            "industry", "semiconductor_memory_taiwan_lead", runtime=runtime
+        ).normalize_units(raw_df)
+
+    assert normalized["revenue_ntd_million"][0] == 18_379.079
+    assert normalized["revenue_usd_million"][0] == 574.35
+    rate.assert_called_once_with("2026-07", runtime=runtime)
+
+
+def test_monthly_usdtwd_rate_reads_fred_from_passed_runtime(tmp_path) -> None:
+    runtime = DataRuntimeContext.from_root(tmp_path / "runtime")
+    calls: dict[str, object] = {}
+
+    class FakeCatalog:
+        def __init__(self, data_source, *, runtime):
+            calls.update(data_source=data_source, runtime=runtime)
+
+        def load_dataset(self, dataset, *, symbols):
+            assert dataset == "macro_indicators"
+            assert symbols == ["DEXTAUS"]
+            return pl.DataFrame(
+                {
+                    "symbol": ["DEXTAUS"],
+                    "trade_date": [date(2026, 7, 15)],
+                    "close": [32.0],
+                }
+            )
+
+    with patch("stock_data.catalog.DataCatalog", FakeCatalog):
+        assert monthly_usdtwd_rate("2026-07", runtime=runtime) == 32.0
+
+    assert calls == {"data_source": "fred", "runtime": runtime}

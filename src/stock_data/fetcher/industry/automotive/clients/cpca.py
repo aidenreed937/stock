@@ -32,6 +32,8 @@ from stock_data.fetcher.industry.common import (
 logger = logging.getLogger(__name__)
 
 CPCA_DATA_API_URL = "http://data.cpcadata.com/api/chartlist"
+_CPCA_MAX_ATTEMPTS = 2
+_CPCA_RETRY_STATUS_CODES = frozenset({429, 500, 502, 503, 504})
 
 
 class CpcaOnlineClient:
@@ -93,21 +95,42 @@ class CpcaOnlineClient:
         refs: list[str] = []
         for chart_type in ("6", "1"):
             url = f"{CPCA_DATA_API_URL}?{urlencode({'charttype': chart_type})}"
-            try:
-                response = requests.get(
-                    url,
-                    headers=CPCA_HEADERS,
-                    timeout=self.timeout,
-                    impersonate=self.impersonate,
+            response = None
+            last_error: Exception | None = None
+            for attempt in range(_CPCA_MAX_ATTEMPTS):
+                try:
+                    candidate = requests.get(
+                        url,
+                        headers=CPCA_HEADERS,
+                        timeout=self.timeout,
+                        impersonate=self.impersonate,
+                    )
+                except Exception as exc:  # noqa: BLE001
+                    last_error = exc
+                    if attempt + 1 < _CPCA_MAX_ATTEMPTS:
+                        logger.debug("CPCA 官方统计接口暂时失败，准备重试 [%s]", chart_type)
+                        continue
+                    self._add_error(f"CPCA 官方统计接口请求失败 [{chart_type}]: {exc}")
+                    break
+                status_code = getattr(candidate, "status_code", 0)
+                if status_code == 200:
+                    response = candidate
+                    break
+                if status_code not in _CPCA_RETRY_STATUS_CODES or attempt + 1 >= _CPCA_MAX_ATTEMPTS:
+                    self._add_error(f"CPCA 官方统计接口 HTTP {status_code} [{chart_type}]")
+                    break
+                logger.debug(
+                    "CPCA 官方统计接口暂时返回 HTTP %s，准备重试 [%s]",
+                    status_code,
+                    chart_type,
                 )
-            except Exception as exc:  # noqa: BLE001
-                self._add_error(f"CPCA 官方统计接口请求失败 [{chart_type}]: {exc}")
+            if response is None:
+                if last_error is not None:
+                    logger.debug("CPCA 官方统计接口最终失败 [%s]: %s", chart_type, last_error)
                 continue
             content = _response_bytes(response)
-            if getattr(response, "status_code", 0) != 200 or not content:
-                self._add_error(
-                    f"CPCA 官方统计接口 HTTP {getattr(response, 'status_code', 'unknown')}"
-                )
+            if not content:
+                self._add_error(f"CPCA 官方统计接口返回空响应 [{chart_type}]")
                 continue
             payload = _json_payload(response, content)
             if not isinstance(payload, list) or not payload:

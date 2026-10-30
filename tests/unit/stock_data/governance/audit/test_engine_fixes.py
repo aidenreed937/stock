@@ -96,6 +96,52 @@ def test_reconciliation_raw_duplicate_tolerance(tmp_path, monkeypatch) -> None:
     assert "已权威去重" in result["raw_curated_reason"]
 
 
+def test_reconciliation_maps_raw_item_to_curated_item(tmp_path, monkeypatch) -> None:
+    """测试行业 RAW 源端字段 item_raw 可与 Curated 标准字段 item 对账。"""
+    raw_root = tmp_path / "raw"
+    curated_root = tmp_path / "curated"
+    monkeypatch.setattr(
+        "stock_data.governance.audit.reconciliation.data_settings.raw_data_dir", raw_root
+    )
+    monkeypatch.setattr(
+        "stock_data.governance.audit.reconciliation.data_settings.curated_data_dir", curated_root
+    )
+
+    raw_dir = raw_root / "industry" / "semiconductor" / "semiconductor_memory_price"
+    curated_dir = curated_root / "industry" / "semiconductor_memory_price"
+    raw_dir.mkdir(parents=True)
+    curated_dir.mkdir(parents=True)
+
+    pl.DataFrame(
+        {
+            "trade_date": ["2026-09-04"],
+            "product_family": ["NAND"],
+            "price_scope": ["spot"],
+            "table_index": ["0"],
+            "item_raw": ["512Gb TLC"],
+        }
+    ).write_parquet(raw_dir / "data.parquet")
+    pl.DataFrame(
+        {
+            "trade_date": ["2026-09-04"],
+            "product_family": ["NAND"],
+            "price_scope": ["spot"],
+            "table_index": ["0"],
+            "item": ["512Gb TLC"],
+        }
+    ).write_parquet(curated_dir / "data.parquet")
+
+    result = _run_raw_curated_reconciliation(
+        date(2026, 9, 4), "industry", "semiconductor_memory_price"
+    )
+
+    assert result["raw_curated_status"] == "PASSED"
+    assert result["raw_key_count"] == 1
+    assert result["curated_key_count"] == 1
+    assert result["missing_in_curated_count"] == 0
+    assert result["extra_in_curated_count"] == 0
+
+
 def test_check_raw_curated_partition_flow(tmp_path) -> None:
     """测试 UniversalAuditEngine._check_raw_curated 支持 market=CN 分区探测。"""
     raw_dir = (

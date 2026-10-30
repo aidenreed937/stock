@@ -2,13 +2,17 @@
 
 from __future__ import annotations
 
-from typing import Any
+import logging
+
+from stock_data.core.task_types import TaskSpec
+
+logger = logging.getLogger(__name__)
 
 
 def expand_public_task_targets(provider: str, endpoints: list[str] | None = None) -> list[str]:
     """展开任务包，并严格校验每个公共原子任务。"""
     from stock_data.core.task_bundles import resolve_bundle_or_alias as _resolve_bundle_or_alias
-    from stock_data.core.task_registry import (
+    from stock_data.core.task_resolution import (
         expand_task_targets,
         list_available_tasks,
     )
@@ -23,6 +27,12 @@ def expand_public_task_targets(provider: str, endpoints: list[str] | None = None
         requested = raw_endpoint.strip()
         if not requested:
             continue
+        if provider_name == "industry" and requested in {"industry_tech_bundle", "industry_tech"}:
+            logger.warning(
+                "[%s] 是跨行业科技观察包，缺少先进封装与 CoWoS；半导体完整同步请使用 "
+                "semiconductor_bundle 或 make sync-semiconductor。",
+                requested,
+            )
         if _resolve_bundle_or_alias(provider_name, requested) is not None:
             candidates = expand_task_targets(provider_name, [requested])
         else:
@@ -35,21 +45,34 @@ def expand_public_task_targets(provider: str, endpoints: list[str] | None = None
     return expanded
 
 
-def resolve_public_task(provider: str, task_name: str, symbol: str = "") -> Any:
+def resolve_public_task(provider: str, task_name: str, symbol: str = "") -> TaskSpec:
     """解析 CLI/配置公开任务名，拒绝别名、路径和未注册任务。"""
-    from stock_data.core.task_bundles import resolve_bundle_or_alias as _resolve_bundle_or_alias
-    from stock_data.core.task_registry import (
-        _ALIASES,
-        _CUSTOM_TASKS,
-        _DISABLED_TASKS,
-        _provider_registry,
-        resolve_task,
+    from stock_data.core.provider_registry import provider_registry as _provider_registry
+    from stock_data.core.task_aliases import (
+        DISABLED_TASKS as _DISABLED_TASKS,
     )
+    from stock_data.core.task_aliases import (
+        LEGACY_ONLY_TASKS as _LEGACY_ONLY_TASKS,
+    )
+    from stock_data.core.task_aliases import (
+        TASK_ALIASES as _ALIASES,
+    )
+    from stock_data.core.task_bundles import resolve_bundle_or_alias as _resolve_bundle_or_alias
+    from stock_data.core.task_manual_specs import CUSTOM_TASKS as _CUSTOM_TASKS
+    from stock_data.core.task_resolution import resolve_task
 
     provider_name = provider.lower()
     requested = task_name.strip()
     if requested in _DISABLED_TASKS:
-        raise ValueError(f"项目任务 [{provider_name}/{task_name}] 已停用；请使用 stock_daily_bar。")
+        hint = (
+            "请使用 stock_daily_bar。" if provider_name == "tushare" else "请使用其他已启用任务。"
+        )
+        raise ValueError(f"项目任务 [{provider_name}/{task_name}] 已停用；{hint}")
+    if (provider_name, requested) in _LEGACY_ONLY_TASKS:
+        raise ValueError(
+            f"项目任务 [{provider_name}/{task_name}] 仅保留历史数据兼容，"
+            "当前海关采集请使用 GACC 任务。"
+        )
     if _resolve_bundle_or_alias(provider_name, requested) is not None:
         raise ValueError(
             f"[{provider_name}/{task_name}] 是任务包，不是公开原子任务；请在调度入口中展开。"

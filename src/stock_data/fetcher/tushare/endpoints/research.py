@@ -15,6 +15,9 @@ RESEARCH_ENDPOINTS: dict[str, EndpointMeta] = {
         update_time="18:00",
         max_rows_per_request=3000,
         request_fields="ts_code,ann_date,end_date,holder_num",
+        fetch_mode="per_period",
+        partitioned=True,
+        is_single_sync=False,
     ),
     "top10_floatholders": EndpointMeta(
         api_name="top10_floatholders",
@@ -31,6 +34,9 @@ RESEARCH_ENDPOINTS: dict[str, EndpointMeta] = {
             "ts_code,ann_date,end_date,holder_name,hold_amount,hold_ratio,"
             "hold_float_ratio,hold_change,holder_type"
         ),
+        fetch_mode="per_period",
+        partitioned=True,
+        is_single_sync=False,
     ),
     "dividend": EndpointMeta(
         api_name="dividend",
@@ -56,6 +62,9 @@ RESEARCH_ENDPOINTS: dict[str, EndpointMeta] = {
             "cash_div,cash_div_tax,record_date,ex_date,pay_date,div_listdate,"
             "imp_ann_date,base_date,base_share"
         ),
+        fetch_mode="per_symbol",
+        partitioned=True,
+        is_single_sync=False,
     ),
     "cyq_perf": EndpointMeta(
         api_name="cyq_perf",
@@ -67,11 +76,13 @@ RESEARCH_ENDPOINTS: dict[str, EndpointMeta] = {
         date_columns=["trade_date"],
         required_columns=["ts_code", "trade_date", "cost_50pct", "winner_rate"],
         update_time="19:00",
+        request_window_days=1,
         max_rows_per_request=6000,
         request_fields=(
             "ts_code,trade_date,his_low,his_high,cost_5pct,cost_15pct,cost_50pct,"
             "cost_85pct,cost_95pct,weight_avg,winner_rate"
         ),
+        fetch_mode="per_day",
     ),
     "cyq_chips": EndpointMeta(
         api_name="cyq_chips",
@@ -87,6 +98,7 @@ RESEARCH_ENDPOINTS: dict[str, EndpointMeta] = {
         per_symbol_windowed=True,
         max_rows_per_request=6000,
         request_fields="ts_code,trade_date,price,percent",
+        fetch_mode="per_symbol",
     ),
     "top_list": EndpointMeta(
         api_name="top_list",
@@ -155,6 +167,7 @@ RESEARCH_ENDPOINTS: dict[str, EndpointMeta] = {
         max_rows_per_request=3000,
         request_fields=("ts_code,trade_date,name,theme_code,industry_code,industry,reason,hot_num"),
         symbol_query_mode="trade_date",
+        fetch_mode="per_symbol",
     ),
     "stk_managers": EndpointMeta(
         api_name="stk_managers",
@@ -170,6 +183,9 @@ RESEARCH_ENDPOINTS: dict[str, EndpointMeta] = {
             "ts_code,ann_date,name,gender,lev,title,edu,national,birthday,"
             "begin_date,end_date,resume"
         ),
+        fetch_mode="per_symbol",
+        partitioned=True,
+        is_single_sync=False,
     ),
     "stk_surv": EndpointMeta(
         api_name="stk_surv",
@@ -188,6 +204,9 @@ RESEARCH_ENDPOINTS: dict[str, EndpointMeta] = {
             "ts_code,name,surv_date,fund_visitors,rece_place,rece_mode,rece_org,"
             "org_type,comp_rece,content"
         ),
+        fetch_mode="per_symbol",
+        partitioned=True,
+        is_single_sync=False,
     ),
 }
 

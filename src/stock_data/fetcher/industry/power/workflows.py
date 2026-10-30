@@ -1,5 +1,6 @@
 """光伏与硅料产业端点附加执行逻辑。"""
 
+from collections.abc import Sequence
 from pathlib import Path
 from typing import Any
 
@@ -34,6 +35,16 @@ SILICON_BRANCH_ENDPOINTS = {
     "polysilicon_inventory_monthly",
     "pv_wafer_monthly",
 }
+
+CUSTOMS_CURATED_FILENAMES = (
+    "customs_trade.parquet",
+    "customs_trade_gacc.parquet",
+)
+
+
+def _customs_curated_paths(curated_dir: Path) -> tuple[Path, ...]:
+    """返回兼容 UN Comtrade 与 GACC 的海关 Curated 输入路径。"""
+    return tuple(curated_dir / filename for filename in CUSTOMS_CURATED_FILENAMES)
 
 
 def execute_silicon_wafer_monthly(raw_path: Path, curated_path: Path) -> int:
@@ -81,6 +92,7 @@ def execute_polysilicon_balance(raw_path: Path, curated_path: Path) -> int:
         curated_path / "polysilicon_supply_monthly.parquet",
         curated_path / "pv_wafer_monthly.parquet",
         curated_path / "polysilicon_inventory_monthly.parquet",
+        _customs_curated_paths(curated_path),
     )
     if df_bal.is_empty():
         return 0
@@ -95,6 +107,40 @@ def _read_curated(path: Path, schema: dict[str, Any]) -> pl.DataFrame:
     return pl.read_parquet(path)
 
 
+def _read_customs_curated(
+    paths: Path | Sequence[Path] | None,
+) -> pl.DataFrame:
+    """合并旧 Comtrade 与 GACC 海关 Curated，重叠主键时 GACC 优先。"""
+    if paths is None:
+        return pl.DataFrame()
+    candidates = (paths,) if isinstance(paths, Path) else tuple(paths)
+    frames = [pl.read_parquet(path) for path in candidates if path.exists()]
+    if not frames:
+        return pl.DataFrame()
+    combined = pl.concat(frames, how="diagonal_relaxed")
+    keys = [
+        "product_key",
+        "hs_code",
+        "report_month",
+        "trade_direction",
+        "trade_value_currency",
+    ]
+    available_keys = [key for key in keys if key in combined.columns]
+    if len(available_keys) < 4:
+        return combined
+    priority = (
+        pl.when(pl.col("source") == "GACC").then(1).otherwise(0)
+        if "source" in combined.columns
+        else pl.lit(0)
+    )
+    return (
+        combined.with_columns(priority.alias("_source_priority"))
+        .sort(available_keys + ["_source_priority"])
+        .unique(subset=available_keys, keep="last", maintain_order=True)
+        .drop("_source_priority")
+    )
+
+
 def read_silicon_curated(context: IndustryRunContext) -> pl.DataFrame:
     """读取硅业分会 Curated 主表，供派生 endpoint 使用。"""
     return _read_curated(
@@ -106,8 +152,9 @@ def build_polysilicon_balance_from_curated(
     supply_path: Path,
     wafer_path: Path,
     inventory_path: Path | None = None,
+    customs_path: Path | Sequence[Path] | None = None,
 ) -> pl.DataFrame:
-    """只消费 Curated 供给、硅片和库存表构建多晶硅平衡表。"""
+    """只消费 Curated 供给、硅片、库存和海关表构建多晶硅平衡表。"""
     supply_df = _read_curated(supply_path, POLYSILICON_SUPPLY_MONTHLY_SCHEMA)
     wafer_df = _read_curated(wafer_path, PV_WAFER_MONTHLY_SCHEMA)
     if supply_df.is_empty() or wafer_df.is_empty():
@@ -117,7 +164,8 @@ def build_polysilicon_balance_from_curated(
         if inventory_path is not None
         else None
     )
-    return build_polysilicon_balance_frame(supply_df, wafer_df, inventory_df)
+    customs_df = _read_customs_curated(customs_path)
+    return build_polysilicon_balance_frame(supply_df, wafer_df, inventory_df, customs_df)
 
 
 def collect_polysilicon_balance(context: IndustryRunContext) -> pl.DataFrame:
@@ -126,6 +174,7 @@ def collect_polysilicon_balance(context: IndustryRunContext) -> pl.DataFrame:
         context.curated_dir / "polysilicon_supply_monthly.parquet",
         context.curated_dir / "pv_wafer_monthly.parquet",
         context.curated_dir / "polysilicon_inventory_monthly.parquet",
+        _customs_curated_paths(context.curated_dir),
     )
 
 

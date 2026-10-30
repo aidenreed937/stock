@@ -6,25 +6,38 @@ from datetime import date
 from typing import TYPE_CHECKING, Any
 
 from stock_core.utils.logger import logger
-from stock_data.core.task_registry import is_per_symbol_task, resolve_public_task
+from stock_data.core.public_tasks import resolve_public_task
+from stock_data.core.task_resolution import is_per_symbol_task
 
 if TYPE_CHECKING:
     from stock_data.pipeline.backfill import HistoricalBackfiller
 
 
-def _backfill_industry_metric(endpoint: str, total_days: int) -> dict[str, Any]:
+def _backfill_industry_metric(
+    endpoint: str,
+    start_date: date,
+    end_date: date,
+    force_refresh: bool,
+    total_days: int,
+) -> dict[str, Any]:
     """执行中观产业指标回填。"""
-    from stock_data.fetcher.industry.pipeline import sync_all_industry_metrics
+    from stock_data.fetcher.industry.pipeline import execute_single_industry_task
 
     try:
-        res_dict = sync_all_industry_metrics(metrics=[endpoint])
-        count = res_dict.get(endpoint, 0)
+        result = execute_single_industry_task(
+            endpoint=endpoint,
+            start_date=start_date,
+            end_date=end_date,
+            force_refresh=force_refresh,
+        )
+        status = getattr(result, "status", "SUCCESS" if result > 0 else "EMPTY")
         return {
             "total_days": total_days,
             "open_days": 1,
-            "synced_days": count,
-            "skipped_days": 0 if count > 0 else 1,
-            "failed_days": 0,
+            "synced_days": int(result),
+            "skipped_days": 0 if result > 0 else 1,
+            "failed_days": 0 if status == "SUCCESS" else 1,
+            "status": status,
         }
     except Exception as err:
         logger.error(f"中观产业指标 [{endpoint}] 回填异常: {err}")
@@ -166,7 +179,13 @@ def execute_backfill_range(
     """路由并执行指定范围的数据回填。"""
     total_days = (end_date - start_date).days + 1
     if backfiller.data_source == "industry":
-        return _backfill_industry_metric(backfiller.endpoint, total_days)
+        return _backfill_industry_metric(
+            backfiller.endpoint,
+            start_date,
+            end_date,
+            force_refresh,
+            total_days,
+        )
 
     freq = backfiller.frequency
     task_spec = resolve_public_task(backfiller.data_source, backfiller.endpoint)

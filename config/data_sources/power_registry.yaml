@@ -1,0 +1,77 @@
+# 电力设备与新能源 (光伏/风电/储能) 基本面数据源注册表 (Source Registry)
+# 严格区分：权威官方源 (Official) vs 行业协会/智库 (Industry_Association) vs 商业源 (Commercial)
+# 授权状态：available (已接入真实源) vs unavailable (未授权商业源，字段保持 NULL，严禁伪造/插值)
+
+metadata:
+  domain: "power"
+  description: "电力设备与新能源 (重点覆盖光伏设备 480400) 供需链条、产能投放与现货价格数据源注册与质量等级"
+  version: "1.0.0"
+  provenance_policy: "所有生产库数值必须具备可追溯原始来源；未经来源验证的数据不得进入生产库。"
+
+indicators:
+  # --- 1. 需求端：国家能源局 (NEA) 光伏装机容量 (月度) ---
+  solar_capacity:
+    name: "光伏月度新增与累计装机容量"
+    source: "NEA"
+    authority: "official"
+    access_method: "public_open"
+    frequency: "monthly"
+    unit: "gw"
+    quality_grade: "A"
+    status: "available"
+    target_l2: ["480400"] # 光伏设备
+
+  # --- 2. 供给端-中游：国家统计局 (NBS) 太阳能电池产量 (月度) ---
+  solar_cell_production:
+    name: "太阳能电池 (光伏电池) 月度产量与累计"
+    source: "NBS"
+    authority: "official"
+    access_method: "public_open"
+    frequency: "monthly"
+    unit: "ten_thousand_kw"
+    quality_grade: "A"
+    status: "available"
+    target_l2: ["480400"]
+
+  # --- 3. 供给端-上游：硅业分会 (安泰科) 多晶硅/硅片月度产出与运行 (月度) ---
+  silicon_wafer_monthly:
+    name: "多晶硅/硅片月度实物产出、开工率与社会库存"
+    source: "Silicon_Branch_Antaike"
+    authority: "industry_association"
+    access_method: "public_open"
+    frequency: "monthly"
+    unit: "ten_thousand_tons_and_gw"
+    quality_grade: "B" # 多源拼接智库核验
+    status: "available"
+    target_l2: ["480400"]
+    coverage_details:
+      polysilicon_output_w_tons: "2020-01 ~ 2026-07 (79 个月)"
+      derived_polysilicon_utilization_rate: "2020-01 ~ 2026-07 (79 个月，长周期第一性原理派生)"
+      polysilicon_operating_rate: "2024-12 ~ 2026-07 (20 个月，安泰科/Mysteel 一手通报)"
+      polysilicon_inventory_w_tons: "2023-12 ~ 2026-07 (23 个月)"
+      unverified_months: "2026-08 未收官严格置空 (NULL)"
+    lineage_notes: "2020-2024 为硅业分会通报经索比/百川/期货研报引用留存数据；2025-2026 为安泰科/Mysteel 一手通报原值。"
+
+  # --- 4. 价格端：InfoLink Consulting 全产业链周度现货价格 (周度) ---
+  solar_price_chain:
+    name: "多晶硅/硅片/电池片/组件周度现货价格链条"
+    source: "InfoLink_Consulting"
+    authority: "commercial_open_snapshot"
+    access_method: "public_open"
+    frequency: "weekly"
+    unit: "cny_per_unit"
+    quality_grade: "A"
+    status: "available"
+    target_l2: ["480400"]
+
+  # --- 5. 衍生中观层：光伏供需剪刀差与装机消化比 (月度) ---
+  solar_supply_demand:
+    name: "光伏供需剪刀差、装机消化比与月度过剩敞口"
+    source: "Derived_From_NBS_And_NEA"
+    authority: "internal_derived"
+    access_method: "internal_calc"
+    frequency: "monthly"
+    unit: "gw_and_ratio"
+    quality_grade: "A"
+    status: "available"
+    target_l2: ["480400"]

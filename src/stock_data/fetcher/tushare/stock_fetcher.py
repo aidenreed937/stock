@@ -21,6 +21,7 @@ from stock_data.fetcher.tushare.query_builder import (
 from stock_data.fetcher.tushare.registry import TUSHARE_API_REGISTRY, EndpointMeta
 from stock_data.fetcher.tushare.research_fetcher import (
     fetch_dividend_data,
+    fetch_fund_portfolio_data,
     fetch_hk_hold_data,
     fetch_stk_holdernumber_data,
     fetch_top10_floatholders_data,
@@ -114,6 +115,12 @@ class TuShareStockFetcher(BaseDataFetcher):
         )
         if endpoint == "dividend":
             return fetch_dividend_data(
+                self.client, symbol, start_date, end_date, meta, extra_kwargs
+            )
+        if endpoint == "fund_portfolio":
+            # 按基金代码逐只采集全历史持仓；绝不能走下面的 period 分支（上游会静默忽略
+            # period 并退化为前 8000 行切片，导致每基金每报告期只剩 1 条）。
+            return fetch_fund_portfolio_data(
                 self.client, symbol, start_date, end_date, meta, extra_kwargs
             )
         if endpoint == "top10_floatholders":

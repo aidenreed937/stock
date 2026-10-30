@@ -11,7 +11,19 @@ from stock_data.fetcher.fred.registry import FRED_API_REGISTRY
 
 
 def test_fred_registry_declares_pipeline_contract() -> None:
-    for sid in ["FEDFUNDS", "USALOLITOAASTSAM", "OECDLOLITOAASTSAM", "DGORDER", "AMTMVS"]:
+    for sid in [
+        "FEDFUNDS",
+        "USALOLITOAASTSAM",
+        "OECDLOLITOAASTSAM",
+        "DGORDER",
+        "AMTMVS",
+        "DGS10",
+        "DGS3MO",
+        "VIXCLS",
+        "DCOILWTICO",
+        "DTWEXBGS",
+        "PCOPPUSDM",
+    ]:
         assert sid in FRED_API_REGISTRY
         meta = FRED_API_REGISTRY[sid]
         assert meta.primary_keys == ["symbol", "trade_date"]

@@ -11,7 +11,8 @@ import polars as pl
 from stock_core.config.loader import load_data_config
 from stock_data.catalog import DataCatalog
 from stock_data.core.lixinger_risk_tasks import LIXINGER_WATCHLIST_ONLY_TASK_NAMES
-from stock_data.core.task_registry import _provider_registry, expand_task_targets, resolve_task
+from stock_data.core.provider_registry import provider_registry
+from stock_data.core.task_resolution import expand_task_targets, resolve_task
 from stock_data.pipeline.planner import (
     _filter_supported_symbols,
     _load_curated_symbol_pool,
@@ -34,7 +35,22 @@ INDEX_ENDPOINTS = {
     "index_fundamental",
 }
 FUND_ENDPOINTS = {"fund_daily", "fund_adj", "fund_share", "etf_share_size", "fund_holder_structure"}
-YFINANCE_MACRO_SYMBOLS = ["^TNX", "^IRX", "DX-Y.NYB", "GC=F", "CL=F", "HG=F", "^VIX"]
+YFINANCE_MACRO_SYMBOLS = ["^TNX", "^IRX", "DX-Y.NYB", "GC=F", "CL=F", "^VIX"]
+_SEMICONDUCTOR_INVENTORY_SYMBOLS = {
+    "TXN",
+    "ADI",
+    "STM",
+    "NXPI",
+    "MU",
+    "000660.KS",
+    "005930.KS_DS",
+}
+_EQUIPMENT_GM_MANIFESTS = {
+    "semiconductor_equipment_gm_amat": ("sec_edgar", "AMAT"),
+    "semiconductor_equipment_gm_lrcx": ("sec_edgar", "LRCX"),
+    "semiconductor_equipment_gm_klac": ("sec_edgar", "KLAC"),
+    "tel_gm_quarterly": ("tel/ir_tanshin", ""),
+}
 WATERMARK_DATE_COLUMNS = (
     "trade_date",
     "report_date",
@@ -89,6 +105,19 @@ def configured_max_workers(
         return 4
 
 
+def configured_source_workers(load_config: Callable[[], Any] = load_data_config) -> int:
+    """读取跨数据源同步并发配置，不可用时回退到 2。"""
+    try:
+        data_cfg = load_config()
+        concurrency = getattr(data_cfg, "concurrency", None)
+        return int(getattr(concurrency, "source_max_workers", 2))
+    except Exception as exc:
+        import logging
+
+        logging.getLogger(__name__).warning("读取跨数据源并发配置失败，回退到 2: %s", exc)
+        return 2
+
+
 def sync_symbols_for_task(
     data_source: str,
     endpoint: str,
@@ -119,6 +148,15 @@ def sync_symbols_for_task(
 
     if data_source in {"yfinance", "alphavantage"} and task.dataset == "macro_indicators":
         return YFINANCE_MACRO_SYMBOLS if data_source == "yfinance" else ["CNH=X"]
+    if data_source == "alphavantage":
+        global_watchlist = getattr(data_cfg.watchlists, "yfinance", None)
+        return list(getattr(global_watchlist, "stocks", []) or [])
+    if data_source == "tushare" and task.task_name == "us_stock_daily_bar":
+        global_watchlist = getattr(data_cfg.watchlists, "yfinance", None)
+        return list(getattr(global_watchlist, "stocks", []) or [])
+    if data_source == "tushare" and task.task_name == "fut_index_daily":
+        supported = getattr(data_cfg, "source_endpoint_supports", {}) or {}
+        return list(supported.get(data_source, {}).get(task.task_name, []) or [])
     if data_source == "tushare" and task.task_name == "fund_share":
         return list(getattr(watchlist, "funds", []) or []) if watchlist is not None else []
     if task.required_pool in {"stock_basic", "fund_basic"}:
@@ -153,7 +191,10 @@ def watermark_date_column(
     """读取任务注册表的主时间字段。"""
     try:
         task = resolve_task_fn(data_source, endpoint)
-        meta = _provider_registry(data_source).get(task.api_name)
+        configured_column = getattr(task, "watermark_column", None)
+        if isinstance(configured_column, str) and configured_column:
+            return configured_column
+        meta = provider_registry(data_source).get(task.api_name)
         date_columns = getattr(meta, "date_columns", ()) if meta else ()
         if date_columns:
             return str(date_columns[0])
@@ -162,10 +203,48 @@ def watermark_date_column(
     return "trade_date"
 
 
+def _semiconductor_inventory_complete_watermark(
+    catalog: DataCatalog,
+) -> date | None:
+    """返回最近一个主体集合完整的 IDM 库存季度水位。"""
+    try:
+        frame = catalog.load_dataset(
+            "semiconductor_inventory_days",
+            columns=["report_quarter", "symbol", "trade_date"],
+        )
+    except Exception:
+        return None
+    if frame.is_empty():
+        return None
+    required = len(_SEMICONDUCTOR_INVENTORY_SYMBOLS)
+    complete = (
+        frame.filter(pl.col("symbol").is_in(_SEMICONDUCTOR_INVENTORY_SYMBOLS))
+        .group_by("report_quarter")
+        .agg(
+            pl.col("symbol").n_unique().alias("constituents"),
+            pl.col("trade_date").max().alias("trade_date"),
+        )
+        .filter(pl.col("constituents") >= required)
+        .sort("trade_date")
+    )
+    if complete.is_empty():
+        return None
+    value = complete.get_column("trade_date").tail(1).item()
+    return value if isinstance(value, date) else None
+
+
+def _equipment_gm_manifest_ready(catalog: DataCatalog, endpoint: str) -> bool:
+    source_dir = catalog.runtime.raw_root / "industry" / "semiconductor" / "equipment"
+    subdir, company = _EQUIPMENT_GM_MANIFESTS[endpoint]
+    manifest_dir = source_dir / subdir / company if company else source_dir / subdir
+    return (manifest_dir / "manifest.csv").exists()
+
+
 def next_increment_start(watermark: date, data_source: str, endpoint: str, frequency: str) -> date:
     """按日期字段语义推进增量起点。"""
     try:
-        if resolve_task(data_source, endpoint).fetch_mode == "per_period":
+        task = resolve_task(data_source, endpoint)
+        if task.fetch_mode == "per_period" and task.frequency == "quarterly":
             return next_report_period_end(watermark)
     except Exception:
         pass
@@ -368,7 +447,25 @@ def sniff_watermarks(
                 dates = catalog.latest_refresh_dates(dataset=task.dataset, n=1)
                 watermarks[endpoint] = dates[0] if dates else None
                 continue
+            if data_source == "industry" and endpoint == "semiconductor_inventory_days":
+                # 只用完整的 7 家主体季度推进水位；单家公司先披露的下一季度
+                # 不能覆盖整个行业面板的缺口。
+                watermarks[endpoint] = _semiconductor_inventory_complete_watermark(catalog)
+                continue
+            if data_source == "industry" and endpoint in _EQUIPMENT_GM_MANIFESTS:
+                if not _equipment_gm_manifest_ready(catalog, endpoint):
+                    watermarks[endpoint] = None
+                    continue
             date_column = watermark_date_column_fn(data_source, endpoint)
+            if (
+                data_source == "fred"
+                and task.fetch_mode == "per_symbol"
+                and task.api_name != "macro_indicators"
+            ):
+                watermarks[endpoint] = symbol_watermarks(
+                    catalog, data_source, task.dataset, [task.api_name]
+                ).get(task.api_name)
+                continue
             cache_key = (task.dataset, date_column)
             if cache_key not in latest_by_dataset:
                 kwargs: dict[str, Any] = {"dataset": task.dataset, "n": 1}

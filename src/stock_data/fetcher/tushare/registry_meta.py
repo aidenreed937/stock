@@ -33,3 +33,13 @@ class EndpointMeta:
     max_rows_per_request: int | None = None
     quality_profile: str = "generic"
     request_fields: str | None = None
+    fetch_mode: str | None = None
+    partitioned: bool | None = None
+    is_single_sync: bool | None = None
+    dataset: str | None = None
+    required_pool: str | None = None
+    period_query_variants: tuple[tuple[tuple[str, str], ...], ...] = ()
+    period_query_variant_columns: dict[str, str] = field(default_factory=dict)
+    replace_raw_on_refresh: bool = False
+    # 源端标识列改名映射（如 fund_portfolio 的 ts_code 是基金代码，须与 symbol=被持有股票代码 并存）
+    identity_renames: dict[str, str] = field(default_factory=dict)

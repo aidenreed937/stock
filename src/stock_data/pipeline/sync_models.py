@@ -36,3 +36,7 @@ class SyncExecutionResult:
     status: str
     error: str | None = None
     symbol: str = ""
+    updated: bool = False
+    fetched_periods: tuple[str, ...] = ()
+    cached_periods: tuple[str, ...] = ()
+    missing_periods: tuple[str, ...] = ()

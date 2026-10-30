@@ -41,7 +41,9 @@ def get_shared_fetcher(data_source: str, **kwargs: Any) -> BaseDataFetcher:
     elif ds == "lixinger":
         from stock_data.fetcher.lixinger.factory import create_lixinger_fetcher
 
-        fetcher = create_lixinger_fetcher(token=kwargs.get("token"), url=kwargs.get("url"))
+        fetcher = create_lixinger_fetcher(
+            token=kwargs.get("token"), url=kwargs.get("url"), profile=kwargs.get("profile")
+        )
     elif ds == "yfinance":
         from stock_data.fetcher.yfinance.factory import create_yfinance_fetcher
 
@@ -60,8 +62,11 @@ def get_shared_fetcher(data_source: str, **kwargs: Any) -> BaseDataFetcher:
 
         fetcher = create_alphavantage_fetcher(
             api_key=kwargs.get("api_key"),
+            api_keys=kwargs.get("api_keys"),
             proxy=kwargs.get("proxy"),
             rate_limit_per_min=kwargs.get("rate_limit_per_min"),
+            daily_limit=kwargs.get("daily_limit"),
+            usage_file=kwargs.get("usage_file"),
         )
     else:
         from stock_data.fetcher.tushare.factory import create_tushare_fetcher

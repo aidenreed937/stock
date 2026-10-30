@@ -179,6 +179,61 @@ def test_partition_writer_aligns_sw_daily_classification_columns(tmp_path: Path)
     )
 
 
+def test_partition_writer_recomputes_industry_ttm_after_incremental_merge(
+    tmp_path: Path,
+) -> None:
+    report_types = [
+        "first_quarterly_report",
+        "interim_report",
+        "third_quarterly_report",
+        "annual_report",
+    ] * 2
+    report_dates = [
+        date(2021, 3, 31),
+        date(2021, 6, 30),
+        date(2021, 9, 30),
+        date(2021, 12, 31),
+        date(2022, 3, 31),
+        date(2022, 6, 30),
+        date(2022, 9, 30),
+        date(2022, 12, 31),
+    ]
+    cumulative = [100, 220, 340, 480, 110, 250, 400, 560]
+
+    def make_frame(start: int, end: int) -> pl.DataFrame:
+        return pl.DataFrame(
+            {
+                "symbol": ["110101"] * (end - start),
+                "trade_date": report_dates[start:end],
+                "standardDate": report_dates[start:end],
+                "reportType": report_types[start:end],
+                "q": [
+                    {
+                        "ps": {
+                            "toi": {"t": value, "c_y2y": None, "ttm_y2y": None},
+                            "np": {"t": value, "c_y2y": None, "ttm_y2y": None},
+                        },
+                        "m": {"roe": {"ttm": None}},
+                    }
+                    for value in cumulative[start:end]
+                ],
+                "data_source": ["lixinger"] * (end - start),
+                "schema_version": ["v2"] * (end - start),
+            }
+        )
+
+    path = tmp_path / "market=CN" / "sw_2021_l3_fs_bank" / "data.parquet"
+    writer = ParquetPartitionWriter(data_source="lixinger")
+    writer.merge_and_save_parquet(path, [make_frame(0, 4)], source="lixinger")
+    merged = writer.merge_and_save_parquet(path, [make_frame(4, 8)], source="lixinger")
+
+    derived = merged.select(
+        pl.col("q").struct.field("ps").struct.field("toi").struct.field("ttm_y2y_derived")
+    ).to_series()
+    assert derived[:7].null_count() == 7
+    assert derived[7] == pytest.approx(560 / 480 - 1)
+
+
 @pytest.mark.parametrize(
     "dataset_name",
     [
@@ -190,6 +245,10 @@ def test_partition_writer_aligns_sw_daily_classification_columns(tmp_path: Path)
         "sw_2021_fs_bank",
         "sw_2021_fs_security",
         "sw_2021_fs_insurance",
+        "sw_2021_l3_fs_non_financial",
+        "sw_2021_l3_fs_bank",
+        "sw_2021_l3_fs_security",
+        "sw_2021_l3_fs_insurance",
     ],
 )
 def test_partition_writer_aligns_lixinger_financial_optional_columns(
@@ -231,6 +290,44 @@ def test_partition_writer_aligns_lixinger_financial_optional_columns(
     assert new_row["accountant"].item() is None
     assert new_row["accountingFirm"].item() is None
     assert new_row["auditOpinionType"].item() is None
+
+
+def test_partition_writer_merges_lixinger_legacy_q_with_new_metrics(tmp_path: Path) -> None:
+    writer = ParquetPartitionWriter(data_source="lixinger")
+    path = tmp_path / "market=CN" / "sw_2021_l3_fs_bank" / "data.parquet"
+    existing = pl.DataFrame(
+        {
+            "symbol": ["480201"],
+            "trade_date": [date(2026, 6, 30)],
+            "q": ["{{{0.1,0.2},{0.3,0.4}},{{0.5}}}"],
+            "data_source": ["lixinger"],
+            "schema_version": ["v2"],
+        }
+    )
+    incoming = pl.DataFrame(
+        {
+            "symbol": ["480201"],
+            "trade_date": [date(2026, 6, 30)],
+            "q": [
+                {
+                    "ps": {
+                        "toi": {"t": 10, "c_y2y": 0.1, "ttm_y2y": 0.2},
+                        "np": {"t": 20, "c_y2y": 0.3, "ttm_y2y": 0.4},
+                    },
+                    "m": {"roe": {"ttm": 0.5}},
+                }
+            ],
+            "data_source": ["lixinger"],
+            "schema_version": ["v2"],
+        }
+    )
+    path.parent.mkdir(parents=True)
+    existing.write_parquet(path)
+
+    merged = writer.merge_and_save_parquet(path, [incoming], source="lixinger")
+
+    assert merged.schema["q"].fields[0].dtype.fields[0].dtype.fields[0].dtype == pl.Int64
+    assert merged["q"].struct.field("ps").struct.field("toi").struct.field("t").item() == 10
 
 
 def test_partition_writer_aligns_empty_nested_struct_to_existing_schema(tmp_path: Path) -> None:

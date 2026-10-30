@@ -5,7 +5,7 @@ from datetime import date
 import polars as pl
 
 from stock_core.utils.logger import logger
-from stock_data.core.task_registry import is_task_partitioned, resolve_task
+from stock_data.core.task_resolution import is_task_partitioned, resolve_task
 from stock_data.storage.raw_schema import normalize_raw_date_series
 
 

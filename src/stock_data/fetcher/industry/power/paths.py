@@ -99,6 +99,19 @@ class PowerRawPaths:
         )
 
     @property
+    def polysilicon_inventory_patch_csv(self) -> Path:
+        """返回多晶硅库存历史校准补丁 CSV。"""
+        return self._resolve_file(
+            "polysilicon_inventory_patch.csv",
+            self.silicon_branch_dir,
+            (
+                self.power_dir,
+                self.legacy_energy_dir,
+                self.raw_root,
+            ),
+        )
+
+    @property
     def pv_price_chain_csv(self) -> Path:
         """返回 InfoLink 价格链 CSV，优先新布局。"""
         return self._resolve_file(

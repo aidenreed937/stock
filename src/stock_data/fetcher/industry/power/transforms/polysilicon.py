@@ -53,7 +53,7 @@ def records_to_polysilicon_supply_frame(
             )
             for r in ordered_records
         ],
-        "unit": [r.unit or "ten_thousand_tons" for r in ordered_records],
+        "unit": ["ten_thousand_tons/ratio" for _ in ordered_records],
         "source": [r.source or "Silicon_Branch_Antaike" for r in ordered_records],
         "source_url": [r.source_url or "" for r in ordered_records],
         "release_date": [r.release_date for r in ordered_records],
@@ -73,18 +73,14 @@ def records_to_polysilicon_supply_frame(
     if df["production_yoy"].null_count() > 0:
         df = df.with_columns(
             pl.when(pl.col("production_yoy").is_null())
-            .then(
-                (pl.col("production_w_tons") / pl.col("production_w_tons").shift(12) - 1.0) * 100.0
-            )
+            .then(pl.col("production_w_tons") / pl.col("production_w_tons").shift(12) - 1.0)
             .otherwise(pl.col("production_yoy"))
             .alias("production_yoy")
         )
     if df["production_mom"].null_count() > 0:
         df = df.with_columns(
             pl.when(pl.col("production_mom").is_null())
-            .then(
-                (pl.col("production_w_tons") / pl.col("production_w_tons").shift(1) - 1.0) * 100.0
-            )
+            .then(pl.col("production_w_tons") / pl.col("production_w_tons").shift(1) - 1.0)
             .otherwise(pl.col("production_mom"))
             .alias("production_mom")
         )
@@ -200,7 +196,7 @@ def records_to_pv_wafer_frame(records: Sequence[PvWaferMonthlyRecord]) -> pl.Dat
         "derived_wafer_utilization_rate": [r.derived_wafer_utilization_rate for r in records],
         "silicon_consumption_ratio": [r.silicon_consumption_ratio for r in records],
         "implied_silicon_demand_w_tons": [r.implied_silicon_demand_w_tons for r in records],
-        "unit": [r.unit or "gw/ten_thousand_tons" for r in records],
+        "unit": ["gw/ten_thousand_tons/ratio" for _ in records],
         "source": [r.source or "Silicon_Branch_Antaike" for r in records],
         "source_url": [r.source_url or "" for r in records],
         "release_date": [r.release_date for r in records],
@@ -217,7 +213,7 @@ def records_to_pv_wafer_frame(records: Sequence[PvWaferMonthlyRecord]) -> pl.Dat
         .rolling_mean(window_size=3, min_samples=1)
         .alias("wafer_output_3mma"),
         pl.when(pl.col("wafer_output_mom").is_null())
-        .then((pl.col("wafer_output_gw") / pl.col("wafer_output_gw").shift(1) - 1.0) * 100.0)
+        .then(pl.col("wafer_output_gw") / pl.col("wafer_output_gw").shift(1) - 1.0)
         .otherwise(pl.col("wafer_output_mom"))
         .alias("wafer_output_mom"),
     )
@@ -243,7 +239,7 @@ def records_to_pv_wafer_frame(records: Sequence[PvWaferMonthlyRecord]) -> pl.Dat
     if df["wafer_output_yoy"].null_count() > 0:
         df = df.with_columns(
             pl.when(pl.col("wafer_output_yoy").is_null())
-            .then((pl.col("wafer_output_gw") / pl.col("wafer_output_gw").shift(12) - 1.0) * 100.0)
+            .then(pl.col("wafer_output_gw") / pl.col("wafer_output_gw").shift(12) - 1.0)
             .otherwise(pl.col("wafer_output_yoy"))
             .alias("wafer_output_yoy")
         )
@@ -268,7 +264,7 @@ def build_polysilicon_supply_from_silicon_frame(silicon_df: pl.DataFrame) -> pl.
             pl.col("polysilicon_operating_rate").alias("operating_rate"),
             pl.col("derived_polysilicon_utilization_rate").alias("derived_utilization_rate"),
             capacity_column.alias("capacity_annual_w_tons"),
-            pl.lit("ten_thousand_tons").alias("unit"),
+            pl.lit("ten_thousand_tons/ratio").alias("unit"),
             "source",
             "source_url",
             "release_date",
@@ -280,7 +276,7 @@ def build_polysilicon_supply_from_silicon_frame(silicon_df: pl.DataFrame) -> pl.
         pl.col("production_w_tons")
         .rolling_mean(window_size=3, min_samples=1)
         .alias("production_3mma"),
-        ((pl.col("production_w_tons") / pl.col("production_w_tons").shift(1) - 1.0) * 100.0).alias(
+        (pl.col("production_w_tons") / pl.col("production_w_tons").shift(1) - 1.0).alias(
             "production_mom"
         ),
     ).select(list(POLYSILICON_SUPPLY_MONTHLY_SCHEMA))
@@ -349,7 +345,7 @@ def build_pv_wafer_from_silicon_frame(silicon_df: pl.DataFrame) -> pl.DataFrame:
             "wafer_output_yoy",
             "wafer_operating_rate",
             "derived_wafer_utilization_rate",
-            pl.lit("gw/ten_thousand_tons").alias("unit"),
+            pl.lit("gw/ten_thousand_tons/ratio").alias("unit"),
             "source",
             "source_url",
             "release_date",
@@ -361,7 +357,7 @@ def build_pv_wafer_from_silicon_frame(silicon_df: pl.DataFrame) -> pl.DataFrame:
         pl.col("wafer_output_gw")
         .rolling_mean(window_size=3, min_samples=1)
         .alias("wafer_output_3mma"),
-        ((pl.col("wafer_output_gw") / pl.col("wafer_output_gw").shift(1) - 1.0) * 100.0).alias(
+        (pl.col("wafer_output_gw") / pl.col("wafer_output_gw").shift(1) - 1.0).alias(
             "wafer_output_mom"
         ),
     )

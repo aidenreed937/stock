@@ -186,6 +186,40 @@ def test_pharma_announcement_crawler_extraction() -> None:
     assert parsed["events"][0]["upfront_cash_usd"] == 100_000_000.0
 
 
+def test_pharma_announcement_without_amount_keeps_amounts_null() -> None:
+    from stock_data.fetcher.industry.pharma.crawler import PharmaAnnouncementCrawler
+
+    crawler = PharmaAnnouncementCrawler()
+    parsed = crawler.parse_announcement_item(
+        {
+            "secName": "测试药企",
+            "announcementTitle": "关于与海外合作方签署创新药对外许可协议的公告",
+            "announcementTime": 1700000000000,
+            "announcementContent": "双方将在海外临床开发和商业化方面开展合作。",
+        }
+    )
+
+    assert parsed is not None
+    event = parsed["events"][0]
+    assert event["upfront_cash_usd"] is None
+    assert event["potential_total_deal_usd"] is None
+
+
+def test_pharma_announcement_without_announcement_time_is_skipped() -> None:
+    from stock_data.fetcher.industry.pharma.crawler import PharmaAnnouncementCrawler
+
+    crawler = PharmaAnnouncementCrawler()
+    parsed = crawler.parse_announcement_item(
+        {
+            "secName": "测试药企",
+            "announcementTitle": "关于与海外合作方签署创新药对外许可协议的公告",
+            "announcementContent": "首付款1亿美元，交易总额最高达15亿美元。",
+        }
+    )
+
+    assert parsed is None
+
+
 def test_pharma_bd_collector_with_crawler_live_merge(tmp_path: Path) -> None:
     from unittest.mock import patch
 
@@ -229,7 +263,26 @@ def test_pharma_bd_collector_with_crawler_live_merge(tmp_path: Path) -> None:
     collector = PharmaBdCollector(raw_dir=raw_dir, processed_dir=processed_dir)
     with patch.object(collector.crawler, "fetch_latest_deals", return_value=[mock_new_deal]):
         records = collector.collect()
-        assert len(records) == 80
+        assert len(records) == 1
         rec_2024_08 = next(r for r in records if r.report_month == "2024-08")
         assert rec_2024_08.deal_count == 1
         assert rec_2024_08.upfront_cash_million_usd == 500.0
+
+
+def test_pharma_crawler_tolerates_null_announcement_payload(tmp_path: Path, monkeypatch) -> None:
+    """巨潮资讯返回 JSON null 时应降级为空结果，而不是抛 NoneType 异常。"""
+    from stock_data.fetcher.industry.pharma import crawler as crawler_module
+
+    class _NullResponse:
+        status_code = 200
+        text = "null"
+
+    class _FakeRequests:
+        @staticmethod
+        def post(*args: object, **kwargs: object) -> _NullResponse:
+            return _NullResponse()
+
+    monkeypatch.setattr(crawler_module, "requests", _FakeRequests)
+    crawler = crawler_module.PharmaAnnouncementCrawler(raw_dir=tmp_path)
+
+    assert crawler.fetch_latest_deals() == []

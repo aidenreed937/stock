@@ -11,7 +11,7 @@ import polars as pl
 from stock_core.utils.logger import logger
 from stock_data.catalog import DataCatalog
 from stock_data.core.settings import data_settings
-from stock_data.core.task_registry import resolve_task
+from stock_data.core.task_resolution import resolve_task
 from stock_data.fetcher.tushare.client import TuShareClient
 from stock_data.governance.audit.factor_audit import run_adj_factor_audit, run_sw_daily_audit
 from stock_data.governance.audit.moneyflow_audit import run_hk_hold_audit
@@ -28,6 +28,7 @@ _KEY_COLUMN_ALIASES: dict[str, tuple[str, ...]] = {
     "industry_code": ("industry_code", "industryCode"),
     "index_code": ("index_code", "indexCode"),
     "area_code": ("area_code", "areaCode"),
+    "item": ("item", "item_raw"),
 }
 
 
@@ -195,7 +196,14 @@ def _canonical_key_name(key: str) -> str:
 def _registered_primary_keys(data_source: str, endpoint: str) -> list[str]:
     """读取任务对应源端注册表的主键，静态关系表也必须按完整复合键对账。"""
     try:
+        from stock_data.core.derived_datasets import resolve_derived_dataset
+
+        derived = resolve_derived_dataset(data_source, endpoint)
+        if derived is not None:
+            return list(derived.primary_keys)
         task = resolve_task(data_source, endpoint)
+        if data_source == "industry":
+            return list(task.primary_keys)
         registry_name = {
             "tushare": "stock_data.fetcher.tushare.registry",
             "lixinger": "stock_data.fetcher.lixinger.registry",

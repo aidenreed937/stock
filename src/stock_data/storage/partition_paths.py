@@ -3,7 +3,7 @@
 from datetime import date
 from pathlib import Path
 
-from stock_data.core.task_registry import get_endpoint_market
+from stock_data.core.task_resolution import get_endpoint_market
 from stock_data.storage.compat import StorageCompat
 
 

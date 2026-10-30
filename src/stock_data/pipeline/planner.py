@@ -11,13 +11,18 @@ from stock_core.exceptions import DataFetchError
 from stock_core.utils.logger import logger
 from stock_data.core.constants import ENDPOINT_START_DATE_OVERRIDES
 from stock_data.core.lixinger_risk_tasks import LIXINGER_WATCHLIST_ONLY_TASK_NAMES
-from stock_data.core.task_registry import (
+from stock_data.core.public_tasks import (
     expand_public_task_targets,
-    list_available_tasks,
     resolve_public_task,
+)
+from stock_data.core.task_resolution import (
+    list_available_tasks,
     resolve_task,
 )
 from stock_data.pipeline.planner_chunks import has_curated_range as _has_curated_range
+from stock_data.pipeline.planner_chunks import (
+    split_date_range_by_quarter as _split_date_range_by_quarter,
+)
 from stock_data.pipeline.planner_chunks import split_date_range_by_year as _split_date_range_by_year
 
 
@@ -36,6 +41,7 @@ class BackfillTask:
     chunk_index: int = 1
     chunk_count: int = 1
     skip_existing: bool = False
+    chunk_frequency: str = "yearly"
 
 
 def _load_curated_symbol_pool(data_source: str, dataset: str) -> list[str]:
@@ -86,7 +92,7 @@ _FUND_ENDPOINTS = {
     "etf_share_size",
     "fund_holder_structure",
 }
-_YFINANCE_MACRO_SYMBOLS = ["^TNX", "^IRX", "DX-Y.NYB", "GC=F", "CL=F", "HG=F", "^VIX"]
+_YFINANCE_MACRO_SYMBOLS = ["^TNX", "^IRX", "DX-Y.NYB", "GC=F", "CL=F", "^VIX"]
 _LIXINGER_COMPANY_ENDPOINTS = {
     "company_fundamental",
     "fs_non_financial",
@@ -110,10 +116,15 @@ _LIXINGER_BATCH_SINGLE_ENDPOINTS = {
     "sw_2021_l2_fs_bank",
     "sw_2021_l2_fs_security",
     "sw_2021_l2_fs_insurance",
+    "sw_2021_l3_fs_non_financial",
+    "sw_2021_l3_fs_bank",
+    "sw_2021_l3_fs_security",
+    "sw_2021_l3_fs_insurance",
     "national_debt",
     "interest_rates",
     "non_ferrous_metals",
     "crude_oil",
+    "gold_price",
     "investor_accounts",
     "unlock_summary",
 }
@@ -129,8 +140,14 @@ def _watchlist_symbols(
     watchlist = getattr(data_cfg.watchlists, data_source, None)
     if data_source == "yfinance" and endpoint == "macro_indicators":
         return _YFINANCE_MACRO_SYMBOLS
+    if data_source == "tushare" and endpoint == "us_stock_daily_bar":
+        global_watchlist = getattr(data_cfg.watchlists, "yfinance", None)
+        return list(getattr(global_watchlist, "stocks", []) or [])
     if data_source == "alphavantage" and endpoint == "fx_daily":
         return ["CNH=X"]
+    if data_source == "alphavantage":
+        global_watchlist = getattr(data_cfg.watchlists, "yfinance", None)
+        return list(getattr(global_watchlist, "stocks", []) or [])
     if watchlist is None:
         return []
     if data_source == "fred":
@@ -297,6 +314,12 @@ class BackfillPlanner:
                     )
                     continue
 
+                is_lixinger_industry_financial = (
+                    data_source == "lixinger"
+                    and task_spec.api_name.startswith("cn/industry/fs/sw_2021/")
+                    and task_spec.fetch_mode == "per_period"
+                    and task_spec.frequency == "quarterly"
+                )
                 should_chunk_by_year = (
                     not sym
                     and not is_per_sym
@@ -304,11 +327,21 @@ class BackfillPlanner:
                     and task_spec.partitioned
                     and task_start.year < end_date.year
                 )
-                chunks = (
-                    _split_date_range_by_year(task_start, end_date)
-                    if should_chunk_by_year
-                    else [(task_start, end_date)]
-                )
+                if is_lixinger_industry_financial:
+                    chunks = _split_date_range_by_quarter(task_start, end_date)
+                    chunk_frequency = "quarterly"
+                elif should_chunk_by_year:
+                    chunks = _split_date_range_by_year(task_start, end_date)
+                    chunk_frequency = "yearly"
+                else:
+                    chunks = [(task_start, end_date)]
+                    chunk_frequency = "yearly"
+                is_chunked = is_lixinger_industry_financial or should_chunk_by_year
+                if not chunks:
+                    logger.info(
+                        f"接口 [{public_name}] 请求范围 [{task_start} ~ {end_date}] 内没有可回填报告期，跳过"
+                    )
+                    continue
                 chunk_count = len(chunks)
                 for chunk_index, (chunk_start, chunk_end) in enumerate(chunks, 1):
                     tasks.append(
@@ -320,16 +353,17 @@ class BackfillPlanner:
                             end_date=chunk_end,
                             fetch_mode="per_symbol" if is_per_sym else task_spec.fetch_mode,
                             is_single_sync=is_single,
-                            is_chunked=should_chunk_by_year,
-                            chunk_index=chunk_index if should_chunk_by_year else 1,
-                            chunk_count=chunk_count if should_chunk_by_year else 1,
+                            is_chunked=is_chunked,
+                            chunk_index=chunk_index if is_chunked else 1,
+                            chunk_count=chunk_count if is_chunked else 1,
                             skip_existing=(
-                                should_chunk_by_year
+                                is_chunked
                                 and not force_refresh
                                 and _has_curated_range(
                                     data_source, public_name, chunk_start, chunk_end
                                 )
                             ),
+                            chunk_frequency=chunk_frequency,
                         )
                     )
         return tasks

@@ -1,13 +1,14 @@
-from stock_data.fetcher.industry.agriculture.collector import (
+from stock_data.fetcher.industry.agriculture.collectors import (
     AgriculturePorkCollector,
-)
-from stock_data.fetcher.industry.agriculture.crawler import (
     MaraPorkCrawler,
+)
+from stock_data.fetcher.industry.agriculture.models import AgriculturePorkRecord
+from stock_data.fetcher.industry.agriculture.parsers import (
     MaraPorkHtmlParser,
     parse_mara_monthly_table,
 )
-from stock_data.fetcher.industry.agriculture.transform import (
-    AGRICULTURE_PORK_SCHEMA,
+from stock_data.fetcher.industry.agriculture.schemas import AGRICULTURE_PORK_SCHEMA
+from stock_data.fetcher.industry.agriculture.transforms import (
     empty_agriculture_pork,
     records_to_agriculture_pork_frame,
 )
@@ -15,6 +16,7 @@ from stock_data.fetcher.industry.agriculture.transform import (
 __all__ = [
     "AGRICULTURE_PORK_SCHEMA",
     "AgriculturePorkCollector",
+    "AgriculturePorkRecord",
     "MaraPorkCrawler",
     "MaraPorkHtmlParser",
     "empty_agriculture_pork",

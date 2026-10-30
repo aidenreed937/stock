@@ -44,6 +44,7 @@ def save_raw_snapshot(
         snapshot_filename = f"{snapshot_filename}.gz"
 
     target_file = target_dir / snapshot_filename
+    target_file.parent.mkdir(parents=True, exist_ok=True)
 
     if str(target_file).endswith(".gz"):
         if isinstance(content, dict | list):
@@ -98,18 +99,39 @@ def save_curated_fact(
     else:
         keys = [new_df.columns[0]]
 
+    def _sort_frame(frame: pl.DataFrame) -> pl.DataFrame:
+        sort_columns = [
+            column
+            for column in ("trade_date", "report_period_end", "release_date", "period_end")
+            if column in frame.columns
+        ]
+        return frame.sort(sort_columns) if sort_columns else frame
+
     if p.exists():
         existing_df = pl.read_parquet(p)
         # Schema 演进: 以新数据列集为准, 剔除旧 parquet 中已废弃的列 (避免旧列名永久残留)
         existing_df = existing_df.select([c for c in new_df.columns if c in existing_df.columns])
-        merged_df = (
-            pl.concat([existing_df, new_df], how="diagonal_relaxed")
-            .unique(subset=keys, keep="last")
-            .sort("trade_date")
+        date_columns = [
+            column
+            for column in new_df.columns
+            if column in existing_df.columns
+            and new_df.schema[column] == pl.Date
+            and existing_df.schema[column] == pl.String
+        ]
+        if date_columns:
+            existing_df = existing_df.with_columns(
+                [pl.col(column).str.to_date().alias(column) for column in date_columns]
+            )
+        merged_df = pl.concat([existing_df, new_df], how="diagonal_relaxed").unique(
+            subset=keys, keep="last"
         )
     else:
-        merged_df = new_df.unique(subset=keys, keep="last").sort("trade_date")
+        merged_df = new_df.unique(subset=keys, keep="last")
 
+    # Schema 演进时 diagonal concat 会把旧列排在新列前面；统一恢复新帧的
+    # 列顺序，确保物化文件与当前端点 Schema 一致。
+    merged_df = merged_df.select(new_df.columns)
+    merged_df = _sort_frame(merged_df)
     merged_df.write_parquet(p)
     logger.info("Curated 事实表落盘成功 [%s]: 共 %d 行", p.name, merged_df.height)
     return merged_df.height

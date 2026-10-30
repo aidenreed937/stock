@@ -32,6 +32,14 @@ LIXINGER_MACRO_TASK_SPECS: tuple[dict[str, object], ...] = (
         "frequency": "daily",
     },
     {
+        "task": "gold_price",
+        "api": "macro/gold-price",
+        "dataset": "gold_price",
+        "qp": "macro_daily",
+        "fetch_mode": "per_symbol",
+        "frequency": "daily",
+    },
+    {
         "task": "investor_accounts",
         "api": "macro/investor",
         "dataset": "investor_accounts",
@@ -78,6 +86,7 @@ def build_lixinger_macro_tasks(make_spec: Any) -> dict[tuple[str, str], Any]:
             str(item["api"]),
             str(item["dataset"]),
             qp=str(item.get("qp", "generic")),
+            fetch_mode=str(item.get("fetch_mode", "per_day")),
             frequency=str(item.get("frequency", "daily")),
             partitioned=False,
             is_single_sync=True,

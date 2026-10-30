@@ -31,6 +31,35 @@ def test_lixinger_stock_fetcher_single_symbol() -> None:
     assert "pe_ttm" in df.columns
 
 
+def test_lixinger_stock_fetcher_gold_price_uses_combined_endpoint() -> None:
+    mock_client = MagicMock()
+    mock_client.query.return_value = pd.DataFrame(
+        {
+            "date": ["2026-08-03T00:00:00-04:00"],
+            "areaCode": ["us"],
+            "lbma_pm_usd": [2100.0],
+            "sge_pm_cny": [980.0],
+        }
+    )
+    fetcher = LixingerStockFetcher(client=mock_client)
+
+    df = fetcher.fetch_daily_bars_df(
+        symbol="",
+        start_date=date(2026, 8, 3),
+        end_date=date(2026, 8, 3),
+        endpoint="gold_price",
+    )
+
+    assert not df.is_empty()
+    assert {"date", "lbma_pm_usd", "sge_pm_cny"}.issubset(df.columns)
+    assert mock_client.query.call_args.args[0] == "macro/gold-price"
+    assert mock_client.query.call_args.kwargs["areaCode"] == "us"
+    assert mock_client.query.call_args.kwargs["metricsList"] == [
+        "lbma_pm_usd",
+        "sge_pm_cny",
+    ]
+
+
 def test_lixinger_stock_fetcher_constituents_expansion() -> None:
     mock_client = MagicMock()
     mock_client.query.return_value = pd.DataFrame(
@@ -173,6 +202,158 @@ def test_lixinger_stock_fetcher_batch_l2_fs_query_resolves_level_two_non_financi
     assert df["stockCode"].to_list() == ["110100"]
     assert mock_client.query.call_args_list[1].kwargs["stockCodes"] == ["110100"]
     assert mock_client.query.call_args_list[1].kwargs["date"] == "2024-03-31"
+
+
+@pytest.mark.parametrize(
+    ("endpoint", "fs_table_type", "industry_code"),
+    [
+        ("sw_2021_fs_security", "security", "490100"),
+        ("sw_2021_fs_insurance", "insurance", "490200"),
+    ],
+)
+def test_lixinger_l1_financial_task_falls_back_to_level_two_root(
+    endpoint: str, fs_table_type: str, industry_code: str
+) -> None:
+    mock_client = MagicMock()
+
+    def query(api_name: str, **kwargs: Any) -> pd.DataFrame:
+        if api_name == "cn/industry":
+            return pd.DataFrame(
+                {
+                    "stockCode": ["110000", industry_code],
+                    "name": ["农林牧渔", "证券" if fs_table_type == "security" else "保险"],
+                    "level": ["one", "two"],
+                    "fsTableType": ["non_financial", fs_table_type],
+                }
+            )
+        return pd.DataFrame(
+            {
+                "stockCode": kwargs["stockCodes"],
+                "date": ["2024-06-30"] * len(kwargs["stockCodes"]),
+                "value": [1.0] * len(kwargs["stockCodes"]),
+            }
+        )
+
+    mock_client.query.side_effect = query
+    fetcher = LixingerStockFetcher(client=mock_client)
+
+    with patch("stock_data.fetcher.lixinger.stock_fetcher._INDUSTRY_TABLE_CACHE", None):
+        df = fetcher.fetch_daily_bars_df(
+            symbol="",
+            start_date=date(2024, 6, 30),
+            end_date=date(2024, 6, 30),
+            endpoint=endpoint,
+        )
+
+    assert df["stockCode"].to_list() == [industry_code]
+    assert mock_client.query.call_args_list[1].kwargs["stockCodes"] == [industry_code]
+    assert mock_client.query.call_args_list[1].kwargs["date"] == "2024-06-30"
+
+
+def test_lixinger_industry_fs_batches_codes_for_single_report_period() -> None:
+    codes = [str(800000 + index) for index in range(101)]
+    mock_client = MagicMock()
+
+    def query(api_name: str, **kwargs: Any) -> pd.DataFrame:
+        if api_name == "cn/industry":
+            return pd.DataFrame(
+                {
+                    "stockCode": codes,
+                    "name": [f"行业{index}" for index in range(len(codes))],
+                    "level": ["two"] * len(codes),
+                    "fsTableType": ["non_financial"] * len(codes),
+                }
+            )
+        selected = kwargs["stockCodes"]
+        return pd.DataFrame(
+            {
+                "stockCode": selected,
+                "date": ["2024-06-30"] * len(selected),
+                "value": list(range(len(selected))),
+            }
+        )
+
+    mock_client.query.side_effect = query
+    fetcher = LixingerStockFetcher(client=mock_client)
+
+    with patch("stock_data.fetcher.lixinger.stock_fetcher._INDUSTRY_TABLE_CACHE", None):
+        df = fetcher.fetch_daily_bars_df(
+            symbol="",
+            start_date=date(2024, 6, 30),
+            end_date=date(2024, 6, 30),
+            endpoint="sw_2021_l2_fs_non_financial",
+        )
+
+    industry_calls = mock_client.query.call_args_list[1:]
+    assert [len(call.kwargs["stockCodes"]) for call in industry_calls] == [100, 1]
+    assert all(call.kwargs["date"] == "2024-06-30" for call in industry_calls)
+    assert all("startDate" not in call.kwargs for call in industry_calls)
+    assert len(df) == 101
+
+
+def test_lixinger_l3_industry_fs_resolves_level_three_and_batches_codes() -> None:
+    codes = [str(800000 + index) for index in range(101)]
+    mock_client = MagicMock()
+
+    def query(api_name: str, **kwargs: Any) -> pd.DataFrame:
+        if api_name == "cn/industry":
+            return pd.DataFrame(
+                {
+                    "stockCode": codes,
+                    "name": [f"三级行业{index}" for index in range(len(codes))],
+                    "level": ["three"] * len(codes),
+                    "fsTableType": ["non_financial"] * len(codes),
+                }
+            )
+        selected = kwargs["stockCodes"]
+        return pd.DataFrame(
+            {
+                "stockCode": selected,
+                "date": ["2024-06-30"] * len(selected),
+                "value": list(range(len(selected))),
+            }
+        )
+
+    mock_client.query.side_effect = query
+    fetcher = LixingerStockFetcher(client=mock_client)
+
+    with patch("stock_data.fetcher.lixinger.stock_fetcher._INDUSTRY_TABLE_CACHE", None):
+        df = fetcher.fetch_daily_bars_df(
+            symbol="",
+            start_date=date(2024, 6, 30),
+            end_date=date(2024, 6, 30),
+            endpoint="sw_2021_l3_fs_non_financial",
+        )
+
+    industry_calls = mock_client.query.call_args_list[1:]
+    assert [len(call.kwargs["stockCodes"]) for call in industry_calls] == [100, 1]
+    assert all(call.kwargs["date"] == "2024-06-30" for call in industry_calls)
+    assert all("startDate" not in call.kwargs for call in industry_calls)
+    assert len(df) == 101
+
+
+def test_lixinger_industry_fs_rejects_cross_period_history_request() -> None:
+    mock_client = MagicMock()
+    mock_client.query.return_value = pd.DataFrame(
+        {
+            "stockCode": ["110000"],
+            "name": ["农林牧渔"],
+            "level": ["one"],
+            "fsTableType": ["non_financial"],
+        }
+    )
+    fetcher = LixingerStockFetcher(client=mock_client)
+
+    with (
+        patch("stock_data.fetcher.lixinger.stock_fetcher._INDUSTRY_TABLE_CACHE", None),
+        pytest.raises(DataFetchError, match="单报告期"),
+    ):
+        fetcher.fetch_daily_bars_df(
+            symbol="",
+            start_date=date(2024, 1, 1),
+            end_date=date(2024, 6, 30),
+            endpoint="sw_2021_fs_non_financial",
+        )
 
 
 def test_lixinger_industry_batch_propagates_data_fetch_error() -> None:

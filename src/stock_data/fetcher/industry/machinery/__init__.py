@@ -1,6 +1,7 @@
 """工程机械月度产销与小松开工小时数 (CCMA/Komatsu) 数据工程子包。"""
 
 from stock_data.fetcher.industry.machinery.collector import MachineryCollector
+from stock_data.fetcher.industry.machinery.models import ConstructionMachineryRecord
 from stock_data.fetcher.industry.machinery.transform import (
     CONSTRUCTION_MACHINERY_SCHEMA,
     empty_construction_machinery,
@@ -9,6 +10,7 @@ from stock_data.fetcher.industry.machinery.transform import (
 
 __all__ = [
     "CONSTRUCTION_MACHINERY_SCHEMA",
+    "ConstructionMachineryRecord",
     "MachineryCollector",
     "empty_construction_machinery",
     "records_to_machinery_frame",

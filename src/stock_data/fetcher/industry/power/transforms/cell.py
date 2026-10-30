@@ -29,6 +29,12 @@ def _raw_number(raw_value: str | None, fallback: float | None) -> float | None:
     return fallback
 
 
+def _raw_rate_ratio(raw_value: str | None, fallback: float | None) -> float | None:
+    """将 NBS 源端百分数同比转为 Curated 小数比例。"""
+    value = _raw_number(raw_value, fallback)
+    return round(value / 100.0, 6) if value is not None else None
+
+
 def empty_solar_cell_nbs() -> pl.DataFrame:
     """构造 NBS 太阳能电池产量空事实表骨架。"""
     return pl.DataFrame(schema=SOLAR_CELL_NBS_SCHEMA)
@@ -54,13 +60,13 @@ def records_to_solar_cell_nbs_frame(records: Sequence[SolarCellNbsRecord]) -> pl
         "output_cumulative": [
             _raw_number(r.output_cumulative_raw, r.output_cumulative) for r in ordered_records
         ],
-        "output_yoy": [_raw_number(r.output_yoy_raw, r.output_yoy) for r in ordered_records],
+        "output_yoy": [_raw_rate_ratio(r.output_yoy_raw, r.output_yoy) for r in ordered_records],
         "output_cum_yoy": [
-            _raw_number(r.output_cum_yoy_raw, r.output_cum_yoy) for r in ordered_records
+            _raw_rate_ratio(r.output_cum_yoy_raw, r.output_cum_yoy) for r in ordered_records
         ],
         "yoy_growth_3mma": [None] * len(ordered_records),
         "mom_growth_3mma": [None] * len(ordered_records),
-        "unit": [r.unit or "ten_thousand_kw" for r in ordered_records],
+        "unit": ["ten_thousand_kw/ratio" for _ in ordered_records],
         "source": [r.source or "NBS" for r in ordered_records],
         "source_url": [r.source_url or "https://data.stats.gov.cn/" for r in ordered_records],
         "release_date": [r.release_date for r in ordered_records],

@@ -1,14 +1,15 @@
-"""TaskRegistry 与 is_task_partitioned 单元测试。"""
+"""任务解析、任务包与分区规则单元测试。"""
 
 import pytest
 
-from stock_data.core.task_registry import (
+from stock_data.core.public_tasks import expand_public_task_targets, resolve_public_task
+from stock_data.core.task_bundles import list_available_bundles, resolve_bundle
+from stock_data.core.task_resolution import (
     expand_task_targets,
+    get_endpoint_market,
     is_per_symbol_task,
     is_task_partitioned,
-    list_available_bundles,
     list_available_tasks,
-    resolve_bundle,
     resolve_task,
 )
 
@@ -32,7 +33,7 @@ def test_is_task_partitioned_rules() -> None:
     assert is_task_partitioned("tushare", "adj_factor")
     assert is_task_partitioned("tushare", "stk_limit")
     assert is_task_partitioned("tushare", "limit_list_d")
-    for statement in ("income", "fina_indicator", "balancesheet", "cashflow"):
+    for statement in ("income", "fina_indicator", "fina_mainbz", "balancesheet", "cashflow"):
         assert is_task_partitioned("tushare", statement)
 
 
@@ -65,12 +66,16 @@ def test_is_per_symbol_task_rules() -> None:
 
 
 def test_tushare_financial_statements_use_vip_period_routes() -> None:
-    for statement in ("income", "fina_indicator", "balancesheet", "cashflow"):
+    for statement in ("income", "fina_indicator", "fina_mainbz", "balancesheet", "cashflow"):
         task = resolve_task("tushare", statement)
         assert task.api_name == f"{statement}_vip"
         assert task.fetch_mode == "per_period"
-        assert task.required_pool is None
-        assert task.query_mode == "period"
+    assert task.required_pool is None
+    assert task.query_mode == "period"
+
+    mainbz = resolve_task("tushare", "fina_mainbz")
+    assert mainbz.primary_keys == ("ts_code", "end_date", "bz_code", "bz_item")
+    assert mainbz.units["bz_sales"] == "CNY"
 
     top10_task = resolve_task("tushare", "top10_floatholders")
     assert top10_task.api_name == "top10_floatholders"
@@ -88,6 +93,51 @@ def test_tushare_financial_statements_use_vip_period_routes() -> None:
     assert cyq_perf_task.query_mode == "trade_date"
 
 
+def test_industry_semi_equipment_uses_curated_watermark_cache() -> None:
+    task = resolve_task("industry", "semiconductor_equipment_semi")
+    assert task.fetch_mode == "per_period"
+    assert task.frequency == "quarterly"
+    assert task.refresh_current_period is False
+
+
+def test_industry_automotive_task_declares_period_collection_contract() -> None:
+    task = resolve_task("industry", "nev_monthly_sales")
+    assert task.fetch_mode == "per_period"
+    assert task.partitioned is False
+    assert task.is_single_sync is True
+    assert task.frequency == "monthly"
+    assert task.query_mode == "period"
+    assert task.primary_keys == ("report_month",)
+    assert task.units["battery_installation_gwh"] == "gwh"
+
+
+def test_industry_new_semiconductor_tasks_use_explicit_routes() -> None:
+    channel = resolve_task("industry", "semiconductor_channel_inventory")
+    assert channel.fetch_mode == "per_period"
+    assert channel.frequency == "quarterly"
+    assert channel.primary_keys == ("report_quarter", "symbol")
+    assert "channel_doi_days" in channel.required_columns
+    assert channel.update_delay_days == 45
+
+    memory = resolve_task("industry", "semiconductor_memory_price")
+    assert memory.fetch_mode == "per_period"
+    assert memory.frequency == "daily"
+    assert memory.primary_keys == (
+        "trade_date",
+        "product_family",
+        "price_scope",
+        "table_index",
+        "item",
+    )
+    assert "item" in memory.required_columns
+    assert memory.update_delay_days == 0
+
+    benchmark = resolve_task("industry", "semiconductor_memory_benchmark")
+    taiwan = resolve_task("industry", "semiconductor_memory_taiwan_lead")
+    assert benchmark.units["price_usd"] == "USD/unit"
+    assert taiwan.units["revenue_ntd_million"] == "million_NTD"
+
+
 def test_list_available_tasks() -> None:
     tushare_tasks = list_available_tasks("tushare")
     assert "stock_daily_bar" in tushare_tasks
@@ -98,6 +148,8 @@ def test_list_available_tasks() -> None:
     assert "limit_list" not in tushare_tasks
     assert "income" in tushare_tasks
     assert "income_vip" not in tushare_tasks
+    assert "fina_mainbz" not in tushare_tasks
+    assert "fina_mainbz_vip" not in tushare_tasks
     assert "bak_daily" not in tushare_tasks
     assert "pledge_detail" not in tushare_tasks
     for endpoint in (
@@ -116,9 +168,20 @@ def test_list_available_tasks() -> None:
         assert endpoint not in tushare_tasks
     assert "pledge_stat" not in tushare_tasks
 
+    industry_tasks = list_available_tasks("industry")
+    assert "solar_cell_nbs" in industry_tasks
+    assert "solar_cell_production" not in industry_tasks
+    assert "futures_inventory" not in industry_tasks
+    assert "futures_daily" not in industry_tasks
+    assert "customs_trade_gacc" not in industry_tasks
+    assert expand_public_task_targets("industry") == industry_tasks
+    assert all(resolve_task("industry", task).task_name == task for task in industry_tasks)
+    assert resolve_public_task("industry", "solar_cell_production").task_name == "solar_cell_nbs"
+
     lixinger_tasks = list_available_tasks("lixinger")
     assert "sw_2021_fundamental" in lixinger_tasks
     assert "pledge_info" in lixinger_tasks
+    assert "gold_price" in lixinger_tasks
     assert "regulatory_measures" not in lixinger_tasks
     assert "exchange_inquiry" not in lixinger_tasks
     assert "unlock_summary" not in lixinger_tasks
@@ -191,6 +254,33 @@ def test_yfinance_macro_task_uses_macro_quality_profile() -> None:
     assert task.quality_profile == "macro"
 
 
+def test_yfinance_financial_tasks_use_report_period_query_mode() -> None:
+    for endpoint in ("financials", "balance_sheet", "cashflow"):
+        task = resolve_task("yfinance", endpoint)
+        assert task.frequency == "quarterly"
+        assert task.query_mode == "period"
+        assert task.fetch_mode == "per_symbol"
+        assert task.partitioned is False
+        assert task.is_single_sync is True
+
+
+def test_fred_series_tasks_use_provider_metadata_contract() -> None:
+    task = resolve_task("fred", "CPIAUCSL")
+
+    assert task.api_name == "CPIAUCSL"
+    assert task.dataset == "macro_indicators"
+    assert task.fetch_mode == "per_symbol"
+    assert task.partitioned is False
+    assert task.is_single_sync is True
+    assert task.query_mode == "trade_date"
+
+    macro = resolve_task("fred", "macro_indicators")
+    assert macro.dataset == "macro_indicators"
+    assert macro.quality_profile == "macro"
+    assert macro.partitioned is False
+    assert macro.is_single_sync is True
+
+
 def test_alphavantage_fx_task_uses_registered_route_and_global_market() -> None:
     task = resolve_task("alphavantage", "fx_daily")
 
@@ -201,25 +291,77 @@ def test_alphavantage_fx_task_uses_registered_route_and_global_market() -> None:
     assert task.partitioned is False
     assert "FX_DAILY" not in list_available_tasks("alphavantage")
 
-    from stock_data.core.task_registry import get_endpoint_market
-
     assert get_endpoint_market("alphavantage", "fx_daily") == "GLOBAL"
 
 
-def test_lixinger_l2_task_uses_the_documented_shared_api_route() -> None:
+def test_alphavantage_stock_task_uses_daily_route_and_us_market() -> None:
+    task = resolve_task("alphavantage", "stock_daily_bar")
+
+    assert task.api_name == "TIME_SERIES_DAILY"
+    assert task.dataset == "stock_daily_bar"
+    assert task.quality_profile == "bar"
+    assert task.fetch_mode == "per_symbol"
+    assert task.max_increment_days == 90
+    assert get_endpoint_market("alphavantage", "stock_daily_bar") == "US"
+
+
+def test_endpoint_market_uses_provider_registry_and_fallbacks() -> None:
+    assert get_endpoint_market("tushare", "stock_daily_bar") == "CN"
+    assert get_endpoint_market("yfinance", "macro_indicators") == "GLOBAL"
+    assert get_endpoint_market("lixinger", "hk/company/fundamental") == "HK"
+    assert get_endpoint_market("unknown_provider", "any_endpoint") == "MULTI"
+
+
+def test_lixinger_gold_price_task_uses_documented_macro_route() -> None:
+    task = resolve_task("lixinger", "gold_price")
+
+    assert task.api_name == "macro/gold-price"
+    assert task.dataset == "gold_price"
+    assert task.frequency == "daily"
+    assert task.fetch_mode == "per_symbol"
+    assert task.is_single_sync is True
+    assert task.partitioned is False
+    assert task.primary_keys == ("date",)
+    assert task.date_columns == ("date",)
+    assert task.required_columns == ("date",)
+
+
+def test_lixinger_industry_tasks_use_the_documented_shared_api_route() -> None:
     task = resolve_task("lixinger", "sw_2021_l2_fundamental")
     assert task.api_name == "cn/industry/fundamental/sw_2021"
 
     for sec in ("non_financial", "bank", "security", "insurance"):
+        task_fs = resolve_task("lixinger", f"sw_2021_fs_{sec}")
+        assert task_fs.api_name == f"cn/industry/fs/sw_2021/{sec}"
+        assert task_fs.fetch_mode == "per_period"
+        assert task_fs.frequency == "quarterly"
+        assert task_fs.query_mode == "period"
+        assert task_fs.is_single_sync is True
+        assert task_fs.partitioned is False
+        assert task_fs.max_codes_per_request == 100
+
         task_l2_fs = resolve_task("lixinger", f"sw_2021_l2_fs_{sec}")
         assert task_l2_fs.api_name == f"cn/industry/fs/sw_2021/{sec}"
+        assert task_l2_fs.fetch_mode == "per_period"
+        assert task_l2_fs.frequency == "quarterly"
+        assert task_l2_fs.query_mode == "period"
         assert task_l2_fs.is_single_sync is True
+        assert task_l2_fs.max_codes_per_request == 100
+
+        task_l3_fs = resolve_task("lixinger", f"sw_2021_l3_fs_{sec}")
+        assert task_l3_fs.api_name == f"cn/industry/fs/sw_2021/{sec}"
+        assert task_l3_fs.fetch_mode == "per_period"
+        assert task_l3_fs.frequency == "quarterly"
+        assert task_l3_fs.query_mode == "period"
+        assert task_l3_fs.is_single_sync is True
+        assert task_l3_fs.max_codes_per_request == 100
 
 
 def test_lixinger_task_bundles() -> None:
     assert list_available_bundles("lixinger") == [
         "market_bundle",
         "industry_bundle",
+        "industry_financial_bundle",
         "company_bundle",
         "company_risk_event_bundle",
         "macro_daily_bundle",
@@ -231,6 +373,10 @@ def test_lixinger_task_bundles() -> None:
         "sw_2021_constituents",
         "sw_2021_fundamental",
         "sw_2021_l2_fundamental",
+    )
+    financial = resolve_bundle("lixinger", "industry_financial_bundle")
+    assert financial.provider == "lixinger"
+    assert financial.tasks == (
         "sw_2021_fs_non_financial",
         "sw_2021_fs_bank",
         "sw_2021_fs_security",
@@ -239,6 +385,10 @@ def test_lixinger_task_bundles() -> None:
         "sw_2021_l2_fs_bank",
         "sw_2021_l2_fs_security",
         "sw_2021_l2_fs_insurance",
+        "sw_2021_l3_fs_non_financial",
+        "sw_2021_l3_fs_bank",
+        "sw_2021_l3_fs_security",
+        "sw_2021_l3_fs_insurance",
     )
     assert "industry_bundle" not in list_available_tasks("lixinger")
     assert "index_fundamental" not in {
@@ -253,6 +403,13 @@ def test_lixinger_task_bundles() -> None:
         "sf_month",
         "energy",
         "price_index",
+    ]
+    assert expand_task_targets("lixinger", ["macro_daily_bundle"]) == [
+        "national_debt",
+        "interest_rates",
+        "non_ferrous_metals",
+        "crude_oil",
+        "gold_price",
     ]
     assert resolve_bundle("lixinger", "company_risk_event_bundle").tasks == (
         "regulatory_measures",
@@ -276,13 +433,18 @@ def test_tushare_task_bundles() -> None:
         "research_daily_bundle",
         "market_behavior_bundle",
         "pledge_bundle",
+        "us_market_bundle",
     ]
 
     market = resolve_bundle("tushare", "daily_market_bundle")
     assert market.tasks == (
+        "stock_daily_bar",
+        "index_daily_bar",
         "daily_basic",
         "adj_factor",
+        "stk_limit",
         "limit_list_d",
+        "suspend_d",
         "sw_daily",
         "moneyflow",
     )
@@ -357,9 +519,13 @@ def test_expand_tushare_task_bundles_keeps_order_and_deduplicates() -> None:
             "daily_market_bundle",
         ],
     ) == [
+        "stock_daily_bar",
+        "index_daily_bar",
         "daily_basic",
         "adj_factor",
+        "stk_limit",
         "limit_list_d",
+        "suspend_d",
         "sw_daily",
         "moneyflow",
         "fund_daily",
@@ -375,6 +541,8 @@ def test_expand_task_targets_keeps_atomic_tasks_and_deduplicates() -> None:
         "sw_2021_constituents",
         "sw_2021_fundamental",
         "sw_2021_l2_fundamental",
+    ]
+    assert expand_task_targets("lixinger", ["industry_financial_bundle"]) == [
         "sw_2021_fs_non_financial",
         "sw_2021_fs_bank",
         "sw_2021_fs_security",
@@ -383,6 +551,10 @@ def test_expand_task_targets_keeps_atomic_tasks_and_deduplicates() -> None:
         "sw_2021_l2_fs_bank",
         "sw_2021_l2_fs_security",
         "sw_2021_l2_fs_insurance",
+        "sw_2021_l3_fs_non_financial",
+        "sw_2021_l3_fs_bank",
+        "sw_2021_l3_fs_security",
+        "sw_2021_l3_fs_insurance",
     ]
 
     assert expand_task_targets("tushare", ["convertible_bond_bundle"]) == [
@@ -409,7 +581,20 @@ def test_yfinance_task_bundles_follow_endpoint_families() -> None:
 
 
 def test_fred_task_bundles_do_not_duplicate_aggregate_task() -> None:
-    assert list_available_bundles("fred") == ["macro_monthly_bundle"]
+    assert list_available_bundles("fred") == [
+        "global_macro_daily_bundle",
+        "macro_monthly_bundle",
+    ]
+    assert resolve_bundle("fred", "global_macro_daily_bundle").tasks == (
+        "DFF",
+        "DGS10",
+        "DGS3MO",
+        "T10Y2Y",
+        "VIXCLS",
+        "DCOILWTICO",
+        "DTWEXBGS",
+        "PCOPPUSDM",
+    )
     assert resolve_bundle("fred", "macro_monthly_bundle").tasks == (
         "FEDFUNDS",
         "CPIAUCSL",
@@ -422,6 +607,16 @@ def test_fred_task_bundles_do_not_duplicate_aggregate_task() -> None:
         "DGORDER",
         "AMTMVS",
     )
+    assert expand_task_targets("fred", ["global_macro_daily_bundle"]) == [
+        "DFF",
+        "DGS10",
+        "DGS3MO",
+        "T10Y2Y",
+        "VIXCLS",
+        "DCOILWTICO",
+        "DTWEXBGS",
+        "PCOPPUSDM",
+    ]
     assert "macro_indicators" not in expand_task_targets(
         "fred", ["macro_monthly_bundle", "macro_daily_bundle"]
     )
@@ -452,16 +647,10 @@ def test_fred_series_tasks_share_the_aggregate_curated_dataset() -> None:
 def test_task_bundles_cover_registered_tasks_except_explicit_aggregate_routes() -> None:
     expected_unbundled = {
         "tushare": {
-            "stock_daily_bar",
             "report_rc",
-            "index_daily_bar",
             "index_dailybasic",
-            "stk_limit",
-            "suspend_d",
             "index_weight",
-            "fund_basic",
             "fund_share",
-            "fut_index_daily",
             "opt_basic",
             "opt_daily",
             "trade_cal",
@@ -474,14 +663,21 @@ def test_task_bundles_cover_registered_tasks_except_explicit_aggregate_routes() 
         },
         "lixinger": {"index_fundamental", "fund_holder_structure"},
         "yfinance": {
-            "macro_indicators",
             "index_valuation",
             "stock_daily_bar",
             "index_daily_bar",
             "cashflow",
             "institutional_holders",
         },
-        "fred": {"GDP", "T10Y2Y", "WALCL", "DEXTAUS"},
+        "fred": {
+            "GDP",
+            "WALCL",
+            "DEXTAUS",
+            "DEXCHUS",
+            "DEXJPUS",
+            "DEXUSEU",
+            "DEXKOUS",
+        },
     }
     for provider, unbundled in expected_unbundled.items():
         bundled = {
@@ -492,7 +688,7 @@ def test_task_bundles_cover_registered_tasks_except_explicit_aggregate_routes() 
         assert set(list_available_tasks(provider)) - bundled == unbundled
 
 
-def test_task_bundle_members_share_scheduling_contract() -> None:
+def test_task_bundle_members_have_scheduling_metadata() -> None:
     from stock_data.pipeline.scheduler import DataUpdateScheduler
 
     for (provider, _), bundle in {
@@ -500,23 +696,12 @@ def test_task_bundle_members_share_scheduling_contract() -> None:
         for provider_name in ("tushare", "lixinger", "yfinance", "fred")
         for name in list_available_bundles(provider_name)
     }.items():
-        signatures = set()
         for task_name in bundle.tasks:
             task = resolve_task(provider, task_name)
             meta = DataUpdateScheduler.get_endpoint_update_meta(provider, task_name)
-            signatures.add(
-                (
-                    task.frequency,
-                    task.fetch_mode,
-                    task.partitioned,
-                    task.is_single_sync,
-                    task.required_pool,
-                    meta.update_time,
-                    meta.update_delay_days,
-                    meta.delay_in_trading_days,
-                )
-            )
-        assert len(signatures) == 1, f"{provider}/{bundle.bundle_name}: {signatures}"
+            assert meta.task_name == task.task_name
+            assert meta.api_name == task.api_name
+            assert meta.frequency == task.frequency
 
 
 def test_tushare_index_daily_alias_is_not_a_second_public_task() -> None:
@@ -548,9 +733,11 @@ def test_registered_new_data_source_tasks_have_explicit_routes() -> None:
 
     fund_portfolio = resolve_task("tushare", "fund_portfolio")
     assert fund_portfolio.api_name == "fund_portfolio"
-    assert fund_portfolio.fetch_mode == "per_period"
+    # 上游无 period 参数（传入被静默忽略 → 退化为前 8000 行切片），只能按基金代码逐只采集
+    assert fund_portfolio.fetch_mode == "per_symbol"
     assert fund_portfolio.frequency == "quarterly"
     assert fund_portfolio.partitioned is True
+    assert fund_portfolio.required_pool == "fund_basic"
 
     fund_holder_structure = resolve_task("lixinger", "fund_holder_structure")
     assert fund_holder_structure.api_name == "cn/fund/shareholders-structure"

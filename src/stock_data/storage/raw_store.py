@@ -245,6 +245,13 @@ class RawDataStorage:
             if df is None or df.is_empty():
                 return None
             symbol = key.instrument.symbol if key.instrument is not None else None
+            if (
+                symbol is None
+                and key.provider.lower() == "fred"
+                and key.dataset == "macro_indicators"
+                and key.endpoint.lower() != "macro_indicators"
+            ):
+                symbol = key.endpoint.upper()
             date_col = date_column_for_key(key, df)
             if date_col:
                 values = normalize_raw_date_series(df.get_column(date_col)).str.slice(0, 8)
@@ -289,7 +296,7 @@ class RawDataStorage:
 
     def _get_dataset_path(self, key: DatasetKey) -> Path:
         """计算 RAW 缓存路径。针对少量/静态/宏观单次数据集，直接存放于数据集根目录。"""
-        from stock_data.core.task_registry import is_task_partitioned
+        from stock_data.core.task_resolution import is_task_partitioned
 
         dataset_name = self._dataset_name(key.provider, key.dataset)
         base_dataset_dir = self.base_dir / key.provider / key.market_slug / dataset_name

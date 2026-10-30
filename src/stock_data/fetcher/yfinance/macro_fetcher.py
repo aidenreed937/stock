@@ -80,7 +80,6 @@ DEFAULT_MACRO_SYMBOLS = (
     "DX-Y.NYB",
     "GC=F",
     "CL=F",
-    "HG=F",
     "^VIX",
 )
 

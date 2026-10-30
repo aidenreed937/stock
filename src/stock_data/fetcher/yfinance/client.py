@@ -123,8 +123,8 @@ class YFinanceClient:
         """初始化 YFinance 客户端。
 
         Args:
-            proxy: HTTP/HTTPS 代理服务器地址。若为 None，优先读取代理池文件，
-                代理池不可用时使用 data_settings.yfinance_proxy。
+            proxy: HTTP/HTTPS 代理服务器地址。若为 None，优先使用
+                data_settings.yfinance_proxy，再回退到代理池文件。
             rate_limit_per_min: 每分钟最大请求次数限制。若为 None，使用
                 config/data.yaml 中的 yfinance_per_min。
             proxy_pool_file: 本地代理池文件或目录。目录默认读取其中的 yfinance.txt。
@@ -135,6 +135,9 @@ class YFinanceClient:
         if proxy is not None:
             configured_proxy = proxy
             proxy_pool = (configured_proxy,) if configured_proxy else ("",)
+        elif data_settings.yfinance_proxy:
+            configured_proxy = data_settings.yfinance_proxy
+            proxy_pool = (configured_proxy,)
         else:
             pool_path = (
                 Path(proxy_pool_file)
@@ -142,9 +145,6 @@ class YFinanceClient:
                 else data_settings.yfinance_proxy_pool_file
             )
             proxy_pool = _load_proxy_pool(pool_path)
-            if not proxy_pool and data_settings.yfinance_proxy:
-                configured_proxy = data_settings.yfinance_proxy
-                proxy_pool = (configured_proxy,)
         self.proxy = configured_proxy or None
         self.proxy_pool = proxy_pool or ("",)
         self._proxy_index = os.getpid() % len(self.proxy_pool)

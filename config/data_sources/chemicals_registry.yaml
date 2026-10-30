@@ -1,0 +1,206 @@
+# 基础化工基本面数据源注册表 (Source Registry)
+# 严格区分：权威官方源 (Official) vs 交易所 (Exchange) vs 商业源 (Commercial)
+# 授权状态：available (已接入真实源) vs unavailable (未授权商业源，字段保持 NULL，严禁伪造/插值)
+
+metadata:
+  domain: "chemicals"
+  description: "基础化工 5 大二级行业 (原料/化纤/农化/塑料/制品) 基本面数据源注册与质量等级"
+  version: "1.0.0"
+  provenance_policy: "所有生产库数值必须具备可追溯原始来源；未经来源验证的数据不得进入生产库。"
+
+indicators:
+  # --- 1. 供给端：国家统计局 (NBS) 官方工业产品产量 (月度) ---
+  soda_ash_production:
+    name: "纯碱产量"
+    source: "NBS"
+    authority: "official"
+    access_method: "public_open"
+    frequency: "monthly"
+    unit: "ten_thousand_tons"
+    quality_grade: "A"
+    status: "available"
+    target_l2: ["220200"] # 化学原料
+
+  caustic_soda_production:
+    name: "烧碱产量"
+    source: "NBS"
+    authority: "official"
+    access_method: "public_open"
+    frequency: "monthly"
+    unit: "ten_thousand_tons"
+    quality_grade: "A"
+    status: "available"
+    target_l2: ["220200"]
+
+  synthetic_fiber_production:
+    name: "化学纤维产量"
+    source: "NBS"
+    authority: "official"
+    access_method: "public_open"
+    frequency: "monthly"
+    unit: "ten_thousand_tons"
+    quality_grade: "A"
+    status: "available"
+    target_l2: ["220400"] # 化学纤维
+
+  chemical_fertilizer_production:
+    name: "农用化肥总产量"
+    source: "NBS"
+    authority: "official"
+    access_method: "public_open"
+    frequency: "monthly"
+    unit: "ten_thousand_tons"
+    quality_grade: "A"
+    status: "available"
+    target_l2: ["220800"] # 农化制品
+
+  plastics_production:
+    name: "初级形态塑料产量"
+    source: "NBS"
+    authority: "official"
+    access_method: "public_open"
+    frequency: "monthly"
+    unit: "ten_thousand_tons"
+    quality_grade: "A"
+    status: "available"
+    target_l2: ["220500"] # 塑料
+
+  # --- 2. 需求端：下游实物产量与海关出口流量 ---
+  plate_glass_production:
+    name: "平板玻璃产量 (纯碱下游最核心需求)"
+    source: "NBS"
+    authority: "official"
+    access_method: "public_open"
+    frequency: "monthly"
+    unit: "ten_thousand_weight_cases"
+    quality_grade: "A"
+    status: "available"
+    target_l2: ["220200"]
+
+  gacc_chemical_export:
+    name: "海关总署化工大宗商品出口量与额 (MDI/钛白粉/聚酯/化肥)"
+    source: "GACC / UN_Comtrade"
+    authority: "official"
+    access_method: "public_open"
+    frequency: "monthly"
+    unit: "mixed"
+    quality_grade: "A"
+    status: "available"
+    target_l2: ["220200", "220400", "220800"]
+
+  # --- 3. 仓单/交割库存压力端：期货交易所注册仓单 (日频/周频) ---
+  czce_soda_ash_receipt:
+    name: "郑商所纯碱期货注册仓单数量"
+    source: "CZCE"
+    authority: "exchange_official"
+    access_method: "public_open"
+    frequency: "daily"
+    unit: "contracts"
+    quality_grade: "A"
+    status: "available"
+    target_l2: ["220200"]
+
+  czce_pta_receipt:
+    name: "郑商所 PTA 期货注册仓单数量"
+    source: "CZCE"
+    authority: "exchange_official"
+    access_method: "public_open"
+    frequency: "daily"
+    unit: "contracts"
+    quality_grade: "A"
+    status: "available"
+    target_l2: ["220400"]
+
+  czce_urea_receipt:
+    name: "郑商所尿素期货注册仓单数量"
+    source: "CZCE"
+    authority: "exchange_official"
+    access_method: "public_open"
+    frequency: "daily"
+    unit: "contracts"
+    quality_grade: "A"
+    status: "available"
+    target_l2: ["220800"]
+
+  # --- 4. 行业微观调查：高频开工率与全国社会库存 (Mysteel 隆众 + 生意社) ---
+  soda_ash_operating_rate:
+    name: "纯碱装置综合产能利用率与周产量"
+    source: "Longzhong_Oilchem / 100ppi"
+    authority: "commercial"
+    access_method: "public_open"
+    frequency: "weekly"
+    unit: "percent"
+    quality_grade: "A"
+    status: "available"
+    target_l2: ["220200"]
+
+  caustic_soda_operating_rate:
+    name: "烧碱装置平均开工率与厂家库存"
+    source: "Longzhong_Oilchem"
+    authority: "commercial"
+    access_method: "public_open"
+    frequency: "weekly"
+    unit: "percent"
+    quality_grade: "A"
+    status: "available"
+    target_l2: ["220200"]
+
+  pta_operating_rate:
+    name: "PTA 装置产能利用率与下游聚酯负荷"
+    source: "Longzhong_Oilchem"
+    authority: "commercial"
+    access_method: "public_open"
+    frequency: "weekly"
+    unit: "percent"
+    quality_grade: "A"
+    status: "available"
+    target_l2: ["220400"]
+
+  methanol_operating_rate:
+    name: "甲醇装置产能利用率与周产量"
+    source: "Longzhong_Oilchem"
+    authority: "commercial"
+    access_method: "public_open"
+    frequency: "weekly"
+    unit: "percent"
+    quality_grade: "A"
+    status: "available"
+    target_l2: ["220200"]
+
+  # --- 5. 产业链理论利润与加工费 (Spread & Margin) ---
+  chemical_spreads:
+    name: "化工产业链理论利润与加工费 (纯碱双吨/PTA加工费/ECU利润)"
+    source: "Longzhong_Oilchem / CZCE"
+    authority: "commercial_and_exchange"
+    access_method: "not_connected"
+    frequency: "weekly"
+    unit: "cny_per_ton"
+    quality_grade: "N/A"
+    status: "unavailable"
+    availability_note: "当前仓库没有可验证的价差 RAW 输入，禁止用公式或默认数组补数。"
+    target_l2: ["220200", "220400"]
+
+  # --- 6. 10年大周期官方产能利用率 (NBS + 协会) ---
+  chemical_capacity_utilization_10y:
+    name: "纯碱10年大周期官方产量与行业有效产能利用率"
+    source: "NBS / Soda_Ash_Association"
+    authority: "official"
+    access_method: "partial_source"
+    frequency: "monthly"
+    unit: "percent"
+    quality_grade: "N/A"
+    status: "unavailable"
+    availability_note: "已有 NBS 月度产量，但缺少逐年可验证的行业有效产能分母。"
+    target_l2: ["220200"]
+
+  # --- 7. 期货主力席位持仓龙虎榜 (聪明钱博弈) ---
+  futures_hold_rank:
+    name: "化工期货主力合约每日多空前20席位持仓与集中度"
+    source: "Exchange_Official / Sina"
+    authority: "exchange_official"
+    access_method: "public_open"
+    frequency: "daily"
+    unit: "contracts"
+    quality_grade: "A"
+    status: "available"
+    target_l2: ["220200", "220400", "220800"]

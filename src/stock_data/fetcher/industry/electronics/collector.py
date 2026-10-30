@@ -10,7 +10,7 @@ from pathlib import Path
 
 from stock_data.fetcher.industry.common import now_utc_iso
 from stock_data.fetcher.industry.electronics.crawler import ConsumerElectronicsCrawler
-from stock_data.fetcher.industry.models import ConsumerElectronicsRecord
+from stock_data.fetcher.industry.electronics.models import ConsumerElectronicsRecord
 
 logger = logging.getLogger(__name__)
 

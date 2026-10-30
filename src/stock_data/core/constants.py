@@ -14,6 +14,9 @@ ENDPOINT_START_DATE_OVERRIDES: Final[dict[str, str]] = {
     "cyq_chips": "2018-01-01",
     "dc_concept": "2026-02-03",
     "dc_concept_cons": "2026-02-03",
+    # 理杏仁申万银行 L2/L3 财报在 2021Q3 前返回空响应，避免回填反复消耗额度。
+    "lixinger:sw_2021_l2_fs_bank": "2021-09-30",
+    "lixinger:sw_2021_l3_fs_bank": "2021-09-30",
 }
 
 # 交易所特定业务上线首日表：精准拦截早于交易所上线时间的无用 API 请求

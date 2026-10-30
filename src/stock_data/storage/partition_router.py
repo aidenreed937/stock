@@ -10,7 +10,7 @@ import polars as pl
 
 from stock_core.exceptions import DataValidationError
 from stock_core.utils.logger import logger
-from stock_data.core.task_registry import is_task_partitioned, resolve_task
+from stock_data.core.task_resolution import is_task_partitioned, resolve_task
 from stock_data.pipeline.cleaner.date_utils import parse_mixed_date
 
 

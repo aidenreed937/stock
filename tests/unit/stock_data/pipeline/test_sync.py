@@ -1,12 +1,16 @@
 """DailySyncEngine 与 Sync CLI 单元测试。"""
 
-from datetime import date
+from datetime import date, datetime
+from threading import Lock
+from time import sleep
 from unittest.mock import MagicMock, patch
 
 import polars as pl
 import pytest
 
 from stock_cli.sync import main as sync_cli_main
+from stock_data.core.runtime import DataRuntimeContext
+from stock_data.core.settings import DataSettings
 from stock_data.pipeline.scheduler import DataUpdateScheduler
 from stock_data.pipeline.sync import (
     DailySyncEngine,
@@ -18,6 +22,11 @@ from stock_data.pipeline.sync import (
     _sync_symbols_for_task,
     _watermark_date_column,
 )
+from stock_data.pipeline.sync_helpers import (
+    _semiconductor_inventory_complete_watermark,
+    configured_source_workers,
+)
+from stock_data.pipeline.sync_runner import SYNC_SOURCES, SyncSourceRun, run_sync
 
 
 def test_sniff_watermarks() -> None:
@@ -34,6 +43,69 @@ def test_sniff_watermarks() -> None:
         assert watermarks["daily_basic"] is None
 
 
+def test_semiconductor_cowos_watermark_uses_published_date() -> None:
+    assert _watermark_date_column("industry", "tsmc_cowos_capacity_estimates") == "published_date"
+
+
+def test_semiconductor_cowos_snapshot_does_not_replay_without_force() -> None:
+    engine = DailySyncEngine(data_source="industry")
+    endpoint = "tsmc_cowos_capacity_estimates"
+    with (
+        patch.object(engine, "sniff_watermarks", return_value={endpoint: date(2026, 6, 15)}),
+        patch("stock_data.pipeline.scheduler.DataUpdateScheduler.is_data_ready", return_value=True),
+    ):
+        plan = engine.build_sync_plan(
+            target_date=date(2026, 9, 13),
+            endpoints=[endpoint],
+            target_date_is_explicit=False,
+        )
+
+    assert len(plan) == 1
+    assert plan[0].status == "UP_TO_DATE"
+    assert "FORCE=1" in plan[0].reason
+
+
+def test_semiconductor_cowos_snapshot_can_be_replayed_with_force() -> None:
+    engine = DailySyncEngine(data_source="industry")
+    endpoint = "tsmc_cowos_capacity_estimates"
+    with (
+        patch.object(engine, "sniff_watermarks", return_value={endpoint: date(2026, 6, 15)}),
+        patch("stock_data.pipeline.scheduler.DataUpdateScheduler.is_data_ready", return_value=True),
+    ):
+        plan = engine.build_sync_plan(
+            target_date=date(2026, 9, 13),
+            endpoints=[endpoint],
+            force=True,
+            target_date_is_explicit=False,
+        )
+
+    assert len(plan) == 1
+    assert plan[0].status == "PENDING"
+
+
+def test_semiconductor_inventory_watermark_requires_all_constituents() -> None:
+    frame = pl.DataFrame(
+        {
+            "report_quarter": ["2026Q2"] * 7 + ["2026Q3"],
+            "symbol": [
+                "TXN",
+                "ADI",
+                "STM",
+                "NXPI",
+                "MU",
+                "000660.KS",
+                "005930.KS_DS",
+                "ADI",
+            ],
+            "trade_date": [date(2026, 6, 30)] * 7 + [date(2026, 9, 30)],
+        }
+    )
+    catalog = MagicMock()
+    catalog.load_dataset.return_value = frame
+
+    assert _semiconductor_inventory_complete_watermark(catalog) == date(2026, 6, 30)
+
+
 def test_sync_engine_reads_source_specific_worker_configuration() -> None:
     class Concurrency:
         lixinger_max_workers = 2
@@ -46,6 +118,16 @@ def test_sync_engine_reads_source_specific_worker_configuration() -> None:
         engine = DailySyncEngine(data_source="lixinger")
 
     assert engine.max_workers == 2
+
+
+def test_sync_reads_cross_source_worker_configuration() -> None:
+    class Concurrency:
+        source_max_workers = 3
+
+    class DataCfg:
+        concurrency = Concurrency()
+
+    assert configured_source_workers(load_config=lambda: DataCfg()) == 3
 
 
 def test_symbol_watermarks_support_report_and_statement_dates() -> None:
@@ -90,6 +172,36 @@ def test_sniff_watermarks_scans_shared_dataset_once() -> None:
 
     assert watermarks == {"endpoint_a": date(2026, 8, 18), "endpoint_b": date(2026, 8, 18)}
     catalog.latest_trade_dates.assert_called_once_with(dataset="shared_dataset", n=1)
+
+
+def test_sniff_watermarks_uses_fred_series_watermark_for_shared_dataset() -> None:
+    catalog = MagicMock()
+    catalog.load_dataset.return_value = pl.DataFrame(
+        {"symbol": ["DEXCHUS"], "trade_date": [date(2026, 7, 31)]}
+    )
+    task = MagicMock(
+        dataset="macro_indicators",
+        api_name="DEXCHUS",
+        fetch_mode="per_symbol",
+    )
+
+    with (
+        patch(
+            "stock_data.pipeline.sync.expand_task_targets",
+            return_value=["DEXCHUS"],
+        ),
+        patch("stock_data.pipeline.sync.resolve_task", return_value=task),
+        patch("stock_data.pipeline.sync._disabled_endpoints", return_value=set()),
+        patch("stock_data.pipeline.sync._watermark_date_column", return_value="trade_date"),
+        patch(
+            "stock_data.pipeline.sync.DataUpdateScheduler.get_endpoint_update_meta",
+            return_value=MagicMock(frequency="daily"),
+        ),
+    ):
+        watermarks = _sniff_watermarks(catalog, "fred", ["DEXCHUS"])
+
+    assert watermarks == {"DEXCHUS": date(2026, 7, 31)}
+    catalog.latest_trade_dates.assert_not_called()
 
 
 def test_sniff_watermarks_uses_endpoint_period_column() -> None:
@@ -339,10 +451,9 @@ def test_default_sync_falls_back_to_ready_trading_day_for_history_gap() -> None:
         ),
         patch(
             "stock_data.pipeline.scheduler.DataUpdateScheduler.is_data_ready",
-            side_effect=lambda endpoint,
-            target_date,
-            current_datetime=None,
-            data_source="tushare": (target_date == previous),
+            side_effect=lambda endpoint, target_date, current_datetime=None, data_source="tushare": (
+                target_date == previous
+            ),
         ),
     ):
         plan = engine.build_sync_plan(
@@ -462,6 +573,32 @@ def test_financial_statement_sync_refreshes_current_report_period() -> None:
     assert plan[0].end_date == date(2026, 6, 30)
     assert "刷新报告期" in plan[0].reason
     assert plan[0].refresh_raw_cache is True
+
+
+def test_industry_semi_equipment_skips_current_period_when_curated_covers_target() -> None:
+    engine = DailySyncEngine(data_source="industry")
+    with (
+        patch.object(
+            engine,
+            "sniff_watermarks",
+            return_value={"semiconductor_equipment_semi": date(2026, 3, 31)},
+        ),
+        patch(
+            "stock_data.pipeline.scheduler.DataUpdateScheduler.is_data_ready",
+            return_value=True,
+        ),
+    ):
+        plan = engine.build_sync_plan(
+            target_date=date(2026, 6, 29),
+            endpoints=["semiconductor_equipment_semi"],
+            target_date_is_explicit=True,
+        )
+
+    assert len(plan) == 1
+    assert plan[0].status == "UP_TO_DATE"
+    assert plan[0].start_date == date(2026, 3, 31)
+    assert plan[0].end_date == date(2026, 3, 31)
+    assert plan[0].refresh_raw_cache is False
 
 
 def test_execute_plan_success_and_error() -> None:
@@ -588,12 +725,40 @@ def test_build_sync_plan_expands_per_symbol_with_symbol_watermark() -> None:
     assert plan[1].start_date == date(2010, 1, 1)
 
 
+def test_build_sync_plan_uses_lixinger_quarter_end_for_financial_statements() -> None:
+    endpoint = "sw_2021_fs_non_financial"
+    engine = DailySyncEngine(data_source="lixinger")
+
+    with (
+        patch.object(engine, "sniff_watermarks", return_value={endpoint: date(2026, 3, 31)}),
+        patch("stock_data.pipeline.sync._disabled_endpoints", return_value=set()),
+        patch(
+            "stock_data.pipeline.sync.DataUpdateScheduler.is_data_ready",
+            return_value=True,
+        ),
+    ):
+        plan = engine.build_sync_plan(
+            target_date=date(2026, 8, 13),
+            endpoints=[endpoint],
+            target_date_is_explicit=False,
+        )
+
+    assert len(plan) == 1
+    assert plan[0].symbol == ""
+    assert plan[0].watermark == date(2026, 3, 31)
+    assert plan[0].start_date == date(2026, 6, 30)
+    assert plan[0].end_date == date(2026, 6, 30)
+    assert plan[0].status == "PENDING"
+
+
 def test_build_sync_plan_expands_task_bundle_into_atomic_tasks() -> None:
     engine = DailySyncEngine(data_source="lixinger")
     bundle_tasks = [
         "sw_2021_constituents",
         "sw_2021_fundamental",
         "sw_2021_l2_fundamental",
+    ]
+    financial_bundle_tasks = [
         "sw_2021_fs_non_financial",
         "sw_2021_fs_bank",
         "sw_2021_fs_security",
@@ -602,13 +767,15 @@ def test_build_sync_plan_expands_task_bundle_into_atomic_tasks() -> None:
         "sw_2021_l2_fs_bank",
         "sw_2021_l2_fs_security",
         "sw_2021_l2_fs_insurance",
+        "sw_2021_l3_fs_non_financial",
+        "sw_2021_l3_fs_bank",
+        "sw_2021_l3_fs_security",
+        "sw_2021_l3_fs_insurance",
     ]
 
     with (
         patch.object(
-            engine,
-            "sniff_watermarks",
-            return_value=dict.fromkeys(bundle_tasks),
+            engine, "sniff_watermarks", return_value=dict.fromkeys(bundle_tasks)
         ) as sniff_watermarks,
         patch("stock_data.pipeline.sync._sync_symbols_for_task", return_value=[""]),
         patch("stock_data.pipeline.sync._disabled_endpoints", return_value=set()),
@@ -619,6 +786,25 @@ def test_build_sync_plan_expands_task_bundle_into_atomic_tasks() -> None:
     assert [item.endpoint for item in plan] == bundle_tasks
     assert all(item.status == "PENDING" for item in plan)
     sniff_watermarks.assert_called_once_with(bundle_tasks)
+
+    with (
+        patch.object(
+            engine,
+            "sniff_watermarks",
+            return_value=dict.fromkeys(financial_bundle_tasks),
+        ) as sniff_watermarks,
+        patch("stock_data.pipeline.sync._sync_symbols_for_task", return_value=[""]),
+        patch("stock_data.pipeline.sync._disabled_endpoints", return_value=set()),
+        patch("stock_data.pipeline.scheduler.DataUpdateScheduler.is_data_ready", return_value=True),
+    ):
+        financial_plan = engine.build_sync_plan(
+            target_date=date(2026, 8, 13),
+            endpoints=["industry_financial_bundle"],
+        )
+
+    assert [item.endpoint for item in financial_plan] == financial_bundle_tasks
+    assert all(item.status == "PENDING" for item in financial_plan)
+    sniff_watermarks.assert_called_once_with(financial_bundle_tasks)
 
 
 def test_sync_symbols_keeps_lixinger_batch_tasks_single() -> None:
@@ -635,6 +821,7 @@ def test_sync_symbols_keeps_lixinger_batch_tasks_single() -> None:
     with patch("stock_data.pipeline.sync.load_data_config", return_value=DataCfg()):
         assert _sync_symbols_for_task("lixinger", "index_fundamental") == [""]
         assert _sync_symbols_for_task("lixinger", "sw_2021_fundamental") == [""]
+        assert _sync_symbols_for_task("lixinger", "sw_2021_fs_non_financial") == [""]
         assert _sync_symbols_for_task("lixinger", "national_debt") == [""]
         assert _sync_symbols_for_task("lixinger", "company_fundamental") == [
             "600519.SH",
@@ -958,6 +1145,24 @@ def test_sync_cli_main(capsys) -> None:
         assert mock_log.called
 
 
+def test_sync_cli_initializes_runtime_directories_before_sync(tmp_path) -> None:
+    data_root = tmp_path / "data"
+    settings = DataSettings(data_root=data_root, cache_dir=data_root / "cache")
+
+    with (
+        patch("sys.argv", ["sync.py", "-s", "industry"]),
+        patch("stock_cli.sync.data_settings", settings),
+        patch("stock_cli.sync.run_sync", return_value=[]) as run_sync,
+    ):
+        sync_cli_main()
+
+    assert settings.runtime_context.data_root.is_dir()
+    assert settings.runtime_context.raw_root.is_dir()
+    assert settings.runtime_context.curated_root.is_dir()
+    assert settings.runtime_context.cache_root.is_dir()
+    assert run_sync.call_args.kwargs["runtime"].data_root == data_root
+
+
 def test_sync_cli_forwards_comma_separated_task_bundles() -> None:
     with (
         patch(
@@ -979,6 +1184,36 @@ def test_sync_cli_forwards_comma_separated_task_bundles() -> None:
         "fund_daily_bundle",
         "hsgt_flow_bundle",
     ]
+
+
+def test_run_sync_all_parallelizes_sources_and_preserves_order() -> None:
+    active = 0
+    max_active = 0
+    completed: list[str] = []
+    lock = Lock()
+
+    class FakeEngine:
+        def __init__(self, data_source: str, max_workers: int | None, runtime) -> None:
+            self.data_source = data_source
+
+        def sync_daily(self, **kwargs):
+            nonlocal active, max_active
+            with lock:
+                active += 1
+                max_active = max(max_active, active)
+            sleep(0.02)
+            with lock:
+                active -= 1
+                completed.append(self.data_source)
+            return [], [], None
+
+    with patch("stock_data.pipeline.sync_runner.DailySyncEngine", FakeEngine):
+        runs = run_sync(source="all", target_date=date(2026, 8, 13))
+
+    assert [run.source for run in runs] == list(SYNC_SOURCES)
+    assert set(completed) == set(SYNC_SOURCES)
+    assert "yfinance" not in SYNC_SOURCES
+    assert max_active >= 2
 
 
 def test_sync_cli_treats_no_data_as_warning() -> None:
@@ -1038,6 +1273,56 @@ def test_sync_cli_exits_nonzero_for_failed_execution() -> None:
     assert exc_info.value.code == 1
 
 
+def test_sync_cli_renders_all_source_summaries_before_exit() -> None:
+    day = date(2026, 8, 13)
+    failed_run = SyncSourceRun(
+        source="lixinger",
+        plan=[],
+        results=[
+            SyncExecutionResult(
+                data_source="lixinger",
+                endpoint="sw_2021_fs_non_financial",
+                start_date=day,
+                end_date=day,
+                records=0,
+                duration_s=0.1,
+                status="FAILED",
+                error="API 权限不足",
+            )
+        ],
+        audit_result=None,
+    )
+    successful_run = SyncSourceRun(
+        source="fred",
+        plan=[],
+        results=[
+            SyncExecutionResult(
+                data_source="fred",
+                endpoint="macro_indicators",
+                start_date=day,
+                end_date=day,
+                records=1,
+                duration_s=0.1,
+                status="SUCCESS",
+            )
+        ],
+        audit_result=None,
+    )
+
+    with (
+        patch("sys.argv", ["sync.py", "-s", "all"]),
+        patch("stock_cli.sync.run_sync", return_value=[failed_run, successful_run]),
+        patch("stock_cli.sync.logger.info") as logger_info,
+        pytest.raises(SystemExit) as exc_info,
+    ):
+        sync_cli_main()
+
+    rendered = "\n".join(str(call.args[0]) for call in logger_info.call_args_list)
+    assert "--- [LIXINGER]" in rendered
+    assert "--- [FRED]" in rendered
+    assert exc_info.value.code == 1
+
+
 def test_industry_sync_watermarks_and_window_protection() -> None:
     """测试 industry 垂直产业指标的水位嗅探与发布时间窗口保护机制。"""
     engine = DailySyncEngine(data_source="industry")
@@ -1056,6 +1341,7 @@ def test_industry_sync_watermarks_and_window_protection() -> None:
         target_date=date(2026, 8, 31),
         endpoints=["construction_machinery"],
         force=False,
+        current_datetime=datetime(2026, 9, 7, 12, 0),
     )
     assert len(plan_skipped) == 1
     assert plan_skipped[0].status == "SKIPPED"
@@ -1066,6 +1352,7 @@ def test_industry_sync_watermarks_and_window_protection() -> None:
         target_date=date(2026, 8, 31),
         endpoints=["construction_machinery"],
         force=True,
+        current_datetime=datetime(2026, 9, 7, 12, 0),
     )
     assert len(plan_force) == 1
     assert plan_force[0].status == "PENDING"
@@ -1096,3 +1383,213 @@ def test_industry_sync_execution() -> None:
     assert results[0].endpoint == "construction_machinery"
     assert results[0].records == 103
     assert results[0].status == "SUCCESS"
+
+
+def test_industry_sync_execution_passes_runtime_context(tmp_path) -> None:
+    runtime = DataRuntimeContext.from_root(tmp_path / "runtime")
+    runtime.ensure_directories()
+    engine = DailySyncEngine(data_source="industry", max_workers=1, runtime=runtime)
+    task = SyncTaskItem(
+        data_source="industry",
+        endpoint="semiconductor_memory_benchmark",
+        dataset="semiconductor_memory_benchmark",
+        start_date=date(2026, 7, 1),
+        end_date=date(2026, 7, 31),
+        watermark=None,
+        status="PENDING",
+        is_ready=True,
+    )
+
+    with patch(
+        "stock_data.fetcher.industry.pipeline.execute_single_industry_task",
+        return_value=1,
+    ) as execute:
+        results = engine.execute_plan([task], force_refresh=True)
+
+    assert results[0].status == "SUCCESS"
+    assert execute.call_args.kwargs["runtime"] is runtime
+    assert execute.call_args.kwargs["start_date"] == date(2026, 7, 1)
+    assert execute.call_args.kwargs["end_date"] == date(2026, 7, 31)
+    assert execute.call_args.kwargs["force_refresh"] is True
+
+
+def test_sync_source_run_treats_blocked_result_as_failure() -> None:
+    day = date(2026, 8, 31)
+    result = SyncExecutionResult(
+        data_source="industry",
+        endpoint="pv_wafer_monthly",
+        start_date=day,
+        end_date=day,
+        records=0,
+        duration_s=0.0,
+        status="BLOCKED",
+    )
+
+    run = SyncSourceRun(source="industry", plan=[], results=[result], audit_result=None)
+
+    assert run.has_failure is True
+
+
+def test_run_sync_rebuilds_versioned_members_after_metadata_success(tmp_path) -> None:
+    runtime = DataRuntimeContext.from_root(tmp_path / "runtime")
+    runtime.ensure_directories()
+    day = date(2026, 8, 31)
+    plan = [
+        SyncTaskItem(
+            data_source="tushare",
+            endpoint=endpoint,
+            dataset=endpoint,
+            start_date=day,
+            end_date=day,
+            watermark=None,
+            status="PENDING",
+            is_ready=True,
+        )
+        for endpoint in ("index_classify", "index_member")
+    ]
+    results = [
+        SyncExecutionResult(
+            data_source="tushare",
+            endpoint=endpoint,
+            start_date=day,
+            end_date=day,
+            records=1,
+            duration_s=0.1,
+            status="SUCCESS",
+        )
+        for endpoint in ("index_classify", "index_member")
+    ]
+
+    with (
+        patch.object(DailySyncEngine, "sync_daily", return_value=(plan, results, None)),
+        patch(
+            "stock_data.pipeline.derived_refresh.materialize_index_member_versioned",
+            return_value=pl.DataFrame({"src": ["SW2021"]}),
+        ) as materialize,
+    ):
+        runs = run_sync(source="tushare", target_date=day, runtime=runtime)
+
+    materialize.assert_called_once_with(runtime=runtime)
+    assert runs[0].results[-1].endpoint == "index_member_versioned"
+    assert runs[0].results[-1].status == "SUCCESS"
+
+
+def test_run_sync_does_not_rebuild_versioned_members_for_uptodate_metadata() -> None:
+    day = date(2026, 8, 31)
+    plan = [
+        SyncTaskItem(
+            data_source="tushare",
+            endpoint=endpoint,
+            dataset=endpoint,
+            start_date=day,
+            end_date=day,
+            watermark=day,
+            status="UP_TO_DATE",
+            is_ready=True,
+        )
+        for endpoint in ("index_classify", "index_member")
+    ]
+
+    with (
+        patch.object(DailySyncEngine, "sync_daily", return_value=(plan, [], None)),
+        patch(
+            "stock_data.pipeline.derived_refresh.materialize_index_member_versioned"
+        ) as materialize,
+    ):
+        runs = run_sync(source="tushare", target_date=day)
+
+    materialize.assert_not_called()
+    assert runs[0].results == []
+
+
+def test_run_sync_reports_derived_rebuild_failure() -> None:
+    day = date(2026, 8, 31)
+    plan = [
+        SyncTaskItem(
+            data_source="tushare",
+            endpoint=endpoint,
+            dataset=endpoint,
+            start_date=day,
+            end_date=day,
+            watermark=None,
+            status="PENDING",
+            is_ready=True,
+        )
+        for endpoint in ("index_classify", "index_member")
+    ]
+    results = [
+        SyncExecutionResult(
+            data_source="tushare",
+            endpoint=endpoint,
+            start_date=day,
+            end_date=day,
+            records=1,
+            duration_s=0.1,
+            status="SUCCESS",
+        )
+        for endpoint in ("index_classify", "index_member")
+    ]
+
+    with (
+        patch.object(DailySyncEngine, "sync_daily", return_value=(plan, results, None)),
+        patch(
+            "stock_data.pipeline.derived_refresh.materialize_index_member_versioned",
+            side_effect=RuntimeError("测试失败"),
+        ),
+    ):
+        runs = run_sync(source="tushare", target_date=day)
+
+    assert runs[0].results[-1].endpoint == "index_member_versioned"
+    assert runs[0].results[-1].status == "FAILED"
+    assert runs[0].has_failure is True
+
+
+def test_run_sync_blocks_derived_rebuild_when_metadata_sync_is_partial() -> None:
+    day = date(2026, 8, 31)
+    plan = [
+        SyncTaskItem(
+            data_source="tushare",
+            endpoint=endpoint,
+            dataset=endpoint,
+            start_date=day,
+            end_date=day,
+            watermark=None,
+            status="PENDING",
+            is_ready=True,
+        )
+        for endpoint in ("index_classify", "index_member")
+    ]
+    results = [
+        SyncExecutionResult(
+            data_source="tushare",
+            endpoint="index_classify",
+            start_date=day,
+            end_date=day,
+            records=1,
+            duration_s=0.1,
+            status="SUCCESS",
+        ),
+        SyncExecutionResult(
+            data_source="tushare",
+            endpoint="index_member",
+            start_date=day,
+            end_date=day,
+            records=0,
+            duration_s=0.1,
+            status="FAILED",
+            error="源表失败",
+        ),
+    ]
+
+    with (
+        patch.object(DailySyncEngine, "sync_daily", return_value=(plan, results, None)),
+        patch(
+            "stock_data.pipeline.derived_refresh.materialize_index_member_versioned"
+        ) as materialize,
+    ):
+        runs = run_sync(source="tushare", target_date=day)
+
+    materialize.assert_not_called()
+    assert runs[0].results[-1].endpoint == "index_member_versioned"
+    assert runs[0].results[-1].status == "BLOCKED"
+    assert runs[0].has_failure is True

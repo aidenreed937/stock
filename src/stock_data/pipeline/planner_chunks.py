@@ -1,8 +1,10 @@
-"""历史回填年度分块与 Curated 分区检查辅助函数。"""
+"""历史回填时间分块与 Curated 分区检查辅助函数。"""
 
 from __future__ import annotations
 
-from datetime import date
+from datetime import date, timedelta
+
+import polars as pl
 
 
 def split_date_range_by_year(start_date: date, end_date: date) -> list[tuple[date, date]]:
@@ -20,16 +22,81 @@ def split_date_range_by_year(start_date: date, end_date: date) -> list[tuple[dat
     return chunks
 
 
+def split_date_range_by_quarter(start_date: date, end_date: date) -> list[tuple[date, date]]:
+    """将日期范围拆为范围内自然季度末的单期间任务。"""
+    if start_date > end_date:
+        return []
+
+    chunks: list[tuple[date, date]] = []
+    year = start_date.year
+    quarter = (start_date.month - 1) // 3 + 1
+    last_year = end_date.year
+    last_quarter = (end_date.month - 1) // 3 + 1
+
+    while (year, quarter) <= (last_year, last_quarter):
+        quarter_end_month = quarter * 3
+        if quarter_end_month == 12:
+            quarter_end = date(year, 12, 31)
+        else:
+            quarter_end = date(year, quarter_end_month + 1, 1) - timedelta(days=1)
+        if start_date <= quarter_end <= end_date:
+            chunks.append((quarter_end, quarter_end))
+
+        if quarter == 4:
+            year += 1
+            quarter = 1
+        else:
+            quarter += 1
+    return chunks
+
+
 def has_curated_range(data_source: str, endpoint: str, start_date: date, end_date: date) -> bool:
-    """检查 Curated 是否已有目标任务区间内的完整月份物理分区。"""
+    """检查 Curated 是否已有目标任务区间内的完整分区或单报告期。"""
     try:
         from stock_data.core.settings import data_settings
-        from stock_data.core.task_registry import get_endpoint_market, resolve_task
+        from stock_data.core.task_resolution import get_endpoint_market, resolve_task
         from stock_data.storage.compat import StorageCompat
 
         task_spec = resolve_task(data_source, endpoint)
         if not task_spec.partitioned:
-            return False
+            if start_date != end_date:
+                return False
+            market = get_endpoint_market(data_source, task_spec.dataset)
+            file_path = (
+                data_settings.runtime_context.curated_root
+                / data_source
+                / f"market={market.upper()}"
+                / task_spec.dataset
+                / "data.parquet"
+            )
+            if not file_path.exists() or StorageCompat.is_artifact_path(file_path):
+                return False
+            frame = pl.read_parquet(file_path)
+            date_column = next(
+                (
+                    column
+                    for column in (
+                        *task_spec.date_columns,
+                        "trade_date",
+                        "date",
+                        "reportDate",
+                        "standardDate",
+                        "end_date",
+                    )
+                    if column in frame.columns
+                ),
+                None,
+            )
+            if date_column is None:
+                return False
+            values = (
+                frame.get_column(date_column)
+                .cast(pl.String, strict=False)
+                .str.replace_all(r"[^0-9]", "")
+                .str.slice(0, 8)
+            )
+            return start_date.strftime("%Y%m%d") in set(values.drop_nulls().to_list())
+
         market = get_endpoint_market(data_source, task_spec.dataset)
         dataset_dir = (
             data_settings.runtime_context.curated_root
@@ -58,4 +125,4 @@ def has_curated_range(data_source: str, endpoint: str, start_date: date, end_dat
         return False
 
 
-__all__ = ["has_curated_range", "split_date_range_by_year"]
+__all__ = ["has_curated_range", "split_date_range_by_quarter", "split_date_range_by_year"]

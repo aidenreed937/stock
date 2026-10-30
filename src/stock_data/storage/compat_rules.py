@@ -124,10 +124,15 @@ _KNOWN_DATE_COLUMNS = frozenset(
         "suspend_date",
         "reportDate",
         "standardDate",
+        "fiscal_date_ending",
+        "reported_date",
         "Date Reported",
         "Start Date",
         "announcement_date",
         "observation_date",
+        "release_date",
+        "tsmc_release_date",
+        "smic_release_date",
     }
 )
 
@@ -250,7 +255,9 @@ _DATASET_FLOAT_COLUMNS: dict[str, frozenset[str]] = {
     "hsgt_top10": frozenset({"change", "net_amount", "buy", "sell"}),
     "sf_month": frozenset({"stk_endval", "stk_endval_yoy"}),
     "shibor_lpr": frozenset({"1y", "5y"}),
-    "opt_basic": frozenset({"per_unit", "exercise_price", "list_price", "min_price_chg"}),
+    "opt_basic": frozenset(
+        {"per_unit", "exercise_price", "list_price", "min_price_chg", "opt_multiplier"}
+    ),
     "fund_basic": frozenset({"exp_return"}),
     "fund_holder_structure": frozenset(
         {
@@ -273,6 +280,19 @@ _DATASET_FLOAT_COLUMNS: dict[str, frozenset[str]] = {
             "elr_mc_y1",
         }
     ),
+    "foundry_capacity_utilization": frozenset(
+        {
+            "tsmc_utilization_pct",
+            "tsmc_wafer_shipments_12in_kpcs",
+            "tsmc_capacity_12in_kpcs",
+            "smic_utilization_pct",
+            "smic_monthly_capacity_8inch_kw",
+            "smic_wafer_shipment_kw",
+            "foundry_proxy_utilization_pct",
+            "foundry_weighted_utilization_pct",
+        }
+    ),
+    "gold_price": frozenset({"lbma_pm_usd", "sge_pm_cny"}),
 }
 
 _LIXINGER_FINANCIAL_STATEMENT_OPTIONAL_COLUMNS = frozenset(
@@ -293,6 +313,7 @@ _DATASET_OPTIONAL_COLUMNS: dict[str, frozenset[str]] = {
     "etf_share_size": frozenset(
         {"etf_name", "fund_type", "total_size", "float_share", "float_size", "nav", "close"}
     ),
+    "opt_basic": frozenset({"opt_multiplier"}),
     "express": frozenset(
         {
             "revenue",
@@ -323,6 +344,10 @@ _DATASET_OPTIONAL_COLUMNS: dict[str, frozenset[str]] = {
     "sw_2021_l2_fs_bank": _LIXINGER_FINANCIAL_STATEMENT_OPTIONAL_COLUMNS,
     "sw_2021_l2_fs_security": _LIXINGER_FINANCIAL_STATEMENT_OPTIONAL_COLUMNS,
     "sw_2021_l2_fs_insurance": _LIXINGER_FINANCIAL_STATEMENT_OPTIONAL_COLUMNS,
+    "sw_2021_l3_fs_non_financial": _LIXINGER_FINANCIAL_STATEMENT_OPTIONAL_COLUMNS,
+    "sw_2021_l3_fs_bank": _LIXINGER_FINANCIAL_STATEMENT_OPTIONAL_COLUMNS,
+    "sw_2021_l3_fs_security": _LIXINGER_FINANCIAL_STATEMENT_OPTIONAL_COLUMNS,
+    "sw_2021_l3_fs_insurance": _LIXINGER_FINANCIAL_STATEMENT_OPTIONAL_COLUMNS,
     "interest_rates": frozenset(
         {"cdnaaa_y1", "fdr_d7", "shibor_on", "shibor_w1", "shibor_y1", "adjustment", "areaCode"}
     ),
@@ -330,11 +355,23 @@ _DATASET_OPTIONAL_COLUMNS: dict[str, frozenset[str]] = {
         {"tcm_y1", "tcm_y2", "tcm_y5", "tcm_y10", "tcm_y30", "areaCode", "adjustment"}
     ),
     "crude_oil": frozenset({"wti_co_sp", "brent_co_sp", "areaCode", "adjustment"}),
+    "gold_price": frozenset({"lbma_pm_usd", "sge_pm_cny", "areaCode", "adjustment"}),
     "non_ferrous_metals": frozenset(
         {"l_pb_p", "l_al_p", "l_cu_p", "l_zn_p", "l_sn_p", "l_ni_p", "areaCode", "adjustment"}
     ),
     "pledge_info": frozenset({"ps", "ps_mc", "ps_shbt10sh_r", "ps_sc_r", "pc", "adjustment"}),
     "fund_holder_structure": frozenset({"f_f_s", "f_f_s_r", "adjustment", "areaCode"}),
+    "semiconductor_inventory_days": frozenset(
+        {
+            "inventory_usd_million",
+            "cost_of_revenue_usd_million",
+            "doi_days",
+            "total_inventory_usd_million",
+            "total_cost_of_revenue_usd_million",
+            "idm_equal_doi_days",
+            "idm_weighted_doi_days",
+        }
+    ),
 }
 
 

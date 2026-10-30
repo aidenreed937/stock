@@ -9,6 +9,7 @@ from statistics import median
 
 import polars as pl
 
+from stock_core.utils.logger import logger
 from stock_data.pipeline.cleaner.date_utils import parse_mixed_date
 
 MARGIN_NUMERIC_COLUMNS: tuple[str, ...] = (
@@ -27,6 +28,20 @@ _COMMON_SCALE_MIN_FACTOR = 10.0
 _TEMPORAL_MIN_FACTOR = 2.0
 _TEMPORAL_MIN_OBSERVATIONS = 8
 _MAX_WARNINGS = 50
+
+#: 两融制度性断点：试点开闸、标的扩容造成的余额跳变属真实历史口径变化，不是数据错误。
+#: 落在区间内的告警不进入报告；样本仍参与 robust z 的分布基准，避免改变统计口径。
+KNOWN_REGIME_BREAKS: tuple[tuple[str, date, date], ...] = (
+    ("SSE", date(2010, 3, 31), date(2010, 7, 31)),
+    ("SZSE", date(2010, 3, 31), date(2010, 7, 31)),
+    ("BSE", date(2023, 2, 1), date(2023, 9, 30)),
+)
+
+#: 已确认的上游缺陷区间：上游长期返回负值、违反非负契约，审计已隔离为 null。
+#: 仅用于把空值告警标注为"已知隔离"，不改写数据，也不放宽负值校验。
+KNOWN_QUARANTINED_NULLS: tuple[tuple[str, str, date, date], ...] = (
+    ("rzche", "BSE", date(2023, 6, 20), date(2023, 9, 8)),
+)
 
 
 @dataclass(frozen=True)
@@ -160,6 +175,15 @@ def _row_log_changes(
     return changes
 
 
+def is_known_regime_break(exchange: str, target_date: date) -> bool:
+    """判断交易所与日期是否落在两融制度性断点区间内。"""
+    label = exchange.strip().upper()
+    return any(
+        break_label == label and start <= target_date <= end
+        for break_label, start, end in KNOWN_REGIME_BREAKS
+    )
+
+
 def _robust_temporal_warnings(
     transitions: list[tuple[date, str, dict[str, float]]],
     numeric_columns: list[str],
@@ -174,13 +198,19 @@ def _robust_temporal_warnings(
         ]
         if len(observations) < _TEMPORAL_MIN_OBSERVATIONS:
             continue
+        suppressed = 0
         for target_date, exchange, value in _temporal_outliers(observations, temporal_z_threshold):
+            if is_known_regime_break(exchange, target_date):
+                suppressed += 1
+                continue
             warnings.append(
                 f"{target_date}/{exchange}: 字段 [{column}] 日变化 {exp(value):.4g} 倍，"
                 f"超过 robust z 阈值 {temporal_z_threshold:g}"
             )
             if len(warnings) >= _MAX_WARNINGS:
                 return warnings[:_MAX_WARNINGS]
+        if suppressed:
+            logger.debug("两融 [%s] 已抑制 %d 条制度性断点告警", column, suppressed)
     return warnings
 
 
@@ -243,8 +273,35 @@ def _margin_null_warnings(frame: pl.DataFrame) -> list[str]:
             continue
         null_count = frame.get_column(column).null_count()
         if null_count:
-            warnings.append(f"字段 [{column}] 存在 {null_count} 条空值")
+            warnings.append(
+                f"字段 [{column}] 存在 {null_count} 条空值{_known_quarantine_note(column, frame)}"
+            )
     return warnings
+
+
+def _known_quarantine_note(column: str, frame: pl.DataFrame) -> str:
+    """空值全部落在已确认的上游缺陷区间时，返回可审计的隔离说明。"""
+    if "trade_date" not in frame.columns or "exchange_id" not in frame.columns:
+        return ""
+    for gap_column, exchange, start, end in KNOWN_QUARANTINED_NULLS:
+        if gap_column != column:
+            continue
+        nulls = frame.filter(pl.col(column).is_null())
+        if nulls.is_empty():
+            continue
+        scoped = nulls.with_columns(
+            parse_mixed_date("trade_date").alias("_gap_date"),
+            pl.col("exchange_id").cast(pl.Utf8, strict=False).str.to_uppercase().alias("_gap_ex"),
+        )
+        inside = scoped.filter(
+            (pl.col("_gap_ex") == exchange) & pl.col("_gap_date").is_between(start, end)
+        )
+        if inside.height == scoped.height:
+            return (
+                f"（{exchange} {start.isoformat()}~{end.isoformat()} 上游负值已审计隔离，"
+                "见 data/quarantine/endpoint=margin/history_repair.parquet）"
+            )
+    return ""
 
 
 def _combine_history(frame: pl.DataFrame, previous: pl.DataFrame | None) -> pl.DataFrame:
@@ -275,8 +332,12 @@ def _combine_history(frame: pl.DataFrame, previous: pl.DataFrame | None) -> pl.D
 def _common_scale_warnings(transitions: list[tuple[date, str, dict[str, float]]]) -> list[str]:
     warnings: list[str] = []
     minimum_log_factor = log(_COMMON_SCALE_MIN_FACTOR)
+    suppressed = 0
     for target_date, exchange, changes in transitions:
         if len(changes) < _COMMON_SCALE_MIN_FIELDS:
+            continue
+        if is_known_regime_break(exchange, target_date):
+            suppressed += 1
             continue
         center = median(changes.values())
         dispersion = median(abs(value - center) for value in changes.values())
@@ -285,6 +346,8 @@ def _common_scale_warnings(transitions: list[tuple[date, str, dict[str, float]]]
                 f"{target_date}/{exchange}: 多个字段同步变化，疑似统一倍率变化 "
                 f"约 {exp(center):.4g} 倍"
             )
+    if suppressed:
+        logger.debug("两融统一倍率检查已抑制 %d 条制度性断点告警", suppressed)
     return warnings
 
 

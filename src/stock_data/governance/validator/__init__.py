@@ -7,7 +7,7 @@ from typing import Any
 import polars as pl
 
 from stock_core.utils.logger import setup_logger
-from stock_data.core.task_registry import resolve_task
+from stock_data.core.task_resolution import resolve_task
 from stock_data.governance.validator.rules import (
     BaseValidationRule,
     CompletenessRule,

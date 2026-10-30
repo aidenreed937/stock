@@ -72,6 +72,8 @@ def read_columns(
         }
     )
     wanted.update(date_candidates)
+    if dataset.startswith("sw_2021_") and "_fs_" in dataset:
+        wanted.update({"reportType", "reportDate", "standardDate"})
     if dataset == "index_valuation":
         wanted.add("total_assets")
     return wanted

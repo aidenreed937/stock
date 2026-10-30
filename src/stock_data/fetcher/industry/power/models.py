@@ -16,7 +16,7 @@ class SolarCapacityRecord:
     yoy_growth: float | None = None
     yoy_growth_3mma: float | None = None
     mom_growth_3mma: float | None = None
-    unit: str = "gw"
+    unit: str = "gw/ratio"
     source: str = "NEA"
     source_url: str = ""
     release_date: date | None = None
@@ -42,7 +42,7 @@ class SolarCellNbsRecord:
     output_current_3mma: float | None = None
     yoy_growth_3mma: float | None = None
     mom_growth_3mma: float | None = None
-    unit: str = "ten_thousand_kw"
+    unit: str = "ten_thousand_kw/ratio"
     source: str = "NBS"
     source_url: str = "https://data.stats.gov.cn/"
     release_date: date | None = None
@@ -98,7 +98,7 @@ class SiliconWaferMonthlyRecord:
     wafer_operating_rate: float | None = None
     derived_wafer_utilization_rate: float | None = None
     polysilicon_inventory_w_tons: float | None = None
-    unit: str = "ten_thousand_tons/gw/percent"
+    unit: str = "ten_thousand_tons/gw/ratio"
     source: str = "Silicon_Branch_Antaike"
     source_url: str = "http://www.silicon.net.cn/"
     release_date: date | None = None
@@ -134,7 +134,7 @@ class SolarSupplyDemandRecord:
     supply_cell_yoy: float | None = None
     demand_install_yoy: float | None = None
     scissors_spread_yoy: float | None = None
-    unit: str = "gw/percent"
+    unit: str = "gw/ratio"
     source: str = "Derived_From_NBS_And_NEA"
     source_url: str = ""
     release_date: date | None = None
@@ -154,7 +154,7 @@ class PolysiliconSupplyMonthlyRecord:
     capacity_annual_w_tons: float | None = None
     operating_rate: float | None = None
     derived_utilization_rate: float | None = None
-    unit: str = "ten_thousand_tons"
+    unit: str = "ten_thousand_tons/ratio"
     source: str = "Silicon_Branch_Antaike"
     source_url: str = ""
     release_date: date | None = None
@@ -192,7 +192,7 @@ class PvWaferMonthlyRecord:
     derived_wafer_utilization_rate: float | None = None
     silicon_consumption_ratio: float | None = None
     implied_silicon_demand_w_tons: float | None = None
-    unit: str = "gw/ten_thousand_tons"
+    unit: str = "gw/ten_thousand_tons/ratio"
     source: str = "Silicon_Branch_Antaike"
     source_url: str = ""
     release_date: date | None = None
@@ -219,7 +219,7 @@ class PolysiliconBalanceRecord:
     demand_yoy: float | None = None
     scissors_spread_yoy: float | None = None
     cycle_score: float | None = None
-    unit: str = "ten_thousand_tons/gw/percent"
+    unit: str = "ten_thousand_tons/gw/ratio"
     source: str = "Derived_Polysilicon_Balance"
     source_url: str = ""
     release_date: date | None = None

@@ -3,6 +3,8 @@
 from datetime import date
 from pathlib import Path
 
+import polars as pl
+
 from stock_data.fetcher.industry import (
     CLOUD_CAPEX_SCHEMA,
     CONSTRUCTION_MACHINERY_SCHEMA,
@@ -81,6 +83,60 @@ def test_semiconductor_frame_conversion() -> None:
     assert df["source"][0] == "SIA/WSTS"
 
 
+def test_semiconductor_regional_yoy_growth_derived() -> None:
+    """分区域 YoY 按 12 个月同比派生，且能反映与全球不同的区域分化。"""
+    records = [
+        SemiconductorSalesRecord(
+            report_month="2026-05",
+            trade_date=date(2026, 5, 31),
+            global_sales_usd=100.0,
+            americas_sales_usd=40.0,
+            europe_sales_usd=10.0,
+            japan_sales_usd=5.0,
+            asia_pacific_sales_usd=45.0,
+        ),
+        SemiconductorSalesRecord(
+            report_month="2027-05",
+            trade_date=date(2027, 5, 31),
+            global_sales_usd=200.0,
+            americas_sales_usd=90.0,  # +125%，高于全球 +100%
+            europe_sales_usd=20.0,
+            japan_sales_usd=10.0,
+            asia_pacific_sales_usd=90.0,
+        ),
+    ]
+
+    df = records_to_semiconductor_frame(records).sort("report_month")
+
+    # 缺少去年同期 → 首期分区域 YoY 为缺失
+    assert df["americas_yoy_growth"][0] is None
+    assert df["yoy_growth"][0] is None
+    # 同期可比 → 分区域与全球各自独立同比（小数制）
+    assert df["yoy_growth"][1] == 1.0
+    assert df["americas_yoy_growth"][1] == 1.25  # 美洲分化被正确捕捉
+    assert df["europe_yoy_growth"][1] == 1.0
+    assert df["japan_yoy_growth"][1] == 1.0
+    assert df["asia_pacific_yoy_growth"][1] == 1.0
+
+
+def test_semiconductor_regional_yoy_missing_region_returns_missing() -> None:
+    """区域原值为缺失时不产出分位，避免静默填 0。"""
+    records = [
+        SemiconductorSalesRecord(
+            report_month="2026-05", trade_date=date(2026, 5, 31), global_sales_usd=100.0
+        ),
+        SemiconductorSalesRecord(
+            report_month="2027-05", trade_date=date(2027, 5, 31), global_sales_usd=200.0
+        ),
+    ]
+
+    df = records_to_semiconductor_frame(records).sort("report_month")
+
+    assert df["yoy_growth"][1] == 1.0
+    assert df["americas_yoy_growth"][1] is None
+    assert df["asia_pacific_yoy_growth"][1] is None
+
+
 def test_nev_monthly_frame_conversion() -> None:
     assert empty_nev_monthly().schema == NEV_MONTHLY_SCHEMA
 
@@ -121,7 +177,7 @@ def test_nev_monthly_frame_conversion() -> None:
 
 
 def test_automotive_bulletin_parsers() -> None:
-    from stock_data.fetcher.industry.automotive.crawler import (
+    from stock_data.fetcher.industry.automotive.parsers import (
         parse_cabia_battery_article,
         parse_cpca_bulletin_article,
     )
@@ -177,7 +233,8 @@ def test_solar_capacity_frame_conversion() -> None:
     assert "monthly_new_capacity_3mma" in df.columns
     assert "yoy_growth_3mma" in df.columns
     assert df["cumulative_capacity_gw"][1] == 1272.0
-    assert df["unit"][0] == "gw"
+    # unit 为「绝对量/ratio」，标注该记录同时含比率型字段（见 stock_core.units.RATIO = 小数比例）
+    assert df["unit"][0] == "gw/ratio"
 
 
 def test_non_ferrous_metals_frame_conversion() -> None:
@@ -200,6 +257,8 @@ def test_non_ferrous_metals_frame_conversion() -> None:
     ]
     df = records_to_metals_frame(records)
     assert not df.is_empty()
+    assert df["report_date"].dtype == pl.Date
+    assert df["report_date"][0] == date(2026, 6, 30)
     assert df["shfe_copper_price"][0] == 78000.0
     assert df["lithium_carbonate_price"][0] == 85000.0
     assert df["sge_gold_price"][0] == 575.5
@@ -303,6 +362,85 @@ def test_extract_sec_quarterly_capex_multi_concept() -> None:
     res = extract_sec_quarterly_capex(sample_facts, "AMZN")
     assert res.get("2016-Q1") == 1.179
     assert res.get("2024-Q1") == 14.925
+
+
+def test_extract_sec_quarterly_capex_keeps_filing_date() -> None:
+    from stock_data.fetcher.industry.cloud.parser import (
+        extract_sec_quarterly_capex_with_filing_dates,
+    )
+
+    sample_facts = {
+        "facts": {
+            "us-gaap": {
+                "PaymentsToAcquirePropertyPlantAndEquipment": {
+                    "units": {
+                        "USD": [
+                            {
+                                "form": "10-Q",
+                                "start": "2024-01-01",
+                                "end": "2024-03-31",
+                                "filed": "2024-05-02",
+                                "val": 14_925_000_000,
+                            }
+                        ]
+                    }
+                }
+            }
+        }
+    }
+
+    res = extract_sec_quarterly_capex_with_filing_dates(sample_facts, "AMZN")
+
+    assert res["2024-Q1"] == (14.925, date(2024, 5, 2))
+
+
+def test_cloud_capex_collector_no_longer_exposes_legacy_csv_loader() -> None:
+    from stock_data.fetcher.industry.cloud import CloudCapexCollector
+
+    assert not hasattr(CloudCapexCollector, "_load_from_legacy_csv")
+
+
+def test_cloud_capex_collector_uses_latest_component_filing_date(tmp_path, monkeypatch) -> None:
+    from stock_data.fetcher.industry.cloud.collector import CloudCapexCollector
+
+    values = {
+        "MSFT": (10_000_000_000, date(2024, 4, 25)),
+        "GOOGL": (11_000_000_000, date(2024, 4, 30)),
+        "META": (12_000_000_000, date(2024, 5, 1)),
+        "AMZN": (13_000_000_000, date(2024, 5, 2)),
+    }
+
+    def facts_for(ticker: str, _cik: str) -> dict[str, object]:
+        value, filed = values[ticker]
+        return {
+            "facts": {
+                "us-gaap": {
+                    "PaymentsToAcquirePropertyPlantAndEquipment": {
+                        "units": {
+                            "USD": [
+                                {
+                                    "form": "10-Q",
+                                    "start": "2024-01-01",
+                                    "end": "2024-03-31",
+                                    "filed": filed.isoformat(),
+                                    "val": value,
+                                }
+                            ]
+                        }
+                    }
+                }
+            }
+        }
+
+    collector = CloudCapexCollector(raw_dir=tmp_path / "raw")
+    monkeypatch.setattr(collector, "_load_company_facts", facts_for)
+
+    records = collector.collect()
+
+    assert len(records) == 1
+    assert records[0].report_quarter == "2024-Q1"
+    assert records[0].total_capex_billion_usd == 46.0
+    assert records[0].release_date == date(2024, 5, 2)
 
 
 def test_extract_sec_quarterly_capex_june_fiscal_year() -> None:
@@ -426,7 +564,9 @@ def test_watermark_incremental_merge_and_idempotence(tmp_path: Path) -> None:
     df1 = records_to_customs_trade_frame([rec1])
     assert (
         save_curated_fact(
-            df1, parquet_path, primary_keys=["product_key", "hs_code", "report_month"]
+            df1,
+            parquet_path,
+            primary_keys=["product_key", "hs_code", "report_month", "trade_direction"],
         )
         == 1
     )
@@ -454,7 +594,9 @@ def test_watermark_incremental_merge_and_idempotence(tmp_path: Path) -> None:
     df2 = records_to_customs_trade_frame([rec2])
     assert (
         save_curated_fact(
-            df2, parquet_path, primary_keys=["product_key", "hs_code", "report_month"]
+            df2,
+            parquet_path,
+            primary_keys=["product_key", "hs_code", "report_month", "trade_direction"],
         )
         == 2
     )
@@ -462,7 +604,9 @@ def test_watermark_incremental_merge_and_idempotence(tmp_path: Path) -> None:
     # 重复写入相同的次月记录，验证严格幂等去重
     assert (
         save_curated_fact(
-            df2, parquet_path, primary_keys=["product_key", "hs_code", "report_month"]
+            df2,
+            parquet_path,
+            primary_keys=["product_key", "hs_code", "report_month", "trade_direction"],
         )
         == 2
     )

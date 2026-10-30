@@ -14,14 +14,17 @@ from stock_data.fetcher.lixinger.stock_fetcher import LixingerStockFetcher
 class LixingerDataFetcher(BaseDataFetcher):
     """理杏仁统一门面数据抓取器，实现 BaseDataFetcher 抽象接口。"""
 
-    def __init__(self, token: str | None = None, url: str | None = None) -> None:
+    def __init__(
+        self, token: str | None = None, url: str | None = None, profile: str | None = None
+    ) -> None:
         """初始化 LixingerDataFetcher 门面。
 
         Args:
-            token: 理杏仁 API Token。若为 None，自动从配置文件读取。
+            token: 理杏仁 API Token。若为 None，按 profile 从配置文件读取。
             url: 理杏仁 API 服务器地址。若为 None，自动从配置文件读取。
+            profile: 理杏仁 Token profile。若为 None，使用配置中的 LIXINGER_PROFILE。
         """
-        self.client = LixingerClient(token=token, url=url)
+        self.client = LixingerClient(token=token, url=url, profile=profile)
         self.stock_fetcher = LixingerStockFetcher(client=self.client)
 
     def fetch_daily_bars(self, symbol: str, start_date: date, end_date: date) -> list[DailyBar]:

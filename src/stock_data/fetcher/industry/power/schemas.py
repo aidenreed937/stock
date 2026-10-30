@@ -38,7 +38,7 @@ SOLAR_CELL_NBS_SCHEMA = {
 }
 
 SOLAR_PRICE_CHAIN_SCHEMA = {
-    "report_date": pl.String,
+    "report_date": pl.Date,
     "trade_date": pl.Date,
     "polysilicon_price_cny_kg": pl.Float64,
     "wafer_price_cny_piece": pl.Float64,

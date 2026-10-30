@@ -5,7 +5,8 @@ import pytest
 
 from stock_core.contracts import DAILY_BAR_CONTRACT, DatasetKey, instrument_for_symbol
 from stock_core.exceptions import DataValidationError
-from stock_data.core.task_registry import resolve_public_task, resolve_task
+from stock_data.core.public_tasks import resolve_public_task
+from stock_data.core.task_resolution import resolve_task
 
 
 def test_dataset_key_separates_symbol_and_range() -> None:
@@ -26,6 +27,24 @@ def test_dataset_key_separates_symbol_and_range() -> None:
         instrument_for_symbol("BBB", "tushare"),
     )
     assert key_a.request_id != key_b.request_id
+
+
+def test_otc_fund_symbol_stays_in_cn_market() -> None:
+    """场外基金 .OF 后缀不是交易所，市场必须仍归 CN，不能拆出 market=OF 目录。"""
+    instrument = instrument_for_symbol("005827.OF", "tushare")
+
+    assert instrument is not None
+    assert instrument.market == "CN"
+    assert instrument.exchange == "OF"
+    key = DatasetKey(
+        "tushare",
+        "fund_portfolio",
+        "fund_portfolio",
+        date(2026, 1, 1),
+        date(2026, 1, 5),
+        instrument,
+    )
+    assert key.market_slug == "market=CN"
 
 
 def test_stock_daily_bar_is_the_public_task_and_daily_is_internal_api() -> None:

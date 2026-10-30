@@ -2,9 +2,11 @@
 
 from __future__ import annotations
 
+from collections.abc import Sequence
+from pathlib import Path
 from typing import TYPE_CHECKING
 
-from stock_data.core.task_registry import resolve_task
+from stock_data.core.task_resolution import resolve_task
 from stock_data.fetcher.alphavantage.client import AlphaVantageClient
 from stock_data.fetcher.alphavantage.global_fetcher import AlphaVantageDataFetcher
 
@@ -14,13 +16,19 @@ if TYPE_CHECKING:
 
 def create_alphavantage_fetcher(
     api_key: str | None = None,
+    api_keys: Sequence[str] | None = None,
     proxy: str | None = None,
     rate_limit_per_min: int | None = None,
+    daily_limit: int | None = None,
+    usage_file: str | Path | None = None,
 ) -> AlphaVantageDataFetcher:
     client = AlphaVantageClient(
         api_key=api_key,
+        api_keys=api_keys,
         proxy=proxy,
         rate_limit_per_min=rate_limit_per_min,
+        daily_limit=daily_limit,
+        usage_file=usage_file,
     )
     return AlphaVantageDataFetcher(client=client)
 
@@ -29,11 +37,21 @@ def create_alphavantage_pipeline(
     endpoint: str = "fx_daily",
     fetcher: AlphaVantageDataFetcher | None = None,
 ) -> MarketDataPipeline:
+    from stock_data.pipeline.cleaner.bar_cleaner import BarDataCleaner
+    from stock_data.pipeline.normalizer.bar_normalizer import BarDataNormalizer
     from stock_data.pipeline.normalizer.generic_normalizer import GenericNormalizer
     from stock_data.pipeline.pipeline import MarketDataPipeline
 
     active_fetcher = fetcher or create_alphavantage_fetcher()
     task = resolve_task("alphavantage", endpoint)
+    if task.quality_profile == "bar":
+        return MarketDataPipeline(
+            fetcher=active_fetcher,
+            cleaner=BarDataCleaner(),
+            normalizer=BarDataNormalizer(),
+            data_source="alphavantage",
+            endpoint=task.task_name,
+        )
     return MarketDataPipeline(
         fetcher=active_fetcher,
         normalizer=GenericNormalizer(),

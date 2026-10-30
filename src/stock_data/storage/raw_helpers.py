@@ -69,7 +69,7 @@ def dataset_paths_for_key(storage: Any, key: DatasetKey) -> list[Path]:
 def date_column_for_key(key: DatasetKey, df: pl.DataFrame) -> str | None:
     """按任务契约选择 RAW 的业务日期列，优先使用报告期而非公告日。"""
     try:
-        from stock_data.core.task_registry import resolve_task
+        from stock_data.core.task_resolution import resolve_task
 
         task = resolve_task(key.provider, key.endpoint)
         candidates = (*task.date_columns, *RAW_DATE_COLUMNS)
@@ -94,7 +94,7 @@ def read_dataset_paths(paths: list[Path]) -> pl.DataFrame | None:
 def is_event_frequency_task(provider: str, endpoint: str) -> bool:
     """检查是否为事件级（非日历连续）任务。"""
     try:
-        from stock_data.core.task_registry import resolve_task
+        from stock_data.core.task_resolution import resolve_task
 
         task = resolve_task(provider, endpoint)
         return task.frequency == "event"

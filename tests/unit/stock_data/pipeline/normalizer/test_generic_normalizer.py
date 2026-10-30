@@ -123,3 +123,56 @@ def test_bar_normalizer_maps_lixinger_stock_code_to_symbol():
 
     assert normalized["symbol"].to_list() == ["600519"]
     assert "stockCode" not in normalized.columns
+
+
+def test_generic_normalizer_identity_renames_preserves_dual_code_columns():
+    """fund_portfolio 场景：source ts_code=基金代码、symbol=被持有股票代码，不可 coalesce 合并。"""
+    normalized = GenericNormalizer(identity_renames={"ts_code": "fund_code"}).normalize(
+        pl.DataFrame(
+            {
+                "ts_code": ["159645.SZ", "260116.OF"],
+                "symbol": ["002050.SZ", "600519.SH"],
+                "ann_date": ["20260828", "20260828"],
+                "mkv": [1000.0, 2000.0],
+            }
+        )
+    )
+
+    assert normalized["fund_code"].to_list() == ["159645.SZ", "260116.OF"]
+    assert normalized["symbol"].to_list() == ["002050.SZ", "600519.SH"]
+
+
+def test_generic_normalizer_identity_renames_keeps_existing_target_column():
+    """目标列已存在时跳过改名，避免覆盖既有数据。"""
+    normalized = GenericNormalizer(identity_renames={"ts_code": "fund_code"}).normalize(
+        pl.DataFrame(
+            {
+                "ts_code": ["159645.SZ"],
+                "fund_code": ["EXISTING"],
+                "symbol": ["002050.SZ"],
+            }
+        )
+    )
+
+    assert normalized["fund_code"].to_list() == ["EXISTING"]
+    assert normalized["symbol"].to_list() == ["002050.SZ"]
+
+
+def test_generic_normalizer_identity_renames_is_noop_without_source_column():
+    """源列缺失时不改名、也不新增列。"""
+    normalized = GenericNormalizer(identity_renames={"ts_code": "fund_code"}).normalize(
+        pl.DataFrame({"symbol": ["600519.SH"], "trade_date": ["2024-08-01"]})
+    )
+
+    assert normalized["symbol"].to_list() == ["600519.SH"]
+    assert "fund_code" not in normalized.columns
+
+
+def test_generic_normalizer_without_identity_renames_keeps_legacy_behaviour():
+    """未声明改名时维持原有 ts_code 优先语义（占位符 symbol 场景）。"""
+    normalized = GenericNormalizer().normalize(
+        pl.DataFrame({"symbol": ["ADJ_FACTOR"], "ts_code": ["600000.SH"]})
+    )
+
+    assert normalized["symbol"].to_list() == ["600000.SH"]
+    assert "ts_code" not in normalized.columns

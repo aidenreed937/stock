@@ -118,6 +118,7 @@ class PvPriceChainCollector:
         records_by_date = {record.report_date: record for record in existing_records}
         records_by_date.update({record.report_date: record for record in live_records})
         records = sorted(records_by_date.values(), key=lambda record: record.trade_date)
+        records = compute_pv_price_derivatives(records)
         self.save_to_raw_csv(canonical_csv, records)
         requested = {
             record.report_date
