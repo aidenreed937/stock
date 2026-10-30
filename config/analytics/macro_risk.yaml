@@ -51,6 +51,8 @@ macro_risk:
       window: 1250
       min_periods: 500
       direction: raw
+      # 显式列名：默认 {factor}_score 会拼成 divergence_score_score（双 _score 后缀）
+      score_column: divergence_score
     adv_dec:
       series: breadth
       column: adv_dec
@@ -63,6 +65,22 @@ macro_risk:
       window: 1250
       min_periods: 500
       direction: rev
+    newlow252_ratio:
+      # 设计说明: 本因子不进入 dim_breadth 与双轨指数，保留为独立观测（与
+      # etf_flow_ratio / repurchase / us_yield_curve / ffr_chg_6m 同惯例）。
+      # 口径: market_daily.new_low_252d_ratio 为 252 交易日滚动新低股票占比，
+      # 再经 1250 日滚动分位得到 newlow252_ratio_score（0-100）。
+      # direction: raw —— 新低占比越高，恐慌端出清广度越大（与 newhigh60_ratio 的
+      # rev 方向互补：狂热看新高、出清看新低，两者不宜并入同一维度取均值）。
+      # 定位: 补齐恐慌端广度，供研报「附加维度」与胜率实证单独解读；
+      # 未经样本外验证前不写入 panic_index，避免污染双轨指数。
+      # 实证: compute_cycle_winrate_matrix 的 20/60D 胜率与全样本基准无实质差异
+      # （>=80 / >=90 极值分位甚至略低），故只保留观测，不升级为策略信号。
+      series: breadth
+      column: newlow252_ratio
+      window: 1250
+      min_periods: 500
+      direction: raw
     pcr:
       series: pcr
       column: pcr
@@ -86,12 +104,6 @@ macro_risk:
       column: market_turnover_rate
       window: 1250
       min_periods: 500
-      direction: raw
-    fund_issue_pct:
-      series: fund_issuance
-      column: fund_issue_pct5y
-      window: 1250
-      min_periods: 250
       direction: raw
     repurchase:
       # 设计说明: 本因子不进入 dim_corporate，保留为独立观测。dim_corporate 衡量
@@ -136,8 +148,25 @@ macro_risk:
       min_periods: 250
       direction: rev
     copper_gold:
-      series: global_macro
+      # 铜价为月频，先在 global_macro_daily 中无前视 asof 到金价日历，
+      # 再按月抽样；分位窗口按月计数，不使用交易日 1250/250 门槛。
+      series: global_macro_monthly
       column: copper_gold_ratio
+      window: 60
+      min_periods: 36
+      direction: raw
+    ffr_chg_6m:
+      # 生产口径: FRED DFF 日频利率相对六个日历月前最近观测的变化 pp，按 A 股可用日 asof。
+      # 下列 IC/胜率为旧月频 FEDFUNDS 的历史研究结果，换成 DFF 后尚未复验，不能视为新口径验证。
+      # 加息/降息周期方向仍为加息正、降息负；
+      # 仅注册为独立观测因子，
+      # 不进入 dim_cross_asset 与双轨指数。分年 IC 符号跨周期漂移（-0.75 ~ +0.57，
+      # 对 000985.CSI 全周期 -0.21 / 样本外 -0.20），与 us_yield_curve 同类不稳定；
+      # 但加息期 fwd60 中位 -2.58% vs 降息期 +1.68%（宽基口径）方向性正确。
+      # direction: raw —— score 高 = 近 6 个月加息幅度高分位（紧缩压制期），与
+      # vix/pb 等「score 高 = 风险高」口径一致；score 对后续收益为负向预测（与 vix 同号）。
+      series: fed_rate
+      column: ffr_chg_6m
       window: 1250
       min_periods: 250
       direction: raw
@@ -172,8 +201,6 @@ macro_risk:
     - pcr
     - iv
     - vix
-    euphoria:
-    - fund_issue_pct
     crowding:
     - market_turnover
     corporate:

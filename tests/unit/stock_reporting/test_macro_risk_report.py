@@ -171,7 +171,7 @@ def test_evaluate_macro_risk_divergence_distribution() -> None:
         "overheat_index": 68.0,
         "panic_index": 45.0,
         "dim_flow": 72.0,
-        "divergence_score_score": 90.0,
+        "divergence_score": 90.0,
     }
     res = evaluate_macro_risk(row)
     flow_item = next(
@@ -244,6 +244,55 @@ def test_evaluate_macro_risk_corporate_lead() -> None:
     assert "产业资本压力先于宏观风险缓和" in res["advice"]
 
 
+def test_evaluate_macro_risk_buyback_only_support_with_high_corporate_pressure() -> None:
+    """回购高发但产业资本综合压力高时，不得误判为产业底抢跑。"""
+    row = {
+        "trade_date": date(2026, 10, 29),
+        "overheat_index": 45.0,
+        "panic_index": 72.0,
+        "smart_money_pct": 5.0,
+        "dim_corporate": 92.3,
+        "repurchase_score": 5.2,
+    }
+    res = evaluate_macro_risk(row)
+    assert "回购单项支撑" in res["status"]
+    assert "微观产业底抢跑" not in res["status"]
+    assert "产业压力未缓和" in res["status"]
+    assert "产业资本综合压力仍高" in res["advice"]
+    assert res["scenario"] == "panic_buyback_only"
+
+    md = render_macro_risk_report(
+        pl.DataFrame(
+            {
+                "trade_date": [date(2026, 10, 29)],
+                "overheat_index": [45.0],
+                "panic_index": [72.0],
+                "smart_money_pct": [5.0],
+                "dim_corporate": [92.3],
+                "repurchase_score": [5.2],
+            }
+        ),
+        date(2026, 10, 29),
+    )
+    assert "产业资本综合压力仍高" in md
+    assert "产业资本只是低压力" not in md
+
+
+def test_evaluate_macro_risk_high_corporate_pressure_blocks_true_gold_pit() -> None:
+    """回购与聪明钱同时支持，但综合产业压力高时也不能称为真黄金坑。"""
+    row = {
+        "trade_date": date(2026, 10, 29),
+        "overheat_index": 45.0,
+        "panic_index": 72.0,
+        "smart_money_pct": 85.0,
+        "dim_corporate": 82.0,
+        "repurchase_score": 20.0,
+    }
+    res = evaluate_macro_risk(row)
+    assert "产业托底真黄金坑" not in res["status"]
+    assert "回购单项支撑" in res["status"]
+
+
 def test_render_macro_risk_report_false_gold_pit_action_guide() -> None:
     """普通版操作指引不得与假黄金坑分支冲突。"""
     df = pl.DataFrame(
@@ -280,20 +329,19 @@ def test_evaluate_macro_risk_breadth_text_is_not_overstated() -> None:
     assert "全线普涨" not in breadth_item["status"]
 
 
-def test_evaluate_macro_risk_top_fund_corporate_divergence() -> None:
-    """测试牛市顶部背离：狂热高位 + 公募新发火爆 + 董监高大额减持出逃。"""
+def test_evaluate_macro_risk_top_corporate_divergence() -> None:
+    """测试牛市顶部背离：狂热高位 + 董监高大额减持出逃。"""
     row = {
         "trade_date": date(2015, 6, 12),
         "overheat_index": 71.5,
         "panic_index": 35.0,
-        "fund_issue_pct_score": 95.8,
         "insider_sell_score": 98.7,
         "unlock_amount_score": 85.7,
     }
     res = evaluate_macro_risk(row)
-    assert "高位公募接盘与产业资本出逃背离" in res["status"]
+    assert "高位产业资本出逃背离" in res["status"]
     assert res["level"] == "danger"
-    assert "羊群资金高位狂热接盘" in res["advice"]
+    assert "产业资本与大股东密集套现兑现" in res["advice"]
     assert "生命线" in res["advice"]
 
 
@@ -352,3 +400,195 @@ def test_evaluate_macro_risk_panic_no_dd_no_position_hint() -> None:
     assert "深底确认" not in res["advice"]
     assert "中继风险" not in res["advice"]
     assert "假冰点预警" not in res["advice"]
+
+
+def test_evaluate_macro_risk_missing_indices_fail_closed() -> None:
+    """双轨指数缺失 → 判「数据暂缺」，不得静默落入「情绪平稳」。"""
+    res = evaluate_macro_risk({"trade_date": date(2026, 1, 5)})
+    assert res["level"] == "warning"
+    assert "数据暂缺" in res["status"]
+    assert res["scenario"] == "data_missing"
+    assert "情绪平稳" not in res["status"]
+
+    only_overheat = evaluate_macro_risk({"trade_date": date(2026, 1, 5), "overheat_index": 40.0})
+    assert only_overheat["level"] == "warning"
+    assert "数据暂缺" in only_overheat["status"]
+
+
+def test_evaluate_macro_risk_panic_crowding_missing_fail_closed() -> None:
+    """恐慌极值 + 换手拥挤度缺失 → 不误判「缩量绝望底」重仓建议，披露数据缺口。"""
+    row = {
+        "trade_date": date(2020, 3, 23),
+        "overheat_index": 30.0,
+        "panic_index": 86.7,
+    }
+    res = evaluate_macro_risk(row)
+    assert res["level"] == "warning"
+    assert res["scenario"] == "panic_crowding_missing"
+    assert "换手数据缺失" in res["status"]
+    assert "缩量绝望底" not in res["status"]
+    assert "果断重仓" not in res["advice"]  # 缺失时不给出激进满仓建议
+    assert "不因恐慌极值直接重仓" in res["advice"]
+
+
+def test_evaluate_macro_risk_top_divergence_displays_trigger_value() -> None:
+    """高位背离文案只显示实际满足阈值的证据值（unlock 触发时不显示未达标的 insider_sell）。"""
+    row = {
+        "trade_date": date(2015, 6, 12),
+        "overheat_index": 71.5,
+        "panic_index": 35.0,
+        "insider_sell_score": 60.0,  # 未达 75，不构成触发
+        "unlock_amount_score": 85.7,  # 达 80，实际触发
+    }
+    res = evaluate_macro_risk(row)
+    assert "高位产业资本出逃背离" in res["status"]
+    assert "限售解禁 (85.7)" in res["advice"]
+    assert "大股东减持 (60.0)" not in res["advice"]
+
+    # 减持达标时显示减持
+    row2 = {**row, "insider_sell_score": 98.7, "unlock_amount_score": 20.0}
+    res2 = evaluate_macro_risk(row2)
+    assert "大股东减持 (98.7)" in res2["advice"]
+    assert "限售解禁" not in res2["advice"]
+
+
+def test_action_guide_safe_level_respects_broken_lifeline() -> None:
+    """宏观平稳 + 生命线跌破：不得输出「空仓可正常配置」。"""
+    from stock_reporting.templates.macro_risk_report import _build_action_guide
+
+    broken = {"close": 5214.0, "ma20": 5503.0, "broken": True}
+    guide = _build_action_guide("safe", broken, panic_value=56.3)
+    assert "可正常配置" not in guide
+    assert "5503" in guide
+    assert "进攻端" in guide
+
+    intact = {"close": 5600.0, "ma20": 5503.0, "broken": False}
+    assert "可正常配置" in _build_action_guide("safe", intact, panic_value=56.3)
+
+
+def test_action_guide_warning_level_respects_broken_lifeline() -> None:
+    """预警档同样不得在趋势破位时给出无约束话术。"""
+    from stock_reporting.templates.macro_risk_report import _build_action_guide
+
+    guide = _build_action_guide(
+        "warning", {"close": 5214.0, "ma20": 5503.0, "broken": True}, panic_value=62.0
+    )
+    assert "MA20" in guide
+    assert "进攻端" in guide
+
+
+def test_trend_note_empty_when_lifeline_intact() -> None:
+    from stock_reporting.templates.macro_risk_report import _build_trend_note
+
+    assert _build_trend_note({"close": 5600.0, "ma20": 5503.0, "broken": False}) == ""
+    note = _build_trend_note({"close": 5214.0, "ma20": 5503.0, "broken": True})
+    assert "趋势纪律" in note and "5503" in note
+
+
+def test_valuation_tier_partial_undervalued_not_median() -> None:
+    """25 分位属偏低估，不能被渲染成「历史中位数水平」。"""
+    row = {
+        "trade_date": date(2026, 10, 26),
+        "overheat_index": 51.5,
+        "panic_index": 56.3,
+        "dim_valuation": 25.07,
+    }
+    res = evaluate_macro_risk(row)
+    item = next(i for t in res["risk_tiers"] for i in t["metrics"] if i["code"] == "dim_valuation")
+    assert item["status"] == "偏低估"
+    assert "中位数" not in item["desc"]
+
+
+def test_flow_divergence_override_when_mean_diluted() -> None:
+    """筹码背离度触及极值时，即使合成分被稀释到中枢也判背离。"""
+    row = {
+        "trade_date": date(2026, 10, 26),
+        "overheat_index": 51.5,
+        "panic_index": 56.3,
+        "dim_flow": 50.39,
+        "divergence_score": 99.44,
+    }
+    res = evaluate_macro_risk(row)
+    item = next(i for t in res["risk_tiers"] for i in t["metrics"] if i["code"] == "dim_flow")
+    assert item["status"] == "资金筹码背离"
+
+    diluted = {**row, "divergence_score": 86.0}
+    item2 = next(
+        i
+        for t in evaluate_macro_risk(diluted)["risk_tiers"]
+        for i in t["metrics"]
+        if i["code"] == "dim_flow"
+    )
+    assert item2["status"] == "流向平衡"
+
+
+def test_component_dispersion_disclosed_when_components_diverge() -> None:
+    """成分极差超阈值时进入披露列表，并写进维度话术。"""
+    row = {
+        "trade_date": date(2026, 10, 26),
+        "overheat_index": 51.5,
+        "panic_index": 56.3,
+        "dim_fear": 52.1,
+        "pcr_score": 6.41,
+        "iv_score": 85.85,
+        "vix_score": 64.05,
+    }
+    res = evaluate_macro_risk(row)
+    entry = next(d for d in res["component_dispersion"] if d["dim"] == "fear")
+    assert entry["spread"] > 50
+    assert entry["high_label"] == "隐含波动率IV"
+    assert entry["name"] == "期权情绪"
+    fear = next(i for t in res["risk_tiers"] for i in t["metrics"] if i["code"] == "dim_fear")
+    assert "成分极差" in fear["desc"]
+
+
+def test_component_dispersion_silent_when_components_agree() -> None:
+    row = {
+        "trade_date": date(2026, 10, 26),
+        "overheat_index": 51.5,
+        "panic_index": 56.3,
+        "dim_fear": 50.0,
+        "pcr_score": 48.0,
+        "iv_score": 52.0,
+        "vix_score": 50.0,
+    }
+    res = evaluate_macro_risk(row)
+    assert all(d["dim"] != "fear" for d in res["component_dispersion"])
+
+
+def test_render_report_discloses_dispersion_and_auxiliary_dimensions() -> None:
+    """普通投资者版在成分分歧时落出附加维度，但不再展示公募新发指标。"""
+    df = pl.DataFrame(
+        {
+            "trade_date": [date(2026, 10, 26)] * 4,
+            "overheat_index": [60.0, 55.0, 52.0, 51.5],
+            "panic_index": [50.0, 54.0, 55.0, 56.3],
+            "dim_flow": [52.0, 51.0, 50.0, 50.4],
+            "divergence_score": [97.0, 98.0, 99.0, 99.4],
+            "main_ratio_score": [1.5, 1.4, 1.3, 1.28],
+            "composite_flow_score": [1.9, 1.6, 1.4, 1.28],
+            "smart_money_pct": [6.0, 5.0, 4.0, 4.82],
+            "newlow252_ratio_score": [91.0, 82.0, 71.0, 62.3],
+        }
+    )
+    md = render_macro_risk_report(df, date(2026, 10, 26))
+    assert "成分分歧提示" in md
+    assert "附加维度" in md
+    assert "52周新低占比分位" in md
+    assert "公募新发" not in md
+    assert "新发基金数量分位" not in md
+
+
+def test_render_report_lists_newlow252_percentile_as_auxiliary() -> None:
+    """52 周新低占比分位作为附加维度落出，且不影响双轨指数读数。"""
+    df = pl.DataFrame(
+        {
+            "trade_date": [date(2026, 10, 27), date(2026, 10, 28)],
+            "overheat_index": [48.0, 47.2],
+            "panic_index": [58.0, 56.4],
+            "newlow252_ratio_score": [91.5, 62.3],
+        }
+    )
+    md = render_macro_risk_report(df, date(2026, 10, 28))
+    assert "52周新低占比分位" in md
+    assert "62.3" in md

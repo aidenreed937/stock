@@ -27,7 +27,7 @@ def test_inspect_live_signal_with_mock_quotes(
             "panic_index": [20.0] * n,
             "overheat_index": [40.0] * n,
             "etf_flow_ratio_score": [50.0] * n,
-            "divergence_score_score": [50.0] * n,
+            "divergence_score": [50.0] * n,
             "dim_valuation": [50.0] * n,
         }
     )

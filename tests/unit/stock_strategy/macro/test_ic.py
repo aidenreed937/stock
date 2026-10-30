@@ -106,11 +106,14 @@ def test_unknown_factor_column_fail_closed() -> None:
 
 
 def test_load_ic_config_single_factors_populated() -> None:
-    """配置了 23 个单因子 score 列（含 smart_money_pct 特殊列名）。"""
+    """配置了 23 个单因子 score 列 + 2 个连续确认强度列（共 25）。"""
     cfg = load_ic_config()
-    assert len(cfg.single_factors) == 23
+    assert len(cfg.single_factors) == 25
     assert "erp_score" in cfg.single_factors
     assert "smart_money_pct" in cfg.single_factors  # score_column 机制的特殊列名
+    # 「连续维持 N 天」确认强度列与对应单因子并列参与单因子独立 IC 验证
+    assert "insider_net_score_consec" in cfg.single_factors
+    assert "smart_money_pct_consec" in cfg.single_factors
 
 
 def test_build_ic_panel_skips_missing_single_factor_cols(monkeypatch, tmp_path) -> None:

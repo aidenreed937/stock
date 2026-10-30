@@ -156,6 +156,69 @@ strategies:
       slippage_rate: 0.0005 # 0.05% 冲击滑点
       rebalance_deadband: 0.03 # 3% 调仓死区
 
+  # 加息周期非对称防守闸门（2026-09-04 正式启用：门 ON 时权益封顶 0.7 → hike_cap 0.35）
+  # 实证依据见 .agents/skills/macro-risk-research/references/ffr_cycle_factor_research.md
+  # （加息期 fwd60 胜率 32% vs 降息期 73%）；score>=60 近似区分加息/降息状态
+  macro_rotation_v5_hike_gate_etf:
+    strategy_class: "MacroRotationV5HikeGateStrategy"
+    benchmark_symbol: "000985.CSI" # 趋势基准 = 中证全指
+    symbols:
+      - "510880.SH" # 华泰柏瑞红利 ETF (权益腿-防守)
+      - "159915.SZ" # 易方达创业板 ETF (权益腿-进攻)
+      - "511010.SH" # 国泰国债 ETF 5年期 (固收腿)
+    initial_weights:
+      "510880.SH": 0.35
+      "159915.SZ": 0.35
+      "511010.SH": 0.30
+    ma_window: 20
+    panel_extra_cols:
+      - "smart_money_pct"
+      - "ffr_chg_6m_score"
+    thresholds:
+      equity_cap: 0.7 # 权益总仓位封顶 70%，余量固收
+      panic_threshold: 75.0
+      panic_entry_threshold: 65.0
+      overheat_threshold: 65.0
+      smart_filter_threshold: 40.0
+      bias_threshold: 0.15 # 极值乖离止盈
+      hike_cap: 0.35 # 加息闸门激活时权益封顶降为 35%
+      hike_gate_threshold: 60.0 # ffr_chg_6m_score >= 60 视为加息周期中
+    friction:
+      commission_rate: 0.0001 # 万1券商佣金
+      slippage_rate: 0.0005 # 0.05% 冲击滑点
+      rebalance_deadband: 0.03 # 3% 调仓死区
+
+  macro_slow_top_divergence_etf:
+    strategy_class: "MacroSlowTopDivergenceStrategy"
+    benchmark_symbol: "000985.CSI" # 趋势基准 = 中证全指
+    symbols:
+      - "510880.SH" # 华泰柏瑞红利 ETF (权益腿-防守)
+      - "159915.SZ" # 易方达创业板 ETF (权益腿-进攻)
+      - "511010.SH" # 国泰国债 ETF 5年期 (固收腿)
+    initial_weights:
+      "510880.SH": 0.35
+      "159915.SZ": 0.35
+      "511010.SH": 0.30
+    ma_window: 20
+    panel_extra_cols:
+      - "smart_money_pct"
+      - "copper_gold_score"
+      - "cb_price_score"
+    thresholds:
+      equity_cap: 0.7 # 权益总仓位封顶 70%，余量固收（无慢速顶背离时）
+      panic_threshold: 75.0
+      panic_entry_threshold: 65.0
+      overheat_threshold: 65.0
+      smart_filter_threshold: 40.0
+      bias_threshold: 0.15 # 极值乖离止盈
+      gate_cap: 0.30 # 中期顶背离激活时权益封顶降为 30%
+      gate_threshold: 80.0 # dim_slow(0-100) >= 80 激活闸门（两因子均处历史高位）
+      gate_off_threshold: 60.0 # dim_slow < 60 解除闸门
+    friction:
+      commission_rate: 0.0001 # 万1券商佣金
+      slippage_rate: 0.0005 # 0.05% 冲击滑点
+      rebalance_deadband: 0.03 # 3% 调仓死区
+
 # 5. IC 验证配置（SOP S3 时序 Rank IC：整体 / 年度 / 当前时窗）
 # factors: 待验证的双轨核心指数与各维度分（来自 data/analytics/macro_risk 产物）
 # horizons: 前瞻收益窗口（交易日）；min_samples: 有效样本下限；trailing_window: 当前时窗交易日数
@@ -168,7 +231,6 @@ ic:
     - "dim_flow"
     - "dim_breadth"
     - "dim_fear"
-    - "dim_euphoria"
     - "dim_crowding"
     - "dim_corporate"
     - "dim_cross_asset"
@@ -184,7 +246,8 @@ ic:
   alpha: 0.05
   # 23 个原始因子 score 列的独立 IC 验证（探索性成分层，独立产物 ic_single_*，
   # 不混入上方 12 信号报告）。列名为风险因子产物中的 score 列：
-  # 一般 {factor_name}_score，仅 smart_money 为 smart_money_pct（score_column 机制）。
+  # 一般 {factor_name}_score；smart_money 为 smart_money_pct、divergence_score 为
+  # divergence_score（两者均经 score_column 机制显式命名，避免双 _score 后缀）。
   single_factors:
     - "erp_score"
     - "pb_score"
@@ -193,22 +256,23 @@ ic:
     - "main_ratio_score"
     - "composite_flow_score"
     - "etf_flow_ratio_score"
-    - "divergence_score_score"
+    - "divergence_score"
     - "adv_dec_score"
     - "newhigh60_ratio_score"
     - "pcr_score"
     - "iv_score"
     - "vix_score"
     - "market_turnover_score"
-    - "fund_issue_pct_score"
     - "repurchase_score"
     - "insider_net_score"
+    - "insider_net_score_consec"
     - "insider_sell_score"
     - "unlock_amount_score"
     - "cb_price_score"
     - "us_yield_curve_score"
     - "copper_gold_score"
     - "smart_money_pct"
+    - "smart_money_pct_consec"
 
 # 6. 参数敏感性扫描配置（SOP S3 敏感性件：overheat 阈值 × 趋势均线窗口网格）
 sensitivity:

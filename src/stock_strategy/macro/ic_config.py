@@ -24,7 +24,6 @@ _CORE_FACTOR_COLS = (
     "dim_flow",
     "dim_breadth",
     "dim_fear",
-    "dim_euphoria",
     "dim_crowding",
     "dim_corporate",
     "dim_cross_asset",

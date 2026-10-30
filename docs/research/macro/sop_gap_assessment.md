@@ -36,7 +36,7 @@
 | S0 术语分层 | 特征（`stock_analytics.pipelines.macro_risk` 产出 0-100 分位 score）vs 有效因子（`stock_strategy/macro` 验证）区分清晰，`ic.py` 模块注释显式声明"本层是验证层，不产生新特征" | ✅ 符合 |
 | S0 参数进配置 | `config/analytics/macro_risk.yaml`（factor/window/direction/维度/指数）与 `config/strategy/macro_risk.yaml`（策略 thresholds/friction/regimes/stress_tests/ic/sensitivity）；阈值无代码硬编码散落 | ✅ 符合 |
 | **S1 数据** | 数据经 `data_fetchers.py` 注册表提取 Curated/Mart；两融/ETF/复合资金流按发布时滞平移至下一交易日（`_shift_to_next_trading_day`），VIX 时区平移一天，无前视 | ✅ 符合 |
-| S1 质量/测试 | 有 `test_macro_risk_pipeline.py`（含 fund_issuance 不前向延续的守卫测试）、`test_macro_risk_capital_flow.py`；外部源可 mock | ✅ 符合 |
+| S1 质量/测试 | 有 `test_macro_risk_pipeline.py`、`test_macro_risk_capital_flow.py` 等定向测试；外部源可 mock | ✅ 符合 |
 | **S2 特征** | `pipelines/macro_risk/`（config/pipeline/data_fetchers/corporate_fetchers/artifacts），config 驱动、0-100 滚动历史分位、release_date 前向填充、无量纲化走 `rolling_percentile` primitives | ✅ 符合 |
 | S2 产物/Manifest | `data/analytics/macro_risk/latest/` 有 `manifest.json`（provenance: git_commit/config_sha256 + `data_completeness` + `summary`）+ 面板 parquet；**本轮已回填 `inputs`（13 个因子数据源）与 `watermarks`（13 条水位）** | ✅ 符合（本轮收口） |
 | **S3 验证** | 事件状态机回测 `MacroRiskRunner`（T+1 生效 + 佣金/滑点 + 调仓死区 + ETF 复权）；Walk-Forward 滚动 3Y-IS→1Y-OOS + WFE 评级；`run_full_stability_audit` 跨 6 大范式 + 4 大极端危机压力测试 + 252D/756D 滚动胜率 + 双引擎熊市识别；`assert_stability_guardrails` CI 回归门禁 | ✅ 符合 |

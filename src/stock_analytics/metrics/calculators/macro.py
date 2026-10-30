@@ -41,14 +41,35 @@ def _vix_frame(context: MetricContext) -> pl.DataFrame:
     raw = load_metric_dataset(
         context,
         "macro_indicators",
-        data_source="yfinance",
+        data_source="fred",
         start_date=context.start_date,
         end_date=context.end_date,
     )
+    symbol = "VIXCLS"
+    if raw.is_empty() or "symbol" not in raw.columns:
+        raw = load_metric_dataset(
+            context,
+            "macro_indicators",
+            data_source="yfinance",
+            start_date=context.start_date,
+            end_date=context.end_date,
+        )
+        symbol = "^VIX"
+    else:
+        fred_vix = raw.filter(pl.col("symbol") == symbol)
+        if fred_vix.is_empty():
+            raw = load_metric_dataset(
+                context,
+                "macro_indicators",
+                data_source="yfinance",
+                start_date=context.start_date,
+                end_date=context.end_date,
+            )
+            symbol = "^VIX"
     if raw.is_empty():
         return _empty(("trade_date", "vix"))
     return (
-        raw.filter(pl.col("symbol") == "^VIX")
+        raw.filter(pl.col("symbol") == symbol)
         .select(["trade_date", "close"])
         .rename({"close": "vix"})
         .with_columns((pl.col("trade_date") + pl.duration(days=1)).alias("trade_date"))

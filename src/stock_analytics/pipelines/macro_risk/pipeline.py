@@ -10,46 +10,27 @@ from typing import Literal
 import polars as pl
 
 from stock_analytics.features import FeatureStore
+from stock_analytics.pipelines.macro_risk.completeness import (
+    _check_data_completeness,
+    _log_completeness_warnings,
+)
 from stock_analytics.pipelines.macro_risk.config import load_macro_risk_config
 from stock_analytics.pipelines.macro_risk.data_fetchers import (
     FETCHER_REGISTRY,
     FetchContext,
 )
+from stock_analytics.pipelines.macro_risk.fred import (
+    DFFSnapshot,
+    FedFundsSnapshot,
+    load_dff_snapshot,
+)
+from stock_analytics.primitives.macro import consecutive_days
 from stock_analytics.primitives.rules import rolling_percentile
 from stock_data.catalog import DataCatalog
 from stock_data.core.runtime import DataRuntimeContext
 from stock_reporting.templates.macro_risk_report import render_macro_risk_report
 
 logger = logging.getLogger(__name__)
-
-# 完整性检测字段：双轨指数本身 + 其构成的 6 个维度
-# （overheat: valuation/leverage/fear/flow/crowding；panic: breadth/fear/flow）
-_COMPLETENESS_FIELDS: tuple[str, ...] = (
-    "overheat_index",
-    "panic_index",
-    "dim_valuation",
-    "dim_leverage",
-    "dim_fear",
-    "dim_flow",
-    "dim_crowding",
-    "dim_breadth",
-)
-
-
-def _check_data_completeness(row_dict: dict[str, object]) -> dict[str, object]:
-    """检测 as_of 日核心字段缺失，返回完整性报告。
-
-    缺失可能来自上游黄金表/Mart 缺数或已知口径缺口（如估值冷启动期 dim_valuation
-    为 null）；调用方结合业务判断是「已知缺口」还是「异常缺失」。
-    """
-    missing = [k for k in _COMPLETENESS_FIELDS if not isinstance(row_dict.get(k), int | float)]
-    return {
-        "checked_fields": list(_COMPLETENESS_FIELDS),
-        "total": len(_COMPLETENESS_FIELDS),
-        "available": len(_COMPLETENESS_FIELDS) - len(missing),
-        "missing_fields": missing,
-        "complete": not missing,
-    }
 
 
 def _build_inputs_and_watermarks(
@@ -80,6 +61,31 @@ def _build_inputs_and_watermarks(
             "sample_size": rows,
         }
     return inputs, watermarks
+
+
+def _build_fred_freshness(
+    as_of: date, snapshot: DFFSnapshot | FedFundsSnapshot
+) -> dict[str, object]:
+    """构造 Manifest 中 FRED 原始观测水位，避免与市场可用日期混淆。"""
+    observation_date = snapshot.observation_date
+    symbol = "FEDFUNDS" if isinstance(snapshot, FedFundsSnapshot) else "DFF"
+    frequency = "monthly" if symbol == "FEDFUNDS" else "daily"
+    return {
+        "market_as_of": as_of.isoformat(),
+        "fred_observations": {
+            symbol: {
+                "observation_date": (
+                    observation_date.isoformat() if observation_date is not None else None
+                ),
+                "freshness_days": (
+                    (as_of - observation_date).days if observation_date is not None else None
+                ),
+                "frequency": frequency,
+                "source_dataset": snapshot.source_dataset,
+                "status": "ok" if observation_date is not None else "missing",
+            }
+        },
+    }
 
 
 class MacroRiskPipeline:
@@ -173,12 +179,49 @@ class MacroRiskPipeline:
             scored = s.select(["trade_date", score_col])
 
             # 合并逻辑（海外低频数据使用 backward asof 对齐）
-            if f_cfg.series in ("vix", "global_macro"):
+            if f_cfg.series in (
+                "vix",
+                "global_macro",
+                "global_macro_monthly",
+                "fed_rate",
+                "convertible_bond",
+            ):
                 score_frame = score_frame.join_asof(
                     scored.drop_nulls(), on="trade_date", strategy="backward"
                 )
             else:
                 score_frame = score_frame.join(scored, on="trade_date", how="left")
+
+        # 独立观察字段保留原始 Mart 口径，不再次做交易日滚动分位，避免把
+        # 已经是 5 年分位的数量指标重复标准化；这些字段不参与任何维度或双轨指数。
+        for output_column, observation_cfg in self.config.observations.items():
+            if observation_cfg.series not in raw_cache:
+                raw_cache[observation_cfg.series] = self._get_raw_series(observation_cfg.series)
+            observation = raw_cache[observation_cfg.series]
+            if (
+                "trade_date" not in observation.columns
+                or observation_cfg.column not in observation.columns
+            ):
+                logger.warning(
+                    "独立观察字段缺失 [%s.%s]，以 null 输出",
+                    observation_cfg.series,
+                    observation_cfg.column,
+                )
+                score_frame = score_frame.with_columns(
+                    pl.lit(None, dtype=pl.Float64).alias(output_column)
+                )
+                continue
+            observation = (
+                observation.filter(pl.col("trade_date") <= as_of)
+                .select(
+                    [
+                        "trade_date",
+                        pl.col(observation_cfg.column).alias(output_column),
+                    ]
+                )
+                .unique(subset=["trade_date"], keep="last")
+            )
+            score_frame = score_frame.join(observation, on="trade_date", how="left")
 
         score_cols = list(score_col_map.values())
         score_frame = score_frame.with_columns(
@@ -203,6 +246,16 @@ class MacroRiskPipeline:
                 exprs.append(col_expr)
 
             score_frame = score_frame.with_columns(pl.mean_horizontal(exprs).alias(idx_name))
+
+        # 预计算「连续维持 N 天」确认强度列，随 risk_factors.parquet 一并持久化，
+        # 供 IC 审计(ic.single_factors)与胜率矩阵复算共用同一产物口径（Ground Truth First）。
+        for consec_col, threshold in (("insider_net_score", 80.0), ("smart_money_pct", 80.0)):
+            if consec_col in score_frame.columns:
+                score_frame = consecutive_days(
+                    score_frame.sort("trade_date"),
+                    consec_col,
+                    threshold,
+                )
 
         if output_dir:
             from stock_analytics.pipelines.artifacts import (
@@ -234,6 +287,10 @@ class MacroRiskPipeline:
                     inputs=inputs,
                     watermarks=watermarks,
                 )
+                manifest["freshness"] = _build_fred_freshness(
+                    as_of,
+                    load_dff_snapshot(as_of),
+                )
                 # 提取当日核心指标快照至 manifest.summary
                 as_of_rows = score_frame.filter(pl.col("trade_date") == as_of).tail(1)
                 if len(as_of_rows) > 0:
@@ -254,18 +311,10 @@ class MacroRiskPipeline:
                             summary_metrics[k] = round(float(val), 2)
                     manifest["summary"] = summary_metrics
 
-                    # 数据完整性检测：核心字段缺失写入 manifest + 运行告警
-                    completeness = _check_data_completeness(row_dict)
+                    # 数据完整性检测：核心字段缺失/维度退化写入 manifest + 运行告警
+                    completeness = _check_data_completeness(row_dict, score_frame)
                     manifest["data_completeness"] = completeness
-                    if completeness["missing_fields"]:
-                        logger.warning(
-                            "宏观风控产物数据不完整 (as_of=%s)：缺失字段 %s（完整度 %d/%d），"
-                            "可能来自上游缺数或已知口径缺口（如估值冷启动），引用前需核验",
-                            as_of,
-                            completeness["missing_fields"],
-                            completeness["available"],
-                            completeness["total"],
-                        )
+                    _log_completeness_warnings(completeness, as_of)
 
                 session.write_json("manifest.json", manifest)
 

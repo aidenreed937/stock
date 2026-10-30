@@ -179,3 +179,37 @@ def test_load_price_panel_etf_adjustment() -> None:
     )
     assert panel["symbol"].to_list() == ["510880.SH", "510880.SH"]
     assert panel["close"].to_list() == [15.0, 30.0]
+
+
+def test_load_price_panel_etf_adj_factor_forward_filled_when_latest_missing() -> None:
+    """T 日缺复权因子时必须前向填充最近因子，不能回退原始价（否则产生除权级假暴跌）。"""
+
+    class _FakeETFCatalogNoLatestAdj(_FakeCatalog):
+        data_source = "tushare"
+        runtime = None
+
+        def load_dataset(self, dataset: str, symbols: list[str] | None = None) -> pl.DataFrame:
+            if dataset == "fund_adj":
+                # 只到 1-1，缺 1-2（模拟 fund_adj 未同步到最新交易日）
+                return pl.DataFrame(
+                    {
+                        "trade_date": [date(2026, 1, 1)],
+                        "adj_factor": [1.5],
+                    }
+                )
+            return pl.DataFrame()
+
+    frames = {
+        "510880.SH": pl.DataFrame(
+            {
+                "trade_date": [date(2026, 1, 1), date(2026, 1, 2)],
+                "symbol": ["510880.SH", "510880.SH"],
+                "close": [10.0, 20.0],
+            }
+        ),
+    }
+    panel = assembly.load_price_panel(
+        catalog=_FakeETFCatalogNoLatestAdj(frames),
+        symbols=["510880.SH"],
+    )
+    assert panel["close"].to_list() == [15.0, 30.0]

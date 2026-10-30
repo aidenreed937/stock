@@ -16,6 +16,10 @@ import polars as pl
 from stock_analytics.features import FeatureStore
 from stock_analytics.metrics.context import MetricContext
 from stock_analytics.metrics.engine import MetricEngine
+from stock_analytics.pipelines.macro_risk.fred import (
+    load_dff_series,
+)
+from stock_analytics.primitives import calculate_dff_change_6m
 from stock_core.utils.logger import logger
 from stock_data.catalog import DataCatalog
 
@@ -28,7 +32,7 @@ class FetchContext:
     """
 
     cat: DataCatalog  # 默认数据目录（主要连接本地 Lixinger 等数据）
-    cat_yf: DataCatalog  # 海外数据目录（专门连接 yfinance 获取全球宏观）
+    cat_yf: DataCatalog  # 海外行情目录；VIX 等宏观序列优先读取 FRED
     fs: FeatureStore  # 特征存储（用于读取各种清洗好的 Mart 宽表）
     md: pl.DataFrame  # market_daily 缓存（全市场每日聚合宽表，由于复用率极高，在此做预加载缓存）
     metric_engine: MetricEngine = field(default_factory=MetricEngine)  # 标准指标调度引擎
@@ -141,9 +145,9 @@ def fetch_valuation(ctx: FetchContext) -> pl.DataFrame:
 def fetch_vix(ctx: FetchContext) -> pl.DataFrame:
     """获取外部宏观情绪指标：VIX（恐慌指数）。
 
-    由于 VIX 是美股时间线，指标引擎内部已封装了加一天的时区平移对齐逻辑。
+    VIX 主源为 FRED 的 CBOE 收盘序列；指标引擎内部封装了加一天的时区平移对齐逻辑。
     """
-    # 切换到 YFinance 的 Catalog 上下文
+    # 保留海外上下文的时间窗口与存储根目录，指标计算器内部优先读取 FRED。
     yf_ctx = MetricContext(start_date=date(2010, 1, 1), catalog=ctx.cat_yf)
 
     # 通过指标引擎直接获取对齐好的 vix 序列
@@ -236,12 +240,18 @@ def fetch_main_flow(ctx: FetchContext) -> pl.DataFrame:
 
 @register_fetcher("breadth")
 def fetch_breadth(ctx: FetchContext) -> pl.DataFrame:
-    """获取市场广度数据：涨跌家数比 (adv_dec) 与 60日新高占比 (newhigh60_ratio)。"""
+    """获取市场广度数据：涨跌家数比、60日新高占比与 52 周新低占比。
+
+    ``newlow252_ratio`` 为 market_daily 已物化的 ``new_low_252d_ratio``（252 交易日
+    滚动新低股票占比），用于衡量恐慌端出清广度；宏观因子层只注册为独立观测，
+    不进入 dim_breadth 与双轨指数（口径见 ``config/analytics/macro_risk.yaml``）。
+    """
     return ctx.md.select(
         [
             "trade_date",
             pl.col("adv_dec_ratio").alias("adv_dec"),
             pl.col("new_high_60d_ratio").alias("newhigh60_ratio"),
+            pl.col("new_low_252d_ratio").alias("newlow252_ratio"),
         ]
     ).sort("trade_date")
 
@@ -273,46 +283,6 @@ def fetch_iv(ctx: FetchContext) -> pl.DataFrame:
 def fetch_crowdedness(ctx: FetchContext) -> pl.DataFrame:
     """获取全市场拥挤度类指标：全市场每日换手率 (market_turnover_rate)。"""
     return ctx.md.select(["trade_date", "market_turnover_rate"]).drop_nulls()
-
-
-@register_fetcher("fund_issuance")
-def fetch_fund_issuance(ctx: FetchContext) -> pl.DataFrame:
-    """获取公募基金新发规模与 5 年滚动历史分位。
-
-    用于刻画场外散户增量流动性与情绪过热/冰点。
-    """
-    try:
-        fi = ctx.fs.get_domain_mart("fund_issuance_monthly")
-    except Exception:
-        fi = pl.DataFrame()
-
-    if fi.is_empty():
-        try:
-            from stock_analytics.marts.fund_issuance import build_fund_issuance_frame
-
-            cat_ts = DataCatalog(runtime=ctx.cat.runtime, data_source="tushare")
-            fb = cat_ts.load_dataset("fund_basic")
-            fi = build_fund_issuance_frame(fb)
-        except Exception:
-            fi = pl.DataFrame()
-
-    if fi.is_empty() or "month" not in fi.columns:
-        return ctx.md.select(["trade_date"]).with_columns(
-            pl.lit(None, dtype=pl.Float64).alias("fund_issue_pct5y")
-        )
-
-    cal = ctx.md.select(["trade_date"]).with_columns(
-        pl.col("trade_date").cast(pl.Date).dt.offset_by("-1mo").dt.to_string("%Y-%m").alias("month")
-    )
-    return (
-        cal.join(
-            fi.select(["month", pl.col("equity_issue_pct5y").alias("fund_issue_pct5y")]),
-            on="month",
-            how="left",
-        )
-        .select(["trade_date", "fund_issue_pct5y"])
-        .sort("trade_date")
-    )
 
 
 @register_fetcher("convertible_bond")
@@ -361,6 +331,59 @@ def fetch_global_macro(ctx: FetchContext) -> pl.DataFrame:
         pl.lit(None, dtype=pl.Float64).alias("us_yield_curve_10y_2y"),
         pl.lit(None, dtype=pl.Float64).alias("copper_gold_ratio"),
     )
+
+
+@register_fetcher("global_macro_monthly")
+def fetch_global_macro_monthly(ctx: FetchContext) -> pl.DataFrame:
+    """获取按月抽样的铜金比，供月频历史分位计算。"""
+    try:
+        gm = ctx.fs.get_domain_mart("global_macro_daily")
+    except Exception:
+        gm = pl.DataFrame()
+    if gm.is_empty() or not {"trade_date", "copper_gold_ratio"}.issubset(gm.columns):
+        return pl.DataFrame(schema={"trade_date": pl.Date, "copper_gold_ratio": pl.Float64})
+
+    # Mart 中的铜金比已经完成无前视日频 asof；每月只保留最后一个可用观测，
+    # 避免把同一个月频铜价重复按交易日计权。
+    return (
+        gm.select(
+            pl.col("trade_date").cast(pl.Date),
+            pl.col("copper_gold_ratio").cast(pl.Float64, strict=False),
+        )
+        .drop_nulls()
+        .sort("trade_date")
+        .with_columns(pl.col("trade_date").dt.month_start().alias("_month"))
+        .group_by("_month", maintain_order=True)
+        .agg(
+            pl.col("trade_date").last().alias("trade_date"),
+            pl.col("copper_gold_ratio").last().alias("copper_gold_ratio"),
+        )
+        .select(["trade_date", "copper_gold_ratio"])
+        .sort("trade_date")
+    )
+
+
+@register_fetcher("fed_rate")
+def fetch_fed_rate(ctx: FetchContext) -> pl.DataFrame:
+    """美联储有效利率 DFF 六个月变化（加息/降息周期特征，pp 口径）。
+
+    历史研究（基于月频 FEDFUNDS，DFF 换源后尚未复验）显示，加息周期对成长/科技估值有压制
+    （scripts/semi_sox_backtest 机制延伸；2026-09 对 270100 全周期 IC -0.30、样本外 -0.345；
+    对中证全指全周期 -0.21）。
+    但分年 IC 符号跨周期漂移（-0.75 ~ +0.57），与 us_yield_curve 同类，
+    故仅注册为独立观测因子，不进入维度与双轨指数（保持 panic/overheat 成分纯净）。
+    数据：FRED 日频 DFF，六个日历月前取最近观测计算差值；按 H.15 下一个联储工作日的发布时间
+    映射到北京时间可用日期，再 asof 到 A 股日频。
+    """
+    series = load_dff_series()
+    ffr = calculate_dff_change_6m(series.frame)
+    if ffr.is_empty():
+        return pl.DataFrame(schema={"trade_date": pl.Date, "ffr_chg_6m": pl.Float64})
+    try:
+        md = ctx.md.select(["trade_date"]).sort("trade_date")
+    except Exception:
+        return ffr.sort("trade_date")
+    return md.join_asof(ffr.sort("trade_date"), on="trade_date", strategy="backward")
 
 
 @register_fetcher("smart_money")

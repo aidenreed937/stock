@@ -5,6 +5,7 @@ from stock_analytics.primitives.macro import (
     calculate_macro_spread,
     calculate_securitization_ratio,
     calculate_yield_curve_slope,
+    consecutive_days,
 )
 
 
@@ -51,3 +52,49 @@ def test_calculate_macro_spread() -> None:
     )
     assert "credit_spread" in res.columns
     assert res["credit_spread"].to_list() == pytest.approx([1.5, 1.7])
+
+
+def test_consecutive_days_cumulative_and_reset() -> None:
+    df = pl.DataFrame(
+        {
+            "trade_date": ["2024-01-01", "2024-01-02", "2024-01-03", "2024-01-04"],
+            "insider_net_score": [85.0, 90.0, 70.0, 88.0],
+        }
+    )
+    res = consecutive_days(df, "insider_net_score", 80.0)
+    # 85>=80(1)，90>=80(2)，70<80 清零(0)，88>=80(1)
+    assert res["insider_net_score_consec"].to_list() == [1, 2, 0, 1]
+    # 原列只读、不覆盖
+    assert "insider_net_score" in res.columns
+    assert res["insider_net_score"].to_list() == [85.0, 90.0, 70.0, 88.0]
+
+
+def test_consecutive_days_null_breaks_run() -> None:
+    df = pl.DataFrame(
+        {
+            "trade_date": ["2024-01-01", "2024-01-02", "2024-01-03"],
+            "smart_money_pct": [85.0, None, 88.0],
+        }
+    )
+    res = consecutive_days(df, "smart_money_pct", 80.0)
+    # 数据缺失按未达标处理，避免跨缺口误续连：85(1), None->0, 88(1)
+    assert res["smart_money_pct_consec"].to_list() == [1, 0, 1]
+
+
+def test_consecutive_days_threshold_boundary() -> None:
+    df = pl.DataFrame(
+        {
+            "trade_date": ["2024-01-01", "2024-01-02"],
+            "insider_net_score": [80.0, 79.99],
+        }
+    )
+    res = consecutive_days(df, "insider_net_score", 80.0)
+    # 恰好等于阈值算达标，小于阈值不达标
+    assert res["insider_net_score_consec"].to_list() == [1, 0]
+
+
+def test_consecutive_days_unknown_column_is_noop() -> None:
+    df = pl.DataFrame({"trade_date": ["2024-01-01"], "a": [1.0]})
+    res = consecutive_days(df, "missing_col", 80.0)
+    assert "missing_col_consec" not in res.columns
+    assert res.columns == ["trade_date", "a"]

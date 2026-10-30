@@ -12,6 +12,23 @@
 
 ---
 
+## 🌍 全球宏观与海外利率观察（独立参考，非交易信号）
+
+{% if eval_result.rate_cycle_hint %}
+- **政策利率周期风险提示**: {{ eval_result.rate_cycle_hint.icon }} **{{ eval_result.rate_cycle_hint.status }}**（{{ eval_result.rate_cycle_hint.detail }}）
+{% else %}
+- **政策利率周期风险提示**: ⚪ **数据暂缺**（FFR 观测值暂缺，本次不提示）
+{% endif %}
+{% if eval_result.global_macro_hint and eval_result.global_macro_hint.items %}
+{% for item in eval_result.global_macro_hint.items %}
+- **{{ item.name }}**: `{{ item.display_value }}` {{ item.badge }} ({{ item.comment }})
+{% endfor %}
+
+> 机制定性：{{ eval_result.global_macro_hint.summary }}
+{% endif %}
+
+---
+
 ## 🔍 全维度系统性风险穿透 (0-100 历史分位)
 
 {% for tier in eval_result.risk_tiers %}
@@ -21,6 +38,29 @@
 {% endfor %}
 
 {% endfor %}
+{% if eval_result.component_dispersion %}
+### ⚠️ 成分分歧提示（合成分位不代表成分一致）
+
+> 维度分是各成分分位的算术均值：成分相互背离时均值会读成「中枢/平衡」。下表列出成分极差超阈值的维度。
+
+| 维度 | 合成分位 | 成分极差 | 反向分项读数 |
+| :--- | :---: | :---: | :--- |
+{% for d in eval_result.component_dispersion %}
+| {{ d.name }} | `{{ "%.1f"|format(d.value) }}` | {{ "%.0f"|format(d.spread) }} | {{ d.low_label }} `{{ "%.0f"|format(d.low) }}` ↔ {{ d.high_label }} `{{ "%.0f"|format(d.high) }}` |
+{% endfor %}
+
+{% endif %}
+{% if auxiliary_rows or degraded_dimensions %}
+### 🧭 附加维度（不进双轨指数）
+
+{% for item in auxiliary_rows %}
+- **{{ item.name }}**: `{{ item.value }}` {% if item.state != "正常" %}⚠️ {% endif %}{{ item.state }} ({{ item.note }})
+{% endfor %}
+{% for d in degraded_dimensions %}
+- **数据缺口（{{ d.name }}）**: {{ d.reason }}
+{% endfor %}
+
+{% endif %}
 ---
 
 ## 💡 深度归因与操作建议
@@ -35,3 +75,7 @@
 **【平稳期】**
 {% endif %}
 {{ eval_result.advice }}
+
+{% if trend_note %}
+{{ trend_note }}
+{% endif %}

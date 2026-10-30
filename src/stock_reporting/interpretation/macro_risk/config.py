@@ -69,11 +69,16 @@ def grade_dim(
             cond = sc.get("condition")
             if cond == "divergence_and_flow":
                 div_s = special_vars.get("div_score")
-                if (
-                    div_s is not None
-                    and div_s >= sc.get("div_score_min", 85.0)
-                    and val >= sc.get("val_min", 65.0)
-                ):
+                if div_s is None:
+                    continue
+                div_min = safe_float(sc.get("div_score_min"), 85.0)
+                val_min = safe_float(sc.get("val_min"), 65.0)
+                # dim_flow 是三成分均值，主力/综合流向可能把筹码背离度稀释到中枢；
+                # 背离度自身触及极值（div_override_min）时仍判背离，
+                # 避免「流向平稳」掩盖单因子极值。
+                override = sc.get("div_override_min")
+                extreme_div = override is not None and div_s >= safe_float(override, 101.0)
+                if div_s >= div_min and (val >= val_min or extreme_div):
                     return sc["grade"], sc["icon"], sc["comment"]
 
     tiers = dim_cfg.get("tiers", [])

@@ -63,6 +63,9 @@ dimensions:
       - condition: "divergence_and_flow"
         div_score_min: 85.0
         val_min: 65.0
+        # 兜底：dim_flow 为三成分均值，主力/综合流向可把筹码背离度稀释到中枢；
+        # 背离度自身触及极值时仍判「资金筹码背离」，避免「流向平衡」掩盖单因子极值。
+        div_override_min: 92.0
         grade: "资金筹码背离"
         icon: "🔴"
         comment: "资金流向或筹码分歧明显承压，筹码结构严重背离"
@@ -150,6 +153,10 @@ dimensions:
         grade: "深度低估"
         icon: "🟢"
         comment: "极具长期战略配置价值"
+      - max: 40.0
+        grade: "偏低估"
+        icon: "🟢"
+        comment: "估值分位处于历史偏低区间（20-40 分位），长期性价比占优"
       - default: true
         grade: "估值合理"
         icon: "⚪"
@@ -163,10 +170,15 @@ dimensions:
       icon: "⚪"
       comment: "历史数据不足"
     tiers:
+      # 65–79 提示压力偏高；≥80 才标记为减持潮，恐慌极值分支另用 75 判高压力。
       - min: 80.0
         grade: "减持潮起"
         icon: "🔴"
         comment: "产业资本与董监高净减持激增，警惕产业离场"
+      - min: 65.0
+        grade: "产业压力偏高"
+        icon: "🟡"
+        comment: "净买入偏弱或减持压力偏高，需结合回购与解禁分项判断"
       - max: 25.0
         grade: "产业压力低"
         icon: "🟢"
@@ -201,13 +213,81 @@ indices:
   overheat:
     threshold_critical: 65.0
     threshold_warning: 60.0
+    # 中观下穿（meso_penetration）用的水温警戒线：低于双轨极值 65，
+    # 用于在高热尚未到极值时提前暴露行业拥挤/估值透支，与 threshold_critical 分工明确。
+    penetration_threshold: 62.0
     title_critical: "极度狂热 (极高回撤风险)"
     title_warning: "偏热过载 (进入预警区间)"
+    # 见顶背离证据阈值（分位 0-100，高分位=证据强）
+    divergence_evidence: 70.0   # 资金与筹码博弈分歧度
+    turnover_evidence: 85.0     # 全市场换手率天花板
+    insider_sell_high: 75.0     # 大股东减持
+    unlock_high: 80.0           # 限售解禁
   panic:
     threshold_critical: 70.0
     threshold_warning: 60.0
+    # 中观下穿（meso_penetration）恐慌警戒线，对齐双轨极值 70
+    penetration_threshold: 70.0
     title_critical: "极度恐慌 (超跌反弹机会)"
     title_warning: "恐慌升温 (关注左侧建仓)"
     # 恐慌极值时的市场位置风险判定（基准距前120交易日高点回撤，负值）
     dd_confirm_deep: -0.20 # 回撤 ≤ -20%：深底确认，真冰点概率高
     dd_warn_shallow: -0.10 # 回撤 > -10%：高位/中继恐慌，假冰点预警（接飞刀风险高）
+    # 恐慌极值分支的放量/缩量底与产业托底判定阈值（分位 0-100）
+    crowding_split: 45.0        # dim_crowding 高于此值视为放量出清底，低于视为缩量底
+    corp_pressure_low: 25.0     # dim_corporate ≤ 此值 = 产业资本综合压力低
+    corp_pressure_high: 75.0    # dim_corporate ≥ 此值 = 产业资本综合压力高
+    buyback_support: 30.0       # repurchase_score ≤ 此值 = 回购反向分位低（回购高发）
+    buyback_absent: 70.0        # repurchase_score ≥ 此值 = 回购反向分位高（回购不足）
+    smart_support: 80.0         # smart_money_pct ≥ 此值 = 聪明钱逆势接货
+    smart_observe: 40.0         # smart_money_pct < 此值 = 聪明钱尚在观望
+    action_guide_caveat: 75.0   # 操作指引「假冰点」提示阈值（对齐策略 panic_threshold=75）
+  slow_top_divergence:
+    activate: 80.0        # dim_slow ≥ 此值 = 慢速顶背离闸门激活（对齐策略 gate_threshold=80）
+    watch: 70.0           # dim_slow ≥ 此值 = 进入提醒观测区（接近激活线，提前预警）
+    release: 60.0         # dim_slow < 此值 = 闸门释放（对齐策略 gate_off_threshold=60）
+    title_activate: "中期顶背离闸门已激活"
+    title_watch: "中期顶背离进入观测区"
+# 维度成分映射与分歧披露
+# 维度分数是成分分位的算术均值；成分相互背离时均值会读成「中枢/平衡」，
+# 与实际最紧的那个分项矛盾。下方映射用于在研报中披露成分极差。
+# 所有分项列已是方向对齐后的分位：高分位 = 该分项风险高
+# （如 insider_net_score 为 rev 口径，高分位 = 净增持弱 = 减持压力高）。
+component_dispersion:
+  alert_spread: 50.0 # 成分极差 ≥ 此值即在研报中标注分歧
+  components:
+    leverage:
+      "两融穿透率": margin_pen_score
+      "融资买入占比": margin_buy_ratio_score
+    crowding:
+      "全市场换手率": market_turnover_score
+    flow:
+      "主力净流入": main_ratio_score
+      "综合主力流向": composite_flow_score
+      "筹码背离度": divergence_score
+    fear:
+      "PCR": pcr_score
+      "隐含波动率IV": iv_score
+      "VIX": vix_score
+    breadth:
+      "涨跌家数比": adv_dec_score
+      "60日新高占比": newhigh60_ratio_score
+    valuation:
+      "ERP风险溢价": erp_score
+      "PB分位": pb_score
+    corporate:
+      "内部人净增持(反向)": insider_net_score
+      "减持金额": insider_sell_score
+      "解禁压力": unlock_amount_score
+    cross_asset:
+      "转债价格中位": cb_price_score
+      "铜金比": copper_gold_score
+
+# 附加维度（不进双轨指数，但属研报必须披露的独立参考）
+auxiliary_dimensions:
+  - name: "聪明钱分位"
+    column: smart_money_pct
+    note: "产业资本增持/大宗折价/国家队锚点等权组合的 250 日分位排名；低于 40 分位视为未逆势接货（v5 假坑过滤依据）"
+  - name: "52周新低占比分位"
+    column: newlow252_ratio_score
+    note: "252 个交易日新低股票占比的 1250 日滚动分位（raw 方向：越高=恐慌端出清广度越大）；补齐恐慌端广度观察，不进 dim_breadth 与双轨指数"

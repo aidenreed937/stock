@@ -5,7 +5,8 @@
 作为恐慌左侧的【确认过滤】：
 1. 【聪明钱确认过滤】：恐慌左侧区间 (panic 65~75) 若聪明钱信号低分位
    (smart_money_pct < 40，内部人/机构/国家队未逆势接货) 判定为假黄金坑，
-   不左侧建仓，等待真实资金确认；
+   不左侧建仓，等待真实资金确认；门控读**原始日频分位**（3D/5D 平滑变体经全周期回测
+   证伪、收益降回撤升，见 references/smart_money_factor.md §7）；
 2. 【常规极值与均线趋势保护】：保持 V4 优良的双轨制极值确认与 MA20 趋势破位逃顶机制。
 3. 【极值乖离止盈】：基准 20 日乖离率 (Bias20) 过大时（如 924 式政策脉冲）清仓避险，
    乖离回落至阈值内即恢复哑铃——与 Overheat+MA20 破位形成"急涨先降仓、破位再清仓"两段式退出。
@@ -129,6 +130,8 @@ class MacroRotationV5Strategy(BaseStrategy):
         overheat = float(overheat_val)
         bias20 = (close / ma20 - 1.0) if ma20 > 0 else 0.0
 
+        # 门控用原始日频分位：3D/5D 平滑变体经全周期回测证伪（v5_etf CAGR 15.35%→
+        # 14.49%/13.86%，最大回撤 -36.95%→-39.07%/-38.76%），故保留原始读数不做平滑
         smart_val = latest.get("smart_money_pct")
         smart = float(smart_val) if isinstance(smart_val, int | float) else None
 

@@ -12,9 +12,29 @@
 {% if eval_result.ma20_status %}
 - **生命线 (20日均线)**：`{{ "%.0f"|format(eval_result.ma20_status.ma20) }}` {% if eval_result.ma20_status.broken %}🔴 **已跌破**（趋势走坏，进攻端应清仓）{% else %}🟢 **未跌破**（趋势完好）{% endif %}
 {% endif %}
+{% if trend_note %}
+{{ trend_note }}
+{% endif %}
 
 ---
 
+{% if eval_result.rate_cycle_hint or eval_result.global_macro_hint %}
+## 🌍 全球宏观与海外利率观察（独立参考，非交易信号）
+
+{% if eval_result.rate_cycle_hint %}
+- **政策利率周期风险提示**：{{ eval_result.rate_cycle_hint.icon }} **{{ eval_result.rate_cycle_hint.status }}**（{{ eval_result.rate_cycle_hint.detail }}）
+{% endif %}
+{% if eval_result.global_macro_hint and eval_result.global_macro_hint.items %}
+{% for item in eval_result.global_macro_hint.items %}
+- **{{ item.name }}**：`{{ item.display_value }}` {{ item.badge }}（{{ item.comment }}）
+{% endfor %}
+
+> 机制定性：{{ eval_result.global_macro_hint.summary }}
+{% endif %}
+
+---
+
+{% endif %}
 ## 🔑 关键看板
 
 {% for item in key_metrics %}
@@ -32,6 +52,34 @@
 | {{ item.name }} | `{{ "%.1f"|format(item.val) if item.val is not none else "N/A" }}` | {{ item.badge }} {{ item.status }} | {{ item.desc }} |
 {% endfor %}
 {% endfor %}
+
+---
+{% if eval_result.component_dispersion %}
+
+## ⚠️ 成分分歧提示（合成分位不代表成分一致）
+
+> 维度分是各成分分位的算术均值：成分相互背离时均值会读成「中枢/平衡」。下表列出成分极差超阈值的维度。
+
+| 维度 | 合成分位 | 成分极差 | 反向分项读数 |
+| :--- | :---: | :---: | :--- |
+{% for d in eval_result.component_dispersion %}
+| {{ d.name }} | `{{ "%.1f"|format(d.value) }}` | {{ "%.0f"|format(d.spread) }} | {{ d.low_label }} `{{ "%.0f"|format(d.low) }}` ↔ {{ d.high_label }} `{{ "%.0f"|format(d.high) }}` |
+{% endfor %}
+
+{% endif %}
+---
+{% if auxiliary_rows or degraded_dimensions %}
+
+## 🧭 附加维度（不进双轨指数）
+
+{% for item in auxiliary_rows %}
+- **{{ item.name }}**：`{{ item.value }}` {% if item.state != "正常" %}⚠️ {% endif %}{{ item.state }} — {{ item.note }}
+{% endfor %}
+{% for d in degraded_dimensions %}
+- **数据缺口（{{ d.name }}）**：{{ d.reason }}
+{% endfor %}
+
+{% endif %}
 
 ---
 

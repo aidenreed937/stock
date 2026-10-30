@@ -3,7 +3,7 @@
 from __future__ import annotations
 
 from collections.abc import Mapping
-from dataclasses import dataclass
+from dataclasses import dataclass, field
 from pathlib import Path
 from typing import Any
 
@@ -32,6 +32,18 @@ class FactorConfig:
 
 
 @dataclass(frozen=True)
+class ObservationConfig:
+    """独立观察字段配置，不参与因子分位与双轨指数聚合。"""
+
+    series: str
+    column: str
+
+    @classmethod
+    def from_mapping(cls, data: Mapping[str, Any]) -> ObservationConfig:
+        return cls(series=str(data["series"]), column=str(data["column"]))
+
+
+@dataclass(frozen=True)
 class IndexComponentConfig:
     dim: str
     direction: str
@@ -49,16 +61,20 @@ class MacroRiskConfig:
     factors: dict[str, FactorConfig]
     dims: dict[str, list[str]]
     indices: dict[str, list[IndexComponentConfig]]
+    observations: dict[str, ObservationConfig] = field(default_factory=dict)
 
     @classmethod
     def from_mapping(cls, data: Mapping[str, Any]) -> MacroRiskConfig:
         factors = {k: FactorConfig.from_mapping(v) for k, v in data.get("factors", {}).items()}
+        observations = {
+            k: ObservationConfig.from_mapping(v) for k, v in data.get("observations", {}).items()
+        }
         dims = {str(k): [str(item) for item in v] for k, v in data.get("dimensions", {}).items()}
         indices = {
             str(k): [IndexComponentConfig.from_mapping(item) for item in v]
             for k, v in data.get("indices", {}).items()
         }
-        return cls(factors=factors, dims=dims, indices=indices)
+        return cls(factors=factors, observations=observations, dims=dims, indices=indices)
 
 
 def load_macro_risk_config(

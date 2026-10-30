@@ -148,10 +148,15 @@ def _adjust_etf_price(catalog: DataCatalog, bar: pl.DataFrame, sym: str) -> pl.D
             )
             .drop_nulls(subset=["trade_date", "adj_factor"])
             .unique(subset=["trade_date"], keep="last")
+            .sort("trade_date")
         )
         bar = (
             bar.with_columns(pl.col("trade_date").cast(pl.Date))
+            .sort("trade_date")
             .join(adj_clean, on="trade_date", how="left")
+            # 复权因子是分段常数（只在分红/拆分日跳变）：T 日缺因子时用最近一次已知
+            # 因子前向填充，绝不回退原始价——否则会凭空产生「除权」级假跌幅。
+            .with_columns(pl.col("adj_factor").forward_fill())
             .with_columns(
                 pl.when(pl.col("adj_factor").is_not_null() & (pl.col("adj_factor") > 0))
                 .then(pl.col("close") * pl.col("adj_factor"))

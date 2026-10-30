@@ -17,6 +17,7 @@ GLOBAL_MACRO_SCHEMA: dict[str, Any] = {
     "trade_date": pl.Date,
     "us_10y_yield": pl.Float64,
     "us_2y_yield": pl.Float64,
+    "us_3m_yield": pl.Float64,
     "us_yield_curve_10y_2y": pl.Float64,
     "cn_1y_yield": pl.Float64,
     "cn_5y_yield": pl.Float64,
@@ -27,6 +28,7 @@ GLOBAL_MACRO_SCHEMA: dict[str, Any] = {
     "usd_index": pl.Float64,
     "gold_price": pl.Float64,
     "crude_oil_price": pl.Float64,
+    "brent_crude_oil_price": pl.Float64,
     "copper_price": pl.Float64,
     "copper_gold_ratio": pl.Float64,
     "vix_close": pl.Float64,
@@ -73,6 +75,24 @@ def _clean_close(frame: pl.DataFrame, value_column: str = "close") -> pl.DataFra
     )
 
 
+def _merge_primary_fallback_series(
+    primary: pl.DataFrame,
+    fallback: pl.DataFrame,
+    value_column: str,
+) -> pl.DataFrame:
+    """按日期合并主源与回退源，同日优先保留主源值。"""
+    if primary.is_empty():
+        return fallback
+    if fallback.is_empty():
+        return primary
+    return (
+        pl.concat([primary, fallback], how="diagonal_relaxed")
+        .group_by("trade_date", maintain_order=True)
+        .agg(pl.col(value_column).drop_nulls().first().alias(value_column))
+        .sort("trade_date")
+    )
+
+
 def _merge_series(
     base: pl.DataFrame | None,
     series: pl.DataFrame,
@@ -86,6 +106,21 @@ def _merge_series(
     if base is None or base.is_empty():
         return clean.select("trade_date", *rename.values()).sort("trade_date")
     return base.join(clean, on="trade_date", how="left").sort("trade_date")
+
+
+def _asof_fill_series(frame: pl.DataFrame, column: str) -> pl.DataFrame:
+    """把低频序列按最近已公布观测向后对齐到统一日历。"""
+    if column not in frame.columns:
+        return frame
+    available = frame.select(["trade_date", column]).drop_nulls(subset=[column]).sort("trade_date")
+    if available.is_empty():
+        return frame
+    return (
+        frame.drop(column)
+        .sort("trade_date")
+        .join_asof(available, on="trade_date", strategy="backward")
+        .sort("trade_date")
+    )
 
 
 def _ensure_schema_columns(frame: pl.DataFrame, schema: dict[str, Any]) -> pl.DataFrame:
@@ -108,41 +143,107 @@ def build_global_macro_daily_frame(
     lixinger_national_debt: pl.DataFrame,
     shibor: pl.DataFrame,
     shibor_lpr: pl.DataFrame,
+    lixinger_gold_price: pl.DataFrame | None = None,
+    lixinger_non_ferrous_metals: pl.DataFrame | None = None,
+    lixinger_crude_oil: pl.DataFrame | None = None,
 ) -> pl.DataFrame:
-    """从五源长表构建全球宏观日频宽表。
+    """从多源长表构建全球宏观日频宽表。
 
     主日历取全部输入日期的并集（交易日对齐由各源自身日期决定，不做跨市场
     时区重排）；CNH 20 日动量在合并后统一计算。
     """
-    # ---- YFinance：美债 10Y、VIX、黄金、原油、铜、CNH、美元指数、费半 SOX ----
-    yf_symbols = {
+    # ---- FRED：官方利率、波动率、美元与原油序列 ----
+    fred_symbols = {
+        "DGS10": "us_10y_yield",
+        "DGS3MO": "us_3m_yield",
+        "VIXCLS": "vix_close",
+        "DCOILWTICO": "crude_oil_price",
+        "DTWEXBGS": "usd_index",
+    }
+    source_series: dict[str, pl.DataFrame] = {}
+    if not fred_macro.is_empty():
+        for symbol, target in fred_symbols.items():
+            sub = fred_macro.filter(pl.col("symbol") == symbol)
+            if sub.is_empty():
+                continue
+            series = _clean_close(sub)
+            if not series.is_empty():
+                source_series[target] = series.rename({"close": target})
+
+    # ---- LiXinger：伦敦金美元定盘价，作为 Yahoo GC=F 的主替代源 ----
+    if lixinger_gold_price is not None and not lixinger_gold_price.is_empty():
+        gold_series = _clean_close(lixinger_gold_price, value_column="lbma_pm_usd")
+        if not gold_series.is_empty():
+            source_series["gold_price"] = gold_series.rename({"lbma_pm_usd": "gold_price"})
+
+    # ---- LiXinger：伦敦铜现货 l_cu_p，统一作为铜价主源 ----
+    if lixinger_non_ferrous_metals is not None and not lixinger_non_ferrous_metals.is_empty():
+        copper_series = _clean_close(lixinger_non_ferrous_metals, value_column="l_cu_p")
+        if not copper_series.is_empty():
+            source_series["copper_price"] = copper_series.rename({"l_cu_p": "copper_price"})
+
+    # ---- LiXinger：WTI/Brent 现货为主源，FRED/Yahoo 原油序列补缺 ----
+    if lixinger_crude_oil is not None and not lixinger_crude_oil.is_empty():
+        wti_series = _clean_close(lixinger_crude_oil, value_column="wti_co_sp")
+        if not wti_series.is_empty():
+            wti_series = wti_series.rename({"wti_co_sp": "crude_oil_price"})
+            fred_wti = source_series.get("crude_oil_price", pl.DataFrame())
+            source_series["crude_oil_price"] = _merge_primary_fallback_series(
+                wti_series,
+                fred_wti,
+                "crude_oil_price",
+            )
+
+        brent_series = _clean_close(lixinger_crude_oil, value_column="brent_co_sp")
+        if not brent_series.is_empty():
+            source_series["brent_crude_oil_price"] = brent_series.rename(
+                {"brent_co_sp": "brent_crude_oil_price"}
+            )
+
+    # ---- 兼容回退：旧 Yahoo 宏观快照与 Alpha Vantage CNH ----
+    legacy_symbols = {
         "^TNX": "us_10y_yield",
+        "^IRX": "us_3m_yield",
         "^VIX": "vix_close",
         "GC=F": "gold_price",
         "CL=F": "crude_oil_price",
-        "HG=F": "copper_price",
         "CNH=X": "cnh_close",
         "DX-Y.NYB": "usd_index",
         "^SOX": "sox_close",
     }
-    frames: list[pl.DataFrame] = []
     if not yfinance_macro.is_empty():
-        for symbol, target in yf_symbols.items():
+        for symbol, target in legacy_symbols.items():
             sub = yfinance_macro.filter(pl.col("symbol") == symbol)
             if sub.is_empty():
                 continue
-            series = _clean_close(sub)
-            if series.is_empty():
+            if target in source_series:
+                if target in {"gold_price", "crude_oil_price"} and "close" in sub.columns:
+                    fallback = _clean_close(sub).rename({"close": target})
+                    source_series[target] = _merge_primary_fallback_series(
+                        source_series[target], fallback, target
+                    )
                 continue
-            frames.append(series.rename({"close": target}))
+            series = _clean_close(sub)
+            if not series.is_empty():
+                source_series[target] = series.rename({"close": target})
+
+    # CNH remains supplied by Alpha Vantage and is kept separate from FRED.
+    if "cnh_close" not in source_series and not yfinance_macro.is_empty():
+        sub = yfinance_macro.filter(pl.col("symbol") == "CNH=X")
+        if not sub.is_empty():
+            series = _clean_close(sub)
+            if not series.is_empty():
+                source_series["cnh_close"] = series.rename({"close": "cnh_close"})
+
+    frames = list(source_series.values())
     yf_frame = frames[0] if frames else pl.DataFrame()
     for frame in frames[1:]:
         yf_frame = yf_frame.join(frame, on="trade_date", how="full", coalesce=True).sort(
             "trade_date"
         )
 
-    # ---- FRED：利差、PMI、OECD 领先指标、耐用品订单与出货 ----
-    fred_symbols = {
+    # ---- FRED：利差、OECD 领先指标、耐用品订单与出货 ----
+    fred_context_symbols = {
         "T10Y2Y": "us_yield_curve_10y_2y",
         "OECDLOLITOAASTSAM": "oecd_cli",
         "DGORDER": "us_durable_goods_orders",
@@ -150,7 +251,7 @@ def build_global_macro_daily_frame(
     }
     fred_frames: list[pl.DataFrame] = []
     if not fred_macro.is_empty():
-        for symbol, target in fred_symbols.items():
+        for symbol, target in fred_context_symbols.items():
             sub = fred_macro.filter(pl.col("symbol") == symbol)
             if sub.is_empty():
                 continue
@@ -201,6 +302,9 @@ def build_global_macro_daily_frame(
         return empty_global_macro()
 
     merged = merged.sort("trade_date")
+    # LiXinger 铜价可能存在交易日缺口：只允许沿用最近已公布的观测，
+    # 不能把未来日期的铜价回填到过去；日频金价据此形成无前视铜金比。
+    merged = _asof_fill_series(merged, "copper_price")
     # 美债 2Y：10Y - 官方利差（T10Y2Y），在合并后的统一日历上计算
     if "us_10y_yield" in merged.columns and "us_yield_curve_10y_2y" in merged.columns:
         merged = merged.with_columns(
