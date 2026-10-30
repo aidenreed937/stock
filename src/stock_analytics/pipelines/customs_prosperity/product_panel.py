@@ -1,6 +1,9 @@
 """商品级（product_key × unit_segment 粒度）出口量价拐点面板。
 
 口径来自 METHODOLOGY_FINAL §2.3（拐点/二阶导）、§5（量价伪影）与 §6.5（桥接强制规则）：
+- 研究口径只消费 GACC 官方数据（source=GACC，2018-01 起）；底层
+  customs_trade_gacc.parquet 为纯 GACC（2026-10 起不再驻留 UN 桥接行，UN 数据见
+  customs_trade.parquet）；research_sources 过滤保留为防御性；
 - 单位归一并按 catalog 定义拆段（混物理单位产品拆成独立子序列）；
 - 段级可加总判定（复用 fetcher ``volume_price`` 工具，product_col 换为 seg_key）；
 - 桥接校验：L2 组合码行披露保留（不剔除）、L3 归属断言（parent_code == L2 码）；
@@ -15,7 +18,10 @@ from pathlib import Path
 
 import polars as pl
 
-from stock_analytics.pipelines.customs_prosperity.config import PRODUCT_PANEL_FILE
+from stock_analytics.pipelines.customs_prosperity.config import (
+    PRODUCT_PANEL_FILE,
+    RESEARCH_SOURCES,
+)
 from stock_data.catalog import DataCatalog
 from stock_data.catalog.sw_industry_golden import load_sw_2021_industry_dimension
 from stock_data.core.runtime import DataRuntimeContext
@@ -25,8 +31,8 @@ from stock_data.fetcher.industry.customs.transforms.volume_price import (
     normalize_quantity_unit,
 )
 
-DEFAULT_INPUT = Path("data/curated/industry/customs_trade.parquet")
-DEFAULT_CATALOG = Path("config/data/customs/hs_codes_catalog.csv")
+DEFAULT_INPUT = Path("data/curated/industry/customs_trade_gacc.parquet")
+DEFAULT_CATALOG = Path("config/data/customs/good_h8_codes.csv")
 DEFAULT_OUTPUT = Path("data/analytics/industry") / PRODUCT_PANEL_FILE
 
 UNMAPPED_SEG = "UNMAPPED"  # 不在 catalog 的 hs 码段（如 pcb 85340000 残行）
@@ -216,14 +222,16 @@ def build_product_panel(
     *,
     storage_dir: Path | str = "data",
     validate_bridge_flag: bool = True,
+    sources: tuple[str, ...] = RESEARCH_SOURCES,
 ) -> pl.DataFrame:
     """构建商品级（product_key × unit_segment）出口量价拐点面板。
 
     Args:
-        customs_trade: 海关黄金事实表（``customs_trade.parquet``）。
+        customs_trade: 海关黄金事实表（``customs_trade_gacc.parquet``）。
         catalog_path: hs 码 catalog 路径（拆段定义单位）。
         storage_dir: 数据根目录（L3 归属校验维度表读取）。
         validate_bridge_flag: 是否执行桥接校验（组合码披露 + L3 归属断言）。
+        sources: 消费的 source 白名单；默认仅 GACC 官方数据。
 
     Returns:
         段级拐点面板（seg_key/product_key/unit_segment + 三 yoy + 驱动 + 拐点 + 二阶导）。
@@ -231,6 +239,7 @@ def build_product_panel(
     exp = customs_trade.filter(
         pl.col("trade_direction") == "export",
         pl.col("hs_level") == "8",
+        pl.col("source").is_in(sources),
     )
 
     if validate_bridge_flag:
@@ -244,7 +253,7 @@ def build_product_panel(
     # 段级可加总判定（product_col 换为 (product_key, unit_segment) 组合键）
     exp = flag_volume_aggregable(exp, product_col="seg_key")
 
-    # 完整月序（2016-01 ~ 末月）
+    # 完整月序（数据起点 ~ 末月，GACC 段为 2018-01 起）
     d_series = exp.select(pl.col("report_month").str.to_date("%Y-%m").alias("d")).get_column("d")
     all_months = (
         pl.date_range(d_series.min(), d_series.max(), "1mo", eager=True)  # type: ignore[arg-type]

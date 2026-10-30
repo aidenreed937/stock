@@ -7,8 +7,10 @@ import hashlib
 import json
 import logging
 import math
+from collections import defaultdict
 from dataclasses import dataclass, field, replace
 from pathlib import Path
+from statistics import median
 from typing import Any
 
 import polars as pl
@@ -20,6 +22,14 @@ from stock_data.fetcher.industry.customs.parsers.catalog import (
 )
 
 logger = logging.getLogger(__name__)
+
+# 单位错位行检测阈值（2026-10 修复 85042100 变压器数量污染后定稿，实证见 04 §8）：
+# Comtrade 部分国家按错误单位申报（如把数量放大 10-100 倍），特征为"数量巨大 × 金额微小"。
+# 规则只作用于 u（件/台）单位行，且该 hs8 码全周期 ASP 中位数 ≥ 下限（排除服装等真实低价商品）。
+_UNIT_SHIFT_QTY_MIN = 10_000.0  # 单行数量下限（低于此不判定，避免误伤小额真实交易）
+_UNIT_SHIFT_ASP_MEDIAN_MIN = 500.0  # 该 hs8 码 u 单位 ASP 中位数下限（$）
+_UNIT_SHIFT_ASP_RATIO = 100.0  # 行 ASP < 中位数 / 该比值 = 单位错位
+_UNIT_SHIFT_MIN_SAMPLES = 3  # 该码参与中位数计算的样本下限
 
 
 @dataclass
@@ -117,6 +127,74 @@ def _load_snapshot_items(snapshot_path: Path) -> list[dict[str, Any]]:
     return items if isinstance(items, list) else []
 
 
+def _unit_asp_medians_by_code(
+    snapshots: list[tuple[Path, dict[str, Any]]],
+) -> dict[str, float]:
+    """第一遍：统计每个 hs8 码 u 单位行的 ASP（金额/数量）中位数。
+
+    用于单位错位检测：该码正常 ASP 中位数越低（如服装 $0.5/件），越不能凭低单价判错位；
+    只有中位数 ≥ ``_UNIT_SHIFT_ASP_MEDIAN_MIN`` 的高单价商品才适用。
+    """
+    samples: defaultdict[str, list[float]] = defaultdict(list)
+    for snapshot_path, _entry in snapshots:
+        try:
+            items = _load_snapshot_items(snapshot_path)
+        except (
+            OSError,
+            gzip.BadGzipFile,
+            json.JSONDecodeError,
+            TypeError,
+            UnicodeDecodeError,
+            pl.exceptions.PolarsError,
+        ) as exc:
+            logger.warning("解析 Tariffline RAW 失败 [%s]: %s", snapshot_path, exc)
+            continue
+        for raw_item in items:
+            if not isinstance(raw_item, dict):
+                continue
+            code = _normalize_code(raw_item.get("cmdCode"))
+            if len(code) != 8:
+                continue
+            if str(raw_item.get("qtyUnitAbbr") or "").strip() != "u":
+                continue
+            value = _parse_float(raw_item.get("primaryValue"))
+            quantity = _quantity_value(raw_item)
+            if value is None or quantity is None or quantity <= 0:
+                continue
+            samples[code].append(value / quantity)
+
+    medians: dict[str, float] = {}
+    for code, values in samples.items():
+        if len(values) < _UNIT_SHIFT_MIN_SAMPLES:
+            continue
+        medians[code] = float(median(values))
+    return medians
+
+
+def _is_unit_shift_row(
+    raw_item: dict[str, Any],
+    code: str,
+    asp_medians: dict[str, float],
+    value: float,
+    quantity: float,
+) -> bool:
+    """判定单行是否为单位错位申报（数量巨大 × ASP 远低于该码中位数）。
+
+    仅作用于 u 单位、高单价（中位数 ≥ $500）商品，且需同码样本充足。
+    命中行数量不参与聚合，金额照常保留。
+    """
+    if len(code) != 8:
+        return False
+    if str(raw_item.get("qtyUnitAbbr") or "").strip() != "u":
+        return False
+    if quantity < _UNIT_SHIFT_QTY_MIN:
+        return False
+    median_asp = asp_medians.get(code)
+    if median_asp is None or median_asp < _UNIT_SHIFT_ASP_MEDIAN_MIN:
+        return False
+    return value / quantity < median_asp / _UNIT_SHIFT_ASP_RATIO
+
+
 def load_tariffline_records_with_stats(
     raw_dir: Path | str,
     catalog_path: Path | str,
@@ -125,9 +203,13 @@ def load_tariffline_records_with_stats(
     root = Path(raw_dir)
     catalog_map = load_hs_catalog(catalog_path)
     snapshots = _iter_manifest_snapshots(root)
+    # 第一遍：统计各 hs8 码 u 单位 ASP 中位数（单位错位检测基准）
+    asp_medians = _unit_asp_medians_by_code(snapshots)
     aggregates: dict[tuple[str, str, str], _RawAggregate] = {}
     seen_raw_items: set[str] = set()
     duplicate_rows = 0
+    unit_shift_rows = 0
+    unit_shift_volume = 0.0
     raw_rows = 0
 
     for snapshot_path, entry in snapshots:
@@ -176,6 +258,11 @@ def load_tariffline_records_with_stats(
             quantity = _quantity_value(raw_item)
             if quantity is None:
                 aggregate.quantity_complete = False
+            elif _is_unit_shift_row(raw_item, code, asp_medians, value, quantity):
+                # 单位错位申报：数量巨大 × ASP 远低于该码中位数（如 85042100 变压器
+                # 印度/土耳其/孟加拉按错误单位申报）。数量剔除，金额保留。
+                unit_shift_rows += 1
+                unit_shift_volume += quantity
             else:
                 aggregate.quantity += quantity
             aggregate.units.add(str(raw_item.get("qtyUnitAbbr") or "").strip())
@@ -184,6 +271,12 @@ def load_tariffline_records_with_stats(
 
     if duplicate_rows:
         logger.info("Tariffline RAW 完全重复明细已跳过: %d 行", duplicate_rows)
+    if unit_shift_rows:
+        logger.info(
+            "Tariffline RAW 单位错位行数量已剔除: %d 行 / %.0f 单位（金额保留）",
+            unit_shift_rows,
+            unit_shift_volume,
+        )
 
     aggregated_items: list[dict[str, Any]] = []
     provenance: dict[tuple[str, str, str], tuple[str, str]] = {}
@@ -192,7 +285,7 @@ def load_tariffline_records_with_stats(
         item.update({"cmdCode": code, "period": period, "flowCode": flow})
         item["primaryValue"] = aggregate.value
         units = {unit for unit in aggregate.units if unit}
-        if aggregate.quantity_complete and len(aggregate.units) <= 1:
+        if aggregate.quantity_complete and aggregate.quantity > 0 and len(aggregate.units) <= 1:
             item["qty"] = aggregate.quantity
             item["netWgt"] = None
             if units:
@@ -222,7 +315,7 @@ def load_tariffline_records_with_stats(
 
 def load_tariffline_records(
     raw_dir: Path | str,
-    catalog_path: Path | str = "config/data/customs/hs_codes_catalog.csv",
+    catalog_path: Path | str = "config/data/customs/good_h8_codes.csv",
 ) -> list[CustomsTradeRecord]:
     """加载 Tariffline HS8 明细。"""
     records, _, _ = load_tariffline_records_with_stats(raw_dir, catalog_path)

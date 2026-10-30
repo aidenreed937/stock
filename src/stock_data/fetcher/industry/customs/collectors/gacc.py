@@ -29,10 +29,6 @@ from stock_data.fetcher.industry.customs.models import (
 )
 from stock_data.fetcher.industry.customs.parsers.catalog import load_hs_catalog
 from stock_data.fetcher.industry.customs.parsers.gacc_catalog import derive_gacc_code_catalog
-from stock_data.fetcher.industry.customs.paths import (
-    DEFAULT_GACC_CATALOG_PATH,
-    DEFAULT_GACC_CODES_CSV_PATH,
-)
 from stock_data.fetcher.industry.customs.transforms.customs_trade import (
     records_to_customs_trade_frame,
 )
@@ -47,9 +43,7 @@ class GaccCollector:
     def __init__(
         self,
         raw_dir: Path | str = "data/raw/industry/customs/gacc",
-        catalog_path: Path | str = "config/data/customs/hs_codes_catalog.csv",
-        gacc_catalog_path: Path | str = DEFAULT_GACC_CATALOG_PATH,
-        gacc_codes_path: Path | str = DEFAULT_GACC_CODES_CSV_PATH,
+        catalog_path: Path | str = "config/data/customs/good_h8_codes.csv",
         *,
         base_url: str | None = None,
     ) -> None:
@@ -57,8 +51,6 @@ class GaccCollector:
         self.raw_store = GaccRawStore(_resolve_gacc_raw_dir(self.raw_root))
         self.catalog_path = Path(catalog_path)
         self.catalog_map = load_hs_catalog(self.catalog_path)
-        self.gacc_catalog_path = Path(gacc_catalog_path)
-        self.gacc_codes_path = Path(gacc_codes_path)
         gacc_code_map = derive_gacc_code_catalog(self.catalog_path)
         self.gacc_code_map: dict[str, dict[str, str]] | None = gacc_code_map or None
         self.base_url = (base_url or GACC_BASE_URL).rstrip("/")

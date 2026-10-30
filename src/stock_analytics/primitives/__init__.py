@@ -46,6 +46,8 @@ from stock_analytics.primitives.liquidity import (
     calculate_volume_surprise,
 )
 from stock_analytics.primitives.macro import (
+    add_dff_availability_date,
+    calculate_dff_change_6m,
     calculate_macro_spread,
     calculate_securitization_ratio,
     calculate_yield_curve_slope,
@@ -97,11 +99,13 @@ __all__ = [
     "DEFAULT_RSI_WINDOW",
     "DEFAULT_SMA_WINDOW",
     "YUAN_PER_YI",
+    "add_dff_availability_date",
     "add_forward_returns",
     "black_scholes_price",
     "calculate_amihud_illiquidity",
     "calculate_atr",
     "calculate_bollinger_bandwidth",
+    "calculate_dff_change_6m",
     "calculate_distance_to_high",
     "calculate_dividend_spread",
     "calculate_ema",

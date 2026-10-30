@@ -1,6 +1,6 @@
 """海关贸易 CLI 命令行管理入口单元测试。"""
 
-from unittest.mock import MagicMock, patch
+from unittest.mock import patch
 
 from stock_cli.customs import main
 
@@ -11,36 +11,66 @@ def test_customs_cli_catalog() -> None:
     assert exit_code == 0
 
 
-def test_customs_cli_backfill() -> None:
-    """测试 backfill 子命令参数解析与委托调用。"""
+def test_customs_cli_tariffline() -> None:
+    """测试 Tariffline 原始采集命令的参数转换。"""
     with patch("stock_cli.customs.ComtradeCollector") as mock_cls:
-        mock_instance = MagicMock()
-        mock_instance.backfill.return_value = 840
-        mock_cls.return_value = mock_instance
+        mock_instance = mock_cls.return_value
+        mock_instance.fetch_tariffline_api.return_value = [{"cmdCode": "25041010"}]
 
-        exit_code = main(["backfill", "--start-year", "2023", "--end-year", "2024", "--force"])
+        exit_code = main(
+            [
+                "tariffline",
+                "--period",
+                "2024-01,2024-02",
+                "--cmd-codes",
+                "250410,300490",
+                "--flow",
+                "both",
+            ]
+        )
         assert exit_code == 0
-        mock_instance.backfill.assert_called_once_with(
-            start_year=2023,
-            end_year=2024,
-            force=True,
-            curated_path="data/curated/industry/customs_trade.parquet",
+        mock_instance.fetch_tariffline_api.assert_called_once_with(
+            period="202401,202402",
+            flow_code="M,X",
+            cmd_codes=["250410", "300490"],
+            max_records=100000,
         )
 
 
-def test_customs_cli_sync() -> None:
-    """测试 sync 子命令增量拉取与落盘。"""
+def test_customs_cli_gacc_import() -> None:
+    """测试 GACC 人工导出 CSV 导入命令将参数委托给采集器。"""
     with (
-        patch("stock_cli.customs.ComtradeCollector") as mock_cls,
+        patch("stock_cli.customs.GaccCollector") as mock_cls,
         patch("stock_cli.customs.records_to_customs_trade_frame"),
         patch("stock_cli.customs.save_curated_fact") as mock_save,
     ):
-        mock_instance = MagicMock()
-        mock_instance.fetch_api.return_value = [{"cmdCode": "85042100"}]
-        mock_instance.collect.return_value = [MagicMock()]
-        mock_cls.return_value = mock_instance
-        mock_save.return_value = 100
+        mock_instance = mock_cls.return_value
+        mock_instance.import_csv.return_value = type(
+            "Collection",
+            (),
+            {"records": [object()], "status": "SUCCESS", "errors": ()},
+        )()
+        mock_save.return_value = 1
 
-        exit_code = main(["sync", "-p", "2024-12"])
+        exit_code = main(
+            [
+                "gacc-import",
+                "--file",
+                "manual.csv",
+                "--period",
+                "2025-01",
+                "--flow",
+                "export",
+                "--force",
+            ]
+        )
+
         assert exit_code == 0
-        mock_instance.fetch_api.assert_called_once_with(period="202412")
+        mock_instance.import_csv.assert_called_once_with(
+            "manual.csv",
+            start_month="2025-01",
+            end_month=None,
+            flow_type="export",
+            currency="USD",
+            force=True,
+        )

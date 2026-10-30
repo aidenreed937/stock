@@ -70,6 +70,7 @@ def _filter_defense_candidates(
     crowd_gate: bool = False,
     crowd_max: float = 85.0,
     quadrant_gate: bool = False,
+    scissors_gate: bool = False,
 ) -> pl.DataFrame:
     """执行估值、量价齐升、方向、资本开支、拥挤度与供需象限防守层过滤。
 
@@ -103,6 +104,15 @@ def _filter_defense_candidates(
         )
     if quadrant_gate and "quadrant" in res.columns:
         res = res.filter(pl.col("quadrant").is_null() | (pl.col("quadrant") != "需求低|供给扩张"))
+    if scissors_gate and "scissors_score" in res.columns and "supply_score" in res.columns:
+        # 供需剪刀差门：仅在真实供给腿（supply_score 非 50）下生效——
+        # 供给扩张强于需求（scissors<0，如 SEAJ 设备出货 3 年极值）的行业剔除；
+        # 无供给信号的行业放行（scissors = demand − 50 无独立信息）。
+        res = res.filter(
+            pl.col("supply_score").is_null()
+            | (pl.col("supply_score") == 50.0)
+            | (pl.col("scissors_score") >= 0.0)
+        )
     return res
 
 
@@ -126,8 +136,12 @@ class IndustryL2DirectionStrategy(BaseStrategy):
         crowd_max: float = 85.0,
         quadrant_gate: bool = False,
         quadrant_bonus: bool = False,
+        scissors_gate: bool = False,
         panic_scale: float = 0.0,
         panic_thr: float = 65.0,
+        hike_gate: bool = False,
+        hike_scale: float = 0.5,
+        hike_thr: float = 0.25,
         benchmark_symbol: str | None = None,
         **kwargs: Any,
     ) -> None:
@@ -145,8 +159,12 @@ class IndustryL2DirectionStrategy(BaseStrategy):
         self.crowd_max = float(crowd_max)
         self.quadrant_gate = bool(quadrant_gate)
         self.quadrant_bonus = bool(quadrant_bonus)
+        self.scissors_gate = bool(scissors_gate)
         self.panic_scale = float(panic_scale)
         self.panic_thr = float(panic_thr)
+        self.hike_gate = bool(hike_gate)
+        self.hike_scale = float(hike_scale)
+        self.hike_thr = float(hike_thr)
         self.benchmark_symbol = benchmark_symbol or "000985.CSI"
         self.current_weights: dict[str, float] = {}
         self._bar_count = 0
@@ -161,6 +179,12 @@ class IndustryL2DirectionStrategy(BaseStrategy):
         if "panic_index" in latest.columns and latest["panic_index"][0] is not None:
             return float(latest["panic_index"][0])
         return 50.0
+
+    def _ffr_chg_6m(self, latest: pl.DataFrame) -> float:
+        """当前截面 FFR 6 个月绝对变化（pp，加息周期特征；缺失回退 0 不触发）。"""
+        if "ffr_chg_6m" in latest.columns and latest["ffr_chg_6m"][0] is not None:
+            return float(latest["ffr_chg_6m"][0])
+        return 0.0
 
     def on_bar(self, data: pl.DataFrame) -> list[Signal]:
         """处理最新截面数据并生成调仓信号。"""
@@ -178,24 +202,31 @@ class IndustryL2DirectionStrategy(BaseStrategy):
             return []
 
         ts = _coerce_timestamp(latest_date)
-        if (
-            0.0 < self.panic_scale < 1.0
-            and self._panic_index(latest) > self.panic_thr
-            and self.current_weights
-        ):
-            panic_weights = {code: w * self.panic_scale for code, w in self.current_weights.items()}
-            panic_signals = [
+        # 组合宏观防守门：恐慌降仓（panic_index）与加息周期降仓（FFR 6m 变化）任一触发即降仓；
+        # 多个门同时触发取更保守的 scale（min），与既有 panic 门语义一致。
+        scales: list[float] = []
+        reasons: list[str] = []
+        if 0.0 < self.panic_scale < 1.0 and self._panic_index(latest) > self.panic_thr:
+            scales.append(self.panic_scale)
+            reasons.append(f"宏观恐慌降仓 (panic>{self.panic_thr:.0f})")
+        if self.hike_gate and self._ffr_chg_6m(latest) >= self.hike_thr:
+            scales.append(self.hike_scale)
+            reasons.append(f"加息周期降仓 (ffr6m>={self.hike_thr:.2f}pp)")
+        if scales and self.current_weights:
+            scale = min(scales)
+            reduced_weights = {code: w * scale for code, w in self.current_weights.items()}
+            scaled_signals = [
                 Signal(
                     symbol=code,
                     direction=SignalDirection.BUY,
                     target_weight=weight,
-                    reason=f"宏观恐慌降仓 (panic>{self.panic_thr:.0f})",
+                    reason="；".join(reasons),
                     timestamp=ts,
                 )
-                for code, weight in panic_weights.items()
+                for code, weight in reduced_weights.items()
             ]
-            self.current_weights = panic_weights
-            return panic_signals
+            self.current_weights = reduced_weights
+            return scaled_signals
 
         candidates = _filter_defense_candidates(
             latest,
@@ -207,6 +238,7 @@ class IndustryL2DirectionStrategy(BaseStrategy):
             crowd_gate=self.crowd_gate,
             crowd_max=self.crowd_max,
             quadrant_gate=self.quadrant_gate,
+            scissors_gate=self.scissors_gate,
         )
 
         ranked = (

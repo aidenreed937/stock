@@ -20,6 +20,9 @@ logger = logging.getLogger(__name__)
 
 HS_CATALOG_HIERARCHY_COLUMNS = ("hs_level", "hs_parent_code")
 
+# 税号表覆盖列（空 = 继承产品主表默认值）；与 scripts/split_catalog.py 同口径。
+OVERRIDE_FIELDS = ("product_name", "description", "target_l3_codes", "target_l3_names")
+
 
 def _parse_float(value: Any) -> float | None:
     if value is None:
@@ -63,18 +66,71 @@ def normalize_hs_catalog_row(row: dict[str, Any]) -> dict[str, str] | None:
     return catalog_row
 
 
-def load_hs_catalog_rows(catalog_path: Path | str) -> list[dict[str, str]]:
-    """读取统一 HS 主表，兼容旧文件并规范为带层级信息的行。"""
+def _load_keyed_csv(path: Path) -> dict[str, dict[str, str]]:
+    """读取 CSV 并按首列（主键）索引，返回 {主键: 行 dict}。"""
+    out: dict[str, dict[str, str]] = {}
+    with path.open("r", encoding="utf-8-sig", newline="") as f:
+        reader = csv.DictReader(f)
+        if not reader.fieldnames:
+            return out
+        key_col = reader.fieldnames[0]
+        for raw in reader:
+            row = {k: (v or "").strip() for k, v in raw.items() if k}
+            key = row.get(key_col, "")
+            if key:
+                out[key] = row
+    return out
+
+
+def load_hs_catalog_rows(
+    catalog_path: Path | str,
+    products_path: Path | str | None = None,
+    categories_path: Path | str | None = None,
+) -> list[dict[str, str]]:
+    """读取统一 HS 主表（税号表），按约定 join 产品主表/分类枚举还原宽行。
+
+    新布局：税号表同目录下 ``good_products.csv``（产品主表）与 ``categories.csv``
+    （分类枚举）存在时，按 ``product_key`` / ``category_key`` join；覆盖列
+    （product_name/description/target_l3_*）税号行非空优先，空则继承产品主表默认值。
+    两个辅助表都不存在时按旧宽表直接读取（向后兼容）。
+    """
     p = Path(catalog_path)
     if not p.exists():
         logger.warning("未找到海关税目对照字典: %s", p)
         return []
 
+    products_p = Path(products_path) if products_path else p.parent / "good_products.csv"
+    categories_p = Path(categories_path) if categories_path else p.parent / "categories.csv"
+    products_by_key = _load_keyed_csv(products_p) if products_p.exists() else {}
+    categories_by_key = _load_keyed_csv(categories_p) if categories_p.exists() else {}
+
     rows: list[dict[str, str]] = []
     by_code: dict[str, dict[str, str]] = {}
     with p.open("r", encoding="utf-8-sig", newline="") as f:
         for raw_row in csv.DictReader(f):
-            catalog_row = normalize_hs_catalog_row(raw_row)
+            row = {k: (v or "").strip() for k, v in raw_row.items() if k}
+            if products_by_key:
+                prod = products_by_key.get(row.get("product_key", ""))
+                if prod is None:
+                    raise ValueError(
+                        f"税号行引用了未知 product_key: {row.get('product_key')!r}"
+                        f" (hs_code={row.get('hs_code')!r})"
+                    )
+                merged = dict(prod)
+                for field in ("hs_code", "hs_parent_code", "hs_level", "hs_name", "quantity_unit"):
+                    merged[field] = row.get(field, "")
+                merged["product_key"] = row.get("product_key", merged.get("product_key", ""))
+                for ov in OVERRIDE_FIELDS:
+                    if row.get(ov):
+                        merged[ov] = row[ov]
+                if categories_by_key:
+                    cat = categories_by_key.get(merged.get("category_key", ""), {})
+                    merged["category_name"] = cat.get("category_name") or merged.get(
+                        "category_name", ""
+                    )
+                catalog_row = normalize_hs_catalog_row(merged)
+            else:
+                catalog_row = normalize_hs_catalog_row(row)
             if catalog_row is None:
                 continue
             code = catalog_row["hs_code"]
@@ -119,7 +175,12 @@ def _catalog_info_for_product_key(
 
 
 def load_hs_catalog(catalog_path: Path | str) -> dict[str, dict[str, str]]:
-    """加载 HS 主表，按完整码与显式六位父码建立索引。"""
+    """加载 HS 主表，按完整码建立索引，六位前缀由 8 位子行合成兜底。
+
+    主表已全面 8 位码化（不再维护显式 6 位父行），6 位前缀回退统一取该
+    前缀下 hs_code 最小的 8 位子行；跨 product_key 的混合品目（如 851762）
+    因此回退到第一个子行所属产品，仅用于 Comtrade 6 位历史段兜底。
+    """
     rows = load_hs_catalog_rows(catalog_path)
     cat_map = {row["hs_code"]: row for row in rows}
     parent_rows: dict[str, dict[str, str]] = {}
@@ -134,12 +195,6 @@ def load_hs_catalog(catalog_path: Path | str) -> dict[str, dict[str, str]]:
     for parent, children in children_by_parent.items():
         if parent in parent_rows:
             continue
-        product_keys = {row.get("product_key", "") for row in children}
-        if len(product_keys) > 1:
-            raise ValueError(
-                f"HS6 父码 {parent} 下存在多个 product_key，必须维护一行明确的 6 位父级映射: "
-                f"{sorted(product_keys)}"
-            )
         parent_rows[parent] = sorted(children, key=lambda row: row["hs_code"])[0]
 
     cat_map.update(parent_rows)

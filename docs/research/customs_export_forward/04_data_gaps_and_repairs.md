@@ -9,7 +9,7 @@
 
 ### 修复内容
 
-**① catalog 源头修复**（`config/data/customs/hs_codes_catalog.csv`，两轮共 17 行）：
+**① catalog 源头修复**（`config/data/customs/good_h8_codes.csv`，两轮共 17 行）：
 
 **第一轮：无效代码修复（3 处/5 行）**
 
@@ -90,30 +90,22 @@ BEV 801881→801095、汽车玻璃/轮毂 801883→801093、光伏组件 801732�
    年度快照，无 2025/2026。
 2. **2025+ 数据 100% 来自 GACC 回放**：`customs_trade.parquet` 中 2025+ 共 1499 行，
    全部 8 位码、41 个产品，与 `customs_trade_gacc.parquet` 逐行交集 1499/1499（同源）。
-3. **`hs_codes_catalog.csv` 是唯一维护源**：`gacc_code_catalog.csv`、
-   `gacc_hs_codes.csv` 和 `gacc_hs_codes.txt` 均由主表中的 8 位码派生；GACC raw 导出文件
-   只是按查询码下载的事实结果，不反向写回目录。历史上 2025 年初的 80 个 GACC 码曾由
-   人工圈定，因而有 17 个实际末级码只存在于 GACC 目录、没有进入主表，形成漏数风险。
-   现在这些末级码已补入主表，派生结果保持 101 个可查询码。
+3. **`good_h8_codes.csv` 是唯一维护源**：GACC 采集运行时按主表内存派生
+   （`derive_gacc_code_catalog()`），不落盘派生文件；GACC raw 导出文件只是按查询码下载
+   的事实结果，不反向写回目录。历史上 2025 年初的 80 个 GACC 码曾由人工圈定，因而有
+   17 个实际末级码只存在于 GACC 目录、没有进入主表，形成漏数风险。现在这些末级码已补入
+   主表。
 4. **65 个产品无 2025+ 数据源**（钢铁/有色/纺服/家居/消费电子/化肥/煤炭/焦炭/成品油/
    部分化工医药），映射到的 40 个 L3 出口序列冻结在 2024-12（品牌消费电子/面板/
    成品家居/油品石化贸易/特钢Ⅲ/氮肥/焦炭Ⅲ/铜等）。
 
-### 解冻流程（税号确认人工完成，查询清单手工维护）
+### 解冻流程（税号确认人工完成，主表唯一信任源）
 1. 按 2025 现行税则确认产品的 8 位现行码（警惕 HS2017→2022 拆并，如疫苗
    300220→300241；HEV 870370 在 HS2025 有合并风险，需复核）；
-2. 只在 `config/data/customs/hs_codes_catalog.csv` 新增或修正主表行；若编码对
-   Comtrade 是历史码、但对 GACC 当前税则有效，增加 `gacc_active=1`；
-3. **全量查询清单手工维护**（2026-09-08 定稿）：GACC 官网查询只认
-   `config/data/customs/gacc_hs_codes_tariffline_candidates.txt`（645 码）。
-   新码查证后直接 append 进该文件；**勿重跑
-   `scripts/extract_tariffline_hs8_candidates.py`**（会全量覆盖，仅作初始生成器）；
-   `make rebuild-customs-catalog APPLY=1` 重建的
-   `gacc_code_catalog.csv` + `gacc_hs_codes.csv` + `gacc_hs_codes.txt`
-   仅为 catalog 派生物/开发对照，**不作为官网查询清单**；
-4. 按 candidates 645 码清单在海关官网人工查询下载 CSV，放入
+2. 只在 `config/data/customs/good_h8_codes.csv` 新增或修正主表行（全 8 位主键）；
+3. 按主表 8 位码在海关官网人工查询下载 CSV，放入
    `data/raw/industry/customs/gacc/export/`；
-5. `gacc_collector` 回放刷新 curated。
+4. `gacc_collector` 回放刷新 curated。
 
 ### 本次实操（2026-09）：80 → 101 码
 - 历史上手动补 13 个码（7 个产品：auto_chassis×5 / hev×3 / phev×1 /
@@ -126,7 +118,7 @@ BEV 801881→801095、汽车玻璃/轮毂 801883→801093、光伏组件 801732�
   如 30022000，`gacc_active=1` 可覆盖）；② 排除"00 补齐写法"（同 6 位前缀在
   主表已有细分码时 XX0000 无效，如 84151000、38089300、85423100）；③ 非 00
   结尾细分码高置信派生，00 结尾无冲突标注"待验证"。**生成链唯一入口**：
-  `hs_codes_catalog.csv`（唯一信任源，含 `gacc_active` 标记）→
+  `good_h8_codes.csv`（唯一信任源，含 `gacc_active` 标记）→
   `write_gacc_code_catalog()` 重建 `gacc_code_catalog.csv` →
   `scripts/extract_gacc_hs_codes.py` 导出 `gacc_hs_codes.csv`/`.txt`；
   （早期一次性脚本 `scripts/sync_gacc_codes.py` 已删除，勿再使用）
@@ -135,6 +127,11 @@ BEV 801881→801095、汽车玻璃/轮毂 801883→801093、光伏组件 801732�
   数据是流程固有人工环节）；
 - GACC 查询码 80 → **101**，产品 41 → 48；`gacc_hs_codes.csv`/`.txt` 已重导出；
 - 解冻后需重刷 `scratch/refresh_catalog_mapping.py`（映射列）才能看到新 L3 关联。
+
+> **2026-09 后更新**：主表已全面 8 位码化（`good_h8_codes.csv` 全 8 位主键），不再生成
+> GACC 派生物与查询清单——`write_gacc_code_catalog()` / `scripts/extract_gacc_hs_codes.py` /
+> `scripts/extract_tariffline_hs8_candidates.py` / `make rebuild-customs-catalog` 已删除，
+> GACC 采集运行时按主表 `derive_gacc_code_catalog()` 内存派生；本节历史实操记录保留原貌。
 
 ## 5. 通信行业覆盖状态（2026-09 核查）
 
@@ -174,7 +171,7 @@ BEV 801881→801095、汽车玻璃/轮毂 801883→801093、光伏组件 801732�
    继承为光模块**——无线耳机、交换机、路由器被算进"光模块出口"，光模块序列被污染，
    并连带污染通信设备/消费电子两个 L2 的行业出口序列与三腿信号。
 
-**修复**（`config/data/customs/hs_codes_catalog.csv`，253 行）：
+**修复**（`config/data/customs/good_h8_codes.csv`，253 行）：
 - 按 HS2022 子目把 `851762` 显式拆分为 **18 个 8 位码**（85176211/12/19 电话交换机、
   21/22/29 光通讯、31~39/92/93/99 网络设备、94 无线耳机）；
 - 保留 **1 个 6 位父行**（`comm_equipment_mixed`）仅作 h6 聚合载体，description 注明
@@ -248,15 +245,16 @@ BEV 801881→801095、汽车玻璃/轮毂 801883→801093、光伏组件 801732�
   （同品目细分不跨行业，补行不改变映射结果）；只有跨行业混品品目（如 851762
   光模块/网络设备/无线耳机）必须显式拆分，此类已在 catalog 维护，若未来出现
   新混品（如 850440 内充电桩变流器与光伏逆变器分家）按 §1 流程拆分即可；
-- **注意**：catalog 8 位码 130 个 vs 主表 642 个 8 位码——主表聚合需"8 位优先、
-  6 位行不叠加"（出口景气面板 h8 桥接集已如此，其他聚合路径需遵守，避免
-  6 位行与 8 位行并存导致 double count）。
+- **注意**：catalog 8 位码 130 个 vs 主表 642 个 8 位码——主表聚合用"8 位精确 +
+  6 位前缀回退"（6 位前缀由 8 位子行合成兜底，其他聚合路径需遵守，避免 double count）。
 
 ## 7. GACC 断点码处置记录（2026-09-08，官网实测完证）
 
+> 注：645 码查询清单已随主表全面 8 位码化不再生成，本节为历史处置记录保留原貌。
+
 ### 7.1 背景
 
-查询清单 `config/data/customs/gacc_hs_codes_tariffline_candidates.txt`（645 码）中，
+历史上的查询清单 `config/data/customs/gacc_hs_codes_tariffline_candidates.txt`（645 码）中，
 73 个码在 GACC 2025/2026 整包导出中**无任何记录**。经税则核验 + 2026-09-08 海关官网
 逐 6 位实测，全部确认为**历史税则码**（改码/品目作废/HS2022 拆分），非采集遗漏。
 完整明细见 `data/analytics/industry/gacc_73_broken_review.csv`（hs_code / product /
@@ -280,7 +278,7 @@ CT 最新月 / 同父级细分 / hs_name / 分类 / 查证结论）。
 | 84621010/90、84622110/90 | 锻压/折弯机床 | 846211/219、846222-229（HS2022 品目拆分） | machine_tool 由 8457 系支撑 ✓ |
 | 94014010/90 | 折叠座椅 | 940141/940149 | seating 由 94016110/90 支撑 ✓ |
 
-### 7.4 处置规则（后续维护沿用）
+### 7.4 处置规则（### 后续维护沿用）
 
 1. **官网查 6 位无编码/无子分类 = 历史码**，先查现行替代码（同品名/同 6 位前缀
    整包现有码，或税则核验），替代码近端有数据即可结案；
@@ -288,3 +286,48 @@ CT 最新月 / 同父级细分 / hs_name / 分类 / 查证结论）。
    不从清单删除；
 3. 新发现 2025+ 现行码 → 查证后 append 进 candidates + catalog 补行（若产品映射缺失）；
 4. 完整处置链：`gacc_73_broken_review.csv` 为证据档，新增断点按此流程补录结论。
+
+## 8. 2026-09-09 catalog 税则切换/漏码修复（公司层 exposure 聚合失真）
+
+### 问题发现
+`customs_company_exposure.parquet` 中 `tio2::product` 月度金额 2024-01 起骤降 99%（3 亿美元
+→ 20-60 万美元），3MMA yoy 出现 -99.9%。黄金表金额始终正常（3-4 亿美元/月）——非真实塌方。
+
+### 根因
+2024 年海关税则调整：钛白粉 32061110 拆分为 32061111/32061119（二氧化钛含量≥80%），
+黄金表 99.2% 出口金额迁到新码；`good_h8_codes.csv` 仍只有 32061110/90 且无 6 位父码
+320611 → 公司层 exposure 管线按 catalog 码集聚合时漏掉新码，金额塌方。
+
+### 全库扫描（黄金表 2024+ 8 位码 vs catalog 8 位码）
+21 个产品存在 catalog 缺失码（按金额占比排序）：pharma_vaccines 100%（缺 30024100）、
+tio2 99.2%、auto_glass 97.4%、refined_products 83.7%、inverter 76.2%、wind_parts 65.7%、
+forklift 54.4%、electrolyte_salt 32.3%、auto_wheel 28.5%、api_heparin 25.8%、polysilicon 23.7%、
+power_tools 21%、cathode_material 12.5%、fuel_cell 12.3%、cathode_precursor 9.7%、
+pharma_chemicals 3.8%、battery_separator 3%、battery_electrolyte 1.6%、excavator 0.7%、
+phev 0.2%、hev 0%。
+（注：有 6 位父码的产品经 `load_catalog_hs_codes` 父码展开仍可聚合，如疫苗/inverter/
+成品油，仅绝对额低估、趋势可信；tio2 无 6 位父码故塌方最重。）
+
+### 修复（catalog 400 → 510 行，+110 个 8 位码 / 29 产品）
+- 新码归属审计：名称与产品一致或与现有同品目定义一致（hev/phev 为税则细分新码，
+  fuel_cell 85078030/battery_electrolyte 382499xx 为宽口径混合品目，跟随现有定义）；
+- 按"税则切换解冻流程"只改 `good_h8_codes.csv` 主表行，append 后重跑
+  `stock_cli.customs_company` + `stock_cli.customs_prosperity`；
+- **维护教训：catalog 必须字符串模式维护**——pandas 数值化会丢 hs_code 前导零
+  （030323→30323），`normalize_hs_catalog_row` 直接报错；改 catalog 用 dtype=str 读写。
+
+### 修复效果（2026-07 报告月）
+- **tio2 恢复真实**：2024+ 金额回到 3.2-4.4 亿美元/月；2024 年 yoy +12~25% → 2025 年回落
+  转负（-27%）→ 2026 年恢复正；最新 yoy +36.1% 量价齐升（修复前为失真 +31% 量驱动）。
+  中核钛白/安纳达 A 强机会基于真实数据成立；惠云钛业顶背离回避不变；
+- **福耀玻璃 auto_glass 信号反转**：修复前 +41.9%（漏码虚高）→ 修复后 **-17.2% 价驱动，
+  评级 D→观望**——福耀出口实际下滑，此前"前瞻"为假象；
+- **api_heparin 露出真实下滑**：-26.4% 双弱（肝素 4 家全部观望）；
+- **补全信号**：forklift +22.5% 量价齐升（安徽合力 B 确认中）、wind_parts +20.1%
+  （广大特材 B、大金重工顶背离）、electrolyte_salt +71.7%（多氟多/天际/永太顶背离回避）、
+  polysilicon +82.6% 价驱动（通威/大全 D）；
+- 评级分布：A71/B40/C68/D78/观望106/回避34（修复前 A71/B42/C73/D79/观望107/回避30）。
+
+### ### 后续维护
+- 税则调整后必须补 8 位码进 catalog（或至少 6 位父码行）并重跑两条 customs 管线；
+- 改 catalog 一律 dtype=str 读写防前导零丢失；修复脚本见 `scratch/`（未入库）。

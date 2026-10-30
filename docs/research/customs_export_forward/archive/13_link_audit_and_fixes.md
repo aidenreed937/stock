@@ -1,7 +1,7 @@
 # 13 技能链路审计：问题清单与修复方案（2026-09 审计）
 
 > 审计对象：`customs-industry-prosperity` 技能全链路——SKILL.md、METHODOLOGY_FINAL.md、
-> 4 个 build 脚本、`hs_codes_catalog.csv`、5 个 parquet 产物、月度报告
+> 4 个 build 脚本、`good_h8_codes.csv`、5 个 parquet 产物、月度报告
 > `../12_forward_watch_2026_07.md` 与 02/04 证据文档。
 >
 > 审计方式：读全脚本与文档 → 实跑 4 个 build 脚本（临时目录，不覆盖现产物，结果与
@@ -74,7 +74,7 @@
 | 违反 | METHODOLOGY §5 明确排除 direction_score（不建、不消费）；报告虽注明"方向分无预测力"，但数据底座列已排除信号易误导 |
 | 修复 | 报告数据底座移除方向分或标注"已排除，仅历史背景" |
 
-### P4-1 桥接唯一源 hs_codes_catalog.csv 未被 git 跟踪 ★仓库级
+### P4-1 桥接唯一源 good_h8_codes.csv 未被 git 跟踪 ★仓库级
 
 | 项 | 内容 |
 | :--- | :--- |
@@ -202,7 +202,7 @@ l2_src = monthly.filter(
    - `850912.SI` 2025-01 起金额 > 0，`850913.SI` 回落（合计不变）；
    - 金额面板 L2 无 `;` 组；量价/观察表 L3 含 850326.SI 且量价非空；
    - 观察表 L2 42 行、L3 73 行、grade 40/42（含厨卫电器披露）；
-3. `git check-ignore config/data/customs/hs_codes_catalog.csv` 不再命中；
+3. `git check-ignore config/data/customs/good_h8_codes.csv` 不再命中；
 4. `make test TEST_PATH=tests/unit/stock_cli/test_customs_cli.py`（GACC 解析改动影响面）。
 
 ---

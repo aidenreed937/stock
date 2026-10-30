@@ -1,6 +1,9 @@
 """L2/L3 行业出口量价分解月度面板（金额/数量/价格三 yoy 分解 + 驱动类型）。
 
 口径来自 METHODOLOGY_FINAL §2.2（四象限驱动）与 §7.5（伪影量价置空）：
+- 研究口径只消费 GACC 官方数据（source=GACC，2018-01 起）；底层
+  customs_trade_gacc.parquet 为纯 GACC（2026-10 起不再驻留 UN 桥接行，UN 数据见
+  customs_trade.parquet）；research_sources 过滤保留为防御性；
 - 单位归一（复用 fetcher ``volume_price`` 工具，不复制口径）；
 - 数量仅"可加总产品"聚合（真混用单位产品数量置空，金额照常）；
 - hydrogen_electrolyzer 伪影（价 +1443%/量 -88%）在行业聚合层量价置空；
@@ -15,13 +18,16 @@ from pathlib import Path
 
 import polars as pl
 
-from stock_analytics.pipelines.customs_prosperity.config import VOLUME_PRICE_FILE
+from stock_analytics.pipelines.customs_prosperity.config import (
+    RESEARCH_SOURCES,
+    VOLUME_PRICE_FILE,
+)
 from stock_data.fetcher.industry.customs.transforms.volume_price import (
     flag_volume_aggregable,
     normalize_quantity_unit,
 )
 
-DEFAULT_INPUT = Path("data/curated/industry/customs_trade.parquet")
+DEFAULT_INPUT = Path("data/curated/industry/customs_trade_gacc.parquet")
 DEFAULT_OUTPUT = Path("data/analytics/industry") / VOLUME_PRICE_FILE
 
 
@@ -30,13 +36,15 @@ def build_volume_price_panel(
     *,
     skip_l2: frozenset[str] = frozenset({"801033.SI;801034.SI"}),
     skip_vp: frozenset[str] = frozenset({"hydrogen_electrolyzer"}),
+    sources: tuple[str, ...] = RESEARCH_SOURCES,
 ) -> pl.DataFrame:
     """构建 L2/L3 行业出口量价分解月度面板。
 
     Args:
-        customs_trade: 海关黄金事实表（``customs_trade.parquet``）。
+        customs_trade: 海关黄金事实表（``customs_trade_gacc.parquet``）。
         skip_l2: L2 聚合跳过的组合码。
         skip_vp: 行业聚合层量价置空的伪影产品（§7.5）。
+        sources: 消费的 source 白名单；默认仅 GACC 官方数据。
 
     Returns:
         L2/L3 合并长表面板（粒度 L2/L3），含 value/volume/price yoy 与驱动类型。
@@ -44,6 +52,7 @@ def build_volume_price_panel(
     exp = customs_trade.filter(
         pl.col("trade_direction") == "export",
         pl.col("hs_level") == "8",
+        pl.col("source").is_in(sources),
     )
 
     # 1. 单位归一 + 产品级可加总判定

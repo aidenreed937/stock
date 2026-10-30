@@ -42,7 +42,9 @@
 
 无前视要点：
 - 按 hs8 码补全完整月序后统一重算（缺月置 null 不填 0，区分真实缺失）；
-- 跨源（Comtrade 2024 → GACC 2025）不做分源分段计算，避免 2025 全年同比缺失；
+- **研究口径只消费 GACC 官方数据（source=GACC，2018-01 起）**；customs_trade_gacc.parquet
+  为纯 GACC（2026-10 清出 UN Comtrade 桥接行，UN 数据见 customs_trade.parquet）；
+  `research_sources: ["GACC"]` 过滤保留为防御性；
 - 数量跨 HS 混用单位（半导体设备/PCB/etc.）置空，不得参与行业聚合。
 
 ### 2.2 驱动类型四象限（当前状态分类）
@@ -64,7 +66,7 @@
   | 底部 | 量先转正、价跌幅收窄 | 前瞻候选池 |
   | 主升 | 量价齐升持续（一阶导水平） | 持有，二阶导定节奏 |
   | **顶部前兆** | **量增速见顶回落 / 量转负** | 减仓观察 |
-  | **最危险组合** | **量回落 × 财报仍加速** | 历史 6m 中位 −7.9%，离场触发 |
+  | **最危险组合** | **量回落 × 财报仍加速** | 历史 6m 中位 −7.9%（全口径实证，GACC 段待重跑），离场触发 |
   | 衰退 | 金额转负 + 量价双弱 | 回避 |
 
 ### 2.4 方向一致率分级（出口→财报方向可预测性）
@@ -154,10 +156,12 @@
 ### 桥接链路（唯一信任源）
 
 ```
-config/data/customs/hs_codes_catalog.csv（400 行 / 109 产品，产品→L1/L2/L3 手工映射唯一源；2026-09-08 catalog 码对齐：277 个 hs8 现行税则细分码，248 个有自身 8 位数据）
+config/data/customs/good_h8_codes.csv（1,074 行 / 154 产品，产品→L1/L2/L3 手工映射唯一源；全 8 位主键）
         │ 入库时写入 curated
         ▼
-data/curated/industry/customs_trade.parquet（target_l1/l2/l3_* 映射列）
+data/curated/industry/customs_trade_gacc.parquet（GACC 纯净黄金表，8 位税号行级 2018-01 起，
+target_l1/l2/l3_* 映射列；catalog 154 产品 / 1,074 税号（108 产品回测池为其中子集）。行业研究统一采用本表；如需 UN hs6 扩展产品
+改回 customs_trade.parquet）
         │ join sw_2021_industry_dimension（index_code ↔ industry_code ↔ parent_code）
         ▼
 行业码（六位 industry_code）统一口径，供财报/panel join
@@ -170,11 +174,11 @@ data/curated/industry/customs_trade.parquet（target_l1/l2/l3_* 映射列）
 | catalog L2 唯一码存在性 | 43 唯一码，**42 存在**；1 个缺失 = 组合码 `801033.SI;801034.SI` | 组合码按多映射处理，不入行业主表 |
 | catalog L3 唯一码存在性 | **73/73 全部存在，0 缺失，0 空值** | L3 桥接健康 |
 | L3 父级归属一致性 | 109 行可校验（curated hs8 出口层，脚本断言口径），**0 不一致** | L3 → L2 层级自洽 |
-| 主表组合码规模 | L2 组合码 786 行 / 2 产品（`hs6_320611`、`tio2` = 钛白粉） | 组合码行在聚合时**必须跳过** |
+| 主表组合码规模 | L2 组合码 2 产品（`hs6_320611`、`tio2` = 钛白粉）；组合码行数随 catalog 更新（当前主表 1,074 行） | 组合码行在聚合时**必须跳过** |
 
 ### 强制规则
 
-1. **映射只在 `hs_codes_catalog.csv` 维护**，raw 不存映射；修复映射只改 catalog +
+1. **映射只在 `good_h8_codes.csv` 维护**，raw 不存映射；修复映射只改 catalog +
    重刷 curated，不追溯 raw。
 2. **指数码 ↔ 行业码桥接一律走 `sw_2021_industry_dimension` 黄金表**
    （`index_code ↔ industry_code ↔ parent_code`），禁止手工名称/代码猜匹配。
@@ -193,7 +197,8 @@ data/curated/industry/customs_trade.parquet（target_l1/l2/l3_* 映射列）
 ## 7. 数据流与实现职责
 
 ```
-raw (UN_Comtrade 2016-2024 + GACC 2025+)  →  customs_trade 黄金表（含产品→L1/L2/L3 映射）
+raw (GACC 全量 8 位税号导出，2018-01 起)  →  customs_trade_gacc 黄金表（含产品→L1/L2/L3 映射；
+      行业研究统一采用本表；如需 UN hs6 扩展产品改回 customs_trade.parquet）
       │ customs_prosperity 管线（uv run python -m stock_cli.customs_prosperity）
       ▼ (金额面板, hs8/L3/L2)                   ▼ (量价分解面板, L2/L3)
    customs_export_prosperity_panel.parquet   customs_l2_volume_price_monthly.parquet
@@ -258,9 +263,10 @@ raw (UN_Comtrade 2016-2024 + GACC 2025+)  →  customs_trade 黄金表（含产�
 
 | 结论 | 证据 |
 | :--- | :--- |
-| 出口领先财报 | 40 行业方向一致率 A ≥0.85 6 个；拐点领先中位 3-13 个月（02 文档） |
-| 量最领先 | 量增速见顶领先股价顶 4-11 个月；量转负领先财报转负 14 个月（11 文档） |
-| 量回落×财报加速 = 最危险 | 6m 中位 −7.9%、>0 38%（11 文档 §7.1 事件研究） |
+| 出口领先财报 | 40 行业方向一致率 A ≥0.85 6 个；拐点领先中位 3-13 个月（02 文档）；**GACC 段重算（2026-10）：50 行业出口金额转正领先营收转正中位 10 个月、83% 先转正** |
+| 量最领先 | 量增速见顶领先股价顶 4-11 个月；量转负领先财报转负 14 个月（11 文档）；**GACC 段重算：量 yoy 领先营收约 3~4 个月（k=-4 峰值 0.250）；股价顶/14 个月待 GACC 段重跑确认** |
+| 价领先净利 | 价 yoy 领先净利 TTM yoy 约 3 个月（40 文档，峰值 +0.295@k=+3）；**GACC 段重算复现 k=+3 中位相关 0.295（48 行业）** |
+| 量回落×财报加速 = 最危险 | 6m 中位 −7.9%、>0 38%（11 文档 §7.1 事件研究，全口径实证；**样本含 Comtrade 桥接段，待 GACC 段重跑确认**） |
 | 三腿 AND 唯一有效（L2） | 2020 后 27 事件超额 +4.33%/66.7%；单腿均无效（06/09 文档） |
 | L3 只作分化观察 | L3 三腿超额 −1.80%（09 文档 §3.6） |
 | 出口持续 → 趋势牛 | 传导链 107 例：持续组 12m +14.5% vs 不持续 +0.6%（10 文档） |

@@ -112,12 +112,7 @@ k>0 = 出口领先财报 k 月，k<0 = 财报领先出口 |k| 月。
 
 ## 附录：复现
 
-```bash
-uv run python scripts/export_finance_lead_lag.py
-uv run python scripts/export_finance_lead_lag.py \
-  --output data/analytics/industry/export_finance_lead_lag.csv
-```
-
-脚本 `scripts/export_finance_lead_lag.py` 一次性输出三个口径（营收累计 / 净利累计 /
-单季营收）× k∈[−3, +12] 的领先-滞后相关矩阵（横截面中位数 + 正占比 + 行业数），
-可选 `--k-min/--k-max/--min-points` 调整扫描范围与样本门槛。
+> 原复现脚本 `scripts/export_finance_lead_lag.py` 依赖已删除的
+> `company_exposure_map.csv`，2026-10 已移除；本文历史结论不变，复现请用
+> 40 号文档的新脚本 `scripts/export_l2_finance_lead_lag.py`（行业 L2 面板 × lixinger
+> TTM 口径，含金额/量/价 × 营收/净利矩阵、横截面、方向一致率与拐点领先）。

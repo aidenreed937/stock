@@ -12,6 +12,7 @@ import re
 from collections.abc import Iterable
 from dataclasses import dataclass
 from datetime import date
+from typing import Any
 
 from bs4 import BeautifulSoup
 
@@ -393,7 +394,7 @@ def derive_quarterly_cumulative(
     return result
 
 
-def _find_section_table(content: str | bytes, marker: str):
+def _find_section_table(content: str | bytes, marker: str) -> Any:
     if isinstance(content, bytes):
         content = content.decode("utf-8", errors="replace")
     soup = BeautifulSoup(content, "html.parser")
@@ -411,7 +412,7 @@ def _find_section_table(content: str | bytes, marker: str):
     raise ValueError(f"DART 章节未找到表格: {marker}")
 
 
-def _table_rows(table) -> list[list[str]]:
+def _table_rows(table: Any) -> list[list[str]]:
     """展开 HTML rowspan/colspan，返回逻辑行。"""
     occupied: dict[tuple[int, int], str] = {}
     result: list[list[str]] = []

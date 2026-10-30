@@ -43,11 +43,11 @@
       "methods": 2
     },
     "src/stock_analytics/pipelines/tio2/projections.py::CompanyProjectionEngine": {
-      "lines": 1555,
+      "lines": 1558,
       "methods": 24
     },
     "src/stock_analytics/pipelines/tio2/quarterly.py::QuarterlyProjectionEngine": {
-      "lines": 694,
+      "lines": 696,
       "methods": 14
     },
     "src/stock_data/fetcher/alphavantage/client.py::AlphaVantageClient": {
@@ -99,7 +99,7 @@
       "methods": 13
     },
     "src/stock_data/fetcher/industry/machinery/collector.py::MachineryCollector": {
-      "lines": 224,
+      "lines": 228,
       "methods": 4
     },
     "src/stock_data/fetcher/industry/power/paths.py::PowerRawPaths": {
@@ -119,7 +119,7 @@
       "methods": 14
     },
     "src/stock_data/fetcher/industry/semiconductor/collectors/korea_memory_dart.py::KoreaMemoryDartCollector": {
-      "lines": 642,
+      "lines": 644,
       "methods": 16
     },
     "src/stock_data/fetcher/industry/semiconductor/collectors/sales.py::SemiconductorCollector": {
@@ -244,13 +244,13 @@
       "lines": 455
     },
     "src/stock_analytics/pipelines/tio2/projections.py": {
-      "lines": 1789
+      "lines": 1793
     },
     "src/stock_analytics/pipelines/tio2/quarterly.py": {
-      "lines": 776
+      "lines": 778
     },
     "src/stock_analytics/pipelines/tio2/report.py": {
-      "lines": 512
+      "lines": 515
     },
     "src/stock_data/core/industry_tech_task_specs.py": {
       "lines": 495
@@ -316,7 +316,7 @@
       "lines": 737
     },
     "src/stock_data/fetcher/industry/semiconductor/collectors/korea_memory_dart.py": {
-      "lines": 1049
+      "lines": 1052
     },
     "src/stock_data/fetcher/industry/semiconductor/collectors/semi_crawler.py": {
       "lines": 421
@@ -331,7 +331,7 @@
       "lines": 448
     },
     "src/stock_data/fetcher/industry/semiconductor/parsers/korea_memory_dart.py": {
-      "lines": 503
+      "lines": 504
     },
     "src/stock_data/fetcher/industry/semiconductor/parsers/sales.py": {
       "lines": 710
@@ -391,7 +391,7 @@
       "lines": 479
     },
     "src/stock_data/storage/compat_frames.py": {
-      "lines": 476
+      "lines": 478
     },
     "src/stock_reporting/interpretation/macro_risk/logic.py": {
       "lines": 546

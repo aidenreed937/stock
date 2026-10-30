@@ -46,11 +46,7 @@ def main() -> int:
     print(f"report_month 范围: {df['report_month'].min()} ~ {df['report_month'].max()}")
     print(f"release_date 非空: {before} → {after}（共 {df.height} 行）")
     print("\nrelease_date 分布样例（按 report_month 去重）:")
-    sample = (
-        df.select(["report_month", "release_date"])
-        .unique()
-        .sort("report_month")
-    )
+    sample = df.select(["report_month", "release_date"]).unique().sort("report_month")
     print(sample.to_pandas().to_string(index=False))
 
     if args.dry_run:

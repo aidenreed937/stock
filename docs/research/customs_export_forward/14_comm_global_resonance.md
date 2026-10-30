@@ -8,7 +8,7 @@
 > `cloud_capex_quarterly` / `semiconductor_equipment` / `semiconductor_lead` /
 > `semiconductor_sales` / `semiconductor_equipment_gm` / `semiconductor_channel_inventory`。
 >
-> **复现**：`uv run python .agents/skills/customs-industry-prosperity/scripts/build_comm_global_resonance.py`
+> **复现**：`uv run python .agents/skills/customs-export-research/scripts/build_comm_global_resonance.py`
 > → 产物 `data/analytics/industry/comm_global_resonance_panel.parquet`。
 >
 > **版本**：2026-09（海关出口口径 2026-07，全球信号 2026-Q2/2026-07）。

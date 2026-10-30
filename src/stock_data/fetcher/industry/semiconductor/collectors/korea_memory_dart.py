@@ -15,6 +15,7 @@ from __future__ import annotations
 
 import csv
 import logging
+from collections.abc import Callable
 from datetime import date, timedelta
 from pathlib import Path
 from typing import Any
@@ -291,7 +292,7 @@ class KoreaMemoryDartCollector:
             if quarter not in inventory_facts or quarter not in quarterly_segments:
                 continue
             (
-                inventory,
+                inventory_krw,
                 group_inventory,
                 inventory_scope,
                 report,
@@ -309,7 +310,7 @@ class KoreaMemoryDartCollector:
             incoming.append(
                 _samsung_raw_row(
                     quarter=quarter,
-                    inventory=inventory,
+                    inventory=inventory_krw,
                     group_inventory=group_inventory,
                     inventory_scope=inventory_scope,
                     report=report,
@@ -557,6 +558,8 @@ class KoreaMemoryDartCollector:
         *,
         selector_kind: str,
     ) -> tuple[bytes, str]:
+        selectors: tuple[str, ...]
+        parser: Callable[[str | bytes], Any]
         if selector_kind == "inventory":
             selectors = ("8. 기타 재무에 관한 사항", "기타 재무에 관한 사항", "7. 기타 참고사항")
             parser = parse_samsung_inventory_html

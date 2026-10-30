@@ -24,8 +24,14 @@ FORWARD_WATCH_L2_FILE = "customs_forward_watch_l2.parquet"
 FORWARD_WATCH_L3_FILE = "customs_forward_watch_l3.parquet"
 
 # 数据源路径（黄金表与配置类资产，可被 YAML 覆盖）
-DEFAULT_CUSTOMS_TRADE = "data/curated/industry/customs_trade.parquet"
-DEFAULT_HS_CATALOG = "config/data/customs/hs_codes_catalog.csv"
+# 海关研究统一采用 GACC 官方数据（source=GACC，2018-01 起）；
+# customs_trade_gacc.parquet 为纯 GACC 官方行（2026-10 已清出 UN Comtrade 桥接行，
+# UN 桥接/扩展数据见 customs_trade.parquet）；research_sources 过滤保留为防御性。
+DEFAULT_CUSTOMS_TRADE = "data/curated/industry/customs_trade_gacc.parquet"
+DEFAULT_HS_CATALOG = "config/data/customs/good_h8_codes.csv"
+
+# 研究口径：只消费 GACC 官方数据；传 ("UN_Comtrade", "GACC") 可复现旧混合桥接口径。
+RESEARCH_SOURCES: tuple[str, ...] = ("GACC",)
 
 
 @dataclass(frozen=True, slots=True)
@@ -40,6 +46,8 @@ class CustomsProsperityConfig:
     artifact_root: str = DEFAULT_ARTIFACT_ROOT
     customs_trade_path: str = DEFAULT_CUSTOMS_TRADE
     hs_catalog_path: str = DEFAULT_HS_CATALOG
+    # 研究消费的黄金表 source 白名单（默认仅 GACC 官方数据）
+    research_sources: tuple[str, ...] = RESEARCH_SOURCES
     # L2 聚合跳过组合码（METHODOLOGY §6.5 强制规则 4）
     skip_l2: frozenset[str] = frozenset({"801033.SI;801034.SI"})
     # 行业聚合层量价置空的伪影产品（METHODOLOGY §7.5）
@@ -98,6 +106,7 @@ def load_customs_prosperity_config(
         artifact_root=_str("artifact_root", DEFAULT_ARTIFACT_ROOT),
         customs_trade_path=_str("customs_trade_path", DEFAULT_CUSTOMS_TRADE),
         hs_catalog_path=_str("hs_catalog_path", DEFAULT_HS_CATALOG),
+        research_sources=_tuple("research_sources", RESEARCH_SOURCES),
         skip_l2=_frozenset("skip_l2", frozenset({"801033.SI;801034.SI"})),
         skip_vp=_frozenset("skip_vp", frozenset({"hydrogen_electrolyzer"})),
         skip_bridge_products=_frozenset("skip_bridge_products", frozenset()),
@@ -144,6 +153,7 @@ __all__ = [
     "FORWARD_WATCH_L2_FILE",
     "FORWARD_WATCH_L3_FILE",
     "PRODUCT_PANEL_FILE",
+    "RESEARCH_SOURCES",
     "VOLUME_PRICE_FILE",
     "CustomsProsperityConfig",
     "load_customs_prosperity_config",

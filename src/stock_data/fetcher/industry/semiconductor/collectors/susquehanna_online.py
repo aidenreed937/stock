@@ -94,6 +94,7 @@ def collect_susquehanna_online(
     max_article_chars: int,
     infer_report_month: bool,
     allow_rss_excerpt: bool,
+    proxy: str | None = None,
 ) -> tuple[tuple[str, ...], tuple[str, ...]]:
     """发现、解析并归档请求窗口内的 Susquehanna 报道。"""
     if not rss_urls:
@@ -103,7 +104,7 @@ def collect_susquehanna_online(
     errors: list[str] = []
     seen_urls: set[str] = set()
     for feed_url in rss_urls:
-        response = _get(feed_url, timeout)
+        response = _get(feed_url, timeout, proxy=proxy)
         if response is None:
             errors.append(f"RSS 请求失败: {feed_url}")
             continue
@@ -141,7 +142,7 @@ def collect_susquehanna_online(
                 if hinted_month in existing_months and not force:
                     continue
 
-            article = _get(link, timeout)
+            article = _get(link, timeout, proxy=proxy)
             if article is None:
                 continue
             source_url = str(getattr(article, "url", "") or link)
@@ -152,7 +153,7 @@ def collect_susquehanna_online(
             article_text = html_to_visible_text(article_bytes, max_article_chars)
             source_kind = "article_html"
             if host == "msn.com":
-                msn_detail = _fetch_msn_detail(link, timeout, max_article_chars)
+                msn_detail = _fetch_msn_detail(link, timeout, max_article_chars, proxy=proxy)
                 if msn_detail is not None:
                     source_url, article_bytes, article_text = msn_detail
                     source_kind = "msn_detail_json"
@@ -235,7 +236,7 @@ def _build_record(parsed: dict[str, object], thresholds: dict[str, float]) -> Ch
     )
 
 
-def _get(url: str, timeout: int) -> Any | None:
+def _get(url: str, timeout: int, proxy: str | None = None) -> Any | None:
     for attempt in range(2):
         try:
             response = requests.get(
@@ -244,20 +245,24 @@ def _get(url: str, timeout: int) -> Any | None:
                 timeout=timeout,
                 allow_redirects=True,
                 impersonate="chrome120",
+                **_proxy_kwargs(proxy),
             )
             if response.status_code == 200:
                 if _is_google_news_article(url):
                     resolved_url = _decode_google_news_url(
-                        url, response_content_bytes(response), timeout
+                        url, response_content_bytes(response), timeout, proxy=proxy
                     )
                     if resolved_url is None:
                         return None
-                    return _get(resolved_url, timeout)
+                    return _get(resolved_url, timeout, proxy=proxy)
                 return response
-            if response.status_code not in {403, 429}:
+            if response.status_code not in {403, 429, 500, 502, 503, 504}:
                 break
         except Exception as exc:  # noqa: BLE001
             logger.warning("请求 Susquehanna 公开来源失败 [%s]: %s", url, exc)
+            if attempt == 0:
+                logger.debug("Susquehanna 公开来源请求异常，准备重试: %s", url)
+                continue
             break
         if attempt == 0:
             logger.debug("Susquehanna 公开来源暂时拒绝请求，准备重试: %s", url)
@@ -266,7 +271,7 @@ def _get(url: str, timeout: int) -> Any | None:
 
 
 def _fetch_msn_detail(
-    article_url: str, timeout: int, max_article_chars: int
+    article_url: str, timeout: int, max_article_chars: int, proxy: str | None = None
 ) -> tuple[str, bytes, str] | None:
     match = re.search(
         r"/(?P<locale>[a-z]{2}-[a-z]{2})/.*?/ar-(?P<article_id>[A-Za-z0-9]+)",
@@ -277,7 +282,7 @@ def _fetch_msn_detail(
     detail_url = MSN_DETAIL_URL.format(
         locale=match.group("locale"), article_id=match.group("article_id")
     )
-    response = _get(detail_url, timeout)
+    response = _get(detail_url, timeout, proxy=proxy)
     if response is None:
         return None
     content = response_content_bytes(response)
@@ -296,7 +301,12 @@ def _fetch_msn_detail(
     )
 
 
-def _decode_google_news_url(url: str, landing_page: bytes, timeout: int) -> str | None:
+def _decode_google_news_url(
+    url: str,
+    landing_page: bytes,
+    timeout: int,
+    proxy: str | None = None,
+) -> str | None:
     """用 Google News 公共 batchexecute 接口解析现代文章包装链接。"""
     page = landing_page.decode("utf-8", errors="ignore")
     signature = re.search(r'data-n-a-sg="([^"]+)"', page)
@@ -351,6 +361,7 @@ def _decode_google_news_url(url: str, landing_page: bytes, timeout: int) -> str 
             data={"f.req": request_body},
             timeout=timeout,
             impersonate="chrome120",
+            **_proxy_kwargs(proxy),
         )
         body = response.text.split("\n", 1)[1] if "\n" in response.text else response.text
         for envelope in json.loads(body):
@@ -365,6 +376,14 @@ def _decode_google_news_url(url: str, landing_page: bytes, timeout: int) -> str 
     except Exception as exc:  # noqa: BLE001
         logger.debug("解析 Google News 文章地址失败 [%s]: %s", url, exc)
     return None
+
+
+def _proxy_kwargs(proxy: str | None) -> dict[str, Any]:
+    """将独立的 Susquehanna 代理配置转换为 curl_cffi 请求参数。"""
+    proxy_value = str(proxy or "").strip()
+    if not proxy_value:
+        return {}
+    return {"proxies": {"http": proxy_value, "https": proxy_value}}
 
 
 def _is_candidate_item(item: dict[str, str]) -> bool:

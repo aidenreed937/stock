@@ -6,10 +6,10 @@ schema_version: 1
 title: "公司层出口交易信号管线（暴露度×税号段 → 三层信号评级）"
 artifact_root: "data/analytics/industry"
 
-# 数据源
-customs_trade_path: "data/curated/industry/customs_trade.parquet"
-exposure_map_path: "config/data/customs/company_exposure_map.csv"
-hs_catalog_path: "config/data/customs/hs_codes_catalog.csv"
+# 数据源（海关研究统一采用 GACC 纯净黄金表：https://stats.customs.gov.cn 人工导出
+# 全量 8 位税号 → Curated 全量保留行级，2019-01 起；不含 UN hs6 产品）
+customs_trade_path: "data/curated/industry/customs_trade_gacc.parquet"
+hs_catalog_path: "config/data/customs/good_h8_codes.csv"
 segments_path: "config/data/customs/taxline_segments.csv"
 moneyflow_path: "data/curated/tushare/market=CN/moneyflow"
 margin_path: "data/curated/tushare/market=CN/margin_detail"
@@ -18,3 +18,10 @@ fina_path: "data/curated/tushare/market=CN/fina_indicator"
 # 资金腿口径（腿2 资金确认）
 fund_window: 20        # 近 N 交易日
 margin_chg_th: 2.0     # 融资余额 20 日变化率阈值（%）
+
+# 快周期商品剔除（METHODOLOGY_COMPANY_FINAL §8.1）：月度确认滞后于商品脉冲，
+# 交易信号不可用——不进入三层信号评级（观察表保留供研究）。简称铜/锂/银。
+excluded_products:
+  - copper_unwrought
+  - lithium_chemicals
+  - silver

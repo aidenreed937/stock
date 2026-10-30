@@ -146,5 +146,15 @@ wireless_earbud,无线耳机,tmt_and_electronics,无线耳机出口（85176294�
 woven_apparel,男式棉制长裤,textile_and_apparel,P1 纺织服装出口量价观察,801130.SI,纺织服饰,801132.SI,服装家纺,851329.SI,非运动服装
 xanthan_gum,黄原胶及天然聚合物,chemicals_and_materials,黄原胶(石油采掘及食品增稠出海大单品),801030.SI,基础化工,801034.SI,化学制品,850135.SI,食品及饲料添加剂
 yeast,活性酵母,food_and_beverage,活性酵母(安琪酵母出海核心单品),801120.SI,食品饮料,801129.SI,调味发酵品Ⅱ,851242.SI,调味发酵品Ⅲ
-aquatic_products,水产品,agriculture_and_fishery,水产品出口代表子目（108 池恢复，2026-10 从黄金表现有 6 码回填；口径=冻罗非鱼/鲶鱼/鱼片/虾仁代表子目，非 03 章全集）,801010.SI,农林牧渔,801015.SI,渔业,850122.SI,水产养殖
+aquatic_products,水产品,food_and_beverage,水产品出口代表子目（108 池恢复，2026-10 从黄金表现有 6 码回填；口径=冻罗非鱼/鲶鱼/鱼片/虾仁代表子目，非 03 章全集）,801010.SI,农林牧渔,801015.SI,渔业,850122.SI,水产养殖
 zinc,锌,non_ferrous_metals,P0 锌出口量价与工业金属景气观察 | 2026-10 批量税则核验：补全,801050.SI,有色金属,801055.SI,工业金属,850553.SI,铅锌
+bearing,轴承,machinery_and_equipment,滚动轴承及零件出口观察（含调心/深沟/角接触/圆柱/圆锥/滚针及滚珠滚柱零件，覆盖新强联/五洲新春/力星股份/斯菱股份等出海主力）,801890.SI,机械设备,801072.SI,通用设备,850716.SI,其他通用设备
+ev_charger,充电桩,power_and_new_energy,电动汽车充电桩及大功率充电模块出口量价观察（覆盖特锐德/盛弘股份/绿能慧充等出海标的）,801730.SI,电力设备,801738.SI,电网设备,857382.SI,配电设备
+hydraulics,液压元件及动力装置,machinery_and_equipment,液压缸/液压马达/液压泵/液压传动阀出口量价观察（覆盖恒立液压/艾迪精密/长龄液压等出海标的）,801890.SI,机械设备,801077.SI,工程机械,850772.SI,工程机械器件
+industrial_valve,工业阀门,machinery_and_equipment,工业管道减压/止回/安全/换向/调节阀及球阀蝶阀出口量价观察（覆盖纽威股份/江苏神通/中核科技等出海主力）,801890.SI,机械设备,801072.SI,通用设备,850716.SI,其他通用设备
+semiconductor_material,半导体材料,tmt_and_electronics,半导体大硅片/晶圆切片/光刻胶/CMP抛光液等关键制造材料出口量价观察（覆盖沪硅产业/安集科技/鼎龙股份/立昂微等标的）,801080.SI,电子,801081.SI,半导体,850813.SI,半导体材料
+pta,精对苯二甲酸,chemicals_and_materials,P1 PTA(精对苯二甲酸)出口量价与化学纤维景气观察,801030.SI,基础化工,801032.SI,化学纤维,850341.SI,涤纶
+pvc,聚氯乙烯,chemicals_and_materials,P1 PVC(聚氯乙烯)出口量价与化学原料景气观察,801030.SI,基础化工,801033.SI,化学原料,850322.SI,氯碱
+styrene,苯乙烯,chemicals_and_materials,P1 苯乙烯(EB)出口量价与炼化景气观察,801960.SI,石油石化,801963.SI,炼化及贸易,859631.SI,炼油化工
+polypropylene,聚丙烯,chemicals_and_materials,P1 聚丙烯(PP)出口量价与聚烯烃景气观察,801030.SI,基础化工,801033.SI,化学原料,850325.SI,煤化工
+paraxylene,对二甲苯,chemicals_and_materials,P1 对二甲苯(PX)出口量价与炼油化工景气观察,801960.SI,石油石化,801963.SI,炼化及贸易,859631.SI,炼油化工

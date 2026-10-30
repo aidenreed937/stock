@@ -165,12 +165,92 @@ def load_latest_forecast(
     return None
 
 
+def classify_macro_regime(overheat: float | None, panic: float | None) -> str:
+    """根据狂热与恐慌双轨指数给出宏观相态定性。"""
+    if overheat is None or panic is None:
+        return "数据暂缺"
+    if overheat >= 65.0 and panic >= 65.0:
+        return "双极值共振 (高位杠杆踩踏高危区)"
+    if overheat >= 65.0:
+        return "狂热极值 (泡沫冲顶区，严格防守锁润)"
+    if panic >= 75.0:
+        return "极度冰点 (战略级黄金底，左侧分批)"
+    if panic >= 65.0:
+        return "恐慌极值 (黄金坑确认期，逢低观察)"
+    if overheat >= 60.0:
+        return "狂热预警 (动能衰竭分歧，谨防追高)"
+    if panic >= 60.0:
+        return "恐慌预警 (情绪退潮承压，耐心等待出清)"
+    return "情绪平稳 / 结构轮动阶段"
+
+
+def load_macro_risk_context(
+    *,
+    artifact_root: Path | str = Path("data/analytics/macro_risk"),
+    as_of_date: date | None = None,
+) -> tuple[float | None, float | None, str | None, str]:
+    """读取已校验的宏观双轨风控产物 (overheat_index, panic_index, macro_regime, as_of_date)。"""
+    try:
+        run = resolve_artifact_run(
+            artifact_root,
+            as_of_date=as_of_date or "latest",
+            expected_artifact_type="macro_risk",
+        )
+        as_of_val = str(run.manifest.get("as_of_date", ""))
+        overheat_val: float | None = None
+        panic_val: float | None = None
+
+        if as_of_date is not None:
+            parquet_path = run.path("risk_factors.parquet")
+            if parquet_path.exists():
+                rf_df = pl.read_parquet(parquet_path)
+                if not rf_df.is_empty() and "trade_date" in rf_df.columns:
+                    rf_df = rf_df.filter(pl.col("trade_date") <= as_of_date).sort("trade_date")
+                    if not rf_df.is_empty():
+                        last_row = rf_df.tail(1).to_dicts()[0]
+                        as_of_val = str(last_row.get("trade_date", as_of_val))
+                        overheat_val = (
+                            float(last_row["overheat_index"])
+                            if last_row.get("overheat_index") is not None
+                            else None
+                        )
+                        panic_val = (
+                            float(last_row["panic_index"])
+                            if last_row.get("panic_index") is not None
+                            else None
+                        )
+        else:
+            summary = run.manifest.get("summary", {})
+            if isinstance(summary, dict):
+                if summary.get("overheat_index") is not None:
+                    overheat_val = float(summary["overheat_index"])
+                if summary.get("panic_index") is not None:
+                    panic_val = float(summary["panic_index"])
+            if overheat_val is None or panic_val is None:
+                parquet_path = run.path("risk_factors.parquet")
+                if parquet_path.exists():
+                    rf_df = pl.read_parquet(parquet_path)
+                    if not rf_df.is_empty():
+                        last_row = rf_df.tail(1).to_dicts()[0]
+                        as_of_val = str(last_row.get("trade_date", as_of_val))
+                        if overheat_val is None and last_row.get("overheat_index") is not None:
+                            overheat_val = float(last_row["overheat_index"])
+                        if panic_val is None and last_row.get("panic_index") is not None:
+                            panic_val = float(last_row["panic_index"])
+
+        regime_str = classify_macro_regime(overheat_val, panic_val)
+        return overheat_val, panic_val, regime_str, as_of_val
+    except (ArtifactUnavailableError, TypeError, ValueError, Exception) as exc:
+        logger.warning(f"读取宏观风控产物失败: {exc}")
+    return None, None, None, ""
+
+
 def load_market_temperature_context(
     *,
     artifact_root: Path | str = Path("data/analytics/market_temperature"),
     as_of_date: date | None = None,
 ) -> tuple[float | None, str | None, str]:
-    """读取已校验的全市场温度产物。"""
+    """读取已校验的全市场温度产物 (兼容留存)。"""
     try:
         run = resolve_artifact_run(
             artifact_root,
@@ -187,9 +267,30 @@ def load_market_temperature_context(
                 get_temperature_band(temp_float),
                 str(run.manifest.get("as_of_date", "")),
             )
-    except (ArtifactUnavailableError, TypeError, ValueError) as exc:
+    except (ArtifactUnavailableError, TypeError, ValueError, Exception) as exc:
         logger.warning(f"读取市场温度产物失败: {exc}")
     return None, None, ""
+
+
+def _resolve_sw_l1_industry(name: str) -> str:
+    try:
+        cat = DataCatalog()
+        ic = cat.load_dataset("index_classify")
+        if not ic.is_empty() and "industry_name" in ic.columns:
+            matched = ic.filter(pl.col("industry_name") == name)
+            if not matched.is_empty():
+                row = matched.to_dicts()[0]
+                ind_code = str(row.get("industry_code", ""))
+                if len(ind_code) >= 2:
+                    l1_code = ind_code[:2] + "0000"
+                    l1_matched = ic.filter(
+                        (pl.col("level") == "L1") & (pl.col("industry_code") == l1_code)
+                    )
+                    if not l1_matched.is_empty():
+                        return str(l1_matched.to_dicts()[0].get("industry_name", name))
+    except Exception:
+        pass
+    return name
 
 
 def load_industry_rank(
@@ -200,26 +301,95 @@ def load_industry_rank(
 ) -> str | None:
     """读取已校验的申万行业结构排名。"""
     try:
-        run = resolve_artifact_run(
-            artifact_root,
-            as_of_date=as_of_date or "latest",
-            expected_artifact_type="industry_structure",
-        )
-        data = run.read_json("scores.json")
-        top_struct = data.get("top_structure", [])
-        if not isinstance(top_struct, list):
-            return None
-        total_count = data.get("scored_industry_count") or len(top_struct)
-        for idx, item in enumerate(top_struct, start=1):
-            if not isinstance(item, dict):
-                continue
-            name = item.get("industry_name", "")
-            if name and (name in industry_name or industry_name in name):
-                score = item.get("structure_score", 0.0)
-                tags = item.get("tags", "")
-                tag_str = f" [{tags}]" if tags else ""
-                return f"申万综合排名 {idx}/{total_count} (评分 {score:.1f}){tag_str}"
-    except (ArtifactUnavailableError, TypeError, ValueError) as exc:
+        try:
+            run = resolve_artifact_run(
+                artifact_root,
+                as_of_date=as_of_date or "latest",
+                expected_artifact_type="industry_factor_panel",
+            )
+        except ArtifactUnavailableError:
+            run = resolve_artifact_run(
+                artifact_root,
+                as_of_date=as_of_date or "latest",
+                expected_artifact_type="industry_structure",
+            )
+        target_names = {industry_name, _resolve_sw_l1_industry(industry_name)}
+        panel_path = run.path("industry_factor_panel.parquet")
+        if not panel_path.exists():
+            panel_path = run.path("industry_panel.parquet")
+        if panel_path.exists():
+            panel_df = pl.read_parquet(panel_path)
+            if not panel_df.is_empty() and "industry_name" in panel_df.columns:
+                date_col = (
+                    "trade_date"
+                    if "trade_date" in panel_df.columns
+                    else ("as_of_date" if "as_of_date" in panel_df.columns else None)
+                )
+                if as_of_date is not None and date_col is not None:
+                    panel_df = panel_df.filter(pl.col(date_col) <= as_of_date)
+                if not panel_df.is_empty():
+                    if date_col is not None:
+                        latest_date = panel_df[date_col].max()
+                        day_df = panel_df.filter(pl.col(date_col) == latest_date)
+                    else:
+                        day_df = panel_df
+
+                    total_count = len(day_df)
+                    if "structure_rank" in day_df.columns:
+                        for row in day_df.to_dicts():
+                            name = str(row.get("industry_name", ""))
+                            if name and any(name in t or t in name for t in target_names):
+                                rank_idx = int(row.get("structure_rank", 1))
+                                score = float(row.get("structure_score", row.get("score", 0.0)))
+                                mom = row.get("momentum_score", row.get("ind_momentum"))
+                                crowd = row.get("crowding_score", row.get("ind_crowding"))
+                                extra = []
+                                if mom is not None:
+                                    extra.append(f"动量: {float(mom):.1f}")
+                                if crowd is not None:
+                                    extra.append(f"拥挤度: {float(crowd):.1f}%")
+                                extra_str = f" [{', '.join(extra)}]" if extra else ""
+                                return f"申万综合排名 {rank_idx}/{total_count} ({name} 评分 {score:.1f}){extra_str}"
+                    else:
+                        sort_col = (
+                            "composite_industry_score"
+                            if "composite_industry_score" in day_df.columns
+                            else ("ind_momentum" if "ind_momentum" in day_df.columns else "score")
+                        )
+                        day_df = day_df.sort(sort_col, descending=True)
+                        for rank_idx, row in enumerate(day_df.to_dicts(), start=1):
+                            name = str(row.get("industry_name", ""))
+                            if name and any(name in t or t in name for t in target_names):
+                                score = float(row.get(sort_col, 0.0))
+                                mom = row.get("ind_momentum")
+                                crowd = row.get("ind_crowding")
+                                extra = []
+                                if mom is not None:
+                                    extra.append(f"动量: {float(mom):.1f}")
+                                if crowd is not None:
+                                    extra.append(f"拥挤度: {float(crowd):.1f}%")
+                                extra_str = f" [{', '.join(extra)}]" if extra else ""
+                                return f"申万综合排名 {rank_idx}/{total_count} ({name} 评分 {score:.1f}){extra_str}"
+
+        try:
+            data = run.read_json("scores.json")
+            top_struct = data.get("top_structure", [])
+            if isinstance(top_struct, list):
+                total_count = data.get("scored_industry_count") or len(top_struct)
+                for idx, item in enumerate(top_struct, start=1):
+                    if not isinstance(item, dict):
+                        continue
+                    name = item.get("industry_name", "")
+                    if name and any(name in t or t in name for t in target_names):
+                        score = float(item.get("structure_score", item.get("score", 0.0)) or 0.0)
+                        tags = item.get("tags", "")
+                        tag_str = f" [{tags}]" if tags else ""
+                        return (
+                            f"申万综合排名 {idx}/{total_count} ({name} 评分 {score:.1f}){tag_str}"
+                        )
+        except Exception:
+            pass
+    except (ArtifactUnavailableError, TypeError, ValueError, Exception) as exc:
         logger.warning(f"读取行业结构产物失败: {exc}")
     return None
 

@@ -16,7 +16,7 @@ from stock_data.fetcher.industry.machinery.crawler import (
     CcmaCrawler,
     KomatsuCrawler,
 )
-from stock_data.fetcher.industry.models import ConstructionMachineryRecord
+from stock_data.fetcher.industry.machinery.models import ConstructionMachineryRecord
 
 logger = logging.getLogger(__name__)
 
@@ -37,30 +37,63 @@ class MachineryCollector:
         """执行工程机械数据采集: 在线爬取 CCMA/Komatsu 最新数据并落盘，以最新采集为准。"""
         self.machinery_dir.mkdir(parents=True, exist_ok=True)
         csv_file = self.machinery_dir / "excavator_monthly.csv"
+        cached_records = self.load_from_raw_csv(csv_file)
+        cached_by_month = {record.report_month: record for record in cached_records}
 
         # 在线爬取 CCMA 协会销售快报与小松 Komtrax 开工小时
         ccma_sales = self.ccma_crawler.fetch_latest_sales()
         komatsu_hours = self.komatsu_crawler.fetch_latest_hours()
 
-        all_months = set(ccma_sales.keys()) | set(komatsu_hours.keys())
+        all_months = set(cached_by_month) | set(ccma_sales.keys()) | set(komatsu_hours.keys())
         now_iso = now_utc_iso()
 
         records: list[ConstructionMachineryRecord] = []
         for m_str in sorted(all_months):
             yr, mo = parse_month_string(m_str)
             t_date = get_month_end_date(yr, mo)
+            cached = cached_by_month.get(m_str)
             ccma_item = ccma_sales.get(m_str)
             hrs_val = komatsu_hours.get(m_str)
 
-            tot_u = ccma_item.get("excavator_total_units") if ccma_item else None
-            dom_u = ccma_item.get("excavator_domestic_units") if ccma_item else None
-            exp_u = ccma_item.get("excavator_export_units") if ccma_item else None
+            if ccma_item is None and hrs_val is None and cached is not None:
+                records.append(cached)
+                continue
+
+            tot_u = (
+                ccma_item.get("excavator_total_units")
+                if ccma_item and ccma_item.get("excavator_total_units") is not None
+                else cached.excavator_total_units
+                if cached
+                else None
+            )
+            dom_u = (
+                ccma_item.get("excavator_domestic_units")
+                if ccma_item and ccma_item.get("excavator_domestic_units") is not None
+                else cached.excavator_domestic_units
+                if cached
+                else None
+            )
+            exp_u = (
+                ccma_item.get("excavator_export_units")
+                if ccma_item and ccma_item.get("excavator_export_units") is not None
+                else cached.excavator_export_units
+                if cached
+                else None
+            )
             rel_d = (
                 ccma_item.get("release_date")
                 if ccma_item and isinstance(ccma_item.get("release_date"), date)
+                else cached.release_date
+                if cached
                 else None
             )
-            s_url = ccma_item.get("source_url") if ccma_item else "http://www.cncma.org/"
+            s_url = (
+                ccma_item.get("source_url")
+                if ccma_item and ccma_item.get("source_url")
+                else cached.source_url
+                if cached
+                else "http://www.cncma.org/"
+            )
 
             records.append(
                 ConstructionMachineryRecord(
@@ -69,19 +102,39 @@ class MachineryCollector:
                     excavator_total_units=tot_u,
                     excavator_domestic_units=dom_u,
                     excavator_export_units=exp_u,
-                    komatsu_hours_china=hrs_val,
-                    komatsu_hours_yoy=None,
-                    export_ratio=None,
-                    excavator_total_3mma=None,
-                    yoy_growth=None,
-                    yoy_growth_3mma=None,
-                    mom_growth_3mma=None,
-                    unit="units/hours",
-                    source="CCMA/Komatsu",
+                    komatsu_hours_china=hrs_val
+                    if hrs_val is not None
+                    else cached.komatsu_hours_china
+                    if cached
+                    else None,
+                    komatsu_hours_yoy=cached.komatsu_hours_yoy if cached else None,
+                    export_ratio=cached.export_ratio if cached else None,
+                    excavator_total_3mma=cached.excavator_total_3mma if cached else None,
+                    yoy_growth=cached.yoy_growth if cached else None,
+                    yoy_growth_3mma=cached.yoy_growth_3mma if cached else None,
+                    mom_growth_3mma=cached.mom_growth_3mma if cached else None,
+                    unit=cached.unit if cached else "units/hours",
+                    source=str(
+                        ccma_item.get("source")
+                        if ccma_item
+                        else cached.source
+                        if cached
+                        else "CCMA/Komatsu"
+                    ),
                     source_url=str(s_url),
                     release_date=rel_d,
-                    data_status="actual",
-                    collected_at=now_iso,
+                    data_status=str(
+                        ccma_item.get("data_status")
+                        if ccma_item
+                        else cached.data_status
+                        if cached
+                        else "actual"
+                    ),
+                    collected_at=now_iso
+                    if ccma_item or hrs_val is not None
+                    else cached.collected_at
+                    if cached
+                    else now_iso,
                 )
             )
 

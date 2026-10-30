@@ -37,7 +37,7 @@ from stock_data.fetcher.industry.customs.transforms.customs_trade import (
 
 logger = logging.getLogger(__name__)
 
-_DEFAULT_CATALOG_CSV = "config/data/customs/hs_codes_catalog.csv"
+_DEFAULT_CATALOG_CSV = "config/data/customs/good_h8_codes.csv"
 _DEFAULT_CURATED_PARQUET = "data/curated/industry/customs_trade.parquet"
 
 

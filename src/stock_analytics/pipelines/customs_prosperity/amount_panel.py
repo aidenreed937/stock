@@ -1,8 +1,10 @@
 """海关出口金额景气月度面板（hs8/L3/L2 三层，3MMA yoy/MoM）。
 
 口径来自 METHODOLOGY_FINAL §2（3MMA yoy 统一重算）与 §6.5（桥接强制规则）：
-- 拼接集 = Comtrade ∩ GACC ∪ GACC-only（HS2027 税则切换后新码进入面板）；
-- 完整月序补全后统一重算（缺月置 null，跨源不做分源分段）；
+- **研究口径只消费 GACC 官方数据（source=GACC，2018-01 起）**；底层
+  customs_trade_gacc.parquet 为纯 GACC（2026-10 起不再驻留 UN Comtrade 桥接行，
+  UN 数据见 customs_trade.parquet）；research_sources 过滤保留为防御性；
+- 完整月序补全后统一重算（缺月置 null，不填 0）；
 - L2 组合码（`;` 多映射行）跳过并披露（§6.5 规则 4）。
 
 产物路径与既有脚本契约一致：``data/analytics/industry/customs_export_prosperity_panel.parquet``。
@@ -14,9 +16,12 @@ from pathlib import Path
 
 import polars as pl
 
-from stock_analytics.pipelines.customs_prosperity.config import AMOUNT_PANEL_FILE
+from stock_analytics.pipelines.customs_prosperity.config import (
+    AMOUNT_PANEL_FILE,
+    RESEARCH_SOURCES,
+)
 
-DEFAULT_INPUT = Path("data/curated/industry/customs_trade.parquet")
+DEFAULT_INPUT = Path("data/curated/industry/customs_trade_gacc.parquet")
 DEFAULT_OUTPUT = Path("data/analytics/industry") / AMOUNT_PANEL_FILE
 
 
@@ -61,12 +66,14 @@ def build_amount_panel(
     customs_trade: pl.DataFrame,
     *,
     skip_l2: frozenset[str] = frozenset({"801033.SI;801034.SI"}),
+    sources: tuple[str, ...] = RESEARCH_SOURCES,
 ) -> pl.DataFrame:
     """构建海关出口金额景气月度面板（hs8/L3/L2 三层合并长表）。
 
     Args:
-        customs_trade: 海关黄金事实表（``customs_trade.parquet``）。
+        customs_trade: 海关黄金事实表（``customs_trade_gacc.parquet``）。
         skip_l2: L2 聚合跳过的组合码（METHODOLOGY §6.5 规则 4）。
+        sources: 消费的 source 白名单；默认仅 GACC 官方数据。
 
     Returns:
         单长表面板，含 ``granularity``（hs8/l3/l2）与 3MMA yoy/mom 列。
@@ -74,6 +81,7 @@ def build_amount_panel(
     exp = customs_trade.filter(
         pl.col("trade_direction") == "export",
         pl.col("hs_level") == "8",
+        pl.col("source").is_in(sources),
     )
 
     ct_codes = set(exp.filter(pl.col("source") == "UN_Comtrade")["hs_code"].unique())

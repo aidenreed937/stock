@@ -6,7 +6,7 @@
 UN Comtrade API / GACC CSV (raw, 纯原始数据, 无行业映射)
         │  fetcher 入库时从 catalog join（src/stock_data/fetcher/industry/customs/catalog.py）
         ▼
-hs_codes_catalog.csv (config/data/customs/)  ← 行业映射唯一信任源
+good_h8_codes.csv (config/data/customs/)  ← 行业映射唯一信任源
         │  按 hs_code（8 位完整 + 6 位前缀双向索引）
         ▼
 data/curated/industry/customs_trade.parquet  ← 黄金事实表（含 target_l1/l2/l3 映射列）
@@ -73,4 +73,4 @@ sw_2021_l2_fs_non_financial（理杏仁 L2 财报 TTM 营收/净利 yoy、毛利
 
 - 完整分析：`scratch/customs_financials_link.py`（映射修正 + 版本桥接 + 拐点对齐 + 一致率）
 - 数据快照导出：`scratch/export_customs_research_data.py`
-- 修复脚本血缘：映射修复只动 `config/data/customs/hs_codes_catalog.csv` + 重刷 curated 映射列（见 04 文档）
+- 修复脚本血缘：映射修复只动 `config/data/customs/good_h8_codes.csv` + 重刷 curated 映射列（见 04 文档）

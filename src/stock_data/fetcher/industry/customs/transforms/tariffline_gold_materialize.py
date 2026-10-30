@@ -51,10 +51,14 @@ class TarifflineGoldSummary:
 def materialize_tariffline_gold(
     *,
     raw_dir: Path | str,
-    catalog_path: Path | str = "config/data/customs/hs_codes_catalog.csv",
+    catalog_path: Path | str = "config/data/customs/good_h8_codes.csv",
     curated_path: Path | str = "data/curated/industry/customs_trade.parquet",
 ) -> Any:
-    """把所有有效 Tariffline RAW 合并到统一海关黄金表。"""
+    """把所有有效 Tariffline（UN Comtrade）RAW 合并到 UN 扩展黄金表。
+
+    注意：本函数只处理 UN Comtrade Tariffline 数据；GACC 官方数据由
+    ``GaccCollector`` 写入 ``customs_trade_gacc.parquet``（纯 GACC，source=GACC）。
+    """
     new_records, raw_files, raw_rows = load_tariffline_gold_records(raw_dir, catalog_path)
     if not new_records:
         raise ValueError("Tariffline RAW 没有可物化的有效记录")

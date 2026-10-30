@@ -70,14 +70,14 @@ def build_cowos_capacity_estimates_curated_frame(
             key=lambda row: (_quarter_key(str(row["report_quarter"])), row["published_date"])
         )
         for row in agency_rows:
-            cap = float(row["monthly_capacity_kwpm"])
+            cap = float(str(row["monthly_capacity_kwpm"]))
             lead = row["lead_time_months"]
             current_quarter = _quarter_key(str(row["report_quarter"]))
-            published_date = row["published_date"]
+            published_date = str(row["published_date"])
             visible_rows = [
                 candidate
                 for candidate in agency_rows
-                if candidate["published_date"] <= published_date
+                if str(candidate["published_date"]) <= published_date
             ]
 
             previous_period = _latest_visible_period(
@@ -95,7 +95,7 @@ def build_cowos_capacity_estimates_curated_frame(
             yoy = _growth(cap, yoy_period)
 
             # 判定 bottleneck_regime
-            if yoy is not None and yoy >= 0.80 and lead is not None and float(lead) >= 6.0:
+            if yoy is not None and yoy >= 0.80 and lead is not None and float(str(lead)) >= 6.0:
                 regime = "severe_bottleneck_expansion"
             elif (yoy is not None and yoy >= 0.30) or (qoq is not None and qoq >= 0.25):
                 regime = "moderate_expansion"
@@ -150,9 +150,9 @@ def _latest_visible_period(
     ]
     if not candidates:
         return None
-    candidates.sort(key=lambda row: (row["published_date"], row["trade_date"]))
+    candidates.sort(key=lambda row: (str(row["published_date"]), str(row.get("trade_date", ""))))
     value = candidates[-1]["monthly_capacity_kwpm"]
-    return float(value) if value is not None else None
+    return float(str(value)) if value is not None else None
 
 
 def _growth(current: float, previous: float | None) -> float | None:

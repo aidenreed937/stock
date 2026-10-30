@@ -30,6 +30,7 @@ DOMAIN_MART_RULES: dict[str, tuple[str, tuple[str, ...]]] = {
     "unlock_pressure_daily": ("trade_date", ("trade_date",)),
     "northbound_industry_daily": ("trade_date", ("trade_date", "industry_code")),
     "capital_game_daily": ("trade_date", ("trade_date",)),
+    "smart_money_daily": ("trade_date", ("trade_date",)),
 }
 
 DOMAIN_INPUT_REQUIRED_COLUMNS: dict[str, tuple[str, ...]] = {
@@ -153,6 +154,75 @@ def assert_domain_input_quality(_gate: object, files: list[Path]) -> bool:
     return True
 
 
+def assert_industry_growth_rate_sanity(_gate: object, files: list[Path]) -> bool:
+    """校验行业与宏观事实表中所有增长率/同比/环比指标的物理数值合理性 (必须为小数制，严禁 100 倍错位)。
+
+    已知数据质量案例 (负基数导致 yoy < -100%，属官方原始值、非单位错误)：
+    - ``industry_panel_daily`` 的 ``revenue_growth_ttm`` 在 801230.SI (申万一级"综合") 2020-06-30 出现 -1.225，
+      来源于理杏仁 ``sw_2021_fs_non_financial`` symbol=510000 的官方 ``q.ps.toi.ttm_y2y``，为基期 TTM 营收为负
+      造成的负基数失真。该断言按设计照常拦截；下游消费方应过滤 ``revenue_growth_ttm < -1.01`` 的无效点。
+    """
+    for file in files:
+        if file.suffix != ".parquet" or "industry" not in str(file):
+            continue
+        try:
+            frame = pl.read_parquet(file)
+            if frame.is_empty():
+                continue
+            rate_columns = [
+                col
+                for col, dtype in frame.schema.items()
+                if dtype in (pl.Float32, pl.Float64)
+                and any(k in col.lower() for k in ("growth", "yoy", "mom", "penetration"))
+                and not any(
+                    k in col.lower()
+                    for k in (
+                        "price",
+                        "cny",
+                        "usd",
+                        "jpy",
+                        "ton",
+                        "index",
+                        "vol",
+                        "heads",
+                        "cases",
+                        "weeks",
+                        "utilization_pct",
+                        "operating_rate_pct",
+                        "spread",
+                    )
+                )
+            ]
+            for col in rate_columns:
+                series = frame[col].drop_nulls()
+                if series.is_empty():
+                    continue
+                # 物理下限断言: 增长率不可能低于 -100% (-1.0)
+                min_val = float(str(series.min()))
+                if min_val < -1.01:
+                    logger.error(
+                        f"行业事实表 [{file.name}] 列 [{col}] 存在物理下限超限 (增长率 < -100%): min={min_val}"
+                    )
+                    return False
+
+                # 整体分布断言: 排除低基数黑天鹅暴增后，中位数与 75% 分位数绝不能大于 2.0 (200%)
+                # 若中位数落在 10~50 之间，必然是百分制未除以 100 的 100 倍单位错乱
+                median_obj = series.median()
+                q75_obj = series.quantile(0.75)
+                median_val = float(str(median_obj)) if median_obj is not None else 0.0
+                q75_val = float(str(q75_obj)) if q75_obj is not None else 0.0
+                if median_val > 2.0 or q75_val > 5.0:
+                    logger.error(
+                        f"行业事实表 [{file.name}] 列 [{col}] 存在 100 倍单位错乱 (百分制未归一为小数): "
+                        f"median={median_val:.2f}, q75={q75_val:.2f} (预期中位数在 [-0.5, 1.0])"
+                    )
+                    return False
+        except Exception as exc:
+            logger.error(f"校验行业指标合理性异常 [{file}]: {exc}")
+            return False
+    return True
+
+
 __all__ = [
     "DOMAIN_INPUT_DATE_COLUMNS",
     "DOMAIN_INPUT_NON_NEGATIVE_COLUMNS",
@@ -160,4 +230,5 @@ __all__ = [
     "DOMAIN_MART_RULES",
     "assert_domain_input_quality",
     "assert_domain_mart_quality",
+    "assert_industry_growth_rate_sanity",
 ]

@@ -10,7 +10,8 @@
 > （出口前瞻 × 资金确认 × 财报真扩张）→ 分批建仓/景气松动减仓 → 回测胜率验证。
 >
 > **三大正确原则（强制）**：① 数据无前视（月度确认、回测已按 release_date 对齐消除
-> 发布时滞前视，§6 / 26 号文档）；② 量化无
+> 发布时滞前视，§6 / 26 号文档；公司映射另有 report_date≥list_date 上市日前视过滤，§7）；
+> ② 量化无
 > 过拟合（回测先于结论、多产品普适性检验、质量过滤两版对照，§6）；③ 量价关系优先
 > （3MMA yoy 四象限/拐点/二阶导，与 METHODOLOGY_FINAL §2 同口径）。
 >
@@ -52,6 +53,24 @@
 - **口径注意**：思源 2021 已 +415pp（电网板块 beta），出口量价双升（2023 起）后
   超额持续放大——出口景气是"确认/放大"而非唯一驱动，组合判读需结合板块行情。
 
+### 3.1 评级有效性两轮验证（2026-09，动态 H8 链路）
+
+动态 H8 链路（§7）重建评级后做了两轮股价验证，结论：**评级分组排序有效、但非横截面
+alpha——是"板块贝塔代理"**。
+
+- **横截面**（`scripts/analyze_h8_a_pool_price_strength.py`，观察点 2026-09-07，A 池
+  105 行/87 家，评级取自 2026-07 快照）：A 池 1y 收益中位 **+26.3%**（超额 +23.7pp）、
+  52 周位置 0.70 → 评级分组排序有效（A 池整体强于大盘）；但池内 yoy 横截面无预测力
+  （corr≈-0.02~0.09）、暴露度弱正相关（~0.2）——同一评级内出口强度区分不出谁更强；
+- **严格事件研究**（`scripts/backtest_customs_company_h8_event.py`：逐月重建三层信号
+  严格 PIT、`effective_month` 对齐发布时滞、持有 12 个月前复权收益）：A 池超额 **+7.9%**
+  （95%CI 不含 0）**但弱于观望池**——评级给的是"公司落在景气板块"的贝塔，
+  不是"这家强于那家"的 alpha。
+
+**判读含义**：三层信号评级回答"是否受益于出口景气（板块贝塔）"，不回答"同池内谁更强"；
+池内精化靠 §5.4 竞争力过滤与 §5.1 价格位置，与 §5.5 逐层过滤语义一致（f1 入场券 →
+质量门 → f2 安全性 → f3 后视，评级是板块暴露代理而非个股 alpha 排序）。
+
 ## 4. 公司受益判读口径
 
 1. **段级 yoy vs 产品级 yoy**（`segment_minus_product`）：>50pp 高估/低估，绑定该段的
@@ -60,13 +79,14 @@
 3. **拐点/二阶导**：见顶拐点 + 量增速回落 = 顶部前兆，公司层面同判；
 4. **组合视角**：一家公司绑定多产品（如特变电工 transformer+polysilicon）时逐产品看，
    避免单一产品误判；
-5. **财报验证**：用 fina_mainbz 主营占比（`calibrate_company_exposure.py` 产物）做暴露度
-   确认，公司财报 yoy 仅后视。
+5. **财报验证**：用 fina_mainbz(P) 主营占比自动映射做暴露度确认（H8 链路；人工修正见
+   `company_segment_binding.csv`），公司财报 yoy 仅后视。
 
 ## 5. 三层信号与评级（唯一口径）
 
-把公司观察表与三腿信号合并（`stock_cli.customs_company` → `customs_company_signal_latest.csv`，
-387 行/341 家，GACC 口径；观察表 402 行保留快周期商品行供研究）：`f1_state`（出口段级）/
+把公司×产品面板与三腿信号合并（H8 主链 `stock_cli.customs_company_h8 --with-signal` →
+`customs_company_h8_signal_latest.csv`，行数以最新 Manifest 为准，GACC 口径；快周期商品
+copper/lithium/silver 在信号阶段排除）：`f1_state`（出口段级）/
 `f2_state`（资金）/ `f3_state`（财报）+ `rating`（A强机会/B确认中/C兑现中/D前瞻观察/
 观望/回避）+ `risk_flag`（顶背离⚠）。
 
@@ -168,7 +188,7 @@ GACC 口径（2019 起）2026-09-09 重算，见 04_data_gaps_and_repairs.md §8
 | 层 | 层级 | 判定 | 处置 |
 | :-- | :-- | :-- | :-- |
 | 公司级（`--quality-filter`，默认） | 亏损型 | 净利率 <0（绝对硬事实，跨产品统一） | **剔除** |
-| | 低竞争力 | 同产品内净利率 与 毛利率 **均低于同产品中位数**（bottom-left 象限） | **剔除/降权** |
+| | 低竞争力 | 同产品内净利率 与 毛利率 **均低于同产品中位数**（bottom-left 象限） | **剔除（硬排除，任何相位）** |
 | 产品级（`--product-gate`，可选） | 低毛利产品 | 产品中位毛利率 <15% 且 中位 ROE <10%（价格战/产能过剩环节） | **整产品剔除** |
 | | 正常 | 其余 | 保留 |
 
@@ -197,8 +217,9 @@ GACC 口径（2019 起）2026-09-09 重算，见 04_data_gaps_and_repairs.md §8
 -16.8%、高周转型 10 家 -0.1%、高质量 55 家 -10.2%——亏损型/低竞争力显著跑输（结论
 结构不变）。
 
-**执行**：A/B 档入池前按同产品内 netprofit_margin / grossprofit_margin 相对中位数分层，
-亏损型剔除、低竞争力（两者均低于同产品中位数）降权/剔除（旧口径名单见月度产物第十五章）。
+**执行**：A/B 档入池后，同产品多标的按 netprofit_margin / grossprofit_margin 相对中位数
+分层做选股精化——亏损型剔除、低竞争力（两者均低于同产品中位数）降权/剔除（旧口径名单
+见月度产物第十五章）；此层仅作用于选股、不作全池强制门、不改择时时点。
 
 **传导选择性（2026-09 实证，同产品内部分化）**——出口景气是商品层信号，公司层受益
 与否由竞争力过滤：
@@ -235,12 +256,15 @@ GACC 口径（2019 起）2026-09-09 重算，见 04_data_gaps_and_repairs.md §8
 ## 6. 择时规则与回测验证（2026-09 实证，GACC 口径 2019-2026）
 
 **数据口径（2026-09 定稿）**：海关研究统一采用 GACC 纯净黄金表
-（`data/curated/industry/customs_trade_gacc.parquet`，8 位税号行级、2019-01 起、
-108 产品）。与旧混合表（GACC+UN，305 产品）的区别：UN 侧 197 个 hs6_* 为 6 位
+（`data/curated/industry/customs_trade_gacc.parquet`，8 位税号行级、2018-01 起（研究/回测窗口取
+2019-01 起）、108 产品）。与旧混合表（GACC+UN，305 产品）的区别：UN 侧 197 个 hs6_* 为 6 位
 粒度产品，GACC 侧归并为 8 位税号→108 产品，两者物理贸易数据 99% 重叠（仅
 hs6_285300 镍钴锰氢氧化物 GACC 未覆盖）；行业层 L2 覆盖一致（42=42），公司层
 108 产品零损失。回测窗口随数据起点缩短为 **2019-01~2026-08**（3MMA yoy 自
 2020-03 起有效，早期轮次消失）。
+
+采集侧已统一 GACC 单源：`customs_prosperity` 三面板默认输入 `customs_trade_gacc.parquet`，
+`stock_cli.customs` 已移除 sync/backfill/tariffline-backfill 三子命令（tariffline/gacc-*/catalog 保留）。
 
 **交易规则**（`backtest_customs_company_signal.py`，已按 release_date 对齐消除
 发布时滞前视，见 26 号文档；`build_weight_plan(vals, quality_gate)` 分两版）：
@@ -298,16 +322,38 @@ base——量拐门在消除前视后退化为中性（见 26 号文档 §4）�
 
 - **数据资产**（共享，不复制）：全部在 `config/data/customs/` 与
   `src/stock_data/fetcher/industry/customs/parsers/company_exposure.py`，清单与维护边界见
-  skill 操作手册 `customs-export-trading/references/company_linkage.md` §1、§5；
-- **管线链路**（`stock_cli.customs_company`，月度抓机会例行）：公司观察表（暴露度×税号段）→
-  三层信号合成，产物 `customs_company_exposure.parquet/_latest.csv` +
-  `customs_company_signal.parquet/_latest.csv` + Manifest；实现见
-  `stock_analytics/pipelines/customs_company/`（exposure_panel + signal），YAML 配置
-  `config/analytics/customs_company.yaml`；
-- **研究工具**（消费本地 curated 表，非例行）：`calibrate_company_exposure.py`（暴露度校准）→
-  `backtest_customs_company_signal.py` / `backtest_customs_multi.py`（回测验证）；
+  skill 操作手册 `customs-export-research/references/company_linkage.md` §1、§5；
+- **旧 CSV 管线链路（已断链，待下线）**：`stock_cli.customs_company` 及
+  `calibrate_company_exposure.py` 依赖已删除的 `company_exposure_map.csv` /
+  `bz_item_alias_map.csv`，当前不可运行；历史产物
+  `customs_company_exposure.parquet/_latest.csv` + `customs_company_signal.parquet/_latest.csv`
+  保留为存档，不再更新；
+- **动态 H8 链路（主路径，月度抓机会例行）**：`stock_cli.customs_company_h8`，
+  2026-09 起替代旧链，不依赖旧两张人工 CSV；人工修正收敛为
+  `company_segment_binding.csv` 单表（binding + override 一表两用，当前 373 行 / 283 行带 exposure override）：
+  `fina_mainbz(P)` 按报告期截断 + `jieba/rapidfuzz` 自动映射到 `good_h8_codes.csv` 产品 →
+  叠加人工段绑定/override → 公司-H8 月度出口加权序列 → 公司×产品面板 + 三层信号
+  （`--with-signal`）。产物：
+  `customs_company_product_mapping.parquet`（公司-报告期-产品映射）、
+  `customs_company_h8_exposure.parquet`（公司×月份×H8 暴露 Mart，当前落盘实测
+  **463,073 行 / 1,221 家 / 136 产品**（max report_month 2026-07）、
+  `customs_company_h8_product_panel.parquet` 与 `customs_company_h8_signal.parquet`
+  （行数以最新 Manifest 为准）；
+  实现见 `stock_analytics/marts/customs_company_h8.py`（含 `_load_segment_binding` /
+  `_validate_override_segments` / `_attach_segment`）与
+  `stock_analytics/pipelines/customs_company_h8/`。
+  **上市日前视（PIT）**：暴露展开用 `report_date >= list_date` 双重点-in-time 过滤，
+  修复招股书历史报告期混入导致的未来公司前视（历史修复记录：暴露行 260,789 → 239,086，
+  -8.3%）；`list_date` 仅构建期过滤、已从最终 Mart 列（mapping/exposure）剥离；回测脚本另加
+  防御性过滤（历史样本 35,890 → 35,287，未来公司 0）；
+- **研究工具**（消费本地 curated 表，非例行）：`analyze_h8_a_pool_price_strength.py` /
+  `backtest_customs_company_h8_event.py`（动态 H8 链路股价验证，§3.1）当前可用；
+  `calibrate_company_exposure.py` / `backtest_customs_company_signal.py` /
+  `backtest_customs_multi.py` 属旧链（默认路径指已删除 CSV，待下线/改指 H8）；
   产物路径与列定义见 skill 操作手册 §2；
-- **执行节奏**：月度约 8 月下旬随行业 SOP 后执行，流程见 skill 操作手册 §3（抓机会手册）。
+- **执行节奏**：月度约 8 月下旬随行业 SOP 后执行，流程见 skill 操作手册 §3（抓机会手册）；
+- **待办**：动态 H8 链路的择时回测（复用 `backtest_customs_company_signal.py` 口径）
+  尚未做，目前只有评级产物与两轮股价验证（§3.1）。
 
 ## 8. 排除清单（不实现）
 

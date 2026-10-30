@@ -100,7 +100,7 @@ def build_hs6_records(
 
 def build_tariffline_gold_records(
     hs8_records: Sequence[CustomsTradeRecord],
-    catalog_path: Path | str = "config/data/customs/hs_codes_catalog.csv",
+    catalog_path: Path | str = "config/data/customs/good_h8_codes.csv",
 ) -> list[CustomsTradeRecord]:
     """返回同一黄金表所需的 HS8 明细行和 HS6 汇总行。"""
     catalog_map = load_hs_catalog(catalog_path)
@@ -111,7 +111,7 @@ def build_tariffline_gold_records(
 
 def load_tariffline_gold_records(
     raw_dir: Path | str,
-    catalog_path: Path | str = "config/data/customs/hs_codes_catalog.csv",
+    catalog_path: Path | str = "config/data/customs/good_h8_codes.csv",
 ) -> tuple[list[CustomsTradeRecord], int, int]:
     """从 Tariffline RAW 加载黄金表记录，并返回文件数与原始行数。"""
     hs8_records, raw_files, raw_rows = load_tariffline_records_with_stats(raw_dir, catalog_path)

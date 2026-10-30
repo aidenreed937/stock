@@ -95,12 +95,17 @@ def run_customs_prosperity_pipeline(
     frames: dict[str, pl.DataFrame] = {}
 
     # 1. 金额面板
-    amount = build_amount_panel(trade, skip_l2=config.skip_l2)
+    amount = build_amount_panel(trade, skip_l2=config.skip_l2, sources=config.research_sources)
     outputs["amount"] = save_amount_panel(amount, root)
     frames["amount"] = amount
 
     # 2. 量价分解（L2/L3）
-    vp = build_volume_price_panel(trade, skip_l2=config.skip_l2, skip_vp=config.skip_vp)
+    vp = build_volume_price_panel(
+        trade,
+        skip_l2=config.skip_l2,
+        skip_vp=config.skip_vp,
+        sources=config.research_sources,
+    )
     outputs["volume_price"] = save_volume_price_panel(vp, root)
     frames["volume_price"] = vp
 
@@ -111,6 +116,7 @@ def run_customs_prosperity_pipeline(
             catalog_path=config.hs_catalog_path,
             storage_dir=storage_dir or "data",
             validate_bridge_flag=product_bridge_check,
+            sources=config.research_sources,
         )
         outputs["product"] = save_product_panel(product, root)
         frames["product"] = product

@@ -12,6 +12,7 @@
 
 from __future__ import annotations
 
+from collections.abc import Sequence
 from pathlib import Path
 
 import polars as pl
@@ -20,6 +21,15 @@ from stock_analytics.pipelines.customs_company.config import (
     SIGNAL_LATEST_FILE,
     SIGNAL_PANEL_FILE,
 )
+
+
+def _drop_excluded_products(
+    company_latest: pl.DataFrame, exclude_products: Sequence[str]
+) -> pl.DataFrame:
+    """剔除快周期商品（§8.1 排除清单）行，仅保留观察表供研究。"""
+    if not exclude_products:
+        return company_latest
+    return company_latest.filter(~pl.col("product_key").is_in(exclude_products))
 
 
 def export_leg_state(
@@ -204,6 +214,61 @@ def load_fina_latest(dir_path: Path, symbols: list[str]) -> pl.DataFrame:
     return out
 
 
+def load_quality_layers(company_frame: pl.DataFrame, dir_path: Path | str) -> pl.DataFrame:
+    """同产品内竞争力分层（§5.4 修订）：company_frame 追加 quality_layer 列。
+
+    - 亏损型：netprofit_margin < 0（绝对硬事实，跨产品剔除）；
+    - 低竞争力：同产品内 netprofit_margin 与 grossprofit_margin **均低于同产品中位数**；
+    - 正常：其余（含无财报覆盖/单公司产品，不误杀）。
+    company_frame 需含 stock_code + product_key；dir_path 为 fina_indicator 目录。
+    不依赖已删除的 company_exposure_map.csv，产品→公司映射取自 company_frame 本身。
+    """
+    base = company_frame.with_columns(pl.lit("正常").alias("quality_layer"))
+    frames = []
+    for f in sorted(Path(dir_path).glob("**/*.parquet")):
+        try:
+            frames.append(
+                pl.read_parquet(f).select(
+                    ["symbol", "end_date", "netprofit_margin", "grossprofit_margin"]
+                )
+            )
+        except Exception:
+            continue
+    if not frames:
+        return base
+    fin = pl.concat(frames).filter(
+        (pl.col("end_date").dt.month() == 12)
+        & pl.col("netprofit_margin").is_not_null()
+        & pl.col("grossprofit_margin").is_not_null()
+    )
+    if fin.is_empty():
+        return base
+    latest = fin.group_by("symbol").agg(pl.col("end_date").max())
+    fin = (
+        fin.join(latest, on=["symbol", "end_date"], how="inner")
+        .group_by("symbol")
+        .agg(
+            pl.col("netprofit_margin").mean().alias("np"),
+            pl.col("grossprofit_margin").mean().alias("gp"),
+        )
+        .rename({"symbol": "stock_code"})
+    )
+    joined = company_frame.join(fin, on="stock_code", how="left")
+    med = joined.group_by("product_key").agg(
+        pl.col("np").median().alias("med_np"),
+        pl.col("gp").median().alias("med_gp"),
+    )
+    joined = joined.join(med, on="product_key", how="left")
+    return joined.with_columns(
+        pl.when(pl.col("np") < 0)
+        .then(pl.lit("亏损型"))
+        .when((pl.col("np") < pl.col("med_np")) & (pl.col("gp") < pl.col("med_gp")))
+        .then(pl.lit("低竞争力"))
+        .otherwise(pl.lit("正常"))
+        .alias("quality_layer")
+    )
+
+
 def build_company_signal(
     company_latest: pl.DataFrame,
     *,
@@ -212,20 +277,24 @@ def build_company_signal(
     fina_path: Path | str,
     fund_window: int = 20,
     margin_chg_th: float = 2.0,
+    exclude_products: Sequence[str] = (),
 ) -> pl.DataFrame:
     """合成公司三层信号（出口×资金×财报 → rating/risk_flag）。
 
     Args:
-        company_latest: 公司观察表最新快照（build_exposure_panel 的 latest）。
+        company_latest: 公司×产品观察表的最新快照。
         moneyflow_path: 主力资金目录（tushare moneyflow）。
         margin_path: 两融目录（margin_detail）。
         fina_path: 财报指标目录（fina_indicator）。
         fund_window: 资金腿近 N 交易日。
         margin_chg_th: 融资余额变化率阈值。
+        exclude_products: 快周期商品产品 key 列表（METHODOLOGY_COMPANY_FINAL §8.1），
+            这些产品不产生交易信号，仅保留在观察表。
 
     Returns:
         信号面板（company 快照 + f1/f2/f3_state + rating/risk_flag）。
     """
+    company_latest = _drop_excluded_products(company_latest, exclude_products)
     symbols = company_latest["stock_code"].unique().to_list()
     fund = load_moneyflow_strength(Path(moneyflow_path), symbols, fund_window=fund_window)
     margin = load_margin_change(Path(margin_path), symbols, fund_window=fund_window)
@@ -296,6 +365,7 @@ __all__ = [
     "load_fina_latest",
     "load_margin_change",
     "load_moneyflow_strength",
+    "load_quality_layers",
     "rate",
     "save_company_signal",
 ]

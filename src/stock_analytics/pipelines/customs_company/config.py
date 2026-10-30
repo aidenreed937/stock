@@ -17,14 +17,11 @@ import yaml
 DEFAULT_CONFIG_PATH = "config/analytics/customs_company.yaml"
 
 DEFAULT_ARTIFACT_ROOT = "data/analytics/industry"
-EXPOSURE_PANEL_FILE = "customs_company_exposure.parquet"
-EXPOSURE_LATEST_FILE = "customs_company_exposure_latest.csv"
 SIGNAL_PANEL_FILE = "customs_company_signal.parquet"
 SIGNAL_LATEST_FILE = "customs_company_signal_latest.csv"
 
-DEFAULT_CUSTOMS_TRADE = "data/curated/industry/customs_trade.parquet"
-DEFAULT_EXPOSURE_MAP = "config/data/customs/company_exposure_map.csv"
-DEFAULT_HS_CATALOG = "config/data/customs/hs_codes_catalog.csv"
+DEFAULT_CUSTOMS_TRADE = "data/curated/industry/customs_trade_gacc.parquet"
+DEFAULT_HS_CATALOG = "config/data/customs/good_h8_codes.csv"
 DEFAULT_SEGMENTS = "config/data/customs/taxline_segments.csv"
 DEFAULT_MONEYFLOW = "data/curated/tushare/market=CN/moneyflow"
 DEFAULT_MARGIN = "data/curated/tushare/market=CN/margin_detail"
@@ -39,7 +36,6 @@ class CustomsCompanyConfig:
     title: str = "公司层出口交易信号管线（暴露度×税号段 → 三层信号评级）"
     artifact_root: str = DEFAULT_ARTIFACT_ROOT
     customs_trade_path: str = DEFAULT_CUSTOMS_TRADE
-    exposure_map_path: str = DEFAULT_EXPOSURE_MAP
     hs_catalog_path: str = DEFAULT_HS_CATALOG
     segments_path: str = DEFAULT_SEGMENTS
     moneyflow_path: str = DEFAULT_MONEYFLOW
@@ -47,6 +43,7 @@ class CustomsCompanyConfig:
     fina_path: str = DEFAULT_FINA
     fund_window: int = 20  # 资金腿近 N 交易日
     margin_chg_th: float = 2.0  # 融资余额 20 日变化率阈值（%）
+    excluded_products: tuple[str, ...] = ()  # 快周期商品剔除（METHODOLOGY_COMPANY_FINAL §8.1）
 
     @property
     def artifact_root_path(self) -> Path:
@@ -84,12 +81,17 @@ def load_customs_company_config(
         except (TypeError, ValueError):
             return default
 
+    def _str_list(key: str) -> tuple[str, ...]:
+        value = payload.get(key)
+        if not isinstance(value, list):
+            return ()
+        return tuple(v for v in value if isinstance(v, str) and v)
+
     return CustomsCompanyConfig(
         schema_version=_int("schema_version", 1),
         title=_str("title", "公司层出口交易信号管线（暴露度×税号段 → 三层信号评级）"),
         artifact_root=_str("artifact_root", DEFAULT_ARTIFACT_ROOT),
         customs_trade_path=_str("customs_trade_path", DEFAULT_CUSTOMS_TRADE),
-        exposure_map_path=_str("exposure_map_path", DEFAULT_EXPOSURE_MAP),
         hs_catalog_path=_str("hs_catalog_path", DEFAULT_HS_CATALOG),
         segments_path=_str("segments_path", DEFAULT_SEGMENTS),
         moneyflow_path=_str("moneyflow_path", DEFAULT_MONEYFLOW),
@@ -97,6 +99,7 @@ def load_customs_company_config(
         fina_path=_str("fina_path", DEFAULT_FINA),
         fund_window=_int("fund_window", 20),
         margin_chg_th=_number("margin_chg_th", 2.0),
+        excluded_products=_str_list("excluded_products"),
     )
 
 
@@ -104,14 +107,11 @@ __all__ = [
     "DEFAULT_ARTIFACT_ROOT",
     "DEFAULT_CONFIG_PATH",
     "DEFAULT_CUSTOMS_TRADE",
-    "DEFAULT_EXPOSURE_MAP",
     "DEFAULT_FINA",
     "DEFAULT_HS_CATALOG",
     "DEFAULT_MARGIN",
     "DEFAULT_MONEYFLOW",
     "DEFAULT_SEGMENTS",
-    "EXPOSURE_LATEST_FILE",
-    "EXPOSURE_PANEL_FILE",
     "SIGNAL_LATEST_FILE",
     "SIGNAL_PANEL_FILE",
     "CustomsCompanyConfig",

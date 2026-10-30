@@ -160,16 +160,18 @@ def parse_gacc_csv(
             catalog_info = _catalog_info_for_code(hs_code, catalog_map)
         else:
             gacc_info = gacc_code_map.get(hs_code)
-            if gacc_info is not None and is_queryable_gacc_code(gacc_info):
+            # P0-1 修复（2026-09 审计）：优先 8 位码精确匹配主表，保留行级 L3 差异。
+            # 此前对命中 gacc_code_map 的码一律按 product_key 反查"任意第一行"，
+            # 导致 commercial_nev 的 87046000（新能源载货车）在 GACC 段被错误归入
+            # 850913.SI（商用载客车）——同一产品多 8 位行且 L3 不同时行级映射丢失。
+            # product_key 反查仅作兜底：主表对该码完全无映射（8 位精确与 6 位父级
+            # 均未命中）时，才按产品归属回退。
+            catalog_info = _catalog_info_for_code(hs_code, catalog_map)
+            if not catalog_info and gacc_info is not None and is_queryable_gacc_code(gacc_info):
                 catalog_info = _catalog_info_for_product_key(
                     gacc_info.get("product_key", ""),
                     catalog_map,
                 )
-            else:
-                # 全量导出模式：码表未命中时回退主表（8 位精确 → 6 位前缀兜底）。
-                # 支持海关平台"商品编码留空"的全量商品导出（未登记子目按 6 位父级
-                # 归属产品）；主表完全无映射的码仍丢弃。
-                catalog_info = _catalog_info_for_code(hs_code, catalog_map)
         if not catalog_info:
             continue
 

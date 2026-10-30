@@ -86,8 +86,8 @@ def _trades_frame() -> pl.DataFrame:
 
 
 def _hs_catalog(tmp_path: Path) -> Path:
-    """构造最小 hs_codes_catalog.csv（6/8 位行，拆段用）。"""
-    p = tmp_path / "hs_codes_catalog.csv"
+    """构造最小 good_h8_codes.csv（6/8 位行，拆段用）。"""
+    p = tmp_path / "good_h8_codes.csv"
     pl.DataFrame(
         {
             "product_key": ["transformer", "pcb"],
@@ -133,6 +133,7 @@ def test_load_config_defaults() -> None:
     assert config.artifact_root == "data/analytics/industry"
     assert "801033.SI;801034.SI" in config.skip_l2
     assert "hydrogen_electrolyzer" in config.skip_vp
+    assert config.research_sources == ("GACC",)
     assert "801738.SI" in config.consistency_table
     assert config.consistency_table["801738.SI"] == (1.0, "A")
 
@@ -171,7 +172,7 @@ def test_derive_amount_metrics_and_complete_months() -> None:
 def test_build_amount_panel(tmp_path: Path) -> None:
     """金额面板：hs8/l3/l2 三层合并；GACC-only 码保留；组合码不在 hs8/L3 层剔除。"""
     trade = _trades_frame()
-    panel = build_amount_panel(trade)
+    panel = build_amount_panel(trade, sources=("UN_Comtrade", "GACC"))
     assert {"granularity", "code", "name", "report_month", "yoy_growth_3mma"}.issubset(
         panel.columns
     )
@@ -190,13 +191,30 @@ def test_build_amount_panel(tmp_path: Path) -> None:
     assert out.exists()
 
 
+def test_build_amount_panel_gacc_only_default() -> None:
+    """默认研究口径只消费 GACC：UN-only 产品不进入面板，序列起点随 GACC 段。"""
+    trade = _trades_frame()
+    panel = build_amount_panel(trade)  # 默认 sources=("GACC",)
+    hs8 = panel.filter(pl.col("granularity") == "hs8")
+    # pcb 只有 UN 行 → 被过滤；transformer 仅保留 GACC 月份（7 个有值月 + 补全 6 个缺月）
+    assert hs8["code"].n_unique() == 1
+    assert hs8.height == 13  # 2016-01 ~ 2017-01（GACC 段 13 个月）
+    assert set(hs8["code"].unique().to_list()) == {"84138200"}
+    l2 = panel.filter(pl.col("granularity") == "l2")
+    assert set(l2["code"].unique().to_list()) == {"801738.SI"}
+
+
 def test_build_volume_price_panel(tmp_path: Path) -> None:
     """量价分解：数量仅可加总产品聚合；伪影产品量价置空；组合码跳过。"""
     trade = _trades_frame().with_columns(
         pl.col("export_volume").cast(pl.Float64),
         pl.col("quantity_unit").cast(pl.String),
     )
-    vp = build_volume_price_panel(trade, skip_vp=frozenset({"hydrogen_electrolyzer"}))
+    vp = build_volume_price_panel(
+        trade,
+        skip_vp=frozenset({"hydrogen_electrolyzer"}),
+        sources=("UN_Comtrade", "GACC"),
+    )
     assert {
         "粒度",
         "code",
@@ -217,7 +235,11 @@ def test_build_product_panel(tmp_path: Path) -> None:
     trade = _trades_frame()
     cat = _hs_catalog(tmp_path)
     panel = build_product_panel(
-        trade, catalog_path=cat, storage_dir=tmp_path, validate_bridge_flag=False
+        trade,
+        catalog_path=cat,
+        storage_dir=tmp_path,
+        validate_bridge_flag=False,
+        sources=("UN_Comtrade", "GACC"),
     )
     assert {
         "seg_key",
@@ -259,6 +281,9 @@ def test_run_pipeline_writes_manifest(tmp_path: Path) -> None:
         f"""
 artifact_root: "{tmp_path}"
 customs_trade_path: "{_write_customs_trade(tmp_path)}"
+research_sources:
+  - "UN_Comtrade"
+  - "GACC"
 hs_catalog_path: "{_hs_catalog(tmp_path)}"
 consistency_table:
   "801738.SI": [1.00, "A"]
