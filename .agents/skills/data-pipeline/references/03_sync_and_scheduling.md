@@ -1,6 +1,6 @@
 # 每日增量采集与定时调度指南 (Incremental Ingestion & Scheduling)
 
-`DailySyncEngine` 提供基于水位自动嗅探（Watermark Sniffing）、发布窗口保护（Wave Routing）与多端点并发补齐的一站式增量更新服务。`SOURCE=all` 目前由 CLI 按数据源顺序循环，跨数据源并不并行；单个数据源内部才按配置使用线程池。
+`DailySyncEngine` 提供基于水位自动嗅探（Watermark Sniffing）、发布窗口保护（Wave Routing）与多端点并发补齐的一站式增量更新服务。`SOURCE=all` 覆盖 TuShare、LiXinger、FRED、Alpha Vantage 和 Industry，永久排除 yfinance；yfinance 仍可显式单独同步。跨源并发度按 `source_workers` 配置控制。
 
 ---
 
@@ -15,7 +15,7 @@ make sync SOURCE=tushare DATE=YYYY-MM-DD
 make sync SOURCE=lixinger
 make sync SOURCE=yfinance
 
-# 3. 强制覆盖刷新 (全数据源)
+# 3. 强制覆盖刷新 (日常同步源，不含 yfinance)
 make sync SOURCE=all FORCE=1
 
 # 4. 强制刷新 LiXinger，绕过发布时间窗口、水位与 RAW 缓存
@@ -125,4 +125,12 @@ UV_CACHE_DIR=.uv_cache UV_PYTHON_INSTALL_DIR=.uv_python uv run python -m stock_d
 
 # 波次 3 (周二至周六 09:15): 美股外盘收盘行情、全球宏观、A 股融资融券
 15 09 * * 2-6 cd /Users/mac/workspace/personal/finance/stock && make sync SOURCE=all >> logs/cron_sync.log 2>&1
+
+# 波次 4 (周二至周六 12:15): FRED VIX 收盘序列延迟发布复查
+15 12 * * 2-6 cd /Users/mac/workspace/personal/finance/stock && make sync SOURCE=fred ENDPOINT=VIXCLS >> logs/cron_sync.log 2>&1
 ```
+
+> FRED `VIXCLS` 按 T+1、23:00 `America/New_York` 判断发布就绪；12:15 `Asia/Shanghai` 的复查波次覆盖夏令时和冬令时。FRED 对不同页面/CSV 的更新可能有短暂时差，CBOE 只承诺每日更新，不保证固定发布时间。
+
+> `SOURCE=all` 不会触发 yfinance。Yahoo Finance 任务仅在需要时显式运行，例如
+> `make sync SOURCE=yfinance ENDPOINT=stock_daily_bar,index_daily_bar`。

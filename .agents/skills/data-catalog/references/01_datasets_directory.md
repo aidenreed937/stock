@@ -14,7 +14,7 @@
 | **`fund_daily`** | 场内基金与 ETF 日 K 线 | 全市场/核心 ETF 全历史 | `symbol`, `trade_date` | `open`, `high`, `low`, `close`, `volume`, `amount` |
 | **`fund_adj`** | 场内基金与 ETF 复权因子 | 全市场/核心 ETF 全历史 (含分红除权) | `symbol`, `trade_date` | `adj_factor` |
 | **`etf_share_size`** | 核心 ETF 份额与规模序列 | 核心 ETF 全历史 | `symbol`, `trade_date` | `fd_share`, `n_shares` |
-| **`fund_portfolio`** | 公募基金重仓持股明细 | 公募基金季度持仓股票明细 | `symbol`, `ann_date`, `end_date`, `symbol` | `mkv`, `amount`, `stk_mkv_ratio` |
+| **`fund_portfolio`** | 公募基金重仓持股明细（基金 × 被持有股票） | 公募基金季度持仓股票明细 | `fund_code`(基金代码), `symbol`(被持有股票代码), `ann_date`, `end_date` | `mkv`, `amount`, `stk_mkv_ratio`, `stk_float_ratio` |
 | **`moneyflow`** | 个股大单小单资金流向 | 全市场个股资金流 (2013 至今) | `symbol`, `trade_date` | `buy_sm_amount`, `buy_md_amount`, `buy_lg_amount`, `buy_elg_amount`, `net_mf_amount` (均为元) |
 | **`moneyflow_hsgt`** | 北向资金每日净流入 | 沪股通/深股通/北向合计 (2014 至今) | `trade_date` | `hgt(元)`, `sgt(元)`, `north_money(元)` |
 | **`margin`** | 全市场融资融券每日汇总 | SSE/SZSE/BSE 全历史 | `trade_date`, `exchange_id` | `rzye(元)`, `rzmre`, `rqye`, `rqyl`, `rzrqye` |
@@ -26,6 +26,19 @@
 | **`stk_holdertrade`** | 股东及董监高增减持事件 | 公告事件流水 | `symbol`, `ann_date`, `holder_name`, `in_de`, `change_vol` | `change_ratio`, `avg_price`, `begin_date`, `close_date` |
 | **`repurchase`** | 股票回购计划与实施事件 | 公告事件流水 | `symbol`, `ann_date`, `proc` | `vol`, `amount`, `high_limit`, `low_limit` |
 | **`block_trade`** | 股票大宗交易明细 | 交易事件流水 | `symbol`, `trade_date`, `price`, `vol`, `buyer`, `seller` | `amount` |
+
+> **`fund_portfolio` 口径注意（2026-10 实测校正）**
+>
+> 1. **披露深度随报告期变化**：季报（Q1/Q3）只披露前十大重仓股，主动权益基金通常 10 只；
+>    半年报/年报（Q2/Q4）披露全部持仓，中位 50–120 只、最大可到 800+。ETF 与被动指数基金
+>    季报也披露全部持仓，因此"季报出现十几行"属正常披露差异，不是数据污染。
+> 2. **`stk_mkv_ratio` 是「占股票投资市值比」，不是占基金净值比**：年报/半年报全部持仓的
+>    该字段加总恒为 100.00（实测 P10–P90 = 99.94–100.02），季报前十大加总中位约 55。
+>    要计算"重仓股占基金净值"，必须用 `mkv ÷ 基金规模`，不能直接使用该字段。
+> 3. **`stk_float_ratio` 是「占流通股比」**，理论上限 100；上游存在个别越界记录，清洗层已将
+>    `>100.5` 或 `<0` 的占比置空（不丢整条持仓），见 `stock_data.pipeline.cleaner.fund_cleaner`。
+> 4. **同一报告期可能有多份公告**：主键含 `ann_date`，修订/补充公告会追加记录；分析时按
+>    `(fund_code, end_date, symbol)` 取最新 `ann_date`，否则会重复计算同一持仓。
 
 ---
 
@@ -55,14 +68,23 @@
 | **`sw_2021_constituents`** | 理杏仁 | SW2021 行业成分源表/当前快照输入 | `industryCode`, `symbol` | `industryCode(行业代码)`, `symbol(六位股票代码)`, `updated_at` |
 | **`sw_2021_fundamental`** | 理杏仁 | 申万 31 一级行业日度估值 | `symbol`, `trade_date` | `pe_ttm.ew`, `pb.ew`, `ps_ttm.ew`, `dyr.ew`, `mc(元)` |
 | **`sw_2021_l2_fundamental`** | 理杏仁 | 申万 2021 二级行业日度估值 | `symbol`, `trade_date` | `pe_ttm.ew`, `pb.ew`, `ps_ttm.ew`, `dyr.ew`, `mc(元)` |
-| **`sw_2021_fs_non_financial`** | 理杏仁 | 29 个非金融一级行业合并财报 | `symbol`, `report_date` | `ps.toi.c_y2y`, `ps.np.c_y2y`, `ps.gp_m.ttm`, `m.roe.ttm` |
-| **`sw_2021_fs_bank`** | 理杏仁 | 商业银行一级行业合并财报 | `symbol`, `report_date` | `ps.nii.c_y2y`, `ps.np.c_y2y`, `ps.cir.ttm`, `m.roe.ttm` |
-| **`sw_2021_fs_security`** | 理杏仁 | 证券公司行业合并财报 | `symbol`, `report_date` | `ps.ib_n_inc.c_y2y`, `ps.np.c_y2y`, `m.roe.ttm` |
-| **`sw_2021_fs_insurance`** | 理杏仁 | 保险公司行业合并财报 | `symbol`, `report_date` | `ps.ep.c_y2y`, `ps.np.c_y2y`, `m.roe.ttm` |
-| **`sw_2021_l2_fs_non_financial`** | 理杏仁 | 127 个非金融二级行业合并财报 | `symbol`, `report_date` | `ps.toi.c_y2y`, `ps.np.c_y2y`, `ps.gp_m.ttm`, `m.roe.ttm` |
-| **`sw_2021_l2_fs_bank`** | 理杏仁 | 4 个银行二级行业合并财报 | `symbol`, `report_date` | `ps.nii.c_y2y`, `ps.np.c_y2y`, `ps.cir.ttm`, `m.roe.ttm` |
-| **`sw_2021_l2_fs_security`** | 理杏仁 | 证券二级行业合并财报 | `symbol`, `report_date` | `ps.ib_n_inc.c_y2y`, `ps.np.c_y2y`, `m.roe.ttm` |
-| **`sw_2021_l2_fs_insurance`** | 理杏仁 | 保险二级行业合并财报 | `symbol`, `report_date` | `ps.ep.c_y2y`, `ps.np.c_y2y`, `m.roe.ttm` |
+| **`sw_2021_fs_non_financial`** | 理杏仁 | 29 个非金融一级行业合并财报 | `symbol`, `trade_date`（报告期末） | `q.ps.toi.t`, `q.ps.np.t`, `q.ps.toi.ttm_y2y`, `q.ps.toi.ttm_y2y_derived`, `q.ps.np.ttm_y2y`, `q.ps.np.ttm_y2y_derived`, `q.ps.gp_m.ttm`, `q.m.roe.ttm` |
+| **`sw_2021_fs_bank`** | 理杏仁 | 商业银行一级行业合并财报 | `symbol`, `trade_date`（报告期末） | `q.ps.toi.t`, `q.ps.np.t`, `q.ps.toi.ttm_y2y(_derived)`, `q.ps.np.ttm_y2y(_derived)`, `q.m.roe.ttm` |
+| **`sw_2021_fs_security`** | 理杏仁 | 证券公司行业合并财报 | `symbol`, `trade_date`（报告期末） | `q.ps.toi.t`, `q.ps.np.t`, `q.ps.toi.ttm_y2y(_derived)`, `q.ps.np.ttm_y2y(_derived)`, `q.m.roe.ttm` |
+| **`sw_2021_fs_insurance`** | 理杏仁 | 保险公司行业合并财报 | `symbol`, `trade_date`（报告期末） | `q.ps.toi.t`, `q.ps.np.t`, `q.ps.toi.ttm_y2y(_derived)`, `q.ps.np.ttm_y2y(_derived)`, `q.m.roe.ttm` |
+| **`sw_2021_l2_fs_non_financial`** | 理杏仁 | 127 个非金融二级行业合并财报 | `symbol`, `trade_date`（报告期末） | `q.ps.toi.t`, `q.ps.np.t`, `q.ps.toi.ttm_y2y(_derived)`, `q.ps.np.ttm_y2y(_derived)`, `q.ps.gp_m.ttm`, `q.m.roe.ttm` |
+| **`sw_2021_l2_fs_bank`** | 理杏仁 | 4 个银行二级行业合并财报 | `symbol`, `trade_date`（报告期末） | `q.ps.toi.t`, `q.ps.np.t`, `q.ps.toi.ttm_y2y(_derived)`, `q.ps.np.ttm_y2y(_derived)`, `q.m.roe.ttm` |
+| **`sw_2021_l2_fs_security`** | 理杏仁 | 证券二级行业合并财报 | `symbol`, `trade_date`（报告期末） | `q.ps.toi.t`, `q.ps.np.t`, `q.ps.toi.ttm_y2y(_derived)`, `q.ps.np.ttm_y2y(_derived)`, `q.m.roe.ttm` |
+| **`sw_2021_l2_fs_insurance`** | 理杏仁 | 保险二级行业合并财报 | `symbol`, `trade_date`（报告期末） | `q.ps.toi.t`, `q.ps.np.t`, `q.ps.toi.ttm_y2y(_derived)`, `q.ps.np.ttm_y2y(_derived)`, `q.m.roe.ttm` |
+| **`sw_2021_l3_fs_non_financial`** | 理杏仁 | 三级非金融行业合并财报 | `symbol`, `trade_date`（报告期末） | `q.ps.toi.t`, `q.ps.np.t`, `q.ps.toi.ttm_y2y(_derived)`, `q.ps.np.ttm_y2y(_derived)`, `q.ps.gp_m.ttm`, `q.m.roe.ttm` |
+| **`sw_2021_l3_fs_bank`** | 理杏仁 | 三级银行行业合并财报 | `symbol`, `trade_date`（报告期末） | `q.ps.toi.t`, `q.ps.np.t`, `q.ps.toi.ttm_y2y(_derived)`, `q.ps.np.ttm_y2y(_derived)`, `q.m.roe.ttm` |
+| **`sw_2021_l3_fs_security`** | 理杏仁 | 三级证券行业合并财报 | `symbol`, `trade_date`（报告期末） | `q.ps.toi.t`, `q.ps.np.t`, `q.ps.toi.ttm_y2y(_derived)`, `q.ps.np.ttm_y2y(_derived)`, `q.m.roe.ttm` |
+| **`sw_2021_l3_fs_insurance`** | 理杏仁 | 三级保险行业合并财报 | `symbol`, `trade_date`（报告期末） | `q.ps.toi.t`, `q.ps.np.t`, `q.ps.toi.ttm_y2y(_derived)`, `q.ps.np.ttm_y2y(_derived)`, `q.m.roe.ttm` |
+
+行业财报日期字段要区分：`standardDate`/`trade_date` 是财务报告期末，`reportDate` 是披露日期。
+`q.ps.*.t` 是 YTD 累计值，不是单季值；`*_ttm_y2y_derived` 只在官方 `ttm_y2y` 缺失且
+具备连续四季度累计值时补齐。下游应使用 `coalesce(官方字段, 派生字段)`，不能把派生字段
+当成源端原值；缺少完整历史的记录继续为 null。
 
 ### 3.1 申万行业查询口径
 
@@ -127,4 +149,17 @@ versioned = load_index_member_for_classification(
 | **`national_debt`** | 理杏仁 | 中债官方国债收益率序列 | `trade_date` | `tcm_y1`, `tcm_y2`, `tcm_y5`, `tcm_y10`, `tcm_y30` |
 | **`macro_indicators`** | AlphaVantage | USD/CNH 离岸人民币汇率 | `symbol`, `trade_date` | `open`, `high`, `low`, `close` |
 
-领域 Mart 统一落在 `data/curated/mart/`，由 `FeatureStore` 管理：`market_daily` 为市场日频宽表；`industry_daily`、`industry_panel_daily` 为申万行业日频事实与结构面板；`market_temperature_derived_facts` 为市场温度派生事实；`convertible_bond_daily`、`insider_activity_daily`、`repurchase_daily`、`block_trade_daily` 为事件/资产聚合；`settlement_iv_proxy_daily` 为期权结算价反解的波动率代理。领域 Mart 的缺失输入只产生空结果或不可用状态，不代表上游有数据。领域职责与构建入口见 [`docs/architecture/domain-responsibilities.md`](../../../docs/architecture/domain-responsibilities.md)。
+领域 Mart 统一落在 `data/curated/mart/`，由 `FeatureStore` 管理：`market_daily` 为市场日频宽表；`industry_daily`、`industry_panel_daily` 为申万行业日频事实与结构面板；`market_temperature_derived_facts` 为市场温度派生事实；`convertible_bond_daily`、`insider_activity_daily`、`repurchase_daily`、`block_trade_daily` 为事件/资产聚合；`settlement_iv_proxy_daily` 为期权结算价反解的波动率代理；`overseas_revenue` 为公司海外营收布局（主键 `symbol`×`end_date`，报告期粒度：`total_revenue`/`overseas_revenue` 亿元、`overseas_ratio`、`overseas_revenue_yoy`、`total_revenue_yoy`、`overseas_ratio_chg`、`overseas_gross_margin`（海外毛利率 = 海外主营利润/海外营收）、`gross_margin`/`netprofit_margin`（公司整体毛利率/净利率，fina_indicator 百分数 ÷100 转小数）、`disclosure`，按 `ann_date` 做无前视对齐）。注意：海外净利率无法从公开披露拆分（分地区无费用分摊），本 Mart 只有海外毛利率 + 公司整体净利率作参考。领域 Mart 的缺失输入只产生空结果或不可用状态，不代表上游有数据。领域职责与构建入口见 [`docs/architecture/domain-responsibilities.md`](../../../docs/architecture/domain-responsibilities.md)。
+
+`overseas_revenue` 读取示例（`end_date` 是日期列，支持按报告期过滤）：
+
+```python
+from stock_analytics.features.store import FeatureStore
+
+store = FeatureStore()
+df = store.get_domain_mart(
+    "overseas_revenue",
+    date_column="end_date",
+    columns=("symbol", "end_date", "ann_date", "overseas_revenue", "overseas_ratio", "overseas_gross_margin", "gross_margin", "netprofit_margin", "disclosure"),
+)
+```

@@ -28,7 +28,7 @@ flowchart LR
 | :--- | :--- | :--- | :--- |
 | **① 注册新接口** | 定义 Provider 元数据、项目任务名、单位倍率、任务包与自检门禁 | `UV_CACHE_DIR=.uv_cache UV_PYTHON_INSTALL_DIR=.uv_python uv run python -m stock_cli.task_health --provider <source>` / [`docs/architecture/task-management.md`](../../../docs/architecture/task-management.md) | [接口注册流水线](references/01_endpoint_registration.md) |
 | **② 历史全量回填** | 12 年 K 线/估值/宏观/产业数据批量拉取与 2-Tier ETL | `make backfill START=... END=... SOURCE=...` | [多数据源回填手册](references/02_backfill_recipes.md) |
-| **③ 每日增量采集** | 盘后水位自动嗅探、波次保护与增量对账 | `make sync SOURCE=tushare` / `make sync SOURCE=lixinger` / `make sync SOURCE=all`（跨源串行） | [增量同步与调度模板](references/03_sync_and_scheduling.md) |
+| **③ 每日增量采集** | 盘后水位自动嗅探、波次保护与增量对账 | `make sync SOURCE=tushare` / `make sync SOURCE=lixinger` / `make sync SOURCE=all`（不含 yfinance）；宏观全链路使用 `make macro-update` | [增量同步与调度模板](references/03_sync_and_scheduling.md) |
 | **④ 清洗与标准化** | RAW 原始保真，Curated 统一金额/股本为标准单位 | `src/stock_data/pipeline/normalizer/unit_normalizer.py` | [单位与 Schema 规范](references/04_audit_ops_troubleshooting.md#②-单位口径与数值倍率原则) |
 | **⑤ 质量与门禁** | 运行时隔离区检查与数据源探针健康检测 | `make probe` / `make validate` | [质量门禁与隔离区机制](references/05_quality_and_quarantine.md) |
 | **⑥ 审计与对账** | RAW/Curated/隔离区与领域 Mart 的可解释对账、全库资产盘点 | `make master-audit` / `make audit TYPE=reconciliation` | [审计与对账 CLI 指南](references/04_audit_ops_troubleshooting.md#1-统一数据审计与对账-cli-audit-cli) |
@@ -110,8 +110,10 @@ make sync SOURCE=lixinger ENDPOINT=unlock_summary
 | TuShare | `daily_market_bundle`、`fund_daily_bundle`、`fund_portfolio_bundle`、`hsgt_flow_bundle`、`financial_statement_bundle`、`pit_bundle`、`macro_daily_bundle`、`macro_monthly_bundle`、`metadata_bundle`、`corporate_action_bundle`、`shareholder_event_bundle`、`research_daily_bundle`、`market_behavior_bundle`、`pledge_bundle` |
 | LiXinger | `market_bundle`、`industry_bundle`（申万成分与估值）、`industry_financial_bundle`（申万季度合并财报）、`company_bundle`、`company_risk_event_bundle`、`macro_daily_bundle`、`macro_monthly_bundle` |
 | yfinance | `fundamental_bundle`、`corporate_action_bundle`、`research_daily_bundle`、`research_event_bundle` |
-| FRED | `macro_monthly_bundle` |
-| **Industry** | **`industry_tech_bundle`** (半导体销售/设备出货/芯片交期/TSMC营收/晶圆代工产能利用率/云Capex/消费电子)<br>**`industry_energy_bundle`** (光伏装机/价格链/有色金属/煤炭/化工10年实物产量/10年产能利用率/高频周度开工与库存/理论加工费/期货仓单/期货龙虎榜)<br>**`industry_consume_bundle`** (生猪存栏与出栏价/白酒批价/创新药BD License-out)<br>**`industry_macro_bundle`** (航运BDI/工程机械/新能源车月度产销)<br>**`industry_gacc_bundle`** (海关进出口)<br>**`industry_monthly_bundle`**、**`industry_all_bundle`** |
+| FRED | `global_macro_daily_bundle`、`macro_monthly_bundle` |
+| **Industry** | **`semiconductor_bundle`** (半导体完整 13 端点)<br>**`industry_tech_bundle`** (跨行业科技观察：半导体子集 + 云 CapEx + 消费电子)<br>**`chemical_industry_bundle`** (化工月度市场、期货仓单、期货日线行情、周度调查、期货龙虎榜)<br>**`industry_energy_bundle`** (光伏装机/价格链/有色金属/煤炭)<br>**`industry_consume_bundle`** (生猪存栏与出栏价/白酒批价/创新药BD License-out)<br>**`industry_macro_bundle`** (航运BDI/工程机械/新能源车月度产销)<br>**`industry_gacc_bundle`** (GACC 海关进出口 RAW 回放)<br>**`industry_monthly_bundle`**、**`industry_all_bundle`** |
+
+> 半导体专项同步使用 `semiconductor_bundle` 或 `make sync-semiconductor`；`industry_tech_bundle` 是半导体子集 + 云 CapEx + 消费电子的跨行业观察包，不能替代半导体专项包。`task_health --provider industry` 会对这种覆盖缺口发出 warning。
 
 ### 垂直产业 (Industry) 2-Tier 严格分层与调度规范
 
@@ -197,7 +199,7 @@ make audit TYPE=all DATE=YYYY-MM-DD
 - 同步命令退出码为 0 不代表目标日已落盘；必须检查结构化任务摘要中的 `SUCCESS` / `UP_TO_DATE` / `SKIPPED` 状态和关键数据集最新水位。`SKIPPED` 只能表示安全跳过，不能作为数据已就绪的证据。
 - 下游构建使用实际落盘的有效基准日 `effective_as_of`，而不是命令传入的目标日。确认关键 Curated 数据达到该日期后，才允许构建 Domain Mart、宏观风险因子或研报；若关键输入落后，应先补齐数据或明确披露落后日期。
 
-`SOURCE=all` 当前只是在 CLI 中按数据源顺序循环执行；单个数据源内部仍可按配置使用线程池。需要跨数据源并行时，应启动多个独立的 `make sync SOURCE=...` 进程，不能把 `SOURCE=all` 视为跨源并行入口。
+`SOURCE=all` 只覆盖日常同步源：TuShare、LiXinger、FRED、Alpha Vantage 和 Industry，永久排除易受限流影响的 yfinance。yfinance 仍可通过 `make sync SOURCE=yfinance` 显式按需执行。跨源并发度按 `source_workers` 配置控制。
 
 ### 日期字段与最新水位核对
 
@@ -236,7 +238,7 @@ make audit TYPE=all DATE=YYYY-MM-DD
 7. **统一运行时目录上下文**：
    `DataRuntimeContext` 为一次运行统一注入 `data_root`、`raw_root`、`curated_root` 和 `cache_root`。Fetcher、DataCatalog、FeatureStore 与领域 Mart 构建器应复用该上下文，禁止为 RAW、Curated、Cache 各自拼接一套路径。
 8. **领域 Mart 质量闭环**：
-   领域 Mart 由 `stock_analytics.marts` 的 `DomainMartBuilder` 经 `make features-build TARGET=domain_marts` 构建，随后由 `make validate` 检查日期类型、主键唯一性、非有限数值和领域输入契约；`make audit TYPE=all` 再完成资产与来源审计。输入缺失时不得用默认值伪造 Mart 数据。
+   领域 Mart 由 `stock_analytics.marts` 的 `DomainMartBuilder` 经 `make features-build TARGET=domain_marts` 构建，随后由 `make validate` 检查日期类型、主键唯一性、非有限数值和领域输入契约；`make audit TYPE=all` 再完成资产与来源审计。输入缺失时不得用默认值伪造 Mart 数据。`TARGET=domain_marts` 不会刷新宏观因子依赖的 `market_daily`；宏观产物更新使用 `make macro-update`，若数据已同步则使用 `make macro-artifacts`，后者通过 `TARGET=all` 按依赖顺序构建两层 Mart。
 9. **按业务日期裁剪而不是按字段名猜测**：
    `clip_endpoint_date_range()` 先读取 `TaskSpec.fetch_mode`、`frequency` 和分区契约；静态/事件/非分区任务不强行裁剪，季度财报以 `end_date` 的季度裁剪，其余任务再按 `trade_date`、`date`、`month` 等 `TaskSpec.date_columns` 或兼容字段处理。发现范围外记录时保留告警并在验收中归因。
 
@@ -249,3 +251,4 @@ make audit TYPE=all DATE=YYYY-MM-DD
 * 📘 [03_每日增量采集与定时调度指南](references/03_sync_and_scheduling.md)：水位感知增量更新、TaskBundle 组合调度与生产 Crontab 3 波次模板。
 * 📘 [04_数据审计、离线治理与故障排查](references/04_audit_ops_troubleshooting.md)：多维对账、Schema 演进报错解法、落盘验证脚本与探针诊断。
 * 📘 [05_数据质量门禁与异常隔离区机制](references/05_quality_and_quarantine.md)：QualityGate 物理断言清单、两融跨交易所覆盖规则与 QuarantineStore 排查实操。
+* 📘 [06_数据缺口与待办登记](references/06_todo_data_gaps.md)：数据缺口/补采待办登记表（DP-01 钛白粉价差等，不在正文维护）。

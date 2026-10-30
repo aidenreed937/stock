@@ -43,17 +43,17 @@ risk_factors.parquet → assemble_macro_panel → 策略 on_bar
 | 恐慌 VIX | yfinance | **黄金表直读** | 美股 VIX，时区平移对齐 |
 | 可转债 | tushare `cb_daily` | **黄金表直读** | 转债价格中位数 |
 | 跨资产宏观 | lixinger / fred / yfinance | **黄金表直读** | 国债收益率 / 铜金比 / 美债利差等 |
+| 利率周期 ffr_chg_6m | fred | **黄金表直读** | `macro_indicators` 表 DFF 日频有效利率，相对六个日历月前最近观测的变化（pp；按 H.15 下一个联储工作日发布时间映射为北京时间可用日，再对齐 A 股交易日；加息为正/降息为负），独立观测因子不入维度/双轨指数；既有研究基于月频 FEDFUNDS，换源后待复验 |
 | 两融杠杆 | `market_daily` Mart | **Mart** | stock_daily_bar + margin + daily_basic（融资穿透率/买入比，T+1 平移） |
 | 市场广度 | `market_daily` Mart | **Mart** | stock_daily_bar（涨跌家数/60日新高占比） |
 | 期权情绪 pcr | `market_daily` Mart | **Mart** | opt_daily（认沽认购比） |
 | 换手拥挤 | `market_daily` Mart | **Mart** | stock_daily_bar + daily_basic（全市场换手率） |
 | 主力资金 | `capital_game_daily` Mart | **Mart** | moneyflow + market_daily（主力/ETF/分歧度，T+1 平移） |
 | 隐含波动率 iv | `settlement_iv_proxy_daily` Mart | **Mart** | opt_daily（主力合约 IV 截面聚合） |
-| 基金发行 | `fund_issuance_monthly` Mart | **Mart** | fund_basic（月度新发规模） |
 | 聪明钱 | `smart_money_daily` Mart | **Mart** | insider_activity_daily + block_trade + top10_floatholders（三因子合成） |
-| 产业资本 | `repurchase_daily` / `insider_activity_daily` / `unlock_pressure_daily` Mart | **Mart** | repurchase + stk_holdertrade + share_float |
+| 产业资本 | `repurchase_daily` / `insider_activity_daily` / `unlock_pressure_daily` Mart | **Mart** | `dim_corporate` 等权汇总内部人净买入反向分位、内部人减持分位与限售解禁分位；回购反向分位是独立参考，不计入该维度。日报对综合分 65–79 标为“产业压力偏高”，≥80 标为“减持潮起”；解读时同时看分项，不能把 25–79 全部理解成压力常态 |
 
-> 结论：**黄金表直读的少（估值/VIX/转债/跨资产 4 类），Mart 消费的多（9 类）**——凡需
+> 结论：**黄金表直读的少（估值/VIX/转债/跨资产/利率 5 类），Mart 消费的多（8 类）**——凡需
 > 「全市场跨表聚合」或「领域合成」的因子，一律经 Mart 物化，避免各 fetcher 重复计算。
 
 ---
@@ -65,7 +65,6 @@ risk_factors.parquet → assemble_macro_panel → 策略 on_bar
 | `market_daily` | `features/builders/market_daily.py` | stock_daily_bar, margin, daily_basic, moneyflow, limit_list_d, opt_daily |
 | `capital_game_daily` | `marts/capital_game.py` | moneyflow + market_daily |
 | `settlement_iv_proxy_daily` | `marts/option_volatility.py` | opt_daily |
-| `fund_issuance_monthly` | `marts/fund_issuance.py` | fund_basic |
 | `smart_money_daily` | `marts/smart_money_build.py` | insider_activity_daily + block_trade + top10_floatholders |
 | `repurchase_daily` | `marts/build_steps.py` | repurchase |
 | `insider_activity_daily` | `marts/build_steps.py` | stk_holdertrade |
@@ -87,6 +86,8 @@ Mart 构建入口：`make features-build TARGET=domain_marts`（`stock_analytics
 
 > 宏观风控分析前，最低要求：`make validate`（质量门禁）+ 确认目标日因子产物已生成且
 > `manifest.json` 的 `run_status == "succeeded"`。
+>
+> 数据同步的目标日可能因显式 `DATE`、发布时间窗口或交易日历而未实际落盘；宏观分析应使用数据管道验收得到的 `effective_as_of`，具体规则见 [`data-pipeline/SKILL.md`](../data-pipeline/SKILL.md)。
 
 ---
 
@@ -114,11 +115,10 @@ Mart 构建入口：`make features-build TARGET=domain_marts`（`stock_analytics
 1. **两融 T+1**：T 日收盘仅可用 T-1 日两融值（管线按交易日历平移对齐），最新交易日可能暂缺或滞后一日；
 2. **估值冷启动**：2015-01 ~ 2016-08 无 `dim_valuation`，该区间 `overheat_index` 实为 4 维口径，不与后续 5 维口径直接横向比较；
 3. **ETF 后复权**：策略回测用后复权（含分红），指数基准不含分红，两组超额含口径差；
-4. **fund_issue 失真**：`fund_issue_pct` 为 5 年排名分位，慢熊中「相对指标窗口污染」失真，已降级为参考维度不进双轨指数。
-5. **euphoria 维度停更（2026-05-29 起）**：`fund_issue_pct_score` / `dim_euphoria` 最后有效值 2026-05-29，此后缺失
-   （上游 `fund_issuance_monthly` Mart 或原始基金发行数据未更新）。**不影响双轨指数**（euphoria 不在
-   overheat/panic 构成内，`data_completeness` 8 项检查亦不包含它），但 8 维画像缺「亢奋」维度；
-   引用 8 维全景画像或情绪周期解读时必须披露该缺口，补数路径为重建 `fund_issuance` 数据链。
+4. **公募新发链路已下线（2026-10-29）**：因上游发行规模字段长期不稳定，生产管线已停止
+   `fund_basic` 采集、`fund_issuance_monthly` Mart 构建、宏观报告展示和策略 IC 消费。
+   `src/stock_analytics/marts/fund_issuance.py`、历史 Curated/Mart 文件和对应历史研究仅作追溯，
+   不得作为当前读数或数据缺口引用；当前同步与 `domain_marts` 构建不会再访问该链路。
 
 ---
 

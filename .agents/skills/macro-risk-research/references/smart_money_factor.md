@@ -59,6 +59,19 @@
 - `smart_money` 刻意**不加入 `overheat_index` / `panic_index`** 双轨指数，保持双轨指数成分纯净。
 - 实证产物：`data/analytics/macro_strategy/smart_money_composite.md`。
 
+- **门控降噪平滑已证伪（2026-10-27，全周期回测）**：`smart_money_pct` 日频跳变确实剧烈
+  （60 日内穿越 40 阈值 18 次、日间标准差 27pp、最大单日跳变 94pp），但把门控换成滚动均值反而更差：
+
+  | 变体 | v5_etf CAGR | v5_etf MaxDD | v5_rebalance_etf 净值 | v5_hike_gate_etf MaxDD |
+  | :--- | :---: | :---: | :---: | :---: |
+  | 原始日频（现行） | 15.35% | -36.95% | 3.853 | -18.84% |
+  | 3D 均值 | 14.49% | -39.07% | 3.621 | -21.17% |
+  | 5D 均值 | 13.86% | -38.76% | 3.461 | -21.03% |
+
+  机制：平滑同时滞后了「未逆势接货」的判定，使策略在下跌途中更早建仓 → 收益下降、回撤加深。
+  故门控保留原始日频分位，噪声登记为已知特性；若要再试，应先验证状态化解法（如滞回带 进场 35 / 出场 50），
+  并跑 `macro_strategy_report` + `macro_strategy_audit --assert-guardrails` 复核。
+
 ## 8. 工程入口速查
 
 | 环节 | 入口 |

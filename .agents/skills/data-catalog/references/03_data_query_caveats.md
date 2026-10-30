@@ -71,6 +71,7 @@
 | **`sw_daily`** | TuShare | 当天 T 日盘后 | **T+0 盘后** | 先筛 `classification=SW2021`，再按 `industry_level` 使用 L1/L2/L3 |
 | **`sw_2021_constituents`** | 理杏仁 | 源端快照更新时 | **无历史有效期** | 仅作为当前快照输入；当前成分查询走 `derived` 黄金成员表 |
 | **`sw_2021_industry_member_golden`** | derived | 相关源表同步成功后重建 | **跨源派生** | `current_only=True` 取最新截面，`as_of_date` 取有效期；需显式 `level` |
+| **`sw_2021_*_fs_*`** | 理杏仁 | 财报披露后回填/刷新 | **季度低频；披露日与报告期末不同** | 计算季度/TTM 用 `standardDate`；PIT 对齐用 `reportDate`；官方 TTM 缺失时回退 `*_ttm_y2y_derived` |
 | **`national_debt`** | 理杏仁 | 当天 T 日 18:00 | **T+0 盘后** | 1Y/2Y/5Y/10Y/30Y 中国官方国债收益率 |
 | **`macro_indicators`** | FRED / YFinance | 美东时间盘后 / 月度公布 | **跨时区 / 低频** | 美债 `^TNX` 存在中美时差；月度指标（CPI/非农）需前向填充 (forward fill) |
 
@@ -88,6 +89,58 @@
 | 行业估值 | `lixinger.sw_2021_fundamental` / `sw_2021_l2_fundamental` | `symbol` 是行业代码，按 `trade_date` 裁剪 |
 
 注意：`index_member` 是 TuShare 成员事实，不含申万版本；`index_classify.src` 才是版本信息。黄金成员表中成员证据来源使用 `src=TUSHARE`/`LIXINGER`，分类版本使用 `classification=SW2021`，两者不能混用。`canonical_only=False` 仅供跨源冲突审计；下游聚合必须先按层级筛选，再按黄金表的 canonical 记录去重。
+
+### 2.2 理杏仁行业财报的报告期、披露日与 TTM 回退
+
+行业财报表同时保留三个容易混淆的日期：
+
+- `standardDate`：财务报告期末，TTM 计算和季度连续性判断使用它；
+- `trade_date`：Curated 统一日期列，当前行业财报中对应 `standardDate`；
+- `reportDate`：源端披露日期，PIT/可用性 Join 使用它，不能拿来还原季度。
+
+`q.ps.toi.t` 与 `q.ps.np.t` 是 YTD 累计值。不要直接对它们做四期 rolling sum；应先按
+`symbol + standardDate` 还原单季值，再求四季 TTM。Curated 已提供缺失 TTM 的派生字段：
+
+```python
+import polars as pl
+
+toi = pl.col("q").struct.field("ps").struct.field("toi")
+np_ = pl.col("q").struct.field("ps").struct.field("np")
+df = df.with_columns(
+    pl.coalesce([toi.struct.field("ttm_y2y"), toi.struct.field("ttm_y2y_derived")])
+    .alias("revenue_ttm_yoy"),
+    pl.coalesce([np_.struct.field("ttm_y2y"), np_.struct.field("ttm_y2y_derived")])
+    .alias("profit_ttm_yoy"),
+)
+```
+
+派生公式为 `(本期 TTM - 上期 TTM) / abs(上期 TTM)`，已与本地非空官方样本对账。
+它只覆盖官方字段缺失、连续四季度累计值齐全且上期 TTM 非零的记录；剩余 null 是真实
+历史不足或源字段不足，不应自动填成单季同比四期均值。
+
+查看或重建当前 Curated 派生字段：
+
+```bash
+make rebuild-lixinger-industry-financial-ttm       # dry-run，不写盘
+make rebuild-lixinger-industry-financial-ttm APPLY=1  # 确认后原子写入，并保留 *.pre_ttm.bak.parquet
+```
+
+RAW 不包含这些派生字段；增量写入 Curated 时由存储合并链自动计算。统计覆盖时应同时
+报告官方字段非空数、派生字段补齐数和仍缺失数，不能只看总行数。
+
+
+### 2.3 已知上游数据缺陷与隔离记录
+
+部分历史缺口不是本地采集失败，而是上游源本身不可用；这类行会被审计流程主动隔离到
+`data/quarantine/endpoint=<endpoint>/history_repair.parquet`，Curated 对应字段置为 null。
+下游遇到这些 null 应视为"源端不可用"，不要用相邻日期插值或符号翻转回填。
+
+| 数据集 | 字段 | 区间 | 症状 | 处置与证据 |
+| :--- | :--- | :--- | :--- | :--- |
+| **`margin`** | `rzche` | BSE `2023-06-20` ~ `2023-09-08`（36 行） | 上游返回负数，既不满足"融资偿还额非负"契约，也不满足 `rzye` 余额恒等式（残差占余额 13%~18%）；同期 `rzye/rqmcl` 等因素均在且为正 | 2026-08-20 审计隔离（`quarantine_reason=negative_rzche_bse_preserved_for_upstream_review`），Curated 保留 null。2026-10-28 复检上游仍返回负值，禁止按 `abs()` 回填 |
+| **`margin`** | `rzche` | BSE `2023-06-20` ~ `2023-09-08`（36 行） | 上游返回负数，违反"融资偿还额非负"契约；BSE 的 `rzye` 余额恒等式残差在正值区间同样偏大（2024 年中位 4.3%、2025 年 21%），不能用来判断符号对错 | 2026-08-20 审计隔离（`quarantine_reason=negative_rzche_bse_preserved_for_upstream_review`），Curated 保留 null。2026-10-28 复检上游仍返回负值，禁止按 `abs()` 回填 |
+处理这类缺口的原则：先验证上游是否已修正，再决定回填；未修正时保留 null 并登记，
+因为强行补值会让 `margin_quality_issues` 判定负值违规，阻断下一轮两融同步。
 
 ---
 

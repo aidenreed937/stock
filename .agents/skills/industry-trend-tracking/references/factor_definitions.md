@@ -29,12 +29,12 @@ Mart 构建入口：`src/stock_analytics/marts/industry_l2_panel.py`
 | `pe_ttm_ew_percentile_5y` / `pb_ew_percentile_5y` | 5Y 滚动估值分位 | 来自 `industry_l2_daily` |
 | `revenue_growth_ttm` / `profit_growth_ttm` | 营收/净利 TTM 同比 | `q.ps.toi.ttm_y2y` / `q.ps.np.ttm_y2y` |
 | `gross_margin_ttm` | 毛利率 TTM | `q.ps.gp_m.ttm`（非金融；银行/证券/保险为 null） |
-| `supply_demand_score` | 量价齐升质量（0-100） | 量价齐升→双增速分位；供给收缩→20；双负→10 |
-| `bargaining_score` | 议价权（0-100） | 量价齐升门内→(净利−营收)增速分位；门外→30 |
+| `supply_demand_score` | 财报滞后验证 · 量价齐升质量（0-100） | 量价齐升→双增速分位；供给收缩→20；双负→10 |
+| `bargaining_score` | 财报滞后验证 · 毛利率扩张/议价权（0-100） | 量价齐升门内→(净利−营收)增速分位；门外→30 |
 | `crowding_score` | 拥挤度（0-100） | 成交额截面分位 |
 | `direction_score` | 全球方向（0-100） | `global_resonance_l2_map`，缺口→中性 50 |
 
-**量价齐升判定（供需层，L2 财务黄金表）**：
+**量价齐升判定（财报滞后验证，L2 财务黄金表）**：
 ```
 量价齐升 = (toi.ttm_y2y > 0) 且 (np.ttm_y2y > 0)      # 营收 + 净利 TTM 同比双正
 供给收缩 = (toi.ttm_y2y ≤ 0) 且 (np.ttm_y2y > 0)      # 假繁荣：压缩成本
@@ -58,12 +58,12 @@ Mart 构建入口：`src/stock_analytics/marts/industry_l2_panel.py`
 
 实证（2020-05 起，`scripts/industry_l2_direction_qlq.py`）：全周期年化复合收益 +12.50%。
 
-**结论**：量价齐升与方向层在 13 行业方向池 Top3 框架下均不作选股硬门（弱于 baseline），
+**结论**：财报滞后验证（量价齐升）与方向层在 13 行业方向池 Top3 框架下均不作选股硬门（弱于 baseline），
 保留为持仓观察与拐点预警信号；其正贡献（需求驱动 > 供给收缩）在全行业截面框架成立。
 
 ---
 
 ## 权重信任源
 
-`config/analytics/industry_trend_tracking.yaml`（三层共振权重，当前三层因子权重 0、
+`config/analytics/industry_trend_tracking.yaml`（财报滞后验证/方向层权重 0、
 不作为 composite 加分——L2 主战场为动量 Top3 + 估值防守 + 门控）。

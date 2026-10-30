@@ -194,6 +194,71 @@ df_new = cat_industry.load_dataset(
 
 运行时通过 `DataRuntimeContext` 统一注入 `data/raw`、`data/curated` 和 `data/cache`；下游读取 Curated 仍使用 `DataCatalog`。`market_daily`、Feature 长表与领域 Mart 不属于 DataCatalog 数据集目录，统一通过 `stock_analytics.features` 的 `FeatureStore` 读取，例如 `FeatureStore().get_domain_mart("repurchase_daily")`。
 
+### 1.3 理杏仁行业财报与 Curated TTM 派生字段
+
+理杏仁申万行业合并财报按层级和行业类型拆成 12 个数据集：
+`sw_2021_fs_*`、`sw_2021_l2_fs_*`、`sw_2021_l3_fs_*`，其中 `*` 为
+`non_financial`、`bank`、`security`、`insurance`。统一通过 `cat_lx.load_dataset()` 读取，
+不要直接遍历 Parquet 物理目录。
+
+财报 `q` 结构中的关键字段如下：
+
+| 字段 | 含义 | 使用规则 |
+| :--- | :--- | :--- |
+| `q.ps.toi.t` | 营业总收入 YTD 累计值 | 用 `standardDate` 按季度排序后还原单季值 |
+| `q.ps.np.t` | 净利润 YTD 累计值 | 同上；允许负值，不把负利润当缺失 |
+| `q.ps.toi.ttm_y2y` / `q.ps.np.ttm_y2y` | 理杏仁官方 TTM 同比 | 官方值优先，不覆盖 |
+| `q.ps.toi.ttm_y2y_derived` / `q.ps.np.ttm_y2y_derived` | Curated 派生 TTM 同比 | 仅补官方字段缺失且四季度数据足够的记录 |
+
+TTM 派生口径为：Q1 单季=`t`，Q2/Q3/Q4 单季=`本期 t - 上一报告期 t`；
+再对连续四个单季求和。同比使用已与理杏仁官方值对账的口径：
+
+```text
+ttm_y2y_derived = (本期 TTM - 上期 TTM) / abs(上期 TTM)
+```
+
+`standardDate` 是财务报告期末，应用于季度计算；`reportDate` 是披露日期，应用于
+PIT/可用性对齐；不能用披露日期代替财务期末。`trade_date` 在这些 Curated 财报表中
+对应报告期末，不能据此推断披露时点。缺少连续季度、基期 TTM 为零或累计值缺失时，
+派生字段保持 null，不用单季同比平滑值冒充正式 TTM。
+
+推荐读取和回退方式：
+
+```python
+import polars as pl
+
+fs = cat_lx.load_dataset(
+    "sw_2021_l3_fs_non_financial",
+    columns=("symbol", "reportType", "reportDate", "standardDate", "trade_date", "q"),
+)
+
+toi = pl.col("q").struct.field("ps").struct.field("toi")
+np_ = pl.col("q").struct.field("ps").struct.field("np")
+facts = fs.select(
+    "symbol",
+    "reportDate",
+    "standardDate",
+    pl.coalesce(
+        [toi.struct.field("ttm_y2y"), toi.struct.field("ttm_y2y_derived")]
+    ).alias("revenue_ttm_yoy"),
+    pl.coalesce(
+        [np_.struct.field("ttm_y2y"), np_.struct.field("ttm_y2y_derived")]
+    ).alias("profit_ttm_yoy"),
+)
+```
+
+查询时如需检查补齐范围，分别统计官方字段 null 与派生字段非空；不要把仍为 null
+的早期记录判定为采集失败，它们可能缺少完整的四季度历史。现有 Curated 表的派生
+字段物化/重建使用：
+
+```bash
+make rebuild-lixinger-industry-financial-ttm          # dry-run，只读预览
+make rebuild-lixinger-industry-financial-ttm APPLY=1  # 确认后原子写入
+```
+
+`APPLY=1` 会在每张表旁保留 `data.pre_ttm.bak.parquet`；RAW 保持源端原样，不增加
+派生字段。新增财报增量通过 Curated 合并链自动补算。
+
 ---
 
 ## 2. 各领域核心数据集快速路由索引
@@ -206,13 +271,14 @@ df_new = cat_industry.load_dataset(
 | **指数基本面估值** | `index_fundamental`, `national_debt` | `lixinger` | `pe_ttm.mcw`, `pb.mcw`, `dyr.mcw`, `tcm_y10`(10年国债) |
 | **申万行业行情** | `sw_daily` | `tushare` | `symbol`, `trade_date`, `classification`, `industry_level`, `industry_code`, `close`, `amount`；按 `SW2021 + L1/L2/L3` 筛选 |
 | **申万行业维度/成分** | `sw_2021_industry_dimension_golden`, `sw_2021_industry_member_golden` | `derived` | 版本化维度、父子层级、历史有效期、当前快照、来源裁决与冲突标记 |
-| **申万行业估值/财报** | `sw_2021_fundamental`, `sw_2021_l2_fundamental`, `sw_2021_fs_*` | `lixinger` | 一级/二级行业估值与行业合并财报；不替代黄金成分表 |
+| **申万行业估值/财报** | `sw_2021_fundamental`, `sw_2021_l2_fundamental`, `sw_2021_fs_*`, `sw_2021_l2_fs_*`, `sw_2021_l3_fs_*` | `lixinger` | 一级/二级/三级行业估值与行业合并财报；财报 TTM 优先官方、缺失时使用 Curated 派生字段；不替代黄金成分表 |
 | **垂直产业数据** | 顶层逻辑数据集及 `energy/<dataset>` 子目录数据集 | `industry` | 通过 `DataCatalog(data_source="industry")` 按逻辑名读取；`energy` 仅表示子目录聚合 |
 | **卖方预测与业绩** | `report_rc`, `forecast`, `express` | `tushare` | 一致预期盈利预测 (`np`, `tp`)、业绩预告与快报 |
+| **财务指标（个股）** | `fina_indicator` | `tushare` | **百分数原值**：`grossprofit_margin` / `netprofit_margin` / `roe` / `or_yoy` / `netprofit_yoy` / `debt_to_assets`（31.9 = 31.9%，展示直接用，转小数才 ÷100）；低基数同比（如净利 yoy>±1000%）按异常值处理，不作趋势强度 |
 | **场内基金与 ETF** | `fund_daily`, `fund_adj`, `etf_share_size` | `tushare` | 63 只核心 ETF 全历史日线、复权因子(含分红)与份额规模 |
 | **可转债与期权** | `cb_basic`, `cb_daily`, `opt_basic`, `opt_daily` | `tushare` | 可转债静态/日行情、期权合约静态/日行情 |
 | **公司行为事件** | `stk_holdertrade`, `repurchase`, `block_trade`, `share_float` | `tushare` | 增减持、回购、大宗交易与限售解禁事件明细 |
-| **领域 Mart** | `market_daily`、`industry_daily`、`industry_panel_daily`、`market_temperature_derived_facts`、`convertible_bond_daily`、`insider_activity_daily`、`repurchase_daily`、`block_trade_daily`、`unlock_pressure_daily`、`settlement_iv_proxy_daily` | `FeatureStore` | 市场、行业、温度、衍生品与公司行为聚合事实；不通过 `DataCatalog` 直接加载 |
+| **领域 Mart** | `market_daily`、`industry_daily`、`industry_panel_daily`、`market_temperature_derived_facts`、`convertible_bond_daily`、`insider_activity_daily`、`repurchase_daily`、`block_trade_daily`、`unlock_pressure_daily`、`settlement_iv_proxy_daily`、`overseas_revenue` | `FeatureStore` | 市场、行业、温度、衍生品、公司行为与海外营收布局聚合事实；不通过 `DataCatalog` 直接加载 |
 | **外盘与全球宏观** | `stock_daily_bar`, `index_daily_bar`, `macro_indicators` | `yfinance` / `fred` | 美股巨头、外盘指数、美债/黄金/原油/VIX、FED 宏观序列 |
 
 ---
@@ -241,6 +307,10 @@ df_new = cat_industry.load_dataset(
 9. **大表跨表聚合优先与引擎选型 (Rollup First & Tool Selection)**：
    * **聚合表优先**：分析大盘估值、行业轮动或宏观时钟时，**优先消费现成的上层聚合表**（如行业估值 `sw_2021_fundamental`、指数估值 `index_fundamental`、北向资金 `moneyflow_hsgt`、两融大盘 `margin`），避免无谓拿千万级底层个股明细表（`stock_daily_bar` / `moneyflow`）进行沉重扫表；
    * **合适工具下推**：海量数据跨表关联或复杂 Group By 聚合时，选用合适工具（内存轻量分析用 **Polars Lazy/DataFrame**；复杂跨多分区大表关联可用 **DuckDB 向量化 SQL**），最大化节省计算资源与响应时间。
+10. **百分数刻度与原值约定 (Percent Scale)**：
+    * `fina_indicator` 等财务指标字段为 **百分数原值**（31.9 = 31.9%），展示百分数直接用原值，只有需要小数（如回归/相乘）才 ÷100——禁止再 ×100；
+    * customs 分析面板（`customs_l2_volume_price_monthly` / `customs_product_volume_price` / 观察表 / H8 信号）的 `*_yoy_3mma` / `yoy_growth_3mma` 为**小数**（1.0 = +100%），与财务指标刻度相反，两生态拼装前必须统一口径；
+    * 读表怀疑刻度时，用已知合理量级反校（如行业毛利中位约 20-40%、ROE 中位约 5-15%），不要凭感觉 ×100 或 ÷100。
 
 ---
 

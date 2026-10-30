@@ -1,0 +1,195 @@
+version: '1.0'
+meta:
+  task_name: gacc_export_backfill_2018_2026
+  description: 申万行业海关出口量价 1041 税号 2018-2026 半年度回填计划
+  start_year: 2018
+  end_year: 2026
+  slice_granularity: half_year
+  currency: USD
+  flow: export
+  code_count: 1041
+  codes_path: config/data/customs/gacc_query_codes.txt
+  target_parquet: data/curated/industry/customs_trade_gacc.parquet
+batches:
+- id: 2018H1
+  year: 2018
+  half: H1
+  start_month: 1
+  end_month: 6
+  start_period: '201801'
+  end_period: '201806'
+  status: completed
+  command: uv run python scripts/cdp/gacc_cdp_automation.py --year 2018 --half H1
+  description: 2018 年上半年（1-6月）出口数据
+- id: 2018H2
+  year: 2018
+  half: H2
+  start_month: 7
+  end_month: 12
+  start_period: '201807'
+  end_period: '201812'
+  status: completed
+  command: uv run python scripts/cdp/gacc_cdp_automation.py --year 2018 --half H2
+  description: 2018 年下半年（7-12月）出口数据
+- id: 2019H1
+  year: 2019
+  half: H1
+  start_month: 1
+  end_month: 6
+  start_period: '201901'
+  end_period: '201906'
+  status: completed
+  command: uv run python scripts/cdp/gacc_cdp_automation.py --year 2019 --half H1
+  description: 2019 年上半年（1-6月）出口数据
+- id: 2019H2
+  year: 2019
+  half: H2
+  start_month: 7
+  end_month: 12
+  start_period: '201907'
+  end_period: '201912'
+  status: completed
+  command: uv run python scripts/cdp/gacc_cdp_automation.py --year 2019 --half H2
+  description: 2019 年下半年（7-12月）出口数据
+- id: 2020H1
+  year: 2020
+  half: H1
+  start_month: 1
+  end_month: 6
+  start_period: '202001'
+  end_period: '202006'
+  status: completed
+  command: uv run python scripts/cdp/gacc_cdp_automation.py --year 2020 --half H1
+  description: 2020 年上半年（1-6月）出口数据
+- id: 2020H2
+  year: 2020
+  half: H2
+  start_month: 7
+  end_month: 12
+  start_period: '202007'
+  end_period: '202012'
+  status: completed
+  command: uv run python scripts/cdp/gacc_cdp_automation.py --year 2020 --half H2
+  description: 2020 年下半年（7-12月）出口数据
+- id: 2021H1
+  year: 2021
+  half: H1
+  start_month: 1
+  end_month: 6
+  start_period: '202101'
+  end_period: '202106'
+  status: completed
+  command: uv run python scripts/cdp/gacc_cdp_automation.py --year 2021 --half H1
+  description: 2021 年上半年（1-6月）出口数据
+- id: 2021H2
+  year: 2021
+  half: H2
+  start_month: 7
+  end_month: 12
+  start_period: '202107'
+  end_period: '202112'
+  status: completed
+  command: uv run python scripts/cdp/gacc_cdp_automation.py --year 2021 --half H2
+  description: 2021 年下半年（7-12月）出口数据
+- id: 2022H1
+  year: 2022
+  half: H1
+  start_month: 1
+  end_month: 6
+  start_period: '202201'
+  end_period: '202206'
+  status: completed
+  command: uv run python scripts/cdp/gacc_cdp_automation.py --year 2022 --half H1
+  description: 2022 年上半年（1-6月）出口数据
+- id: 2022H2
+  year: 2022
+  half: H2
+  start_month: 7
+  end_month: 12
+  start_period: '202207'
+  end_period: '202212'
+  status: completed
+  command: uv run python scripts/cdp/gacc_cdp_automation.py --year 2022 --half H2
+  description: 2022 年下半年（7-12月）出口数据
+- id: 2023H1
+  year: 2023
+  half: H1
+  start_month: 1
+  end_month: 6
+  start_period: '202301'
+  end_period: '202306'
+  status: completed
+  command: uv run python scripts/cdp/gacc_cdp_automation.py --year 2023 --half H1
+  description: 2023 年上半年（1-6月）出口数据
+- id: 2023H2
+  year: 2023
+  half: H2
+  start_month: 7
+  end_month: 12
+  start_period: '202307'
+  end_period: '202312'
+  status: completed
+  command: uv run python scripts/cdp/gacc_cdp_automation.py --year 2023 --half H2
+  description: 2023 年下半年（7-12月）出口数据
+- id: 2024H1
+  year: 2024
+  half: H1
+  start_month: 1
+  end_month: 6
+  start_period: '202401'
+  end_period: '202406'
+  status: completed
+  command: uv run python scripts/cdp/gacc_cdp_automation.py --year 2024 --half H1
+  description: 2024 年上半年（1-6月）出口数据
+- id: 2024H2
+  year: 2024
+  half: H2
+  start_month: 7
+  end_month: 12
+  start_period: '202407'
+  end_period: '202412'
+  status: completed
+  command: uv run python scripts/cdp/gacc_cdp_automation.py --year 2024 --half H2
+  description: 2024 年下半年（7-12月）出口数据
+- id: 2025H1
+  year: 2025
+  half: H1
+  start_month: 1
+  end_month: 6
+  start_period: '202501'
+  end_period: '202506'
+  status: completed
+  actual_rows: 5221
+  completed_at: '2026-09-13'
+  command: uv run python scripts/cdp/gacc_cdp_automation.py --year 2025 --half H1
+  description: 2025 年上半年（1-6月）出口数据（已采集入库 5,221 行）
+- id: 2025H2
+  year: 2025
+  half: H2
+  start_month: 7
+  end_month: 12
+  start_period: '202507'
+  end_period: '202512'
+  status: completed
+  command: uv run python scripts/cdp/gacc_cdp_automation.py --year 2025 --half H2
+  description: 2025 年下半年（7-12月）出口数据
+- id: 2026H1
+  year: 2026
+  half: H1
+  start_month: 1
+  end_month: 6
+  start_period: '202601'
+  end_period: '202606'
+  status: completed
+  command: uv run python scripts/cdp/gacc_cdp_automation.py --year 2026 --half H1
+  description: 2026 年上半年（1-6月）出口数据
+- id: 2026H2
+  year: 2026
+  half: H2
+  start_month: 7
+  end_month: 12
+  start_period: '202607'
+  end_period: '202612'
+  status: completed
+  command: uv run python scripts/cdp/gacc_cdp_automation.py --year 2026 --half H2
+  description: 2026 年下半年（截至当前已公布月份）出口数据

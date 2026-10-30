@@ -75,14 +75,14 @@ make backfill START=2020-01-01 END=2026-08-14 SOURCE=lixinger ENDPOINT=industry_
 
 ## 3. Yahoo Finance (`SOURCE=yfinance`)
 
-* **数据特性**：外盘 9 大核心指数、美股科技巨头、7 大全球宏观资产（美债、美元指数、黄金、原油、铜、VIX）。
-* **限频与限制**：40 次/分；北京时间次日 06:00 后就绪。
+* **数据特性**：外盘 9 大核心指数、美股科技巨头；宏观复合任务仅保留历史兼容和显式回退用途。
+* **限频与限制**：40 次/分；北京时间次日 06:00 后就绪。美债、VIX、美元、WTI 和铜等宏观序列日常维护改由 FRED 负责。
 
 ```bash
 # 1. 一键全量回填观察池（美股科技巨头 + 外盘 9 大核心指数 12 年 K 线）
 make backfill START=2014-08-01 END=2026-08-12 SOURCE=yfinance
 
-# 2. 回填 7 大全球宏观资产 12 年历史
+# 2. 仅在历史兼容或需要 Yahoo 黄金期货口径时显式回填宏观资产
 make backfill START=2014-08-01 END=2026-08-12 SOURCE=yfinance ENDPOINT=macro_indicators
 
 # 3. 回填美股历史拆股 (splits) 与派息 (dividends)
@@ -94,16 +94,22 @@ make backfill SOURCE=yfinance ENDPOINT=dividends SYMBOL=AAPL
 
 ## 4. 美联储 FRED (`SOURCE=fred`)
 
-* **数据特性**：美联储官方宏观序列（基准利率 FEDFUNDS、CPIAUCSL、失业率 UNRATE、非农 PAYEMS、GDP、美债利差 T10Y2Y、美联储资产 WALCL）。
+* **数据特性**：美联储官方宏观序列（日频有效利率 DFF；FEDFUNDS 月均值保留兼容）、CPIAUCSL、失业率 UNRATE、非农 PAYEMS、GDP、美债利差 T10Y2Y、美联储资产 WALCL。
 * **限频与日历**：120 次/分；自然日历匹配。
 
 ```bash
-# 1. 一键全量回填 FRED 7 大核心宏观指标 12 年历史
-make backfill START=2014-08-01 END=2026-08-12 SOURCE=fred
+# 1. 一键全量回填 FRED 宏观序列
+make backfill START=2014-08-01 END=2026-08-12 SOURCE=fred \
+  ENDPOINT=global_macro_daily_bundle,macro_monthly_bundle
 
-# 2. 回填指定的单个宏观指标
+# 2. 回填日频有效联邦基金利率（DFF，官方历史从 1954-07 起）
+make backfill SOURCE=fred ENDPOINT=DFF START=1954-07-01 END=2026-10-22
+
+# 3. 回填兼容保留的月均有效利率 FEDFUNDS
 make backfill SOURCE=fred SYMBOL=FEDFUNDS START=2014-08-01 END=2026-08-12
 ```
+
+`DFF` 优先读取 FRED Graph CSV；该接口不可用或返回非 CSV 内容时，Fetcher 自动回退到联储 H.15 官方 XML 历史归档。无需配置 FRED API Key；Curated 标准表仍为 `macro_indicators`。
 
 ---
 
@@ -126,8 +132,11 @@ make backfill START=2014-08-01 END=2026-08-14 SOURCE=alphavantage ENDPOINT=fx_da
 * **注册要求**：任务契约按 `industry_*_task_specs.py` 分域维护；任务包在 `industry_bundle_specs.py`；新增或调整后先运行 `stock_cli.task_health`。
 
 ```bash
-# 1. 回填科技产业链数据（半导体、云 Capex、消费电子）
+# 1. 回填跨行业科技观察数据（半导体子集、云 Capex、消费电子；不等于半导体完整回填）
 make backfill START=YYYY-MM-DD END=YYYY-MM-DD SOURCE=industry ENDPOINT=industry_tech_bundle
+
+# 半导体专项回填必须使用完整 13 端点包
+make backfill START=YYYY-MM-DD END=YYYY-MM-DD SOURCE=industry ENDPOINT=semiconductor_bundle
 
 # 2. 回填能源与周期数据（光伏、化工、有色、煤炭、期货库存/龙虎榜）
 make backfill START=YYYY-MM-DD END=YYYY-MM-DD SOURCE=industry ENDPOINT=industry_energy_bundle

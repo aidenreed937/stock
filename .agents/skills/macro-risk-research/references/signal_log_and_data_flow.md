@@ -132,6 +132,7 @@ MA20（乖离 -1.60%）且 Overheat=67.5 仍 > 65——「泡沫破裂后的逃�
 | 产业资本 | tushare | 回购 / 大宗 / 高管增减持 |
 | 可转债 | tushare | `cb_daily` |
 | 跨资产宏观 | lixinger / fred / yfinance | 国债收益率 / 铜金比 / 美债利差等 |
+| 利率周期 ffr_chg_6m | fred | `macro_indicators`（DFF 六个月变化 pp；独立观测，不入维度） |
 | 聪明钱 | tushare | `smart_money_daily` Mart（产业增持 + 大宗折价 + 国家队锚点） |
 
 **价格数据**：基准 `000985.CSI` 中证全指（理杏仁 `index_daily_bar`）算 MA20 / 乖离；

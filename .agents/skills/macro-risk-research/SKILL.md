@@ -19,6 +19,7 @@ description: 宏观风控双轨雷达与跨周期策略研究技能：狂热/恐
 | 4 | 多策略轮动回测 / 对账 / 跨周期审计 / 实盘推演 | `stock_cli.macro_strategy*`（启用策略见 §5.5） |
 | 5 | 新宏观策略构建 6 步流水线 + 样本外验证（含「被否定 → 停用留档」惯例） | §5.5 + `references/macro_strategies_playbook.md` |
 | 6 | 调仓日志查询、数据源分级与完整性校验 | `references/signal_log_and_data_flow.md` + `macro_risk_data_sources.md` |
+| 7 | 宏观极值水温中观下穿：狂热高位暴雷/低位安全岛，恐慌真假黄金坑验真 | `meso_penetration.py` + `industry_l2_panel_daily.parquet` |
 
 ### 0.2 Out of Scope（本 skill 不负责，移交对应 skill）
 
@@ -94,6 +95,7 @@ flowchart LR
    - ETF 份额托底代理（`etf_flow_ratio`）已证伪（与国家队真实增持行为无关、前瞻收益无预测力、V5 托底分支净值贡献为负），不作为国家队识别与交易信号；
    - `smart_money_pct` / `dim_smart_money` 已接入宏观因子管线（`config/analytics/macro_risk.yaml`）供选用，但刻意**不加入 overheat/panic 指数**（保持双轨指数成分纯净）；实证见 `data/analytics/macro_strategy/smart_money_composite.md`；完整口径见 `references/smart_money_factor.md`；
    - ⚠️ 口径注意：管线产物的 `smart_money_pct` 是「Mart 0-100 组合分 `smart_money_score` 再经 250 日滚动分位后的**分位排名**」，与 Mart 原始组合分不同列不同义；策略阈值（`smart_filter_threshold=40` / `smart_support_threshold=80`）针对的是该「分位排名」口径。
+   - `newlow252_ratio_score`（52 周新低占比分位：`market_daily.new_low_252d_ratio` 的 1250 日滚动分位）已接入因子管线，仅作独立观测——落研报「附加维度」披露，不进 `dim_breadth` / `overheat_index` / `panic_index`，也不作为策略信号。依据：`scripts/compute_cycle_winrate_matrix.py` 复算的 20/60 日前瞻胜率与全样本基准无实质差异（极值分位甚至略低），不足以支撑择时或并入恐慌指数；按「被否定 → 停用留档」处理，重新评估须先改脚本重跑并给出样本外证据。
 
 ---
 
@@ -102,6 +104,9 @@ flowchart LR
 > 按步骤顺序执行；每步只写"做什么 + 用什么命令/产物"，判定规则见 §4，命令入口见 §5。
 
 ### 步骤 1：加载/刷新宏观风控产物
+- **日常端到端更新**：`make macro-update`（同步 `SOURCE=all`，按顺序构建 `market_daily` 和 `domain_marts`，再刷新宏观日报、策略对账及稳定性审计；可用 `LAST_N=60` 设置回算窗口。全源同步有失败时仍尝试更新宏观产物，但总命令保留失败退出码；核心因子完整性不通过时停止策略产物生成）；
+- **数据已同步时更新产物**：`make macro-artifacts`。此入口会先运行 `features-build TARGET=all`，再生成宏观日报、策略对账及稳定性审计；不要只运行 `TARGET=domain_marts` 后直接生成日报，因为它不会刷新 `market_daily`；
+- **前置数据闸门（必看）**：`make macro-artifacts` 已挂 `macro-inputs-check` 前置依赖——校验 `index_daily_bar` / `fund_daily` / `fund_adj`（critical）与 `moneyflow` / `opt_daily`（advisory）是否与 `stock_daily_bar` 对齐到同一交易日。critical 滞后即失败并给出补数命令；`MACRO_INPUTS_SOFT=1` 可降级为告警。**教训（2026-10-27）**：行情已到 T 日而 `fund_adj` 停在 T-1 时，ETF 净值会回退未复权价，按仓位比例产生假暴跌（实测 v5_etf 单日 -22%，实际 +0.60%）；`index_daily_bar` 滞后则会让策略面板与熊市识别整体停在 T-1。
 - **Fast Path**：`uv run python .agents/skills/macro-risk-research/scripts/extract_cycle_snapshot.py`（极速截面提取，含两融缺失提示）；
 - **全量刷新 / 指定历史日**：`uv run python -m stock_cli.macro_risk --last-n 60`（或 `--as-of YYYY-MM-DD`）；
 - **产物清理**：`uv run python .agents/skills/macro-risk-research/scripts/cleanup_redundant_runs.py`（清理 runs 冗余批次）。
@@ -109,6 +114,7 @@ flowchart LR
 ### 步骤 2：8 维画像穿透与极值检测
 - 读取 `risk_factors.parquet` 最新行，按 §4 规则逐项排查：硬约束（§4.2）→ 真假黄金坑（§4.3）→ 聪明钱连续性（§4.4）；
 - 涉及硬约束阈值、真假黄金坑分位及全部"历史胜率/均值"数字，均以复算脚本 `scripts/compute_cycle_winrate_matrix.py` 最新输出与 `risk_factors.parquet` 最新产物为准；references 仅提供定性规则与历史快照，禁止在研报中另存快照数字。
+- **风格轮动观察（可选研究位，合并版）**：运行 `scripts/style_rotation_observation_panel.py` 输出一份完整面板——① 创业板指 vs 中证红利进攻/防守腿剪刀差（近1/3/6/12月、250日动量、历史分位、年线位置、前3月边际）；② 中证全指/创业板指/中证红利三指数一阶导（5/20/60D 动量 + 分位 + 年线）、二阶导（动量变化 pp + 定性）、量能与量价四象限定性（放量/缩量 × 涨/跌）对比；③ 风格轮动交叉解读（剪刀差方向 × 量价分化 → 收缩型/进攻型判断），`--as-of` 指定历史日。细分面板可单独运行：`scripts/index_relative_strength_panel.py`（仅剪刀差，详见 `references/relative_strength_panel.md`）与 `scripts/index_derivative_volume_panel.py`（仅量价，`--symbols` 逗号分隔可自定义指数）。**以上均为独立观察指标，非 v5 交易信号**（v5 的红利↔创业板切换由宏观状态机驱动）；如需用作策略增强候选，走 §5.5 六步流水线 + 样本外验证。
 
 ### 步骤 3：跨周期定位与胜率推演
 - 宏观范式速查：`references/macro_regimes_playbook.md`（6 大范式定性特征）；
@@ -131,9 +137,11 @@ flowchart LR
 
 > 分析时按需查阅；本节只保留**决策逻辑的一句话描述**，具体阈值/数字一律以产物、复算脚本或 references 为准。
 
-### 4.1 8 维全景画像（+1 独立聪明钱维度）
-- 维度分类：**3 大生存硬约束**（两融杠杆/换手拥挤/主力资金）、**2 大拐点快变量**（情绪/市场广度，其中情绪已拆分为恐慌 `dim_fear` 与亢奋 `dim_euphoria`）、**1 个长线慢变量**（大盘估值）、**1 个微观基本面底**（产业资本）、**1 个全谱系流动性**（跨资产宏观）；
-- 另有一个**第 9 个独立维度 `dim_smart_money`（聪明钱组合）**已接入因子管线，但刻意不加入 `overheat_index` / `panic_index` 双轨指数（见 §2.5）；策略消费的是其分位排名列 `smart_money_pct`（见 §4.4 / `references/smart_money_factor.md`）；
+### 4.1 8 维全景画像（+1 独立聪明钱维度；产物 9 个 dim 列）
+- 维度分类：**3 大生存硬约束**（两融杠杆/换手拥挤/主力资金）、**2 大拐点快变量**（恐慌情绪/市场广度）、**1 个长线慢变量**（大盘估值）、**1 个微观基本面底**（产业资本）、**1 个全谱系流动性**（跨资产宏观）；
+- **列口径对齐**：`risk_factors.parquet` 实际含 **9 个 `dim_*` 列** = 8 个逻辑维 + `dim_smart_money`。研报正文展示 8 维，`dim_smart_money` 归入「附加维度」披露；
+- 旧版公募新发/亢奋维度已下线：不再采集 `fund_basic`，不再构建 `fund_issuance_monthly`，不再进入宏观因子、报告或策略 IC；历史文件和历史数据仅作追溯，不属于当前生产链路。
+- 另有一个**第 9 个逻辑维度 `dim_smart_money`（聪明钱组合）**已接入因子管线，但刻意不加入 `overheat_index` / `panic_index` 双轨指数（见 §2.5）；策略消费的是其分位排名列 `smart_money_pct`（见 §4.4 / `references/smart_money_factor.md`）；
 - 各维度因子构成与 `overheat_index` / `panic_index` 聚合方式：以 `config/analytics/macro_risk.yaml` 的 `factors/dimensions/indices` 节点为唯一信任源。
 
 ### 4.2 生存硬约束（四大不变物理常数）
@@ -145,10 +153,30 @@ flowchart LR
 - **微观产业底抢跑**：恐慌区且聪明钱或内部人增持率先高分位 → 微观估值底先行，左侧跟随分批低吸；
 - 具体分位阈值见 `references/cycle_windows_matrix.md` 第 1 节（筹码博弈背离与证据链清单）；20/60 日胜率矩阵直接运行复算脚本获取。
 
+### 4.5 宏观极值水温下的申万二级行业机会与风险穿透 (Meso Penetration)
+当宏观双轨雷达触发异常极值水温时，系统通过 `src/stock_reporting/interpretation/macro_risk/meso_penetration.py` 自动读取申万二级面板（`industry_l2_panel_daily.parquet`）下穿行业：
+- **狂热超标 (Overheat $\ge 62.0$)**：
+  - **高危暴雷清单（必须避险）**：时序拥挤度 `crowding >= 80%` 且 5Y估值 `pe5y >= 75%`（增量资金耗竭，严禁追高）；
+  - **低位安全承接清单（高低切机会）**：`crowding <= 30%` 且 `pe5y <= 30%`（极度冷门底部，承接高位泡沫撤退资金）；
+- **恐慌超标 (Panic $\ge 70.0$)**：
+  - **超跌错杀真黄金坑（反弹主攻手）**：近期超跌但营收净利双正 (QLQ 量价齐升) 且无产能过剩 (在建/固资比 < 35%)，为纯情绪错杀真珍珠；
+  - **产能过剩假黄金坑飞刀（切勿抄底）**：看似深跌但产业在建工程激增 (`cip_yoy > 25%`) 或利润失速，看似便宜实为周期坍塌。
+
 ### 4.4 聪明钱与产业资本连续性
 - `smart_money_pct` 高分位（底层为产业资本增持 + 大宗折价接盘 + 国家队股东锚点等权组合；产物口径为组合分的 250 日分位排名，见 §2.5 / `references/smart_money_factor.md`）且处于恐慌区间 → 聪明钱逆势接货，支持左侧分批布局（实证见 `smart_money_composite.md`）；
-- 内部人增持高分位（`insider_net_score`）连续维持 → 确认内部人真金白银增持，左侧跟随低吸；
-- ⚠️ 连续维持天数（≥1D / ≥3D / ≥5D）仅作为信号确认强度参考；**"连续维持 N 天"胜率矩阵尚未固化**，如做连续性胜率分析需自行按窗口复算并披露口径。
+- ⚠️ **`insider_net_score` 连续维持（`insider_net_score_consec`）已降为历史留档，不再给实盘权重**：
+  - **方向口径（易错点）**：`insider_net` 因子配置为 `direction: rev`（score = 100 − 分位），
+    **高分位 = 内部人净增持极弱/净卖出**。因此 `insider_net_score_consec` 的语义是「净增持持续偏弱」的连续天数，
+    而非「连续增持」；旧文案/脚本标签按「增持潮」解读属反向误读，2026-10 已校正。
+  - 依据（IC 切片实证，2026-09）：20D pooled IC +0.149 由 **2015–2017 牛市段**贡献（2016 +0.267 / 2015 +0.174），2018 后 20D/60D 各宏观范式切片普遍转负或归零；
+  - 恐慌区交叉检验：恐慌>65 的 20D +0.121 同样由 **2015–2021 前期**贡献；2022–2026 的 **122 个恐慌日中该列仅 1 天 >0**
+    （全区间 1163 个交易日仅 17 天 >0），即近年恐慌场景基本不再出现该信号，属**结构条件已变**，非单纯失效；
+  - 现况（2026-10-26 复核）：该列自 2026-10-16 起回到 1→7，来源是董监高净卖出激增（10-20/10-21 净卖出 11.3/18.6 亿元），
+    属「净增持极弱」而非产业托底，不改变降级结论；
+  - **结论**：仅作历史研究留档与 IC 审计观测，不写入任何实盘信号/权重；后续研报引用不得把 2015–2017 的 +0.174 当作当前规律。
+- ✅ **"连续维持 N 天"胜率矩阵已固化**：运行 `scripts/compute_cycle_winrate_matrix.py` 即可复算
+  `smart_money_pct` / `insider_net_score` 连续达标 ≥3D / ≥5D 的 20/60 日前向胜率与均收益
+  （连续天数按信号连续达标累加，回落或数据缺失即清零），以脚本最新输出为准，不维护快照。
 
 ---
 
@@ -214,3 +242,6 @@ flowchart LR
 * 📘 [v5_etf_fixed_income_rebalance.md](references/v5_etf_fixed_income_rebalance.md)：v5_etf 叠加固收再平衡的回撤压制评估（50/50 守 -20%、70/30 折中上限）研究留档。
 * 📘 [signal_log_and_data_flow.md](references/signal_log_and_data_flow.md)：宏观策略调仓动作日志查询（SQLite `signal_history`/`trade_orders`）与因子→数据源→策略的数据链路速查。
 * 📘 [macro_risk_data_sources.md](references/macro_risk_data_sources.md)：宏观风控管线数据源分级（黄金表直读 vs Mart）与数据准确性/完整性校验手册（分析前必查 checklist）。
+* 📘 [relative_strength_panel.md](references/relative_strength_panel.md)：创业板指/中证红利相对强度监测面板（独立观察指标，非策略信号）口径、运行方式与解读。
+* 📘 [slow_top_divergence_gate.md](references/slow_top_divergence_gate.md)：copper_gold/cb_price 中期顶背离慢速减仓闸门（`macro_slow_top_divergence_etf`）动机、Walk-Forward 样本外证据、定位与复现方法（防守增强层，非 alpha）。
+* 📘 [ffr_cycle_factor_research.md](references/ffr_cycle_factor_research.md)：利率周期因子 `ffr_chg_6m` 有效性实证留档（加息/降息周期内部结构、停加/停降拐点效应、独立观测定位依据）。
