@@ -44,7 +44,7 @@ def load_semiconductor_panel(
     """加载半导体研究面板（默认 270100）。
 
     输出列：trade_date, close, scissors_score(direction), demand_score, supply_score,
-            ai_capex_score, storage_score, utilization_score, inventory_score。
+            ai_capex_score, utilization_score, inventory_score。
     供给腿缺失时对应列为空（不阻断）。
     """
     runtime = (
@@ -71,7 +71,6 @@ def load_semiconductor_panel(
             "supply_score",
             "scissors_score",
             "ai_capex_score",
-            "storage_score",
         ]
     )
 

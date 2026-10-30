@@ -83,7 +83,6 @@ def _make_panel() -> pl.DataFrame:
         close.append(close[-1] * (1.0 + daily_ret))
     scissors = [50.0 + i * 0.05 for i in range(n)]
     inventory = [50.0] * n
-    storage = [50.0] * n
     return pl.DataFrame(
         {
             "trade_date": days,
@@ -91,7 +90,6 @@ def _make_panel() -> pl.DataFrame:
             "scissors_score": scissors,
             "inventory_score": inventory,
             "ai_capex_score": ai_capex,
-            "storage_score": storage,
         }
     )
 
@@ -119,7 +117,7 @@ def test_spearman_ic_constant_returns_none() -> None:
 def test_overall_and_yearly_ic() -> None:
     df = _make_panel()
     framed = attach_f60(df)
-    overall = overall_ic(framed, ["ai_capex_score", "storage_score"])
+    overall = overall_ic(framed, ["ai_capex_score"])
     assert "ai_capex_score" in overall
     yearly = yearly_ic(framed, ["ai_capex_score"])
     assert yearly["year"].min() == 2020
@@ -148,7 +146,7 @@ def test_load_research_config_from_yaml() -> None:
     assert cfg.industry == "270100"
     assert cfg.oos_start == date(2022, 1, 1)
     assert cfg.fwd_horizon == 60
-    assert cfg.ic_legs == ("ai_capex_score", "storage_score")
+    assert cfg.ic_legs == ("ai_capex_score",)
     assert cfg.defense.doi_ge == 70.0
     assert cfg.defense.drawdown_weight == 0.3
 
@@ -242,7 +240,6 @@ def test_load_panel_uses_storage_dir_for_semiconductor_legs(
                 "supply_score": [40.0, 41.0],
                 "scissors_score": [20.0, 20.0],
                 "ai_capex_score": [70.0, 71.0],
-                "storage_score": [55.0, 56.0],
             }
         )
 

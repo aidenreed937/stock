@@ -1,0 +1,182 @@
+# 半导体基本面数据源注册表 (Source Registry)
+# 涵盖：全球/中国销售额 (WSTS/SIA) + 晶圆代工产能利用率 (TSMC/SMIC) + 设备出货 (SEAJ 日本制、代理口径) + 芯片交期 (Susquehanna) + 渠道库存 + DRAM/NAND 价格
+
+metadata:
+  domain: "semiconductors"
+  description: "半导体产业供需三角平衡表 (需求流量/供给流量/存量利用率) 基本面数据源注册"
+  version: "1.0.0"
+  provenance_policy: "所有生产库数值必须具备可追溯原始法定来源；严禁伪造。"
+
+indicators:
+  # --- 1. 存量水库水温：代表性晶圆代工产能利用率与出货代理 (季度) ---
+  # 定位：存量利用率=领先 2-3 季度（framework.md:124 领先链），季度确认腿，天然不参与月频剪刀差。
+  # 接入：2026 已接为半导体/计算机设备供给端确认腿（semiconductor_supply_legs.utilization_score），
+  # 系数看扩张斜率（YoY）滚动分位，独立分组、不与剪刀差合成（fwd60 IC +0.122）。
+  foundry_capacity_utilization:
+    name: "TSMC / SMIC 代表性晶圆代工产能利用率与出货代理"
+    source: "TSMC_SMIC_Official_IR"
+    authority: "official"
+    access_method: "public_open"
+    frequency: "quarterly"
+    unit: "percent"
+    quality_grade: "A-"
+    status: "partial_official"
+    availability_note: "SMIC 季度利用率、月产能和销售晶圆为官方值；TSMC 稳定提供 12 英寸等效晶圆出货量，利用率/季度产能按季可能 unavailable，禁止视为全球真实加权值。"
+    wired_into_direction_map: true
+    target_l2: ["270100"] # 半导体
+    target_l2_extra: ["710100"] # 计算机设备（同用半导体供给腿）
+
+  # --- 2. 需求端流量：WSTS 全球半导体月度销售额 ---
+  semiconductor_sales:
+    name: "WSTS 全球半导体月度销售额 (含中国区)"
+    source: "WSTS / SIA"
+    authority: "official"
+    access_method: "public_open"
+    frequency: "monthly"
+    unit: "billion_usd"
+    quality_grade: "A"
+    status: "available"
+    availability_note: "WSTS 提供全球及四大区域月度 3MMA；SIA 公开月报补充 China 区域 YoY/MoM，未稳定公开 China 月度绝对额。"
+    wired_into_direction_map: true
+    target_l2: ["270100"]
+
+  # --- 3. 需求端龙头：台积电 TSMC 月度营收 ---
+  semiconductor_lead:
+    name: "台积电 TSMC 月度营收"
+    source: "TSMC_IR"
+    authority: "official"
+    access_method: "public_open"
+    frequency: "monthly"
+    unit: "million_ntd"
+    quality_grade: "A"
+    status: "available"
+    wired_into_direction_map: true
+    target_l2: ["270100"]
+
+  # --- 4. 供给端流量：SEAJ 日本制半导体设备出货额（代理口径） ---
+  # 定位：供给端实物流量腿（领先 1-2 年产能释放），direction_map 剪刀差 supply=SEAJ。
+  # 口径：SEAJ 官网月度数据为「日本制装置」销售 3MMA（日元），非全球全口径（全球为 SEMI 季报）；
+  # 作为日本设备厂商（TEL/Disco/Kokusai 等，占全球约 1/3+）产能释放的领先代理。
+  semiconductor_equipment:
+    name: "SEAJ 日本制半导体设备出货额（代理口径）"
+    source: "SEAJ"
+    authority: "official"
+    access_method: "public_open"
+    frequency: "monthly"
+    unit: "billion_jpy"
+    quality_grade: "A"
+    status: "available"
+    wired_into_direction_map: true
+    target_l2: ["270100"]
+
+  # --- 5. 供需结果指标：全球芯片交期 ---
+  # 定位：剪刀差确认腿（framework 已归档至 references/semiconductor/archive/framework_semiconductor.md），
+  # 仅读方向（normal/tight/overheated）；不参与 direction_map 剪刀差/方向分计算，
+  # 在线采集：公开新闻 RSS 发现 Susquehanna/SemiSIGnals 报道并抓取允许域名原文；
+  # 无公开 API，未发现可验证的月份/数值时不入库。Mouser 仅作为兼容性离线来源。
+  chip_lead_time:
+    name: "全球芯片平均交付周期 (Susquehanna SemiSIGnals)"
+    source: "Susquehanna / Public Coverage"
+    authority: "industry_consensus"
+    access_method: "public_open"
+    frequency: "monthly"
+    unit: "weeks"
+    quality_grade: "B+"
+    status: "available"
+    availability_note: "在线读取公开报道转载；原文 HTML/公开 Detail JSON 或 RSS 摘要归档并以 SHA-256 建立血缘，分类交期缺失时保持为空，不用 Mouser 截面替代。"
+    wired_into_direction_map: false
+    target_l2: ["270100"]
+
+  # --- 6. 存量蓄水池：全球半导体 IDM 龙头存货周转天数 (DOI) ---
+  # 定位：库存=领先 1-2 季度（framework.md:125 领先链 设备>产能利用率>库存>价格），为有效前瞻腿。
+  # 接入：2026 已接为半导体/计算机设备供给端确认腿（semiconductor_supply_legs.inventory_score），
+  # 系数看扩张斜率（YoY）滚动分位，独立分组、不与剪刀差合成（fwd60 IC -0.198）。
+  semiconductor_inventory_days:
+    name: "全球半导体 IDM 龙头 (TXN/ADI/STM/NXPI) 季度存货周转天数 (DOI)"
+    source: "SEC_EDGAR_10Q_10K_20F_6K"
+    authority: "official"
+    access_method: "public_open"
+    frequency: "quarterly"
+    unit: "days"
+    quality_grade: "A"
+    status: "available"
+    wired_into_direction_map: true
+    target_l2: ["270100"]
+    target_l2_extra: ["710100"]
+
+  # --- 7. 全球设备全集权威对账：SEMI 全球半导体设备季度出货公报 (Worldwide SEMS) ---
+  # 定位：全球晶圆制造设备 100% 真实全集（含全球与中国大陆采购额），用于校准 SEAJ 代理偏差与研判国内自主可控扩产。
+  # 数据源：SEMI 官方季度新闻公报（WWSEMS）；图片区域值由官方图片快照人工核对，Q4 年度残差标记 derived_from_annual，不做插值/外推。
+  semiconductor_equipment_semi:
+    name: "SEMI 全球半导体制造设备季度销售公报 (Worldwide SEMS, 含中国区)"
+    source: "SEMI_WWSEMS"
+    authority: "official"
+    access_method: "public_open"
+    frequency: "quarterly"
+    unit: "billion_usd"
+    quality_grade: "A"
+    status: "available"
+    wired_into_direction_map: false
+    target_l2: ["270100"]
+    target_l2_extra: ["710100"]
+
+  # --- 8. 渠道库存：Avnet / Arrow 季度库存周转天数 ---
+  # 定位：渠道端库存压力，区别于 IDM 制造端库存；SEC companyfacts 提供官方 XBRL 源端库存与季度营业成本。
+  semiconductor_channel_inventory:
+    name: "Avnet / Arrow 渠道库存周转天数 (DOI)"
+    source: "SEC_companyfacts"
+    authority: "official"
+    access_method: "public_open"
+    frequency: "quarterly"
+    unit: "million_usd/days"
+    quality_grade: "A-"
+    status: "available"
+    availability_note: "RAW 仅保留 SEC companyfacts 源端库存与季度营业成本字段；Q4 若只有年报累计营业成本，不在 RAW 伪造季度 COGS。"
+    wired_into_direction_map: false
+    target_l2: ["270100"]
+    target_l2_extra: ["710100"]
+
+  # --- 9. 存储价格：TrendForce DRAM / NAND 现货与合约价格 ---
+  # 定位：存储周期价格确认腿；公开页提供当前快照，历史序列依赖每日/定期增量运行自然累积。
+  semiconductor_memory_price:
+    name: "TrendForce DRAM / NAND 现货与合约价格"
+    source: "TrendForce"
+    authority: "industry_consensus"
+    access_method: "public_open"
+    frequency: "daily"
+    unit: "usd_per_unit"
+    quality_grade: "B+"
+    status: "available"
+    availability_note: "解析 TrendForce 当前公开 HTML 表格；HTML gzip 仅做对账与溯源，Curated 统一数值化和百分比小数化。"
+    wired_into_direction_map: false
+    target_l2: ["270100"]
+
+  # --- 10. 存储基准价格：TrendForce DataTrack 内存现货月度基准序列 ---
+  # 定位：存储大周期基准价格锚；提供 2022 年底至今的主流 DRAM 与 NAND 现货月度基准。
+  semiconductor_memory_benchmark:
+    name: "TrendForce DataTrack 内存现货月度基准价格"
+    source: "TrendForce_DataTrack"
+    authority: "industry_consensus"
+    access_method: "public_open"
+    frequency: "monthly"
+    unit: "usd_per_unit"
+    quality_grade: "A-"
+    status: "available"
+    availability_note: "从 TrendForce DataTrack JSON 接口读取 fields=6105(DRAM DDR5) 与 fields=6106(NAND Wafer) 月度基准序列；原始响应 gzip 存档存证，严格保留源端原始字段。"
+    wired_into_direction_map: false
+    target_l2: ["270100"]
+
+  # --- 11. 存储出货先导：台湾存储龙头 (南亚科/威刚) 月度营运营收 ---
+  # 定位：存储产业链高频物理出货与动销验证腿；每月 10 日前更新，领先美股/韩股季报 1~2 个月。
+  semiconductor_memory_taiwan_lead:
+    name: "台湾存储龙头 (南亚科 2408 / 威刚 3260) 月度营运营收"
+    source: "MOPS_TWSE"
+    authority: "official"
+    access_method: "public_open"
+    frequency: "monthly"
+    unit: "million_ntd/usd"
+    quality_grade: "A"
+    status: "available"
+    availability_note: "遵循与 TSMC 相同的月度营收披露规范，每月 10 日前采集南亚科 (DRAM 原厂) 与威刚 (模组龙头) 月度营收与 YoY/MoM，覆盖 2016-01 至今全周期连续月度记录；RAW 层保留原始文本。"
+    wired_into_direction_map: false
+    target_l2: ["270100"]

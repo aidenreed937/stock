@@ -77,7 +77,7 @@ def _calendar(start: date, n_days: int) -> pl.DataFrame:
 def test_load_config_from_yaml() -> None:
     config = load_semiconductor_legs_config("config/analytics/semiconductor_legs.yaml")
     assert isinstance(config, SemiconductorLegsConfig)
-    assert config.industry_codes == ("270100", "710100")
+    assert config.industry_codes == ("270100",)
     assert config.scissors is not None
     assert [d.source for d in config.scissors.demand_sources] == [
         "semiconductor_lead",
@@ -86,7 +86,11 @@ def test_load_config_from_yaml() -> None:
     assert config.scissors.supply.source == "semiconductor_equipment"
     assert config.structural is not None
     assert config.structural.ai_capex.source == "cloud_capex_quarterly"
-    assert config.structural.storage.column == "dram_dxi_index"
+    assert config.structural.legs is not None
+    assert "ai_fcf_health" in config.structural.legs
+    assert "ai_marginal_roi" in config.structural.legs
+    assert config.structural.legs["ai_fcf_health"].column == "fcf_conversion_rate"
+    assert config.structural.legs["ai_marginal_roi"].column == "marginal_roi_proxy"
 
 
 def test_build_monthly_leg_forward_fill_and_range() -> None:
@@ -134,6 +138,27 @@ def test_build_quarterly_leg_uses_yoy_growth_when_available() -> None:
     assert leg["direction_score"].max() <= 100.0
 
 
+def test_build_quarterly_leg_falls_back_when_release_dates_are_all_null() -> None:
+    """release_date 列存在但全空时，季度腿应按 trade_date 生效。"""
+    start = date(2016, 1, 1)
+    src = _monthly_frame(start, 60, col="total_capex_billion_usd", yoy=True).with_columns(
+        pl.lit(None, dtype=pl.Date).alias("release_date")
+    )
+    cat = _FakeCatalog({"cloud_capex_quarterly": src})
+    cal = _calendar(start, 1200)
+
+    leg = build_quarterly_leg(
+        QuarterlySource(
+            source="cloud_capex_quarterly", column="total_capex_billion_usd", window_quarters=12
+        ),
+        cal,
+        cat,
+    )
+
+    assert not leg.is_empty()
+    assert leg["trade_date"].min() == date(2017, 1, 31)
+
+
 def test_missing_source_returns_empty_leg() -> None:
     cal = _calendar(date(2020, 1, 1), 100)
     cat = _FakeCatalog({})
@@ -143,7 +168,7 @@ def test_missing_source_returns_empty_leg() -> None:
 
 def _make_config() -> SemiconductorLegsConfig:
     return SemiconductorLegsConfig(
-        industry_codes=("270100", "710100"),
+        industry_codes=("270100",),
         scissors=ScissorsConfig(
             demand_sources=(
                 MonthlySource("semi_lead", "tsmc_revenue_3mma_usd", 36),
@@ -153,7 +178,6 @@ def _make_config() -> SemiconductorLegsConfig:
         ),
         structural=StructuralConfig(
             ai_capex=QuarterlySource("cloud_capex", "total_capex_billion_usd", 12),
-            storage=MonthlySource("dram_dxi", "dram_dxi_index", 36),
         ),
     )
 
@@ -167,7 +191,6 @@ def test_build_semiconductor_legs_panel_assembly() -> None:
             "semi_sales": _monthly_frame(start, n, col="global_sales_usd"),
             "semi_equip": _monthly_frame(start, n, col="billings_3mma_jpy"),
             "cloud_capex": _monthly_frame(start, n, col="total_capex_billion_usd", yoy=True),
-            "dram_dxi": _monthly_frame(start, n, col="dram_dxi_index"),
         }
     )
     cal = _calendar(date(2018, 1, 1), 1500)
@@ -180,10 +203,9 @@ def test_build_semiconductor_legs_panel_assembly() -> None:
         "supply_score",
         "scissors_score",
         "ai_capex_score",
-        "storage_score",
     }
-    assert set(panel["industry_code"].unique().to_list()) == {"270100", "710100"}
-    assert len(panel) == 2 * len(cal)
+    assert set(panel["industry_code"].unique().to_list()) == {"270100"}
+    assert len(panel) == 1 * len(cal)
     # 剪刀差 = demand − supply
     sample = panel.filter(pl.col("industry_code") == "270100").drop_nulls("scissors_score")
     assert not sample.is_empty()
@@ -201,11 +223,10 @@ def test_panel_missing_structural_legs_are_null() -> None:
             "semi_sales": _monthly_frame(start, n, col="global_sales_usd"),
             "semi_equip": _monthly_frame(start, n, col="billings_3mma_jpy"),
         }
-    )  # 缺 cloud_capex / dram_dxi
+    )  # 缺 cloud_capex
     cal = _calendar(date(2018, 1, 1), 1500)
     panel = build_semiconductor_legs_panel(_make_config(), cal, cat)
     assert panel["ai_capex_score"].null_count() == len(panel)
-    assert panel["storage_score"].null_count() == len(panel)
     # 剪刀差仍有效（demand/supply 有）
     assert panel["scissors_score"].null_count() < len(panel)
 
@@ -248,3 +269,69 @@ def test_pipeline_run_writes_artifacts(tmp_path: Path, monkeypatch: pytest.Monke
     # latest 指针
     latest_dir = out_root / "latest"
     assert latest_dir.exists() or (out_root / "latest").is_symlink()
+
+
+def test_build_quarterly_leg_dimensionless_metrics() -> None:
+    """无量纲比率/转化率指标直接做分位，不进行二次 YoY。"""
+    start = date(2018, 1, 1)
+    n = 30
+    src = _monthly_frame(start, n, col="fcf_conversion_rate", yoy=False)
+    cat = _FakeCatalog({"cloud_fundamentals_quarterly": src})
+    cal = _calendar(start, 1200)
+
+    leg = build_quarterly_leg(
+        QuarterlySource(
+            source="cloud_fundamentals_quarterly",
+            column="fcf_conversion_rate",
+            window_quarters=12,
+        ),
+        cal,
+        cat,
+    )
+    assert not leg.is_empty()
+    assert leg["direction_score"].min() >= 0.0
+    assert leg["direction_score"].max() <= 100.0
+
+
+def test_build_semiconductor_legs_panel_with_multiple_structural_legs() -> None:
+    """多结构腿组装面板，所有声明的结构腿均输出对应 _score 列。"""
+    start = date(2018, 1, 31)
+    n = 60
+    cat = _FakeCatalog(
+        {
+            "semi_lead": _monthly_frame(start, n, col="tsmc_revenue_3mma_usd"),
+            "semi_sales": _monthly_frame(start, n, col="global_sales_usd"),
+            "semi_equip": _monthly_frame(start, n, col="billings_3mma_jpy"),
+            "cloud_capex": _monthly_frame(start, n, col="total_capex_billion_usd", yoy=True),
+            "cloud_fund": _monthly_frame(start, n, col="fcf_conversion_rate", yoy=False),
+        }
+    )
+    cal = _calendar(date(2018, 1, 1), 1500)
+
+    cfg = SemiconductorLegsConfig(
+        industry_codes=("270100",),
+        scissors=ScissorsConfig(
+            demand_sources=(MonthlySource("semi_lead", "tsmc_revenue_3mma_usd", 36),),
+            supply=MonthlySource("semi_equip", "billings_3mma_jpy", 36),
+        ),
+        structural=StructuralConfig(
+            ai_capex=QuarterlySource("cloud_capex", "total_capex_billion_usd", 12),
+            legs={
+                "ai_capex": QuarterlySource("cloud_capex", "total_capex_billion_usd", 12),
+                "ai_fcf_health": QuarterlySource("cloud_fund", "fcf_conversion_rate", 12),
+            },
+        ),
+    )
+
+    panel = build_semiconductor_legs_panel(cfg, cal, cat)
+    expected_cols = {
+        "trade_date",
+        "industry_code",
+        "demand_score",
+        "supply_score",
+        "scissors_score",
+        "ai_capex_score",
+        "ai_fcf_health_score",
+    }
+    assert expected_cols.issubset(panel.columns)
+    assert panel["ai_fcf_health_score"].null_count() < len(panel)

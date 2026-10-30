@@ -4,7 +4,7 @@
 （`build_semi_demand_direction` / `build_semi_equipment_direction` /
 `build_semi_structural_direction` / `build_semiconductor_structural_legs`）：
 - 剪刀差 = demand(T read + SIA sales 均值合成) − supply(SEAJ 设备出货)；
-- 结构性腿 = ai_capex(云 CapEx 季度) + storage(DXI 存储月度)，独立分组不入剪刀差。
+- 结构性腿 = ai_capex(云 CapEx 季度)，独立分组不入剪刀差。
 全部按 release_date 生效、0-100 滚动分位、日频前向填充（无前视）。
 
 术语约定：本层（stock_analytics）产出的都是**特征（feature / 候选因子）**——由产业数据
@@ -54,7 +54,7 @@ class StructuralConfig:
     """结构性确认腿配置（leg_type 独立分组，不入剪刀差）。"""
 
     ai_capex: QuarterlySource
-    storage: MonthlySource
+    legs: dict[str, QuarterlySource] | None = None
 
 
 @dataclass(frozen=True, slots=True)
@@ -65,7 +65,7 @@ class SemiconductorLegsConfig:
     title: str = "半导体深研线供需剪刀差与结构性确认腿"
     artifact_root: str = "data/analytics/semiconductor"
     calendar_mart: str = "global_macro_daily"
-    industry_codes: tuple[str, ...] = ("270100", "710100")
+    industry_codes: tuple[str, ...] = ("270100",)
     scissors: ScissorsConfig | None = None
     structural: StructuralConfig | None = None
     neutral_score: float = 50.0
@@ -133,7 +133,7 @@ def load_semiconductor_legs_config(
         title=str(payload.get("title", "半导体深研线供需剪刀差与结构性确认腿")),
         artifact_root=str(payload.get("artifact_root", "data/analytics/semiconductor")),
         calendar_mart=str(payload.get("calendar_mart", "global_macro_daily")),
-        industry_codes=_as_str_list(payload.get("industry_codes")) or ("270100", "710100"),
+        industry_codes=_as_str_list(payload.get("industry_codes")) or ("270100",),
         scissors=scissors,
         structural=structural,
         neutral_score=_number("neutral_score", 50.0),
@@ -166,29 +166,29 @@ def _parse_scissors(raw: Any) -> ScissorsConfig | None:
 def _parse_structural(raw: Any) -> StructuralConfig | None:
     if not isinstance(raw, dict):
         return None
-    ai_raw = raw.get("ai_capex")
-    st_raw = raw.get("storage")
-    if not isinstance(ai_raw, dict) or not isinstance(st_raw, dict):
+
+    parsed_legs: dict[str, QuarterlySource] = {}
+    for key, val in raw.items():
+        if not isinstance(val, dict):
+            continue
+        src = str(val.get("source", "")).strip()
+        col = str(val.get("column", "")).strip()
+        if not (src and col):
+            continue
+        parsed_legs[key] = QuarterlySource(
+            source=src,
+            column=col,
+            window_quarters=max(int(val.get("window_quarters", 12)), 1),
+        )
+
+    if not parsed_legs:
         return None
 
-    ai_src = str(ai_raw.get("source", "")).strip()
-    ai_col = str(ai_raw.get("column", "")).strip()
-    st_src = str(st_raw.get("source", "")).strip()
-    st_col = str(st_raw.get("column", "")).strip()
-    if not (ai_src and ai_col and st_src and st_col):
-        return None
+    ai_capex = parsed_legs.get("ai_capex") or next(iter(parsed_legs.values()))
 
     return StructuralConfig(
-        ai_capex=QuarterlySource(
-            source=ai_src,
-            column=ai_col,
-            window_quarters=max(int(ai_raw.get("window_quarters", 12)), 1),
-        ),
-        storage=MonthlySource(
-            source=st_src,
-            column=st_col,
-            window_months=max(int(st_raw.get("window_months", 36)), 1),
-        ),
+        ai_capex=ai_capex,
+        legs=parsed_legs,
     )
 
 

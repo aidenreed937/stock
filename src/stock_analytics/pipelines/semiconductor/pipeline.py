@@ -4,7 +4,7 @@
 落盘 + manifest 的标准管线：
 
 - 剪刀差 = demand(T read + SIA sales 均值合成) - supply(SEAJ 设备出货)；
-- 结构性腿 = ai_capex(云 CapEx 季度) + storage(DXI 存储月度)，独立分组不入剪刀差。
+- 结构性腿 = ai_capex(云 CapEx 季度)，独立分组不入剪刀差。
 
 产物落盘于 ``data/analytics/semiconductor/``（ArtifactStore run 目录 + latest），
 并写 manifest（完整性 + watermark）。
@@ -132,7 +132,7 @@ def _build_manifest(
         "demand": "TSMC 台积电月营收(领先) + SIA 全球销售额(同步)，均值合成滚动分位",
         "supply": "SEAJ 日本制设备出货 3MMA 滚动分位（领先 1-2 年产能释放）",
         "scissors": "demand_score - supply_score",
-        "structural": "ai_capex(云 CapEx 季度) / storage(DXI 月度)，leg_type 独立分组不入剪刀差",
+        "structural": "ai_capex(云 CapEx 季度)，leg_type 独立分组不入剪刀差",
         "calendar_effect": "release_date 生效，日频前向填充，无前视",
     }
     _max_leg_date = panel["trade_date"].max()
@@ -191,7 +191,7 @@ def load_latest_semiconductor_legs(
 ) -> pl.DataFrame:
     """读取半导体建腿管线 latest 产物面板。
 
-    供策略/研究层消费（经包级门面），返回腿部面板（剪刀差 + 结构性腿，含 270100/710100）。
+    供策略/研究层消费（经包级门面），返回腿部面板（剪刀差 + 结构性腿，仅 270100）。
     产物缺失时抛出 FileNotFoundError。
     """
     from stock_analytics.pipelines.artifacts.reader import resolve_artifact_run

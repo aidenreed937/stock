@@ -74,6 +74,8 @@ def parse_semi_article_text(
     """
     if not text:
         return None
+    if not _is_equipment_release_page(text):
+        return None
 
     # 遍历所有季度声明，收集「同句内带金额」的候选，取金额与季度词距离最近的
     candidates: list[dict[str, Any]] = []
@@ -113,6 +115,22 @@ def parse_semi_article_text(
         min(candidates, key=lambda item: item["distance"]),
         source_url=source_url,
         default_date=default_date,
+    )
+
+
+def _is_equipment_release_page(text: str) -> bool:
+    """排除首页/列表页中相邻新闻卡片拼接出的季度与金额。"""
+    title_match = re.search(r"<title\b[^>]*>(.*?)</title\s*>", text, re.IGNORECASE | re.DOTALL)
+    if title_match is None:
+        return True
+    title = BeautifulSoup(title_match.group(1), "html.parser").get_text(" ", strip=True)
+    return bool(
+        re.search(
+            r"\b(?:global|worldwide)\b[\s\S]{0,120}\bsemiconductor\b"
+            r"[\s\S]{0,120}\bequipment\b[\s\S]{0,120}\b(?:billings|sales)\b",
+            title,
+            re.IGNORECASE,
+        )
     )
 
 

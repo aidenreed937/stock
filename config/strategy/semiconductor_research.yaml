@@ -24,7 +24,6 @@ fwd_horizon: 60             # f60 = close.shift(-60)/close - 1（60 日前瞻收
 ic_min_samples: 30          # IC 计算最小样本（不足返回 None）
 ic_legs:                    # IC 验证的腿部（须存在于 semiconductor_legs 产物）
   - ai_capex_score
-  - storage_score
 
 # 指标年化
 trading_days: 252           # 年化交易日

@@ -9,7 +9,6 @@
 - 剪刀差 = demand - supply。
 结构性腿（leg_type 独立分组，不入剪刀差）：
 - ai_capex = 北美四大云厂商 CapEx 季度同比 -> 12 季滚动分位。
-- storage  = DXI 存储指数月度同比 -> 36 月滚动分位。
 全部产 0-100 滚动分位、日频前向填充。
 
 术语约定：本模块产出的都是**特征（feature / 候选因子）**——回测的输入；
@@ -51,8 +50,12 @@ def _rolling_pct(series: pl.Series, window: int = 756) -> pl.Series:
 
 
 def _effective_col(df: pl.DataFrame) -> str:
-    """生效列：优先 release_date（消除前视），否则 trade_date。"""
-    return "release_date" if "release_date" in df.columns else "trade_date"
+    """生效列：优先使用非空 release_date（消除前视），否则 trade_date。"""
+    return (
+        "release_date"
+        if "release_date" in df.columns and df["release_date"].is_not_null().any()
+        else "trade_date"
+    )
 
 
 def _forward_to_daily(
@@ -117,10 +120,28 @@ def build_quarterly_leg(
         return _empty_leg()
     eff = _effective_col(df)
     extra = [eff] if eff != "trade_date" else []
-    if "yoy_growth" in df.columns and df["yoy_growth"].is_not_null().any():
+
+    is_dimensionless = any(
+        source.column.endswith(suffix)
+        for suffix in ("_rate", "_ratio", "_intensity", "_proxy", "_pct", "_share", "_score")
+    )
+
+    if is_dimensionless:
+        # 已无量纲的比率/强度指标，直接使用其自身数值进行滚动分位
+        out = (
+            df.select(["trade_date", *extra, source.column])
+            .rename({source.column: "score_val"})
+            .drop_nulls()
+            .sort("trade_date")
+        )
+    elif (
+        source.column == "total_capex_billion_usd"
+        and "yoy_growth" in df.columns
+        and df["yoy_growth"].is_not_null().any()
+    ):
         out = (
             df.select(["trade_date", *extra, "yoy_growth"])
-            .rename({"yoy_growth": "yoy"})
+            .rename({"yoy_growth": "score_val"})
             .drop_nulls()
             .sort("trade_date")
         )
@@ -128,10 +149,11 @@ def build_quarterly_leg(
         out = (
             df.select(["trade_date", *extra, source.column])
             .sort("trade_date")
-            .with_columns(pl.col(source.column).pct_change(4).alias("yoy"))
+            .with_columns(pl.col(source.column).pct_change(4).alias("score_val"))
             .drop_nulls()
         )
-    pct = _rolling_pct(out["yoy"].cast(pl.Float64), window=source.window_quarters)
+
+    pct = _rolling_pct(out["score_val"].cast(pl.Float64), window=source.window_quarters)
     quarterly = out.with_columns(pct.alias("pct")).select([eff, "pct"]).rename({eff: "trade_date"})
     return _forward_to_daily(quarterly, calendar)
 
@@ -187,17 +209,16 @@ def build_structural_legs(
     calendar: pl.DataFrame,
     cat: DataCatalog,
 ) -> dict[str, pl.DataFrame]:
-    """结构性确认腿（ai_capex / storage），leg_type 独立分组、不入剪刀差。
+    """结构性确认腿（ai_capex 及 FCF/ROI 扩展），leg_type 独立分组、不入剪刀差。
 
     对配置声明的每条腿始终返回键（空数据时返回空帧），保证下游 schema 稳定。
     """
     out: dict[str, pl.DataFrame] = {}
     if config.structural is None:
         return out
-    ai_capex = build_quarterly_leg(config.structural.ai_capex, calendar, cat)
-    out["ai_capex"] = ai_capex
-    storage = build_monthly_leg(config.structural.storage, calendar, cat)
-    out["storage"] = storage
+    legs_map = config.structural.legs or {"ai_capex": config.structural.ai_capex}
+    for key, source in legs_map.items():
+        out[key] = build_quarterly_leg(source, calendar, cat)
     return out
 
 
@@ -206,10 +227,10 @@ def build_semiconductor_legs_panel(
     calendar: pl.DataFrame,
     cat: DataCatalog,
 ) -> pl.DataFrame:
-    """组装半导体/计算机设备腿部面板（长表，行业维度扩展）。
+    """组装半导体腿部面板（长表，行业维度扩展）。
 
     输出列：trade_date, industry_code, demand_score, supply_score, scissors_score,
-    以及结构性腿列（ai_capex_score / storage_score，可空）。
+    以及结构性腿列（ai_capex_score，可空）。
     剪刀差 demand/supply 按 neutral_score 中性回退；结构性腿缺数据时为空。
     """
     demand = build_demand_leg(config, calendar, cat)

@@ -1,0 +1,139 @@
+# ============================================================================
+# TSMC 产能利用率历史基线（legacy_baseline）
+#
+# 用途：``build_foundry_raw_frame`` 在**官方利用率缺失**时，按报告期补齐
+#       ``tsmc_utilization_raw`` 并显式标注 ``tsmc_utilization_status='legacy_baseline'``。
+#       补的是历史已披露事实，不是对未来的推算。
+#
+# 为什么需要这个文件：台积电季度管理报告自 2020 年代起不再给出产能利用率数字
+#       （只保留 "higher/lower capacity utilization rate" 文字描述），而历史季度是
+#       带数字披露的。这份历史数字此前只存在于线上 RAW 表里、由**仓库外脚本带外注入**，
+#       导致 RAW 无法离线重放——全量重放会把 41 个季度的利用率与产能相态整体清零。
+#
+# ⚠️ 来源状态：unverified_upstream_injection
+#       本文件数值系从既有线上 RAW 表逐值回捞固化，仓库内**没有任何脚本或配置**
+#       产生过它们，也没有 git 历史可回溯，**尚未与台积电官方披露逐条核对**。
+#       在把这个数字对外引用之前，必须先完成下面的确权流程。
+#
+# 确权流程（待办）：
+#       1. 抽取本地 RAW 快照中已有的 TSMC 季度管理报告 PDF 做抽样核对——已归档的
+#          季度包括 2016Q1/2016Q2/2016Q4/2017Q1/2017Q3/2020Q1/2020Q2/2020Q4/2023Q3/
+#          2024Q4 等，属于可离线核对的部分；
+#       2. 其余季度回溯 investor.tsmc.com 官方 IR 归档后补核；
+#       3. 全部核对通过后，把 provenance.status 改为 verified_official 并写明核对人。
+#
+# 硬性约束：
+#       * 官方数字一旦可用，一律优先官方值；本基线只在官方值缺失时兜底。
+#       * 只允许**人工核对后**新增或修正，禁止用模型外推、插值或趋势拟合填补未来季度。
+#       * 缺失季度（如 2026Q2 起）保持 NULL + status='unavailable'，不得用基线伪装。
+#       * 数值口径：台积电披露的季度产能利用率（%，12 吋约当），保留原始披露精度。
+#       * ``utilization_raw`` 存**原始披露字符串**（如 "94.0%"），不存浮点——这样
+#         RAW 复现是逐字节一致的，不会因为浮点格式化在重放时产生假差异。
+# ============================================================================
+schema_version: 1
+
+provenance:
+  status: unverified_upstream_injection
+  recovered_from: data/raw/industry/semiconductor/capacity/foundry_capacity_utilization.parquet
+  recovered_at: 2026-09-10
+  official_reference: https://investor.tsmc.com/english/quarterly-results
+  caveat: >-
+    数值来源是仓库内既有的带外注入基线，不等同于已核验的官方披露；引用前须先确权。
+
+coverage:
+  first_quarter: 2016Q1
+  last_quarter: 2026Q1
+  quarter_count: 41
+  note: >-
+    2026Q2 起台积电季度管理报告不再给出利用率数字，故基线不覆盖该季度及以后，
+    对应 RAW/Curated 应保持 NULL 与 'unavailable'。
+
+rules:
+  official_takes_precedence: true
+  manual_update_only: true
+  no_extrapolation: true
+  fill_status_label: legacy_baseline
+
+values:
+  - report_quarter: 2016Q1
+    utilization_raw: "94.0%"
+  - report_quarter: 2016Q2
+    utilization_raw: "96.0%"
+  - report_quarter: 2016Q3
+    utilization_raw: "97.0%"
+  - report_quarter: 2016Q4
+    utilization_raw: "95.0%"
+  - report_quarter: 2017Q1
+    utilization_raw: "91.0%"
+  - report_quarter: 2017Q2
+    utilization_raw: "90.0%"
+  - report_quarter: 2017Q3
+    utilization_raw: "93.0%"
+  - report_quarter: 2017Q4
+    utilization_raw: "92.0%"
+  - report_quarter: 2018Q1
+    utilization_raw: "89.0%"
+  - report_quarter: 2018Q2
+    utilization_raw: "88.0%"
+  - report_quarter: 2018Q3
+    utilization_raw: "91.0%"
+  - report_quarter: 2018Q4
+    utilization_raw: "86.0%"
+  - report_quarter: 2019Q1
+    utilization_raw: "82.0%"
+  - report_quarter: 2019Q2
+    utilization_raw: "87.0%"
+  - report_quarter: 2019Q3
+    utilization_raw: "93.0%"
+  - report_quarter: 2019Q4
+    utilization_raw: "96.0%"
+  - report_quarter: 2020Q1
+    utilization_raw: "97.0%"
+  - report_quarter: 2020Q2
+    utilization_raw: "98.5%"
+  - report_quarter: 2020Q3
+    utilization_raw: "99.0%"
+  - report_quarter: 2020Q4
+    utilization_raw: "99.5%"
+  - report_quarter: 2021Q1
+    utilization_raw: "100.0%"
+  - report_quarter: 2021Q2
+    utilization_raw: "100.5%"
+  - report_quarter: 2021Q3
+    utilization_raw: "101.0%"
+  - report_quarter: 2021Q4
+    utilization_raw: "100.0%"
+  - report_quarter: 2022Q1
+    utilization_raw: "99.0%"
+  - report_quarter: 2022Q2
+    utilization_raw: "96.0%"
+  - report_quarter: 2022Q3
+    utilization_raw: "91.0%"
+  - report_quarter: 2022Q4
+    utilization_raw: "81.0%"
+  - report_quarter: 2023Q1
+    utilization_raw: "74.0%"
+  - report_quarter: 2023Q2
+    utilization_raw: "76.0%"
+  - report_quarter: 2023Q3
+    utilization_raw: "78.0%"
+  - report_quarter: 2023Q4
+    utilization_raw: "80.0%"
+  - report_quarter: 2024Q1
+    utilization_raw: "82.0%"
+  - report_quarter: 2024Q2
+    utilization_raw: "87.0%"
+  - report_quarter: 2024Q3
+    utilization_raw: "90.0%"
+  - report_quarter: 2024Q4
+    utilization_raw: "91.5%"
+  - report_quarter: 2025Q1
+    utilization_raw: "93.0%"
+  - report_quarter: 2025Q2
+    utilization_raw: "95.0%"
+  - report_quarter: 2025Q3
+    utilization_raw: "96.0%"
+  - report_quarter: 2025Q4
+    utilization_raw: "97.0%"
+  - report_quarter: 2026Q1
+    utilization_raw: "96.5%"

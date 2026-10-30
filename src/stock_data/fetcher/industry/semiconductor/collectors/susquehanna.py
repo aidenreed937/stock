@@ -5,6 +5,7 @@ from __future__ import annotations
 from datetime import date
 from pathlib import Path
 
+from stock_data.core.settings import data_settings
 from stock_data.fetcher.industry.contracts import IndustryCollectionResult
 from stock_data.fetcher.industry.semiconductor.collectors.lead_time import (
     DEFAULT_CONFIG_PATH,
@@ -37,6 +38,7 @@ class SusquehannaLeadTimeCollector:
         raw_dir: Path | str,
         config_path: Path | str = DEFAULT_CONFIG_PATH,
         timeout: int = DEFAULT_TIMEOUT_SECONDS,
+        proxy: str | None = None,
     ) -> None:
         self.paths = SemiconductorRawPaths(raw_dir)
         self.lead_time_raw_dir = self.paths.lead_time_dir
@@ -56,6 +58,8 @@ class SusquehannaLeadTimeCollector:
         self.infer_report_month = bool(online_config.get("infer_report_month", False))
         self.allow_rss_excerpt = bool(online_config.get("allow_rss_excerpt", True))
         self.timeout = int(online_config.get("timeout_seconds", timeout))
+        configured_proxy = data_settings.susquehanna_proxy if proxy is None else proxy
+        self.proxy = str(configured_proxy or "").strip() or None
 
     def collect(
         self,
@@ -83,6 +87,7 @@ class SusquehannaLeadTimeCollector:
             force=force,
             thresholds=self.config.get("thresholds", {}),
             timeout=self.timeout,
+            proxy=self.proxy,
             lookback_months=self.lookback_months,
             max_feed_items=self.max_feed_items,
             max_article_chars=self.max_article_chars,

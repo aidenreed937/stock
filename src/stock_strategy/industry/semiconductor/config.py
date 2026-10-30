@@ -42,7 +42,7 @@ class SemiconductorResearchConfig:
     oos_start: date = date(2022, 1, 1)
     fwd_horizon: int = 60
     ic_min_samples: int = 30
-    ic_legs: tuple[str, ...] = ("ai_capex_score", "storage_score")
+    ic_legs: tuple[str, ...] = ("ai_capex_score",)
     trading_days: int = 252
     defense: DefenseConfig = field(default_factory=DefenseConfig)
 
@@ -97,7 +97,7 @@ def load_semiconductor_research_config(
         oos_start=_parse_date(payload.get("oos_start"), date(2022, 1, 1)),
         fwd_horizon=max(_int("fwd_horizon", 60), 1),
         ic_min_samples=max(_int("ic_min_samples", 30), 1),
-        ic_legs=_parse_str_list(payload.get("ic_legs"), ("ai_capex_score", "storage_score")),
+        ic_legs=_parse_str_list(payload.get("ic_legs"), ("ai_capex_score",)),
         trading_days=max(_int("trading_days", 252), 1),
         defense=defense,
     )

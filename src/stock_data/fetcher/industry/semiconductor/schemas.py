@@ -528,7 +528,7 @@ TEL_GM_QUARTERLY_SCHEMA = pl.Schema(
         "report_quarter": pl.String,
         "fiscal_year": pl.Int64,
         "fy_q": pl.Int32,
-        "period_end": pl.String,
+        "period_end": pl.Date,
         "net_sales_jpy_m": pl.Float64,
         "gross_profit_jpy_m": pl.Float64,
         "gross_margin_pct": pl.Float64,

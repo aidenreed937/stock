@@ -121,7 +121,6 @@ def _ic_labels(ic_legs: list[str]) -> dict[str, str]:
     """IC 验证腿的中文标签（默认映射；未知腿回退原名）。"""
     known = {
         "ai_capex_score": "云CapEx算力（AI 算力扩张）",
-        "storage_score": "DXI存储（AI 存储/涨价）",
     }
     return {leg: known.get(leg, leg) for leg in ic_legs}
 

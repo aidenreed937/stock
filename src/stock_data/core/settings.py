@@ -7,7 +7,7 @@ from functools import lru_cache
 from pathlib import Path
 from typing import TYPE_CHECKING, Literal
 
-from pydantic import model_validator
+from pydantic import Field, model_validator
 from pydantic_settings import BaseSettings, SettingsConfigDict
 
 if TYPE_CHECKING:
@@ -119,6 +119,9 @@ class DataSettings(BaseSettings):
 
     # 理杏仁密钥与配置
     lixinger_token: str = ""
+    lixinger_tokens: dict[str, str] = Field(default_factory=dict)
+    lixinger_profile: str = ""
+    lixinger_fallback_profiles: list[str] = Field(default_factory=list)
     lixinger_url: str = "https://open.lixinger.com"
     lxr_token: str = ""
     lxr_url: str = ""
@@ -128,6 +131,7 @@ class DataSettings(BaseSettings):
 
     # Alpha Vantage 密钥与配置
     alpha_vantage_api_key: str = ""
+    alpha_vantage_api_keys: list[str] = Field(default_factory=list)
     alpha_vantage_url: str = "https://www.alphavantage.co/query"
     alpha_vantage_proxy: str = ""
 
@@ -142,6 +146,7 @@ class DataSettings(BaseSettings):
     akshare_proxy: str = ""
     yfinance_proxy: str = ""
     yfinance_proxy_pool_file: Path = Path("data/proxy")
+    susquehanna_proxy: str = ""
     no_proxy: str = ""
 
     # 默认数据源模式
@@ -206,12 +211,33 @@ class DataSettings(BaseSettings):
     @property
     def effective_lixinger_token(self) -> str:
         """获取有效的理杏仁 Token（兼容 LIXINGER_TOKEN 与 LXR_TOKEN）。"""
-        return self.lixinger_token or self.lxr_token
+        return self.resolve_lixinger_token()
+
+    def resolve_lixinger_token(self, profile: str | None = None) -> str:
+        """按显式 profile 选择理杏仁 Token，未配置 profile 时兼容旧字段。"""
+        selected_profile = (profile or self.lixinger_profile).strip()
+        if selected_profile:
+            return str(self.lixinger_tokens.get(selected_profile, "") or "").strip()
+        return self.lixinger_token.strip() or self.lxr_token.strip()
 
     @property
     def effective_lixinger_url(self) -> str:
         """获取有效的理杏仁 API 服务器地址。"""
         return self.lixinger_url or self.lxr_url or "https://open.lixinger.com"
+
+    def resolve_alpha_vantage_api_keys(self, primary: str | None = None) -> tuple[str, ...]:
+        """按主 Key 优先顺序返回去重后的 Alpha Vantage 授权 Key。"""
+        candidates = (
+            [primary]
+            if primary is not None
+            else [self.alpha_vantage_api_key, *self.alpha_vantage_api_keys]
+        )
+        result: list[str] = []
+        for candidate in candidates:
+            value = str(candidate or "").strip()
+            if value and value not in result:
+                result.append(value)
+        return tuple(result)
 
     def setup_directories(self) -> None:
         """确保数据与缓存目录存在"""

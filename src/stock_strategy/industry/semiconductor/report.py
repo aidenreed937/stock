@@ -31,8 +31,8 @@ def render_ic_report(
     md = [
         "# 半导体（270100）AI 结构性确认腿 IC 报告",
         "",
-        "> 结构性腿：ai_capex_score（北美四大云厂商 CapEx 同比 12 季滚动分位）+ storage_score",
-        "> （DXI 存储指数同比 36 月滚动分位），日频前向填充、release_date 生效（无前视）。",
+        "> 结构性腿：ai_capex_score（北美四大云厂商 CapEx 同比 12 季滚动分位），"
+        "日频前向填充、release_date 生效（无前视）。",
         f"> IC = Spearman(腿分, f60)，f60 = 60 日前瞻收益。窗口 {min_date} ~ {max_date}。",
         "",
         "## 整体 IC",
@@ -42,15 +42,13 @@ def render_ic_report(
     ]
     for c in cols:
         md.append(f"| **{labels[c]}** | {overall.get(c)} |")
-    md += [
-        "",
-        "## 年度 IC",
-        "",
-        f"| 年份 | n | {labels[cols[0]]} | {labels[cols[1]]} |",
-        "| :---: | :---: | :---: | :---: |",
-    ]
+    md += ["", "## 年度 IC", ""]
+    yearly_headers = ["年份", "n", *(labels[c] for c in cols)]
+    md.append("| " + " | ".join(yearly_headers) + " |")
+    md.append("| " + " | ".join(":---:" for _ in yearly_headers) + " |")
     for r in yearly.to_dicts():
-        md.append(f"| {r['year']} | {r['n']} | {r.get(cols[0]) or '-'} | {r.get(cols[1]) or '-'} |")
+        values = [str(r["year"]), str(r["n"]), *(str(r.get(c) or "-") for c in cols)]
+        md.append("| " + " | ".join(values) + " |")
     md += [
         "",
         f"## 当前截面（{current['trade_date'][0]}）",

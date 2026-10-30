@@ -13,6 +13,7 @@ from __future__ import annotations
 import argparse
 import csv
 import logging
+from datetime import date
 from pathlib import Path
 from typing import Any
 
@@ -23,10 +24,10 @@ from stock_data.fetcher.industry.common import (
     save_curated_fact,
     save_raw_snapshot,
 )
-from stock_data.fetcher.industry.semiconductor.lead_time_collector import (
+from stock_data.fetcher.industry.semiconductor.collectors.lead_time import (
     ChipLeadTimeCollector,
 )
-from stock_data.fetcher.industry.semiconductor.transform import records_to_chip_lead_time_frame
+from stock_data.fetcher.industry.semiconductor.transforms import records_to_chip_lead_time_frame
 
 logging.basicConfig(level=logging.INFO, format="%(asctime)s [%(levelname)s] %(message)s")
 logger = logging.getLogger(__name__)
@@ -50,6 +51,15 @@ def import_csv_to_raw(
             m = row.get("month") or row.get("report_month")
             if not m:
                 continue
+            release_date_raw = (row.get("release_date") or "").strip()
+            if not release_date_raw:
+                raise ValueError(f"交期 CSV 行 {m.strip()} 缺少真实 release_date，不能写入 RAW")
+            try:
+                release_date = date.fromisoformat(release_date_raw)
+            except ValueError as exc:
+                raise ValueError(
+                    f"交期 CSV 行 {m.strip()} 的 release_date 无效: {release_date_raw}"
+                ) from exc
             records.append(
                 {
                     "month": m.strip(),
@@ -63,9 +73,11 @@ def import_csv_to_raw(
                         row.get("compute", 0) or row.get("compute_lead_time_weeks", 0)
                     ),
                     "source": row.get("source", "External Bulletin"),
+                    "release_date": release_date,
                 }
             )
 
+    target_base = raw_path / "semiconductor" if (raw_path / "semiconductor").exists() else raw_path
     count = 0
     for r in records:
         m_key = r["month"]
@@ -86,6 +98,7 @@ def import_csv_to_raw(
             "avg_lead_time_weeks": avg_val,
             "category_averages": cat_averages,
             "source": r.get("source", "External Bulletin"),
+            "release_date": r["release_date"].isoformat(),
             "collected_at": now_utc_iso(),
         }
 
@@ -93,11 +106,11 @@ def import_csv_to_raw(
             source_name="lead_time",
             snapshot_filename=f"chip_lead_time_{m_key}.json",
             content=content,
-            base_dir=raw_path,
+            base_dir=target_base,
         )
         count += 1
 
-    logger.info("成功从 %s 写入 %d 个 RAW 快照至 %s/lead_time/", csv_path, count, raw_dir)
+    logger.info("成功从 %s 写入 %d 个 RAW 快照至 %s/lead_time/", csv_path, count, target_base)
     return count
 
 

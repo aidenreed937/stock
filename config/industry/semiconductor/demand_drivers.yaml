@@ -1,0 +1,192 @@
+# 半导体周期各历史时期需求驱动配置 (Semiconductor Cycle Demand Drivers)
+#
+# 背景与设计原则：
+# 1. 解耦硬编码：半导体不同历史周期的核心驱动引擎各不相同（PC -> 功能机 -> 智能手机 -> 疫情汽车缺芯 -> AI/HPC）；
+#    严禁在研究中全历史写死单一的"云CapEx(需求,领先)"。
+# 2. 时代路由：分析历史周期或截面数据时，根据目标年份/区间路由到对应的时代配置，确定领先需求指标与传导链。
+# 3. 跨周期兜底：未匹配到特定时代或做跨周期长跨度研究时，使用 default_cross_cycle 供需剪刀差模型。
+
+schema_version: 1
+title: "半导体周期分时期需求驱动配置"
+description: "定义 1990 年代至今半导体不同历史时期的主导需求驱动、传导链条、领先指标与拐点判定"
+
+# 时代映射规则：根据分析年份或报告期区间路由
+eras:
+  - id: "pc_era"
+    name: "PC 个人电脑与桌面互联网时代"
+    start_year: 1990
+    end_year: 2001
+    primary_demand_driver: "PC 个人电脑普及、企业信息化与办公 PC 换机潮、Windows 视窗操作系统生态升级"
+    transmission_chain: "PC季度出货与企业IT预算(需求,领先) -> 晶圆制造设备出货(资本开支,领先) -> x86 CPU与DRAM销售额(产出,同步) -> 标准内存价格与渠道库存(价格与出清,滞后)"
+    leading_indicators:
+      - name: "全球 PC 季度出货量 YoY"
+        indicator_type: "terminal_shipment"
+        source_proxy: "IDC/Gartner PC Quarterly Shipments"
+        lead_time_quarters: 1
+        description: "PC 组装与采购直接决定 CPU 与标准 DRAM 需求"
+      - name: "美股企业 IT 硬件资本开支"
+        indicator_type: "enterprise_capex"
+        source_proxy: "US Corporate IT Hardware Spending"
+        lead_time_quarters: 1
+        description: "企业服务器与商用 PC 采购领先消费端"
+    key_chips:
+      - "Intel/AMD x86 CPU"
+      - "标准 SDRAM / DDR DRAM"
+      - "主板芯片组 (Northbridge/Southbridge)"
+      - "早期 2D/3D 图形加速显卡"
+    supply_bottleneck: "8 英寸晶圆产线爬坡、DRAM 微缩制程良率"
+    inflection_triggers:
+      peak:
+        - "全球 PC 出货量同比增速见顶转负"
+        - "DRAM 现货价格暴跌与渠道高库存堆积"
+      trough:
+        - "新一代操作系统或 CPU 架构发布带动换机"
+        - "DRAM 原厂主动减产与价格止跌"
+
+  - id: "consumer_electronics_era"
+    name: "功能机普及与数码消费电子化时代"
+    start_year: 2002
+    end_year: 2008
+    primary_demand_driver: "2G/2.5G 手机普及、MP3/MP4 随身听、数码相机、液晶电视与 DVD 等泛消费电子爆发"
+    transmission_chain: "消费电子终端出货量(需求,领先) -> 硅片与封测出货(供给,领先) -> 晶圆代工与IDM销售额(产出,同步) -> NAND/NOR Flash与MCU价格(价格,高敏同步/滞后)"
+    leading_indicators:
+      - name: "全球手机季度出货量 YoY"
+        indicator_type: "terminal_shipment"
+        source_proxy: "Gartner Global Mobile Phone Sales"
+        lead_time_quarters: 1
+        description: "功能机换机与新增用户渗透率"
+      - name: "数码相机与便携存储卡出货量"
+        indicator_type: "consumer_volume"
+        source_proxy: "CIPA Digital Camera Shipments"
+        lead_time_quarters: 1
+        description: "早期 NAND Flash 的核心增量消化载体"
+    key_chips:
+      - "手机 2G/EDGE 基带芯片 (Baseband)"
+      - "NAND Flash (存储卡/U盘/MP3)"
+      - "8/16 位消费级 MCU"
+      - "通用模拟与电源管理芯片"
+    supply_bottleneck: "12 英寸晶圆产线初始投资、NAND 浮栅技术良率"
+    inflection_triggers:
+      peak:
+        - "消费电子新品渗透率饱和，渠道商 DOI 严重超标"
+        - "宏观经济下行导致居民耐用品消费收缩 (如 2008 年金融危机)"
+      trough:
+        - "渠道去库存彻底，终端价格降至普及临界点"
+
+  - id: "smartphone_mobile_cloud_era"
+    name: "智能手机普及与 4G 移动互联网时代"
+    start_year: 2009
+    end_year: 2019
+    primary_demand_driver: "智能手机全球渗透率攀升 (Apple/Android 阵营)、4G 移动互联网应用繁荣、初期公有云数据中心建设"
+    transmission_chain: "智能手机季度出货/TSMC先进制程先导(需求,领先) -> SEMI/SEAJ设备出货(资本开支,领先) -> 全球半导体销售额/产能利用率(产出,同步) -> 移动DRAM与NAND价格(价格,滞后)"
+    leading_indicators:
+      - name: "全球智能手机季度出货量 YoY"
+        indicator_type: "terminal_shipment"
+        source_proxy: "IDC Worldwide Quarterly Mobile Phone Tracker"
+        lead_time_quarters: 1
+        description: "智能手机成为半导体第一大单一需求终端"
+      - name: "台积电月度营收 (3MMA USD)"
+        indicator_type: "foundry_lead"
+        source_proxy: "semiconductor_lead.parquet (tsmc_revenue_3mma_usd)"
+        lead_time_months: 1
+        description: "苹果与高通核心芯片代工流水，领先全球半导体销售额"
+      - name: "全球半导体设备出货额 (SEMI/SEAJ)"
+        indicator_type: "equipment_capex"
+        source_proxy: "semiconductor_equipment_semi.parquet / semiconductor_equipment.parquet"
+        lead_time_quarters: 2
+        description: "设备投资领先产能释放 1-2 年"
+    key_chips:
+      - "移动 AP SoC (苹果 A 系列、高通骁龙、联发科天玑)"
+      - "4G LTE 基带芯片"
+      - "低功耗内存 (LPDDR) 与嵌入式闪存 (eMMC/UFS)"
+      - "CMOS 图像传感器 (CIS 高像素/双摄/三摄)"
+    supply_bottleneck: "28nm/16nm/7nm 先进制程 FinFET 产能瓶颈、EUV 光刻机导入"
+    inflection_triggers:
+      peak:
+        - "全球智能手机出货量增速跌入个位数或转负 (2016-2017 年渗透率见顶)"
+        - "全球通路商渠道库存天数 (Arrow/Avnet DOI) 持续超过 55 天警戒线"
+        - "存储巨头资本开支二阶导转负"
+      trough:
+        - "手机库存去化完毕，新一代通信制式 (如 4G 普及、早期 5G) 带来换机周期"
+
+  - id: "covid_iot_automotive_era"
+    name: "疫情居家经济 + 汽车电动化泛终端全面缺芯时代"
+    start_year: 2020
+    end_year: 2022
+    primary_demand_driver: "远程办公/线上教育带来 PC/平板补库、5G 终端换代、新能源汽车电动化与智能座舱普及、全产业链恐慌性囤货"
+    transmission_chain: "泛终端恐慌性重复下单/交期急剧拉长(需求与情绪,领先) -> 晶圆设备厂在手订单高增(领先) -> 成熟与先进制程全线打满(利用率100%,同步) -> MCU/功率/存储价格全面暴涨(价格,同步/滞后)"
+    leading_indicators:
+      - name: "Susquehanna 芯片平均交期周数 (Lead Time)"
+        indicator_type: "supply_shortage"
+        source_proxy: "chip_lead_time.parquet (avg_lead_time_weeks / mcu_lead_time_weeks)"
+        lead_time_months: 1
+        description: "交期从 14 周拉长至 35 周，反映全产业链极度缺芯与排队挤兑"
+      - name: "新能源汽车与商用车月度销量"
+        indicator_type: "terminal_shipment"
+        source_proxy: "CAAM / MarkLines Auto Sales"
+        lead_time_quarters: 1
+        description: "单车半导体价值量从 300 美元跃升至 1000+ 美元"
+      - name: "全球晶圆代工产能利用率"
+        indicator_type: "utilization"
+        source_proxy: "foundry_capacity_utilization.parquet (foundry_weighted_utilization_pct)"
+        lead_time_quarters: 0
+        description: "全行业利用率达到 99%~100% 极值 (tight_overheated)"
+    key_chips:
+      - "车规与工控 MCU"
+      - "功率半导体 (IGBT、SiC、超结 MOSFET)"
+      - "电源管理芯片 (PMIC)"
+      - "显示驱动芯片 (DDIC)"
+      - "PC/平板 CPU 与内存"
+    supply_bottleneck: "8 英寸与 12 英寸成熟制程 (55nm/40nm/28nm) 产能极端挤兑、封装引线框架短缺"
+    inflection_triggers:
+      peak:
+        - "芯片平均交期周数由升转降 (2022-06 触及 35 周顶部后急剧下行)"
+        - "消费电子 (PC/手机) 需求断崖式下跌，存储原厂 DOI 飙升至 160+ 天历史极值"
+        - "晶圆代工产能利用率从 100% 跌破 85%"
+      trough:
+        - "芯片交期回落至 15 周常态水平"
+        - "原厂主动减产 20%~30% 推动库存去化"
+
+  - id: "ai_hpc_era"
+    name: "生成式 AI、大模型与先进制造时代"
+    start_year: 2023
+    end_year: 2030
+    primary_demand_driver: "北美及全球头部超大规模云厂商 (CSP) AI 算力基础设施资本开支、大模型预训练与推理算力集群、数据中心能耗与互联"
+    transmission_chain: "云厂商AI CapEx(需求,领先) -> 先进制造设备与CoWoS先进封装扩产(资本开支与供给瓶颈,领先) -> 台积电HPC营收/先进制程利用率(产出,同步) -> HBM/高频DRAM价格(价格,高敏同步/滞后)"
+    leading_indicators:
+      - name: "北美四大云厂商季度 CapEx 同比增速与加速度"
+        indicator_type: "cloud_capex"
+        source_proxy: "cloud_capex_quarterly / total_capex_billion_usd"
+        lead_time_quarters: 1
+        description: "微软/谷歌/Meta/亚马逊 AI 数据中心资本开支，领先算力芯片采购 1-2 季"
+      - name: "台积电 HPC 平台营收占比与先进晶圆占比"
+        indicator_type: "foundry_structural_lead"
+        source_proxy: "tsmc_advanced_packaging_revenue.parquet (hpc_platform_pct / advanced_wafer_pct)"
+        lead_time_quarters: 0
+        description: "HPC 占比突破 50% 并迈向 65%+，成为主导增长中枢"
+      - name: "台积电 CoWoS 先进封装产能测算与月交付量"
+        indicator_type: "packaging_bottleneck"
+        source_proxy: "tsmc_cowos_capacity_estimates.parquet (monthly_capacity_kwpm)"
+        lead_time_months: 3
+        description: "算力芯片出货的最核心硬件物理瓶颈"
+    key_chips:
+      - "AI 加速芯片 (GPU / NPU / ASIC)"
+      - "高带宽内存 (HBM3e / HBM4) 与服务器 DDR5"
+      - "800G / 1.6T 光模块与 DSP 芯片"
+      - "数据中心高端网络交换芯片 (Switch IC / PCIe Gen5/Gen6)"
+    supply_bottleneck: "CoWoS 等先进封装中介层产能、HBM 堆叠 TSV 良率、先进制程 (3nm/2nm) 光刻产能、数据中心电力与散热基础设施"
+    inflection_triggers:
+      peak:
+        - "云厂商季度 CapEx 增速二阶导 (Δyoy) 连续两季转负，资本开支进入消化期"
+        - "CoWoS 先进封装扩产集中释放，芯片交期与溢价迅速收窄"
+        - "存储 DOI 出清完成后再次出现非理性累库"
+      trough:
+        - "端侧 AI (AI PC、AI 手机) 普及带动泛消费电子与先进算力产生二次共振"
+
+# 默认跨周期通用配置 (通用供需剪刀差模式)
+default_cross_cycle:
+  name: "跨周期通用供需剪刀差模型"
+  description: "不绑定特定终端，采用'晶圆代工月营收领先 + 全球总销售额同步 - 设备出货供给释放'的经典供需模型"
+  transmission_chain: "需求领先(TSMC月营收) + 需求同步(WSTS全球销售额) - 供给领先(SEAJ/SEMI设备出货 1-2 年产能释放) -> 供需剪刀差"
+  scissors_config_ref: "config/analytics/semiconductor_legs.yaml"
+  inventory_defense_ref: "semiconductor_inventory_days.parquet (idm_weighted_doi_days / analog_weighted_doi_days)"

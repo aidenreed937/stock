@@ -37,3 +37,27 @@ thresholds:
   tight: 18.0         # >= 18 周: 供需偏紧
   normal: 13.0        # >= 13 周: 平衡正常
   easing: 0.0         # < 13 周: 供过于求 / 交期宽松
+
+# Susquehanna SemiSIGnals 没有公开 API；在线端通过公开新闻 RSS 发现报告转载，
+# 再抓取允许域名的原文。正文或 RSS 摘要必须同时给出报告月份和总交期才入库，
+# 摘要回退会在 RAW 元数据中标记 source_kind=rss_excerpt。
+susquehanna_online:
+  rss_urls:
+    - "https://news.google.com/rss/search?q=%22Susquehanna%22+%22weeks%22+%22lead%22&hl=en-US&gl=US&ceid=US:en"
+    - "https://www.bing.com/news/search?q=%22Susquehanna%22+%22lead+time%22&format=rss"
+  source_domains:
+    - astutegroup.com
+    - bloomberg.com
+    - electronicsweekly.com
+    - finance.yahoo.com
+    - marketwatch.com
+    - msn.com
+    - seekingalpha.com
+    - techspot.com
+    - theregister.com
+    - ttnews.com
+  lookback_months: 18
+  max_feed_items: 30
+  max_article_chars: 200000
+  infer_report_month: false
+  allow_rss_excerpt: true
