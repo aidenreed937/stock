@@ -15,7 +15,7 @@ import re
 import time
 from datetime import date
 from pathlib import Path
-from typing import Any
+from typing import Any, cast
 
 import pypdf
 from curl_cffi import requests
@@ -87,7 +87,7 @@ class CFAFuturesReportCollector:
                 if resp.status_code != 200:
                     logger.warning("CFA API 响应非 200 (HTTP %d, 页 %d)", resp.status_code, page_no)
                     break
-                data = resp.json()
+                data = cast("Any", resp).json()
                 data_list = data.get("data", {}).get("dataList") or []
                 if not data_list:
                     break

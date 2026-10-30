@@ -16,13 +16,13 @@ import logging
 import os
 import re
 from pathlib import Path
-from typing import Any
+from typing import Any, cast
 
 import litellm
 import pymupdf
 from pydantic import BaseModel, Field
 from tenacity import (
-    retry,
+    Retrying,
     retry_if_exception_type,
     stop_after_attempt,
     wait_random_exponential,
@@ -36,6 +36,13 @@ logger = logging.getLogger(__name__)
 litellm.suppress_debug_info = True
 litellm.drop_params = True
 os.environ.setdefault("LITELLM_LOCAL_MODEL_COST_MAP", "True")
+
+_VLM_RETRY = Retrying(
+    stop=stop_after_attempt(3),
+    wait=wait_random_exponential(multiplier=1, min=2, max=10),
+    retry=retry_if_exception_type((Exception,)),
+    reraise=True,
+)
 
 
 class ExtractedDataPoint(BaseModel):
@@ -162,35 +169,27 @@ class ChartVlmParser:
         if not path.exists():
             raise FileNotFoundError(f"PDF 文件不存在: {path}")
 
-        doc = pymupdf.open(str(path))
+        doc = cast("Any", pymupdf).open(str(path))
         if page_number < 1 or page_number > len(doc):
             raise IndexError(f"页码超出范围: {page_number} (总页数: {len(doc)})")
 
         page = doc[page_number - 1]
-        rect = pymupdf.Rect(*clip_rect) if clip_rect else None
+        rect = cast("Any", pymupdf).Rect(*clip_rect) if clip_rect else None
         pixmap = page.get_pixmap(dpi=dpi, clip=rect)
-        img_bytes = pixmap.tobytes("png")
+        img_bytes = cast("Any", pixmap).tobytes("png")
         b64_str = base64.b64encode(img_bytes).decode("utf-8")
         data_url = f"data:image/png;base64,{b64_str}"
         return b64_str, data_url
 
-    @retry(  # type: ignore[misc]
-        stop=stop_after_attempt(3),
-        wait=wait_random_exponential(multiplier=1, min=2, max=10),
-        retry=retry_if_exception_type((Exception,)),
-        reraise=True,
-    )
     def _execute_litellm_call(
         self,
         messages: list[dict[str, Any]],
         model_name: str,
     ) -> str:
         """调用 LiteLLM 统一接口并配合 Tenacity 指数退避重试。"""
-        # 当指定了自定义 api_base (如商汤 SenseNova、中转网关) 且无 provider 前缀时，自动走 openai 兼容协议
-        effective_model = model_name
-        if self.api_base and "/" not in effective_model:
-            effective_model = f"openai/{effective_model}"
-
+        effective_model = (
+            f"openai/{model_name}" if self.api_base and "/" not in model_name else model_name
+        )
         kwargs: dict[str, Any] = {
             "model": effective_model,
             "messages": messages,
@@ -207,31 +206,33 @@ class ChartVlmParser:
         logger.info(
             f"正在调用 VLM 模型: {effective_model} (base={self.api_base or 'default'}, stream={self.stream})"
         )
-        if self.stream:
-            kwargs["stream"] = True
-            stream_resp = litellm.completion(**kwargs)
-            content_chunks: list[str] = []
-            reasoning_chunks: list[str] = []
-            for chunk in stream_resp:
-                if not getattr(chunk, "choices", None):
-                    continue
-                delta = chunk.choices[0].delta
-                if hasattr(delta, "reasoning_content") and delta.reasoning_content:
-                    reasoning_chunks.append(delta.reasoning_content)
-                if getattr(delta, "content", None):
-                    content_chunks.append(delta.content)
-            final_content = "".join(content_chunks)
-            if not final_content.strip() and reasoning_chunks:
-                final_content = "".join(reasoning_chunks)
-            return final_content
+        for attempt in _VLM_RETRY:
+            with attempt:
+                if self.stream:
+                    kwargs["stream"] = True
+                    stream_resp = litellm.completion(**kwargs)
+                    content_chunks: list[str] = []
+                    reasoning_chunks: list[str] = []
+                    for chunk in stream_resp:
+                        if not getattr(chunk, "choices", None):
+                            continue
+                        delta = chunk.choices[0].delta
+                        if hasattr(delta, "reasoning_content") and delta.reasoning_content:
+                            reasoning_chunks.append(delta.reasoning_content)
+                        if getattr(delta, "content", None):
+                            content_chunks.append(delta.content)
+                    final_content = "".join(content_chunks)
+                    if not final_content.strip() and reasoning_chunks:
+                        final_content = "".join(reasoning_chunks)
+                    return final_content
 
-        resp = litellm.completion(**kwargs)
-        choice = resp.choices[0]
-        content = choice.message.content or ""
-        # 针对深度推理模型 (如 SenseNova, DeepSeek-R1): 若 content 为空，尝试从 reasoning_content 兜底提取
-        if not content.strip() and hasattr(choice.message, "reasoning_content"):
-            content = getattr(choice.message, "reasoning_content", "") or ""
-        return content
+                resp = litellm.completion(**kwargs)
+                choice = resp.choices[0]
+                content = choice.message.content or ""
+                if not content.strip() and hasattr(choice.message, "reasoning_content"):
+                    content = getattr(choice.message, "reasoning_content", "") or ""
+                return content
+        return ""
 
     def extract_time_series_from_page(
         self,
@@ -271,7 +272,7 @@ class ChartVlmParser:
             user_prompt += f"提示线索: {hint_text}\n"
         user_prompt += "请严格以 JSON 格式输出，包含历年年份、数值、单位、图表标题和来源。"
 
-        messages = [
+        messages: list[dict[str, Any]] = [
             {"role": "system", "content": VLM_CHART_SYSTEM_PROMPT},
             {
                 "role": "user",
