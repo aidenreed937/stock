@@ -72,9 +72,12 @@ class ScreenSnapshot:
 
 @dataclass(frozen=True, slots=True)
 class MarketContextSnapshot:
-    """宏观与市场温度上下文快照。"""
+    """宏观与市场环境上下文快照。"""
 
     as_of_date: str = ""
+    overheat_index: float | None = None
+    panic_index: float | None = None
+    macro_regime: str | None = None
     temperature_score: float | None = None
     temperature_band: str | None = None
     industry_name: str | None = None
@@ -210,11 +213,19 @@ class StockDiagnosticsResult:
                 f"- **前瞻业绩预告**: 【{fc_type}】 (公告日: {fc.get('ann_date', '--')}, 净利变动: {p_range_str})"
             )
 
+        if ctx.overheat_index is not None or ctx.panic_index is not None:
+            overheat_str = f"{ctx.overheat_index:.1f}" if ctx.overheat_index is not None else "--"
+            panic_str = f"{ctx.panic_index:.1f}" if ctx.panic_index is not None else "--"
+            regime_str = ctx.macro_regime or "--"
+            macro_str = f"狂热指数 = {overheat_str} | 恐慌指数 = {panic_str} (相态: {regime_str})"
+        else:
+            macro_str = f"{temp_score_str} 分 ({ctx.temperature_band or '--'})"
+
         lines.extend(
             [
                 "",
                 "## 4. 市场与行业宏观背景 (Market Context)",
-                f"- **全市场六维温度**: {temp_score_str} 分 ({ctx.temperature_band or '--'})",
+                f"- **宏观双轨风控**: {macro_str}",
                 f"- **行业轮动位置**: {ctx.industry_name or self.industry} ({ctx.industry_rank or '无排序数据'})",
                 "",
             ]

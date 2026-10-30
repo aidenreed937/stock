@@ -18,8 +18,10 @@ from stock_analytics.pipelines.stock_diagnostics import (
     run_stock_diagnostics,
 )
 from stock_analytics.pipelines.stock_diagnostics.sources import (
+    classify_macro_regime,
     compute_percentile,
     load_10y_treasury_yield,
+    load_macro_risk_context,
     load_screen_status,
     norm_to_billion,
     resolve_symbol_meta,
@@ -190,6 +192,9 @@ def test_diagnostics_result_serialization() -> None:
         screen=ScreenSnapshot(status="passed", reasons=[]),
         market_context=MarketContextSnapshot(
             as_of_date="2026-08-20",
+            overheat_index=55.0,
+            panic_index=42.0,
+            macro_regime="情绪平稳 / 结构轮动阶段",
             temperature_score=45.0,
             temperature_band="中性偏冷",
             industry_name="白酒",
@@ -201,6 +206,9 @@ def test_diagnostics_result_serialization() -> None:
     assert d["valuation"]["pe_ttm"] == 21.8
     assert d["financials"]["roe"] == 27.4
     assert d["capital_flow"]["main_net_inflow_20d_billion"] == 3.5
+    assert d["market_context"]["overheat_index"] == 55.0
+    assert d["market_context"]["panic_index"] == 42.0
+    assert d["market_context"]["macro_regime"] == "情绪平稳 / 结构轮动阶段"
 
     md = res.to_markdown()
     assert "贵州茅台" in md
@@ -209,6 +217,46 @@ def test_diagnostics_result_serialization() -> None:
     assert "21.80" in md
     assert "27.40%" in md
     assert "预增" in md
+    assert "宏观双轨风控" in md
+    assert "狂热指数 = 55.0" in md
+    assert "恐慌指数 = 42.0" in md
+
+
+def test_classify_macro_regime() -> None:
+    assert classify_macro_regime(None, None) == "数据暂缺"
+    assert "高位杠杆踩踏" in classify_macro_regime(70.0, 70.0)
+    assert "狂热极值" in classify_macro_regime(68.0, 40.0)
+    assert "极度冰点" in classify_macro_regime(40.0, 78.0)
+    assert "恐慌极值" in classify_macro_regime(40.0, 66.0)
+    assert "狂热预警" in classify_macro_regime(62.0, 40.0)
+    assert "恐慌预警" in classify_macro_regime(40.0, 61.0)
+    assert "情绪平稳" in classify_macro_regime(50.0, 50.0)
+
+
+def test_load_macro_risk_context(tmp_path: Path) -> None:
+    artifact_root = tmp_path / "data/analytics/macro_risk"
+    run_dir = artifact_root / "runs/as_of=2026-08-20/run_20260820_000000"
+    run_dir.mkdir(parents=True)
+    (run_dir / "manifest.json").write_text(
+        json.dumps(
+            {
+                "artifact_type": "macro_risk",
+                "artifact_root": str(artifact_root),
+                "run_id": run_dir.name,
+                "as_of_date": "2026-08-20",
+                "run_class": "official",
+                "artifact_files": ["manifest.json"],
+                "summary": {"overheat_index": 52.5, "panic_index": 48.0},
+            }
+        ),
+        encoding="utf-8",
+    )
+    (artifact_root / "latest").symlink_to(run_dir)
+    overheat, panic, regime, as_of = load_macro_risk_context(artifact_root=artifact_root)
+    assert overheat == 52.5
+    assert panic == 48.0
+    assert "情绪平稳" in regime
+    assert as_of == "2026-08-20"
 
 
 def test_run_stock_diagnostics_mock(monkeypatch: pytest.MonkeyPatch, tmp_path: Path) -> None:

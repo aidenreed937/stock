@@ -145,8 +145,9 @@ stock_screen:
         note: "cashflow.n_cashflow_act 经营现金流连续净流出"
 
   output:
-    top_passed: 100
-    max_warn_rows: 500
+    # 设为 null 时输出全量 passed 与 warned 黄金清单，供下游选股与个股诊断全市场精确索引
+    top_passed: null
+    max_warn_rows: null
 
   scoring:
     enabled: true
@@ -226,17 +227,23 @@ stock_screen:
       quality_tier: confirming
       note: "停牌事件辅助确认"
     - data_source: tushare
-      dataset: index_member
+      dataset: index_member_versioned
       static: true
       cadence: event
       quality_tier: core
-      note: "申万行业成分股归属（含进出期，按基准日过滤活跃成员）"
+      note: "版本化申万行业成分股归属（默认 SW2021，含进出期，按基准日过滤活跃成员）"
     - data_source: tushare
       dataset: index_classify
       static: true
       cadence: static
       quality_tier: core
       note: "申万行业分类代码与名称（L1/L2）"
+    - data_source: derived
+      dataset: sw_2021_industry_member_golden
+      static: true
+      cadence: static
+      quality_tier: core
+      note: "TuShare/LiXinger 申万2021跨源成员黄金表，按基准日筛选 canonical 归属"
     - data_source: tushare
       dataset: index_daily_bar
       max_lag_days: 0

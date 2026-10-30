@@ -135,6 +135,9 @@ def test_builder_build_all_excludes_market_temperature_derived_facts(
         "capital_game",
         "build_capital_game",
         "build_smart_money",
+        "build_semiconductor_research_panel",
+        "build_overseas_revenue",
+        "build_soda_ash_company_panel",
     ]:
         if hasattr(builder, attr):
             monkeypatch.setattr(builder, attr, lambda *_, name=attr, **__: pl.DataFrame())
@@ -150,3 +153,5 @@ def test_builder_build_all_excludes_market_temperature_derived_facts(
     assert "market_temperature_derived_facts" not in results
     assert "industry_daily" in results
     assert "global_macro_daily" in results
+    assert "semiconductor_research_panel" in results
+    assert "soda_ash_company_panel" in results

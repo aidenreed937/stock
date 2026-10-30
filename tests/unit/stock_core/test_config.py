@@ -17,6 +17,58 @@ def test_settings_default_values() -> None:
     assert data_settings.data_source_mode == "tushare"
 
 
+def test_data_settings_resolves_lixinger_token_profile() -> None:
+    data_settings = DataSettings(
+        lixinger_token="legacy-token",
+        lixinger_tokens={"primary": "primary-token", "backup": "backup-token"},
+        lixinger_profile="backup",
+    )
+
+    assert data_settings.effective_lixinger_token == "backup-token"
+    assert data_settings.resolve_lixinger_token("primary") == "primary-token"
+    assert data_settings.resolve_lixinger_token("missing") == ""
+
+
+def test_data_settings_loads_lixinger_token_profiles_from_env_file(tmp_path: Path) -> None:
+    env_path = tmp_path / ".env"
+    env_path.write_text(
+        'LIXINGER_TOKENS=\'{"primary":"primary-token","backup":"backup-token"}\'\n'
+        "LIXINGER_PROFILE=backup\n",
+        encoding="utf-8",
+    )
+
+    data_settings = DataSettings(_env_file=env_path)
+
+    assert data_settings.effective_lixinger_token == "backup-token"
+
+
+def test_data_settings_loads_lixinger_fallback_profiles_from_env_file(tmp_path: Path) -> None:
+    env_path = tmp_path / ".env"
+    env_path.write_text(
+        'LIXINGER_TOKENS=\'{"primary":"primary-token","backup_1":"backup-token-1","backup_2":"backup-token-2"}\'\n'
+        "LIXINGER_PROFILE=primary\n"
+        'LIXINGER_FALLBACK_PROFILES=\'["backup_1","backup_2"]\'\n',
+        encoding="utf-8",
+    )
+
+    data_settings = DataSettings(_env_file=env_path)
+
+    assert data_settings.lixinger_fallback_profiles == ["backup_1", "backup_2"]
+
+
+def test_data_settings_loads_alpha_vantage_api_keys_from_env_file(tmp_path: Path) -> None:
+    env_path = tmp_path / ".env"
+    env_path.write_text(
+        'ALPHA_VANTAGE_API_KEY="key-primary"\n'
+        'ALPHA_VANTAGE_API_KEYS=\'["key-primary","key-backup"]\'\n',
+        encoding="utf-8",
+    )
+
+    data_settings = DataSettings(_env_file=env_path)
+
+    assert data_settings.resolve_alpha_vantage_api_keys() == ("key-primary", "key-backup")
+
+
 def test_load_strategy_config() -> None:
     config_path = Path("config/strategy/double_sma_rsi.yaml")
     cfg = load_strategy_config(config_path)
@@ -39,6 +91,7 @@ def test_load_watchlist_and_data_config() -> None:
 
     data_cfg = load_data_config()
     assert data_cfg.default_source_mode == "tushare"
+    assert data_cfg.yfinance_financial_probe_interval_days == 7
     assert "300750.SZ" in data_cfg.watchlists.tushare.stocks
     assert "AAPL" in data_cfg.watchlists.yfinance.stocks
     assert data_cfg.backfill.default_start_date == "today-30d"

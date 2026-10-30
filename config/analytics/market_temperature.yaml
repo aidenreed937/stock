@@ -608,6 +608,22 @@ market_temperature:
       quality_tier: core
       note: "中国国债收益率，股债性价比依赖"
     - data_source: lixinger
+      dataset: gold_price
+      dimension: macro_liquidity
+      required: false
+      max_lag_days: 14
+      cadence: trading_daily
+      quality_tier: confirming
+      note: "伦敦金美元定盘价，优先替代 Yahoo GC=F；上海金人民币价格同时保留"
+    - data_source: lixinger
+      dataset: non_ferrous_metals
+      dimension: macro_liquidity
+      required: false
+      max_lag_days: 14
+      cadence: trading_daily
+      quality_tier: confirming
+      note: "伦敦铜现货 l_cu_p，作为日频铜价因子主源；Yahoo HG=F 仅作历史缺口回退"
+    - data_source: lixinger
       dataset: sw_2021_fundamental
       dimension: fundamental
       required: false
@@ -707,14 +723,6 @@ market_temperature:
       cadence: trading_daily
       quality_tier: confirming
       note: "标普500、纳斯达克等外盘指数历史行情，用于外部环境收益分位"
-    - data_source: yfinance
-      dataset: macro_indicators
-      dimension: macro_liquidity
-      required: false
-      max_lag_days: 3
-      cadence: trading_daily
-      quality_tier: confirming
-      note: "VIX、美元、美债、铜等外部环境代理；黄金和原油用于外部压力观察"
     - data_source: alphavantage
       dataset: macro_indicators
       dimension: macro_liquidity
@@ -730,4 +738,4 @@ market_temperature:
       max_lag_days: 14
       cadence: mixed
       quality_tier: background
-      note: "FRED 美国官方宏观背景，日频/周频/月频/季频混合；只作观察项"
+      note: "FRED 美国官方宏观序列，维护 VIX、美债、美元、原油、铜及利率背景；只作观察项"

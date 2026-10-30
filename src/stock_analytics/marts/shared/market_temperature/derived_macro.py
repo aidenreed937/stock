@@ -9,6 +9,7 @@ from typing import Any
 import polars as pl
 
 from stock_analytics.features.dataset_cache import DatasetFrameCache
+from stock_analytics.primitives import add_dff_availability_date
 from stock_core.contracts import MarketDataCatalog
 
 from . import external_risk_facts as _risk_facts
@@ -26,6 +27,36 @@ from .derived_helpers import (
     _with_month_date,
     _with_social_finance_yoy,
 )
+
+_FRED_TO_LEGACY_MACRO_SYMBOL = {
+    "DGS10": "^TNX",
+    "DGS3MO": "^IRX",
+    "VIXCLS": "^VIX",
+    "DCOILWTICO": "CL=F",
+    "DTWEXBGS": "DX-Y.NYB",
+}
+
+
+def _canonical_macro_symbols(frame: pl.DataFrame) -> pl.DataFrame:
+    """将 FRED 宏观序列映射为既有外部指标使用的稳定 symbol。"""
+    if frame.is_empty() or "symbol" not in frame.columns:
+        return frame
+    return frame.with_columns(
+        pl.col("symbol").replace(_FRED_TO_LEGACY_MACRO_SYMBOL).alias("symbol")
+    )
+
+
+def _merge_macro_sources(
+    *source_frames: pl.DataFrame,
+) -> pl.DataFrame:
+    """合并宏观来源，后传入的来源在同日同序列时优先。"""
+    frames = [_canonical_macro_symbols(frame) for frame in source_frames if not frame.is_empty()]
+    if not frames:
+        return pl.DataFrame()
+    merged = pl.concat(frames, how="diagonal_relaxed")
+    if {"symbol", "trade_date"}.issubset(merged.columns):
+        merged = merged.unique(subset=["symbol", "trade_date"], keep="last")
+    return merged.sort(["symbol", "trade_date"])
 
 
 def _macro_liquidity_rows(
@@ -100,6 +131,9 @@ def _macro_liquidity_rows(
             cat_yf,
             cat_av,
             as_of_date,
+            macro_cat=cat_fred,
+            gold_cat=cat_lx,
+            metal_cat=cat_lx,
             dataset_cache=dataset_cache,
             external_cutoff_date=external_cutoff_date,
         )
@@ -206,19 +240,67 @@ def _external_macro_rows(
     fx_cat: MarketDataCatalog,
     as_of_date: date,
     *,
+    macro_cat: MarketDataCatalog | None = None,
+    gold_cat: MarketDataCatalog | None = None,
+    metal_cat: MarketDataCatalog | None = None,
     dataset_cache: DatasetFrameCache | None = None,
     external_cutoff_date: date | None = None,
 ) -> list[dict[str, Any]]:
     external_end_date = (
         external_cutoff_date if external_cutoff_date is not None else as_of_date - timedelta(days=1)
     )
-    macro_frame = _load_dataset(
+    legacy_macro = _load_dataset(
         cat,
         "macro_indicators",
         columns=["symbol", "trade_date", "close", "value"],
         end_date=external_end_date,
         dataset_cache=dataset_cache,
     )
+    if macro_cat is not None and macro_cat is not cat:
+        macro_frame = _load_dataset(
+            macro_cat,
+            "macro_indicators",
+            columns=["symbol", "trade_date", "close", "value"],
+            end_date=external_end_date,
+            dataset_cache=dataset_cache,
+        )
+        macro_frame = _merge_macro_sources(legacy_macro, macro_frame)
+    else:
+        macro_frame = _canonical_macro_symbols(legacy_macro)
+
+    if gold_cat is not None:
+        gold_raw = _load_dataset(
+            gold_cat,
+            "gold_price",
+            columns=["trade_date", "lbma_pm_usd"],
+            end_date=external_end_date,
+            dataset_cache=dataset_cache,
+        )
+        if not gold_raw.is_empty() and "lbma_pm_usd" in gold_raw.columns:
+            gold_frame = gold_raw.select(
+                "trade_date",
+                pl.lit("GC=F").alias("symbol"),
+                pl.col("lbma_pm_usd").cast(pl.Float64, strict=False).alias("close"),
+                pl.col("lbma_pm_usd").cast(pl.Float64, strict=False).alias("value"),
+            ).drop_nulls(subset=["close"])
+            macro_frame = _merge_macro_sources(macro_frame, gold_frame)
+
+    if metal_cat is not None:
+        copper_raw = _load_dataset(
+            metal_cat,
+            "non_ferrous_metals",
+            columns=["trade_date", "l_cu_p"],
+            end_date=external_end_date,
+            dataset_cache=dataset_cache,
+        )
+        if not copper_raw.is_empty() and "l_cu_p" in copper_raw.columns:
+            copper_frame = copper_raw.select(
+                "trade_date",
+                pl.lit("HG=F").alias("symbol"),
+                pl.col("l_cu_p").cast(pl.Float64, strict=False).alias("close"),
+                pl.col("l_cu_p").cast(pl.Float64, strict=False).alias("value"),
+            ).drop_nulls(subset=["close"])
+            macro_frame = _merge_macro_sources(macro_frame, copper_frame)
     fx_frame = _load_dataset(
         fx_cat,
         "macro_indicators",
@@ -279,7 +361,7 @@ def _external_macro_rows(
             "HG=F",
             "macro_copper_20d_return_temperature",
             as_of_date,
-            note="铜价20日收益历史分位",
+            note="伦敦铜现货代理20日收益历史分位",
         ),
         _return_percentile_metric_row(
             macro_frame,
@@ -343,12 +425,12 @@ def _us_macro_background_rows(
             note="FRED T10Y2Y期限利差历史分位，美国期限结构压力日频背景观察",
         ),
         _percentile_metric_row(
-            _fred_symbol_frame(frame, "FEDFUNDS"),
+            _dff_available_frame(frame),
             "macro_fred_fedfunds_temperature",
             "_value",
             as_of_date,
             inverse=True,
-            note="FRED FEDFUNDS政策利率历史反向分位，美国政策利率月频背景观察",
+            note="FRED DFF政策利率历史反向分位，按观测发布后 A 股可用日计",
         ),
         _percentile_metric_row(
             _fred_symbol_frame(frame, "WALCL"),
@@ -388,3 +470,16 @@ def _us_macro_background_rows(
             note="FRED GDP同比小数历史分位，美国经济底座季频背景观察",
         ),
     ]
+
+
+def _dff_available_frame(frame: pl.DataFrame) -> pl.DataFrame:
+    """将 DFF 美国观测日转换为 A 股收盘后可用的日期，再用于历史分位。"""
+    dff = _fred_symbol_frame(frame, "DFF")
+    if dff.is_empty():
+        return dff
+    return (
+        add_dff_availability_date(dff)
+        .rename({"trade_date": "observation_date", "available_date": "trade_date"})
+        .select(["trade_date", "_value"])
+        .sort("trade_date")
+    )

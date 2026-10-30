@@ -269,10 +269,16 @@ def _limit_artifact_tables(
     tables: dict[str, pl.DataFrame], config: StockScreenConfig
 ) -> dict[str, pl.DataFrame]:
     """按配置限制清单展示行数，决策摘要仍使用全量表。"""
+    warned = tables["warned"]
+    if config.output.max_warn_rows is not None and config.output.max_warn_rows > 0:
+        warned = warned.head(config.output.max_warn_rows)
+    passed = tables["passed"]
+    if config.output.top_passed is not None and config.output.top_passed > 0:
+        passed = passed.head(config.output.top_passed)
     return {
         **tables,
-        "warned": tables["warned"].head(config.output.max_warn_rows),
-        "passed": tables["passed"].head(config.output.top_passed),
+        "warned": warned,
+        "passed": passed,
     }
 
 

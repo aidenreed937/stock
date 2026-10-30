@@ -38,7 +38,7 @@ def _build_argument_parser() -> argparse.ArgumentParser:
         "--source",
         "--data-source",
         dest="data_source",
-        help="数据源 (tushare/yfinance/fred/lixinger)",
+        help="数据源 (tushare/yfinance/us_hybrid/fred/lixinger/industry)",
     )
     parser.add_argument("--endpoint", help="接口名称 (逗号分隔)")
     parser.add_argument("--symbol", help="股票/指数/基金代码 (逗号分隔或 'watchlist')")

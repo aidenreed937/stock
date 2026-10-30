@@ -13,6 +13,7 @@ from stock_analytics.pipelines.stock_diagnostics.sources import (
     load_capital_flow,
     load_industry_rank,
     load_latest_forecast,
+    load_macro_risk_context,
     load_market_temperature_context,
     load_screen_status,
     norm_to_billion,
@@ -254,20 +255,30 @@ def run_stock_diagnostics(
         as_of_date=target_date,
     )
 
-    # 6. 市场与行业宏观背景
-    temp_score, temp_band, temp_date = load_market_temperature_context(
-        artifact_root=analytics_base / "market_temperature",
+    # 6. 市场与行业宏观背景 (优先读取宏观双轨风控产物，缺失时回退至市场温度)
+    overheat_val, panic_val, regime_str, macro_date = load_macro_risk_context(
+        artifact_root=analytics_base / "macro_risk",
         as_of_date=target_date,
     )
+    temp_score, temp_band, temp_date = (None, None, "")
+    if overheat_val is None and panic_val is None:
+        temp_score, temp_band, temp_date = load_market_temperature_context(
+            artifact_root=analytics_base / "market_temperature",
+            as_of_date=target_date,
+        )
+
     ind_rank_str = load_industry_rank(
         industry,
         artifact_root=analytics_base / "industry_structure",
         as_of_date=target_date,
     )
     market_ctx = MarketContextSnapshot(
-        as_of_date=temp_date or as_of_date_val,
-        temperature_score=temp_score,
-        temperature_band=temp_band,
+        as_of_date=macro_date or temp_date or as_of_date_val,
+        overheat_index=overheat_val,
+        panic_index=panic_val,
+        macro_regime=regime_str,
+        temperature_score=temp_score if temp_score is not None else overheat_val,
+        temperature_band=temp_band if temp_band is not None else regime_str,
         industry_name=industry,
         industry_rank=ind_rank_str,
     )

@@ -103,6 +103,34 @@ def test_build_industry_map_joins_l1_independently() -> None:
     assert result.get_column("l1_name").to_list() == ["食品饮料"]
 
 
+def test_build_industry_map_filters_versioned_members_by_src() -> None:
+    as_of = date(2026, 8, 20)
+    classify = pl.DataFrame(
+        {
+            "index_code": ["801001.SI", "801011.SI"],
+            "industry_name": ["白酒Ⅱ", "食品饮料"],
+            "level": ["L2", "L1"],
+            "src": ["SW2021", "SW2021"],
+        }
+    )
+    members = pl.DataFrame(
+        {
+            "index_code": ["801001.SI", "801001.SI", "801011.SI"],
+            "con_code": ["000001.SZ", "000002.SZ", "000002.SZ"],
+            "in_date": [date(2020, 1, 1)] * 3,
+            "out_date": [None] * 3,
+            "src": ["SW2014", "SW2021", "SW2021"],
+            "src_status": ["shared_code", "shared_code", "unique_code"],
+        }
+    )
+
+    result = build_industry_map(
+        _sources({"index_classify": classify, "index_member_versioned": members}), as_of
+    )
+
+    assert result.get_column("symbol").to_list() == ["000002.SZ"]
+
+
 def test_percentile_uses_l2_within_industry() -> None:
     sources = _sources({**_industry_frames(), "daily_basic": _daily()})
     passed = _passed()

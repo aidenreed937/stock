@@ -26,6 +26,15 @@ from stock_analytics.marts.build_steps import (
 from stock_analytics.marts.capital_game import CAPITAL_GAME_MART_NAME
 from stock_analytics.marts.capital_game_build import build_capital_game
 from stock_analytics.marts.convertible_bond import CB_MART_NAME
+from stock_analytics.marts.customs_company_h8 import (
+    DEFAULT_CATALOG_PATH,
+    DEFAULT_CUSTOMS_TRADE_PATH,
+    DEFAULT_MAINBZ_PATH,
+    DEFAULT_STOCK_BASIC_PATH,
+    H8_EXPOSURE_MART_NAME,
+    MAPPING_MART_NAME,
+    build_customs_company_h8_marts,
+)
 from stock_analytics.marts.dragon_tiger import DRAGON_TIGER_MART_NAME
 from stock_analytics.marts.etf_flow import ETF_FLOW_MART_NAME
 from stock_analytics.marts.global_macro import GLOBAL_MACRO_MART_NAME
@@ -43,8 +52,20 @@ from stock_analytics.marts.option_volatility import (
     DEFAULT_UNDERLYINGS,
     SETTLEMENT_IV_PROXY_MART_NAME,
 )
+from stock_analytics.marts.overseas_revenue import (
+    OVERSEAS_REVENUE_MART_NAME,
+    build_overseas_revenue_mart,
+)
+from stock_analytics.marts.semiconductor_research import (
+    SEMICONDUCTOR_RESEARCH_MART_NAME,
+    build_semiconductor_research_panel,
+)
 from stock_analytics.marts.smart_money import SMART_MONEY_MART_NAME
 from stock_analytics.marts.smart_money_build import build_smart_money
+from stock_analytics.marts.soda_ash_company_panel import (
+    SODA_ASH_COMPANY_PANEL_MART_NAME,
+    build_soda_ash_company_panel,
+)
 from stock_analytics.marts.unlock_pressure import UNLOCK_PRESSURE_MART_NAME
 from stock_core.config.analytics_industry_structure import (
     DEFAULT_CONFIG_PATH as DEFAULT_INDUSTRY_CONFIG_PATH,
@@ -275,7 +296,7 @@ class DomainMartBuilder:
         end_date: date | None = None,
         overwrite: bool = False,
     ) -> pl.DataFrame:
-        """构建并保存申万二级行业基本面面板 Mart（量价齐升供需层接入）。"""
+        """构建并保存申万二级行业基本面面板 Mart（财报滞后验证 · 量价齐升接入）。"""
         return build_industry_l2_panel(
             self.catalog,
             self.store,
@@ -296,6 +317,94 @@ class DomainMartBuilder:
         return build_unlock_pressure(
             self.catalog, self.store, start_date=start_date, end_date=end_date, overwrite=overwrite
         )
+
+    def build_semiconductor_research_panel(
+        self,
+        *,
+        overwrite: bool = False,
+    ) -> pl.DataFrame:
+        """构建并保存半导体产业深研统一面板 Mart（剪刀差+库存+驱动源+信号状态机）。"""
+        return build_semiconductor_research_panel(
+            self.store,
+            runtime=self.runtime,
+            overwrite=overwrite,
+        )
+
+    def build_soda_ash_company_panel(
+        self,
+        *,
+        overwrite: bool = False,
+    ) -> pl.DataFrame:
+        """构建并保存纯碱上市公司盈利与估值反向时钟 Mart。"""
+        from stock_data.catalog import DataCatalog
+
+        cat = (
+            self.catalog
+            if getattr(self.catalog, "data_source", None) == "tushare"
+            else DataCatalog(
+                "tushare",
+                storage_dir=self.runtime.curated_root if self.runtime else None,
+            )
+        )
+        panel = build_soda_ash_company_panel(catalog=cat)
+        self.store.save_domain_mart(
+            SODA_ASH_COMPANY_PANEL_MART_NAME,
+            panel,
+            keys=["symbol", "trade_date"],
+            date_column="trade_date",
+            overwrite=overwrite,
+        )
+        return panel
+
+    def build_overseas_revenue(
+        self,
+        *,
+        overwrite: bool = False,
+    ) -> pl.DataFrame:
+        """构建并保存公司海外营收布局 Mart（海外营收/占比/同比，ann_date 无前视）。"""
+        data_root = self.runtime.data_root if self.runtime else Path("data")
+        mart = build_overseas_revenue_mart(data_root=data_root)
+        self.store.save_domain_mart(
+            OVERSEAS_REVENUE_MART_NAME,
+            mart,
+            keys=["symbol", "end_date"],
+            date_column="end_date",
+            overwrite=overwrite,
+        )
+        return mart
+
+    def build_customs_company_h8(
+        self,
+        *,
+        as_of_period: date | None = None,
+        overwrite: bool = False,
+    ) -> dict[str, pl.DataFrame]:
+        """构建并保存报告期无前视的公司主营构成-H8 出口暴露 Mart。"""
+        data_root = self.runtime.data_root if self.runtime else Path("data")
+        mapping, exposure = build_customs_company_h8_marts(
+            mainbz_path=data_root / DEFAULT_MAINBZ_PATH.relative_to("data"),
+            stock_basic_path=data_root / DEFAULT_STOCK_BASIC_PATH.relative_to("data"),
+            catalog_path=Path(DEFAULT_CATALOG_PATH),
+            customs_trade_path=data_root / DEFAULT_CUSTOMS_TRADE_PATH.relative_to("data"),
+            as_of_period=as_of_period,
+        )
+        if not mapping.is_empty():
+            self.store.save_domain_mart(
+                MAPPING_MART_NAME,
+                mapping,
+                keys=["symbol", "report_period", "bz_item"],
+                date_column="report_period",
+                overwrite=overwrite,
+            )
+        if not exposure.is_empty():
+            self.store.save_domain_mart(
+                H8_EXPOSURE_MART_NAME,
+                exposure,
+                keys=["symbol", "report_date", "hs_code"],
+                date_column="report_date",
+                overwrite=overwrite,
+            )
+        return {MAPPING_MART_NAME: mapping, H8_EXPOSURE_MART_NAME: exposure}
 
     def build_northbound_industry(
         self,
@@ -390,6 +499,13 @@ class DomainMartBuilder:
             ),
             SMART_MONEY_MART_NAME: self.build_smart_money(
                 start_date=start_date, end_date=end_date, overwrite=overwrite
+            ),
+            SEMICONDUCTOR_RESEARCH_MART_NAME: self.build_semiconductor_research_panel(
+                overwrite=overwrite
+            ),
+            OVERSEAS_REVENUE_MART_NAME: self.build_overseas_revenue(overwrite=overwrite),
+            SODA_ASH_COMPANY_PANEL_MART_NAME: self.build_soda_ash_company_panel(
+                overwrite=overwrite
             ),
         }
         return results

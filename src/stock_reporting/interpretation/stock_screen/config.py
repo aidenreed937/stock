@@ -72,15 +72,17 @@ class DatasetConfig:
 class OutputConfig:
     """排雷展示产物配置。"""
 
-    top_passed: int = 100
-    max_warn_rows: int = 500
+    top_passed: int | None = None
+    max_warn_rows: int | None = None
 
     @classmethod
     def from_mapping(cls, data: Mapping[str, Any] | None) -> Self:
         data = data or {}
+        raw_top_passed = data.get("top_passed")
+        raw_max_warn = data.get("max_warn_rows")
         return cls(
-            top_passed=int(data.get("top_passed", 100)),
-            max_warn_rows=int(data.get("max_warn_rows", 500)),
+            top_passed=int(raw_top_passed) if raw_top_passed is not None else None,
+            max_warn_rows=int(raw_max_warn) if raw_max_warn is not None else None,
         )
 
 

@@ -55,6 +55,9 @@ def run_daily_review(
     scan_result = run_watchlist_scanner(target_date=target_date, storage_dir=storage_dir)
     as_of_date = date.fromisoformat(scan_result.as_of_date)
 
+    if refresh_upstream:
+        _refresh_stock_screen(as_of_date, storage_dir=storage_dir, analytics_base=analytics_base)
+
     market_context = _resolve_market_context(
         as_of_date,
         storage_dir=storage_dir,
@@ -320,6 +323,25 @@ def _format_industry_items(value: Any) -> list[dict[str, str]]:
         for item in value[:5]
         if isinstance(item, dict)
     ]
+
+
+def _refresh_stock_screen(
+    as_of_date: date,
+    *,
+    storage_dir: Path | str | None,
+    analytics_base: Path,
+) -> None:
+    try:
+        from stock_analytics.pipelines.stock_screen import run_stock_screen
+
+        logger.info("刷新全市场个股排雷与选股上游产物...")
+        run_stock_screen(
+            target_date=as_of_date,
+            storage_dir=storage_dir,
+            output_root=analytics_base / "stock_screen",
+        )
+    except Exception as exc:
+        logger.warning(f"刷新个股排雷产物失败（继续执行复盘）: {exc}")
 
 
 __all__ = ["DailyReviewRunResult", "run_daily_review"]

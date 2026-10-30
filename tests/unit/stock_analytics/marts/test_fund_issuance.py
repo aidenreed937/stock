@@ -103,6 +103,34 @@ def test_build_fund_issuance_frame_aggregation_and_indicators() -> None:
     # 校验均线与百分位字段存在且合法
     assert "equity_issue_ma12m_yi" in result.columns
     assert "equity_issue_pct5y" in result.columns
+    assert "equity_fund_count_pct5y" in result.columns
     assert result["equity_issue_pct5y"].null_count() == 0
+    assert result["equity_fund_count_pct5y"].null_count() == 0
     # 最大发行量 130 亿在 2021-01，其分位数应最高
     assert result["equity_issue_pct5y"][0] >= result["equity_issue_pct5y"][1]
+
+
+def test_build_fund_issuance_frame_keeps_null_when_issue_amount_missing() -> None:
+    """整月 issue_amount 缺失时必须保留 null，不得伪造成 0 发行。"""
+    fund_basic = pl.DataFrame(
+        {
+            "ts_code": ["000001.OF", "000002.OF", "000003.OF"],
+            "fund_type": ["股票型", "混合型", "股票型"],
+            "found_date": ["20210115", "20210215", "20210315"],
+            "issue_amount": [100.0, None, 120.0],
+        }
+    )
+    result = build_fund_issuance_frame(fund_basic)
+
+    feb = result.filter(pl.col("month") == "2021-02").to_dicts()[0]
+    assert feb["equity_fund_count"] == 1
+    assert feb["total_issue_amount_yi"] is None
+    assert feb["equity_issue_amount_yi"] is None
+    assert feb["equity_issue_pct5y"] is None
+    assert feb["equity_fund_count_pct5y"] == 50.0
+
+    # 缺失月不参与分位：3 月窗口内有效值仅 2 个（100、120），
+    # 120 高于 1 个、等于 1 个（自身）→ (1 + 0.5*1)/2 = 75
+    mar = result.filter(pl.col("month") == "2021-03").to_dicts()[0]
+    assert mar["equity_issue_amount_yi"] == 120.0
+    assert mar["equity_issue_pct5y"] == 75.0

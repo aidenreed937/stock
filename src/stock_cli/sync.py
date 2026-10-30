@@ -10,6 +10,7 @@ import polars as pl
 
 from stock_cli.sync_marts import refresh_synced_marts
 from stock_core.utils.logger import logger
+from stock_data.core.settings import data_settings
 from stock_data.pipeline.sync_runner import SyncSourceRun, run_sync
 
 
@@ -34,6 +35,12 @@ def _build_parser() -> argparse.ArgumentParser:
     parser.add_argument("--no-audit", action="store_true")
     parser.add_argument("--refresh-marts", "--refresh-mart", action="store_true")
     parser.add_argument("-w", "--max-workers", type=_positive_int, default=None)
+    parser.add_argument(
+        "--source-workers",
+        type=_positive_int,
+        default=None,
+        help="SOURCE=all 时的跨数据源并发数，默认读取 config/data.yaml",
+    )
     return parser
 
 
@@ -75,6 +82,8 @@ def main() -> None:
         else None
     )
     logger.info(f"启动极速增量数据同步: 目标日=[{target_date}], 数据源=[{args.source}]")
+    runtime = data_settings.runtime_context
+    runtime.ensure_directories()
     runs = run_sync(
         source=args.source,
         target_date=target_date,
@@ -82,10 +91,13 @@ def main() -> None:
         force=args.force,
         run_audit_gate=not args.no_audit,
         max_workers=args.max_workers,
+        source_workers=args.source_workers,
         target_date_is_explicit=args.date is not None,
+        runtime=runtime,
     )
     refresh_synced_marts(runs, enabled=args.refresh_marts)
-    if any(_render_summary(run) for run in runs):
+    failure_flags = [_render_summary(run) for run in runs]
+    if any(failure_flags):
         logger.error("增量同步执行存在失败任务，请检查上述日志报告！")
         sys.exit(1)
     logger.info("增量数据同步完成，所有任务均已就绪并对齐。")

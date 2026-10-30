@@ -15,9 +15,11 @@ from stock_strategy.pool.macro_risk_v3 import MacroRiskV3Strategy
 from stock_strategy.pool.macro_rotation_fear import MacroRotationFearStrategy
 from stock_strategy.pool.macro_rotation_v4 import MacroRotationV4Strategy
 from stock_strategy.pool.macro_rotation_v5 import MacroRotationV5Strategy
+from stock_strategy.pool.macro_rotation_v5_hike_gate import MacroRotationV5HikeGateStrategy
 from stock_strategy.pool.macro_rotation_v5_rebalance import MacroRotationV5RebalanceStrategy
 from stock_strategy.pool.macro_rotation_v5_rebalance_dd import MacroRotationV5RebalanceDDStrategy
 from stock_strategy.pool.macro_rotation_v6 import MacroRotationV6Strategy
+from stock_strategy.pool.macro_slow_top_divergence import MacroSlowTopDivergenceStrategy
 
 STRATEGY_REGISTRY: dict[str, type[BaseStrategy]] = {
     "DoubleSmaRsiStrategy": DoubleSmaRsiStrategy,
@@ -26,9 +28,11 @@ STRATEGY_REGISTRY: dict[str, type[BaseStrategy]] = {
     "MacroRotationFearStrategy": MacroRotationFearStrategy,
     "MacroRotationV4Strategy": MacroRotationV4Strategy,
     "MacroRotationV5Strategy": MacroRotationV5Strategy,
+    "MacroRotationV5HikeGateStrategy": MacroRotationV5HikeGateStrategy,
     "MacroRotationV5RebalanceDDStrategy": MacroRotationV5RebalanceDDStrategy,
     "MacroRotationV5RebalanceStrategy": MacroRotationV5RebalanceStrategy,
     "MacroRotationV6Strategy": MacroRotationV6Strategy,
+    "MacroSlowTopDivergenceStrategy": MacroSlowTopDivergenceStrategy,
     "MacroMetaRouterStrategy": MacroMetaRouterStrategy,
     "MacroAllWeatherStrategy": MacroAllWeatherStrategy,
     "IndustryMomentumRotationStrategy": IndustryMomentumRotationStrategy,
@@ -63,6 +67,7 @@ __all__ = [
     "MacroRiskV3Strategy",
     "MacroRotationFearStrategy",
     "MacroRotationV4Strategy",
+    "MacroRotationV5HikeGateStrategy",
     "MacroRotationV5RebalanceDDStrategy",
     "MacroRotationV5RebalanceStrategy",
     "MacroRotationV5Strategy",

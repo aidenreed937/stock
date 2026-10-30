@@ -14,6 +14,7 @@ from stock_analytics.catalog_compat import load_dataset_compat
 from stock_analytics.pipelines.stock_screen.industry_map import build_industry_map
 from stock_core.utils.logger import logger
 from stock_data.catalog import DataCatalog
+from stock_data.catalog.index_member_versioned import load_index_member_for_classification
 from stock_reporting.interpretation.stock_screen.config import StockScreenConfig
 
 _DATASET_COLUMNS: dict[str, tuple[str, ...]] = {
@@ -145,6 +146,30 @@ _DATASET_COLUMNS: dict[str, tuple[str, ...]] = {
         "elr_mc_y1",
     ),
     "index_member": ("index_code", "con_code", "in_date", "out_date"),
+    "index_member_versioned": (
+        "index_code",
+        "con_code",
+        "in_date",
+        "out_date",
+        "src",
+        "src_status",
+    ),
+    "sw_2021_industry_member_golden": (
+        "classification",
+        "symbol",
+        "stock_code",
+        "industry_code",
+        "industry_name",
+        "level",
+        "valid_from",
+        "valid_to",
+        "snapshot_date",
+        "src",
+        "canonical_source",
+        "source_status",
+        "is_canonical",
+        "conflict_flag",
+    ),
     "index_classify": ("index_code", "industry_name", "level", "src", "is_pub"),
     "index_daily_bar": ("symbol", "trade_date", "close"),
     "cashflow": ("symbol", "ts_code", "ann_date", "end_date", "n_cashflow_act"),
@@ -300,6 +325,12 @@ def _load_configured_dataset(
     symbols: list[str] | None,
     static: bool,
 ) -> pl.DataFrame:
+    if dataset in {"index_member", "index_member_versioned"}:
+        return load_index_member_for_classification(
+            catalog,
+            classification="SW2021",
+            columns=_DATASET_COLUMNS.get(dataset),
+        )
     start_date = None if static else as_of_date - timedelta(days=730)
     return load_dataset(
         catalog,

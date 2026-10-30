@@ -25,6 +25,8 @@ TARGET_CHOICES: tuple[str, ...] = (
     "unlock_pressure_daily",
     "northbound_industry_daily",
     "capital_game_daily",
+    "smart_money_daily",
+    "settlement_iv_proxy_daily",
     "domain_marts",
     "all",
 )
@@ -91,6 +93,8 @@ def build_features(
         "unlock_pressure_daily",
         "northbound_industry_daily",
         "capital_game_daily",
+        "smart_money_daily",
+        "settlement_iv_proxy_daily",
     ):
         domain_builder = DomainMartBuilder(catalog=catalog, store=store)
         if target == "industry_daily":
@@ -174,6 +178,20 @@ def build_features(
                 overwrite=overwrite,
             )
             logger.info("领域 Mart [capital_game_daily] 构建完成: {} 行", result.height)
+        elif target == "smart_money_daily":
+            result = domain_builder.build_smart_money(
+                start_date=start_date,
+                end_date=end_date,
+                overwrite=overwrite,
+            )
+            logger.info("领域 Mart [smart_money_daily] 构建完成: {} 行", result.height)
+        elif target == "settlement_iv_proxy_daily":
+            result = domain_builder.build_settlement_iv_proxy(
+                start_date=start_date,
+                end_date=end_date,
+                overwrite=overwrite,
+            )
+            logger.info("领域 Mart [settlement_iv_proxy_daily] 构建完成: {} 行", result.height)
         else:
             result = domain_builder.build_industry_l2(
                 start_date=start_date,

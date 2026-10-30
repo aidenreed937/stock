@@ -24,6 +24,7 @@ from stock_analytics.marts.dragon_tiger import (
 from stock_analytics.marts.etf_flow import ETF_FLOW_MART_NAME, build_etf_flow_frame
 from stock_analytics.marts.global_macro import (
     GLOBAL_MACRO_MART_NAME,
+    GLOBAL_MACRO_SCHEMA,
     build_global_macro_daily_frame,
 )
 from stock_analytics.marts.industry_l2 import (
@@ -52,6 +53,7 @@ from stock_analytics.marts.unlock_pressure import (
     build_unlock_pressure_frame,
 )
 from stock_data.catalog import DataCatalog
+from stock_data.catalog.index_member_versioned import load_index_member_for_classification
 
 if TYPE_CHECKING:
     from stock_data.core.runtime import DataRuntimeContext
@@ -383,11 +385,19 @@ def build_global_macro(
     )
     cat_ts = catalog
     cat_yf = _catalog_for(catalog, "yfinance", runtime=runtime)
+    cat_alpha = _catalog_for(catalog, "alphavantage", runtime=runtime)
     cat_fred = _catalog_for(catalog, "fred", runtime=runtime)
     cat_lx = _catalog_for(catalog, "lixinger", runtime=runtime)
 
     cols_3 = ["trade_date", "symbol", "close"]
     yf_macro = cat_yf.load_dataset("macro_indicators", columns=cols_3)
+    alpha_macro = cat_alpha.load_dataset("macro_indicators", columns=cols_3)
+    if not alpha_macro.is_empty():
+        yf_macro = (
+            pl.concat([yf_macro, alpha_macro], how="diagonal_relaxed")
+            if not yf_macro.is_empty()
+            else alpha_macro
+        )
     yf_idx = cat_yf.load_dataset("index_daily_bar", columns=cols_3)
     if not yf_idx.is_empty():
         yf_macro = (
@@ -399,6 +409,11 @@ def build_global_macro(
     cn_debt = cat_lx.load_dataset(
         "national_debt", columns=["trade_date", "tcm_y1", "tcm_y5", "tcm_y10", "tcm_y30"]
     )
+    gold_price = cat_lx.load_dataset(
+        "gold_price", columns=["trade_date", "lbma_pm_usd", "sge_pm_cny"]
+    )
+    non_ferrous_metals = cat_lx.load_dataset("non_ferrous_metals", columns=["trade_date", "l_cu_p"])
+    crude_oil = cat_lx.load_dataset("crude_oil", columns=["trade_date", "wti_co_sp", "brent_co_sp"])
     shibor = cat_ts.load_dataset("shibor", columns=["trade_date", "on", "3m"])
     lpr = cat_ts.load_dataset("shibor_lpr", columns=["trade_date", "1y"])
 
@@ -426,11 +441,17 @@ def build_global_macro(
         cn_debt,
         shibor,
         lpr,
+        lixinger_gold_price=gold_price,
+        lixinger_non_ferrous_metals=non_ferrous_metals,
+        lixinger_crude_oil=crude_oil,
     )
     if result.is_empty():
         return result
     if not cnh_momentum.is_empty():
+        if "cnh_return_20d" in result.columns:
+            result = result.drop("cnh_return_20d")
         result = result.join(cnh_momentum, on="trade_date", how="left")
+    result = result.select(list(GLOBAL_MACRO_SCHEMA))
 
     sliced = _slice_frame(result, start_date=effective_start, end_date=end_date)
     if not sliced.is_empty():
@@ -634,7 +655,7 @@ def build_industry_l2_panel(
     按 `.agents/skills/industry-trend-tracking` 的因子定义合并：
     ``industry_l2_daily``（行情/估值/动量） + ``sw_2021_l2_fs_*``（25 报告期
     营收/净利 TTM 同比、毛利率，按 ``reportDate`` 发布日生效），输出
-    ``industry_l2_panel_daily``（量价齐升供需层 + 议价权 + 拥挤度 + 方向中性）。
+    ``industry_l2_panel_daily``（财报滞后验证 · 量价齐升/毛利率扩张 + 拥挤度 + 方向中性）。
     """
     effective_start = _incremental_start_date(
         store,
@@ -680,7 +701,7 @@ def build_industry_l2_panel(
         if l2_map_path.exists():
             direction_map = pl.read_parquet(l2_map_path)
 
-    # 化工实体供给指标（chemical_market：MDI/TiO2 开工率 + 库存天数）
+    # 化工实体供给指标（chemical_market：现有化工开工率字段；库存天数仅消费显式同名字段）
     chemical_market: pl.DataFrame | None = None
     try:
         cat_ind = _catalog_for(catalog, "industry", runtime=runtime)
@@ -810,8 +831,9 @@ def build_northbound_industry(
         end_date=hk_max,
         columns=["symbol", "trade_date", "close"],
     )
-    constituents = catalog.load_dataset(
-        "index_member",
+    constituents = load_index_member_for_classification(
+        catalog,
+        classification="SW2021",
         columns=["con_code", "index_code", "in_date", "out_date"],
     )
     sw_l1 = catalog.load_dataset(

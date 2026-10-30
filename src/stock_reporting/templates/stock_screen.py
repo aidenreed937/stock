@@ -17,15 +17,17 @@ def build_report_json(
     tables: dict[str, pl.DataFrame],
 ) -> dict[str, Any]:
     """构造排雷报告 JSON 摘要。"""
+    warn_limit = config.output.max_warn_rows or 500
+    passed_limit = config.output.top_passed or 100
     return {
         "schema_version": config.schema_version,
         "title": config.title,
         "as_of_date": manifest["as_of_date"],
         "summary": summary,
         "top_excluded": _rows(tables.get("excluded"), limit=20),
-        "top_warned": _rows(tables.get("warned"), limit=config.output.max_warn_rows),
-        "top_passed": _rows(tables.get("passed"), limit=config.output.top_passed),
-        "top_scored": _rows(tables.get("scored"), limit=config.output.top_passed),
+        "top_warned": _rows(tables.get("warned"), limit=warn_limit),
+        "top_passed": _rows(tables.get("passed"), limit=passed_limit),
+        "top_scored": _rows(tables.get("scored"), limit=passed_limit),
     }
 
 
@@ -58,7 +60,8 @@ def render_report_markdown(
 
     # 优先展示：评分排名前 100
     if has_scoring and scored is not None:
-        display_top = min(config.output.top_passed, scored.height)
+        passed_limit = config.output.top_passed or 100
+        display_top = min(passed_limit, scored.height)
         lines.extend(
             [
                 "",
@@ -66,7 +69,7 @@ def render_report_markdown(
                 "",
                 "> 说明：综合评分 (100) = 质量 Quality (40%) + 估值 Value (30%) + 动量 Momentum (20%) + 规模 Size (10%)，在申万行业内分层百分位对齐。",
                 "",
-                *_scored_table_lines(scored, limit=config.output.top_passed),
+                *_scored_table_lines(scored, limit=passed_limit),
             ]
         )
 

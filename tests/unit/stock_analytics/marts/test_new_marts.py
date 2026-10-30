@@ -61,6 +61,22 @@ def _fred_macro() -> pl.DataFrame:
     )
 
 
+def _fred_official_macro() -> pl.DataFrame:
+    dates = [date(2026, 8, 3), date(2026, 8, 4), date(2026, 8, 5)]
+    rows: list[list[object]] = []
+    for symbol, values in {
+        "DGS10": [4.5, 4.4, 4.3],
+        "DGS3MO": [4.2, 4.1, 4.0],
+        "T10Y2Y": [0.5, 0.4, 0.3],
+        "VIXCLS": [20.0, 19.0, 18.0],
+        "DCOILWTICO": [80.0, 81.0, 82.0],
+        "DTWEXBGS": [120.0, 121.0, 122.0],
+        "PCOPPUSDM": [9000.0, 9010.0, 9020.0],
+    }.items():
+        rows.extend([[d, symbol, value] for d, value in zip(dates, values)])
+    return pl.DataFrame(rows, schema=["trade_date", "symbol", "close"], orient="row")
+
+
 def _national_debt() -> pl.DataFrame:
     return pl.DataFrame(
         {
@@ -69,6 +85,25 @@ def _national_debt() -> pl.DataFrame:
             "tcm_y5": [0.016, 0.016, 0.016],
             "tcm_y10": [0.017, 0.017, 0.017],
             "tcm_y30": [0.019, 0.019, 0.019],
+        }
+    )
+
+
+def _lixinger_gold_price() -> pl.DataFrame:
+    return pl.DataFrame(
+        {
+            "trade_date": [date(2026, 8, 3), date(2026, 8, 4)],
+            "lbma_pm_usd": [2100.0, 2110.0],
+            "sge_pm_cny": [980.0, 985.0],
+        }
+    )
+
+
+def _lixinger_copper_price() -> pl.DataFrame:
+    return pl.DataFrame(
+        {
+            "trade_date": [date(2026, 8, 3), date(2026, 8, 4)],
+            "l_cu_p": [10000.0, 10100.0],
         }
     )
 
@@ -112,6 +147,101 @@ def test_global_macro_units_and_spread() -> None:
     assert abs(row["shibor_on"] - 1.5) < 1e-9
     assert abs(row["shibor_lpr_1y"] - 3.0) < 1e-9
     assert frame["cnh_return_20d"].null_count() == frame.height  # 样本不足 20 日
+    assert frame.columns == list(empty_global_macro().columns)
+
+
+def test_global_macro_uses_lixinger_copper_and_official_fred_other_series() -> None:
+    yahoo = _yf_macro().vstack(
+        pl.DataFrame(
+            {
+                "trade_date": [date(2026, 8, 3)],
+                "symbol": ["CL=F"],
+                "close": [999.0],
+            }
+        )
+    )
+    frame = build_global_macro_daily_frame(
+        yahoo,
+        _fred_official_macro(),
+        pl.DataFrame(),
+        pl.DataFrame(),
+        pl.DataFrame(),
+        lixinger_non_ferrous_metals=_lixinger_copper_price(),
+    )
+
+    row = frame.filter(pl.col("trade_date") == date(2026, 8, 3)).to_dicts()[0]
+    assert row["us_10y_yield"] == 4.5
+    assert row["us_3m_yield"] == 4.2
+    assert row["us_2y_yield"] == 4.0
+    assert row["vix_close"] == 20.0
+    assert row["crude_oil_price"] == 80.0
+    assert row["usd_index"] == 120.0
+    assert row["copper_price"] == 10000.0
+    assert row["gold_price"] == 2000.0
+
+
+def test_global_macro_prefers_lixinger_gold_and_fills_yahoo_gap() -> None:
+    yahoo = pl.DataFrame(
+        {
+            "trade_date": [date(2026, 8, 3), date(2026, 8, 5)],
+            "symbol": ["GC=F", "GC=F"],
+            "close": [2000.0, 2025.0],
+        }
+    )
+    frame = build_global_macro_daily_frame(
+        yahoo,
+        pl.DataFrame(),
+        pl.DataFrame(),
+        pl.DataFrame(),
+        pl.DataFrame(),
+        lixinger_gold_price=_lixinger_gold_price(),
+    )
+
+    prices = frame.select("trade_date", "gold_price").to_dicts()
+    assert prices == [
+        {"trade_date": date(2026, 8, 3), "gold_price": 2100.0},
+        {"trade_date": date(2026, 8, 4), "gold_price": 2110.0},
+        {"trade_date": date(2026, 8, 5), "gold_price": 2025.0},
+    ]
+
+
+def test_global_macro_asof_aligns_monthly_copper_without_lookahead() -> None:
+    """月频铜价按最近已公布观测对齐，不把未来月份铜价回填到过去。"""
+    fred = pl.DataFrame(
+        {
+            "trade_date": [date(2026, 8, 1), date(2026, 9, 1)],
+            "symbol": ["PCOPPUSDM", "PCOPPUSDM"],
+            "close": [100.0, 110.0],
+        }
+    )
+    lixinger_copper = pl.DataFrame(
+        {
+            "trade_date": [date(2026, 8, 1), date(2026, 9, 1)],
+            "l_cu_p": [100.0, 110.0],
+        }
+    )
+    gold = pl.DataFrame(
+        {
+            "trade_date": [date(2026, 7, 31), date(2026, 8, 3), date(2026, 9, 2)],
+            "lbma_pm_usd": [20.0, 20.0, 22.0],
+        }
+    )
+    frame = build_global_macro_daily_frame(
+        pl.DataFrame(),
+        fred,
+        pl.DataFrame(),
+        pl.DataFrame(),
+        pl.DataFrame(),
+        gold,
+        lixinger_non_ferrous_metals=lixinger_copper,
+    )
+    rows = {row["trade_date"]: row for row in frame.to_dicts()}
+
+    assert rows[date(2026, 7, 31)]["copper_price"] is None
+    assert rows[date(2026, 8, 3)]["copper_price"] == 100.0
+    assert rows[date(2026, 8, 3)]["copper_gold_ratio"] == 5.0
+    assert rows[date(2026, 9, 2)]["copper_price"] == 110.0
+    assert rows[date(2026, 9, 2)]["copper_gold_ratio"] == 5.0
 
 
 def test_global_macro_empty_inputs() -> None:
@@ -330,7 +460,7 @@ def test_industry_l2_empty() -> None:
 
 
 # --------------------------------------------------------------------------- #
-# industry_l2_panel（量价齐升供需层接入）
+# industry_l2_panel（财报滞后验证 · 量价齐升接入）
 # --------------------------------------------------------------------------- #
 
 
@@ -478,7 +608,7 @@ def test_expand_l2_financial_nested_fields() -> None:
 
 
 def test_industry_l2_panel_qlq_and_bargaining() -> None:
-    """量价齐升（双正）供需层 + 议价权分应按 skill 口径计算，报告期按发布日生效。"""
+    """财报滞后验证 · 量价齐升（双正）+ 毛利率扩张分应按 skill 口径计算，报告期按发布日生效。"""
     frame = build_industry_l2_panel_frame(_l2_daily_panel_input(), _l2_financial_input())
     assert not frame.is_empty()
     assert frame.columns == list(empty_industry_l2_panel().columns)

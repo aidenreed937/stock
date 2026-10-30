@@ -625,6 +625,129 @@ def test_external_macro_rows_default_cutoff_excludes_same_day_data() -> None:
     assert {end_date for _, end_date in catalog.load_calls} == {cutoff_date}
 
 
+def test_external_macro_rows_use_fred_for_macro_symbols() -> None:
+    dates = [date(2026, 1, 1) + timedelta(days=offset) for offset in range(25)]
+    index_frame = pl.DataFrame(
+        {
+            "trade_date": [*dates, *dates],
+            "symbol": ["^GSPC"] * 25 + ["^IXIC"] * 25,
+            "close": [100.0 + offset for offset in range(25)]
+            + [200.0 + offset for offset in range(25)],
+        }
+    )
+    fred_rows: list[dict[str, object]] = []
+    for symbol, base in (("VIXCLS", 20.0), ("DGS10", 4.0), ("DTWEXBGS", 120.0)):
+        fred_rows.extend(
+            {
+                "trade_date": trade_date,
+                "symbol": symbol,
+                "close": base + offset * 0.1,
+                "value": base + offset * 0.1,
+            }
+            for offset, trade_date in enumerate(dates)
+        )
+    yfinance_catalog = FakeCatalog({"index_daily_bar": index_frame})
+    fred_catalog = FakeCatalog({"macro_indicators": pl.DataFrame(fred_rows)})
+    alphavantage_catalog = FakeCatalog(
+        {
+            "macro_indicators": pl.DataFrame(
+                {
+                    "trade_date": dates,
+                    "symbol": ["CNH=X"] * 25,
+                    "close": [7.0 - offset * 0.01 for offset in range(25)],
+                }
+            )
+        }
+    )
+
+    rows = _external_macro_rows(
+        yfinance_catalog,
+        alphavantage_catalog,
+        date(2026, 1, 25),
+        macro_cat=fred_catalog,
+        external_cutoff_date=date(2026, 1, 24),
+    )
+    rows_by_metric = {str(row["metric_id"]): row for row in rows}
+
+    assert rows_by_metric["macro_vix_temperature"]["status"] == "ok"
+    assert rows_by_metric["macro_us_10y_temperature"]["status"] == "ok"
+    assert rows_by_metric["macro_usd_index_temperature"]["status"] == "ok"
+    assert rows_by_metric["macro_cnh_20d_change_temperature"]["status"] == "ok"
+
+
+def test_external_macro_rows_use_lixinger_gold_before_yahoo_fallback() -> None:
+    dates = [date(2026, 1, 1) + timedelta(days=offset) for offset in range(25)]
+    yfinance_catalog = FakeCatalog({})
+    fred_catalog = FakeCatalog({})
+    alphavantage_catalog = FakeCatalog({})
+    lixinger_catalog = FakeCatalog(
+        {
+            "gold_price": pl.DataFrame(
+                {
+                    "trade_date": dates,
+                    "lbma_pm_usd": [2000.0 + offset for offset in range(25)],
+                }
+            )
+        }
+    )
+
+    rows = _external_macro_rows(
+        yfinance_catalog,
+        alphavantage_catalog,
+        date(2026, 1, 25),
+        macro_cat=fred_catalog,
+        gold_cat=lixinger_catalog,
+        external_cutoff_date=date(2026, 1, 24),
+    )
+    rows_by_metric = {str(row["metric_id"]): row for row in rows}
+
+    assert rows_by_metric["macro_gold_20d_return_pressure"]["status"] == "ok"
+    assert {end_date for _, end_date in lixinger_catalog.load_calls} == {date(2026, 1, 24)}
+
+
+def test_external_macro_rows_use_lixinger_copper_before_yahoo_fallback() -> None:
+    dates = [date(2026, 1, 1) + timedelta(days=offset) for offset in range(24)]
+    yfinance_catalog = FakeCatalog(
+        {
+            "macro_indicators": pl.DataFrame(
+                {
+                    "trade_date": dates,
+                    "symbol": ["HG=F"] * 24,
+                    "close": [1000.0 - offset * 10 for offset in range(24)],
+                }
+            )
+        }
+    )
+    fred_catalog = FakeCatalog({})
+    alphavantage_catalog = FakeCatalog({})
+    lixinger_catalog = FakeCatalog(
+        {
+            "non_ferrous_metals": pl.DataFrame(
+                {
+                    "trade_date": dates,
+                    "l_cu_p": [100.0 + offset * 100 for offset in range(24)],
+                }
+            )
+        }
+    )
+
+    rows = _external_macro_rows(
+        yfinance_catalog,
+        alphavantage_catalog,
+        date(2026, 1, 25),
+        macro_cat=fred_catalog,
+        metal_cat=lixinger_catalog,
+        external_cutoff_date=date(2026, 1, 24),
+    )
+    copper_row = next(
+        row for row in rows if row["metric_id"] == "macro_copper_20d_return_temperature"
+    )
+
+    assert copper_row["status"] == "ok"
+    assert "latest_value=5" in str(copper_row["note"])
+    assert {end_date for _, end_date in lixinger_catalog.load_calls} == {date(2026, 1, 24)}
+
+
 def test_us_macro_background_rows_build_fred_observation_metrics() -> None:
     monthly_dates = _month_dates(date(2025, 1, 1), 14)
     quarterly_dates = [date(2025, 1, 1), date(2025, 4, 1), date(2025, 7, 1)]

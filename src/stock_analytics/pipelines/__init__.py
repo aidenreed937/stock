@@ -6,6 +6,11 @@
 from __future__ import annotations
 
 from stock_analytics.pipelines.daily_review import DailyReviewRunResult, run_daily_review
+from stock_analytics.pipelines.glass import (
+    GlassPipeline,
+    GlassRunResult,
+    run_glass_pipeline,
+)
 from stock_analytics.pipelines.industry_diagnostics import (
     IndustryDiagnosticsPipeline,
     run_industry_diagnostics,
@@ -32,6 +37,14 @@ from stock_analytics.pipelines.market_temperature import (
     MarketTemperatureRunResult,
     run_market_temperature,
 )
+from stock_analytics.pipelines.photovoltaic import (
+    PhotovoltaicLegsPipeline,
+    run_photovoltaic_legs,
+)
+from stock_analytics.pipelines.pv_outlook import (
+    PvOutlookPipeline,
+    run_pv_outlook,
+)
 from stock_analytics.pipelines.quant_brief import (
     QuantBriefRunResult,
     run_quant_brief,
@@ -50,6 +63,8 @@ from stock_analytics.pipelines.watchlist_scanner import run_watchlist_scanner
 
 __all__ = [
     "DailyReviewRunResult",
+    "GlassPipeline",
+    "GlassRunResult",
     "IndustryDiagnosticsPipeline",
     "IndustryStructurePipeline",
     "IndustryStructureRunResult",
@@ -58,16 +73,21 @@ __all__ = [
     "MarketAggregateRunResult",
     "MarketCycleReviewRunResult",
     "MarketTemperatureRunResult",
+    "PhotovoltaicLegsPipeline",
+    "PvOutlookPipeline",
     "QuantBriefRunResult",
     "SemiconductorLegsPipeline",
     "StockScreenRunResult",
     "run_daily_review",
+    "run_glass_pipeline",
     "run_industry_diagnostics",
     "run_industry_structure",
     "run_investor_brief",
     "run_market_aggregate",
     "run_market_cycle_review",
     "run_market_temperature",
+    "run_photovoltaic_legs",
+    "run_pv_outlook",
     "run_quant_brief",
     "run_semiconductor_legs",
     "run_stock_diagnostics",

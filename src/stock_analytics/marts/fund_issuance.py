@@ -1,9 +1,8 @@
 """公募基金月度新发规模与情绪领域 Mart。
 
 从公募基金基础信息表 (fund_basic) 聚合全市场各月度新发基金只数与规模，
-细分偏股型 (股票型+混合型)、债券型及其他基金，并计算偏股新发规模的
-12 个月移动平均 (MA12M) 与 5 年滚动历史百分位 (Pct5Y)，用于刻画场外
-增量资金弹药与基民情绪过热/冰点。
+细分偏股型 (股票型+混合型)、债券型及其他基金，并计算偏股新发规模与数量的
+5 年滚动历史百分位 (Pct5Y)，用于刻画场外增量资金弹药与基民情绪过热/冰点。
 """
 
 from __future__ import annotations
@@ -23,6 +22,7 @@ FUND_ISSUANCE_SCHEMA: dict[str, Any] = {
     "total_fund_count": pl.Int64,
     "total_issue_amount_yi": pl.Float64,
     "equity_fund_count": pl.Int64,
+    "equity_fund_count_pct5y": pl.Float64,
     "equity_issue_amount_yi": pl.Float64,
     "bond_fund_count": pl.Int64,
     "bond_issue_amount_yi": pl.Float64,
@@ -43,16 +43,23 @@ def empty_fund_issuance() -> pl.DataFrame:
     return pl.DataFrame(schema=FUND_ISSUANCE_SCHEMA)
 
 
-def _rolling_percentile_5y(values: list[float], window: int = 60) -> list[float]:
-    """计算滚动 5 年 (60 个月) 历史百分位 [0.0, 100.0]。"""
-    percentiles: list[float] = []
+def _rolling_percentile_5y(values: list[float | None], window: int = 60) -> list[float | None]:
+    """计算滚动 5 年 (60 个月) 历史百分位 [0.0, 100.0]。
+
+    当月发行规模缺失（``None``，上游 issue_amount 未落地）时返回 ``None``，
+    不拿「缺数」参与分位计算，避免把空白月份当成「零发行」压在分位最底部。
+    """
+    percentiles: list[float | None] = []
     for i in range(len(values)):
+        cur = values[i]
+        if cur is None:
+            percentiles.append(None)
+            continue
         start_idx = max(0, i - window + 1)
         sub = [v for v in values[start_idx : i + 1] if v is not None]
         if not sub:
-            percentiles.append(50.0)
+            percentiles.append(None)
             continue
-        cur = values[i]
         count_less = sum(1 for x in sub if x < cur)
         count_equal = sum(1 for x in sub if x == cur)
         pct = (count_less + 0.5 * count_equal) / len(sub) * 100.0
@@ -113,17 +120,17 @@ def build_fund_issuance_frame(fund_basic: pl.DataFrame) -> pl.DataFrame:
         .alias("month")
     )
 
-    # 提取 issue_amount 并归一为亿元
+    # 提取 issue_amount 并归一为亿元；保留 null（缺失不得伪造成 0 发行）
     if "issue_amount" in df.columns:
         # 兼容两种可能：已转为元 (>> 1e5) 或原生亿元
-        df = df.with_columns(pl.col("issue_amount").cast(pl.Float64, strict=False).fill_null(0.0))
+        df = df.with_columns(pl.col("issue_amount").cast(pl.Float64, strict=False))
         max_amt_val = df["issue_amount"].max()
         max_amt = float(max_amt_val) if isinstance(max_amt_val, int | float) else 0.0
         amt_factor = 1e8 if max_amt > 100_000.0 else 1.0
 
         df = df.with_columns((pl.col("issue_amount") / amt_factor).alias("amount_yi"))
     else:
-        df = df.with_columns(pl.lit(0.0).alias("amount_yi"))
+        df = df.with_columns(pl.lit(None, dtype=pl.Float64).alias("amount_yi"))
 
     # 3. 标记基金分类
     df = df.with_columns(
@@ -149,19 +156,18 @@ def build_fund_issuance_frame(fund_basic: pl.DataFrame) -> pl.DataFrame:
         .agg(
             [
                 pl.len().alias("total_fund_count"),
+                pl.col("amount_yi").count().alias("_amount_rows"),
                 pl.col("amount_yi").sum().round(4).alias("total_issue_amount_yi"),
                 pl.col("is_equity").sum().alias("equity_fund_count"),
                 pl.col("amount_yi")
                 .filter(pl.col("is_equity"))
                 .sum()
-                .fill_null(0.0)
                 .round(4)
                 .alias("equity_issue_amount_yi"),
                 pl.col("is_bond").sum().alias("bond_fund_count"),
                 pl.col("amount_yi")
                 .filter(pl.col("is_bond"))
                 .sum()
-                .fill_null(0.0)
                 .round(4)
                 .alias("bond_issue_amount_yi"),
             ]
@@ -185,6 +191,23 @@ def build_fund_issuance_frame(fund_basic: pl.DataFrame) -> pl.DataFrame:
                 .alias("other_issue_amount_yi"),
             ]
         )
+        # 整月无任何 issue_amount（上游未落地）时，金额置 null 而非 0：
+        # 「缺数」不是「零发行」，否则会被 12M 均线与 5Y 分位当成真实最低值。
+        .with_columns(
+            [
+                pl.when(pl.col("_amount_rows") > 0)
+                .then(pl.col(column))
+                .otherwise(None)
+                .alias(column)
+                for column in (
+                    "total_issue_amount_yi",
+                    "equity_issue_amount_yi",
+                    "bond_issue_amount_yi",
+                    "other_issue_amount_yi",
+                )
+            ]
+        )
+        .drop("_amount_rows")
         .sort("month")
     )
 
@@ -194,6 +217,11 @@ def build_fund_issuance_frame(fund_basic: pl.DataFrame) -> pl.DataFrame:
     # 5. 计算 12 个月移动均线与 5 年 (60 个月) 滚动历史百分位
     equity_amounts = monthly["equity_issue_amount_yi"].to_list()
     pct5y_list = _rolling_percentile_5y(equity_amounts, window=60)
+    equity_counts = [
+        float(value) if value is not None else None
+        for value in monthly["equity_fund_count"].to_list()
+    ]
+    count_pct5y_list = _rolling_percentile_5y(equity_counts, window=60)
 
     result = monthly.with_columns(
         [
@@ -202,6 +230,7 @@ def build_fund_issuance_frame(fund_basic: pl.DataFrame) -> pl.DataFrame:
             .round(4)
             .alias("equity_issue_ma12m_yi"),
             pl.Series("equity_issue_pct5y", pct5y_list, dtype=pl.Float64),
+            pl.Series("equity_fund_count_pct5y", count_pct5y_list, dtype=pl.Float64),
         ]
     )
 
