@@ -16,6 +16,7 @@ from pathlib import Path
 
 import polars as pl
 
+from stock_analytics.primitives import calculate_dff_change_6m
 from stock_core.utils.logger import logger, setup_logger
 from stock_strategy.industry.report import (
     compute_metrics,
@@ -61,11 +62,23 @@ def load_l2_panel() -> pl.DataFrame:
         (pl.col("trade_date") >= _L2_AVAILABLE_FROM)
         & (pl.col("industry_code").is_in(_L2_DIRECTION_POOL))
     ).sort(["trade_date", "industry_code"])
+    # 供需剪刀差列（supply_score/scissors_score）已由 industry_l2_panel_daily 构建管线
+    # 从 global_resonance_l2_map 带入（半导体/计算机设备/化工有真实供给腿，其余回退 50）
     # 宏观恐慌指数（组合防守门 panic_scale 消费；risk_factors 缺失时回退中性 50）
     rf = pl.read_parquet("data/analytics/macro_risk/latest/risk_factors.parquet").select(
         ["trade_date", "panic_index"]
     )
-    return panel.join(rf, on="trade_date", how="left")
+    panel = panel.join(rf, on="trade_date", how="left")
+    # DFF 按 H.15 下一个联储工作日的发布时间映射到北京时间可用日期。
+    dff = pl.read_parquet("data/curated/fred/market=US/macro_indicators/data.parquet")
+    ffr = calculate_dff_change_6m(
+        dff.filter(pl.col("symbol") == "DFF").select(["trade_date", "value"])
+    ).select(["trade_date", "ffr_chg_6m"])
+    return (
+        panel.sort("trade_date")
+        .join_asof(ffr, on="trade_date", strategy="backward")
+        .with_columns(pl.col("ffr_chg_6m").fill_null(0.0))
+    )
 
 
 def load_l2_price_panel() -> pl.DataFrame:

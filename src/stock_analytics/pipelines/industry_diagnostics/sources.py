@@ -20,6 +20,8 @@ from stock_analytics.primitives.indicators import (
 from stock_analytics.primitives.units import yuan_to_yi
 from stock_core.utils.logger import logger
 from stock_data.catalog import DataCatalog
+from stock_data.catalog.index_member_versioned import load_index_member_for_classification
+from stock_data.pipeline.sw_industry_golden import load_sw_2021_industry_members
 from stock_reporting.interpretation.industry_diagnostics.logic import (
     evaluate_industry_technicals,
     evaluate_industry_valuation,
@@ -71,6 +73,10 @@ def resolve_industry_meta(catalog_tu: DataCatalog, input_str: str) -> tuple[str,
     try:
         ic_df = catalog_tu.load_dataset("index_classify")
         if not ic_df.is_empty() and "industry_name" in ic_df.columns:
+            if "src" in ic_df.columns:
+                sw2021 = ic_df.filter(pl.col("src") == "SW2021")
+                if not sw2021.is_empty():
+                    ic_df = sw2021
             matched = ic_df.filter(pl.col("index_code") == clean)
             if matched.is_empty():
                 matched = ic_df.filter(pl.col("industry_name") == clean)
@@ -101,28 +107,53 @@ def load_industry_constituents(
 ) -> tuple[IndustryConstituentsSnapshot, float | None]:
     """查询行业成份股清单并提取市值前 Top N 龙头梯队，返回成份股快照与换手分位。"""
     try:
-        mem_df = catalog_tu.load_dataset("index_member")
-        if mem_df.is_empty() or "index_code" not in mem_df.columns:
-            return IndustryConstituentsSnapshot(), None
+        mem_df = load_sw_2021_industry_members(
+            catalog_tu,
+            as_of_date=target_date,
+            current_only=target_date is None,
+            canonical_only=True,
+            columns=(
+                "symbol",
+                "stock_code",
+                "index_code",
+                "industry_code",
+                "valid_from",
+                "valid_to",
+            ),
+        )
+        if not mem_df.is_empty() and "index_code" in mem_df.columns:
+            matched_members = mem_df.filter(pl.col("index_code") == industry_code)
+            if matched_members.is_empty() and "industry_code" in mem_df.columns:
+                matched_members = mem_df.filter(pl.col("industry_code") == industry_code)
+            symbols = (
+                matched_members.get_column("symbol").unique().to_list()
+                if not matched_members.is_empty()
+                else []
+            )
+        else:
+            symbols = []
 
-        matched_members = mem_df.filter(pl.col("index_code") == industry_code)
-        if matched_members.is_empty():
-            return IndustryConstituentsSnapshot(), None
+        if not symbols:
+            mem_df = load_index_member_for_classification(catalog_tu, classification="SW2021")
+            if mem_df.is_empty() or "index_code" not in mem_df.columns:
+                return IndustryConstituentsSnapshot(), None
+            matched_members = mem_df.filter(pl.col("index_code") == industry_code)
+            if matched_members.is_empty():
+                return IndustryConstituentsSnapshot(), None
 
-        # 动态根据 target_date 过滤有效成份股，严格消除前瞻偏差
-        if target_date is not None:
-            if "in_date" in matched_members.columns:
-                matched_members = matched_members.filter(
-                    pl.col("in_date").is_null() | (pl.col("in_date") <= target_date)
-                )
-            if "out_date" in matched_members.columns:
-                matched_members = matched_members.filter(
-                    pl.col("out_date").is_null() | (pl.col("out_date") > target_date)
-                )
-        elif "out_date" in matched_members.columns:
-            matched_members = matched_members.filter(pl.col("out_date").is_null())
-
-        symbols = matched_members["con_code"].unique().to_list()
+            # 动态根据 target_date 过滤有效成份股，严格消除前瞻偏差
+            if target_date is not None:
+                if "in_date" in matched_members.columns:
+                    matched_members = matched_members.filter(
+                        pl.col("in_date").is_null() | (pl.col("in_date") <= target_date)
+                    )
+                if "out_date" in matched_members.columns:
+                    matched_members = matched_members.filter(
+                        pl.col("out_date").is_null() | (pl.col("out_date") > target_date)
+                    )
+            elif "out_date" in matched_members.columns:
+                matched_members = matched_members.filter(pl.col("out_date").is_null())
+            symbols = matched_members["con_code"].unique().to_list()
         total_count = len(symbols)
         if not symbols:
             return IndustryConstituentsSnapshot(total_count=0), None
@@ -130,12 +161,18 @@ def load_industry_constituents(
         # 关联 stock_basic 获取股票名称
         stock_basic = catalog_tu.load_dataset("stock_basic")
         name_map: dict[str, str] = {}
+        symbol_map: dict[str, str] = {}
         if not stock_basic.is_empty() and "symbol" in stock_basic.columns:
             for row in stock_basic.select(["symbol", "name"]).to_dicts():
-                name_map[str(row["symbol"])] = str(row["name"])
+                qualified = str(row["symbol"])
+                short = qualified.split(".", 1)[0]
+                name_map[qualified] = str(row["name"])
+                symbol_map[short] = qualified
 
         # 关联 daily_basic 获取有效交易日市值与估值
-        eval_symbols = symbols[:max_symbols]
+        eval_symbols = [
+            symbol_map.get(str(symbol), str(symbol)) for symbol in symbols[:max_symbols]
+        ]
         db_df = catalog_tu.load_dataset("daily_basic", symbols=eval_symbols)
         leader_items: list[dict[str, Any]] = []
         latest_turnover_p5y = None

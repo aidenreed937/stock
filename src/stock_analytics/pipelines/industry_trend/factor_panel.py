@@ -3,12 +3,12 @@
 与「行业轮动 5 大因子」不同，本面板面向**周期尺度（季度/半年）全球产业趋势的确认与跟踪**，
 而非 A 股内部截面博弈。核心骨架（与 docs/plan/industry_rotation_upgrade_plan.md §2 对齐）：
 
-    composite = 全球方向(方向层) × 量价齐升(供需层) × 毛利率扩张(议价权层)
+    composite = 全球方向(方向层) × 财报滞后验证(量价齐升/毛利率扩张)
                 + 现实景气(业绩预告/快报)
                 − 拥挤度(防守)
 
 默认权重精确对齐已验证 milestone：现实景气 2/3 + 拥挤度防守 1/3，样本外 Sharpe ≈ 0.39；
-三层框架因子（direction/supply_demand/bargaining）默认权重 0，待全球共振数据补齐后激活。
+财报滞后验证（supply_demand/bargaining）与全球方向（direction）默认权重 0，不作前瞻选股，数据/调优后激活。
 
 输入：``industry_panel_daily.parquet``（49 字段 Mart，含 forecast/express/revenue/profit/tcr）。
 方向层输入：``global_resonance_map.parquet``（数据缺口，未来接入；缺失时中性 50）。
@@ -130,7 +130,7 @@ def build_industry_trend_panel(
     fc = _cs_percentile("forecast_positive_share")
     ex = _cs_percentile("express_profit_growth_median")
 
-    # 2. 供需层：量价齐升（营收 + 净利双正）才是真需求驱动
+    # 2. 财报滞后验证 · 量价齐升（营收 + 净利双正）才是真需求驱动
     supply_demand = (
         pl.when(pl.col("_quality"))
         .then(_cs_percentile("_rev_plus_prof"))
@@ -139,7 +139,7 @@ def build_industry_trend_panel(
         .otherwise(pl.lit(config.double_negative_penalty))  # 双负
     )
 
-    # 3. 议价权层：量价齐升门内的毛利率扩张（净利增速 > 营收增速）
+    # 3. 财报滞后验证 · 毛利率扩张（量价齐升门内：净利增速 > 营收增速）
     bargaining = (
         pl.when(pl.col("_quality"))
         .then(_cs_percentile("_margin_expand"))
@@ -189,7 +189,7 @@ def build_industry_trend_panel(
 
 
 def _composite_expr(config: IndustryTrendConfig) -> pl.Expr:
-    """三层共振 + 现实景气 − 拥挤度，方向层作防守门而非进攻加分。
+    """财报滞后验证 + 全球方向 + 现实景气 − 拥挤度，方向层作防守门而非进攻加分。
 
     实证（data/analytics/industry_strategy/industry_direction_layer.md）：
     direction 与科技行业未来 60 日收益显著负相关（追高反向），方向高 × 非量价齐升

@@ -54,12 +54,19 @@ industry_structure:
       quality_tier: confirming
       note: "宽基指数行情，用于行业相对收益基准；缺失时回退为行业中位数"
     - data_source: tushare
-      dataset: index_member
+      dataset: index_member_versioned
       required: false
       static: true
       cadence: static
       quality_tier: core
-      note: "申万行业成份股映射，用于把预告、快报和研报关联到行业"
+      note: "版本化申万行业成份股映射，默认筛选 SW2021，用于把预告、快报和研报关联到行业"
+    - data_source: derived
+      dataset: sw_2021_industry_member_golden
+      required: false
+      static: true
+      cadence: static
+      quality_tier: core
+      note: "TuShare/LiXinger 申万2021跨源成员黄金表；存在时优先用于当前截面与冲突审计"
     - data_source: tushare
       dataset: stock_daily_bar
       required: false

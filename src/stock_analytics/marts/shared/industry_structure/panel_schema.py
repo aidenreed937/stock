@@ -1,4 +1,11 @@
-"""行业结构基础面板 Schema 与选择工具。"""
+"""行业结构基础面板 Schema 与选择工具。
+
+已知数据质量注释 (负基数失真，保持现状，仅提示下游消费过滤)：
+- ``revenue_growth_ttm`` / ``profit_growth_ttm`` 为理杏仁官方 TTM 同比 (小数制)。
+- 当基期 TTM 营收/净利为负时 (如申万一级"综合" 801230.SI 2020-06-30 的
+  ``revenue_growth_ttm=-1.225``)，同比会击穿 -100%，属官方原始值、非单位错误，
+  对排序/动量无意义。下游消费方应过滤 ``revenue_growth_ttm < -1.01`` (同理 profit_growth_ttm)。
+"""
 
 from __future__ import annotations
 

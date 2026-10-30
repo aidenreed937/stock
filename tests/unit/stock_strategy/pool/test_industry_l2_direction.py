@@ -152,6 +152,31 @@ def test_quadrant_gate_excludes_worst_quadrant() -> None:
     assert syms == {"270100", "710100", "280500"}
 
 
+def test_scissors_gate_excludes_supply_surplus() -> None:
+    """供需剪刀差门：真实供给腿（supply_score≠50）下剪刀差<0（供给>需求）剔除，无供给信号放行。"""
+    d = date(2026, 8, 25)
+    df = pl.DataFrame(
+        {
+            "trade_date": [d] * 4,
+            "industry_code": ["270100", "730200", "710100", "280500"],
+            "industry_name": ["半导体", "通信设备", "计算机设备", "乘用车"],
+            "return_60d": [12.0, 9.0, 6.0, 3.0],
+            "pe_ttm_ew_percentile_5y": [40.0, 50.0, 60.0, 20.0],
+            "revenue_growth_ttm": [0.15, 0.18, 0.05, 0.03],
+            "profit_growth_ttm": [0.29, 0.72, 0.22, -0.32],
+            # 270100：真实供给腿且剪刀差<0（供给>需求）→ 剔除；
+            # 710100：真实供给腿但剪刀差≥0 → 保留；730200/280500：无供给信号（50）→ 放行
+            "supply_score": [100.0, 50.0, 60.0, 50.0],
+            "scissors_score": [-30.0, 0.0, 10.0, 0.0],
+        }
+    )
+    s = IndustryL2DirectionStrategy(top_k=3, rebalance_period=1, scissors_gate=True)
+    signals = s.on_bar(df)
+    syms = {sig.symbol for sig in signals}
+    # 270100 被剔除；Top3: 730200(9), 710100(6), 280500(3)
+    assert syms == {"730200", "710100", "280500"}
+
+
 def test_panic_scale_reduces_holdings() -> None:
     """恐慌降仓：panic_index>65 时持仓降至 panic_scale 比例（保留敞口）。"""
     d = date(2026, 8, 25)
@@ -183,6 +208,80 @@ def test_panic_scale_not_triggered_when_calm() -> None:
     # 正常 Top3 建仓（非降仓信号）
     assert len(signals) > 0
     assert all(sig.target_weight > 0.3 for sig in signals)
+
+
+def test_hike_gate_reduces_holdings_when_rate_hiking() -> None:
+    """加息周期防守门：ffr_chg_6m >= hike_thr 时持仓降仓。"""
+    d = date(2026, 8, 25)
+    df = pl.DataFrame(
+        {
+            "trade_date": [d] * 3,
+            "industry_code": ["270100", "730200", "710100"],
+            "industry_name": ["半导体", "通信设备", "计算机设备"],
+            "return_60d": [12.0, 9.0, 6.0],
+            "pe_ttm_ew_percentile_5y": [40.0, 50.0, 60.0],
+            "ffr_chg_6m": [0.5, 0.5, 0.5],  # FFR 半年升 50bp ≥ 25bp → 加息周期触发
+        }
+    )
+    s = IndustryL2DirectionStrategy(
+        top_k=3, rebalance_period=1, hike_gate=True, hike_scale=0.5, hike_thr=0.25
+    )
+    s.current_weights = {"270100": 0.3333, "730200": 0.3333, "710100": 0.3333}
+    signals = s.on_bar(df)
+    assert len(signals) == 3
+    assert all(abs(sig.target_weight - 0.16665) < 1e-3 for sig in signals)  # 0.3333 * 0.5
+    assert all("加息周期降仓" in sig.reason for sig in signals)
+
+
+def test_hike_gate_not_triggered_when_missing_or_below_thr() -> None:
+    """加息门：ffr_chg_6m 缺失（回退 0）或低于阈值时不降仓。"""
+    d = date(2026, 8, 25)
+    s = IndustryL2DirectionStrategy(
+        top_k=3, rebalance_period=1, hike_gate=True, hike_scale=0.5, hike_thr=0.25
+    )
+    # 缺失列 → 正常选股
+    df_missing = _make_dummy_cross(d)
+    s.current_weights = {"270100": 0.3333}
+    signals = s.on_bar(df_missing)
+    assert len(signals) > 0
+    assert all(sig.target_weight > 0.3 for sig in signals)
+    # 低于阈值 → 正常选股
+    df_low = _make_dummy_cross(d).with_columns(pl.lit(0.1).alias("ffr_chg_6m"))
+    s.current_weights = {"270100": 0.3333}
+    signals = s.on_bar(df_low)
+    assert len(signals) > 0
+    assert all(sig.target_weight > 0.3 for sig in signals)
+
+
+def test_panic_and_hike_both_trigger_take_min_scale() -> None:
+    """恐慌与加息同时触发时取更保守 scale（min），且 reason 合并。"""
+    d = date(2026, 8, 25)
+    df = pl.DataFrame(
+        {
+            "trade_date": [d] * 3,
+            "industry_code": ["270100", "730200", "710100"],
+            "industry_name": ["半导体", "通信设备", "计算机设备"],
+            "return_60d": [12.0, 9.0, 6.0],
+            "pe_ttm_ew_percentile_5y": [40.0, 50.0, 60.0],
+            "panic_index": [80.0, 80.0, 80.0],
+            "ffr_chg_6m": [0.5, 0.5, 0.5],
+        }
+    )
+    # panic_scale 0.3 vs hike_scale 0.5 → min 0.3
+    s = IndustryL2DirectionStrategy(
+        top_k=3,
+        rebalance_period=1,
+        panic_scale=0.3,
+        panic_thr=65.0,
+        hike_gate=True,
+        hike_scale=0.5,
+        hike_thr=0.25,
+    )
+    s.current_weights = {"270100": 0.3333, "730200": 0.3333, "710100": 0.3333}
+    signals = s.on_bar(df)
+    assert len(signals) == 3
+    assert all(abs(sig.target_weight - 0.09999) < 1e-3 for sig in signals)  # 0.3333 * 0.3
+    assert all("恐慌" in sig.reason and "加息" in sig.reason for sig in signals)
 
 
 def test_empty_input() -> None:

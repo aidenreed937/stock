@@ -65,11 +65,11 @@ def test_build_industry_trend_panel_three_layer(tmp_path: Path) -> None:
     assert len(panel) == 3
 
     by_code = {row["industry_code"]: row for row in panel.to_dicts()}
-    # 供需层：量价齐升（A=100, B=50 双增速之和分位）> 供给收缩（C 惩罚 20）
+    # 财报滞后验证 · 量价齐升：A=100, B=50 双增速之和分位 > 供给收缩（C 惩罚 20）
     assert by_code["801010.SI"]["supply_demand_score"] == 100.0
     assert by_code["801030.SI"]["supply_demand_score"] == 50.0
     assert by_code["801050.SI"]["supply_demand_score"] == 20.0
-    # 议价权层：量价齐升门内按净利−营收增速分位（A=100, B=0），门外中性 30
+    # 财报滞后验证 · 毛利率扩张：量价齐升门内按净利−营收增速分位（A=100, B=0），门外中性 30
     assert by_code["801010.SI"]["bargaining_score"] == 100.0
     assert by_code["801030.SI"]["bargaining_score"] == 0.0
     assert by_code["801050.SI"]["bargaining_score"] == 30.0

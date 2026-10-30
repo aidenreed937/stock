@@ -89,8 +89,11 @@ def build_northbound_industry_frame(
         .unique(subset=["symbol"], keep="last")
         .rename({"symbol": "index_code"})
     )
+    constituent_source = sw_constituents
+    if "src" in constituent_source.columns:
+        constituent_source = constituent_source.filter(pl.col("src") == "SW2021")
     constituents = (
-        sw_constituents.select(
+        constituent_source.select(
             "con_code",
             "index_code",
             pl.col("in_date").cast(pl.Date, strict=False),

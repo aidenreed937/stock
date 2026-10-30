@@ -14,6 +14,7 @@ import polars as pl
 from stock_analytics.primitives.factor_evaluation import ic_summary, rank_ic_series
 from stock_analytics.primitives.neutralization import cross_sectional_neutralize
 from stock_data.catalog import DataCatalog
+from stock_data.catalog.index_member_versioned import load_index_member_for_classification
 
 CATALOG = DataCatalog()
 START = date(2025, 8, 1)
@@ -34,10 +35,14 @@ def build_panel() -> pl.DataFrame:
     panel = bars.join(basic, on=["symbol", "trade_date"], how="left")
 
     # L1 行业成分映射（index_member 时点 join + index_classify L1 过滤）
-    cls = CATALOG.load_dataset("index_classify", columns=["index_code", "level"])
+    cls = CATALOG.load_dataset("index_classify", columns=["index_code", "level", "src"])
+    if "src" in cls.columns:
+        cls = cls.filter(pl.col("src") == "SW2021")
     l1_codes = cls.filter(pl.col("level") == "L1")["index_code"].unique().to_list()
-    mem = CATALOG.load_dataset(
-        "index_member", columns=["index_code", "con_code", "in_date", "out_date"]
+    mem = load_index_member_for_classification(
+        CATALOG,
+        classification="SW2021",
+        columns=["index_code", "con_code", "in_date", "out_date"],
     )
     l1 = mem.filter(pl.col("index_code").is_in(l1_codes)).select(
         pl.col("con_code").alias("symbol"), "index_code", "in_date", "out_date"

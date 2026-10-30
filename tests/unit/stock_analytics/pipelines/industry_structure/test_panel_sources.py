@@ -98,6 +98,32 @@ def test_prepared_index_members_reuse_normalized_dates() -> None:
     ].to_list() == ["000002"]
 
 
+def test_prepared_index_members_uses_requested_classification() -> None:
+    class _VersionedCatalog(_MemoryCatalog):
+        def list_datasets(self) -> list[str]:
+            return ["index_member_versioned"]
+
+    catalog = _VersionedCatalog(
+        {
+            "index_member_versioned": pl.DataFrame(
+                {
+                    "index_code": ["801001.SI", "801001.SI"],
+                    "con_code": ["000001.SZ", "000002.SZ"],
+                    "in_date": [date(2020, 1, 1)] * 2,
+                    "out_date": [None] * 2,
+                    "src": ["SW2014", "SW2021"],
+                }
+            )
+        }
+    )
+
+    members = prepare_stock_industry_members(
+        catalog, {"801001.SI": "801001.SI"}, classification="SW2021"
+    )
+
+    assert members.get_column("stock_key").to_list() == ["000002"]
+
+
 def test_benchmark_return_resolves_csi_suffix() -> None:
     trade_dates = [date(2026, 1, 1) + timedelta(days=index) for index in range(22)]
     catalog = _MemoryCatalog(

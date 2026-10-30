@@ -74,3 +74,47 @@ strategies:
       commission_rate: 0.0001
       slippage_rate: 0.0005
       rebalance_deadband: 0.03
+
+  industry_l2_direction_guarded_scissors:
+    strategy_class: "IndustryL2DirectionStrategy"
+    benchmark_symbol: "000985.CSI"
+    top_k: 3
+    rebalance_period: 63
+    score_column: "return_60d"
+    valuation_max: 90.0
+    capex_gate: true
+    crowd_gate: true
+    crowd_max: 85.0
+    quadrant_bonus: true
+    quadrant_gate: true
+    scissors_gate: true
+    panic_scale: 0.5
+    panic_thr: 65.0
+    description: "guarded + 供需剪刀差门：半导体/计算机设备/化工真实供给腿下剪刀差<0（供给扩张强于需求）剔除，其余行业放行（实验变体）"
+    friction:
+      commission_rate: 0.0001
+      slippage_rate: 0.0005
+      rebalance_deadband: 0.03
+
+  industry_l2_direction_guarded_hike:
+    strategy_class: "IndustryL2DirectionStrategy"
+    benchmark_symbol: "000985.CSI"
+    top_k: 3
+    rebalance_period: 63
+    score_column: "return_60d"
+    valuation_max: 90.0
+    capex_gate: true
+    crowd_gate: true
+    crowd_max: 85.0
+    quadrant_bonus: true
+    quadrant_gate: true
+    panic_scale: 0.5
+    panic_thr: 65.0
+    hike_gate: true
+    hike_scale: 0.5
+    hike_thr: 0.25
+    description: "guarded + 加息周期防守门（FFR 6个月变化>=0.25pp 降仓50%，实证样本外 Sharpe 0.48→0.61，见 semi_sox_backtest 机制延伸；加息周期特征 ffr_chg_6m 由 CLI 注入）"
+    friction:
+      commission_rate: 0.0001
+      slippage_rate: 0.0005
+      rebalance_deadband: 0.03

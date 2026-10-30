@@ -20,6 +20,7 @@ from stock_analytics.marts.shared.industry_structure.industry_mapping import (
     load_industry_l1_maps,
     prepare_stock_industry_members,
 )
+from stock_data.pipeline.sw_industry_golden import load_sw_2021_industry_members
 
 if TYPE_CHECKING:
     from stock_core.config.analytics_industry_structure import IndustryStructureConfig
@@ -308,7 +309,9 @@ def load_industry_l1_capex_facts(
         return empty_industry_capex_frame()
 
     index_to_l1, _ = load_industry_l1_maps(cat_ts, config)
-    members = prepare_stock_industry_members(cat_ts, index_to_l1)
+    members = prepare_stock_industry_members(
+        cat_ts, index_to_l1, classification=config.classification
+    )
     if members.is_empty():
         return empty_industry_capex_frame()
 
@@ -325,17 +328,29 @@ def load_industry_l2_capex_facts(
     if stock_fs.is_empty():
         return empty_industry_capex_frame()
 
-    const_lx = _load_dataset(cat_lx, "sw_2021_constituents", columns=["industryCode", "symbol"])
-    if const_lx.is_empty():
+    golden = load_sw_2021_industry_members(
+        cat_ts,
+        level="L2",
+        canonical_only=True,
+        current_only=True,
+        columns=("symbol", "industry_code", "level", "src", "is_canonical"),
+    )
+    if golden.is_empty():
+        golden = load_sw_2021_industry_members(
+            cat_lx,
+            level="L2",
+            canonical_only=True,
+            current_only=True,
+            columns=("symbol", "industry_code", "level", "src", "is_canonical"),
+        )
+    if golden.is_empty() or not {"industry_code", "symbol"}.issubset(golden.columns):
         return empty_industry_capex_frame()
 
     l2_map = (
-        const_lx.with_columns(
-            (pl.col("industryCode").cast(pl.Utf8).str.slice(0, 4) + "00").alias("industry_code"),
-            pl.col("symbol").cast(pl.Utf8).str.slice(0, 6).alias("stock_key"),
-        )
+        golden.with_columns(pl.col("symbol").cast(pl.Utf8).str.slice(0, 6).alias("stock_key"))
         .select(["stock_key", "industry_code"])
-        .unique(subset=["stock_key"])
+        .sort(["stock_key", "industry_code"])
+        .unique(subset=["stock_key"], keep="first", maintain_order=True)
     )
     return _build_aggregated_financial_metrics(stock_fs, l2_map)
 

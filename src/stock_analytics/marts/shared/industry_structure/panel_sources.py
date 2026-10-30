@@ -245,21 +245,13 @@ def _extract_fs_frame(frame: pl.DataFrame) -> pl.DataFrame:
         return pl.DataFrame()
     if "q" in frame.columns:
         try:
+            revenue_ttm = _q_metric_ttm_expr(frame, "toi")
+            profit_ttm = _q_metric_ttm_expr(frame, "np")
             return frame.select(
                 pl.col("symbol").cast(pl.String).alias("industry_code"),
                 "trade_date",
-                pl.col("q")
-                .struct.field("ps")
-                .struct.field("toi")
-                .struct.field("ttm_y2y")
-                .cast(pl.Float64, strict=False)
-                .alias("revenue_growth_ttm"),
-                pl.col("q")
-                .struct.field("ps")
-                .struct.field("np")
-                .struct.field("ttm_y2y")
-                .cast(pl.Float64, strict=False)
-                .alias("profit_growth_ttm"),
+                revenue_ttm.alias("revenue_growth_ttm"),
+                profit_ttm.alias("profit_growth_ttm"),
                 pl.col("q")
                 .struct.field("m")
                 .struct.field("roe")
@@ -270,6 +262,26 @@ def _extract_fs_frame(frame: pl.DataFrame) -> pl.DataFrame:
         except Exception:
             return _extract_fs_frame_from_columns(frame)
     return _extract_fs_frame_from_columns(frame)
+
+
+def _q_metric_ttm_expr(frame: pl.DataFrame, metric: str) -> pl.Expr:
+    """提取官方 TTM 同比，并在缺失时回退 Curated 派生字段。"""
+    q_dtype = frame.schema.get("q")
+    q_fields = getattr(q_dtype, "fields", [])
+    ps_dtype = next((field.dtype for field in q_fields if field.name == "ps"), None)
+    ps_fields = getattr(ps_dtype, "fields", [])
+    metric_dtype = next((field.dtype for field in ps_fields if field.name == metric), None)
+    metric_fields = {field.name for field in getattr(metric_dtype, "fields", [])}
+    metric_expr = pl.col("q").struct.field("ps").struct.field(metric)
+    official = metric_expr.struct.field("ttm_y2y").cast(pl.Float64, strict=False)
+    if "ttm_y2y_derived" not in metric_fields:
+        return official
+    return pl.coalesce(
+        [
+            official,
+            metric_expr.struct.field("ttm_y2y_derived").cast(pl.Float64, strict=False),
+        ]
+    )
 
 
 def _extract_fs_frame_from_columns(frame: pl.DataFrame) -> pl.DataFrame:

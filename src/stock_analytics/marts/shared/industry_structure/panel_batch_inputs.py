@@ -70,7 +70,9 @@ class IndustryPanelBatchInputs:
     ) -> IndustryPanelBatchInputs:
         """一次读取并预处理批次内会反复使用的事件与资金流输入。"""
         index_to_l1, industry_to_l1 = load_industry_l1_maps(cat_ts, config)
-        stock_industry_members = prepare_stock_industry_members(cat_ts, index_to_l1)
+        stock_industry_members = prepare_stock_industry_members(
+            cat_ts, index_to_l1, classification=config.classification
+        )
         forecast = _prepare_forecast_frame(
             load_dataset(
                 cat_ts,

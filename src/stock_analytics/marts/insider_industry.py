@@ -69,8 +69,11 @@ def build_insider_industry_frame(
     )
     l1_list = l1_codes["industry_code"].to_list()
 
+    constituent_source = sw_constituents
+    if "src" in constituent_source.columns:
+        constituent_source = constituent_source.filter(pl.col("src") == "SW2021")
     constituents = (
-        sw_constituents.select(
+        constituent_source.select(
             "con_code",
             "index_code",
             pl.col("in_date").cast(pl.Date, strict=False),

@@ -1,0 +1,51 @@
+# 景气行业「拥挤×估值 + 防守门 + 进攻脚」验证框架配置
+# 用途：把半导体研究线（semi_crowding_ts/valuation/defense_overlay/offense_defense_crowd）
+#       抽成配置驱动的多行业验证。加新景气行业只需在此声明 code + 想测的 legs。
+# 说明：
+#   - legs 声明"想测哪些腿"，脚本会自动检测数据可用性并跳过不可用者（记录原因）。
+#     crowd=成交占比时序分位×估值；defense=剪刀差<0 或 DOI≥70；offense=需求先行（demand≥70×剪刀差≥0）。
+#   - DOI（inventory_score）仅 270100/710100 在 semiconductor_supply_legs 有；其余行业 defense 退化为剪刀差门。
+#   - pe5y 数据 2018 年中起，早段视为非高估值（不触发组合腿）。
+
+schema_version: 1
+title: "景气行业拥挤×估值 + 防守门 + 进攻脚 验证框架"
+window: 250          # 成交占比时序分位窗口（日）
+t1_lag: true         # T+1 次日生效（无前视）
+
+thresholds:
+  crowd: 90          # 成交占比时序分位 ≥ 90 判拥挤
+  val: 80            # 估值分位 ≥ 80 判透支（组合腿条件）
+  doi: 70            # DOI 增速分位 ≥ 70 判高堆积（防守门条件）
+  demand: 70         # 需求先行 demand ≥ 70（进攻脚条件）
+
+industries:
+  - code: "270100"
+    name: "半导体"
+    legs: [crowd, defense, offense]
+  - code: "710100"
+    name: "计算机设备"
+    legs: [crowd, defense, offense]
+  - code: "730200"
+    name: "通信设备"
+    legs: [crowd, defense, offense]
+  - code: "630500"
+    name: "光伏设备"
+    legs: [crowd, defense, offense]
+  - code: "630700"
+    name: "电池"
+    legs: [crowd, defense, offense]
+  - code: "280500"
+    name: "乘用车"
+    legs: [crowd, defense, offense]
+  - code: "240400"
+    name: "贵金属"
+    legs: [crowd]
+  - code: "240300"
+    name: "工业金属"
+    legs: [crowd]
+  - code: "370100"
+    name: "化学制药"
+    legs: [crowd, defense, offense]
+  - code: "370600"
+    name: "医疗服务"
+    legs: [crowd, defense, offense]

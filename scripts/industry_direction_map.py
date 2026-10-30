@@ -870,9 +870,7 @@ def build_theme_signals() -> dict[str, pl.DataFrame]:
         for name, leg in legs:
             if leg.is_empty():
                 continue
-            merged = merged.join(
-                leg.rename({"direction_score": name}), on="trade_date", how="left"
-            )
+            merged = merged.join(leg.rename({"direction_score": name}), on="trade_date", how="left")
         fill_cols = [name for name, leg in legs if not leg.is_empty()]
         merged = (
             merged.sort("trade_date")

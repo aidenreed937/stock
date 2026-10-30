@@ -4,10 +4,12 @@
 - 行业轮动：A 股内部截面矛盾（动量/剪刀差/拥挤度），高频博弈；
 - 产业趋势跟踪：周期尺度（季度/半年）全球资本开支方向的承接与确认。
 
-三层共振框架（方向 × 供需 × 议价权）：
-1. 方向层 direction_score：全球资本开支/出货方向（数据缺口，默认中性）；
-2. 供需层 supply_demand_score：量价齐升（营收 + 净利双正）才是真需求驱动；
-3. 议价权层 bargaining_score：量价齐升门内的毛利率扩张（净利增速 > 营收增速）。
+产业趋势量化框架（深研线簇·产业腿激活 × 财报滞后验证 × 动量兜底）：
+1. 选景气 = 深研线簇（产业腿激活）+ 无腿动量兜底：有产业供需腿行业用剪刀差 LONG + DOI 激活入选并择时（半导体完整实证，化工/计算机有腿待推广）；无腿行业用 `return_60d` 动量 Top3 + 估值/组合防守门（滞后，不宣称前瞻）；现实景气（prosperity/crowding 面板列）仅事后确认，不参与实盘选股；
+2. 财报滞后验证 · 量价齐升 supply_demand_score：公司经营与财报是滞后数据，仅事后验证供需逻辑是否兑现，不作前瞻选股；
+3. 财报滞后验证 · 毛利率扩张 bargaining_score：仅事后验证定价权/盈利质量，不作前瞻选股；
+4. 全球方向 direction_score：仅作可选加权与拐点预警参考，不作判定层（数据现状记录）；
+5. 真前瞻在产业供需剪刀差（半导体 270100 见 framework_semiconductor.md），深研线簇逐一建腿，本管线提供公共面板不重复行业专属实现。
 """
 
 from __future__ import annotations
@@ -21,7 +23,7 @@ import yaml
 DEFAULT_CONFIG_PATH = "config/analytics/industry_trend_tracking.yaml"
 
 # 默认因子权重：精确对齐已验证 milestone（现实景气 2/3 + 拥挤度防守 1/3）。
-# 三层框架因子（direction/supply_demand/bargaining）默认权重 0，数据/调优后激活。
+# 财报滞后验证（supply_demand/bargaining）与全球方向（direction）因子默认权重 0：财报层不作前瞻选股，数据/调优后激活。
 DEFAULT_WEIGHTS: dict[str, float] = {
     "direction": 0.0,
     "supply_demand": 0.0,

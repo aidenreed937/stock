@@ -116,12 +116,19 @@ industry_diagnostics:
       quality_tier: core
       note: "申万行业分类字典"
     - data_source: tushare
-      dataset: index_member
+      dataset: index_member_versioned
       required: true
       static: true
       cadence: static
       quality_tier: core
-      note: "行业成份股清单"
+      note: "版本化行业成份股清单（默认 SW2021）"
+    - data_source: derived
+      dataset: sw_2021_industry_member_golden
+      required: false
+      static: true
+      cadence: static
+      quality_tier: core
+      note: "TuShare/LiXinger 申万2021跨源成员黄金表；按时点筛选 canonical 归属"
     - data_source: tushare
       dataset: stock_basic
       required: true
