@@ -1,0 +1,62 @@
+# 光伏设备（630500）深研线：产能周期状态 + 防守信号特征面板 管线配置
+#
+# 对应 photovoltaic 深化研究（docs/research/photovoltaic/ 00-13 + core_proposition.md）已验证形态，
+# **不是**半导体式供需剪刀差腿管线（光伏供需腿已证伪，不生产化失效信号）。本管线输出的是光伏
+# 真正验证通过的**季度尺度周期状态 + 防守信号特征面板**，供 stock_strategy 验证层消费：
+#   - cycle_state : 产能周期四态（上行/过剩/下行/底部右侧）——产业层唯一季度前瞻危险源（`11`）
+#   - fin_defense : 成分股聚合净利 TTM 同比 <0（恶化认定，`05`）——滞后防守腿
+#   - price_dd    : 组件周价 52 周高点回撤 %（`price_gate_combo`）——「确认恶化后」尾部防守补丁（非前瞻）
+# 全部按 release_date/披露日生效（无前视）、日频前向填充、T+1 由权重层 shift(1)。
+#
+# 术语约定：本层（stock_analytics）产出的都是**特征（feature / 状态）**——回测/决策的输入；
+# 有效性（IC/回测/敏感性）由 stock_strategy 验证层确认。
+
+schema_version: 1
+title: "光伏设备 630500 周期状态与防守信号特征面板"
+artifact_root: "data/analytics/photovoltaic"
+
+# 日频交易日历（Curated Mart，仅取 trade_date 列）
+calendar_mart: "global_macro_daily"
+
+# 输出覆盖的申万二级行业（光伏设备）
+industry_codes:
+  - "630500"
+
+# 产能周期状态门（对齐 industry_solar_cycle_position._state_row，规则机制化少参数）
+cycle_state:
+  glut_yoy_threshold: 0.30      # cap_yoy>=30% 视为扩产潮（过剩）
+  flood_months: 24              # 24 个月内出现扩产潮视为结构性下行
+  high_util_threshold: 70.0     # 高利用率（无扩产潮）→ 上行
+  low_util_threshold: 45.0      # 低利用率 + 方向回升/剪刀差转正 → 底部右侧
+  util_chg_months: 6            # 利用率 6 个月变化
+  scissors_floor: -0.20         # 中位利用率 + 方向回升且剪刀差>-20pct → 上行
+
+# 财报 TTM 防守门（对齐 industry_solar_profit_turn_ext._signal pos 门）
+fin_defense:
+  net_negative_threshold: 0.0   # 净利 TTM 同比 <0 判定恶化
+  disclosure_q1: "04-30"
+  disclosure_q2: "08-31"
+  disclosure_q3: "10-31"
+
+# 价格回撤补丁（对齐 industry_solar_price_chain_layering._price_drawdown）
+price_patch:
+  price_col: "module_price_cny_watt"  # 组件周价（贴近需求变现，覆盖全期）
+  drawdown_weeks: 52            # 滚动 52 周高点回撤
+  gate_threshold: 20.0          # 回撤 >=20% 空仓（确认恶化后补丁，非前瞻）
+
+# 生命周期映射权重（cycle_state → 仓位，对齐 core_proposition 执行框架）
+# 键用中文状态名（与 cycle_state 输出一致）
+lifecycle_weights:
+  上行: 1.0
+  过剩: 0.0
+  下行: 0.8
+  底部右侧: 0.5
+
+# 防守门权重映射（cycle∈{过剩,下行} 或 fin<0 → defense weight，对齐 warning_card cycfn 口径）
+defense_weight:
+  hold: 1.0
+  reduced: 0.25
+  empty: 0.0
+
+# 数据缺失时的中性回退
+neutral_score: 50.0

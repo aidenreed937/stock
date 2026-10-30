@@ -1,0 +1,92 @@
+# 光伏景气前瞻仪表盘 (pv_outlook) 配置
+# 用途：不等财报（滞后确认），用产业数据前瞻 Q3/Q4 景气方向。
+# 原则：自动管线只信本地 Curated（Ground Truth First）；外部事实经 GrokSearch 等
+#       专业检索后人工核验填入 external_facts，强制携带信源与发布日期。
+schema_version: 1
+title: 光伏景气前瞻仪表盘 (组件/辅材/硅料)
+artifact_root: data/analytics/pv_outlook
+
+# 跟踪的数据集清单：cadence 为发布节奏，release_lag_days 为数据应覆盖期与当前日期的
+# 最大允许滞后（超过即判定为缺口，缺口矩阵中明示）。
+datasets:
+  solar_price_chain:
+    source: InfoLink Consulting 周度光伏现货价格
+    cadence: weekly
+    release_lag_days: 14
+  solar_capacity:
+    source: 国家能源局 (NEA) 月度新增并网装机
+    cadence: monthly
+    release_lag_days: 40
+  polysilicon_inventory_monthly:
+    source: 硅业分会/硅业在线 多晶硅月度库存
+    cadence: monthly
+    release_lag_days: 20
+  polysilicon_supply_monthly:
+    source: 硅业分会 多晶硅月度产量
+    cadence: monthly
+    release_lag_days: 20
+  polysilicon_balance:
+    source: 派生：多晶硅供需平衡（产量-需求）
+    cadence: monthly
+    release_lag_days: 20
+  solar_supply_demand:
+    source: 派生：光伏供需剪刀差（电池片供给 vs 装机需求）
+    cadence: monthly
+    release_lag_days: 45
+  solar_cell_production:
+    source: 国家统计局 (NBS) 太阳能电池月度产量
+    cadence: monthly
+    release_lag_days: 40
+  customs_trade_gacc:
+    source: 海关总署 (GACC) 光伏电池及组件出口
+    cadence: monthly
+    release_lag_days: 35
+
+# 价差（毛利空间）计算参数——简化口径，用于趋势跟踪而非绝对盈利测算
+spread:
+  wafers_per_piece: 6.6        # 每片硅片对应组件功率 (W/片, 182mm 近似)
+  polysilicon_per_watt_g: 2.1  # 每瓦硅片硅料单耗 (g/W)
+
+# 前瞻评分阈值（机制透明，参数集中可调）
+scoring:
+  spread_lookback_weeks: 12        # 价差方向对比窗口
+  module_price_yoy_positive: true  # 组件价格同比转正为价格修复信号
+  install_mom_positive: true       # 装机环比回升为需求拐点信号
+  inventory_rebuild_threshold_gw_tons: 5.0  # 多晶硅库存单月环比变动阈值（万吨），超阈值判累库
+
+# 外部事实核验区：仅填入已核验的公开来源事实；每条强制携带信源与发布日期。
+# 格式: {fact, source, published_date, url}
+# 以下为 2026-09-05 前经 GrokSearch 检索核验的专业来源事实（可随周度核验持续更新/追加）。
+external_facts:
+  - fact: 多晶硅 N 型致密料报价 38-43 元/千克，成交清淡；能耗督查与自律减产预期支撑上游挺价，但基本面宽松格局未改
+    source: Mysteel 光伏产业链周报 (我的钢铁网)
+    published_date: 2026-09-04
+    url: https://xny.mysteel.com/a/26090417/DC1E18C4A81DD3D0.html
+  - fact: 多晶硅期货主力 PS2611 收 3.69 万元/吨 (-1.85%)；SMM N 型料现货 38.8-42.5 元/千克，硅料库存 30.9 万吨环比 +0.65%、硅片库存 30.54GW 环比 +1.73%；反内卷涨价预期逐步冷却，价格缺乏持续上涨驱动
+    source: 华泰期货 多晶硅日报 (新浪财经转载)
+    published_date: 2026-09-03
+    url: https://finance.sina.com.cn/money/future/fmnews/2026-09-03/doc-iniqpeke7115214.shtml
+  - fact: 多晶硅政策底已现但市场底待验证；能耗限额指标公布（三级 6.3kgce/kg 约 50% 企业达标），头部硅料企业签署限价倡议书；9 月电池片排产小幅下降、组件排产降 1-2GW（分布式需求弱、集中式托底）
+    source: 海证期货 (曲合网)
+    published_date: 2026-09-04
+    url: https://www.quheqihuo.com/news/202609044488225.html
+  - fact: 9 月组件排产约 37-39GW 环比降 1-2GW；头部报价持稳（0.70-0.75 元/W），二三线先行降价 2-4 分/W 至 0.66-0.69 元/W；分布式需求持续走弱，集中式单周新增招标 5.1GW（华电 5GW）；欧洲 TOPCon 报价 0.11-0.13 美元/W
+    source: 数字新能源 DNE (新浪新闻)
+    published_date: 2026-09-05
+    url: https://k.sina.com.cn/article_5952915705_162d248f906703nd8c.html
+  - fact: 光伏玻璃 9 月 2.0mm 单镀面板统一报价上调至 10.5 元/平方米（较 8 月末 +1 元），供给收缩形成阶段性正反馈；但下游以刚需采购为主，减产兑现程度与需求变化决定行情延续性
+    source: 隆众资讯 (我的钢铁网转载)
+    published_date: 2026-09-04
+    url: https://m.mysteel.com/oilchem/a/26090409/18E302AEAFA7B47B_abc.html
+  - fact: 光伏玻璃行业 8 月初集体上调报价（2.0mm 镀膜 8-8.5→9-9.5 元/㎡）；5 月至今在产日熔量 8.3→7.1 万吨（-12%）、库存可用天数 54→45 天（-18%）；两轮减产中第二轮为预防性减产（7 条窑炉、日熔 8000 吨）；涨价非需求反转，系深度亏损倒逼的风险前置管控
+    source: 期货日报 (七禾网)
+    published_date: 2026-09-04
+    url: https://www.7hcn.com/article/484702-1.html
+  - fact: 福斯特 2026 半年报：胶膜涨价推动利润显著改善，电子材料开始放量
+    source: 华创证券研报点评 (牛牛研报分享网)
+    published_date: 2026-09-02
+    url: http://www.glybw.com/doc-da15e363d1c10b14c87bab62c54e5715.html
+  - fact: 2026 年 1-7 月中国光伏组件出口 133.5GW 同比 -3.4%（金额 150.7 亿美元 +12.1%，量跌价涨）；3 月退税取消前抢运 32GW 后 4-7 月回落，7 月 15.9GW 环比下降；巴基斯坦 7.2GW 同比 -47%
+    source: 碳索新能 (索比光伏网)
+    published_date: 2026-08-31
+    url: https://carbon.solarbe.com/article/50028357
