@@ -1,0 +1,56 @@
+# 聚氨酯 (MDI) 生产工艺理论成本模型配置 (Polyurethane MDI Cost Models)
+# 模块高内聚配置：涵盖光气化一体化龙头路线、外购原料边际路线理论单耗、出清保本线与利润相位阈值
+
+schema_version: 1
+product_name: "聚合MDI"
+symbol: "MDI"
+unit: "元/吨"
+version: "1.0.0"
+updated_at: "2026-09-20"
+
+models:
+  phosgene_integrated:
+    name: "液相光气化法 (万华/巴斯夫一体化龙头路线)"
+    product_name: "聚合MDI"
+    symbol: "MDI"
+    valid_from: "2020-01-01"
+    valid_to: "9999-12-31"
+    description: "纯苯经硝化、加氢制苯胺，与甲醛缩合后光气化反应生成聚合MDI与纯MDI"
+    national_capacity_share: 0.80
+    cost_tier: "integrated_alpha_floor"
+    coefficients:
+      product: 1.0
+      pure_benzene: 0.65       # 纯苯单耗 (吨)
+      nitric_acid: 0.55        # 浓硝酸单耗 (吨)
+      liquid_chlorine: 0.60    # 液氯单耗 (吨)
+      formaldehyde: 0.25       # 甲醛单耗 (吨)
+    fixed_cost: 4200.0         # 蒸汽、人工、环保、折旧与光气壁垒加工费 (元/吨)
+    cash_fixed_cost: 3000.0    # 现金保本固定加工费 (元/吨)
+    full_cost_approx: 15500.0  # 一体化完全成本基准 (元/吨)
+    cash_cost_approx: 13800.0  # 一体化现金保本线 (元/吨)
+    formula: "mdi_price - (0.65 * benzene_price + 0.55 * nitric_acid_price + 0.60 * chlorine_price + 0.25 * formaldehyde_price) - fixed_cost"
+
+  phosgene_standalone:
+    name: "外购原料光气化法 (边际高成本出清线)"
+    product_name: "聚合MDI"
+    symbol: "MDI"
+    valid_from: "2020-01-01"
+    valid_to: "9999-12-31"
+    description: "外购苯胺或甲醛/液氯的光气化装置，成本显著高于一体化龙头，构成行业边际成本支撑"
+    national_capacity_share: 0.20
+    cost_tier: "marginal_phosgene_floor"
+    coefficients:
+      product: 1.0
+      aniline: 0.75            # 苯胺单耗 (吨)
+      formaldehyde: 0.25       # 甲醛单耗 (吨)
+      liquid_chlorine: 0.65    # 液氯单耗 (吨)
+    fixed_cost: 4800.0         # 外购与加工固定成本 (元/吨)
+    cash_fixed_cost: 3600.0    # 现金保本固定加工费 (元/吨)
+    full_cost_approx: 17500.0  # 边际完全成本参考线 (元/吨)
+    cash_cost_approx: 15500.0  # 行业边际现金保本出清线 (元/吨)
+    formula: "mdi_price - (0.75 * aniline_price + 0.25 * formaldehyde_price + 0.65 * chlorine_price) - fixed_cost"
+
+regime_thresholds:
+  high_profit: 3000.0     # 理论毛利 > 3000 元/吨: 寡头高盈利
+  profitable: 800.0       # 800 ~ 3000 元/吨: 正常盈利
+  near_breakeven: -800.0  # -800 ~ 800 元/吨: 盈亏平衡

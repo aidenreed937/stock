@@ -1,0 +1,181 @@
+# 纯碱核心上市公司画像配置库 (Soda Ash Company Universe)
+# 对应因果链第 5 环（企业会计盈利）与第 6 环（二级市场定价）
+# 注：
+# 1. 顶层属性维护当前最新快照，供无需时间轴的最新行情、截面雷达与弹性计算消费，100% 向后兼容；
+# 2. timeline 维护完整的历史生效时间轴 (Point-in-Time Timeline)，供跨周期长线回测精准匹配历史产能与权益；
+# 3. 纯碱业务营收占比 (soda_revenue_share) 100% 由本地 fina_mainbz 黄金表根据 soda_product_keywords
+#    动态提取并进行季度前向填充与公告日 PIT 合并，零降级，不在此处维护任何静态常量。
+schema_version: 2
+title: "纯碱核心上市公司画像与工艺成本映射"
+description: "A 股 5 大纯碱生产商工艺路线、产能规模、成本阶梯、历史时间轴与主营暴露度配置"
+
+default_commodity_code: "SA"
+default_commodity_name: "纯碱"
+vat_rate_default: 0.13
+
+companies:
+  - symbol: "000683.SZ"
+    name: "远兴能源"
+    full_name: "内蒙古远兴能源股份有限公司"
+    process_type: "natural_alkali"
+    location: "内蒙古阿拉善 / 河南桐柏"
+    annual_capacity_w_tons: 680.0
+    equity_ratio: 0.86
+    internal_conversion_ratio: 0.0
+    cost_tier: "lowest_alpha"
+    effective_tax_rate: 0.15
+    cost_notes: "天然碱法成本颠覆者，完全成本 700~800 元/吨，现金加工费 160~180 元/吨 (一期180/二期160)，享有深度抗亏阿尔法"
+    soda_product_keywords: ["纯碱"]
+    key_drivers: "阿拉善天然碱矿卤水结晶，水指标与二期投产进度"
+    timeline:
+      - effective_date: "2016-01-01"
+        annual_capacity_w_tons: 180.0
+        equity_ratio: 1.0
+        internal_conversion_ratio: 0.0
+        effective_tax_rate: 0.15
+        cost_tier: "lowest_alpha"
+        event: "中源化学桐柏与察汉淖尔老基地稳定运行，阿拉善尚未动工"
+      - effective_date: "2021-01-01"
+        annual_capacity_w_tons: 180.0
+        equity_ratio: 0.60
+        internal_conversion_ratio: 0.0
+        effective_tax_rate: 0.15
+        cost_tier: "lowest_alpha"
+        event: "启动阿拉善天然碱项目，设立博源银根矿业（持股60%）"
+      - effective_date: "2022-12-01"
+        annual_capacity_w_tons: 180.0
+        equity_ratio: 0.86
+        internal_conversion_ratio: 0.0
+        effective_tax_rate: 0.15
+        cost_tier: "lowest_alpha"
+        event: "完成重大资产重组受让银根矿业26%股权，持股升至86%"
+      - effective_date: "2023-06-28"
+        annual_capacity_w_tons: 330.0
+        equity_ratio: 0.86
+        internal_conversion_ratio: 0.0
+        effective_tax_rate: 0.15
+        cost_tier: "lowest_alpha"
+        event: "阿拉善一期1线（150万吨）投料试车成功，含桐柏老基地180万吨合计330万吨"
+      - effective_date: "2023-11-20"
+        annual_capacity_w_tons: 480.0
+        equity_ratio: 0.86
+        internal_conversion_ratio: 0.0
+        effective_tax_rate: 0.15
+        cost_tier: "lowest_alpha"
+        event: "阿拉善一期2线（150万吨）投料试车成功，有效产能增至480万吨"
+      - effective_date: "2024-01-22"
+        annual_capacity_w_tons: 580.0
+        equity_ratio: 0.86
+        internal_conversion_ratio: 0.0
+        effective_tax_rate: 0.15
+        cost_tier: "lowest_alpha"
+        event: "阿拉善一期3线（100万吨）投料试车成功，有效产能增至580万吨"
+      - effective_date: "2024-05-30"
+        annual_capacity_w_tons: 680.0
+        equity_ratio: 0.86
+        internal_conversion_ratio: 0.0
+        effective_tax_rate: 0.15
+        cost_tier: "lowest_alpha"
+        event: "阿拉善一期4线（100万吨）投料，一期500万吨全部投料试车，含桐柏老基地合计680万吨（权益比例统一按银根矿业86%口径，桐柏老基地为全资未单独拆分）"
+
+  - symbol: "000822.SZ"
+    name: "山东海化"
+    full_name: "山东海化股份有限公司"
+    process_type: "solvay_process"
+    location: "山东潍坊"
+    annual_capacity_w_tons: 280.0
+    equity_ratio: 1.0
+    internal_conversion_ratio: 0.0
+    cost_tier: "marginal_cost_floor"
+    effective_tax_rate: 0.25
+    cost_notes: "纯氨碱法边际成本晴雨表 (对应工艺侧 marginal_solvay_floor)，完全成本 1500~1650 元/吨，现金保本线 1350~1450 元/吨"
+    soda_product_keywords: ["纯碱"]
+    key_drivers: "原盐、石灰石、动力煤价格及沿海环保检修出清"
+    timeline:
+      - effective_date: "2016-01-01"
+        annual_capacity_w_tons: 280.0
+        equity_ratio: 1.0
+        internal_conversion_ratio: 0.0
+        effective_tax_rate: 0.25
+        cost_tier: "marginal_cost_floor"
+        event: "羊口盐场氨碱老装置，产能长期稳定在280万吨"
+
+  - symbol: "600328.SH"
+    name: "中盐化工"
+    full_name: "中盐内蒙古化工股份有限公司"
+    process_type: "solvay_and_hou"
+    location: "青海德令哈 / 内蒙古阿拉善"
+    annual_capacity_w_tons: 390.0
+    equity_ratio: 1.0
+    internal_conversion_ratio: 0.0
+    cost_tier: "marginal_state_owned"
+    effective_tax_rate: 0.15
+    cost_notes: "央企大产能代表 (混合氨碱与联碱工艺，边际产能之一)，拥有青海昆仑碱业、发投碱业基地，完全成本 1500~1700 元/吨"
+    soda_product_keywords: ["纯碱"]
+    key_drivers: "青海盐湖资源优势、出疆入关铁路运费运力与两钠业务协同"
+    timeline:
+      - effective_date: "2016-01-01"
+        annual_capacity_w_tons: 30.0
+        equity_ratio: 1.0
+        internal_conversion_ratio: 0.0
+        effective_tax_rate: 0.15
+        cost_tier: "marginal_state_owned"
+        event: "兰太实业时期，以金属钠与盐化为主，纯碱仅有小额附属装置"
+      - effective_date: "2019-12-25"
+        annual_capacity_w_tons: 390.0
+        equity_ratio: 1.0
+        internal_conversion_ratio: 0.0
+        effective_tax_rate: 0.15
+        cost_tier: "marginal_state_owned"
+        event: "重大资产重组注入昆仑碱业、发投碱业等，纯碱产能跃升至390万吨更名中盐化工"
+
+  - symbol: "600409.SH"
+    name: "三友化工"
+    full_name: "唐山三友化工股份有限公司"
+    process_type: "solvay_process"
+    location: "河北唐山"
+    annual_capacity_w_tons: 340.0
+    equity_ratio: 1.0
+    internal_conversion_ratio: 0.0
+    cost_tier: "integrated_cyclical"
+    effective_tax_rate: 0.15
+    cost_notes: "氨碱龙头之一，完全成本 1500~1650 元/吨；粘胶短纤、PVC、烧碱一体化循环经济"
+    soda_product_keywords: ["纯碱"]
+    key_drivers: "粘胶短纤与纯碱双轮驱动，环渤海原盐自给率"
+    timeline:
+      - effective_date: "2016-01-01"
+        annual_capacity_w_tons: 340.0
+        equity_ratio: 1.0
+        internal_conversion_ratio: 0.0
+        effective_tax_rate: 0.15
+        cost_tier: "integrated_cyclical"
+        event: "南堡开发区纯碱与粘胶短纤循环经济，产能长期稳定在340万吨"
+
+  - symbol: "000707.SZ"
+    name: "双环科技"
+    full_name: "湖北双环科技股份有限公司"
+    process_type: "hou_process"
+    location: "湖北应城"
+    annual_capacity_w_tons: 110.0
+    equity_ratio: 1.0
+    internal_conversion_ratio: 0.0
+    cost_tier: "hou_double_ton"
+    effective_tax_rate: 0.15
+    cost_notes: "联碱双吨利润代表，1吨纯碱+1吨氯化铵，双吨完全成本约 1500~1650 元/双吨（按副产氯化铵抵扣后折纯碱单吨净成本约 950~1100 元/吨）"
+    soda_product_keywords: ["纯碱", "联碱"]
+    key_drivers: "联碱节能升级改造、副产氯化铵（化肥）旺季溢价及华中两湖玻璃市场"
+    timeline:
+      - effective_date: "2016-01-01"
+        annual_capacity_w_tons: 110.0
+        equity_ratio: 1.0
+        internal_conversion_ratio: 0.0
+        effective_tax_rate: 0.15
+        cost_tier: "hou_double_ton"
+        event: "应城联碱双吨生产线，年产110万吨纯碱+110万吨氯化铵"
+      - effective_date: "2022-09-01"
+        annual_capacity_w_tons: 110.0
+        equity_ratio: 1.0
+        internal_conversion_ratio: 0.0
+        effective_tax_rate: 0.15
+        cost_tier: "hou_double_ton"
+        event: "联碱节能升级改造工程（水煤浆气化替代固定床），额定产能维持110万吨"

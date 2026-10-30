@@ -1,0 +1,79 @@
+# 苯乙烯 (EB) 核心上市公司画像配置库 (Styrene Company Universe)
+schema_version: 1
+title: "苯乙烯核心上市公司画像与工艺成本映射"
+description: "A 股大炼化与苯乙烯标的工艺路线、产能规模、成本阶梯与主营暴露度配置"
+
+default_commodity_code: "EB"
+default_commodity_name: "苯乙烯"
+vat_rate_default: 0.13
+
+companies:
+  - symbol: "600346.SH"
+    name: "恒力石化"
+    full_name: "恒力石化股份有限公司"
+    process_type: "ethylbenzene_dehydrogenation"
+    location: "辽宁大连"
+    annual_capacity_w_tons: 72.0
+    equity_ratio: 1.0
+    internal_conversion_ratio: 0.40  # 部分用于下游树脂自用
+    cost_tier: "lowest_alpha"
+    effective_tax_rate: 0.15
+    cost_notes: "大炼化芳烃与乙烯完全一体化自给，具备极低原料采购成本与公用工程协同"
+    soda_revenue_share_approx: 0.08
+    key_drivers: "大连长兴岛大炼化开工率、纯苯与乙烯自给率、聚酯与工程塑料下游协同"
+
+  - symbol: "002493.SZ"
+    name: "荣盛石化"
+    full_name: "荣盛石化股份有限公司"
+    process_type: "posm_and_dehydrogenation"
+    location: "浙江舟山"
+    annual_capacity_w_tons: 120.0
+    equity_ratio: 0.85
+    internal_conversion_ratio: 0.45
+    cost_tier: "lowest_alpha"
+    effective_tax_rate: 0.15
+    cost_notes: "浙石化 4000万吨炼化一体化配套超大苯乙烯装置，包含 POSM 联产"
+    soda_revenue_share_approx: 0.07
+    key_drivers: "浙石化综合裂解价差、纯苯外销平衡、沙特原油配额"
+
+  - symbol: "000059.SZ"
+    name: "华锦股份"
+    full_name: "北方华锦化学工业股份有限公司"
+    process_type: "ethylbenzene_dehydrogenation"
+    location: "辽宁盘锦"
+    annual_capacity_w_tons: 15.0
+    equity_ratio: 1.0
+    internal_conversion_ratio: 0.0
+    cost_tier: "marginal_cost_floor"
+    effective_tax_rate: 0.25
+    cost_notes: "传统石化纯外售标的，产能全额作为商品流向东北与华北市场，业绩弹性纯正"
+    soda_revenue_share_approx: 0.15
+    key_drivers: "盘锦炼化开工、华北下游 PS/EPS 需求、原油加工成本"
+
+  - symbol: "603225.SH"
+    name: "新凤鸣"
+    full_name: "新凤鸣集团股份有限公司"
+    process_type: "ethylbenzene_dehydrogenation"
+    location: "浙江平湖"
+    annual_capacity_w_tons: 60.0
+    equity_ratio: 1.0
+    internal_conversion_ratio: 0.30
+    cost_tier: "high_beta_elastic"
+    effective_tax_rate: 0.15
+    cost_notes: "独山能源配套苯乙烯项目，下游结合新材料与长丝，PB弹性显著"
+    soda_revenue_share_approx: 0.12
+    key_drivers: "独山能源二期装置平稳运行、长丝与化工品综合毛利"
+
+  - symbol: "002648.SZ"
+    name: "卫星化学"
+    full_name: "卫星化学股份有限公司"
+    process_type: "posm_coproduction"
+    location: "江苏连云港"
+    annual_capacity_w_tons: 60.0
+    equity_ratio: 1.0
+    internal_conversion_ratio: 0.35
+    cost_tier: "lowest_alpha"
+    effective_tax_rate: 0.15
+    cost_notes: "连云港石化乙烷裂解制乙烯，配套下游苯乙烯与综合聚合物，轻烃成本优势突出"
+    soda_revenue_share_approx: 0.10
+    key_drivers: "乙烷原料价格 (美湾 MB 价格)、连云港二期轻烃负荷、环氧丙烷联产溢价"

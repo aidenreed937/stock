@@ -1,0 +1,20 @@
+# 烧碱与 ECU 周期拐点门禁配置 (Caustic Soda & ECU Trading Gates)
+schema_version: 1
+symbol: "SH"
+product_name: "烧碱"
+
+gates:
+  cash_cost_floor_cny: 1700.0   # 离子膜折百现金保本底线
+  full_cost_ceiling_cny: 2100.0  # 离子膜折百完全成本平衡线
+  basis_backwardation_min_pct: 2.5 # 现货升水门禁
+  max_factory_inventory_w_tons: 65.0 # 厂库折百超 65 万吨触发高位累库警报
+
+target_universe_mapping:
+  alpha_leader:
+    - symbol: "600328.SH"
+      name: "中盐化工"
+      role_desc: "纯碱与氯碱双轮驱动，青海原盐与自备火电成本护城河"
+  beta_elastic:
+    - symbol: "600618.SH"
+      name: "氯碱化工"
+      role_desc: "华东老牌氯碱核心，上海化工区园区管道供氯协同，高利润弹性"

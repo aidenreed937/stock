@@ -1,0 +1,33 @@
+# 聚氨酯 (MDI / TDI) 核心上市公司画像配置库 (Polyurethane Company Universe)
+# 对应因果链第 5 环（企业会计盈利）与第 6 环（二级市场定价）
+schema_version: 1
+title: "聚氨酯核心上市公司画像与工艺成本映射"
+description: "A 股聚氨酯核心生产商工艺路线、产能规模、成本阶梯与主营暴露度配置"
+
+default_commodity_code: "MDI"
+default_commodity_name: "聚合与纯MDI"
+vat_rate_default: 0.13
+
+companies:
+  - symbol: "600309.SH"
+    name: "万华化学"
+    full_name: "万华化学集团股份有限公司"
+    process_type: "gas_phase_phosgene"
+    location: "山东烟台 / 广东湛江 / 福建福清 / 匈牙利宝思德"
+    annual_capacity_w_tons: 350.0
+    equity_ratio: 1.0
+    internal_conversion_ratio: 0.05
+    cost_tier: "global_oligopoly_leader"
+    effective_tax_rate: 0.15
+    cost_notes: "全球聚氨酯绝对龙头，光气化技术壁垒与一体化极致成本，全行业成本曲线最左侧"
+    mdi_revenue_share_approx: 0.35
+    key_drivers: "烟台与福建 MDI 技改扩产、湛江乙烯二期原料协同、海外欧洲装置不可抗力与寡头月度挂牌价控盘"
+    products:
+      - commodity_code: "TDI"
+        commodity_name: "甲苯二异氰酸酯"
+        annual_capacity_w_tons: 65.0
+        equity_ratio: 1.0
+        internal_conversion_ratio: 0.0
+        cost_advantage_tier: "global_oligopoly_leader"
+        effective_tax_rate: 0.15
+        notes: "烟台与福建基地 TDI 龙头，全球市占率领先"

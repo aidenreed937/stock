@@ -1,0 +1,48 @@
+# 纯碱 (Soda Ash / SA) 全景基本面对账管线配置
+#
+# 对应数据底座：
+#   - NBS 官方月度产量（纯碱/下游平板玻璃，RAW 标准化 CSV，含同比）
+#   - GACC 海关出口（Curated parquet，8 位税号 28362000 / soda_ash）
+#   - 郑商所 CZCE 注册仓单、主力龙虎榜、主力连续（Curated parquet）
+#   - 隆众/生意社周度厂库、开工率、出货率与 100ppi 现货基准（Curated parquet）
+#   - 成本配置模型 config/industry/chemicals/soda_ash/cost_models.yaml (品种级唯一维护源)
+# 产物：ArtifactStore 落盘 data/analytics/soda_ash/runs/... + latest + manifest.json
+
+schema_version: 1
+title: "纯碱 (Soda Ash / SA) 全景基本面对账研报"
+artifact_root: "data/analytics/soda_ash"
+
+inputs:
+  capacity_projects: "config/industry/chemicals/soda_ash/capacity_projects.yaml"
+  trading_gates: "config/industry/chemicals/soda_ash/trading_gates.yaml"
+  cost_models: "config/industry/chemicals/soda_ash/cost_models.yaml"
+  nbs_soda_ash_csv: "data/raw/industry/chemicals/nbs/nbs_soda_ash_monthly.csv"
+  nbs_plate_glass_csv: "data/raw/industry/chemicals/nbs/nbs_plate_glass_monthly.csv"
+  customs_trade_dataset: "customs_trade_gacc"
+  customs_trade_fallback: "customs_trade"
+  futures_inventory_dataset: "futures_inventory"
+  futures_hold_rank_dataset: "futures_hold_rank"
+  futures_daily_dataset: "futures_daily"
+  chemical_spreads_dataset: "chemical_spreads"
+  chemical_weekly_survey_dataset: "chemical_weekly_survey"
+  chemical_spot_price_dataset: "chemical_spot_price"
+  company_panel_dataset: "mart/soda_ash_company_panel"
+
+# 中游蓄水池状态机阈值（延续 MVP 版本口径）
+regime:
+  basis_speculative_cny: -40.0        # 现货-期货基差低于该值视为深度升水
+  receipt_speculative_delta: 200.0    # 月度仓单增量高于该值视为仓单逆势累积
+  destocking_shipment_rate: 99.0      # 出货率 >= 该值视为去库
+  passive_shipment_rate: 97.0         # 出货率 < 该值视为下游谨慎
+  balanced_shipment_min: 95.0
+  balanced_shipment_max: 103.0
+  active_destocking_operating_rate: 75.0
+  delta_inv_epsilon: 0.01
+
+# 历史周期大拐点检测（报告第四节，数据驱动）
+history:
+  high_profit_margin: 800.0          # 双吨理论利润 >= 该值视为高利润顶区（数值回退口径）
+  deep_loss_margin: -200.0           # 双吨理论利润 <= 该值视为深度亏损底区（数值回退口径）
+  min_episode_months: 2              # 连续月份数下限
+  max_episodes: 6                    # 报告最多渲染的拐点期数
+  follow_up_months: 3                # 拐点后观察窗口（月）

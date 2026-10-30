@@ -1,0 +1,20 @@
+# 尿素量化交易与周期拐点门禁配置 (Urea Trading Gates)
+schema_version: 1
+symbol: "UR"
+product_name: "尿素"
+
+gates:
+  cash_cost_floor_cny: 1750.0   # 固定床现金保本底线
+  full_cost_ceiling_cny: 2050.0  # 固定床完全成本平衡线
+  basis_backwardation_min_pct: 3.0 # 右侧反转需现货升水 > 3%
+  max_factory_inventory_w_tons: 120.0 # 厂库超 120 万吨触发高位累库预警
+
+target_universe_mapping:
+  alpha_leader:
+    - symbol: "600426.SH"
+      name: "华鲁恒升"
+      role_desc: "先进煤气化平台成本龙头，极低现金保本线，周期左侧抗亏首选"
+  beta_elastic:
+    - symbol: "600691.SH"
+      name: "阳煤化工"
+      role_desc: "传统固定床代表，高成本高弹性标的，右侧价格弹性最大"

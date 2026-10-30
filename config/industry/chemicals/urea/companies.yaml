@@ -1,0 +1,65 @@
+# 尿素核心上市公司画像配置库 (Urea Company Universe)
+schema_version: 1
+title: "尿素核心上市公司画像与工艺成本映射"
+description: "A 股主流尿素标的工艺路线、产能规模、成本阶梯与主营暴露度配置"
+
+default_commodity_code: "UR"
+default_commodity_name: "尿素"
+vat_rate_default: 0.13
+
+companies:
+  - symbol: "600426.SH"
+    name: "华鲁恒升"
+    full_name: "山东华鲁恒升化工股份有限公司"
+    process_type: "entrained_flow_coal"
+    location: "山东德州 / 湖北荆州"
+    annual_capacity_w_tons: 320.0
+    equity_ratio: 1.0
+    internal_conversion_ratio: 0.20
+    cost_tier: "lowest_alpha"
+    effective_tax_rate: 0.15
+    cost_notes: "水煤浆气化煤制尿素标杆，平台化成本极低，享有深厚抗亏护城河"
+    soda_revenue_share_approx: 0.25
+    key_drivers: "荆州基地二期释放、煤炭长协与多喷嘴水煤浆高效转化"
+
+  - symbol: "600691.SH"
+    name: "阳煤化工"
+    full_name: "阳煤化工股份有限公司"
+    process_type: "fixed_bed_coal"
+    location: "山西阳泉"
+    annual_capacity_w_tons: 200.0
+    equity_ratio: 1.0
+    internal_conversion_ratio: 0.0
+    cost_tier: "marginal_cost_floor"
+    effective_tax_rate: 0.25
+    cost_notes: "华北传统固定床代表，完全成本在行业高位，为高弹性 Beta 标的"
+    soda_revenue_share_approx: 0.45
+    key_drivers: "无烟煤价格、晋冀鲁豫环保限产与春耕淡季储备"
+
+  - symbol: "600989.SH"
+    name: "宝丰能源"
+    full_name: "宁夏宝丰能源集团股份有限公司"
+    process_type: "entrained_flow_coal"
+    location: "宁夏宁东 / 内蒙古鄂尔多斯"
+    annual_capacity_w_tons: 150.0
+    equity_ratio: 1.0
+    internal_conversion_ratio: 0.0
+    cost_tier: "lowest_alpha"
+    effective_tax_rate: 0.15
+    cost_notes: "自备煤矿与现代大型煤化工园区，尿素为甲醇/烯烃副产协同链条"
+    soda_revenue_share_approx: 0.10
+    key_drivers: "自备煤矿坑口煤价与大型气化炉装置规模效应"
+
+  - symbol: "000830.SZ"
+    name: "鲁西化工"
+    full_name: "鲁西化工集团股份有限公司"
+    process_type: "entrained_flow_coal"
+    location: "山东聊城"
+    annual_capacity_w_tons: 100.0
+    equity_ratio: 1.0
+    internal_conversion_ratio: 0.30
+    cost_tier: "middle_advanced"
+    effective_tax_rate: 0.15
+    cost_notes: "大型多元化化工园区，尿素自用复合肥比例较高"
+    soda_revenue_share_approx: 0.12
+    key_drivers: "央企中化集团协同、园区循环经济与精细化学品延伸"

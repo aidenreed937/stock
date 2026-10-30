@@ -1,0 +1,20 @@
+# 对二甲苯 (PX) 量化交易与周期拐点门禁配置 (Paraxylene Trading Gates)
+schema_version: 1
+symbol: "PX"
+product_name: "对二甲苯"
+
+gates:
+  cash_cost_floor_cny: 7700.0    # 先进大炼化现金保本出清底线
+  full_cost_ceiling_cny: 8500.0  # 行业完全成本平衡线
+  crack_spread_min_usd: 260.0    # 国际 PX-石脑油裂解保本底线
+  basis_backwardation_min_pct: 2.0
+
+target_universe_mapping:
+  alpha_leader:
+    - symbol: "002493.SZ"
+      name: "荣盛石化"
+      role_desc: "全球最大单体 PX 炼化基地，拥有最强原料保供与炼化综合抗风险能力"
+  beta_elastic:
+    - symbol: "000301.SZ"
+      name: "东方盛虹"
+      role_desc: "炼化新巨头，高负债高杠杆运行，PX 裂解差每走阔 50 美元对应 EPS 弹性最大"

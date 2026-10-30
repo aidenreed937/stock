@@ -1,0 +1,76 @@
+# 尿素产业链生产工艺理论成本与利润模型配置 (Urea Cost & Margin Models)
+# 涵盖固定床边际出清线、水煤浆新型烟煤法先进龙头与天然气制气头调峰
+
+schema_version: 1
+product_name: "尿素"
+symbol: "UR"
+unit: "元/吨"
+version: "1.0.0"
+updated_at: "2026-09-21"
+
+models:
+  fixed_bed_coal:
+    name: "传统固定床煤制尿素 (无烟块煤 - 高成本边际出清线)"
+    product_name: "尿素"
+    symbol: "UR"
+    valid_from: "2020-01-01"
+    valid_to: "9999-12-31"
+    description: "以无烟块煤为原料，高单耗高环保压力，构成行业边际成本支撑"
+    national_capacity_share: 0.40
+    cost_tier: "marginal_fixed_bed_floor"
+    coefficients:
+      product: 1.0           # 尿素 (吨)
+      anthracite_coal: 1.15  # 无烟煤消耗 (吨)
+      thermal_coal: 0.35     # 动力煤消耗 (吨)
+      electricity_kwh: 900.0 # 综合电耗 (度)
+    fixed_cost: 420.0        # 人工、折旧、辅料等固定加工费 (元/吨)
+    cash_fixed_cost: 280.0   # 现金保本固定加工费 (元/吨)
+    full_cost_approx: 2050.0 # 行业完全成本边际线 (元/吨)
+    cash_cost_approx: 1750.0 # 现金保本边际出清底线 (元/吨)
+    formula: "urea_price - (1.15 * anthracite_price + 0.35 * coal_price + 900 * power_price) - fixed_cost"
+
+  entrained_flow_coal:
+    name: "新型水煤浆/航天炉气化煤制尿素 (烟煤/粉煤 - 先进 Alpha 龙头)"
+    product_name: "尿素"
+    symbol: "UR"
+    valid_from: "2020-01-01"
+    valid_to: "9999-12-31"
+    description: "以廉价烟煤为原料，多喷嘴水煤浆气化，代表企业华鲁恒升、宝丰能源"
+    national_capacity_share: 0.35
+    cost_tier: "lowest_alpha"
+    coefficients:
+      product: 1.0           # 尿素 (吨)
+      bituminous_coal: 1.20  # 烟煤原料消耗 (吨)
+      thermal_coal: 0.25     # 燃料动力煤 (吨)
+      electricity_kwh: 550.0 # 电耗 (度)
+    fixed_cost: 350.0        # 固定加工成本 (元/吨)
+    cash_fixed_cost: 220.0   # 现金固定加工成本 (元/吨)
+    full_cost_approx: 1600.0 # 先进完全成本基准 (元/吨)
+    cash_cost_approx: 1350.0 # 先进现金保本基准 (元/吨)
+    formula: "urea_price - (1.20 * bituminous_price + 0.25 * coal_price + 550 * power_price) - fixed_cost"
+
+  natural_gas_to_urea:
+    name: "天然气制尿素 (气头 - 西南/西北季节性调峰)"
+    product_name: "尿素"
+    symbol: "UR"
+    valid_from: "2020-01-01"
+    valid_to: "9999-12-31"
+    description: "以天然气为原料，冬季采暖期面临限气停产调峰"
+    national_capacity_share: 0.25
+    cost_tier: "middle_gas_peaking"
+    coefficients:
+      product: 1.0           # 尿素 (吨)
+      natural_gas_m3: 650.0  # 天然气 (立方米)
+      electricity_kwh: 400.0 # 综合电耗 (度)
+    fixed_cost: 320.0        # 固定加工成本 (元/吨)
+    cash_fixed_cost: 200.0   # 现金固定成本 (元/吨)
+    full_cost_approx: 1800.0 # 完全成本 (元/吨)
+    cash_cost_approx: 1500.0 # 现金成本 (元/吨)
+    formula: "urea_price - (650 * gas_price + 400 * power_price) - fixed_cost"
+
+regime_thresholds:
+  super_profit: 600.0       # 加工差 > 600 元/吨: 极度超额利润，警惕高开工与新增投产
+  high_profit: 350.0        # 加工差 350~600 元/吨: 景气高位
+  profitable: 100.0         # 加工差 100~350 元/吨: 正常盈利
+  marginal_loss: -150.0     # 加工差 -150~100 元/吨: 跌破固定床完全成本，行业微亏
+  deep_loss: -300.0         # 加工差 < -300 元/吨: 击穿现金保本线 1750，倒逼集中停产

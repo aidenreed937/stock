@@ -1,0 +1,65 @@
+# 玻璃产业链生产工艺理论成本与利润模型配置 (Glass Cost & Margin Models)
+# 模块高内聚配置：涵盖浮法平板玻璃 (建筑/汽车原片) 与超白光伏压延玻璃 (组件封装基片)
+
+schema_version: 1
+product_name: "平板玻璃与光伏压延玻璃"
+symbols: ["FG", "PVG"]
+unit: "元/吨"
+version: "1.0.0"
+updated_at: "2026-10-10"
+
+models:
+  float_glass:
+    name: "浮法平板玻璃 (标准5mm原片)"
+    symbol: "FG"
+    unit_product: "元/吨"
+    box_to_ton_ratio: 0.05    # 1 重量箱 = 50kg = 0.05 吨 (20 重量箱 = 1 吨)
+    sqm_to_ton_5mm: 0.0125    # 5mm 玻璃 1 ㎡ 约 12.5kg = 0.0125 吨 (80 ㎡ = 1 吨)
+    fixed_cost: 320.0         # 制造人工、折旧、设备维保与间接加工费 (元/吨)
+    cash_fixed_cost: 160.0    # 现金加工费 (剔除固定资产折旧)
+    freight_cost: 60.0        # 平均区域短倒运费
+    # 物理化学配比单耗 (1 吨浮法原片产出消耗):
+    coefficients:
+      soda_ash: 0.20          # 重质纯碱 (吨)
+      silica_sand: 0.72       # 普通石英砂 (吨)
+      dolomite: 0.18          # 白云石 (吨)
+      limestone: 0.05         # 石灰石 (吨)
+      fuel_natural_gas_m3: 210.0 # 管道天然气 (Nm³) 或等热值石油焦 160kg
+    timeline:
+      - valid_from: "2020-01-01"
+        valid_to: "9999-12-31"
+        cost_tier: "standard_float"
+        fixed_cost: 320.0
+        cash_fixed_cost: 160.0
+
+  pv_glass:
+    name: "超白光伏压延镀膜玻璃 (2.0mm/3.2mm)"
+    symbol: "PVG"
+    unit_product: "元/㎡"
+    sqm_to_ton_2_0mm: 0.005   # 2.0mm 玻璃 1 ㎡ 约 5.0kg (200 ㎡ = 1 吨)
+    sqm_to_ton_3_2mm: 0.008   # 3.2mm 玻璃 1 ㎡ 约 8.0kg (125 ㎡ = 1 吨)
+    fixed_cost_sqm_2mm: 4.8   # 2.0mm 镀膜钢化加工与固定费用 (元/㎡)
+    cash_fixed_cost_sqm_2mm: 2.5 # 2.0mm 现金加工费 (元/㎡)
+    coefficients_per_ton:
+      soda_ash: 0.22          # 重质纯碱 (吨)
+      low_iron_sand: 0.78     # 低铁超白石英砂 (吨)
+      fuel_gas_m3: 240.0      # 天然气耗量 (Nm³/吨，要求更高温纯净)
+    timeline:
+      - valid_from: "2021-01-01"
+        valid_to: "9999-12-31"
+        cost_tier: "alpha_pv_glass"
+        cash_cost_2mm_floor: 11.5 # 龙头现金保本线参考 (元/㎡)
+        full_cost_2mm_ref: 13.8   # 行业平均完全成本参考 (元/㎡)
+
+# 利润状态机区间划分 (Float Glass 单吨利润与 PV Glass 单平毛利)
+regime_thresholds:
+  float_glass:
+    high_profit: 300.0        # 单吨利润 >= 300 元/吨 为高利润超额暴利
+    profitable: 50.0          # 50~300 元/吨 为正常盈利
+    near_breakeven: -100.0    # -100~50 元/吨 为保本边缘
+    deep_loss: -300.0         # <= -100 元/吨 跌穿边际现金保本线进入深度失血
+  pv_glass_2mm:
+    high_profit: 3.5          # 单平毛利 >= 3.5 元/㎡
+    profitable: 1.0           # 单平毛利 1.0~3.5 元/㎡
+    near_breakeven: -0.5      # 单平毛利 -0.5~1.0 元/㎡
+    deep_loss: -1.5           # <= -0.5 元/㎡ (现货 <= 12 元/㎡ 时二三线大面积失血)

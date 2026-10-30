@@ -1,0 +1,449 @@
+# 玻璃 (Glass / FG & PVG) 重大窑炉产能与冷修种子库 (Furnace Capacity & Cold Repair Database)
+# 数据源: 上市公司公告 (601636 旗滨集团、601865 福莱特、000012 南玻A) + 中国建筑玻璃与工业玻璃协会披露
+# 用途: 跟踪浮法与光伏压延玻璃有效在产日熔量 (T/D) 物理释放与冷修减产日历
+
+metadata:
+  product_name: "平板玻璃与光伏压延玻璃"
+  symbols: ["FG", "PVG"]
+  unit: "吨/天 (T/D)"
+  version: "1.0.0"
+
+furnaces:
+  # -------------------------------------------------------------
+  # 旗滨集团 (601636.SH) - 浮法原片与光伏生产线
+  # -------------------------------------------------------------
+  - furnace_id: "KB_LILING_L1"
+    company: "旗滨集团"
+    symbol: "601636.SH"
+    location: "湖南醴陵"
+    line_name: "醴陵基地一线"
+    process_type: "float_glass"
+    capacity_t_d: 600.0
+    status: "cold_repair"
+    announcement_date: "2026-06-10"
+    cold_repair_date: "2026-07-01"
+    actual_start: null
+    notes: "老旧浮法窑炉窑龄满8年，在行业现金亏损期主动放水冷修停产"
+    source: "公司投资者关系互动平台及产能置换公告"
+    confidence: "A"
+
+  - furnace_id: "KB_LILING_L2"
+    company: "旗滨集团"
+    symbol: "601636.SH"
+    location: "湖南醴陵"
+    line_name: "醴陵基地二线"
+    process_type: "float_glass"
+    capacity_t_d: 800.0
+    status: "operating"
+    announcement_date: "2018-05-15"
+    actual_start: "2018-10-20"
+    notes: "优质浮法建筑玻璃生产线"
+    source: "公司定期报告披露"
+    confidence: "A"
+
+  - furnace_id: "KB_ZHANGZHOU_L1"
+    company: "旗滨集团"
+    symbol: "601636.SH"
+    location: "福建漳州"
+    line_name: "漳州基地海港线"
+    process_type: "float_glass"
+    capacity_t_d: 1000.0
+    status: "operating"
+    announcement_date: "2019-03-20"
+    actual_start: "2019-11-12"
+    notes: "超大超白浮法玻璃生产线，临港码头成本优势突出"
+    source: "公司定期报告披露"
+    confidence: "A"
+
+  - furnace_id: "KB_CHENZHOU_PV1"
+    company: "旗滨集团 (湖南旗滨光能)"
+    symbol: "601636.SH"
+    location: "湖南郴州"
+    line_name: "郴州光伏一期线"
+    process_type: "pv_glass"
+    capacity_t_d: 1200.0
+    status: "operating"
+    announcement_date: "2021-04-12"
+    actual_start: "2022-09-28"
+    notes: "超白光伏压延玻璃基片生产线"
+    source: "巨潮资讯/公司投产公告"
+    confidence: "A"
+
+  - furnace_id: "KB_NINGHAI_PV2"
+    company: "旗滨集团 (浙江旗滨光能)"
+    symbol: "601636.SH"
+    location: "浙江宁海"
+    line_name: "宁海光伏二期线"
+    process_type: "pv_glass"
+    capacity_t_d: 1200.0
+    status: "under_construction"
+    announcement_date: "2023-08-18"
+    expected_start: "2027-06-30"
+    notes: "受光伏组件排产与组件价格影响，新线点火延期"
+    source: "巨潮资讯/项目建设进展公告"
+    confidence: "B"
+
+  # -------------------------------------------------------------
+  # 福莱特 (601865.SH) - 超白光伏压延玻璃大窑炉
+  # -------------------------------------------------------------
+  - furnace_id: "FL_JIAXING_F1"
+    company: "福莱特"
+    symbol: "601865.SH"
+    location: "浙江嘉兴"
+    line_name: "嘉兴总部特种光伏线"
+    process_type: "pv_glass"
+    capacity_t_d: 1000.0
+    status: "operating"
+    announcement_date: "2020-03-15"
+    actual_start: "2021-02-18"
+    notes: "高品质超薄光伏镀膜基片"
+    source: "巨潮资讯/公司投产公告"
+    confidence: "A"
+
+  - furnace_id: "FL_FENGYANG_F3"
+    company: "福莱特"
+    symbol: "601865.SH"
+    location: "安徽凤阳"
+    line_name: "凤阳三期1线"
+    process_type: "pv_glass"
+    capacity_t_d: 1200.0
+    status: "operating"
+    announcement_date: "2021-06-25"
+    actual_start: "2022-06-01"
+    notes: "凤阳石英砂矿配套超大型光伏窑炉，单耗行业最低"
+    source: "巨潮资讯/公司定期报告"
+    confidence: "A"
+
+  - furnace_id: "FL_FENGYANG_F4"
+    company: "福莱特"
+    symbol: "601865.SH"
+    location: "安徽凤阳"
+    line_name: "凤阳三期2线"
+    process_type: "pv_glass"
+    capacity_t_d: 1200.0
+    status: "operating"
+    announcement_date: "2021-06-25"
+    actual_start: "2022-10-15"
+    notes: "1200T/D 超大窑炉"
+    source: "巨潮资讯/公司定期报告"
+    confidence: "A"
+
+  - furnace_id: "FL_NANTONG_F1"
+    company: "福莱特"
+    symbol: "601865.SH"
+    location: "江苏南通"
+    line_name: "南通大型光伏窑炉1线"
+    process_type: "pv_glass"
+    capacity_t_d: 1200.0
+    status: "operating"
+    announcement_date: "2022-08-30"
+    actual_start: "2024-03-10"
+    notes: "南通临港超大型光伏玻璃窑炉"
+    source: "巨潮资讯/公司投产公告"
+    confidence: "A"
+
+  - furnace_id: "FL_NANTONG_F2"
+    company: "福莱特"
+    symbol: "601865.SH"
+    location: "江苏南通"
+    line_name: "南通大型光伏窑炉2线"
+    process_type: "pv_glass"
+    capacity_t_d: 1200.0
+    status: "under_construction"
+    announcement_date: "2022-08-30"
+    expected_start: "2027-03-31"
+    notes: "新建规划产线，按听证会与市场供需节奏暂缓点火"
+    source: "公司最新项目进展披露"
+    confidence: "B"
+
+  # -------------------------------------------------------------
+  # 南玻A (000012.SZ) - 综合浮法与光伏产线
+  # -------------------------------------------------------------
+  - furnace_id: "CSG_WUJIANG_L1"
+    company: "南玻A"
+    symbol: "000012.SZ"
+    location: "江苏吴江"
+    line_name: "吴江浮法1线"
+    process_type: "float_glass"
+    capacity_t_d: 600.0
+    status: "cold_repair"
+    announcement_date: "2026-05-18"
+    cold_repair_date: "2026-06-20"
+    actual_start: null
+    notes: "窑龄到期计划性冷修"
+    source: "巨潮资讯/公司公告"
+    confidence: "A"
+
+  # -------------------------------------------------------------
+  # 信义光能 (00968.HK) - 全球最大光伏压延玻璃基地与出海窑炉
+  # -------------------------------------------------------------
+  - furnace_id: "XY_WUHU_F1"
+    company: "信义光能"
+    symbol: "00968.HK"
+    location: "安徽芜湖"
+    line_name: "芜湖超白光伏压延线"
+    process_type: "pv_glass"
+    capacity_t_d: 1000.0
+    status: "operating"
+    announcement_date: "2019-10-15"
+    actual_start: "2020-06-28"
+    notes: "芜湖基地核心千吨级压延光伏玻璃产线"
+    source: "信义光能港股定期报告及业绩推介披露"
+    confidence: "A"
+
+  - furnace_id: "XY_BEIHAI_F1"
+    company: "信义光能"
+    symbol: "00968.HK"
+    location: "广西北海"
+    line_name: "北海铁山港光伏一线"
+    process_type: "pv_glass"
+    capacity_t_d: 1200.0
+    status: "operating"
+    announcement_date: "2020-08-20"
+    actual_start: "2021-12-10"
+    notes: "华南及东南亚辐射核心港口基地，配套自有优质石英砂资源"
+    source: "信义光能港股定期报告披露"
+    confidence: "A"
+
+  - furnace_id: "XY_MALAYSIA_F1"
+    company: "信义光能 (海外出海)"
+    symbol: "00968.HK"
+    location: "马来西亚马六甲"
+    line_name: "马六甲海外光伏一线"
+    process_type: "pv_glass"
+    capacity_t_d: 1200.0
+    status: "operating"
+    announcement_date: "2016-12-01"
+    actual_start: "2018-05-15"
+    notes: "海外首座大型超白光伏压延窑炉，直接供货东南亚及欧美组件，有效规避双反关税"
+    source: "信义光能海外投资项目公告"
+    confidence: "A"
+
+  # -------------------------------------------------------------
+  # 信义玻璃 (00868.HK) - 优质浮法原片与汽车玻璃基片
+  # -------------------------------------------------------------
+  - furnace_id: "XYG_JIANGMEN_L1"
+    company: "信义玻璃"
+    symbol: "00868.HK"
+    location: "广东江门"
+    line_name: "江门高品质浮法原片线"
+    process_type: "float_glass"
+    capacity_t_d: 900.0
+    status: "operating"
+    announcement_date: "2017-04-10"
+    actual_start: "2018-03-20"
+    notes: "华南汽车玻璃原片与建筑节能玻璃配套窑炉"
+    source: "信义玻璃港股定期报告披露"
+    confidence: "A"
+
+  - furnace_id: "XYG_DONGGUAN_L2"
+    company: "信义玻璃"
+    symbol: "00868.HK"
+    location: "广东东莞"
+    line_name: "东莞浮法二线"
+    process_type: "float_glass"
+    capacity_t_d: 800.0
+    status: "operating"
+    announcement_date: "2015-08-12"
+    actual_start: "2016-04-15"
+    notes: "老牌基地优质浮法原片线，窑龄较长"
+    source: "信义玻璃定期报告"
+    confidence: "A"
+
+  # -------------------------------------------------------------
+  # 福莱特 (601865.SH) - 扩充出海越南基地与凤阳核心主力产线
+  # -------------------------------------------------------------
+  - furnace_id: "FL_VIETNAM_F1"
+    company: "福莱特 (海外出海)"
+    symbol: "601865.SH"
+    location: "越南海防"
+    line_name: "海防海外光伏一线"
+    process_type: "pv_glass"
+    capacity_t_d: 1000.0
+    status: "operating"
+    announcement_date: "2018-11-20"
+    actual_start: "2020-11-15"
+    notes: "海外核心出海窑炉，直接供货海外光伏组件厂，享受关税豁免溢价"
+    source: "公司定期报告及业绩说明会披露"
+    confidence: "A"
+
+  - furnace_id: "FL_VIETNAM_F2"
+    company: "福莱特 (海外出海)"
+    symbol: "601865.SH"
+    location: "越南海防"
+    line_name: "海防海外光伏二线"
+    process_type: "pv_glass"
+    capacity_t_d: 1000.0
+    status: "operating"
+    announcement_date: "2019-06-18"
+    actual_start: "2021-03-28"
+    notes: "越南海防二期千吨级光伏压延线"
+    source: "公司定期报告披露"
+    confidence: "A"
+
+  - furnace_id: "FL_FENGYANG_F1"
+    company: "福莱特"
+    symbol: "601865.SH"
+    location: "安徽凤阳"
+    line_name: "凤阳一期千吨线"
+    process_type: "pv_glass"
+    capacity_t_d: 1000.0
+    status: "operating"
+    announcement_date: "2018-01-15"
+    actual_start: "2019-06-18"
+    notes: "凤阳石英砂基地早期大型超白压延产线"
+    source: "公司定期报告披露"
+    confidence: "A"
+
+  # -------------------------------------------------------------
+  # 信义光能 (00968.HK) - 扩充芜湖、天津与张家港主力产线
+  # -------------------------------------------------------------
+  - furnace_id: "XY_WUHU_F2"
+    company: "信义光能"
+    symbol: "00968.HK"
+    location: "安徽芜湖"
+    line_name: "芜湖超白压延二线"
+    process_type: "pv_glass"
+    capacity_t_d: 1000.0
+    status: "operating"
+    announcement_date: "2020-04-10"
+    actual_start: "2021-01-18"
+    notes: "芜湖核心基地千吨级光伏窑炉"
+    source: "信义光能定期报告"
+    confidence: "A"
+
+  - furnace_id: "XY_TIANJIN_F1"
+    company: "信义光能"
+    symbol: "00968.HK"
+    location: "天津"
+    line_name: "天津光伏一线"
+    process_type: "pv_glass"
+    capacity_t_d: 1000.0
+    status: "operating"
+    announcement_date: "2021-03-20"
+    actual_start: "2022-04-10"
+    notes: "北方辐射核心压延产线"
+    source: "信义光能定期报告"
+    confidence: "A"
+
+  # -------------------------------------------------------------
+  # 旗滨集团 (601636.SH) - 扩充河源与绍兴浮法主力基地
+  # -------------------------------------------------------------
+  - furnace_id: "KB_HEYUAN_L1"
+    company: "旗滨集团"
+    symbol: "601636.SH"
+    location: "广东河源"
+    line_name: "河源浮法一线"
+    process_type: "float_glass"
+    capacity_t_d: 900.0
+    status: "operating"
+    announcement_date: "2016-08-15"
+    actual_start: "2017-06-20"
+    notes: "华南优质建筑浮法线，窑龄约9年，面临冷修窗口"
+    source: "公司定期报告披露"
+    confidence: "A"
+
+  - furnace_id: "KB_SHAOXING_L1"
+    company: "旗滨集团"
+    symbol: "601636.SH"
+    location: "浙江绍兴"
+    line_name: "绍兴节能原片一线"
+    process_type: "float_glass"
+    capacity_t_d: 800.0
+    status: "operating"
+    announcement_date: "2017-03-12"
+    actual_start: "2018-01-10"
+    notes: "华东高端建筑节能玻璃原片配套线"
+    source: "公司定期报告披露"
+    confidence: "A"
+
+  # -------------------------------------------------------------
+  # 金晶科技 (600586.SH) - 超白浮法与光伏轻质基片产线
+  # -------------------------------------------------------------
+  - furnace_id: "JJ_ZIBO_L1"
+    company: "金晶科技"
+    symbol: "600586.SH"
+    location: "山东淄博"
+    line_name: "淄博超白原片一线"
+    process_type: "float_glass"
+    capacity_t_d: 600.0
+    status: "operating"
+    announcement_date: "2016-05-10"
+    actual_start: "2017-04-20"
+    notes: "国内老牌超白浮法原片生产线，窑龄已达9年"
+    source: "公司定期报告披露"
+    confidence: "A"
+
+  - furnace_id: "JJ_NINGXIA_PV1"
+    company: "金晶科技"
+    symbol: "600586.SH"
+    location: "宁夏中卫"
+    line_name: "中卫轻质压延一线"
+    process_type: "pv_glass"
+    capacity_t_d: 600.0
+    status: "operating"
+    announcement_date: "2020-07-15"
+    actual_start: "2021-08-10"
+    notes: "西北地面光伏电站配套产线"
+    source: "公司公告"
+    confidence: "A"
+
+  # -------------------------------------------------------------
+  # 二三线出清哨兵窑炉 (高成本尾部企业，冷修与现金流断裂风向标)
+  # -------------------------------------------------------------
+  - furnace_id: "KS_HEFEI_PV1"
+    company: "凯盛新能 (二线哨兵)"
+    symbol: "600876.SH"
+    location: "安徽合肥"
+    line_name: "合肥光伏一线"
+    process_type: "pv_glass"
+    capacity_t_d: 650.0
+    status: "cold_repair"
+    announcement_date: "2026-04-15"
+    cold_repair_date: "2026-05-10"
+    actual_start: null
+    notes: "小吨位高成本窑炉，在严重亏损与高库存压力下被迫放水冷修"
+    source: "上市公司定期报告及减产公告"
+    confidence: "A"
+
+  - furnace_id: "KS_LUOYANG_PV2"
+    company: "凯盛新能 (二线哨兵)"
+    symbol: "600876.SH"
+    location: "河南洛阳"
+    line_name: "洛阳超白压延线"
+    process_type: "pv_glass"
+    capacity_t_d: 650.0
+    status: "operating"
+    announcement_date: "2019-09-10"
+    actual_start: "2020-08-15"
+    notes: "二线高成本小窑炉，当前处于现金流深度亏损死扛状态"
+    source: "公司公告及行业调研"
+    confidence: "B"
+
+  - furnace_id: "AC_ANYANG_PV1"
+    company: "安彩高科 (二线哨兵)"
+    symbol: "600207.SH"
+    location: "河南安阳"
+    line_name: "安阳光伏压延一线"
+    process_type: "pv_glass"
+    capacity_t_d: 900.0
+    status: "operating"
+    announcement_date: "2021-02-28"
+    actual_start: "2022-03-15"
+    notes: "缺乏自有砂矿配套，在当前 12 元价格下持续失血，濒危冷修观察哨"
+    source: "巨潮资讯/公司披露"
+    confidence: "B"
+
+  - furnace_id: "CH_YANAN_PV1"
+    company: "彩虹新能源 (二线哨兵)"
+    symbol: "00438.HK"
+    location: "陕西延安"
+    line_name: "延安超白光伏线"
+    process_type: "pv_glass"
+    capacity_t_d: 800.0
+    status: "operating"
+    announcement_date: "2020-11-10"
+    actual_start: "2021-12-20"
+    notes: "内陆二线高运费窑炉，面临极大现金流周转压力"
+    source: "港股公告及行业跟踪"
+    confidence: "B"

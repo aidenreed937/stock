@@ -1,0 +1,107 @@
+# PTA 与聚酯产业链核心上市公司画像配置库 (PTA Company Universe)
+# 对应因果链第 5 环（企业会计盈利）与第 6 环（二级市场定价）
+schema_version: 1
+title: "PTA与聚酯大炼化核心上市公司画像与工艺成本映射"
+description: "A 股 5 大聚酯产业链龙头上市公司产能规模、成本阶梯与主营暴露度配置"
+
+default_commodity_code: "TA"
+default_commodity_name: "精对苯二甲酸"
+vat_rate_default: 0.13
+
+companies:
+  - symbol: "600346.SH"
+    name: "恒力石化"
+    full_name: "恒力石化股份有限公司"
+    process_type: "invista_p8_plus"
+    location: "辽宁大连 / 广东惠州"
+    annual_capacity_w_tons: 1660.0
+    equity_ratio: 1.0
+    internal_conversion_ratio: 0.277  # 扣除下游自用 460 万吨，净外售 1200 万吨
+    cost_tier: "lowest_alpha"
+    effective_tax_rate: 0.15
+    cost_notes: "大炼化一体化单体规模极致龙头，加工费约 350~380 元/吨，享有全产业链超低加工成本阿尔法"
+    pta_revenue_share_approx: 0.25
+    key_drivers: "大连长兴岛炼化一体化综合裂解价差、惠州新线投产、芳烃 PX 自给率 100%"
+    products:
+      - commodity_code: "POY"
+        commodity_name: "涤纶长丝"
+        annual_capacity_w_tons: 500.0
+        equity_ratio: 1.0
+        internal_conversion_ratio: 0.0
+        cost_advantage_tier: "lowest_alpha"
+        effective_tax_rate: 0.15
+        notes: "高品质聚酯薄膜与长丝"
+
+  - symbol: "002493.SZ"
+    name: "荣盛石化"
+    full_name: "荣盛石化股份有限公司"
+    process_type: "bp_and_invista"
+    location: "浙江舟山 / 浙江宁波"
+    annual_capacity_w_tons: 1900.0
+    equity_ratio: 0.85
+    internal_conversion_ratio: 0.40
+    cost_tier: "mega_refinery_alpha"
+    effective_tax_rate: 0.15
+    cost_notes: "控股浙江石化 4000万吨炼化，参股逸盛石化全球最大单体，享有上游原料与原油配额规模优势"
+    pta_revenue_share_approx: 0.18
+    key_drivers: "浙石化开工负荷、沙特阿美战略协同、PX 与芳烃供需、成品油与化工品综合毛利"
+
+  - symbol: "601233.SH"
+    name: "桐昆股份"
+    full_name: "桐昆集团股份有限公司"
+    process_type: "integrated_filament"
+    location: "浙江嘉兴 / 江苏如东"
+    annual_capacity_w_tons: 1020.0
+    equity_ratio: 0.70
+    internal_conversion_ratio: 0.70  # 优先自供长丝，外售商品量小
+    cost_tier: "filament_synergy_beta"
+    effective_tax_rate: 0.15
+    cost_notes: "国内涤纶长丝市占率第一 (超20%)，嘉通能源 500万吨 PTA 实现原料完全自给，参股浙石化 20%"
+    pta_revenue_share_approx: 0.30
+    key_drivers: "下游服装纺织与出口外销、长丝 POY/FDY 价差、嘉通能源 PTA 装置稳定性、浙石化投资收益"
+    products:
+      - commodity_code: "POY"
+        commodity_name: "涤纶长丝"
+        annual_capacity_w_tons: 1100.0
+        equity_ratio: 1.0
+        internal_conversion_ratio: 0.0
+        cost_advantage_tier: "filament_leader"
+        effective_tax_rate: 0.15
+        notes: "国内涤纶长丝绝对龙头，市占率超 20%"
+
+  - symbol: "603225.SH"
+    name: "新凤鸣"
+    full_name: "新凤鸣集团股份有限公司"
+    process_type: "integrated_filament"
+    location: "浙江嘉兴 / 浙江平湖"
+    annual_capacity_w_tons: 500.0
+    equity_ratio: 1.0
+    internal_conversion_ratio: 1.0   # PTA 产能主要自供长丝
+    cost_tier: "high_beta_elastic"
+    effective_tax_rate: 0.15
+    cost_notes: "涤纶长丝双雄之一，独山能源二期达产实现 PTA 100% 自给自足，长丝吨净利与 PB 弹性最高"
+    pta_revenue_share_approx: 0.28
+    key_drivers: "长丝产销率、周度库存天数、独山能源负荷、下游织造坯布开机率"
+    products:
+      - commodity_code: "POY"
+        commodity_name: "涤纶长丝"
+        annual_capacity_w_tons: 740.0
+        equity_ratio: 1.0
+        internal_conversion_ratio: 0.0
+        cost_advantage_tier: "high_beta_elastic"
+        effective_tax_rate: 0.15
+        notes: "长丝双雄之一，高开工高周转"
+
+  - symbol: "000703.SZ"
+    name: "恒逸石化"
+    full_name: "恒逸石化股份有限公司"
+    process_type: "integrated_filament"
+    location: "浙江杭州 / 海南洋浦 / 文莱"
+    annual_capacity_w_tons: 1900.0
+    equity_ratio: 0.50
+    internal_conversion_ratio: 0.35
+    cost_tier: "brunei_overseas_beta"
+    effective_tax_rate: 0.15
+    cost_notes: "文莱一期炼化提供 PX 原料，参股逸盛石化，聚酯与长丝一体化布局"
+    pta_revenue_share_approx: 0.22
+    key_drivers: "文莱大炼化裂解价差、逸盛石化 PTA 权益收益、东南亚成品油裂解差"

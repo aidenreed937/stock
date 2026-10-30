@@ -1,0 +1,164 @@
+# 纯碱重大产能事件种子库 (Capacity Project Database)
+# 数据源：上市公司公告 (深交所/巨潮 000683 远兴能源、600328 中盐化工等) + 行业协会披露
+# 用途：跟踪行业供给端物理有效产能释放日历与冲击规模
+
+metadata:
+  product_name: "纯碱"
+  symbol: "SA"
+  unit: "万吨/年"
+  version: "1.0.0"
+
+projects:
+  - project_id: "YX_ALSH_PHASE1_L1"
+    company: "远兴能源 (博源银根矿业)"
+    plant_name: "阿拉善天然碱项目一期1线"
+    province: "内蒙古"
+    technology: "natural_alkali"
+    capacity_w_tons: 150.0
+    status: "operating"
+    announcement_date: "2021-07-06"
+    expected_start: "2023-06-01"
+    actual_start: "2023-06-28"
+    full_capacity_date: "2023-09-15"
+    source: "巨潮资讯/公司投料试车进展公告"
+    confidence: "A"
+
+  - project_id: "YX_ALSH_PHASE1_L2"
+    company: "远兴能源 (博源银根矿业)"
+    plant_name: "阿拉善天然碱项目一期2线"
+    province: "内蒙古"
+    technology: "natural_alkali"
+    capacity_w_tons: 150.0
+    status: "operating"
+    announcement_date: "2021-07-06"
+    expected_start: "2023-10-01"
+    actual_start: "2023-11-20"
+    full_capacity_date: "2024-01-10"
+    source: "巨潮资讯/公司投料试车进展公告"
+    confidence: "A"
+
+  - project_id: "YX_ALSH_PHASE1_L3"
+    company: "远兴能源 (博源银根矿业)"
+    plant_name: "阿拉善天然碱项目一期3线"
+    province: "内蒙古"
+    technology: "natural_alkali"
+    capacity_w_tons: 100.0
+    status: "operating"
+    announcement_date: "2021-07-06"
+    expected_start: "2023-12-01"
+    actual_start: "2024-01-22"
+    full_capacity_date: "2024-04-15"
+    source: "巨潮资讯/公司投料试车进展公告"
+    confidence: "A"
+
+  - project_id: "YX_ALSH_PHASE1_L4"
+    company: "远兴能源 (博源银根矿业)"
+    plant_name: "阿拉善天然碱项目一期4线"
+    province: "内蒙古"
+    technology: "natural_alkali"
+    capacity_w_tons: 100.0
+    status: "operating"
+    announcement_date: "2021-07-06"
+    expected_start: "2024-04-01"
+    actual_start: "2024-05-30"
+    full_capacity_date: "2024-08-30"
+    source: "巨潮资讯/公司投料试车进展公告"
+    confidence: "A"
+
+  - project_id: "JS_HENAN_EXPANSION"
+    company: "河南金山化工"
+    plant_name: "孟州联碱扩建工程"
+    province: "河南"
+    technology: "hou_process"
+    capacity_w_tons: 100.0
+    status: "operating"
+    announcement_date: "2022-03-15"
+    expected_start: "2023-09-01"
+    actual_start: "2023-10-15"
+    full_capacity_date: "2023-12-31"
+    source: "行业协会及企业公开披露"
+    confidence: "B"
+
+  - project_id: "LYG_RELOCATION"
+    company: "连云港碱业"
+    plant_name: "徐圩新区搬迁升级改造联碱项目"
+    province: "江苏"
+    technology: "hou_process"
+    capacity_w_tons: 110.0
+    status: "operating"
+    announcement_date: "2021-11-01"
+    expected_start: "2024-03-01"
+    actual_start: "2024-04-20"
+    full_capacity_date: "2024-09-30"
+    source: "连云港市政府/项目环评验收"
+    confidence: "A"
+
+  - project_id: "LYG_OLD_SHUTDOWN"
+    company: "连云港碱业 (老厂区)"
+    plant_name: "连云区老厂区氨碱装置"
+    province: "江苏"
+    technology: "solvay_process"
+    capacity_w_tons: -130.0
+    status: "shutdown"
+    announcement_date: "2021-09-01"
+    expected_start: "2021-11-01"
+    actual_start: "2021-11-15"
+    full_capacity_date: "2021-11-15"
+    source: "生态环境部/淘汰落后产能公示"
+    confidence: "A"
+
+  - project_id: "YX_ALSH_PHASE2"
+    company: "远兴能源 (博源银根矿业)"
+    plant_name: "阿拉善天然碱项目二期工程"
+    province: "内蒙古"
+    technology: "natural_alkali"
+    capacity_w_tons: 280.0
+    status: "under_construction"
+    announcement_date: "2023-12-12"
+    expected_start: "2026-06-30"
+    actual_start: null
+    full_capacity_date: null
+    source: "巨潮资讯/公司二期开工进展公告"
+    confidence: "A"
+
+  - project_id: "ZYHG_ALSH_NATURAL"
+    company: "中盐化工"
+    plant_name: "中盐内蒙古天然碱综合开发项目"
+    province: "内蒙古"
+    technology: "natural_alkali"
+    capacity_w_tons: 500.0
+    status: "under_construction"
+    announcement_date: "2026-05-15"
+    expected_start: "2028-01-01"
+    actual_start: null
+    full_capacity_date: null
+    source: "巨潮资讯/中盐化工关于投资建设中盐（内蒙古）碱业有限公司500万吨/年天然碱矿产资源综合开发项目的公告"
+    confidence: "A"
+
+  - project_id: "XT_HENGYANG_HOU"
+    company: "雪天盐业"
+    plant_name: "衡阳绿色低碳盐碱产业园项目 (衡碱项目)"
+    province: "湖南"
+    technology: "hou_process"
+    capacity_w_tons: 100.0
+    status: "under_construction"
+    announcement_date: "2023-08-25"
+    expected_start: "2027-12-31"
+    actual_start: null
+    full_capacity_date: null
+    source: "雪天盐业2026年半年度报告及湖南省重大产业项目披露"
+    confidence: "A"
+
+  - project_id: "ZY_KUNSHAN_SHUTDOWN"
+    company: "中盐化工 (中盐昆山)"
+    plant_name: "江苏昆山联碱老装置"
+    province: "江苏"
+    technology: "hou_process"
+    capacity_w_tons: -60.0
+    status: "shutdown"
+    announcement_date: "2026-03-15"
+    expected_start: "2026-03-15"
+    actual_start: "2026-03-15"
+    full_capacity_date: "2026-03-15"
+    source: "期货日报/中信建投行业调研与停工核实公告"
+    confidence: "B"

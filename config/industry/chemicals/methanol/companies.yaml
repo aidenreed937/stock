@@ -1,0 +1,89 @@
+# 甲醇核心上市公司画像配置库 (Methanol Company Universe)
+# 对应因果链第 5 环（企业会计盈利）与第 6 环（二级市场定价）
+schema_version: 1
+title: "甲醇核心上市公司画像与工艺成本映射"
+description: "A 股主要甲醇生产商工艺路线、产能规模、成本阶梯与主营暴露度配置"
+
+default_commodity_code: "MA"
+default_commodity_name: "甲醇"
+vat_rate_default: 0.13
+
+companies:
+  - symbol: "600989.SH"
+    name: "宝丰能源"
+    full_name: "宁夏宝丰能源集团股份有限公司"
+    process_type: "coal_to_methanol"
+    location: "宁夏宁东 / 内蒙古乌审旗"
+    annual_capacity_w_tons: 400.0
+    equity_ratio: 1.0
+    internal_conversion_ratio: 0.75  # 绝大部分用于下游 CTO 煤制烯烃
+    cost_tier: "lowest_alpha"
+    effective_tax_rate: 0.15
+    cost_notes: "全球最大单体煤制甲醇/烯烃基地，坑口煤炭原料自给与绿氢耦合，完全成本约 1600~1900 元/吨，现金保本线 1400~1600 元/吨"
+    methanol_revenue_share_approx: 0.12
+    key_drivers: "内蒙一期 260 万吨 CTO 投产放量、宁东三期烯烃满负荷运行、原料煤自供率与自备电厂"
+
+  - symbol: "600426.SH"
+    name: "华鲁恒升"
+    full_name: "华鲁恒升化工股份有限公司"
+    process_type: "coal_to_methanol"
+    location: "山东德州 / 湖北荆州"
+    annual_capacity_w_tons: 100.0
+    equity_ratio: 1.0
+    internal_conversion_ratio: 0.50
+    cost_tier: "coal_chemical_cost_leader"
+    effective_tax_rate: 0.15
+    cost_notes: "多喷嘴水煤浆气化技术标杆，柔性联产醋酸、DMF、DMC 与尿素，完全成本 1900~2150 元/吨，现金保本线 1650~1800 元/吨"
+    methanol_revenue_share_approx: 0.10
+    key_drivers: "德州与荆州双基地气体平台协同、根据各衍生品比价柔性切换外售与自用"
+    products:
+      - commodity_code: "UR"
+        commodity_name: "尿素"
+        annual_capacity_w_tons: 180.0
+        equity_ratio: 1.0
+        internal_conversion_ratio: 0.0
+        cost_advantage_tier: "coal_chemical_cost_leader"
+        effective_tax_rate: 0.15
+        notes: "多头联产、水煤浆气化成本领跑者"
+
+  - symbol: "600188.SH"
+    name: "兖矿能源"
+    full_name: "兖矿能源集团股份有限公司"
+    process_type: "coal_to_methanol"
+    location: "陕西榆林 / 内蒙古鄂尔多斯 / 山东枣庄"
+    annual_capacity_w_tons: 240.0
+    equity_ratio: 1.0
+    internal_conversion_ratio: 0.50
+    cost_tier: "integrated_coal_miner"
+    effective_tax_rate: 0.15
+    cost_notes: "煤炭龙头就地下游转化，鲁南化工与陕蒙高端化工园区协同，完全成本 2000~2250 元/吨"
+    methanol_revenue_share_approx: 0.08
+    key_drivers: "自备动力煤与原料煤坑口平价供给、醋酸及聚甲醛延伸深加工"
+
+  - symbol: "600971.SH"
+    name: "恒源煤电"
+    full_name: "安徽恒源煤电股份有限公司"
+    process_type: "coke_oven_gas"
+    location: "安徽宿州"
+    annual_capacity_w_tons: 40.0
+    equity_ratio: 1.0
+    internal_conversion_ratio: 0.0
+    cost_tier: "coking_synergy"
+    effective_tax_rate: 0.15
+    cost_notes: "煤电化综合一体化，焦炉气与尾气综合利用制甲醇，完全成本约 1900~2100 元/吨"
+    methanol_revenue_share_approx: 0.06
+    key_drivers: "钱营孜电厂副产蒸汽综合利用、区域华东现货溢价"
+
+  - symbol: "600722.SH"
+    name: "金牛化工"
+    full_name: "河北金牛化工股份有限公司"
+    process_type: "coal_to_methanol"
+    location: "河北沧州"
+    annual_capacity_w_tons: 20.0
+    equity_ratio: 1.0
+    internal_conversion_ratio: 0.0
+    cost_tier: "pure_play_small_cap"
+    effective_tax_rate: 0.15
+    cost_notes: "冀中能源旗下纯正甲醇小市值标的，完全成本 2200~2400 元/吨"
+    methanol_revenue_share_approx: 0.85
+    key_drivers: "华北沧州临港产业园区现货售价、纯度与外销运费"

@@ -1,0 +1,20 @@
+# 聚丙烯 (PP) 量化交易与周期拐点门禁配置 (Polypropylene Trading Gates)
+schema_version: 1
+symbol: "PP"
+product_name: "聚丙烯"
+
+gates:
+  cash_cost_floor_cny: 7500.0    # 油制/PDH 现金保本出清底线
+  full_cost_ceiling_cny: 8300.0  # 油制完全成本平衡线
+  basis_backwardation_min_pct: 2.0 # 右侧反转需现货升水 > 2%
+  max_warehouse_receipts_contracts: 15000.0 # 仓单高位警戒线
+
+target_universe_mapping:
+  alpha_leader:
+    - symbol: "600989.SH"
+      name: "宝丰能源"
+      role_desc: "先进煤制烯烃成本之王，极低现金保本线，周期左侧抗风险与成长首选"
+  beta_elastic:
+    - symbol: "002221.SZ"
+      name: "东华能源"
+      role_desc: "纯 PDH 边际出清代表，对丙烷-聚丙烯价差极其敏感，右侧反转弹性最高"

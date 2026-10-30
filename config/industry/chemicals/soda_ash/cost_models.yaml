@@ -1,0 +1,143 @@
+# 纯碱产业链生产工艺理论成本与利润模型配置 (Soda Ash Cost & Margin Models)
+# 模块高内聚配置：涵盖联碱法双吨、氨碱法高成本出清线与天然碱法超低成本重塑
+
+schema_version: 1
+product_name: "纯碱"
+symbol: "SA"
+unit: "元/吨"
+version: "1.0.0"
+updated_at: "2026-09-17"
+
+models:
+  hou_process:
+    name: "联碱法 (侯氏制碱法 - 双吨综合/纯碱单吨净成本)"
+    fixed_cost: 450.0
+    cash_fixed_cost: 0.0
+    freight_cost: 80.0
+    # 物理化学单耗：全生命周期永久锁定 (1 吨纯碱联产 1 吨氯化铵)
+    coefficients:
+      raw_salt: 1.2          # 工业原盐 (吨)
+      synthetic_ammonia: 0.135 # 合成氨折纯消耗 (0.45 * 0.3)
+      thermal_coal: 0.4      # 动力煤 (吨)
+      byproduct_ammonium_chloride: 1.0 # 联产/副产氯化铵折抵 (1 吨纯碱联产 1 吨氯化铵)
+    # 慢变化财务、运费与产能参数时间线
+    timeline:
+      # 阶段一: 天然碱投产前 (双寡头分立)
+      - valid_from: "2018-01-01"
+        valid_to: "2022-12-31"
+        national_capacity_share: 0.48
+        cost_tier: "middle_hou"
+        fixed_cost: 450.0
+        cash_fixed_cost: 0.0
+        freight_cost: 80.0
+      # 阶段二: 阿拉善一期试车与产能爬坡
+      - valid_from: "2023-01-01"
+        valid_to: "2024-06-30"
+        national_capacity_share: 0.47
+        cost_tier: "middle_hou"
+        fixed_cost: 450.0
+        cash_fixed_cost: 0.0
+        freight_cost: 80.0
+      # 阶段三: 阿拉善一期全面达产稳产
+      - valid_from: "2024-07-01"
+        valid_to: "2025-12-31"
+        national_capacity_share: 0.45
+        cost_tier: "middle_hou"
+        fixed_cost: 450.0
+        cash_fixed_cost: 0.0
+        freight_cost: 80.0
+      # 阶段四: 阿拉善二期投产，高成本产能持续受挤压
+      - valid_from: "2026-01-01"
+        valid_to: "9999-12-31"
+        national_capacity_share: 0.43
+        cost_tier: "middle_hou"
+        fixed_cost: 450.0
+        cash_fixed_cost: 0.0
+        freight_cost: 80.0
+
+  solvay_process:
+    name: "氨碱法 (索尔维制碱法 - 高成本边际产能成本线)"
+    fixed_cost: 380.0
+    cash_fixed_cost: 260.0
+    freight_cost: 50.0
+    # 物理化学单耗：全生命周期永久锁定
+    coefficients:
+      raw_salt: 1.5          # 工业原盐 (吨)
+      limestone: 1.3         # 石灰石 (吨)
+      coke: 0.12             # 焦炭/无烟块煤 (吨)
+      thermal_coal: 0.35     # 动力煤 (吨)
+    # 慢变化财务、运费与产能参数时间线
+    timeline:
+      # 阶段一: 天然碱投产前 (高能耗高排污边际支撑)
+      - valid_from: "2018-01-01"
+        valid_to: "2022-12-31"
+        national_capacity_share: 0.52
+        cost_tier: "marginal_solvay_floor"
+        fixed_cost: 380.0
+        cash_fixed_cost: 260.0
+        freight_cost: 50.0
+      # 阶段二: 阿拉善一期试车与产能爬坡
+      - valid_from: "2023-01-01"
+        valid_to: "2024-06-30"
+        national_capacity_share: 0.45
+        cost_tier: "marginal_solvay_floor"
+        fixed_cost: 380.0
+        cash_fixed_cost: 260.0
+        freight_cost: 50.0
+      # 阶段三: 阿拉善一期全面达产稳产
+      - valid_from: "2024-07-01"
+        valid_to: "2025-12-31"
+        national_capacity_share: 0.40
+        cost_tier: "marginal_solvay_floor"
+        fixed_cost: 380.0
+        cash_fixed_cost: 260.0
+        freight_cost: 50.0
+      # 阶段四: 阿拉善二期投产，边际高成本装置出清承压
+      - valid_from: "2026-01-01"
+        valid_to: "9999-12-31"
+        national_capacity_share: 0.35
+        cost_tier: "marginal_solvay_floor"
+        fixed_cost: 380.0
+        cash_fixed_cost: 260.0
+        freight_cost: 50.0
+
+  natural_alkali:
+    name: "天然碱法 (以远兴能源阿拉善项目为代表)"
+    fixed_cost: 300.0
+    cash_fixed_cost: 160.0
+    freight_cost: 200.0
+    # 物理化学单耗：全生命周期永久锁定
+    coefficients:
+      thermal_coal: 0.28
+    # 慢变化财务、运费与产能参数时间线
+    timeline:
+      # 阶段一: 阿拉善一期试车与产能爬坡 (专线调试与多式联运)
+      - valid_from: "2023-01-01"
+        valid_to: "2024-06-30"
+        national_capacity_share: 0.08
+        cost_tier: "lowest_alpha"
+        fixed_cost: 360.0
+        cash_fixed_cost: 220.0
+        freight_cost: 200.0
+      # 阶段二: 阿拉善一期全面达产稳产 (铁路专用线整列贯通)
+      - valid_from: "2024-07-01"
+        valid_to: "2025-12-31"
+        national_capacity_share: 0.15
+        cost_tier: "lowest_alpha"
+        fixed_cost: 320.0
+        cash_fixed_cost: 180.0
+        freight_cost: 200.0
+      # 阶段三: 阿拉善二期投产，重塑行业基底
+      - valid_from: "2026-01-01"
+        valid_to: "9999-12-31"
+        national_capacity_share: 0.22
+        cost_tier: "lowest_alpha"
+        fixed_cost: 300.0
+        cash_fixed_cost: 160.0
+        freight_cost: 200.0
+
+regime_thresholds:
+  high_profit: 300.0         # 理论毛利 > 300 元/吨：超额暴利
+  profitable: 0.0            # 0 ~ 300 元/吨：正常盈利
+  near_breakeven: -150.0     # -150 ~ 0 元/吨：盈亏平衡 / 微亏
+  # < -150 元/吨：深度亏损 (跌穿现金保本，倒逼装置检修)

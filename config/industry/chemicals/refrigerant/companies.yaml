@@ -1,0 +1,47 @@
+# 氟制冷剂核心上市公司画像配置库 (Refrigerant Company Universe)
+# 对应因果链第 5 环（企业会计盈利）与第 6 环（二级市场定价）
+schema_version: 1
+title: "氟制冷剂核心上市公司画像与配额映射"
+description: "A 股三代氟制冷剂核心生产商工艺路线、配额规模、成本阶梯与主营暴露度配置"
+
+default_commodity_code: "R32"
+default_commodity_name: "二氟甲烷(R32)"
+vat_rate_default: 0.13
+
+companies:
+  - symbol: "600160.SH"
+    name: "巨化股份"
+    full_name: "浙江巨化股份有限公司"
+    process_type: "fluorochemical_integrated"
+    location: "浙江衢州"
+    annual_capacity_w_tons: 13.0
+    equity_ratio: 1.0
+    internal_conversion_ratio: 0.0
+    cost_tier: "quota_oligopoly_leader"
+    effective_tax_rate: 0.15
+    cost_notes: "三代制冷剂法定生产配额第一龙头，拥有完整氯碱-甲烷氯化物-氟化工一体化产业链"
+    refrigerant_revenue_share_approx: 0.47
+    key_drivers: "生态环境部三代制冷剂法定配额核发、下游空调排产旺季、外销出口量价与配额集中度溢价"
+    products:
+      - commodity_code: "R134a"
+        commodity_name: "四氟乙烷(R134a)"
+        annual_capacity_w_tons: 7.5
+        equity_ratio: 1.0
+        internal_conversion_ratio: 0.0
+        cost_advantage_tier: "quota_oligopoly_leader"
+        effective_tax_rate: 0.15
+        notes: "汽车空调主流制冷剂配额龙头"
+
+  - symbol: "603379.SH"
+    name: "三美股份"
+    full_name: "浙江三美化工股份有限公司"
+    process_type: "fluorochemical_pure_play"
+    location: "浙江武义 / 江苏如东"
+    annual_capacity_w_tons: 4.0
+    equity_ratio: 1.0
+    internal_conversion_ratio: 0.0
+    cost_tier: "quota_pure_play"
+    effective_tax_rate: 0.15
+    cost_notes: "三代制冷剂纯正高弹性标的，外销出口渠道极其顺畅"
+    refrigerant_revenue_share_approx: 0.83
+    key_drivers: "外销出口均价 ASP 暴涨、无水氢氟酸自供率、三代配额收益直接兑现"

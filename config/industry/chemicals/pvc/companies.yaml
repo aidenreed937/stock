@@ -1,0 +1,94 @@
+# 聚氯乙烯核心上市公司画像配置库 (PVC Company Universe)
+# 对应因果链第 5 环（企业会计盈利）与第 6 环（二级市场定价）
+schema_version: 1
+title: "聚氯乙烯核心上市公司画像与工艺成本映射"
+description: "A 股主要聚氯乙烯 (PVC) 生产商工艺路线、产能规模、成本阶梯与主营暴露度配置"
+
+default_commodity_code: "V"
+default_commodity_name: "聚氯乙烯"
+vat_rate_default: 0.13
+
+companies:
+  - symbol: "002092.SZ"
+    name: "中泰化学"
+    full_name: "新疆中泰化学股份有限公司"
+    process_type: "carbide_process"
+    location: "新疆乌鲁木齐 / 阜康 / 托克逊"
+    annual_capacity_w_tons: 183.0
+    equity_ratio: 1.0
+    internal_conversion_ratio: 0.0
+    cost_tier: "carbide_giant_alpha"
+    effective_tax_rate: 0.15
+    cost_notes: "全国电石法 PVC 产能规模第一，自备电厂与原盐/石灰石矿山，完全成本约 5200~5600 元/吨，现金保本线 4700~4950 元/吨"
+    pvc_revenue_share_approx: 0.45
+    key_drivers: "新疆低电价煤炭资源优势、出疆铁路运费补贴、副产烧碱两碱平衡"
+
+  - symbol: "600075.SH"
+    name: "新疆天业"
+    full_name: "新疆天业股份有限公司"
+    process_type: "carbide_process"
+    location: "新疆石河子"
+    annual_capacity_w_tons: 140.0
+    equity_ratio: 1.0
+    internal_conversion_ratio: 0.0
+    cost_tier: "carbide_state_leader"
+    effective_tax_rate: 0.15
+    cost_notes: "兵团国资氯碱一体化巨头，拥有电石-PVC-水泥循环经济，完全成本约 5300~5650 元/吨，现金保本线 4800~5000 元/吨"
+    pvc_revenue_share_approx: 0.52
+    key_drivers: "电石 100% 自给率、自备坑口火电、节水滴灌下游需求拉动"
+
+  - symbol: "600409.SH"
+    name: "三友化工"
+    full_name: "唐山三友化工股份有限公司"
+    process_type: "carbide_process"
+    location: "河北唐山"
+    annual_capacity_w_tons: 53.0
+    equity_ratio: 1.0
+    internal_conversion_ratio: 0.0
+    cost_tier: "integrated_cyclical"
+    effective_tax_rate: 0.15
+    cost_notes: "环渤海纯碱-氯碱循环经济，完全成本约 5600~5850 元/吨，现金保本线 5000~5200 元/吨"
+    pvc_revenue_share_approx: 0.18
+    key_drivers: "纯碱与 PVC 双轮驱动、烧碱平衡与京津冀管材型材终端需求"
+
+  - symbol: "600328.SH"
+    name: "中盐化工"
+    full_name: "中盐内蒙古化工股份有限公司"
+    process_type: "carbide_process"
+    location: "内蒙古乌斯太 / 青海德令哈"
+    annual_capacity_w_tons: 40.0
+    equity_ratio: 1.0
+    internal_conversion_ratio: 0.0
+    cost_tier: "marginal_state_owned"
+    effective_tax_rate: 0.15
+    cost_notes: "央企氯碱与纯碱综合基地，完全成本约 5500~5800 元/吨"
+    pvc_revenue_share_approx: 0.16
+    key_drivers: "内蒙电石资源自给、金属钠与氯碱产业链平衡"
+
+  - symbol: "600618.SH"
+    name: "氯碱化工"
+    full_name: "上海氯碱化工股份有限公司"
+    process_type: "ethylene_process"
+    location: "上海漕泾化学工业区"
+    annual_capacity_w_tons: 72.0
+    equity_ratio: 1.0
+    internal_conversion_ratio: 0.0
+    cost_tier: "ethylene_process_leader"
+    effective_tax_rate: 0.15
+    cost_notes: "国内乙烯法 PVC 标杆，临港石化乙烯裂解路线，高品质医用级/特种树脂占比高，完全成本 5200~5500 元/吨，现金保本线 4600~4850 元/吨"
+    pvc_revenue_share_approx: 0.40
+    key_drivers: "上海化工区一体化管道直供、特种糊树脂高附加值溢价与乙烯原料采购"
+
+  - symbol: "000830.SZ"
+    name: "鲁西化工"
+    full_name: "鲁西化工集团股份有限公司"
+    process_type: "carbide_process"
+    location: "山东聊城"
+    annual_capacity_w_tons: 40.0
+    equity_ratio: 1.0
+    internal_conversion_ratio: 0.0
+    cost_tier: "integrated_industrial_park"
+    effective_tax_rate: 0.15
+    cost_notes: "园区一体化多联产氯碱装置，完全成本约 5500~5800 元/吨"
+    pvc_revenue_share_approx: 0.10
+    key_drivers: "中化集团旗下新材料园区协同、氯气自用转化率高"

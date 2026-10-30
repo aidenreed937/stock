@@ -1,0 +1,80 @@
+# 甲醇重大产能事件种子库 (Methanol Capacity Project Database)
+# 数据源：上市公司公告 (宝丰能源、华鲁恒升、兖矿能源等) + 行业协会及环评审批公示
+# 用途：跟踪行业供给端物理有效产能释放日历与冲击规模
+
+metadata:
+  product_name: "甲醇"
+  symbol: "MA"
+  unit: "万吨/年"
+  version: "1.0.0"
+
+projects:
+  - project_id: "BF_NM_PHASE1_750"
+    company: "宝丰能源 (内蒙古宝丰煤基新材料)"
+    plant_name: "乌审旗一期 260 万吨煤制烯烃配套 750 万吨煤制甲醇项目"
+    province: "内蒙古"
+    technology: "coal_to_methanol"
+    capacity_w_tons: 750.0
+    status: "operating"
+    announcement_date: "2020-07-28"
+    expected_start: "2024-06-01"
+    actual_start: "2024-09-18"
+    full_capacity_date: "2025-03-30"
+    source: "公司公告与鄂尔多斯重大项目调度通报"
+    confidence: "A"
+
+  - project_id: "HL_JZ_MA_100"
+    company: "华鲁恒升 (荆州)"
+    plant_name: "荆州基地一期醋酸/甲醇联产气体岛装置"
+    province: "湖北"
+    technology: "coal_to_methanol"
+    capacity_w_tons: 100.0
+    status: "operating"
+    announcement_date: "2020-11-10"
+    expected_start: "2023-10-01"
+    actual_start: "2023-11-06"
+    full_capacity_date: "2024-01-20"
+    source: "公司全流程商业运行公告"
+    confidence: "A"
+
+  - project_id: "YK_LN_MA_80"
+    company: "兖矿能源 (鲁南化工)"
+    plant_name: "多喷嘴水煤浆气化甲醇升级改造及下游延伸项目"
+    province: "山东"
+    technology: "coal_to_methanol"
+    capacity_w_tons: 80.0
+    status: "operating"
+    announcement_date: "2021-04-16"
+    expected_start: "2023-08-01"
+    actual_start: "2023-10-25"
+    full_capacity_date: "2024-03-15"
+    source: "山东省生态环境厅环评验收公告"
+    confidence: "A"
+
+  - project_id: "NX_GN_MA_60"
+    company: "宁夏冠能新材料"
+    plant_name: "高分子可降解材料配套 60 万吨煤制甲醇工程"
+    province: "宁夏"
+    technology: "coal_to_methanol"
+    capacity_w_tons: 60.0
+    status: "construction"
+    announcement_date: "2022-03-10"
+    expected_start: "2025-06-01"
+    actual_start: null
+    full_capacity_date: "2025-12-31"
+    source: "石嘴山市平罗工业园区项目动态"
+    confidence: "B"
+
+  - project_id: "SM_YL_MA_PHASE2"
+    company: "陕煤集团 (榆林化学)"
+    plant_name: "煤炭分质清洁高效转化示范项目二期配套甲醇"
+    province: "陕西"
+    technology: "coal_to_methanol"
+    capacity_w_tons: 200.0
+    status: "planning"
+    announcement_date: "2023-02-18"
+    expected_start: "2026-12-01"
+    actual_start: null
+    full_capacity_date: "2027-06-30"
+    source: "陕西省发展和改革委员会重点产业投资目录"
+    confidence: "B"

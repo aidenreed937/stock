@@ -1,0 +1,45 @@
+# 煤制甲醇理论毛利与成本模型配置 (Methanol Cost Models)
+# 模块高内聚配置：煤制甲醇单耗系数与固定制造费
+
+schema_version: 1
+product_name: "甲醇"
+symbol: "MA"
+unit: "元/吨"
+version: "1.0.0"
+updated_at: "2026-09-17"
+
+models:
+  coal_to_methanol:
+    name: "煤制甲醇理论毛利模型 (西北坑口大装置)"
+    product_name: "甲醇"
+    symbol: "MA"
+    valid_from: "2019-01-01"
+    valid_to: "9999-12-31"
+    description: "以烟煤/无烟煤为原料气化，占全国约 78% 产能，构成行业主流成本基准"
+    national_capacity_share: 0.78
+    cost_tier: "coal_mainstream"
+    coefficients:
+      product: 1.0
+      thermal_coal: 1.6      # 动力煤单耗 (吨)
+    fixed_cost: 650.0        # 水电、催化剂、折旧及人工 (元/吨)
+    cash_fixed_cost: 420.0   # 现金保本制造费 (元/吨)
+    full_cost_approx: 2250.0 # 坑口完全成本参考线 (元/吨)
+    cash_cost_approx: 1850.0 # 现金流保本底线 (元/吨)
+    formula: "methanol_price - 1.6 * coal_price - fixed_cost"
+
+  coke_oven_gas:
+    name: "焦炉气制甲醇模型 (副产综合利用路线)"
+    product_name: "甲醇"
+    symbol: "MA"
+    valid_from: "2019-01-01"
+    valid_to: "9999-12-31"
+    description: "钢铁焦化副产综合利用，投资与水耗低，占全国约 22% 产能"
+    national_capacity_share: 0.22
+    cost_tier: "lowest_alpha"
+    coefficients:
+      product: 1.0
+    fixed_cost: 450.0
+    cash_fixed_cost: 280.0
+    full_cost_approx: 1900.0
+    cash_cost_approx: 1550.0
+    formula: "methanol_price - fixed_cost"

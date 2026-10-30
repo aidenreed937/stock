@@ -1,0 +1,65 @@
+# 对二甲苯 (PX) 核心上市公司画像配置库 (Paraxylene Company Universe)
+schema_version: 1
+title: "对二甲苯核心上市公司画像与工艺成本映射"
+description: "A 股民营大炼化四小龙 PX 产能规模、成本阶梯与主营暴露度配置"
+
+default_commodity_code: "PX"
+default_commodity_name: "对二甲苯"
+vat_rate_default: 0.13
+
+companies:
+  - symbol: "002493.SZ"
+    name: "荣盛石化"
+    full_name: "荣盛石化股份有限公司"
+    process_type: "naphtha_reforming_px"
+    location: "浙江舟山"
+    annual_capacity_w_tons: 900.0
+    equity_ratio: 0.85
+    internal_conversion_ratio: 0.833 # 扣除自用约 750 万吨 PTA 原料，净商品外售约 150 万吨
+    cost_tier: "lowest_alpha"
+    effective_tax_rate: 0.15
+    cost_notes: "控股浙江石化 4000万吨炼化，全球单体最大 PX 生产基地，一体化重整芳烃成本极致"
+    soda_revenue_share_approx: 0.15
+    key_drivers: "浙石化原油加工负荷、PX-石脑油裂解价差、沙特阿美原料保障"
+
+  - symbol: "600346.SH"
+    name: "恒力石化"
+    full_name: "恒力石化股份有限公司"
+    process_type: "naphtha_reforming_px"
+    location: "辽宁大连"
+    annual_capacity_w_tons: 520.0
+    equity_ratio: 1.0
+    internal_conversion_ratio: 0.808 # 扣除自用 420 万吨，净商品外售约 100 万吨
+    cost_tier: "lowest_alpha"
+    effective_tax_rate: 0.15
+    cost_notes: "长兴岛 2000万吨炼化，芳烃产率高，单套装置规模极大，现金加工成本业内极低"
+    soda_revenue_share_approx: 0.12
+    key_drivers: "大连长兴岛炼化负荷、原油裂解差、自备码头与公用工程协同"
+
+  - symbol: "000301.SZ"
+    name: "东方盛虹"
+    full_name: "江苏东方盛虹股份有限公司"
+    process_type: "naphtha_reforming_px"
+    location: "江苏连云港"
+    annual_capacity_w_tons: 400.0
+    equity_ratio: 1.0
+    internal_conversion_ratio: 0.800 # 净商品外售约 80 万吨
+    cost_tier: "lowest_alpha"
+    effective_tax_rate: 0.15
+    cost_notes: "盛虹炼化 1600万吨一体化项目，兼顾芳烃与光伏级 EVA 烯烃原料，负债率与业绩弹性高"
+    soda_revenue_share_approx: 0.14
+    key_drivers: "盛虹炼化开工率、PX-石脑油价差、EVA/聚酯下游协同"
+
+  - symbol: "000703.SZ"
+    name: "恒逸石化"
+    full_name: "恒逸石化股份有限公司"
+    process_type: "naphtha_reforming_px"
+    location: "文莱大摩拉岛"
+    annual_capacity_w_tons: 150.0
+    equity_ratio: 0.70
+    internal_conversion_ratio: 0.667 # 净外售约 50 万吨
+    cost_tier: "middle_refinery"
+    effective_tax_rate: 0.15
+    cost_notes: "文莱炼化一期海外免税岛屿，原料直供国内逸盛石化，享受东南亚成品油与化工品综合溢价"
+    soda_revenue_share_approx: 0.10
+    key_drivers: "文莱二期扩建进度、东南亚成品油裂解差、PX 回运关税与海运费"

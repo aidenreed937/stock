@@ -1,0 +1,72 @@
+# 聚氯乙烯周期股分阶段量化交易门禁配置 (PVC Cyclical Trading Gates)
+# 模块高内聚配置：面向 A 类大宗标准化与期货品种 (完全竞争同质化大宗、电石法高能耗边际现金成本出清、地产基建物理量与海关出口泄洪支配)
+
+schema_version: 2
+product_name: "聚氯乙烯"
+symbol: "V"
+category: "A_commodity_standard"
+profile_name: "commodity_standard_gate"
+title: "聚氯乙烯周期股分阶段量化交易门禁与标的映射"
+description: "基于边际成本线、地产管材型材剪刀差、社会显性库存与估值反向时钟的三门禁决策体系"
+
+# =============================================================
+# 门禁规则定义
+# =============================================================
+left_side_odds:
+  name: "聚氯乙烯左侧赔率建仓门禁"
+  target_position_pct_max: 30.0
+  rules:
+    margin_regime_any:
+      - "deep_loss"
+      - "near_breakeven"
+    cash_cost_drain_check: true        # 现货跌破边际电石法现金成本 (5100 元/吨)，行业 78% 产能面临持续现金流失血
+    pb_percentile_10y_max: 0.15        # 个股或行业 PB 处于历史 15% 以下极值低位
+    pb_absolute_max: 0.85              # 或绝对 PB 深度破净 (< 0.85)
+    preferred_target_role: "alpha_leader" # 优先布局新疆电石一体化成本最左侧龙头 (如中泰化学、新疆天业)
+
+right_side_confirmation:
+  name: "聚氯乙烯右侧胜率确认门禁"
+  target_position_pct_max: 80.0
+  rules:
+    social_inventory_destocking_weeks_min: 3 # 华东与华南社会仓库显性库存连续去化 >= 3 周
+    operating_rate_max: 0.75           # 行业综合开工率受环保或亏损压制跌破 75% 警戒线
+    basis_rate_min: 0.0                # 期货主力基差平水或转正 (现货升水修复)
+    technical_ma_break: "MA20"         # 放量突破 20 日均线
+    valuation_ceiling_pb_10y_max: 0.40 # 估值天花板: PB 分位数 <= 40% (杜绝高位追多)
+    demand_validation:
+      pipe_profile_op_yoy_min: 3.0     # 核心下游 (管材/型材/门窗/地板) 综合开工负荷同比回暖 (> +3%)
+      export_volume_yoy_min: 15.0      # 或海关月度出口同比增速超 15% (印度及东南亚出口泄洪对冲国内地产)
+    preferred_target_role: "beta_elastic" # 右侧切换至破净高贝塔弹性标的 (如三友化工、氯碱化工)
+
+top_escape:
+  name: "聚氯乙烯逃顶一票否决门禁"
+  action: "clear_position"
+  rules:
+    operating_rate_min: 0.86           # 行业开工率超 86% 且维持高位钝化
+    spread_margin_regime: "high_profit" # 氯碱综合完全毛利突破历史 90% 极值暴利区间
+    social_inventory_accumulation_max_w_tons: 60.0 # 华东华南社会库存突破 60 万吨被动累库红线
+    pe_ttm_low_trap_max: 8.0           # 静态 PE(TTM) 降至 8 倍个位数 (周期低 PE 见顶陷阱)
+    squeeze_trap_divergence:
+      pb_percentile_10y_min: 0.60      # 估值处于历史 60% 分位高位
+      scissors_spread_yoy_max: 0.0     # 地产竣工与管材需求剪刀差见顶转负
+      export_volume_yoy_max: 0.0      # 海外印度反倾销或外需走弱导致出口转负
+
+# =============================================================
+# 标的角色与工艺路线映射 (聚氯乙烯行业)
+# =============================================================
+target_universe_mapping:
+  alpha_leader:
+    - symbol: "002092.SZ"
+      name: "中泰化学"
+      role_desc: "全国最大电石法 PVC 龙头 (183 万吨)，自备电厂与原盐矿，完全成本 5200~5600 元/吨，规模效应与抗亏底线深厚"
+    - symbol: "600075.SH"
+      name: "新疆天业"
+      role_desc: "兵团氯碱巨头，电石 100% 自给，热电-电石-PVC-水泥闭环，左侧估值破净且资产扎实"
+
+  beta_elastic:
+    - symbol: "600409.SH"
+      name: "三友化工"
+      role_desc: "纯碱与氯碱循环经济一体化，PVC 产能 53 万吨，两碱协同在景气拐点弹性显著"
+    - symbol: "600618.SH"
+      name: "氯碱化工"
+      role_desc: "国内乙烯法高品质 PVC 与特种糊树脂标杆，原料与外销临港优势明显，右侧产品溢价高"

@@ -1,0 +1,113 @@
+# Mysteel 重点监控大宗商品产品目录配置
+# 用于 scripts/cdp/mysteel_cdp_automation.py 驱动自动化页面导航与数据提取
+
+products:
+  Ti_sponge:
+    product_name: "海绵钛"
+    category: "nonferrous"
+    default_url: "https://list1.mysteel.com/zhishi/hmtjqyzjg.html"
+    search_keyword: "海绵钛 价格"
+    target_specs:
+      - "0#"
+      - "1#"
+      - "2#"
+      - "0级"
+      - "1级"
+    unit: "元/吨"
+    extract_type: "auto"
+    description: "国内主流海绵钛现货出厂与市场价格"
+
+  ilmenite:
+    product_name: "钛精矿"
+    category: "chemicals"
+    default_url: "https://list1.mysteel.com/zhishi/pxtjkzxjg.html"
+    weekly_list_url_template: "https://thj.mysteel.com/article/pa666aaaaaa{page}.html"
+    weekly_keywords:
+      - "钛"
+      - "钛矿"
+      - "钛精矿"
+      - "钛系"
+    default_pages: 3
+    search_keyword: "钛精矿 攀西 价格"
+    target_specs:
+      - "46%"
+      - "47%"
+      - "10#"
+    unit: "元/吨"
+    extract_type: "auto"
+    description: "攀西地区46%/47%品位钛精矿现货价格"
+
+  Li2CO3:
+    product_name: "碳酸锂"
+    category: "battery"
+    default_url: "https://list1.mysteel.com/zhishi/dcjtsljgzxxq.html"
+    search_keyword: "电池级碳酸锂 价格"
+    target_specs:
+      - "电池级"
+      - "工业级"
+      - "99.5% min"
+    unit: "元/吨"
+    extract_type: "auto"
+    description: "电池级与工业级碳酸锂现货主流价"
+
+  metal_silicon:
+    product_name: "工业硅"
+    category: "nonferrous"
+    default_url: "https://tiehejin.mysteel.com/"
+    search_keyword: "工业硅 421 553 价格"
+    target_specs:
+      - "421#"
+      - "553#"
+    unit: "元/吨"
+    extract_type: "auto"
+    description: "通氧553#、421#工业硅主流现货价"
+
+  rebar:
+    product_name: "螺纹钢"
+    category: "steel"
+    default_url: "https://list1.mysteel.com/"
+    search_keyword: "螺纹钢 HRB400E 价格"
+    target_specs:
+      - "HRB400E"
+      - "20mm"
+    unit: "元/吨"
+    extract_type: "table"
+    description: "上海/全国主流钢厂螺纹钢现货基准价"
+
+  SA:
+    product_name: "重质纯碱"
+    category: "chemicals"
+    default_url: "https://nenghua.mysteel.com/"
+    search_keyword: "重质纯碱 隆众 价格"
+    target_specs:
+      - "重质"
+      - "优等品"
+    unit: "元/吨"
+    extract_type: "auto"
+    description: "国内主流纯碱厂家出厂与送到价"
+
+  sulfuric_acid:
+    product_name: "浓硫酸"
+    category: "chemicals"
+    default_url: "https://nenghua.mysteel.com/"
+    search_keyword: "硫酸 98% 价格"
+    target_specs:
+      - "98%"
+      - "工业级"
+    unit: "元/吨"
+    extract_type: "auto"
+    description: "国内主流98%工业浓硫酸现货出厂价"
+
+  ti_slag:
+    product_name: "高钛渣"
+    category: "chemicals"
+    default_url: "https://list1.mysteel.com/"
+    search_keyword: "高钛渣 85% 90% 价格"
+    target_specs:
+      - "85%"
+      - "90%"
+      - "酸渣"
+      - "氯化渣"
+    unit: "元/吨"
+    extract_type: "auto"
+    description: "国内主流74%/85%/90%高钛渣现货价格"

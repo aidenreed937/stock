@@ -1,0 +1,53 @@
+# 聚氨酯 (MDI / TDI) 周期股分阶段量化交易门禁配置 (Polyurethane Cyclical Trading Gates)
+# 模块高内聚配置：面向 B 类周期性中游寡头品种 (CR5 > 75%，极难跌穿现金流，由寡头挂牌价与协同检修支配)
+
+schema_version: 2
+product_name: "聚氨酯"
+symbol: "MDI"
+category: "B_oligopoly"
+profile_name: "oligopoly_gate"
+title: "聚氨酯 (MDI/TDI) 周期寡头量化交易门禁与标的映射"
+description: "基于寡头挂牌价止跌/提价、协同检修、海外边际失血与估值反向时钟的三门禁决策体系"
+
+# =============================================================
+# 门禁规则定义
+# =============================================================
+left_side_odds:
+  name: "聚氨酯左侧赔率建仓门禁"
+  target_position_pct_max: 35.0  # 龙头抗风险极强，底仓可适度放宽至 35%
+  rules:
+    leader_listing_price_stable_months_min: 2  # 寡头月度挂牌价连续 2 个月止跌平盘 (确认现货底)
+    marginal_producer_loss: true              # 观察海外高能耗边际装置失血停产 (如欧洲气头 MDI 亏损冷修)
+    pb_percentile_10y_max: 0.20               # 龙头自身 PB 触及 10 年 20% 分位极值
+    preferred_target_role: "integrated_oligopoly_leader"  # 首选全产业链一体化寡头 (如万华化学)
+
+right_side_confirmation:
+  name: "聚氨酯右侧胜率确认门禁"
+  target_position_pct_max: 85.0  # 胜率确认，加码进攻
+  rules:
+    oligopoly_coordinated_maintenance: true   # 主流寡头公布集中检修计划或海外遭遇不可抗力
+    operating_rate_max: 0.80                  # 全行业负荷受检修压制跌破 80%
+    leader_listing_price_hike: true           # 龙头月度挂牌价开启首次提价
+    destocking_weeks_min: 2                   # 生产企业库存连续 2 周下降
+    technical_ma_break: "MA20"                # 突破 MA20 均线
+    demand_validation:
+      export_volume_yoy_min: 15.0             # 聚合 MDI 海外出口同比增速 > 15% (外需量价共振)
+    preferred_target_role: "alpha_leader"
+
+top_escape:
+  name: "聚氨酯逃顶一票否决门禁"
+  action: "clear_position"
+  rules:
+    pe_ttm_low_trap_max: 14.0                 # 寡头龙头享有成长与新材料溢价，12~15倍 PE 即见顶
+    operating_rate_min: 0.92                  # 全球装置负荷打满 > 92%
+    spread_margin_regime: "high_profit"       # 单吨毛利处于超额暴利
+    inventory_flow_regime: "passive_accumulation" # 下游汽车/家电拿货放缓，中游被动累库
+
+# =============================================================
+# 标的角色与可交易池映射
+# =============================================================
+target_universe_mapping:
+  alpha_leader:
+    - symbol: "600309.SH"
+      name: "万华化学"
+      role_desc: "全球聚氨酯绝对龙头 (MDI 350万吨 + TDI 65万吨)，光气化壁垒与一体化极致成本阿尔法"

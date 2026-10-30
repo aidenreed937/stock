@@ -1,0 +1,43 @@
+# 聚氯乙烯 (PVC / V) 全景基本面对账与量化投研管线配置
+#
+# 对应数据底座：
+#   - GACC 海关出口（Curated parquet，税号 39041090 等 PVC 商品出海）
+#   - 生意社 100ppi 现货基准出厂价（代码 V）
+#   - 大商所 DCE 聚氯乙烯期货仓单与主力连续合约行情
+#   - 成本配置模型 config/industry/chemicals/pvc/cost_models.yaml
+#   - 大宗标准化交易门禁 config/industry/chemicals/pvc/trading_gates.yaml
+#   - 上市公司画像 config/industry/chemicals/pvc/companies.yaml
+#   - 现期基差与仓单异动 Mart data/curated/mart/chemical_basis_inventory_mart.parquet
+# 产物：ArtifactStore 落盘 data/analytics/pvc/runs/... + latest + manifest.json
+
+schema_version: 1
+title: "聚氯乙烯 (PVC / V) 全景基本面对账研报"
+artifact_root: "data/analytics/pvc"
+
+inputs:
+  capacity_projects: "config/industry/chemicals/pvc/capacity_projects.yaml"
+  trading_gates: "config/industry/chemicals/pvc/trading_gates.yaml"
+  cost_models: "config/industry/chemicals/pvc/cost_models.yaml"
+  companies: "config/industry/chemicals/pvc/companies.yaml"
+  customs_trade_dataset: "customs_trade_gacc"
+  futures_inventory_dataset: "futures_inventory"
+  futures_daily_dataset: "futures_daily"
+  chemical_basis_inventory_dataset: "mart/chemical_basis_inventory_mart"
+  chemical_weekly_survey_dataset: "chemical_weekly_survey"
+  chemical_spot_price_dataset: "chemical_spot_price"
+  chemical_spreads_dataset: "chemical_spreads"
+
+regime:
+  scissors_spread_min: 0.0            # 供需剪刀差转正阈值
+  operating_rate_max: 75.0            # 行业周度开工率跌破警戒线确认减产 (75%)
+  operating_rate_top_min: 86.0        # 行业开工饱和钝化逃顶阈值 (86%)
+  export_volume_yoy_min: 15.0         # 月度出口同比增速超 15% 视为有效泄洪
+  destocking_weeks_min: 3             # 连续去库周数门限
+  basis_rate_min: 0.0                 # 期货主力基差平水或转正 (现货升水修复)
+
+history:
+  high_profit_margin: 600.0           # 综合理论毛利 >= 600 元/吨视为超额暴利区
+  deep_loss_margin: -300.0            # 理论毛利 <= -300 元/吨视为跌破电石法现金保本深度亏损区
+  min_episode_months: 2               # 连续月份数下限
+  max_episodes: 6                     # 最多渲染拐点数
+  follow_up_months: 3                 # 拐点后观察窗口 (月)

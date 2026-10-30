@@ -1,0 +1,70 @@
+# 钛白粉生产工艺理论成本模型配置 (TiO2 Cost Models)
+# 模块高内聚配置：硫酸法边际出清成本、氯化法低成本优势与行业利润相位阈值
+# 注：龙佰/钛能化学等企业微观生产、单耗与一体化参数已统一收敛至 company_projections.yaml
+
+schema_version: 1
+product_name: "钛白粉"
+symbol: "TiO2"
+unit: "元/吨"
+version: "1.1.0"
+updated_at: "2026-09-17"
+
+models:
+  sulfate_process:
+    name: "硫酸法金红石型钛白粉理论毛利模型"
+    product_name: "钛白粉"
+    symbol: "TiO2"
+    valid_from: "2020-01-01"
+    valid_to: "9999-12-31"
+    description: "以钛精矿与浓硫酸为原料，酸解水解煅烧，构成行业边际高成本出清线"
+    coefficients:
+      product: 1.0
+      ilmenite_46: 2.0         # 46%钛精矿单耗 (吨)
+      sulfuric_acid_98: 3.5    # 98%工业浓硫酸单耗 (吨)
+    fixed_cost: 3800.0         # 水电、煤炭、折旧、环保排污与人工 (元/吨)
+    cash_fixed_cost: 2600.0    # 现金流保本固定加工费 (剔除折旧)
+    national_capacity_share: 0.80
+    cost_tier: "marginal_sulfate_floor"
+    full_cost_approx: 15500.0  # 行业基准完全成本参考线 (元/吨)
+    cash_cost_approx: 13500.0  # 行业边际现金保本出清线 (元/吨)
+    formula: "tio2_price - (2.0 * ilmenite_price + 3.5 * acid_price) - fixed_cost"
+
+  chloride_process:
+    name: "氯化法高档钛白粉模型 (龙佰模式)"
+    product_name: "钛白粉"
+    symbol: "TiO2"
+    valid_from: "2020-01-01"
+    valid_to: "9999-12-31"
+    description: "自备钛渣/高钛渣与石油焦氯化，环保成本与单吨完全成本显著低于硫酸法；单耗口径来自工艺对比文章（高钛渣 1.15~1.25 取中值）"
+    national_capacity_share: 0.20
+    cost_tier: "chloride_alpha"
+    coefficients:
+      product: 1.0
+      high_titania_slag: 1.2      # 高钛渣 (TiO2≥85%) 单耗 (吨)
+      petroleum_coke: 0.2         # 石油焦单耗 (吨)
+      chlorine: 0.1               # 氯气净补充单耗 (吨；闭路循环回收后)
+    fixed_cost: 6000.0            # 固定加工费估算 (元/吨)
+    cash_fixed_cost: 4200.0       # 现金保本固定加工费估算 (元/吨)
+    full_cost_approx: 12500.0     # 基准完全成本参考值 (元/吨)
+    cash_cost_approx: 10500.0     # 现金保本参考值 (元/吨)
+    formula: "tio2_price - (1.2 * slag_price + 0.2 * petcoke_price + 0.1 * chlorine_price) - fixed_cost"
+
+regime_thresholds:
+  high_profit: 2000.0        # 理论毛利 > 2000 元/吨: 超额暴利
+  profitable: 500.0          # 500 ~ 2000 元/吨: 正常盈利
+  near_breakeven: -500.0     # -500 ~ 500 元/吨: 盈亏平衡 / 微利
+  # < -500 元/吨: 深度亏损 (跌破硫酸法现金保本，倒逼中小厂关停检修)
+
+# =============================================================
+# 浓硫酸 (H2SO4 98%) 情景价格标尺 (2026-09-18 按 100ppi PPID 236 真实序列校准)
+# 公式输入: tio2_price - (2.0 * ilmenite_price + 3.5 * acid_price) - fixed_cost
+# 真实序列: 2025-09 低位约 668 → 2026-03 约 1,270 → 2026-06 峰值约 2,112 (max 2,217.5)
+#           → 2026-09-18 最新 1,812.5 元/吨；Curated 现货表 H2SO4 已补齐 (2025-09-18 起, 366 条)
+# 注意: company_projections.yaml 的分部硫酸单耗为 3.0 吨/吨（此处行业口径为 3.5），酸价标尺两处共用。
+# =============================================================
+acid_price_scenarios:
+  unit: "元/吨"
+  current: 1812.5   # 100ppi 硫酸基准价 2026-09-18 最新值 (Curated 动态注入，缺数据时回退此值)
+  trough: 700.0     # 周期底酸价 (2025-09 低位 ~668~752)
+  mid_cycle: 1200.0 # 中枢修复 (2026-03 约 1,270)
+  peak: 2100.0      # 景气顶酸价 (2026-06~07 高位 ~2,050~2,112，峰值 2,217.5)

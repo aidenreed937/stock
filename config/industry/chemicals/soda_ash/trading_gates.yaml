@@ -1,0 +1,87 @@
+# 纯碱周期股分阶段量化交易门禁配置 (Soda Ash Cyclical Trading Gates)
+# 模块高内聚配置：面向 A 类大宗标准化与期货品种 (完全竞争同质化大宗、边际现金成本出清与仓单支配)
+
+schema_version: 2
+product_name: "纯碱"
+symbol: "SA"
+category: "A_commodity_standard"
+profile_name: "commodity_standard_gate"
+title: "纯碱周期股分阶段量化交易门禁与标的映射"
+description: "基于边际成本线、供需剪刀差、四阶段库存时钟与估值反向时钟的三门禁决策体系"
+
+# =============================================================
+# 门禁规则定义 (支持扁平化直接读取与 profiles 兼容)
+# =============================================================
+left_side_odds:
+  name: "纯碱左侧赔率建仓门禁"
+  target_position_pct_max: 30.0  # 建议底仓上限 20%~30%，严禁满仓或加杠杆
+  rules:
+    margin_regime_any:           # 理论加工毛利进入亏损或微利区间
+      - "deep_loss"
+      - "near_breakeven"
+    pb_percentile_10y_max: 0.15  # 个股或行业 PB 处于历史 15% 以下分位
+    pb_absolute_max: 0.85        # 或者绝对 PB 深度破净 (< 0.85)
+    seasonal_guidance:
+      optimal_entry_window: [2, 3, 4] # 春季复工补库旺季启动期为左侧胜率最高窗口
+    # 估值条件按「个股或行业」口径取全标的池最小值判定；preferred_target_role 仅用于
+    # 给出建仓首选标的。报告会同时对账该角色自身估值，避免「低 PB 标的触发、却建议
+    # 买入高估值龙头」的口径矛盾。
+    preferred_target_role: "alpha_leader" # 优先布局成本曲线最左侧 20% 分位抗亏龙头 (如远兴能源)
+
+right_side_confirmation:
+  name: "纯碱右侧胜率确认门禁"
+  target_position_pct_max: 80.0  # 加码至 80% 重仓进攻
+  rules:
+    operating_rate_max: 0.78     # 行业周度开工率跌破 78% 警戒线 (天然碱投产后满产基线抬升，78% 对应边际氨碱/联碱开工跌破 72% 的实质性冷修)
+    destocking_weeks_min: 3      # 连续去库期数下限 (全景表为月频，一期=1 个月；接入周度序列后可切换为周频口径)
+    basis_rate_min: 0.0          # 期货贴水修复，基差率转正 (现货平水或小幅升水)
+    technical_ma_break: "MA20"   # 个股或行业指数收盘价站上 20 日均线 (MA20)
+    valuation_ceiling_pb_10y_max: 0.40 # 估值天花板: 标的 10Y PB 分位数必须 <= 40% (杜绝高位追多)
+    demand_validation:           # 真实需求共振校验 (内需转正或外需高增)
+      scissors_spread_yoy_min: 0.0 # 供需剪刀差转正 (下游需求增速 > 上游供给增速)
+      export_volume_yoy_min: 15.0  # 或者海关出口同比增速 > 15% (海外真实泄洪)
+    seasonal_filters:            # 季节性过滤器与检修真伪检验
+      blackout_months: [12, 1]   # 春节前后淡季被动累库黑洞期：一票否决右侧买入追高
+      turnaround_inspection:
+        months: [8, 9, 10]       # 处于秋检月份时启动特殊审慎机制
+        require_margin_loss: true # 必须同时满足理论毛利进入亏损/微利，才认可秋检降负属于实质出清减产
+    preferred_target_role: "beta_elastic" # 右侧切换至破净高弹性标的 (如中盐化工、双环科技)
+
+top_escape:
+  name: "纯碱逃顶多因子清仓门禁"
+  action: "clear_position"       # 命中票数达标即清仓离场，不参与最后一棒
+  rules:
+    # 多因子投票制 (非单条件一票否决)：命中 >= trigger 清仓，命中 >= warning 仅预警
+    trigger_match_count_min: 3
+    warning_match_count_min: 2
+    operating_rate_min: 0.88     # 行业整体开工率 > 88%~90% 且维持高位钝化 (弹性打满)
+    spread_margin_regime: "high_profit" # 理论单吨毛利进入超额暴利区间
+    inventory_flow_regime: "passive_accumulation" # 中游蓄水池逆势转为被动累库
+    pe_ttm_low_trap_max: 8.0     # 静态 PE(TTM) 降至 5~8 倍个位数 (低 PE 见顶陷阱)
+    squeeze_trap_divergence:     # 高位期现挤仓与需求背离陷阱
+      pb_percentile_10y_min: 0.60 # 估值已处于历史 60% 分位高位 (翻倍透支后)
+      scissors_spread_yoy_max: 0.0 # 内需剪刀差转负
+      export_volume_yoy_max: 0.0  # 外需出口同比亦转负
+
+# =============================================================
+# 标的角色与工艺路线映射 (纯碱行业)
+# =============================================================
+target_universe_mapping:
+  alpha_leader:
+    - symbol: "000683.SZ"
+      name: "远兴能源"
+      role_desc: "天然碱成本颠覆者 (完全成本 700~800 元/吨)，左侧建仓首选，具备长期抗亏阿尔法"
+  beta_elastic:
+    - symbol: "600328.SH"
+      name: "中盐化工"
+      role_desc: "氨碱+联碱重资产央企，PB 极端破净，右侧反弹利润与估值修复弹性最大"
+    - symbol: "000707.SZ"
+      name: "双环科技"
+      role_desc: "纯联碱高弹性标的，PB 历史极低分位，右侧戴维斯双击弹性品种"
+  marginal_indicator:
+    - symbol: "000822.SZ"
+      name: "山东海化"
+      role_desc: "纯氨碱边际成本晴雨表，减产检修与巨额存货减值是行业出清的重要先行信号"
+    - symbol: "600409.SH"
+      name: "三友化工"
+      role_desc: "氨碱与化纤一体化，大型装置负荷变动指示沿海开工边际"

@@ -1,0 +1,132 @@
+# 玻璃 (Glass / FG & PVG) 投研权威信源、标杆分析师与基准口径配置库
+# 模块高内聚配置：整合光伏与浮法玻璃核心研究体系、时序观测窗口、机构共识与研报甄别标准
+
+schema_version: 1
+product_name: "平板玻璃与光伏压延玻璃"
+symbols: ["FG", "PVG"]
+version: "1.0.0"
+updated_at: "2026-10-19"
+
+# 1. 价格规格与数据基准采用规范
+price_specifications:
+  primary_benchmark:
+    spec_name: "2.0mm 镀膜钢化成品片 (PVG_2mm)"
+    unit: "元/㎡"
+    latest_spot_cny: 12.48
+    source: "InfoLink_SMM_Composite"
+    dataset: "data/curated/industry/chemical_spot_price.parquet"
+    usage_role: "核心主数据"
+    description: "一线组件厂大单采购含税到厂价。用于上市公司营收、单平毛利、EPS测算、行业成本利润状态机及交易门禁判断。"
+    cost_alignment:
+      leader_cash_cost_floor: 11.5   # 龙头现金保本线
+      industry_full_cost_ref: 13.8   # 行业平均完全成本
+      deterrence_price_ceiling: 14.5 # 寡头威慑定价目标上限
+
+  auxiliary_benchmark:
+    spec_name: "2.0mm 压延毛坯原片 (裸板)"
+    unit: "元/㎡"
+    recent_range_cny: "9.50 ~ 10.25 (极端低点 8.0 ~ 8.5)"
+    source: "卓创资讯 / 隆众资讯 / 券商产业链调研"
+    usage_role: "辅助高频压力表"
+    description: "未经切磨、镀膜、钢化的毛坯原片。仅用于监测二三线小厂现金流是否断裂、是否倒逼行业联合冷修。"
+    processing_spread_to_finished: "2.50 ~ 3.00 元/㎡ (镀膜液+钢化电耗+包装损耗)"
+
+# 2. 核心跟踪时间窗口与决战时钟
+tracking_time_windows:
+  winter_clearing_window:
+    period: "每年 11 月至次年 2 月 (供暖季 + 岁末年初)"
+    gate_target: "left_side_odds (左侧极值赔率潜伏)"
+    driver_mechanics: "北方供暖天然气涨价脉冲 + 北方建筑停工 + 岁末资金抽水，二三线高龄窑炉无钱大修，被迫实质放水冷修。"
+    key_metrics:
+      - "全国在产日熔量跌破 13.5 万吨/日"
+      - "有效产能利用率降至 75% 以下"
+      - "1月31日前上市公司年度业绩预告披露巨亏/大额减值，股价不创新低 (利空出尽)"
+
+  spring_validation_window:
+    period: "每年 3 月至 4 月 (春节后复工金三银四)"
+    gate_target: "right_side_confirmation (右侧胜率确认加码)"
+    driver_mechanics: "春节长假累库至 8000 万箱峰值后，检验复工刚需承接力与真实去库斜率。"
+    key_metrics:
+      - "周度出货率连续 3 周超过 100% (105% ~ 115%)"
+      - "样本企业厂库连续大幅下降"
+      - "郑商所 FG 期货贴水修复，基差率转正"
+      - "核心标的放量突破站稳 MA20"
+
+  report_verification_window:
+    period: "每年 4 月下旬 (一季报与正式年报落地)"
+    gate_target: "业绩与财务质量后验"
+    driver_mechanics: "轻装上阵、原料低价全额结转、折旧基数下降，验证由亏转盈成色。"
+    key_metrics:
+      - "毛利率回升确认由玻璃售价上涨驱动 (排除纯碱单向暴跌的被动假改善)"
+      - "经营活动现金流量净额 (OCF) 大幅激增转正"
+      - "资本开支 (Capex) 维持冰冻低位"
+
+# 3. 福莱特 (601865.SH / 06865.HK) 核心预测与机构共识对账
+flat_glass_consensus_2026:
+  status_2026h1_actual:
+    revenue_billion: 66.68
+    net_income_billion: -3.63
+    gross_margin_q2: "0.5%"
+    operating_cashflow_billion: 13.41
+    fixed_assets_billion: 168.81
+
+  full_year_2026e_projections:
+    revenue_range_billion: "136.0 ~ 140.0 (同比收缩 -10% ~ -13%)"
+    net_income_range_billion: "-4.5 ~ -2.5 (中枢约 -3.5 亿元，上市以来首次年度转亏)"
+    q4_impairment_expected_billion: "1.5 ~ 2.5 (冷修产线耐火材料与存货跌价计提)"
+
+  year_2027e_turnaround:
+    net_income_expected_billion: "+9.5 ~ +12.5 (重回由亏转盈)"
+    gross_margin_expected: "12% ~ 15%"
+
+  steady_state_terminal_valuation:
+    annual_volume_sqm_billion: 13.0
+    effective_market_share: "32% ~ 35%"
+    limit_pricing_unit_net_profit: 2.5 # 售价 14.5元 - 成本 12.0元
+    steady_net_income_billion: 32.5
+    mature_pe_multiple: "15 ~ 18 倍"
+    target_market_cap_billion: "480 ~ 585 亿元"
+    target_stock_price_ceiling: "20.5 ~ 25.5 元 (当前 9.04 元，达天花板后分批清仓)"
+
+# 4. 行业标杆分析师与真深度跟踪团队库
+benchmark_analysts:
+  - institution: "国金证券"
+    lead_analyst: "姚遥"
+    sector: "新能源与光伏"
+    core_strength: "窑炉微观摸排最扎实，统计全行业 700t/d 及 1000t/d 以下小窑炉产能，讲透冷修大修不可逆退出机制。下修 2026 年预测至 -4.07 亿元，务实求真。"
+    rating: "买入 (重点推荐)"
+
+  - institution: "交银国际"
+    lead_analyst: "文昊"
+    sector: "新能源与公用事业 (港股/A股联动)"
+    core_strength: "海外越南基地高毛利 (25%+) 与外销占比拆解最透，最早跟踪焦锑酸钠降本。估值极其克制 (0.75x PB 目标价 8.35 港元)，注重现金流安全边际。"
+    rating: "买入"
+
+  - institution: "华泰证券"
+    lead_analyst: "方晏荷"
+    sector: "建筑建材与跨界研究"
+    core_strength: "传统大建材顶尖新财富团队，深谙重资产窑炉连续运转与折旧非付现成本本质。把净资产重置成本与破净 PB 作为坚决的左侧赔率坐标尺。"
+    rating: "增持"
+
+  - institution: "国盛证券"
+    lead_analyst: "杨润思"
+    sector: "新能源"
+    core_strength: "周度跟踪紧密，精准拆解 Q1 14.4% 到 Q2 0.5% 毛利率骤降，下修 2026 年预测至 -3.70 亿元，契合产业实际。"
+    rating: "增持"
+
+  - institution: "国联民生证券"
+    lead_analyst: "邓永康"
+    sector: "电力设备与新能源"
+    core_strength: "对冷修产线日熔量跟踪频繁，预测 2026 年 -5.08 亿元，对年底资产减值计提给予了充分谨慎预期。"
+    rating: "推荐"
+
+# 5. 研报质量真伪甄别规则 (买方排雷指引)
+quality_verification_rules:
+  - rule: "敢于预测亏损"
+    pass_criteria: "敢于将 2026 年利润预测下修至 -3 亿至 -5 亿元，如实反映资产减值与现金流失血；过滤在深亏期仍强行预测盈利数亿的顺周期报告。"
+  - rule: "严格区分报价规格"
+    pass_criteria: "严格区分 2.0mm 原片裸板 (8.5~10.25元) 与镀膜钢化成品片 (12.48元)，算清后道加工费与成品率差异。"
+  - rule: "识别真假出清"
+    pass_criteria: "坚决不把'堵窑口减产30%'误认为出清，明确强调必须等到冬季采暖季逼迫二三线彻底放水冷修。"
+  - rule: "清醒评估估值天花板"
+    pass_criteria: "深谙双寡头威慑限价博弈，稳态利润锚定 30~33 亿元、目标价锚定 20~25 元，坚决不给 40 倍 PE 暴利幻想。"

@@ -1,0 +1,246 @@
+# 钛白粉双雄（龙佰集团 vs 钛能化学）未来营收与利润分部预测模型配置
+# 规范：实有总股本、归母净资产、每股净资产 (BPS)、当前财务费用与目标 PB 评价标准 100% 由本地 Curated 黄金事实表动态加载与自适应计算；
+# 本文件仅保留装置产能、工艺单耗系数、宏观情景标尺与在建工程战略规划。
+
+version: "1.7.0"
+updated_at: "2026-10-29"
+title: "钛白粉双雄业务分部与财务合并测算配置"
+
+# ==============================================================================
+# 0. 实际价格与外汇口径（Phase 1 校准与 Phase 1.7 动态优化）
+# - 出口权重：动态取 fina_mainbz 地区拆分（国外收入/总营收），缺数据用 fallback。
+# - 实现价 = 出口占比 × 出口ASP(RMB) + 内销占比 × 国内出厂价（月度）；未来月/ASP缺失时
+#   用国内情景价 × realized_factor = w×premium_ratio+(1−w) 外推。
+# - 实时外汇：系统优先自适应直连 alphavantage / yfinance 的 CNH=X 黄金事实表日频收盘价。
+# ==============================================================================
+realized_price:
+  fx_usd_cny: 7.2 # 回退值；实际优先由 resolve_fx_rate() 动态读取日频 CNH=X
+  export_rebate_rate: 0.13 # 钛白粉出口退税 13%（退税单独建模为收益行，不并入实现价——Phase 1.5）
+  fe_po4_price_current: 15500.0 # 磷酸铁现货（百川 2026-09，约 1.55 万/吨）
+  export_premium_ratio_fallback: 1.12 # 出口ASP(RMB)/国内出厂基准价 备用比例
+  # 会计存货结转时滞（Cost Lag Filter）：默认 0 天为即时边际现货定价；财报对账时可开启 30~60 天
+  cost_lag_calibration:
+    default_lag_days: 0 # 默认关闭，保持即时边际现货定价
+    accounting_reconcile_lag_days: 45 # 会计季报对账经验时滞（先进先出与采购运输时滞）
+  historical_ore_plant_fallback:
+    "2025-09": 1620.0 # 2025-09 攀西坑口 ~1270 + 运费350（插值）
+    "2026-01": 1930.0 # 坑口 1580~1630 + 运费 300~350（配置注释口径）
+    "2026-02": 1890.0
+    "2026-03": 1850.0
+  historical_utilization_fallback:
+    "2025-09": 0.78
+    "2025-10": 0.78
+    "2025-11": 0.78
+    "2025-12": 0.78
+    "2026-01": 0.78
+    "2026-02": 0.78
+    "2026-03": 0.78
+    "2026-04": 0.78
+
+# ==============================================================================
+# 0b. 年末减值惯例（Phase 1.6 补充，2026-09-20）
+# 龙佰集团历史 Q4 集中计提资产减值（2018/2023/2024/2025 均 100% 集中 Q4），
+# 2023-2025 年 Q4 计提均值约 -3.4 亿元（税前，income.assets_impair_loss 口径）。
+# 应用于未披露的 Q4 外推季度；已披露季度（锚定实际财报）不重复调整。
+# ==============================================================================
+quarterly_adjustments:
+  "002601.SZ":
+    "Q4":
+      impairment_expected_cny: -340000000.0 # 税前；税后净影响约 -2.9 亿（15% 税盾）
+
+# ==============================================================================
+# 1. 企业业务分部定义与评价标准
+# ==============================================================================
+companies:
+  "002601.SZ":
+    name: "龙佰集团"
+    description: "一体化寡头龙头，具备攀西自备钛精矿与氯化法/硫酸法双工艺路线"
+    tax_rate: 0.15
+    base_expense_ratio: 0.085 # 销售+管理+研发变动费用率基准
+    # Phase 1: 动态出口权重（fina_mainbz 地区拆分）与成本校准系数
+    export_weight_mode: dynamic
+    export_weight_fallback: 0.40
+    export_weight_source: "fina_mainbz 地区拆分（国外/总营收）"
+    calibration:
+      ore_factor: 1.0
+      acid_factor: 1.05 # Phase 1.6: 按公司中报钛白粉毛利率 17.53% 微调
+      fixed_cost: 6500.0 # Phase 1.6: 固定成本 7400→6500（Q3 外推毛利率 14.3%→约 17.5%）
+    # 工艺产能结构与价差测算基准
+    sulfate_ratio: 0.43 # 硫酸法产能占比
+    chloride_ratio: 0.57 # 氯化法产能占比
+    fallback_chloride_margin: 3500.0 # 氯化法原料缺失时的基准毛利回退值 (元/吨)
+    sponge_cash_cost: 43000.0 # 全流程海绵钛保本成本 (元/吨)
+    # 财务费用由利润表与资产负债表动态年化装配，此处仅配置情景去杠杆系数
+    finance_expense_scale_by_scenario:
+      current_spot: 1.0 # 现货实时情景承压 100%
+      trough: 1.0 # 周期底部磨底承压 100%
+      mid_cycle: 0.55 # 中性复苏期自由现金流偿债去化 45%
+      peak: 0.40 # 景气高潮期加速去化 60%
+    # 目标 PB 评价标准已由 10 年历史日频分位 (P05/P50/P85 及最新收盘) 全自动动态自适应接管，无需手动维护
+    segments:
+      sulfate_tio2:
+        name: "硫酸法钛白粉"
+        capacity_w_tons: 65.0
+        utilization_rate: 0.85 # 磨底与稳态期真实有效商品开工率 (外售约 55.2 万吨)
+        ore_consumption: 2.3
+        ore_captive_ratio: 0.65
+        ore_captive_cash_cost: 900.0 # 自备钛矿内部结算现金成本 (元/吨)
+        ore_captive_cost: 900.0 # 别名兼容
+        sulfate_acid_coeff: 3.0 # 硫酸单耗 (吨)
+        acid_consumption: 3.0 # 别名兼容
+        fixed_cost: 6600.0 # 动力蒸汽煤电(2600)+表面包膜化工辅料(1200)+折旧摊销(1600)+环保人工(1200)
+        byproduct_credit: 150.0
+      chloride_tio2:
+        name: "氯化法钛白粉"
+        capacity_w_tons: 86.0
+        internal_conversion_deduction_w_tons: 12.0 # 扣减转产海绵钛联产自用中间体四氯化钛折合产能 (消除重复计算)
+        utilization_rate: 0.88 # 扣除自用后有效可售产能 (74万吨) 之开工率 (外售约 65.1 万吨)
+        premium_vs_sulfate: 1800.0
+        full_cost_approx: 13000.0
+      sponge_ti:
+        name: "海绵钛及金属锆"
+        capacity_w_tons: 8.0
+        utilization_rate: 0.70 # 磨底期有效外售量约 5.6 万吨 (贴合年报 25 亿收入规模)
+        full_cost_approx: 45000.0
+        zirconium_revenue_fixed_cny: 1.0e9 # 金属锆等副产年稳定营业收入 (历史年报中枢 10 亿)
+        zirconium_gross_profit_cny: 2.0e8 # 金属锆等副产年稳定毛利贡献 (历史年报中枢 2 亿)
+      iron_ore:
+        name: "高品位铁精矿外售"
+        sales_w_tons: 300.0 # 真实外售商品量 300 万吨 (非总采选量，贴合 5 年年报 22 亿外售中枢)
+        unit_cash_cost: 380.0
+      new_energy:
+        name: "新能源材料"
+        source_mode: "dynamic_mainbz" # 优先由 fina_mainbz 历史 3Y 中位数动态装配
+        revenue_fixed_cny: 1.1e9 # 降级回退基准 (贴合 2023-2025 年报均值 11 亿)
+        gross_margin_rate: 0.08
+      trading_other:
+        name: "供应链贸易及其他"
+        source_mode: "dynamic_mainbz" # 优先由 fina_mainbz 历史 3Y 中位数动态装配
+        revenue_fixed_cny: 2.0e9 # 降级回退基准 (贴合 2023-2025 年报均值 20 亿)
+        gross_margin_rate: 0.03
+
+  "002145.SZ":
+    name: "钛能化学"
+    description: "外购原料为主的硫酸法代表，出口弹性与贝塔敏感标的"
+    tax_rate: 0.15
+    base_expense_ratio: 0.065 # 轻资产属性，四费率低
+    # Phase 1: 动态出口权重与成本校准系数（初始值待滚动回测标定，见设计文档 §4.2）
+    export_weight_mode: dynamic
+    export_weight_fallback: 0.35
+    export_weight_source: "fina_mainbz 地区拆分（国外/总营收）"
+    calibration:
+      ore_factor: 0.85
+      acid_factor: 0.8
+      fixed_cost: 6500.0 # Phase 1.6: 按公司中报毛利率 7.66% @H1 均价 15,060 反推完全成本 ~13,900 元/吨（原 5,600 偏低，外推季度毛利率虚高）
+    # 工艺产能结构与价差测算基准
+    sulfate_ratio: 1.00 # 硫酸法产能占比 100%
+    chloride_ratio: 0.00
+    # 财务费用由利润表与资产负债表动态年化装配，净现金体质年化利息净额极低
+    finance_expense_scale_by_scenario:
+      current_spot: 1.0
+      trough: 1.0
+      mid_cycle: 0.55
+      peak: 0.40
+    # 目标 PB 评价标准已由 10 年历史日频分位 (P05/P50/P85 及最新收盘) 全自动动态自适应接管，无需手动维护
+    segments:
+      sulfate_tio2:
+        name: "金红石型钛白粉"
+        # 现役三基地原粉产能；不含甘肃东方钛业深加工项目一期 20 万吨 (capacity_projects.yaml ZH_DF_BAIYIN_DEEP_P1)，避免重复计入。
+        capacity_w_tons: 55.0 # 现役三基地产能
+        scenario_increments:
+          peak: 30.0 # 景气高峰期贵州开阳40万吨一期达产增量 (+30万吨)
+        # 动态利用率开关：current_spot/auxiliary_stress 与 trough 由 chemical_monthly_survey
+        # 黄金事实表注入行业产能利用率（当前约 72~74%），替代静态 0.95 满产假设；
+        # mid_cycle/peak 仍用下方 utilization_rate 或情景参数。
+        dynamic_utilization: true
+        utilization_rate: 0.95
+        ore_consumption: 2.3
+        ore_captive_ratio: 0.0 # 纯外购
+        ore_captive_cash_cost: 0.0
+        ore_captive_cost: 0.0
+        sulfate_acid_coeff: 3.0 # 硫酸单耗 (吨)
+        acid_consumption: 3.0 # 别名兼容
+        fixed_cost: 7000.0 # 外购原料运费加成与制造全成本
+        byproduct_credit: 100.0
+      iron_phosphate:
+        name: "电池级磷酸铁"
+        # source_mode=dynamic_mainbz：current_spot/auxiliary_stress/trough 营收取 fina_mainbz
+        # “新能源材料”近 3 年年报中枢（钛能实际 2025 年 3.6 亿，2023/24 接近零，中位数口径偏保守）；
+        # mid_cycle/peak 仍按下方产能与利用率爬坡假设。
+        source_mode: "dynamic_mainbz"
+        capacity_w_tons: 10.0 # 现役白银一期基准产能
+        scenario_increments:
+          mid_cycle: 5.0 # 中性复苏期白银二期部分爬坡 (+5万吨)
+          peak: 20.0 # 景气高峰期满产放量 (+20万吨)
+        utilization_rate: 0.85
+        unit_cost_with_byproduct: 13090.0 # 公司口径反推：磷酸铁 1.55 万/吨 × (1-15.55% 毛利率)（Phase 1.5）
+      phosphate_ore:
+        name: "贵州开阳磷矿"
+        # source_mode=dynamic_mainbz：current_spot/auxiliary_stress/trough 营收取 fina_mainbz
+        # “磷矿/磷矿石”近 3 年年报中枢（钛能实际约 2.0 亿，远低于满产 4.5 亿假设）；
+        # mid_cycle/peak 仍按下方外售量爬坡假设。
+        source_mode: "dynamic_mainbz"
+        external_sales_w_tons: 50.0 # 现役开采外售规模
+        scenario_increments:
+          mid_cycle: 50.0 # 中性复苏期开采爬坡 (+50万吨)
+          peak: 100.0 # 景气高峰期满产外售 (+100万吨)
+        unit_mining_cost: 380.0
+      trading_other:
+        name: "副产品与贸易"
+        source_mode: "dynamic_mainbz"
+        revenue_fixed_cny: 5.0e8
+        gross_margin_rate: 0.15
+      yellow_phosphorus:
+        name: "黄磷"
+        source_mode: "dynamic_mainbz"
+        revenue_fixed_cny: 3.0e8
+        gross_margin_rate: 0.32 # H1 黄磷收入 3.70 亿 +34%；行业毛利率 30-40%（取 32% 保守，Phase 1.6 补收入腿）
+
+# ==============================================================================
+# 2. 宏观与行业情景定义 (Scenarios)
+# 说明：情景标尺为静态回退参考，运行时由 Curated 现货注入覆盖 (projections.py _inject_current_spot_scenario)，
+# 且钛能硫酸法利用率由 chemical_monthly_survey 动态注入 (projections.py _inject_monthly_utilization，
+# current_spot/auxiliary_stress=最新月，trough=近 6 个月最低，当前约 72~74%)。
+# 已知偏差（2026-09-18 校准后，依据 100ppi PPID 236 真实序列）：酸价情景取 trough 700 / mid_cycle 1200 / peak 2100；
+# 真实序列 2025-09 低位约 668、2026-06 峰值约 2217、2026-09 最新 1812.5 元/吨。当前现货(14097)下钛能化学硫酸法
+# 保本线 ≈ 2.3×1612 + 3.0×1812 + 7000 − 100 ≈ 16,044 元/吨，已深度跌破现金保本（约 -1,947 元/吨），与外部
+# 行业单吨倒挂方向一致；再改情景价需以 Curated 现货价差数据核验，并同步 test_tio2_projections.py 的净利区间断言。
+# 2026-09-20 修正：peak 产品价 17,500→18,500、peak 钛矿到厂价 2,400→1,950（依据 2026-01~06 实际钛矿价格曲线与 6 月价差扩张 ~7,590
+# 元/吨结构），消除“景气越涨越亏”的反常峰值情景；同步更新 test_tio2_projections.py 峰值净利断言。
+# ==============================================================================
+scenarios:
+  trough:
+    name: "周期底部磨底"
+    description: "需求偏弱，产品价格紧贴成本线，新能源内卷保本"
+    tio2_sulfate_price: 14000.0 # 已知偏差：高于钛能化学保本线约 1,460 元/吨，静态标尺未触达亏损相位；校准需以 Curated 现货数据为准 (见 scenarios 头部说明)
+    ilmenite_market_price: 1600.0 # 工厂入库到厂含税成本 (攀西坑口现货 1250~1300 + 铁路/汽运运费 300~350 元/吨)
+    acid_price: 700.0 # 校准(2026-09-18): 底部酸价，依据 100ppi PPID 236 真实序列 2025-09 低位约 668~752 元/吨
+    iron_ore_price: 750.0
+    sponge_ti_price: 46000.0
+    fe_po4_price: 9800.0
+    phosphate_rock_price: 900.0
+    pe_multiple: 15.0
+
+  mid_cycle:
+    name: "中性中枢复苏"
+    description: "二手房装修与出海放量，价格修复至历史均值，经营杠杆启动"
+    tio2_sulfate_price: 15500.0
+    ilmenite_market_price: 1900.0 # 工厂入库到厂含税成本 (攀西坑口现货 1550~1600 + 运费 300~350 元/吨)
+    acid_price: 1200.0 # 校准(2026-09-18): 中枢酸价，参照 100ppi 序列 2026-03 约 1,270 元/吨
+    iron_ore_price: 850.0
+    sponge_ti_price: 52000.0
+    fe_po4_price: 11000.0
+    phosphate_rock_price: 950.0
+    pe_multiple: 16.0
+
+  peak:
+    name: "景气高峰繁荣"
+    description: "全球供给出清与补库共振，钛白粉提价快于原料成本，价差显著扩张，新增产能全面达产"
+    tio2_sulfate_price: 18500.0 # 顶部溢价：高于 2026-06 实际峰值 17,168~17,200 约 8%，保守低于 2021-22 高点约 20,000；配合 peak 成本组合使钛能硫酸法单吨毛利 >0（价差扩张腿）
+    ilmenite_market_price: 1950.0 # 工厂入库到厂含税成本：2026-01 攀西 46% 坑口高位 1,580~1,630 + 运费 300~350 = 1,880~1,980 到厂取中（原 2,400 高估：2026 实际矿价自 1 月 1,580-1,630 下行至 6 月底 1,350-1,400，全年未见 2,000 以上到厂）
+    acid_price: 2100.0 # 校准(2026-09-18): 景气顶酸价，参照 100ppi 序列 2026-06~07 高位 ~2,050~2,112（峰值 2,217.5）
+    iron_ore_price: 950.0
+    sponge_ti_price: 65000.0
+    fe_po4_price: 13500.0 # 景气顶磷酸铁价格回升（成本 13,090，峰值微利；原 12,500 低于成本）
+    phosphate_rock_price: 1050.0
+    pe_multiple: 12.0 # 高峰期 PE 压缩防估值陷阱

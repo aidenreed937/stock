@@ -1,0 +1,52 @@
+# 乙二醇 (MEG) 生产工艺理论成本与边际出清模型配置 (MEG Cost Models)
+# 模块高内聚配置：涵盖大型炼化一体化油制路线与现代煤化工合成气草酸酯路线
+
+schema_version: 1
+product_name: "乙二醇"
+symbol: "MEG"
+unit: "元/吨"
+version: "1.0.0"
+updated_at: "2026-09-18"
+
+models:
+  oil_to_meg:
+    name: "油制/乙烯法乙二醇模型 (大炼化一体化路线)"
+    product_name: "乙二醇"
+    symbol: "MEG"
+    valid_from: "2020-01-01"
+    valid_to: "9999-12-31"
+    description: "大型炼化一体化乙烯环氧化水合路线，开工稳定，占全国约 62% 产能"
+    national_capacity_share: 0.62
+    cost_tier: "oil_integrated"
+    coefficients:
+      product: 1.0
+      ethylene: 0.60           # 乙烯单耗 (吨)
+    fixed_cost: 750.0          # 水电催化剂折旧人工制造费 (元/吨)
+    cash_fixed_cost: 480.0     # 现金保本制造费 (剔除折旧)
+    full_cost_approx: 4900.0   # 基准完全成本参考线 (元/吨)
+    cash_cost_approx: 4300.0   # 现金流保本底线 (元/吨)
+    formula: "meg_price - 0.60 * ethylene_price - fixed_cost"
+
+  coal_to_meg:
+    name: "煤制乙二醇模型 (合成气草酸酯路线 - 边际出清线)"
+    product_name: "乙二醇"
+    symbol: "MEG"
+    valid_from: "2020-01-01"
+    valid_to: "9999-12-31"
+    description: "以原料煤/动力煤为源头，高水耗重资产折旧，占全国约 38% 产能，构成高成本边际出清线"
+    national_capacity_share: 0.38
+    cost_tier: "marginal_coal_cost_floor"
+    coefficients:
+      product: 1.0
+      thermal_coal: 2.3        # 综合动力煤单耗 (吨)
+    fixed_cost: 1300.0         # 环保水处理催化剂折旧费用 (元/吨)
+    cash_fixed_cost: 750.0     # 现金保本制造费 (元/吨)
+    full_cost_approx: 5400.0   # 基准完全成本参考线 (元/吨)
+    cash_cost_approx: 4700.0   # 现金流保本底线 (元/吨)
+    formula: "meg_price - 2.3 * coal_price - fixed_cost"
+
+regime_thresholds:
+  super_profit: 600.0          # 理论毛利 > 600 元/吨：超额暴利
+  profitable: 150.0            # 150 ~ 600 元/吨：行业正常盈利
+  near_breakeven: -200.0       # -200 ~ 150 元/吨：先进油制微利，煤制普遍亏损
+  # < -200 元/吨：深度亏损 (跌穿煤制现金流保本线，开工率降至 50%~60% 倒逼出清)

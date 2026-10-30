@@ -1,0 +1,37 @@
+# 玻璃 (Glass / FG & PVG) 全景基本面对账管线配置
+#
+# 对应数据底座：
+#   - NBS 官方月度产量（平板玻璃，RAW 标准化 CSV，含同比）
+#   - GACC 海关出口（Curated parquet，8 位税号 7005 / flat_glass）
+#   - 郑商所 CZCE 注册仓单、主力行情 FG0（Curated parquet）
+#   - 隆众/卓创周度在产日熔量、开工率、企业库存与产销率（Curated parquet chemical_weekly_survey）
+#   - 生意社/InfoLink 现货出厂基准（浮法 FG 5mm 与光伏 PVG 2.0mm/3.2mm）（Curated parquet chemical_spot_price）
+#   - 成本配置模型与窑炉种子库 config/industry/chemicals/glass/
+# 产物：ArtifactStore 落盘 data/analytics/glass/runs/... + latest + manifest.json
+
+schema_version: 1
+title: "玻璃 (Glass / FG & PVG) 全景基本面对账研报"
+artifact_root: "data/analytics/glass"
+
+inputs:
+  capacity_furnaces: "config/industry/chemicals/glass/capacity_furnaces.yaml"
+  trading_gates: "config/industry/chemicals/glass/trading_gates.yaml"
+  cost_models: "config/industry/chemicals/glass/cost_models.yaml"
+  companies: "config/industry/chemicals/glass/companies.yaml"
+  nbs_plate_glass_csv: "data/raw/industry/chemicals/nbs/nbs_plate_glass_monthly.csv"
+  nbs_soda_ash_csv: "data/raw/industry/chemicals/nbs/nbs_soda_ash_monthly.csv"
+  customs_trade_dataset: "customs_trade_gacc"
+  customs_trade_fallback: "customs_trade"
+  futures_inventory_dataset: "futures_inventory"
+  futures_daily_dataset: "futures_daily"
+  chemical_weekly_survey_dataset: "chemical_weekly_survey"
+  chemical_spot_price_dataset: "chemical_spot_price"
+  solar_price_chain_dataset: "solar_price_chain"
+  solar_supply_demand_dataset: "solar_supply_demand"
+
+# 蓄水池状态机阈值
+regime:
+  basis_speculative_cny: -30.0        # 现货-期货基差低于该值视为深度贴水
+  destocking_shipment_rate: 98.0      # 出货率 >= 该值视为去库
+  passive_shipment_rate: 95.0         # 出货率 < 该值视为下游谨慎
+  active_destocking_operating_rate: 76.0 # 行业开工率 <= 76% 视为主动冷修出清

@@ -1,0 +1,53 @@
+# 聚氯乙烯 (PVC) 生产工艺理论成本与边际出清模型配置 (PVC Cost Models)
+# 模块高内聚配置：涵盖西北煤电电石法高能耗出清线与沿海乙烯法/VCM路线
+
+schema_version: 1
+product_name: "聚氯乙烯"
+symbol: "V"
+unit: "元/吨"
+version: "1.0.0"
+updated_at: "2026-09-18"
+
+models:
+  calcium_carbide_process:
+    name: "电石法 PVC 理论成本模型 (边际出清支撑线)"
+    product_name: "聚氯乙烯"
+    symbol: "V"
+    valid_from: "2020-01-01"
+    valid_to: "9999-12-31"
+    description: "依赖煤电与电石，占全国约 78% 产能，外购电石高能耗装置构成行业绝对边际出清线"
+    national_capacity_share: 0.78
+    cost_tier: "carbide_marginal_floor"
+    coefficients:
+      product: 1.0
+      calcium_carbide: 1.42    # 标准电石单耗 (吨)
+    fixed_cost: 1150.0         # 电力蒸汽折旧与辅料人工 (元/吨)
+    cash_fixed_cost: 750.0     # 现金保本加工费 (元/吨)
+    full_cost_approx: 5800.0   # 行业完全成本基准线 (元/吨)
+    cash_cost_approx: 5100.0   # 边际现金保本底线 (元/吨)
+    formula: "pvc_price - 1.42 * carbide_price - fixed_cost"
+
+  ethylene_process:
+    name: "乙烯法 PVC 理论成本模型 (沿海一体化路线)"
+    product_name: "聚氯乙烯"
+    symbol: "V"
+    valid_from: "2020-01-01"
+    valid_to: "9999-12-31"
+    description: "沿海炼化乙烯氧氯化法，品质高、能耗低，占全国约 22% 产能"
+    national_capacity_share: 0.22
+    cost_tier: "ethylene_integrated"
+    coefficients:
+      product: 1.0
+      ethylene: 0.50           # 乙烯单耗 (吨)
+      chlorine: 0.65           # 液氯单耗 (吨)
+    fixed_cost: 850.0          # 加工制造与折旧费用 (元/吨)
+    cash_fixed_cost: 550.0     # 现金保本加工费 (元/吨)
+    full_cost_approx: 5500.0   # 行业完全成本基准线 (元/吨)
+    cash_cost_approx: 4800.0   # 现金保本底线 (元/吨)
+    formula: "pvc_price - (0.50 * ethylene_price + 0.65 * chlorine_price) - fixed_cost"
+
+regime_thresholds:
+  super_profit: 600.0          # 理论毛利 > 600 元/吨：超额暴利
+  profitable: 100.0            # 100 ~ 600 元/吨：正常盈利
+  near_breakeven: -300.0       # -300 ~ 100 元/吨：微利/保本
+  # < -300 元/吨：深度亏损 (跌穿电石法现金保本线，西北企业大面积降负停产)

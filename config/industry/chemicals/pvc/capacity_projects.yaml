@@ -1,0 +1,80 @@
+# 聚氯乙烯重大产能事件种子库 (PVC Capacity Project Database)
+# 数据源：上市公司公告 (中泰化学、新疆天业、氯碱化工等) + 氯碱工业协会及各省重大项目库
+# 用途：跟踪行业供给端物理有效产能释放日历与冲击规模
+
+metadata:
+  product_name: "聚氯乙烯"
+  symbol: "V"
+  unit: "万吨/年"
+  version: "1.0.0"
+
+projects:
+  - project_id: "ZS_HY_PVC_40"
+    company: "荣盛石化 (浙石化)"
+    plant_name: "舟山 4000 万吨炼化一体化配套 40 万吨乙烯法 PVC 装置"
+    province: "浙江"
+    technology: "ethylene_process"
+    capacity_w_tons: 40.0
+    status: "operating"
+    announcement_date: "2019-05-18"
+    expected_start: "2022-06-01"
+    actual_start: "2022-08-15"
+    full_capacity_date: "2022-12-30"
+    source: "浙石化投产进展公报"
+    confidence: "A"
+
+  - project_id: "HY_QZ_PVC_40"
+    company: "上海华谊 (广西华谊新材料)"
+    plant_name: "钦州一期化工新材料一体化配套 40 万吨乙烯法 PVC 装置"
+    province: "广西"
+    technology: "ethylene_process"
+    capacity_w_tons: 40.0
+    status: "operating"
+    announcement_date: "2019-11-20"
+    expected_start: "2022-10-01"
+    actual_start: "2022-12-10"
+    full_capacity_date: "2023-05-15"
+    source: "广西壮族自治区重大项目推进通报"
+    confidence: "A"
+
+  - project_id: "JF_HZ_PVC_60"
+    company: "金发科技"
+    plant_name: "惠州年产 60 万吨高性能聚合物改性配套 PVC 装置"
+    province: "广东"
+    technology: "ethylene_process"
+    capacity_w_tons: 60.0
+    status: "operating"
+    announcement_date: "2020-09-15"
+    expected_start: "2023-06-01"
+    actual_start: "2023-07-28"
+    full_capacity_date: "2023-11-30"
+    source: "公司公告与项目投产试运行报告"
+    confidence: "A"
+
+  - project_id: "SM_YL_PVC_80"
+    company: "陕煤集团 (榆林化学)"
+    plant_name: "煤炭分质清洁转化二期配套电石-PVC-环保建材项目"
+    province: "陕西"
+    technology: "carbide_process"
+    capacity_w_tons: 80.0
+    status: "construction"
+    announcement_date: "2022-05-12"
+    expected_start: "2025-10-01"
+    actual_start: null
+    full_capacity_date: "2026-06-30"
+    source: "榆林市重点产业项目推进办公室"
+    confidence: "B"
+
+  - project_id: "XJ_TY_PVC_TECH"
+    company: "新疆天业"
+    plant_name: "石河子基地节能降耗电石法特种树脂升级改造工程"
+    province: "新疆"
+    technology: "carbide_process"
+    capacity_w_tons: 20.0
+    status: "operating"
+    announcement_date: "2021-08-20"
+    expected_start: "2023-04-01"
+    actual_start: "2023-06-18"
+    full_capacity_date: "2023-10-15"
+    source: "公司技改竣工验收报告"
+    confidence: "A"

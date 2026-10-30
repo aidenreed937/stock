@@ -1,0 +1,42 @@
+# 钛白粉 (TiO2) 全景基本面对账管线配置
+#
+# 对应数据底座：
+#   - GACC 海关出口（Curated parquet，8 位税号 32061110/11/19 / tio2 / 850326.SI 钛白粉）
+#   - 生意社 100ppi 现货基准出厂价（Curated parquet，代码 TiO2，PPID 645）
+#   - 成本配置模型 config/industry/chemicals/tio2/cost_models.yaml (品种级唯一维护源)
+#   - 寡头交易门禁 config/industry/chemicals/tio2/trading_gates.yaml (品种级唯一维护源；门面 cyclical_trading_gates.yaml 仅保留 B 类通用模板)
+#   - 上市公司画像 config/industry/chemicals/tio2/companies.yaml
+# 产物：ArtifactStore 落盘 data/analytics/tio2/runs/... + latest + manifest.json
+
+schema_version: 1
+title: "钛白粉 (TiO2) 全景基本面对账研报"
+artifact_root: "data/analytics/tio2"
+
+inputs:
+  capacity_projects: "config/industry/chemicals/tio2/capacity_projects.yaml"
+  trading_gates: "config/industry/chemicals/tio2/trading_gates.yaml"
+  cost_models: "config/industry/chemicals/tio2/cost_models.yaml" # 声明性输入：管线内用于 margin_fallback 利润带；数据侧价差由 ChemicalSpreadCalculator 回退消费
+  company_projections: "config/industry/chemicals/tio2/company_projections.yaml"
+  customs_trade_dataset: "customs_trade_gacc"
+  customs_trade_fallback: "customs_trade"
+  chemical_spot_price_dataset: "chemical_spot_price"
+  chemical_spreads_dataset: "chemical_spreads"
+  chemical_weekly_survey_dataset: "chemical_weekly_survey"
+  chemical_monthly_survey_dataset: "chemical_monthly_survey" # 月频调研（SMM 厂库/产量 + 隆众·Mysteel 产能利用率），周度缺失时作右侧门禁代理
+  company_panel_dataset: "mart/tio2_company_panel"
+  industry_l2_daily_dataset: "mart/industry_l2_daily"
+
+# 寡头与中游蓄水池状态机阈值
+regime:
+  destocking_export_yoy: 15.0         # 海关出口量同比 >= 15% 视为外需强劲泄洪/去库
+  passive_export_yoy: -5.0            # 海关出口量同比 < -5% 视为外需收缩
+  active_destocking_operating_rate: 75.0
+  delta_inv_epsilon: 0.01
+
+# 历史周期大拐点检测
+history:
+  high_profit_margin: 2000.0          # 理论毛利 >= 2000 元/吨视为高利润顶区
+  deep_loss_margin: -500.0            # 理论毛利 <= -500 元/吨视为深度亏损底区
+  min_episode_months: 2              # 连续月份数下限
+  max_episodes: 6                    # 报告最多渲染的拐点期数
+  follow_up_months: 3                # 拐点后观察窗口（月）

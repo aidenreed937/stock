@@ -1,0 +1,65 @@
+# 聚丙烯 (PP) 核心上市公司画像配置库 (Polypropylene Company Universe)
+schema_version: 1
+title: "聚丙烯核心上市公司画像与工艺成本映射"
+description: "A 股煤制烯烃、大炼化与 PDH 龙头产能规模、成本阶梯与主营暴露度配置"
+
+default_commodity_code: "PP"
+default_commodity_name: "聚丙烯"
+vat_rate_default: 0.13
+
+companies:
+  - symbol: "600989.SH"
+    name: "宝丰能源"
+    full_name: "宁夏宝丰能源集团股份有限公司"
+    process_type: "coal_to_polypropylene"
+    location: "宁夏宁东 / 内蒙古鄂尔多斯"
+    annual_capacity_w_tons: 220.0
+    equity_ratio: 1.0
+    internal_conversion_ratio: 0.0
+    cost_tier: "lowest_alpha"
+    effective_tax_rate: 0.15
+    cost_notes: "自备坑口低成本原料煤，内蒙一期达产后单套规模全球领先，成本与毛利率遥遥领先行业"
+    soda_revenue_share_approx: 0.35
+    key_drivers: "内蒙烯烃新项目产能爬坡、自备煤炭开采成本、烯烃与煤炭剪刀差"
+
+  - symbol: "002221.SZ"
+    name: "东华能源"
+    full_name: "东华能源股份有限公司"
+    process_type: "pdh_to_pp"
+    location: "江苏张家港 / 浙江宁波 / 广东茂名"
+    annual_capacity_w_tons: 160.0
+    equity_ratio: 1.0
+    internal_conversion_ratio: 0.0
+    cost_tier: "marginal_cost_floor"
+    effective_tax_rate: 0.15
+    cost_notes: "国内 PDH 聚丙烯开创者与龙头，高度受制于进口丙烷国际海运及 MB 离岸价，价格弹性极高"
+    soda_revenue_share_approx: 0.45
+    key_drivers: "美湾丙烷离岸价、远洋 VLGC 运价、茂名零碳产业园开工负荷"
+
+  - symbol: "600346.SH"
+    name: "恒力石化"
+    full_name: "恒力石化股份有限公司"
+    process_type: "oil_naphtha_to_pp"
+    location: "辽宁大连"
+    annual_capacity_w_tons: 180.0
+    equity_ratio: 1.0
+    internal_conversion_ratio: 0.20
+    cost_tier: "lowest_alpha"
+    effective_tax_rate: 0.15
+    cost_notes: "大连长兴岛 2000万吨炼化一体化配套聚丙烯装置，加工成本行业内极具竞争力"
+    soda_revenue_share_approx: 0.12
+    key_drivers: "大炼化综合加工负荷、烯烃与芳烃综合价差平衡"
+
+  - symbol: "601898.SH"
+    name: "中煤能源"
+    full_name: "中国中煤能源股份有限公司"
+    process_type: "coal_to_polypropylene"
+    location: "内蒙古鄂尔多斯 / 陕西榆林"
+    annual_capacity_w_tons: 75.0
+    equity_ratio: 1.0
+    internal_conversion_ratio: 0.0
+    cost_tier: "lowest_alpha"
+    effective_tax_rate: 0.15
+    cost_notes: "特大型央企煤炭转化龙头，煤烯烃协同，抗周期波动能力极强"
+    soda_revenue_share_approx: 0.08
+    key_drivers: "煤炭长协定价、煤化工装置平稳运转"

@@ -1,0 +1,94 @@
+# 玻璃核心上市公司画像配置库 (Glass Company Universe)
+# 对应因果链第 5 环（企业会计盈利）与第 6 环（二级市场定价）
+
+schema_version: 2
+title: "玻璃核心上市公司画像与工艺成本映射"
+description: "A 股核心浮法与光伏玻璃龙头工艺路线、产能规模、成本阶梯与主营暴露度配置"
+
+default_commodity_code: "FG"
+default_commodity_name: "平板玻璃"
+vat_rate_default: 0.13
+
+companies:
+  - symbol: "601636.SH"
+    name: "旗滨集团"
+    full_name: "株洲旗滨集团股份有限公司"
+    process_type: "float_and_pv"
+    location: "湖南醴陵 / 福建漳州 / 广东河源 / 浙江绍兴"
+    daily_melting_capacity_t_d: 17600.0 # 浮法+光伏综合在产日熔量
+    annual_capacity_w_weight_boxes: 12000.0 # 折合约 1.2 亿重量箱
+    cost_tier: "alpha_float_leader"
+    effective_tax_rate: 0.15
+    cost_notes: "浮法玻璃规模与成本第一梯队，石英砂自给率高、临港码头运费低；光伏线处于产能释放与减值出清期"
+    glass_product_keywords: ["浮法玻璃", "光伏玻璃", "优质浮法", "节能玻璃"]
+    key_drivers: "国内地产竣工与门窗开工，浮法冷修放水节奏，纯碱与石油焦/天然气成本"
+    target_role: "float_alpha_leader"
+
+  - symbol: "601865.SH"
+    name: "福莱特"
+    full_name: "福莱特玻璃集团股份有限公司"
+    process_type: "pv_glass"
+    location: "浙江嘉兴 / 安徽凤阳 / 江苏南通"
+    daily_melting_capacity_t_d: 21600.0 # 光伏压延玻璃在产日熔量
+    annual_capacity_w_sqm: 120000.0    # 年产逾 12 亿平方米光伏玻璃
+    cost_tier: "lowest_pv_alpha"
+    effective_tax_rate: 0.15
+    cost_notes: "全球光伏玻璃双寡头之一；凤阳石英砂矿自给率极高，拥有 1200T/D 超大窑炉，成品率与成本壁垒显著"
+    glass_product_keywords: ["光伏玻璃", "超白压延", "光伏镀膜"]
+    key_drivers: "全球光伏组件月度排产与装机，听证会新建产线点火管控，低铁石英砂自供比例"
+    target_role: "pv_alpha_leader"
+
+  - symbol: "000012.SZ"
+    name: "南玻A"
+    full_name: "中国南玻集团股份有限公司"
+    process_type: "float_and_pv"
+    location: "广东深圳 / 江苏吴江 / 河北廊坊"
+    daily_melting_capacity_t_d: 11000.0
+    cost_tier: "integrated_glass"
+    effective_tax_rate: 0.15
+    cost_notes: "老牌玻璃龙头，浮法+光伏+工程节能玻璃+电子玻璃全覆盖"
+    glass_product_keywords: ["平板玻璃", "光伏玻璃", "工程玻璃"]
+    key_drivers: "多品类平衡，高档工程玻璃出口与深加工比例"
+    target_role: "beta_diversified"
+
+  - symbol: "00968.HK"
+    name: "信义光能"
+    full_name: "信义光能控股有限公司"
+    process_type: "pv_glass"
+    location: "安徽芜湖 / 广西北海 / 江苏张家港 / 天津 / 马来西亚马六甲"
+    daily_melting_capacity_t_d: 25800.0 # 全球最大光伏玻璃制造商在产日熔量
+    annual_capacity_w_sqm: 145000.0    # 拥有约 14.5 亿平方米光伏玻璃年产能力
+    cost_tier: "lowest_pv_global_leader"
+    estimated_mv_billion: 320.0
+    effective_tax_rate: 0.15
+    cost_notes: "全球光伏玻璃市占第一龙头（~32%）；与福莱特构成全球 CR2=60% 绝对双寡头格局。拥有马来西亚海外基地，千吨级窑炉规模及自有石英砂矿，抵御关税与抗周期洗牌能力极强"
+    glass_product_keywords: ["光伏玻璃", "超白压延", "光伏电站"]
+    key_drivers: "全球光伏装机与组件排产，海外基地出口关税红利，千吨大窑炉良品率"
+    target_role: "global_pv_duopoly_leader"
+
+  - symbol: "00868.HK"
+    name: "信义玻璃"
+    full_name: "信义玻璃控股有限公司"
+    process_type: "float_and_auto"
+    location: "广东东莞 / 广东江门 / 安徽芜湖 / 天津 / 辽宁营口 / 马来西亚"
+    daily_melting_capacity_t_d: 19000.0 # 浮法玻璃在产日熔量
+    cost_tier: "alpha_float_leader"
+    estimated_mv_billion: 380.0
+    effective_tax_rate: 0.15
+    cost_notes: "信义光能母公司，全球浮法玻璃与汽车玻璃龙头；浮法原片与旗滨集团在国内形成双雄对峙"
+    glass_product_keywords: ["浮法玻璃", "汽车玻璃", "建筑节能玻璃"]
+    key_drivers: "国内地产竣工、全球汽车整车配套与出口、纯碱与燃料成本"
+    target_role: "float_alpha_leader"
+
+  - symbol: "600586.SH"
+    name: "金晶科技"
+    full_name: "山东金晶科技股份有限公司"
+    process_type: "float_and_soda"
+    location: "山东淄博 / 宁夏中卫"
+    daily_melting_capacity_t_d: 7000.0
+    cost_tier: "ultra_clear_special"
+    effective_tax_rate: 0.15
+    cost_notes: "超白浮法原片龙头，自备纯碱装置（海天生物），TCO 导电膜玻璃先行者"
+    glass_product_keywords: ["浮法玻璃", "纯碱", "超白玻璃"]
+    key_drivers: "钙钛矿及薄膜电池 TCO 玻璃需求，纯碱内部自给对冲"
+    target_role: "beta_elastic"

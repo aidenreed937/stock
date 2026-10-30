@@ -1,0 +1,222 @@
+# 钛白粉重大产能事件种子库 (Capacity Project Database)
+# 数据源：上市公司公告 (深交所/上交所/巨潮 002601 龙佰集团、002145 钛能化学、600727 鲁北化工、000629 钒钛股份、000688 国城矿业、603826 坤彩科技、002386 天原股份、300891 惠云钛业等) + 行业权威公开披露
+# 注：002145 统一使用“钛能化学”为规范名（曾用证券简称：中核钛白，原全称中核华原钛白股份有限公司；现用全称以官方公告为准）
+# 用途：跟踪行业供给端物理有效产能释放日历与前瞻冲击规模
+
+metadata:
+  product_name: "钛白粉"
+  symbol: "TiO2"
+  unit: "万吨/年"
+  version: "1.2.1"
+  updated_at: "2026-09-17"
+
+projects:
+  # ==========================================================
+  # 1. 历史成熟投产装置 (2020~2023 已达产稳定运行)
+  # ==========================================================
+  - project_id: "TY_HAIFENG_CHLORIDE_P1"
+    company: "天原股份 (海丰和泰)"
+    plant_name: "宜宾江安基地一二期年产10万吨氯化法钛白粉装置"
+    province: "四川"
+    technology: "chloride_process"
+    capacity_w_tons: 10.0
+    status: "operating"
+    announcement_date: "2016-03-10"
+    expected_start: "2020-06-30"
+    actual_start: "2020-10-15"
+    full_capacity_date: "2022-12-31"
+    source: "天原股份对外投资公告与海丰和泰投产公告（一二期共计10万吨已全部投产）"
+    confidence: "A"
+
+  - project_id: "KC_ZHENGTAI_EXTRACTION_P1"
+    company: "坤彩科技 (正太新材料)"
+    plant_name: "福州江阴港城经济区年产20万吨萃取法氯化钛白首期项目"
+    province: "福建"
+    technology: "extraction_process"
+    capacity_w_tons: 20.0
+    status: "operating"
+    announcement_date: "2021-12-07"
+    expected_start: "2022-09-30"
+    actual_start: "2023-04-12"
+    full_capacity_date: "2023-12-31"
+    source: "上交所公告/坤彩科技投资建设公告与正式投产公告"
+    confidence: "A"
+
+  - project_id: "LB_PANZHIHUA_CHLORIDE_P1"
+    company: "龙佰集团"
+    plant_name: "攀枝花氯化法钛白粉及钛渣一体化一期"
+    province: "四川"
+    technology: "chloride_process"
+    capacity_w_tons: 20.0
+    status: "operating"
+    announcement_date: "2021-05-18"
+    expected_start: "2022-12-01"
+    actual_start: "2023-03-15"
+    full_capacity_date: "2023-08-01"
+    source: "巨潮资讯/公司定期报告与投产公告"
+    confidence: "A"
+
+  - project_id: "LB_JIAOZUO_CHLORIDE_EXP"
+    company: "龙佰集团"
+    plant_name: "焦作基地氯化法扩建升级改造"
+    province: "河南"
+    technology: "chloride_process"
+    capacity_w_tons: 10.0
+    status: "operating"
+    announcement_date: "2022-03-20"
+    expected_start: "2023-06-01"
+    actual_start: "2023-09-10"
+    full_capacity_date: "2023-12-20"
+    source: "巨潮资讯/公司投产披露"
+    confidence: "A"
+
+  - project_id: "ZH_BAIYIN_SULFATE_P2"
+    company: "钛能化学"
+    plant_name: "甘肃白银金红石型钛白粉深加工扩产"
+    province: "甘肃"
+    technology: "sulfate_process"
+    capacity_w_tons: 10.0
+    status: "operating"
+    announcement_date: "2021-09-10"
+    expected_start: "2023-03-01"
+    actual_start: "2023-06-18"
+    full_capacity_date: "2023-11-01"
+    source: "巨潮资讯/钛能化学(原中核钛白)扩产公告"
+    confidence: "A"
+
+  - project_id: "AND_TONGLING_TECH_UPGRADE"
+    company: "安纳达"
+    plant_name: "铜陵基地钛白粉清洁生产技改"
+    province: "安徽"
+    technology: "sulfate_process"
+    capacity_w_tons: 3.0
+    status: "operating"
+    announcement_date: "2022-08-15"
+    expected_start: "2023-05-01"
+    actual_start: "2023-08-20"
+    full_capacity_date: "2023-10-15"
+    source: "公司年报"
+    confidence: "B"
+
+  # ==========================================================
+  # 2. 2024 年新增投产与技改达产项目 (达产运行)
+  # ==========================================================
+  - project_id: "HY_YUNFU_SULFATE_UPGRADE"
+    company: "惠云钛业"
+    plant_name: "云浮基地金红石型钛白粉初品技改达产工程"
+    province: "广东"
+    technology: "sulfate_process"
+    capacity_w_tons: 3.0
+    status: "operating"
+    announcement_date: "2023-04-12"
+    expected_start: "2024-03-01"
+    actual_start: "2024-06-15"
+    full_capacity_date: "2024-09-30"
+    source: "巨潮资讯/惠云钛业技改达产公告与定期报告"
+    confidence: "A"
+
+  - project_id: "LB_DEYANG_TIANRUI_UPGRADE"
+    company: "龙佰集团"
+    plant_name: "德阳基地金红石型钛白粉节能升级与产能优化"
+    province: "四川"
+    technology: "sulfate_process"
+    capacity_w_tons: 10.0
+    status: "operating"
+    announcement_date: "2023-08-25"
+    expected_start: "2024-08-01"
+    actual_start: "2024-11-20"
+    full_capacity_date: "2025-02-28"
+    source: "巨潮资讯/龙佰集团投料达产披露与年度报告"
+    confidence: "A"
+
+  - project_id: "GC_BAYANNAOER_SULFATE_P1"
+    company: "国城矿业 (国城钛业)"
+    plant_name: "巴彦淖尔乌拉特后旗硫钛铁资源综合循环利用年产20万吨金红石型钛白粉项目"
+    province: "内蒙古"
+    technology: "sulfate_process"
+    capacity_w_tons: 20.0
+    status: "operating"
+    announcement_date: "2020-05-11"
+    expected_start: "2023-10-31"
+    actual_start: "2023-12-26"
+    full_capacity_date: "2024-06-30"
+    source: "巨潮资讯/国城矿业公开发行可转债公告及乌拉特后旗工业园区管委会披露"
+    confidence: "A"
+
+  # ==========================================================
+  # 3. 2025~2026 年最新投产与达产达效装置 (商业化运营)
+  # ==========================================================
+  - project_id: "FT_PANZHIHUA_MOLTEN_CHLORIDE"
+    company: "钒钛股份"
+    plant_name: "攀枝花6万吨熔盐氯化法钛白粉产业化示范工程"
+    province: "四川"
+    technology: "chloride_process"
+    capacity_w_tons: 6.0
+    status: "operating"
+    announcement_date: "2023-02-15"
+    expected_start: "2024-12-31"
+    actual_start: "2025-03-28"
+    full_capacity_date: "2025-05-31"
+    source: "巨潮资讯/攀钢钒钛投资者关系活动与鞍钢集团官方披露（2025-03月达产，2025-05达效）"
+    confidence: "A"
+
+  - project_id: "ZH_DF_BAIYIN_DEEP_P1"
+    company: "钛能化学"
+    plant_name: "甘肃东方钛业年产30万吨循环化钛白粉深加工项目"
+    province: "甘肃"
+    technology: "sulfate_process"
+    # 口径待核验：项目名称标注 30 万吨（或为总规划/二期口径），本表按 20.0 万吨记录，须以官方公告为准；
+    # 该深加工增量未并入 company_projections.yaml 钛能化学 55 万吨 base，避免重复计入。
+    capacity_w_tons: 20.0
+    status: "operating"
+    announcement_date: "2021-08-19"
+    expected_start: "2024-12-31"
+    actual_start: "2025-12-18"
+    full_capacity_date: "2026-05-31"
+    source: "巨潮资讯/钛能化学(原中核钛白)亚洲钛业基地公告与新浪财经深加工全线贯通试产披露"
+    confidence: "A"
+
+  - project_id: "LB_XIANGHAI_CHLORIDE_EXP"
+    company: "鲁北化工 (祥海科技)"
+    plant_name: "滨州基地年产6万吨氯化法钛白粉扩建项目"
+    province: "山东"
+    technology: "chloride_process"
+    capacity_w_tons: 6.0
+    status: "operating"
+    announcement_date: "2024-03-15"
+    expected_start: "2025-12-01"
+    actual_start: "2026-05-18"
+    full_capacity_date: "2026-10-31"
+    source: "巨潮资讯/鲁北化工一次性开车成功试生产公告"
+    confidence: "A"
+
+  # ==========================================================
+  # 4. 2026~2027 年重点在建与远期规划项目 (供给前瞻冲击)
+  # ==========================================================
+  - project_id: "TY_HAIFENG_CHLORIDE_P2"
+    company: "天原股份 (海丰和泰)"
+    plant_name: "宜宾江安基地扩建年产10万吨氯化法钛白粉项目"
+    province: "四川"
+    technology: "chloride_process"
+    capacity_w_tons: 10.0
+    status: "under_construction"
+    announcement_date: "2025-12-30"
+    expected_start: "2027-06-30"
+    actual_start: null
+    full_capacity_date: "2027-12-31"
+    source: "巨潮资讯/天原股份投资建设年产10万吨氯化法钛白粉项目公告(2025-080)"
+    confidence: "A"
+
+  - project_id: "ZH_GUIZHOU_ZHONGHE_P1"
+    company: "钛能化学"
+    plant_name: "贵州开阳年产40万吨钛白粉及140万吨硫酸亚铁循环经济项目"
+    province: "贵州"
+    technology: "sulfate_process"
+    capacity_w_tons: 40.0
+    status: "planned"
+    announcement_date: "2026-08-12"
+    expected_start: "2027-12-31"
+    actual_start: null
+    full_capacity_date: "2028-06-30"
+    source: "巨潮资讯/钛能化学(原中核钛白)对外投资公告"
+    confidence: "A"

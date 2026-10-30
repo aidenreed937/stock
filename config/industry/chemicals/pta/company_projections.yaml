@@ -1,0 +1,162 @@
+# PTA 与聚酯产业链双雄（恒力石化 vs 桐昆股份）业务分部 (SOTP) 与财务合并预测模型配置
+# 规范：实有总股本、归母净资产、每股净资产 (BPS)、当前财务费用与目标 PB 评价标准 100% 由本地 Curated 黄金事实表动态加载与自适应计算；
+# 本文件仅保留装置物理产能、工艺单耗系数、宏观情景标尺与在建工程战略规划。
+
+version: "1.0.0"
+updated_at: "2026-09-17"
+title: "PTA与聚酯大炼化双雄业务分部与财务合并测算配置"
+
+# ==============================================================================
+# 1. 企业业务分部定义与评价标准
+# ==============================================================================
+companies:
+  # ----------------------------------------------------------------------------
+  # 恒力石化 (600346.SH): 上游极致成本 Alpha 龙头 (大炼化一体化极致规模)
+  # ----------------------------------------------------------------------------
+  "600346.SH":
+    name: "恒力石化"
+    description: "大炼化一体化极致成本龙头，拥有大连长兴岛 2000 万吨炼化一体化项目，PX 自给率 100%，全产业链抗亏阿尔法"
+    tax_rate: 0.15
+    base_expense_ratio: 0.035 # 大炼化规模效应极致，销售+管理+研发变动费用率基准低
+    # 财务费用由利润表与资产负债表动态年化装配，此处配置情景去杠杆与自由现金流偿债系数
+    finance_expense_scale_by_scenario:
+      current_spot: 1.0 # 现货实时情景承压 100%
+      trough: 1.0 # 周期底部磨底承压 100%
+      mid_cycle: 0.70 # 中性复苏期大炼化经营现金流偿还借款，财务费用去化 30%
+      peak: 0.50 # 景气繁荣期超额利润加速偿债去杠杆 50%
+    segments:
+      refining_and_chemicals:
+        name: "炼化与化工新材料"
+        description: "大连长兴岛 2000 万吨炼化一体化及 150 万吨乙烯项目，产出成品油、PX、乙烯、苯乙烯及芳烃衍生品"
+        capacity_w_tons: 2000.0 # 炼化总加工规模 (万吨/年)
+        sales_w_tons: 1800.0 # 扣除自身 PTA 芳烃联合装置内部消耗后，年商品外售量 (万吨)
+        utilization_rate: 0.95 # 炼化装置长周期高负荷稳定运转
+        fixed_cost: 650.0 # 炼化综合加工制造折旧人工费用 (元/吨)
+        unit_gross_margin_by_scenario:
+          trough: 350.0 # 炼化综合裂解利差低谷
+          mid_cycle: 650.0 # 常态化裂解利润
+          peak: 1100.0 # 景气繁荣裂解超额利润
+      pta_product:
+        name: "精对苯二甲酸 (PTA)"
+        description: "大连长兴岛 (1160万吨) + 广东惠州 (500万吨)，行业最新 Invista P8+ 工艺，行业最低加工成本"
+        capacity_w_tons: 1660.0
+        internal_conversion_deduction_w_tons: 460.0 # 扣减转产下游聚酯自用 PTA 规模 (消除重复计算)
+        sales_w_tons: 1200.0 # 真实有效外售商品量 (万吨)
+        utilization_rate: 0.90 # 商品外售装置有效开工率
+        px_consumption: 0.655 # 吨 PTA 单耗 PX (吨)
+        fixed_cost: 360.0 # 先进 Invista P8+ 全加工成本 (折旧摊销+动力蒸汽+辅料催化剂+人工)
+        cash_fixed_cost: 220.0 # 现金保本加工费底线 (剔除折旧摊销)
+        unit_gross_margin_by_scenario:
+          trough: 0.0 # 加工费约 360~380 元/吨，保本运行微利出清
+          mid_cycle: 150.0 # 加工费修复至 510 元/吨
+          peak: 350.0 # 加工费突破 710 元/吨超额暴利
+      polyester_products:
+        name: "聚酯化纤与工程塑料"
+        description: "民用涤纶长丝、工业长丝、聚酯切片、BOPET 光学薄膜与 PBT 工程塑料"
+        capacity_w_tons: 500.0
+        sales_w_tons: 450.0
+        utilization_rate: 0.88
+        unit_gross_margin_by_scenario:
+          trough: 500.0 # 纺织下游低迷期单吨毛利
+          mid_cycle: 900.0 # 需求平稳复苏期
+          peak: 1500.0 # 补库高潮期
+      trading_and_other:
+        name: "供应链贸易与港口公用工程"
+        source_mode: "dynamic_mainbz" # 优先由 fina_mainbz 历史数据动态装配
+        revenue_fixed_cny: 1.2e10 # 回退基准 (贴合年报约 120 亿元规模)
+        gross_margin_rate: 0.05
+
+  # ----------------------------------------------------------------------------
+  # 桐昆股份 (601233.SH): 下游高景气 Beta 弹性标的 (涤纶长丝绝对龙头 + 浙石化投资收益)
+  # ----------------------------------------------------------------------------
+  "601233.SH":
+    name: "桐昆股份"
+    description: "国内涤纶长丝绝对龙头 (市占率超 20%)，嘉通能源 500 万吨 PTA 完全自给，参股浙石化 20% 享有炼化收益"
+    tax_rate: 0.15
+    base_expense_ratio: 0.040 # 销售+管理+研发变动费用率基准
+    finance_expense_scale_by_scenario:
+      current_spot: 1.0
+      trough: 1.0
+      mid_cycle: 0.65 # 现金流充沛去化借款 35%
+      peak: 0.45 # 景气高潮去化 55%
+    segments:
+      polyester_filament:
+        name: "涤纶长丝 (POY / FDY / DTY)"
+        description: "嘉兴与如东基地聚酯长丝总产能超千万吨，下游织造核心面料原料，景气弹性巨大"
+        capacity_w_tons: 1100.0
+        sales_w_tons: 980.0 # 实际年外售长丝商品量
+        utilization_rate: 0.92
+        unit_gross_margin_by_scenario:
+          trough: 200.0 # 行业磨底期保本微利
+          mid_cycle: 550.0 # 需求温和改善与开工率回升
+          peak: 1050.0 # 纺服出口高增与下游织机抢货戴维斯双击
+      pta_external:
+        name: "嘉通能源 PTA 外售"
+        description: "如东洋口港 2x250 万吨 PTA 装置优先自给，富余产能向长三角聚酯厂外售"
+        capacity_w_tons: 500.0
+        internal_conversion_deduction_w_tons: 350.0 # 扣除内部涤纶长丝自用原料 PTA (约 350 万吨)
+        sales_w_tons: 150.0 # 净外售商品规模 (万吨)
+        utilization_rate: 0.90
+        px_consumption: 0.655
+        fixed_cost: 400.0 # 固定加工费
+        cash_fixed_cost: 260.0
+        unit_gross_margin_by_scenario:
+          trough: 0.0
+          mid_cycle: 100.0
+          peak: 300.0
+      zpc_investment_income:
+        name: "浙石化 20% 股权投资收益"
+        description: "参股浙江石油化工有限公司 20% 股权 (4000 万吨炼化一体化)，权益法核算投资收益"
+        type: "equity_investment"
+        annual_investment_income_by_scenario:
+          trough: 5.0e8 # 炼化低谷期年贡献投资收益 5 亿元
+          mid_cycle: 1.5e9 # 中性复苏期年贡献 15 亿元
+          peak: 3.5e9 # 炼化景气高潮期年贡献 35 亿元
+      trading_and_other:
+        name: "聚酯切片贸易及辅料"
+        source_mode: "dynamic_mainbz"
+        revenue_fixed_cny: 5.0e9 # 回退基准 (贴合年报约 50 亿元规模)
+        gross_margin_rate: 0.04
+
+# ==============================================================================
+# 2. 宏观与行业情景定义 (Scenarios)
+# ==============================================================================
+scenarios:
+  trough:
+    name: "周期底部磨底"
+    description: "大炼化综合裂解利差处于历史 10% 分位，PTA 加工费压制在 360 元保本线附近，长丝库存高企"
+    brent_oil_price_usd: 65.0
+    px_cfr_price_cny: 6800.0
+    pta_spot_price_cny: 4800.0 # 对应加工费 = 4800 - 0.655 * 6800 = 346 元/吨 (深度亏损承压)
+    filament_poy_price_cny: 6800.0
+    valuation_mode: "pb_asset_floor" # 周期底部报表亏损/微利，PE 失效，采用重置成本与破净防御线托底
+    pe_multiple: null # 周期底部微利甚至行业亏损，PE 分母坍塌失效
+    target_pb_by_symbol:
+      "600346.SH": 1.05 # 恒力石化大炼化一体化重置成本支撑线 (历史 PB P05~P10 分位)
+      "601233.SH": 0.85 # 桐昆股份破净极值底线 (历史 PB P05 分位)
+
+  mid_cycle:
+    name: "中性中枢复苏"
+    description: "下游纺服出口与内需平稳回升，PTA 加工费修复至 500 元中枢，长丝产销两旺进入主动去库"
+    brent_oil_price_usd: 75.0
+    px_cfr_price_cny: 7500.0
+    pta_spot_price_cny: 5400.0 # 对应加工费 = 5400 - 0.655 * 7500 = 487.5 元/吨 (平均健康盈利)
+    filament_poy_price_cny: 7800.0
+    valuation_mode: "pe_earnings" # 中枢稳态盈利恢复，PE 与 PB 双轨对账 (隐含 ROE 10%~12%)
+    pe_multiple: 11.0 # 周期中枢公允倍数
+    target_pb_by_symbol:
+      "600346.SH": 1.60 # 历史 P50 估值中枢
+      "601233.SH": 1.30 # 历史 P50 估值中枢
+
+  peak:
+    name: "景气高峰繁荣"
+    description: "全球补库共振与下游旺季抢货，原油温和上行带来正向库存损益，PTA 加工费突破 700 元超额暴利"
+    brent_oil_price_usd: 85.0
+    px_cfr_price_cny: 8500.0
+    pta_spot_price_cny: 6300.0 # 对应加工费 = 6300 - 0.655 * 8500 = 732.5 元/吨 (超额暴利高潮)
+    filament_poy_price_cny: 9000.0
+    valuation_mode: "pe_with_pb_ceiling" # 景气顶部防范大炼化个位数低 PE 诱多，以 PB 高位作为天花板警示
+    pe_multiple: 8.0 # 景气顶部名义倍数收缩
+    target_pb_by_symbol:
+      "600346.SH": 2.40 # 历史 P85 景气极值防顶
+      "601233.SH": 1.80 # 历史 P85 景气极值防顶

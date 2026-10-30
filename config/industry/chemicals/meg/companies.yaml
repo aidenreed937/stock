@@ -1,0 +1,80 @@
+# 乙二醇核心上市公司画像配置库 (MEG Company Universe)
+# 对应因果链第 5 环（企业会计盈利）与第 6 环（二级市场定价）
+schema_version: 1
+title: "乙二醇核心上市公司画像与工艺成本映射"
+description: "A 股主要乙二醇生产商工艺路线、产能规模、成本阶梯与主营暴露度配置"
+
+default_commodity_code: "MEG"
+default_commodity_name: "乙二醇"
+vat_rate_default: 0.13
+
+companies:
+  - symbol: "600346.SH"
+    name: "恒力石化"
+    full_name: "恒力石化股份有限公司"
+    process_type: "oil_to_meg"
+    location: "辽宁大连长兴岛"
+    annual_capacity_w_tons: 180.0
+    equity_ratio: 1.0
+    internal_conversion_ratio: 0.30  # 内部聚酯自用约 30%
+    cost_tier: "lowest_alpha"
+    effective_tax_rate: 0.15
+    cost_notes: "大炼化一体化极致成本，完全成本约 4600~4900 元/吨，现金保本线 4200~4400 元/吨"
+    meg_revenue_share_approx: 0.08
+    key_drivers: "2000 万吨炼化一体化乙烯裂解轻烃收率、自用聚酯配套与原油采购成本"
+
+  - symbol: "002493.SZ"
+    name: "荣盛石化"
+    full_name: "荣盛石化股份有限公司"
+    process_type: "oil_to_meg"
+    location: "浙江舟山鱼山岛"
+    annual_capacity_w_tons: 215.0
+    equity_ratio: 0.85
+    internal_conversion_ratio: 0.30
+    cost_tier: "mega_refinery_alpha"
+    effective_tax_rate: 0.15
+    cost_notes: "浙石化 4000 万吨炼化一体化装置，完全成本约 4700~5000 元/吨"
+    meg_revenue_share_approx: 0.07
+    key_drivers: "浙石化全球最大单体炼厂规模效应、深加工乙烯衍生品与沙特阿美协同"
+
+  - symbol: "600426.SH"
+    name: "华鲁恒升"
+    full_name: "华鲁恒升化工股份有限公司"
+    process_type: "coal_to_meg"
+    location: "山东德州 / 湖北荆州"
+    annual_capacity_w_tons: 100.0
+    equity_ratio: 1.0
+    internal_conversion_ratio: 0.0
+    cost_tier: "coal_chemical_alpha"
+    effective_tax_rate: 0.15
+    cost_notes: "煤制乙二醇行业标杆，合成气草酸酯加氢路线，完全成本 5000~5300 元/吨，现金保本线 4500~4700 元/吨"
+    meg_revenue_share_approx: 0.15
+    key_drivers: "水煤浆气化多联产平台、草酸与DMC副产综合利用、荆州二期释放"
+
+  - symbol: "000301.SZ"
+    name: "东方盛虹"
+    full_name: "江苏东方盛虹股份有限公司"
+    process_type: "oil_to_meg"
+    location: "江苏连云港"
+    annual_capacity_w_tons: 100.0
+    equity_ratio: 1.0
+    internal_conversion_ratio: 0.50
+    cost_tier: "integrated_cyclical"
+    effective_tax_rate: 0.15
+    cost_notes: "连云港炼化一体化与斯尔邦石化协同，完全成本约 4800~5100 元/吨"
+    meg_revenue_share_approx: 0.06
+    key_drivers: "盛虹 1600 万吨炼化一体化负荷、下游聚酯差别化纤维自用需求"
+
+  - symbol: "601233.SH"
+    name: "桐昆股份"
+    full_name: "桐昆集团股份有限公司"
+    process_type: "integrated_downstream"
+    location: "江苏南通如东 / 浙江嘉兴"
+    annual_capacity_w_tons: 60.0
+    equity_ratio: 1.0
+    internal_conversion_ratio: 1.0
+    cost_tier: "downstream_synergy"
+    effective_tax_rate: 0.15
+    cost_notes: "嘉通能源配套与涤纶长丝深度协同，完全成本约 4900~5200 元/吨"
+    meg_revenue_share_approx: 0.04
+    key_drivers: "长丝自供比例、嘉通能源码头储运配套与长丝下游开工负荷"

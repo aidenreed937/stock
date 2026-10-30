@@ -1,0 +1,58 @@
+# 烧碱产业链生产工艺理论成本与 ECU 联产综合毛利模型 (Caustic Soda & ECU Models)
+# 涵盖离子膜法单品成本模型与 1.0 NaOH + 0.886 Cl2 电化学单元 (ECU) 综合平衡模型
+
+schema_version: 1
+product_name: "烧碱"
+symbol: "SH"
+unit: "元/吨"
+version: "1.0.0"
+updated_at: "2026-09-21"
+
+models:
+  membrane_process_100pct:
+    name: "离子膜电解法 (折百干碱基准 - 主流基准)"
+    product_name: "烧碱"
+    symbol: "SH"
+    valid_from: "2020-01-01"
+    valid_to: "9999-12-31"
+    description: "电解饱和食盐水制备烧碱 (折百 100% NaOH 口径，对应期货交割品)"
+    national_capacity_share: 0.98
+    cost_tier: "marginal_membrane_floor"
+    coefficients:
+      product: 1.0           # 烧碱折百 (吨)
+      raw_salt: 1.50         # 工业原盐 (吨)
+      electricity_kwh: 2350.0 # 综合交流电耗 (度)
+      steam_tons: 0.50       # 蒸汽消耗 (吨)
+    fixed_cost: 450.0        # 固定加工成本 (元/吨)
+    cash_fixed_cost: 300.0   # 现金固定加工成本 (元/吨)
+    full_cost_approx: 2100.0 # 折百完全成本基准 (元/吨)
+    cash_cost_approx: 1700.0 # 折百现金保本底线 (元/吨)
+    liquid_to_solid_ratio: 3.125 # 32% 液碱折百系数 (1 / 0.32)
+    formula: "caustic_100_price - (1.50 * salt_price + 2350 * power_price + 0.50 * steam_price) - fixed_cost"
+
+  ecu_joint_unit:
+    name: "氯碱电化学单元 (ECU 联产综合模型)"
+    product_name: "烧碱"
+    symbol: "SH"
+    valid_from: "2020-01-01"
+    valid_to: "9999-12-31"
+    description: "生产 1.0 吨折百烧碱必然联产 0.886 吨氯气，构成一个电化学单元 (1 ECU)"
+    national_capacity_share: 1.0
+    cost_tier: "ecu_integrated_unit"
+    coefficients:
+      naoh_product: 1.0      # 烧碱 (100% 折百吨)
+      cl2_byproduct: 0.886   # 伴生氯气 (吨)
+      raw_salt: 1.55         # 原盐 (吨)
+      electricity_kwh: 2400.0 # 电耗 (度)
+    fixed_cost: 500.0        # ECU 综合固定加工费 (元/ECU)
+    cash_fixed_cost: 350.0   # ECU 现金保本加工费 (元/ECU)
+    full_cost_approx: 2200.0 # 1 ECU 综合完全成本 (元/ECU)
+    cash_cost_approx: 1800.0 # 1 ECU 综合现金成本 (元/ECU)
+    formula: "(caustic_100_price + 0.886 * liquid_chlorine_price) - (1.55 * salt_price + 2400 * power_price) - fixed_cost"
+
+regime_thresholds:
+  super_profit: 700.0       # ECU 理论毛利 > 700 元/吨: 极高景气，下游氧化铝与化纤强劲
+  high_profit: 400.0        # 400~700 元/吨: 景气高位
+  profitable: 100.0         # 100~400 元/吨: 正常盈利
+  marginal_loss: -100.0     # -100~100 元/吨: 行业盈亏平衡
+  deep_loss: -300.0         # < -300 元/吨: 跌破现金成本，且氯气胀气倒贴

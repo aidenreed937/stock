@@ -1,0 +1,47 @@
+# 精对苯二甲酸 (PTA) 全景基本面对账与量化投研管线配置
+#
+# 对应数据底座：
+#   - GACC 海关出口（Curated parquet，化纤与聚酯相关商品出海）
+#   - 生意社 100ppi 现货基准出厂价（Curated parquet，代码 TA，PPID 172）
+#   - 郑商所 CZCE PTA 期货仓单与主力连续合约行情
+#   - 成本配置模型 config/industry/chemicals/pta/cost_models.yaml (品种级唯一维护源)
+#   - 大宗标准化交易门禁 config/industry/chemicals/pta/trading_gates.yaml (品种级唯一维护源，commodity_standard_gate 通用模板见门面)
+#   - 上市公司画像与双雄 SOTP 预测模型 config/industry/chemicals/pta/company_projections.yaml
+# 产物：ArtifactStore 落盘 data/analytics/pta/runs/... + latest + manifest.json
+
+schema_version: 1
+title: "精对苯二甲酸 (PTA) 全景基本面对账研报"
+artifact_root: "data/analytics/pta"
+
+inputs:
+  capacity_projects: "config/industry/chemicals/pta/capacity_projects.yaml"
+  trading_gates: "config/industry/chemicals/pta/trading_gates.yaml"
+  cost_models: "config/industry/chemicals/pta/cost_models.yaml"
+  company_projections: "config/industry/chemicals/pta/company_projections.yaml"
+  customs_trade_dataset: "customs_trade_gacc"
+  customs_trade_fallback: null
+  chemical_spot_price_dataset: "chemical_spot_price"
+  chemical_spreads_dataset: "chemical_spreads"
+  chemical_futures_daily_dataset: "chemical_futures_daily"
+  futures_inventory_czce_dataset: "futures_inventory"
+  chemical_capacity_utilization_dataset: "chemical_capacity_utilization_10y"
+  chemical_market_dataset: "chemical_market"
+  company_panel_dataset: "mart/pta_company_panel"
+  industry_l2_daily_dataset: "mart/industry_l2_daily"
+
+# 大宗标准化蓄水池状态机与门禁阈值
+regime:
+  scissors_spread_min: 0.0            # 供需剪刀差转正阈值
+  operating_rate_max: 75.0            # 行业周度开工率跌破警戒线确认减产 (75%)
+  operating_rate_top_min: 88.0        # 行业开工饱和钝化逃顶阈值 (88%)
+  export_volume_yoy_min: 15.0         # 聚酯出口外销同比高增泄洪 (15%)
+  destocking_weeks_min: 3             # 连续去库周数门限
+  delta_receipt_epsilon: 0.01
+
+# 历史周期大拐点检测
+history:
+  high_profit_margin: 600.0           # 理论加工费 >= 600 元/吨视为超额暴利区
+  deep_loss_margin: 350.0             # 理论加工费 <= 350 元/吨视为跌破现金保本深度亏损区
+  min_episode_months: 2               # 连续月份数下限
+  max_episodes: 6                     # 报告最多渲染的拐点期数
+  follow_up_months: 3                 # 拐点后观察窗口 (月)

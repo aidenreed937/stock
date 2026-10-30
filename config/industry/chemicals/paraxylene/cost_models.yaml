@@ -1,0 +1,55 @@
+# 对二甲苯 (PX) 产业链理论成本与裂解利润模型配置 (Paraxylene Cost & Margin Models)
+# 涵盖先进大炼化石脑油重整芳烃抽提与传统 MX 异构化路线
+
+schema_version: 1
+product_name: "对二甲苯"
+symbol: "PX"
+unit: "元/吨"
+version: "1.0.0"
+updated_at: "2026-09-21"
+
+models:
+  naphtha_reforming_px:
+    name: "大炼化一体化石脑油重整芳构化制 PX (先进龙头主导路线)"
+    product_name: "对二甲苯"
+    symbol: "PX"
+    valid_from: "2020-01-01"
+    valid_to: "9999-12-31"
+    description: "原油常减压/加氢裂化产石脑油，经连续催化重整 (CCR) 与歧化烷基转移产 PX，占全国约 80% 产能"
+    national_capacity_share: 0.80
+    cost_tier: "lowest_alpha"
+    coefficients:
+      product: 1.0           # 对二甲苯 (吨)
+      naphtha: 1.25          # 石脑油单耗 (吨)
+    crack_spread_balance_usd: 330.0 # PX-石脑油裂解平衡平衡线 (美元/吨)
+    crack_spread_cash_usd: 260.0    # 现金保本裂解差底线 (美元/吨)
+    fixed_cost: 1100.0       # 折算国内综合制造与折旧加工费 (元/吨)
+    cash_fixed_cost: 650.0   # 现金加工费用 (元/吨)
+    full_cost_approx: 8500.0 # 行业平均完全成本参考线 (元/吨)
+    cash_cost_approx: 7700.0 # 行业现金保本参考线 (元/吨)
+    formula: "px_price - (1.25 * naphtha_price) - fixed_cost"
+
+  mx_isomerization_px:
+    name: "传统混二甲苯 (MX) 异构化法制 PX (外购原料边际路线)"
+    product_name: "对二甲苯"
+    symbol: "PX"
+    valid_from: "2020-01-01"
+    valid_to: "9999-12-31"
+    description: "外购混二甲苯原料，经吸附分离与异构化回路产 PX，占全国约 20% 产能，构成边际出清线"
+    national_capacity_share: 0.20
+    cost_tier: "marginal_cost_floor"
+    coefficients:
+      product: 1.0           # 对二甲苯 (吨)
+      mixed_xylene: 1.02     # 混二甲苯单耗 (吨)
+    fixed_cost: 900.0        # 异构化加工费用 (元/吨)
+    cash_fixed_cost: 500.0   # 现金加工费用 (元/吨)
+    full_cost_approx: 9100.0 # 边际完全成本参考线 (元/吨)
+    cash_cost_approx: 8300.0 # 边际现金保本出清底线 (元/吨)
+    formula: "px_price - (1.02 * mx_price) - fixed_cost"
+
+regime_thresholds:
+  super_profit: 1200.0       # 加工利润 > 1200 元/吨 (或 Crack Spread > 450 美元/吨)：超额暴利
+  high_profit: 600.0         # 600 ~ 1200 元/吨：高景气盈利
+  profitable: 200.0          # 200 ~ 600 元/吨：行业正常盈利
+  near_breakeven: -300.0     # -300 ~ 200 元/吨：先进大炼化微利，MX 亏损
+  # < -300 元/吨：深度亏损出清 (跌穿大炼化现金保本线)

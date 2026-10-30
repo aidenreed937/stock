@@ -1,0 +1,58 @@
+# 三代氟制冷剂周期股分阶段量化交易门禁配置 (Refrigerant Cyclical Trading Gates)
+# 模块高内聚配置：面向 C 类行政配额管制型品种 (法定永久冻结生产配额，切断高暴利刺激扩产的负反馈；逃顶看下游排产见顶)
+
+schema_version: 2
+product_name: "三代制冷剂"
+symbol: "R32"
+category: "C_quota_controlled"
+profile_name: "quota_controlled_gate"
+title: "三代氟制冷剂周期配额量化交易门禁与标的映射"
+description: "基于生态环境部法定配额锁定、下游空调排产旺季、外销 ASP 暴涨与配额打满逃顶的三门禁决策体系"
+
+# =============================================================
+# 门禁规则定义
+# =============================================================
+left_side_odds:
+  name: "配额品左侧赔率建仓门禁"
+  target_position_pct_max: 30.0  # 底仓配置
+  rules:
+    quota_policy_enforced: true              # 生态环境部配额方案正式出台并严格锁定基准年
+    margin_regime_any:
+      - "deep_loss"
+      - "near_breakeven"
+    pb_percentile_10y_max: 0.20
+    preferred_target_role: "quota_leader"    # 首选配额占比最大的头部企业 (如巨化股份、三美股份)
+
+right_side_confirmation:
+  name: "配额品右侧胜率确认门禁"
+  target_position_pct_max: 90.0
+  rules:
+    downstream_aircon_schedule_yoy_min: 0.05 # 下游空调排产同比增速超 +5% (旺季补库启动)
+    destocking_weeks_min: 2                  # 生产企业厂库连续 2 周净去化
+    technical_ma_break: "MA20"               # 突破 MA20 均线
+    demand_validation:
+      export_volume_yoy_min: 10.0            # 制冷剂外销出口景气
+    preferred_target_role: "quota_leader"
+
+top_escape:
+  name: "配额品逃顶一票否决门禁"
+  action: "clear_position"
+  ignore_capex_high_profit_feedback: true    # 核心剪枝: 配额锁死供给，不因自身高利润盲目扩产而恐慌逃顶
+  rules:
+    downstream_aircon_schedule_yoy_max: -0.05 # 下游空调核心企业排产见顶转负 (同比跌破 -5%)
+    annual_quota_exhausted: true             # 年内出口/内销配额提前打满，四季度无货可卖
+    generation4_substitute_surge: true       # 四代制冷剂商业化替代渗透率超预期突破
+    pe_ttm_low_trap_max: 10.0                # 周期估值降至 10 倍以下 (低 PE 陷阱)
+
+# =============================================================
+# 标的角色与可交易池映射
+# =============================================================
+target_universe_mapping:
+  alpha_leader:
+    - symbol: "600160.SH"
+      name: "巨化股份"
+      role_desc: "三代制冷剂法定生产配额第一龙头 (R32 13万吨 + R134a 7.5万吨)，全产业链一体化"
+  beta_elastic:
+    - symbol: "603379.SH"
+      name: "三美股份"
+      role_desc: "纯正三代氟制冷剂高弹性出海标的 (R32 4.0万吨)，外销占比高，单价弹性极大"

@@ -1,0 +1,35 @@
+# 制冷剂 R32 生产工艺理论成本模型配置 (Refrigerant R32 Cost Models)
+# 模块高内聚配置：涵盖二氯甲烷液相氟化工艺路线理论单耗、边际现金保本线与利润相位阈值
+
+schema_version: 1
+product_name: "制冷剂R32"
+symbol: "R32"
+unit: "元/吨"
+version: "1.0.0"
+updated_at: "2026-09-20"
+
+models:
+  fluorination_process:
+    name: "二氯甲烷液相氟化法 (R32 主流工艺)"
+    product_name: "制冷剂R32"
+    symbol: "R32"
+    valid_from: "2020-01-01"
+    valid_to: "9999-12-31"
+    description: "二氯甲烷与无水氟化氢在催化剂作用下反应生成二氟甲烷与副产氯化氢"
+    national_capacity_share: 1.00
+    cost_tier: "quota_marginal_floor"
+    coefficients:
+      product: 1.0
+      ch2cl2: 0.85        # 二氯甲烷单耗 (吨)
+      hf: 0.80            # 无水氢氟酸单耗 (吨)
+      byproduct_hcl: 1.40 # 副产盐酸折纯单耗 (吨)
+    fixed_cost: 3500.0    # 蒸汽、动力、辅料、环保排污与折旧固定加工费 (元/吨)
+    cash_fixed_cost: 2400.0 # 现金流保本固定加工费 (剔除折旧)
+    full_cost_approx: 14000.0 # 行业基准完全成本参考线 (元/吨)
+    cash_cost_approx: 12800.0 # 行业边际现金保本出清线 (元/吨)
+    formula: "r32_price - (0.85 * ch2cl2_price + 0.80 * hf_price - 1.40 * hcl_price) - fixed_cost"
+
+regime_thresholds:
+  super_profit: 10000.0   # 理论毛利 > 10000 元/吨: 配额垄断暴利
+  profitable: 2000.0     # 2000 ~ 10000 元/吨: 正常盈利
+  near_breakeven: -1000.0 # -1000 ~ 2000 元/吨: 盈亏平衡

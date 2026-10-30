@@ -1,0 +1,20 @@
+# 苯乙烯 (EB) 量化交易与周期拐点门禁配置 (Styrene Trading Gates)
+schema_version: 1
+symbol: "EB"
+product_name: "苯乙烯"
+
+gates:
+  cash_cost_floor_cny: 8100.0    # 乙苯脱氢法现金保本底线
+  full_cost_ceiling_cny: 8900.0  # 行业完全成本平衡线
+  basis_backwardation_min_pct: 2.0 # 右侧反转需现货升水 > 2%
+  max_warehouse_receipts_contracts: 10000.0 # 仓单过万张预警交割压顶
+
+target_universe_mapping:
+  alpha_leader:
+    - symbol: "600346.SH"
+      name: "恒力石化"
+      role_desc: "大炼化芳烃与乙烯全自给龙头，极低现金保本线，周期左侧抗亏首选"
+  beta_elastic:
+    - symbol: "000059.SZ"
+      name: "华锦股份"
+      role_desc: "纯外售石化标的，高边际成本与强价格敏感性，右侧业绩弹性领先"

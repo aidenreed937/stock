@@ -1,0 +1,72 @@
+# 聚丙烯 (PP) 产业链理论成本与利润模型配置 (Polypropylene Cost & Margin Models)
+# 涵盖先进煤制烯烃 (CTO)、石脑油催化裂解与边际丙烷脱氢 (PDH) 三大工艺
+
+schema_version: 1
+product_name: "聚丙烯"
+symbol: "PP"
+unit: "元/吨"
+version: "1.0.0"
+updated_at: "2026-09-21"
+
+models:
+  coal_to_polypropylene:
+    name: "新型煤制烯烃 CTO (先进煤头 - 极致低成本 Alpha)"
+    product_name: "聚丙烯"
+    symbol: "PP"
+    valid_from: "2020-01-01"
+    valid_to: "9999-12-31"
+    description: "坑口煤经甲醇再制聚丙烯，具备极低原料成本与一体化护城河，占全国约 25% 产能"
+    national_capacity_share: 0.25
+    cost_tier: "lowest_alpha"
+    coefficients:
+      product: 1.0           # 聚丙烯 (吨)
+      raw_coal_tons: 4.8     # 综合耗原煤 (吨)
+      electricity_kwh: 800.0 # 综合电耗 (度)
+    fixed_cost: 2500.0       # 煤气化制烯烃折旧摊销与综合加工费 (元/吨)
+    cash_fixed_cost: 1400.0  # 现金固定加工成本 (元/吨)
+    full_cost_approx: 6900.0 # 行业先进完全成本基准线 (元/吨)
+    cash_cost_approx: 5700.0 # 行业先进现金保本基准线 (元/吨)
+    formula: "pp_price - (4.8 * coal_price) - fixed_cost"
+
+  oil_naphtha_to_pp:
+    name: "石脑油蒸汽裂解/炼厂油制聚丙烯 (主流大炼化路线)"
+    product_name: "聚丙烯"
+    symbol: "PP"
+    valid_from: "2020-01-01"
+    valid_to: "9999-12-31"
+    description: "石脑油裂解产丙烯后聚合，占全国约 55% 产能，跟随原油裂解综合价差"
+    national_capacity_share: 0.55
+    cost_tier: "mainstream_refinery"
+    coefficients:
+      product: 1.0           # 聚丙烯 (吨)
+      propylene: 1.0         # 丙烯单耗 (吨)
+    fixed_cost: 900.0        # 聚合与后处理加工费用 (元/吨)
+    cash_fixed_cost: 500.0   # 现金保本加工费用 (元/吨)
+    full_cost_approx: 8300.0 # 行业平均完全成本参考线 (元/吨)
+    cash_cost_approx: 7500.0 # 现金保本参考线 (元/吨)
+    formula: "pp_price - propylene_price - fixed_cost"
+
+  pdh_to_pp:
+    name: "PDH 丙烷脱氢制聚丙烯 (进口丙烷 - 边际高成本出清线)"
+    product_name: "聚丙烯"
+    symbol: "PP"
+    valid_from: "2020-01-01"
+    valid_to: "9999-12-31"
+    description: "以进口冷冻丙烷为原料脱氢制丙烯再聚合，占全国约 20% 产能，构成边际亏损出清线"
+    national_capacity_share: 0.20
+    cost_tier: "marginal_cost_floor"
+    coefficients:
+      product: 1.0           # 聚丙烯 (吨)
+      propane: 1.18          # 丙烷原料消耗 (吨)
+    fixed_cost: 1600.0       # 催化脱氢与聚合加工折旧 (元/吨)
+    cash_fixed_cost: 950.0   # 现金加工费用底线 (元/吨)
+    full_cost_approx: 8800.0 # 边际完全成本参考线 (元/吨)
+    cash_cost_approx: 8100.0 # 边际现金保本出清底线 (元/吨)
+    formula: "pp_price - (1.18 * propane_price) - fixed_cost"
+
+regime_thresholds:
+  super_profit: 1000.0       # 油制加工差 > 1000 元/吨：超额暴利
+  high_profit: 500.0         # 500 ~ 1000 元/吨：高盈利
+  profitable: 100.0          # 100 ~ 500 元/吨：行业正常盈利
+  near_breakeven: -300.0     # -300 ~ 100 元/吨：先进煤制盈利，边际 PDH/油制亏损
+  # < -300 元/吨：深度亏损出清 (跌穿 PDH 与高成本油制现金保本线)

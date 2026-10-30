@@ -1,0 +1,79 @@
+# 烧碱核心上市公司画像配置库 (Caustic Soda Company Universe)
+schema_version: 1
+title: "烧碱核心上市公司画像与工艺成本映射"
+description: "A 股主流氯碱龙头工艺路线、产能规模、自备电/资源禀赋与主营暴露度配置"
+
+default_commodity_code: "SH"
+default_commodity_name: "烧碱"
+vat_rate_default: 0.13
+
+companies:
+  - symbol: "600328.SH"
+    name: "中盐化工"
+    full_name: "中盐内蒙古化工股份有限公司"
+    process_type: "membrane_process_100pct"
+    location: "内蒙古阿拉善 / 青海德令哈"
+    annual_capacity_w_tons: 70.0
+    equity_ratio: 1.0
+    internal_conversion_ratio: 0.10
+    cost_tier: "resource_advantage"
+    effective_tax_rate: 0.15
+    cost_notes: "拥有青海天然湖盐优势与自备火电机组，烧碱电解电费极低"
+    soda_revenue_share_approx: 0.15
+    key_drivers: "纯碱与氯碱双轮驱动，原盐与西北低电价护城河"
+
+  - symbol: "600409.SH"
+    name: "三友化工"
+    full_name: "唐山三友化工股份有限公司"
+    process_type: "membrane_process_100pct"
+    location: "河北唐山"
+    annual_capacity_w_tons: 55.0
+    equity_ratio: 1.0
+    internal_conversion_ratio: 0.40
+    cost_tier: "middle_integrated"
+    effective_tax_rate: 0.15
+    cost_notes: "三友循环经济核心一环，大量烧碱直接供下游粘胶短纤装置内部消化"
+    soda_revenue_share_approx: 0.18
+    key_drivers: "粘胶短纤开工率、环渤海原盐价格与两碱工业协同"
+
+  - symbol: "600618.SH"
+    name: "氯碱化工"
+    full_name: "上海氯碱化工股份有限公司"
+    process_type: "membrane_process_100pct"
+    location: "上海化学工业区"
+    annual_capacity_w_tons: 72.0
+    equity_ratio: 1.0
+    internal_conversion_ratio: 0.35
+    cost_tier: "middle_integrated"
+    effective_tax_rate: 0.15
+    cost_notes: "华东沿海老牌氯碱核心，与园区内亨斯迈/巴斯夫等 MDI 装置管道供氯协同"
+    soda_revenue_share_approx: 0.28
+    key_drivers: "上海化工园区园区管道供氯协议、MDI 开工与华东液碱现货价"
+
+  - symbol: "600075.SH"
+    name: "新疆天业"
+    full_name: "新疆天业股份有限公司"
+    process_type: "membrane_process_100pct"
+    location: "新疆石河子"
+    annual_capacity_w_tons: 140.0
+    equity_ratio: 1.0
+    internal_conversion_ratio: 0.85
+    cost_tier: "lowest_power_alpha"
+    effective_tax_rate: 0.15
+    cost_notes: "新疆煤电石-氯碱一体化特大型基地，坑口煤与极低电价，氯气全量转 PVC"
+    soda_revenue_share_approx: 0.20
+    key_drivers: "新疆自备电网电价、出疆运费补贴与氧化铝大客户长协"
+
+  - symbol: "002092.SZ"
+    name: "中泰化学"
+    full_name: "新疆中泰化学股份有限公司"
+    process_type: "membrane_process_100pct"
+    location: "新疆乌鲁木齐 / 准东"
+    annual_capacity_w_tons: 110.0
+    equity_ratio: 1.0
+    internal_conversion_ratio: 0.80
+    cost_tier: "lowest_power_alpha"
+    effective_tax_rate: 0.15
+    cost_notes: "全国最大规模氯碱企业之一，氯气主要配套 PVC，烧碱大批量外销氧化铝厂"
+    soda_revenue_share_approx: 0.22
+    key_drivers: "自备电厂电价、准东煤炭供应与西北氯碱平衡"

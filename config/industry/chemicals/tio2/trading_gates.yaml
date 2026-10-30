@@ -1,0 +1,75 @@
+# 钛白粉周期股分阶段量化交易门禁配置 (TiO2 Cyclical Trading Gates)
+# 模块高内聚配置：面向 B 类周期性中游寡头品种 (CR5 > 75%，极难跌穿现金流，由寡头挂牌价与协同检修支配)
+
+schema_version: 2
+product_name: "钛白粉"
+symbol: "TiO2"
+category: "B_oligopoly"
+profile_name: "oligopoly_gate"
+title: "钛白粉周期寡头量化交易门禁与标的映射"
+description: "基于寡头挂牌价止跌/提价、协同检修、外需出口真去库与低 PE 陷阱的三门禁决策体系"
+
+# 数据接入说明：挂牌价止跌/边际装置停产/协同检修/开工率/周度去库/MA20 等规则当前无对应数据源接入，
+# 评估器 (gates.py) 对未接入规则显式输出“数据缺失-未确认”，不会将其当作已满足或已证伪。
+
+# =============================================================
+# 门禁规则定义 (支持扁平化直接读取与 profiles 兼容)
+# =============================================================
+left_side_odds:
+  name: "钛白粉左侧赔率建仓门禁"
+  target_position_pct_max: 35.0  # 龙头抗风险极强，底仓可适度放宽至 35%
+  rules:
+    leader_listing_price_stable_months_min: 2 # 寡头月度挂牌价连续 2 个月止跌平盘 (确认现货底)
+    marginal_producer_loss: true             # 观察海外高能耗边际装置失血停产 (如泛能拓、日本石原)
+    pb_percentile_10y_max: 0.20              # 龙头自身 PB 触及 10 年 20% 分位极值
+    preferred_target_role: "integrated_oligopoly_leader" # 首选全产业链一体化寡头 (如龙佰集团)
+
+right_side_confirmation:
+  name: "钛白粉右侧胜率确认门禁"
+  target_position_pct_max: 85.0  # 胜率确认，加码进攻
+  rules:
+    oligopoly_coordinated_maintenance: true  # 主流寡头公布集中检修计划或海外遭遇不可抗力
+    operating_rate_max: 0.80                 # 全行业负荷受检修压制跌破 80%
+    leader_listing_price_hike: true          # 龙头调价函开启首次提价
+    destocking_weeks_min: 2                  # 生产企业库存连续 2 周下降
+    technical_ma_break: "MA20"               # 突破 MA20 均线
+    demand_validation:
+      export_volume_yoy_min: 15.0            # 海外出口同比增速 > 15% (真实外需拉动去库)
+    preferred_target_role: "beta_elastic"    # 右侧进攻高贝塔弹性标的 (如钛能化学)
+
+top_escape:
+  name: "钛白粉逃顶一票否决门禁"
+  action: "clear_position"
+  rules:
+    pe_ttm_low_trap_max: 14.0                # 寡头龙头享有成长与新材料溢价，12~15倍 PE 即见顶
+    operating_rate_min: 0.92                 # 全球装置负荷打满 > 92%
+    spread_margin_regime: "high_profit"      # 单吨毛利处于超额暴利 (>2000元/吨)
+    inventory_flow_regime: "passive_accumulation" # 中游蓄水池转为被动累库
+
+# =============================================================
+# 标的角色与工艺路线映射 (钛白粉行业可交易池)
+# 口径说明：companies.yaml 为画像库（A 股核心生产商 5 家），本映射为可交易池
+# (6 只，按流动性/信号质量筛选)；两库有意分层，新增标的需同步并核验公告。
+# =============================================================
+target_universe_mapping:
+  alpha_leader:
+    - symbol: "002601.SZ"
+      name: "龙佰集团"
+      role_desc: "全球钛白粉龙头 (151万吨)，钛矿自给率 65%，氯化法绝对领先，抗周期阿尔法"
+  beta_elastic:
+    - symbol: "002145.SZ"
+      name: "钛能化学"
+      role_desc: "纯外购硫酸法代表，出口营收占比高，景气反弹与海外补库高贝塔标的"
+  integrated_peers:
+    - symbol: "000629.SZ"
+      name: "钒钛股份"
+      role_desc: "攀西熔盐氯化法自主突破，低品位钛渣资源化标杆"
+    - symbol: "002386.SZ"
+      name: "天原股份"
+      role_desc: "海丰和泰氯化法深加工，西南氯碱-钛一体化"
+    - symbol: "600727.SH"
+      name: "鲁北化工"
+      role_desc: "祥海科技 6 万吨氯化法新秀，硫-磷-钛生态循环"
+    - symbol: "300891.SZ"
+      name: "惠云钛业"
+      role_desc: "华南硫酸法区域龙头，塑料级包膜细分优势"

@@ -1,0 +1,121 @@
+# 钛白粉核心上市公司画像配置库 (TiO2 Company Universe)
+# 对应因果链第 5 环（企业会计盈利）与第 6 环（二级市场定价）
+schema_version: 1
+title: "钛白粉核心上市公司画像与工艺成本映射"
+description: "A 股 5 家钛白粉核心生产商工艺路线、产能规模、成本阶梯与主营暴露度配置（门禁可交易池另见 trading_gates.yaml target_universe_mapping）"
+
+default_commodity_code: "TIO2"
+default_commodity_name: "钛白粉"
+vat_rate_default: 0.13
+
+companies:
+  - symbol: "002601.SZ"
+    name: "龙佰集团"
+    full_name: "龙佰集团股份有限公司"
+    process_type: "chloride_and_sulfate"
+    location: "河南焦作 / 四川攀枝花 / 湖北襄阳"
+    annual_capacity_w_tons: 151.0
+    equity_ratio: 1.0
+    internal_conversion_ratio: 0.08  # 扣减中间品自用
+    cost_tier: "lowest_alpha"
+    role: "integrated_oligopoly_leader"
+    effective_tax_rate: 0.15
+    cost_notes: "全球第一大钛白粉生产商，拥有攀西自备钛精矿与氯化法钛渣全产业链，成本曲线最左侧"
+    tio2_revenue_share_approx: 0.54
+    key_drivers: "氯化法产能爬坡、海外反倾销关税博弈、钛精矿与海绵钛一体化阿尔法"
+    export_profile:
+      overseas_revenue_share: 0.58
+      direct_export_ratio: 0.72
+      eu_antidumping_duty_rate: 0.397  # 欧盟初裁 39.7%，终裁为特定从量税 0.74 欧元/kg (折合从价约 32.3%~39.7%)，被课以顶格税率
+      eu_antidumping_specific_duty_eur_per_kg: 0.74
+      overseas_subsidiaries: ["Billions_Europe", "Billions_America"]
+      key_destinations: ["India", "Southeast_Asia", "Brazil", "Middle_East"]
+      tariff_moat_notes: "欧盟终裁被征收 0.74 欧元/kg 顶格税率(无税率优待)；出海优势在于欧洲本土仓储销售实体(Billions Europe)清关分销、主攻亚非拉非受限新兴市场、及欧亚经济联盟(EAEU)价格承诺免税协议"
+
+  - symbol: "002145.SZ"
+    name: "钛能化学"
+    full_name: "钛能化学（原中核华原钛白股份有限公司）" # 现用全称以官方公告为准
+    process_type: "sulfate_process"
+    location: "甘肃白银 / 安徽马鞍山"
+    annual_capacity_w_tons: 55.0
+    equity_ratio: 1.0
+    internal_conversion_ratio: 0.0
+    cost_tier: "beta_elastic"
+    role: "beta_elastic"
+    effective_tax_rate: 0.15
+    cost_notes: "国内第二大钛白粉产能，硫酸法为主，主营纯度最高，出海占比高，弹性巨大"
+    tio2_revenue_share_approx: 0.70
+    key_drivers: "海关出口量价齐升、海外渠道拓展、磷酸铁锂新能源材料第二成长曲线"
+    export_profile:
+      overseas_revenue_share: 0.50
+      direct_export_ratio: 0.45
+      eu_antidumping_duty_rate: 0.350  # 欧盟合作应诉企业初裁 35.0%，终裁特定税 0.64 欧元/kg (折合约 28.4%~35.0%)
+      eu_antidumping_specific_duty_eur_per_kg: 0.64
+      key_destinations: ["Southeast_Asia", "Middle_East", "South_America"]
+      tariff_moat_notes: "欧盟获合作企业中间税率(0.64 欧元/kg)；战略性规避欧美高壁垒区，主打东南亚、中东及拉美非受限新兴市场"
+
+  - symbol: "600727.SH"
+    name: "鲁北化工"
+    full_name: "山东鲁北化工股份有限公司"
+    process_type: "chloride_and_sulfate"
+    location: "山东滨州无棣"
+    annual_capacity_w_tons: 26.0
+    equity_ratio: 1.0
+    internal_conversion_ratio: 0.0
+    cost_tier: "integrated_circular_alpha"
+    role: "scale_challenger"
+    effective_tax_rate: 0.15
+    cost_notes: "A股第三大钛白粉生产商(金海钛业超20万吨硫酸法+祥海科技6万吨氯化法)；拥有磷石膏/废硫酸制酸联产水泥、海水梯级利用等多条循环经济链，废副综合利用成本优势显著"
+    tio2_revenue_share_approx: 0.62
+    key_drivers: "6万吨氯化法技术攻关与负荷爬坡、石膏制酸联产水泥循环降本、原盐溴素与甲烷氯化物副业协同"
+    export_profile:
+      overseas_revenue_share: 0.30
+      direct_export_ratio: 0.65
+      eu_antidumping_duty_rate: 0.397  # 欧盟未单独抽样，适用其他企业顶格税率 39.7%，终裁特定税 0.74 欧元/kg
+      eu_antidumping_specific_duty_eur_per_kg: 0.74
+      key_destinations: ["India", "Southeast_Asia", "Middle_East", "South_America"]
+      tariff_moat_notes: "以亚非拉等非受限新兴市场为主，直接出口占比约 65%，规避欧美双反高关税壁垒"
+
+  - symbol: "002136.SZ"
+    name: "安纳达"
+    full_name: "安徽安纳达钛业股份有限公司"
+    process_type: "sulfate_process"
+    location: "安徽铜陵"
+    annual_capacity_w_tons: 12.0
+    equity_ratio: 1.0
+    internal_conversion_ratio: 0.0
+    cost_tier: "marginal_producer"
+    role: "marginal_producer"
+    effective_tax_rate: 0.15
+    cost_notes: "硫酸法中型产能代表，原料外购，对硫酸与钛矿价格波动极其敏感"
+    tio2_revenue_share_approx: 0.85
+    key_drivers: "华东涂料开工、区域钛白粉现货基准价、磷酸铁联产协同"
+    export_profile:
+      overseas_revenue_share: 0.15
+      direct_export_ratio: 0.20
+      eu_antidumping_duty_rate: 0.397  # 其他未合作企业顶格税率 39.7%，终裁 0.74 欧元/kg
+      eu_antidumping_specific_duty_eur_per_kg: 0.74
+      key_destinations: ["Domestic_focused"]
+      tariff_moat_notes: "内销为主，缺乏海外本土销售网络，欧盟被征顶格税率(0.74 欧元/kg)，受摩擦挤压只能退守国内"
+
+  - symbol: "000545.SZ"
+    name: "金浦钛业"
+    full_name: "金浦钛业股份有限公司"
+    process_type: "sulfate_process"
+    location: "江苏南京 / 安徽徐州"
+    annual_capacity_w_tons: 16.0
+    equity_ratio: 1.0
+    internal_conversion_ratio: 0.0
+    cost_tier: "marginal_producer"
+    role: "marginal_producer"
+    effective_tax_rate: 0.25
+    cost_notes: "涂料级金红石型与锐钛型钛白粉，属于边际产能与盈亏平衡点敏感标的"
+    tio2_revenue_share_approx: 0.90
+    key_drivers: "长三角工业与建筑涂料需求、钛精矿外购价格"
+    export_profile:
+      overseas_revenue_share: 0.10
+      direct_export_ratio: 0.15
+      eu_antidumping_duty_rate: 0.397  # 其他未合作企业顶格税率 39.7%，终裁 0.74 欧元/kg
+      eu_antidumping_specific_duty_eur_per_kg: 0.74
+      key_destinations: ["Domestic_focused"]
+      tariff_moat_notes: "内销为主，缺乏海外销售网络，欧盟顶格税率(0.74 欧元/kg)，抗海外关税风险极弱"

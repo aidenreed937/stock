@@ -1,0 +1,55 @@
+# 苯乙烯 (EB) 产业链理论成本与利润模型配置 (Styrene Cost & Margin Models)
+# 涵盖乙苯脱氢主流工艺与 PO/SM 共氧化一体化联产路线
+
+schema_version: 1
+product_name: "苯乙烯"
+symbol: "EB"
+unit: "元/吨"
+version: "1.0.0"
+updated_at: "2026-09-21"
+
+models:
+  ethylbenzene_dehydrogenation:
+    name: "乙苯脱氢法制苯乙烯 (主流大宗工艺 - 边际出清线)"
+    product_name: "苯乙烯"
+    symbol: "EB"
+    valid_from: "2020-01-01"
+    valid_to: "9999-12-31"
+    description: "纯苯与乙烯烷基化脱氢制苯乙烯，占全国约 85% 产能，构成行业边际成本支撑"
+    national_capacity_share: 0.85
+    cost_tier: "marginal_cost_floor"
+    coefficients:
+      product: 1.0           # 苯乙烯 (吨)
+      benzene: 0.79          # 纯苯消耗 (吨)
+      ethylene: 0.29         # 乙烯消耗 (吨)
+    fixed_cost: 900.0        # 行业平均全加工费用 (动力蒸汽+催化剂折旧+人工)
+    cash_fixed_cost: 550.0   # 现金保本加工费用 (剔除折旧摊销)
+    full_cost_approx: 8900.0 # 行业平均完全成本参考线 (元/吨)
+    cash_cost_approx: 8100.0 # 行业现金保本边际出清底线 (元/吨)
+    formula: "eb_price - (0.79 * benzene_price + 0.29 * ethylene_price) - fixed_cost"
+
+  posm_coproduction:
+    name: "PO/SM 共氧化法 (环氧丙烷/苯乙烯联产 - 先进 Alpha 路线)"
+    product_name: "苯乙烯"
+    symbol: "EB"
+    valid_from: "2020-01-01"
+    valid_to: "9999-12-31"
+    description: "乙苯与氧气反应同时副产环氧丙烷与苯乙烯，分摊固定成本，占全国约 15% 产能"
+    national_capacity_share: 0.15
+    cost_tier: "lowest_alpha"
+    coefficients:
+      product: 1.0           # 苯乙烯 (吨)
+      benzene: 0.77          # 纯苯消耗 (吨)
+      propylene: 0.38        # 丙烯单耗 (吨，生产对应 PO)
+    fixed_cost: 650.0        # 联产装置分摊综合加工成本 (元/吨)
+    cash_fixed_cost: 380.0   # 现金加工费用 (元/吨)
+    full_cost_approx: 8100.0 # 综合完全成本基准线 (元/吨)
+    cash_cost_approx: 7200.0 # 现金保本基准线 (元/吨)
+    formula: "eb_price - (0.77 * benzene_price + fixed_cost)"
+
+regime_thresholds:
+  super_profit: 800.0        # 加工毛利 > 800 元/吨：超额暴利
+  high_profit: 400.0         # 400 ~ 800 元/吨：高盈利
+  profitable: 100.0          # 100 ~ 400 元/吨：行业正常盈利
+  near_breakeven: -200.0     # -200 ~ 100 元/吨：先进装置微利，老装置亏损
+  # < -200 元/吨：深度亏损出清 (跌穿乙苯脱氢现金保本线)

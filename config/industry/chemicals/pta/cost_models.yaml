@@ -1,0 +1,66 @@
+# 精对苯二甲酸 (PTA) 行业标准加工费与成本模型配置 (PTA Cost Models)
+# 模块高内聚配置：标准倒轧加工费公式与先进大炼化边际现金流阈值
+
+schema_version: 1
+product_name: "精对苯二甲酸"
+symbol: "TA"
+unit: "元/吨"
+version: "1.0.0"
+updated_at: "2026-09-17"
+
+models:
+  invista_p8_plus:
+    name: "先进 Invista P8+ 大炼化一体化 PTA 成本模型"
+    product_name: "PTA"
+    symbol: "TA"
+    valid_from: "2020-01-01"
+    valid_to: "9999-12-31"
+    description: "恒力/荣盛/桐昆等新一代大装置，综合电耗低，占全国约 65% 产能"
+    national_capacity_share: 0.65
+    cost_tier: "lowest_alpha"
+    coefficients:
+      product: 1.0
+      feedstock_px: 0.655    # PX 对二甲苯单耗 (吨)
+    fixed_cost: 360.0        # 先进装置全加工成本 (折旧摊销+动力蒸汽+辅料催化剂+人工)
+    cash_fixed_cost: 220.0   # 现金保本加工费底线 (剔除折旧摊销)
+    full_cost_approx: 4800.0 # 行业先进完全成本参考线 (元/吨)
+    cash_cost_approx: 4400.0 # 行业先进现金保本参考线 (元/吨)
+    formula: "pta_price - 0.655 * px_price - fixed_cost"
+
+  standard:
+    name: "传统中小型 PTA 行业标准加工费模型 (边际出清线)"
+    product_name: "PTA"
+    symbol: "TA"
+    valid_from: "2020-01-01"
+    valid_to: "9999-12-31"
+    description: "老旧中小单套装置，能耗高折旧到期，占全国约 35% 产能，构成边际亏损出清线"
+    national_capacity_share: 0.35
+    cost_tier: "marginal_cost_floor"
+    coefficients:
+      product: 1.0
+      feedstock_px: 0.655    # PX 对二甲苯单耗 (吨)
+    fixed_cost: 520.0        # 行业老旧装置平均加工费保本线
+    cash_fixed_cost: 380.0   # 现金保本加工费
+    full_cost_approx: 5200.0 # 边际完全成本参考线 (元/吨)
+    cash_cost_approx: 4800.0 # 边际现金保本出清线 (元/吨)
+    formula: "pta_price - 0.655 * px_price - fixed_cost"
+
+  polyester_poy:
+    name: "涤纶长丝 (POY) 行业理论加工差模型"
+    product_name: "涤纶长丝POY"
+    symbol: "POY"
+    valid_from: "2020-01-01"
+    valid_to: "9999-12-31"
+    coefficients:
+      product: 1.0
+      feedstock_pta: 0.855   # PTA 单耗 (吨)
+      feedstock_meg: 0.335   # MEG 乙二醇单耗 (吨)
+    fixed_cost: 1100.0       # 行业聚酯聚合纺丝完全加工成本 (元/吨)
+    cash_fixed_cost: 800.0   # 聚酯长丝边际现金加工成本 (元/吨)
+    formula: "poy_price - (0.855 * pta_price + 0.335 * meg_price)"
+
+regime_thresholds:
+  high_profit: 600.0         # 加工费 > 600 元/吨：超额暴利
+  profitable: 450.0          # 450 ~ 600 元/吨：行业平均盈利
+  near_breakeven: 350.0      # 350 ~ 450 元/吨：先进大炼化微利，老装置亏损
+  # < 350 元/吨：深度亏损 (跌穿先进大炼化现金成本，全行业失血)
