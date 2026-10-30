@@ -32,3 +32,10 @@ SYSTEM_METADATA_COLUMNS: Final[frozenset[str]] = frozenset(
         "field_provenance",
     }
 )
+
+
+# 宏观风控产物中需要额外披露的退化维度。当前无此类活动指标。
+MACRO_RISK_DEGRADED_MONITORS: Final[dict[str, str]] = {}
+
+# 连续多少个交易日恒为 0 判定为「数据退化」（区别于真实单日极值 0 分位）
+MACRO_RISK_DEGRADED_ZERO_RUN_DAYS: Final[int] = 3

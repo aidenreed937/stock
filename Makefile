@@ -1,4 +1,4 @@
-.PHONY: help install lint lint-rust format test test-rust-plugins check run scan realtime market-aggregate market-temperature market-context industry-structure investor-brief quant-brief factor-research factor-combine factor-backtest multi-date screen-stocks report-consistency market-cycle-review artifact-index cleanup-analytics backfill baseline migrate-data migrate-curated cleanup-data backfill-accept repair-stock-daily-bar build-plugins industry-trend-factors industry-trend-strategy industry-trend-live backfill-customs sync-customs catalog-customs sync-industry macro-ic-review
+.PHONY: help install lint lint-rust format test test-rust-plugins check run scan realtime market-aggregate market-temperature market-context industry-structure investor-brief quant-brief factor-research factor-combine factor-backtest multi-date screen-stocks report-consistency market-cycle-review artifact-index cleanup-analytics backfill backfill-semiconductor baseline migrate-data migrate-curated cleanup-data backfill-accept repair-stock-daily-bar build-plugins industry-trend-factors industry-trend-strategy industry-trend-live tariffline-customs import-customs-gacc replay-customs-gacc catalog-customs sync-industry sync-chemical sync-chemical-research sync-semiconductor sync-semiconductor-equipment-gm macro-update macro-inputs-check macro-artifacts macro-ic-review rebuild-index-member-versioned rebuild-sw-industry-golden rebuild-lixinger-industry-financial-ttm soda-ash pvc glass chemical-deep-dive dce-harvest chemical-cross-section chemical-basis-mart daily-batch
 
 export UV_CACHE_DIR ?= .uv_cache
 export UV_PYTHON_INSTALL_DIR ?= .uv_python
@@ -36,15 +36,32 @@ help:
 	@echo "  make migrate-curated [APPLY=1] - Preview/apply Curated Schema v2 migration"
 	@echo "  make cleanup-data [APPLY=1] [OLDER_THAN_DAYS=7] - Preview/clean stale Parquet artifacts"
 	@echo "  make backfill-accept ENDPOINT=stock_daily_bar - Run fail-closed backfill acceptance"
+	@echo "  make backfill-semiconductor START=YYYY-MM-DD END=YYYY-MM-DD - Backfill the canonical semiconductor bundle"
+	@echo "  make rebuild-index-member-versioned [APPLY=1] - Rebuild versioned SW constituent Curated table"
+	@echo "  make rebuild-sw-industry-golden [APPLY=1] - Rebuild cross-source SW2021 golden tables"
+	@echo "  make rebuild-lixinger-industry-financial-ttm [APPLY=1] - Add derived TTM fields to LiXinger industry Curated tables"
 	@echo "  make repair-stock-daily-bar [APPLY=1] - Replay stock_daily_bar RAW into staged Curated"
 	@echo "  make probe    - Run global data source connectivity probe"
 	@echo "  make validate - Run offline data quality validator"
 	@echo "  make filter-universe - Generate filtered stock universe based on liquidity"
 	@echo "  make backfill-fundamental - Backfill fundamentals from lixinger based on universe"
-	@echo "  make backfill-customs [START_YEAR=2015] [END_YEAR=2024] [FORCE=1] - Backfill historical UN Comtrade customs trade data"
-	@echo "  make sync-customs PERIOD=YYYY-MM - Sync monthly customs trade data from UN Comtrade"
-	@echo "  make sync-industry [ENDPOINT=xxx] [FORCE=1] - Sync vertical industry metrics (e.g., construction_machinery)"
+	@echo "  make tariffline-customs PERIOD=YYYY-MM [CMD_CODES=250410] [FLOW=export|import|both] - Fetch UN Comtrade Tariffline raw data"
+	@echo "  make import-customs-gacc FILE=path PERIOD=YYYY-MM FLOW=import|export [FORCE=1] - Import a manually exported GACC CSV"
+	@echo "  make replay-customs-gacc [PERIOD=YYYY-MM] [FLOW=both] - Replay GACC RAW manifests into Curated"
+	@echo "  make sync-industry [ENDPOINT=xxx] [FORCE=1] - Sync vertical industry metrics (e.g., semiconductor_bundle)"
+	@echo "  make sync-chemical [FORCE=1] - Sync the standalone chemical industry bundle"
+	@echo "  make sync-semiconductor [FORCE=1] - Sync the canonical 13-endpoint semiconductor bundle"
+	@echo "  make sync-semiconductor-equipment-gm [FORCE=1] - Sync four equipment-maker GM sources and rebuild multi"
 	@echo "  make catalog-customs - View the 39 HS codes and SW industry mapping catalog"
+	@echo "  make dce-harvest [DATE=YYYY-MM-DD] [START=...] [END=...] [SYNC=1] [FILL_GAPS=1] [FORCE=1] - Harvest DCE futures quotes and inventory via Chrome CDP"
+	@echo "  make chemical-cross-section [DATE=YYYY-MM-DD] - Build multi-commodity cross-sectional radar mart and ranking"
+	@echo "  make chemical-basis-mart [DATE=YYYY-MM-DD] - Build chemical futures basis & warehouse inventory mart"
+	@echo "  make chemical-deep-dive SYMBOL=<SA|V|TA|TiO2> [DATE=YYYY-MM-DD] [SAVE=1] - Run vertical deep-dive pipeline"
+	@echo "  make soda-ash [DATE=YYYY-MM-DD] [SAVE=1] - Run soda ash deep-dive pipeline (shortcut for SYMBOL=SA)"
+	@echo "  make pvc [DATE=YYYY-MM-DD] [SAVE=1] - Run PVC deep-dive pipeline (shortcut for SYMBOL=V)"
+	@echo "  make macro-update [LAST_N=60] [SOURCE=all] [FORCE=1] - Sync data, rebuild macro dependencies, and refresh macro products"
+	@echo "  make macro-artifacts [LAST_N=60] [OVERWRITE=1] - Rebuild market_daily before domain_marts, then refresh macro products"
+	@echo "  make daily-batch [DATE=YYYY-MM-DD] [LAST_N=60] [SOURCE=all] - Complete post-market batch: sync data, build features, stock screen, macro risk & daily review"
 
 build-plugins:
 	uv run maturin develop --release --manifest-path crates/stock_plugins/Cargo.toml
@@ -87,13 +104,28 @@ market-aggregate:
 	uv run python -m stock_cli.market_aggregate $(if $(WATCH),--watch) $(if $(INTERVAL),--interval $(INTERVAL)) $(if $(FORMAT),--format $(FORMAT)) $(if $(CONFIG),--config $(CONFIG)) $(if $(OUTPUT_ROOT),--output-root $(OUTPUT_ROOT)) $(if $(RUN_CLASS),--run-class $(RUN_CLASS)) $(if $(NO_LATEST),--no-latest) $(if $(RECORD),--record) $(if $(RAW_ROOT),--raw-root $(RAW_ROOT)) $(if $(BATCH_SIZE),--batch-size $(BATCH_SIZE),$(if $(PAGE_SIZE),--batch-size $(PAGE_SIZE))) $(if $(STRONG_MOVE_PCT),--strong-move-pct $(STRONG_MOVE_PCT)) $(if $(SKIP_INDUSTRY),--skip-industry)
 
 sync:
-	uv run python -m stock_cli.sync --source $(or $(SOURCE),$(DATA_SOURCE),tushare) $(if $(DATE),--date $(DATE)) $(if $(or $(ENDPOINT),$(ENDPOINTS)),--endpoints $(or $(ENDPOINT),$(ENDPOINTS))) $(if $(FORCE),--force) $(if $(NO_AUDIT),--no-audit) $(if $(or $(REFRESH_MARTS),$(REFRESH_MART)),--refresh-marts) $(if $(WORKERS),--max-workers $(WORKERS))
+	uv run python -m stock_cli.sync --source $(or $(SOURCE),$(DATA_SOURCE),tushare) $(if $(DATE),--date $(DATE)) $(if $(or $(ENDPOINT),$(ENDPOINTS)),--endpoints $(or $(ENDPOINT),$(ENDPOINTS))) $(if $(FORCE),--force) $(if $(NO_AUDIT),--no-audit) $(if $(or $(REFRESH_MARTS),$(REFRESH_MART)),--refresh-marts) $(if $(WORKERS),--max-workers $(WORKERS)) $(if $(SOURCE_WORKERS),--source-workers $(SOURCE_WORKERS))
 
 sync-industry:
 	uv run python -m stock_cli.sync --source industry $(if $(or $(ENDPOINT),$(ENDPOINTS),$(METRIC)),--endpoints $(or $(ENDPOINT),$(ENDPOINTS),$(METRIC))) $(if $(FORCE),--force) $(if $(DATE),--date $(DATE)) $(if $(WORKERS),--max-workers $(WORKERS))
 
+sync-chemical:
+	uv run python -m stock_cli.sync --source industry --endpoints chemical_industry_bundle $(if $(FORCE),--force) $(if $(DATE),--date $(DATE)) $(if $(WORKERS),--max-workers $(WORKERS))
+
+sync-chemical-research:
+	uv run python scripts/sync_research_weekly_survey.py $(if $(filter 1 true yes,$(DISCOVER)),--auto-discover) $(if $(PAGES),--discover-pages $(PAGES)) $(if $(filter 1 true yes,$(APPLY)),--apply)
+
+sync-semiconductor:
+	uv run python -m stock_cli.sync --source industry --endpoints semiconductor_bundle $(if $(FORCE),--force) $(if $(DATE),--date $(DATE)) $(if $(WORKERS),--max-workers $(WORKERS))
+
+sync-semiconductor-equipment-gm:
+	uv run python -m stock_cli.sync --source industry --endpoints semiconductor_equipment_gm_bundle $(if $(FORCE),--force) $(if $(DATE),--date $(DATE)) $(if $(WORKERS),--max-workers $(WORKERS))
+
 backfill:
 	uv run python -m stock_cli.backfill $(if $(START),--start $(START)) $(if $(END),--end $(END)) --data-source $(or $(SOURCE),$(DATA_SOURCE),tushare) $(if $(ENDPOINT),--endpoint $(ENDPOINT)) $(if $(SYMBOL),--symbol $(SYMBOL)) $(if $(FORCE_REFRESH),--force-refresh) $(if $(WORKERS),--max-workers $(WORKERS))
+
+backfill-semiconductor:
+	uv run python -m stock_cli.backfill $(if $(START),--start $(START)) $(if $(END),--end $(END)) --data-source industry --endpoint semiconductor_bundle $(if $(FORCE_REFRESH),--force-refresh) $(if $(WORKERS),--max-workers $(WORKERS))
 
 
 baseline:
@@ -104,6 +136,18 @@ migrate-data:
 
 migrate-curated:
 	uv run python scripts/migrate_curated_schema_v2.py --root $(or $(CURATED_ROOT),data/curated) $(if $(APPLY),--apply)
+
+rebuild-index-member-versioned:
+	uv run python -m stock_data.governance.ops.rebuild_index_member_versioned $(if $(STORAGE_DIR),--storage-dir $(STORAGE_DIR)) $(if $(filter 1 true yes,$(APPLY)),--apply)
+
+rebuild-sw-industry-golden:
+	uv run python -m stock_data.governance.ops.rebuild_sw_industry_golden $(if $(STORAGE_DIR),--storage-dir $(STORAGE_DIR)) $(if $(filter 1 true yes,$(APPLY)),--apply)
+
+rebuild-lixinger-industry-financial-ttm:
+	uv run python -m stock_data.governance.ops.rebuild_lixinger_industry_financial_ttm $(if $(CURATED_ROOT),--curated-root $(CURATED_ROOT)) $(if $(DATASETS),--datasets $(DATASETS)) $(if $(filter 1 true yes,$(APPLY)),--apply)
+
+rebuild-fund-portfolio:
+	uv run python -m stock_data.governance.ops.rebuild_fund_portfolio $(if $(RAW_ROOT),--raw-root $(RAW_ROOT)) $(if $(CURATED_ROOT),--curated-root $(CURATED_ROOT)) $(if $(filter 1 true yes,$(APPLY)),--apply)
 
 cleanup-data:
 	uv run python -m stock_data.governance.ops.cleanup_artifacts --root $(or $(ROOT),data) --older-than-days $(or $(OLDER_THAN_DAYS),7) $(if $(filter 1 true yes,$(APPLY)),--apply)
@@ -155,6 +199,37 @@ scan:
 features-build:
 	uv run python -m stock_cli.features build $(if $(TARGET),--target $(TARGET)) $(if $(START),--start $(START)) $(if $(END),--end $(END)) $(if $(OVERWRITE),--overwrite) $(if $(STORAGE_DIR),--storage-dir $(STORAGE_DIR))
 
+macro-update:
+	@sync_rc=0; \
+	$(MAKE) sync SOURCE=$(or $(SOURCE),all) $(if $(FORCE),FORCE=$(FORCE)) $(if $(SOURCE_WORKERS),SOURCE_WORKERS=$(SOURCE_WORKERS)) || sync_rc=$$?; \
+	artifact_rc=0; \
+	$(MAKE) macro-artifacts LAST_N=$(or $(LAST_N),60) $(if $(OVERWRITE),OVERWRITE=$(OVERWRITE)) || artifact_rc=$$?; \
+	if [ $$artifact_rc -ne 0 ]; then exit $$artifact_rc; fi; \
+	exit $$sync_rc
+
+macro-inputs-check:
+	uv run python scripts/check_macro_inputs.py $(if $(MACRO_INPUTS_SOFT),--soft)
+
+
+macro-artifacts: macro-inputs-check
+	$(MAKE) features-build TARGET=all $(if $(OVERWRITE),OVERWRITE=$(OVERWRITE))
+	$(MAKE) screen-stocks $(if $(DATE),DATE=$(DATE))
+	uv run python -m stock_cli.macro_risk --last-n $(or $(LAST_N),60)
+	uv run python -c "import json,sys; m=json.load(open('data/analytics/macro_risk/latest/manifest.json', encoding='utf-8')); c=m.get('data_completeness', {}); ok=m.get('run_status') == 'succeeded' and c.get('complete') is True; print('macro risk manifest:', m.get('as_of_date'), c); sys.exit(0 if ok else 1)"
+	uv run python -m stock_cli.macro_strategy_report
+	uv run python -m stock_cli.macro_strategy_audit --assert-guardrails
+
+daily-batch:
+	@sync_rc=0; \
+	$(MAKE) sync SOURCE=$(or $(SOURCE),all) $(if $(FORCE),FORCE=$(FORCE)) $(if $(SOURCE_WORKERS),SOURCE_WORKERS=$(SOURCE_WORKERS)) || sync_rc=$$?; \
+	artifact_rc=0; \
+	$(MAKE) macro-artifacts LAST_N=$(or $(LAST_N),60) $(if $(OVERWRITE),OVERWRITE=$(OVERWRITE)) $(if $(DATE),DATE=$(DATE)) || artifact_rc=$$?; \
+	review_rc=0; \
+	$(MAKE) daily-review $(if $(DATE),DATE=$(DATE)) || review_rc=$$?; \
+	if [ $$artifact_rc -ne 0 ]; then exit $$artifact_rc; fi; \
+	if [ $$review_rc -ne 0 ]; then exit $$review_rc; fi; \
+	exit $$sync_rc
+
 market-temperature:
 	uv run python -m stock_cli.market_temperature $(if $(DATE),--date $(DATE)) $(if $(COMPARE_DATE),--compare-date $(COMPARE_DATE)) $(if $(CONFIG),--config $(CONFIG)) $(if $(OUTPUT_ROOT),--output-root $(OUTPUT_ROOT)) $(if $(RUN_CLASS),--run-class $(RUN_CLASS)) $(if $(NO_LATEST),--no-latest) $(if $(SKIP_METRICS),--skip-metrics)
 
@@ -203,6 +278,21 @@ diagnose:
 industry-diagnose:
 	uv run python -m stock_cli.industry_diagnose --industry $(INDUSTRY) $(if $(DATE),--as-of $(DATE)) $(if $(FORMAT),--format $(FORMAT)) $(if $(STORAGE_DIR),--storage-dir $(STORAGE_DIR))
 
+pv-outlook:
+	uv run python -m stock_cli.pv_outlook $(if $(DATE),--as-of $(DATE)) $(if $(FORMAT),--format $(FORMAT)) $(if $(CONFIG),--config $(CONFIG)) $(if $(STORAGE_DIR),--storage-dir $(STORAGE_DIR)) $(if $(SAVE),--save)
+
+chemical-deep-dive:
+	uv run python -m stock_cli.chemical_deep_dive --symbol $(if $(SYMBOL),$(SYMBOL),SA) $(if $(DATE),--as-of $(DATE)) $(if $(FORMAT),--format $(FORMAT)) $(if $(CONFIG),--config $(CONFIG)) $(if $(OUTPUT_ROOT),--output-root $(OUTPUT_ROOT)) $(if $(RUN_CLASS),--run-class $(RUN_CLASS)) $(if $(NO_LATEST),--no-latest) $(if $(SAVE),--save)
+
+soda-ash:
+	@$(MAKE) chemical-deep-dive SYMBOL=SA $(if $(DATE),DATE=$(DATE)) $(if $(FORMAT),FORMAT=$(FORMAT)) $(if $(CONFIG),CONFIG=$(CONFIG)) $(if $(OUTPUT_ROOT),OUTPUT_ROOT=$(OUTPUT_ROOT)) $(if $(RUN_CLASS),RUN_CLASS=$(RUN_CLASS)) $(if $(NO_LATEST),NO_LATEST=$(NO_LATEST)) $(if $(SAVE),SAVE=$(SAVE))
+
+pvc:
+	@$(MAKE) chemical-deep-dive SYMBOL=V $(if $(DATE),DATE=$(DATE)) $(if $(FORMAT),FORMAT=$(FORMAT)) $(if $(CONFIG),CONFIG=$(CONFIG)) $(if $(OUTPUT_ROOT),OUTPUT_ROOT=$(OUTPUT_ROOT)) $(if $(RUN_CLASS),RUN_CLASS=$(RUN_CLASS)) $(if $(NO_LATEST),NO_LATEST=$(NO_LATEST)) $(if $(SAVE),SAVE=$(SAVE))
+
+glass:
+	uv run python -c "from stock_analytics.pipelines.glass.pipeline import run_glass_pipeline; from datetime import date; d = date.fromisoformat('$(DATE)') if '$(DATE)' else None; res = run_glass_pipeline(as_of=d); print(res.report_markdown)"
+
 scan-watchlist:
 	uv run python -m stock_cli.scan_watchlist $(if $(DATE),--as-of $(DATE)) $(if $(FORMAT),--format $(FORMAT)) $(if $(CONFIG),--config $(CONFIG)) $(if $(STORAGE_DIR),--storage-dir $(STORAGE_DIR)) $(if $(SAVE),--save)
 
@@ -236,14 +326,27 @@ industry-trend-strategy:
 industry-trend-live:
 	uv run python -m stock_cli.industry_trend_live $(if $(STRATEGY),--strategy $(STRATEGY)) $(if $(CAPITAL),--capital $(CAPITAL)) $(if $(DRY_RUN),--dry-run)
 
-backfill-customs:
-	uv run python -m stock_cli.customs backfill $(if $(START_YEAR),--start-year $(START_YEAR)) $(if $(END_YEAR),--end-year $(END_YEAR)) $(if $(CATALOG),--catalog $(CATALOG)) $(if $(filter 1 true yes,$(FORCE)),--force)
+tariffline-customs:
+	uv run python -m stock_cli.customs tariffline --period $(PERIOD) $(if $(CMD_CODES),--cmd-codes $(CMD_CODES)) $(if $(FLOW),--flow $(FLOW)) $(if $(CATALOG),--catalog $(CATALOG)) $(if $(RAW_DIR),--raw-dir $(RAW_DIR)) $(if $(MAX_RECORDS),--max-records $(MAX_RECORDS))
 
-sync-customs:
-	uv run python -m stock_cli.customs sync $(if $(PERIOD),--period $(PERIOD)) $(if $(CATALOG),--catalog $(CATALOG))
+import-customs-gacc:
+	uv run python -m stock_cli.customs gacc-import --file $(FILE) --period $(PERIOD) --flow $(FLOW) $(if $(END_MONTH),--end-month $(END_MONTH)) $(if $(CURRENCY),--currency $(CURRENCY)) $(if $(CATALOG),--catalog $(CATALOG)) $(if $(GACC_CATALOG),--gacc-catalog $(GACC_CATALOG)) $(if $(GACC_CODES),--gacc-codes $(GACC_CODES)) $(if $(RAW_DIR),--raw-dir $(RAW_DIR)) $(if $(CURATED),--curated $(CURATED)) $(if $(filter 1 true yes,$(FORCE)),--force)
+
+replay-customs-gacc:
+	uv run python -m stock_cli.customs gacc-replay $(if $(PERIOD),--period $(PERIOD)) $(if $(END_MONTH),--end-month $(END_MONTH)) $(if $(FLOW),--flow $(FLOW)) $(if $(CURRENCY),--currency $(CURRENCY)) $(if $(CATALOG),--catalog $(CATALOG)) $(if $(GACC_CATALOG),--gacc-catalog $(GACC_CATALOG)) $(if $(GACC_CODES),--gacc-codes $(GACC_CODES)) $(if $(RAW_DIR),--raw-dir $(RAW_DIR)) $(if $(CURATED),--curated $(CURATED))
 
 catalog-customs:
 	uv run python -m stock_cli.customs catalog $(if $(CATALOG),--catalog $(CATALOG))
 
+
 macro-ic-review:
 	uv run python -m stock_cli.macro_ic_review $(if $(HORIZON),--horizon $(HORIZON)) $(if $(OUTPUT),--output-dir $(OUTPUT))
+
+dce-harvest:
+	uv run python scripts/cdp/dce_cdp_automation.py $(if $(DATE),--date $(DATE)) $(if $(START),--start-date $(START)) $(if $(END),--end-date $(END)) $(if $(MODE),--mode $(MODE)) $(if $(filter 1 true yes,$(FILL_GAPS)),--fill-gaps) $(if $(filter 1 true yes,$(FORCE)),--force) $(if $(filter 1 true yes,$(SYNC)),--sync) $(if $(filter 1 true yes,$(DRY_RUN)),--dry-run)
+
+chemical-cross-section:
+	uv run python -m stock_analytics.marts.chemical_cross_section_mart $(if $(DATE),--as-of $(DATE))
+
+chemical-basis-mart:
+	uv run python -m stock_analytics.marts.chemical_basis_inventory_mart $(if $(DATE),--as-of-date $(DATE))

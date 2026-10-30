@@ -6,21 +6,141 @@
     "max_file_lines": 400
   },
   "classes": {
-    "src/stock_analytics/marts/builder.py::DomainMartBuilder": {
-      "lines": 329,
-      "methods": 18
+    "src/stock_analytics/discovery/chemical_universe_scanner.py::ChemicalUniverseScanner": {
+      "lines": 251,
+      "methods": 5
     },
-    "src/stock_data/fetcher/industry/customs/collector.py::ComtradeCollector": {
-      "lines": 205,
+    "src/stock_analytics/marts/builder.py::DomainMartBuilder": {
+      "lines": 424,
+      "methods": 22
+    },
+    "src/stock_analytics/marts/chemical_basis_inventory_mart.py::ChemicalBasisInventoryMart": {
+      "lines": 403,
+      "methods": 6
+    },
+    "src/stock_analytics/marts/chemical_cross_section_mart.py::ChemicalCrossSectionMart": {
+      "lines": 952,
       "methods": 8
     },
+    "src/stock_analytics/pipelines/calibration/industrial_calibrator.py::IndustrialCostCalibrator": {
+      "lines": 277,
+      "methods": 4
+    },
+    "src/stock_analytics/pipelines/macro_risk/pipeline.py::MacroRiskPipeline": {
+      "lines": 233,
+      "methods": 4
+    },
+    "src/stock_analytics/pipelines/pta/pipeline.py::PtaPipeline": {
+      "lines": 264,
+      "methods": 4
+    },
+    "src/stock_analytics/pipelines/pta/projections.py::PtaCompanyProjectionEngine": {
+      "lines": 240,
+      "methods": 5
+    },
+    "src/stock_analytics/pipelines/tio2/pipeline.py::Tio2Pipeline": {
+      "lines": 214,
+      "methods": 2
+    },
+    "src/stock_analytics/pipelines/tio2/projections.py::CompanyProjectionEngine": {
+      "lines": 1555,
+      "methods": 24
+    },
+    "src/stock_analytics/pipelines/tio2/quarterly.py::QuarterlyProjectionEngine": {
+      "lines": 694,
+      "methods": 14
+    },
+    "src/stock_data/fetcher/alphavantage/client.py::AlphaVantageClient": {
+      "lines": 343,
+      "methods": 15
+    },
+    "src/stock_data/fetcher/industry/chemicals/collectors/capacity.py::ChemicalCapacityUtilization10Y": {
+      "lines": 484,
+      "methods": 8
+    },
+    "src/stock_data/fetcher/industry/chemicals/collectors/cfa_futures.py::CFAFuturesReportCollector": {
+      "lines": 227,
+      "methods": 3
+    },
+    "src/stock_data/fetcher/industry/chemicals/collectors/eastmoney_report.py::EastmoneyReportCollector": {
+      "lines": 251,
+      "methods": 7
+    },
+    "src/stock_data/fetcher/industry/chemicals/collectors/futures_hold_rank.py::FuturesHoldRankCollector": {
+      "lines": 324,
+      "methods": 11
+    },
+    "src/stock_data/fetcher/industry/chemicals/collectors/inventory.py::FuturesInventoryCollector": {
+      "lines": 330,
+      "methods": 8
+    },
+    "src/stock_data/fetcher/industry/chemicals/collectors/mysteel_backfill.py::MysteelWeeklyBackfiller": {
+      "lines": 270,
+      "methods": 4
+    },
+    "src/stock_data/fetcher/industry/chemicals/collectors/spot_price.py::ChemicalSpotPriceCollector": {
+      "lines": 214,
+      "methods": 11
+    },
+    "src/stock_data/fetcher/industry/chemicals/collectors/spreads.py::ChemicalSpreadCalculator": {
+      "lines": 908,
+      "methods": 35
+    },
+    "src/stock_data/fetcher/industry/chemicals/parsers/chart_vlm.py::ChartVlmParser": {
+      "lines": 271,
+      "methods": 6
+    },
+    "src/stock_data/fetcher/industry/chemicals/parsers/research.py::ResearchReportParser": {
+      "lines": 866,
+      "methods": 8
+    },
+    "src/stock_data/fetcher/industry/cloud/collector.py::CloudCapexCollector": {
+      "lines": 382,
+      "methods": 13
+    },
     "src/stock_data/fetcher/industry/machinery/collector.py::MachineryCollector": {
-      "lines": 235,
+      "lines": 224,
+      "methods": 4
+    },
+    "src/stock_data/fetcher/industry/power/paths.py::PowerRawPaths": {
+      "lines": 113,
+      "methods": 11
+    },
+    "src/stock_data/fetcher/industry/semiconductor/collectors/equipment_gm.py::EquipmentGmSecCollector": {
+      "lines": 219,
+      "methods": 9
+    },
+    "src/stock_data/fetcher/industry/semiconductor/collectors/foundry_crawler.py::FoundryUtilizationCrawler": {
+      "lines": 398,
+      "methods": 15
+    },
+    "src/stock_data/fetcher/industry/semiconductor/collectors/inventory.py::SemiconductorInventoryCollector": {
+      "lines": 532,
+      "methods": 14
+    },
+    "src/stock_data/fetcher/industry/semiconductor/collectors/korea_memory_dart.py::KoreaMemoryDartCollector": {
+      "lines": 642,
+      "methods": 16
+    },
+    "src/stock_data/fetcher/industry/semiconductor/collectors/sales.py::SemiconductorCollector": {
+      "lines": 202,
+      "methods": 5
+    },
+    "src/stock_data/fetcher/industry/semiconductor/collectors/seaj.py::SeajEquipmentCollector": {
+      "lines": 241,
+      "methods": 7
+    },
+    "src/stock_data/fetcher/industry/semiconductor/collectors/semi_crawler.py::SemiEquipmentCrawler": {
+      "lines": 258,
+      "methods": 9
+    },
+    "src/stock_data/fetcher/industry/semiconductor/collectors/wayback_memory_benchmark.py::WaybackMemoryPriceBenchmarkCollector": {
+      "lines": 284,
       "methods": 4
     },
     "src/stock_data/fetcher/lixinger/client.py::LixingerClient": {
-      "lines": 228,
-      "methods": 5
+      "lines": 320,
+      "methods": 10
     },
     "src/stock_data/fetcher/yfinance/global_fetcher.py::YFinanceDataFetcher": {
       "lines": 288,
@@ -31,16 +151,20 @@
       "methods": 9
     },
     "src/stock_data/governance/ops/probe.py::GlobalDataProbe": {
-      "lines": 358,
+      "lines": 356,
       "methods": 6
+    },
+    "src/stock_data/governance/quality/gate.py::QualityGate": {
+      "lines": 926,
+      "methods": 14
     },
     "src/stock_data/pipeline/cleaner/bar_cleaner.py::BarDataCleaner": {
       "lines": 308,
       "methods": 7
     },
     "src/stock_data/pipeline/scheduler.py::DataUpdateScheduler": {
-      "lines": 239,
-      "methods": 9
+      "lines": 249,
+      "methods": 10
     },
     "src/stock_data/storage/duckdb_store.py::DuckDBMarketStore": {
       "lines": 118,
@@ -51,49 +175,238 @@
       "methods": 14
     },
     "src/stock_data/storage/raw_store.py::RawDataStorage": {
-      "lines": 292,
+      "lines": 299,
       "methods": 16
     }
   },
   "files": {
     "src/stock_analytics/marts/build_steps.py": {
-      "lines": 846
+      "lines": 868
+    },
+    "src/stock_analytics/marts/builder.py": {
+      "lines": 514
+    },
+    "src/stock_analytics/marts/chemical_basis_inventory_mart.py": {
+      "lines": 582
+    },
+    "src/stock_analytics/marts/chemical_cost_curves.py": {
+      "lines": 578
+    },
+    "src/stock_analytics/marts/chemical_cross_section_mart.py": {
+      "lines": 1329
+    },
+    "src/stock_analytics/marts/chemical_elasticity_mart.py": {
+      "lines": 414
+    },
+    "src/stock_analytics/marts/customs_company_h8.py": {
+      "lines": 1354
     },
     "src/stock_analytics/marts/industry_l2_panel.py": {
-      "lines": 423
+      "lines": 616
     },
-    "src/stock_data/core/task_registry.py": {
-      "lines": 702
+    "src/stock_analytics/marts/semiconductor_research.py": {
+      "lines": 845
     },
-    "src/stock_data/fetcher/industry/pharma/collector.py": {
-      "lines": 450
+    "src/stock_analytics/marts/shared/industry_structure/industry_capex.py": {
+      "lines": 406
     },
-    "src/stock_data/fetcher/lixinger/stock_fetcher.py": {
+    "src/stock_analytics/marts/shared/market_temperature/derived_macro.py": {
+      "lines": 485
+    },
+    "src/stock_analytics/marts/soda_ash_company_panel.py": {
+      "lines": 616
+    },
+    "src/stock_analytics/pipelines/macro_risk/data_fetchers.py": {
+      "lines": 408
+    },
+    "src/stock_analytics/pipelines/photovoltaic/legs.py": {
+      "lines": 498
+    },
+    "src/stock_analytics/pipelines/pta/panorama.py": {
+      "lines": 429
+    },
+    "src/stock_analytics/pipelines/pta/projections.py": {
+      "lines": 455
+    },
+    "src/stock_analytics/pipelines/soda_ash/gates.py": {
+      "lines": 598
+    },
+    "src/stock_analytics/pipelines/stock_diagnostics/sources.py": {
+      "lines": 444
+    },
+    "src/stock_analytics/pipelines/stock_screen/sources.py": {
+      "lines": 422
+    },
+    "src/stock_analytics/pipelines/tio2/gates.py": {
+      "lines": 418
+    },
+    "src/stock_analytics/pipelines/tio2/pipeline.py": {
+      "lines": 455
+    },
+    "src/stock_analytics/pipelines/tio2/projections.py": {
+      "lines": 1789
+    },
+    "src/stock_analytics/pipelines/tio2/quarterly.py": {
+      "lines": 776
+    },
+    "src/stock_analytics/pipelines/tio2/report.py": {
+      "lines": 512
+    },
+    "src/stock_data/core/industry_tech_task_specs.py": {
+      "lines": 495
+    },
+    "src/stock_data/core/task_health.py": {
+      "lines": 619
+    },
+    "src/stock_data/fetcher/alphavantage/client.py": {
+      "lines": 445
+    },
+    "src/stock_data/fetcher/industry/__init__.py": {
+      "lines": 568
+    },
+    "src/stock_data/fetcher/industry/chemicals/collectors/capacity.py": {
+      "lines": 1272
+    },
+    "src/stock_data/fetcher/industry/chemicals/collectors/futures_hold_rank.py": {
+      "lines": 554
+    },
+    "src/stock_data/fetcher/industry/chemicals/collectors/inventory.py": {
+      "lines": 609
+    },
+    "src/stock_data/fetcher/industry/chemicals/collectors/official.py": {
+      "lines": 1012
+    },
+    "src/stock_data/fetcher/industry/chemicals/collectors/spot_price.py": {
+      "lines": 428
+    },
+    "src/stock_data/fetcher/industry/chemicals/collectors/spreads.py": {
+      "lines": 1461
+    },
+    "src/stock_data/fetcher/industry/chemicals/collectors/weekly_survey.py": {
+      "lines": 433
+    },
+    "src/stock_data/fetcher/industry/chemicals/parsers/mysteel_cdp.py": {
+      "lines": 488
+    },
+    "src/stock_data/fetcher/industry/chemicals/parsers/research.py": {
+      "lines": 1046
+    },
+    "src/stock_data/fetcher/industry/chemicals/parsers/spot_price.py": {
+      "lines": 406
+    },
+    "src/stock_data/fetcher/industry/chemicals/parsers/weekly_survey.py": {
+      "lines": 954
+    },
+    "src/stock_data/fetcher/industry/cloud/collector.py": {
+      "lines": 573
+    },
+    "src/stock_data/fetcher/industry/customs/parsers/catalog.py": {
+      "lines": 404
+    },
+    "src/stock_data/fetcher/industry/runner.py": {
+      "lines": 404
+    },
+    "src/stock_data/fetcher/industry/semiconductor/collectors/equipment_gm.py": {
+      "lines": 652
+    },
+    "src/stock_data/fetcher/industry/semiconductor/collectors/foundry_crawler.py": {
+      "lines": 615
+    },
+    "src/stock_data/fetcher/industry/semiconductor/collectors/inventory.py": {
+      "lines": 737
+    },
+    "src/stock_data/fetcher/industry/semiconductor/collectors/korea_memory_dart.py": {
+      "lines": 1049
+    },
+    "src/stock_data/fetcher/industry/semiconductor/collectors/semi_crawler.py": {
+      "lines": 421
+    },
+    "src/stock_data/fetcher/industry/semiconductor/collectors/wayback_memory_benchmark.py": {
+      "lines": 404
+    },
+    "src/stock_data/fetcher/industry/semiconductor/parsers/foundry.py": {
+      "lines": 498
+    },
+    "src/stock_data/fetcher/industry/semiconductor/parsers/inventory_online.py": {
+      "lines": 448
+    },
+    "src/stock_data/fetcher/industry/semiconductor/parsers/korea_memory_dart.py": {
+      "lines": 503
+    },
+    "src/stock_data/fetcher/industry/semiconductor/parsers/sales.py": {
+      "lines": 710
+    },
+    "src/stock_data/fetcher/industry/semiconductor/parsers/semi.py": {
+      "lines": 673
+    },
+    "src/stock_data/fetcher/industry/semiconductor/replay.py": {
       "lines": 430
     },
+    "src/stock_data/fetcher/industry/semiconductor/schemas.py": {
+      "lines": 538
+    },
+    "src/stock_data/fetcher/industry/semiconductor/transforms/foundry.py": {
+      "lines": 462
+    },
+    "src/stock_data/fetcher/lixinger/stock_fetcher.py": {
+      "lines": 459
+    },
+    "src/stock_data/fetcher/tushare/endpoints/finance.py": {
+      "lines": 466
+    },
     "src/stock_data/governance/audit/backfill_acceptance.py": {
-      "lines": 493
+      "lines": 503
+    },
+    "src/stock_data/governance/audit/distribution_audit.py": {
+      "lines": 425
     },
     "src/stock_data/governance/audit/reconciliation.py": {
-      "lines": 1032
+      "lines": 1040
+    },
+    "src/stock_data/governance/audit/registry.py": {
+      "lines": 401
     },
     "src/stock_data/governance/ops/migration.py": {
       "lines": 405
     },
     "src/stock_data/governance/ops/probe.py": {
-      "lines": 419
+      "lines": 417
     },
     "src/stock_data/governance/ops/rebuild_stock_daily_bar.py": {
       "lines": 487
     },
+    "src/stock_data/governance/quality/gate.py": {
+      "lines": 1175
+    },
+    "src/stock_data/pipeline/planner.py": {
+      "lines": 412
+    },
+    "src/stock_data/pipeline/sw_industry_golden.py": {
+      "lines": 1047
+    },
+    "src/stock_data/pipeline/sync.py": {
+      "lines": 541
+    },
+    "src/stock_data/pipeline/sync_helpers.py": {
+      "lines": 479
+    },
+    "src/stock_data/storage/compat_frames.py": {
+      "lines": 476
+    },
+    "src/stock_reporting/interpretation/macro_risk/logic.py": {
+      "lines": 546
+    },
     "src/stock_reporting/templates/industry_structure.py": {
       "lines": 553
+    },
+    "src/stock_reporting/templates/macro_risk_report.py": {
+      "lines": 417
     },
     "src/stock_reporting/templates/market_temperature.py": {
       "lines": 636
     },
     "src/stock_strategy/industry/trend_live.py": {
-      "lines": 473
+      "lines": 468
     }
   }
 }

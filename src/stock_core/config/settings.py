@@ -21,5 +21,14 @@ class Settings(BaseSettings):
     log_rotation_size: str = "10 MB"
     data_dir: Path = Path("./data")
 
+    # 大语言模型与多模态视觉模型 (LLM / VLM) 统一配置 (基于 litellm)
+    llm_model: str = "gemini/gemini-2.5-flash"
+    llm_api_key: str | None = None
+    llm_api_base: str | None = None
+    llm_temperature: float = 0.2
+    llm_max_tokens: int = 4096
+    llm_reasoning_effort: str | None = "medium"  # low, medium, high
+    llm_stream: bool = True  # 开启流式防超时
+
 
 settings = Settings()

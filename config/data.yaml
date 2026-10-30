@@ -2,14 +2,17 @@
 data:
   default_benchmark_index_code: "000001"  # 交易日历基准指数代码 (上证指数)
   default_source_mode: "tushare"           # 默认主数据源 (tushare / lixinger / yfinance / fred / alphavantage)
+  yfinance_financial_probe_interval_days: 7 # yfinance 财报无新报告后的再次探测间隔（自然日）
 
   rate_limits:
     tushare_per_min: 180
     yfinance_per_min: 20
     lixinger_per_min: 60
     alpha_vantage_per_min: 5
+    alpha_vantage_per_day: 25
 
   concurrency:
+    source_max_workers: 3
     tushare_max_workers: 4
     lixinger_max_workers: 2
     yfinance_max_workers: 2
@@ -24,6 +27,103 @@ data:
         - "000300.SH"
         - "000905.SH"
         - "399006.SZ"
+      # fut_index_daily 实际需逐个 ts_code 请求；维护当前已验证的南华指数代码池。
+      fut_index_daily:
+        - "A.NH"
+        - "AG.NH"
+        - "AL.NH"
+        - "AO.NH"
+        - "AP.NH"
+        - "AU.NH"
+        - "B.NH"
+        - "BB.NH"
+        - "BC.NH"
+        - "BR.NH"
+        - "BU.NH"
+        - "C.NH"
+        - "CF.NH"
+        - "CJ.NH"
+        - "CS.NH"
+        - "CU.NH"
+        - "CY.NH"
+        - "EB.NH"
+        - "EC.NH"
+        - "EG.NH"
+        - "ER.NH"
+        - "FB.NH"
+        - "FG.NH"
+        - "FU.NH"
+        - "HC.NH"
+        - "I.NH"
+        - "IC.NH"
+        - "IF.NH"
+        - "IH.NH"
+        - "IM.NH"
+        - "J.NH"
+        - "JD.NH"
+        - "JM.NH"
+        - "JR.NH"
+        - "L.NH"
+        - "LC.NH"
+        - "LH.NH"
+        - "LR.NH"
+        - "LU.NH"
+        - "M.NH"
+        - "ME.NH"
+        - "NHAECI.NH"
+        - "NHAI.NH"
+        - "NHBMI.NH"
+        - "NHCCI.NH"
+        - "NHCI.NH"
+        - "NHCIMi.NH"
+        - "NHECI.NH"
+        - "NHEI.NH"
+        - "NHFI.NH"
+        - "NHFMI.NH"
+        - "NHII.NH"
+        - "NHMI.NH"
+        - "NHNFI.NH"
+        - "NHOOI.NH"
+        - "NHPCI.NH"
+        - "NHPMI.NH"
+        - "NI.NH"
+        - "NR.NH"
+        - "P.NH"
+        - "PB.NH"
+        - "PF.NH"
+        - "PG.NH"
+        - "PK.NH"
+        - "PP.NH"
+        - "PR.NH"
+        - "PX.NH"
+        - "RB.NH"
+        - "RM.NH"
+        - "RO.NH"
+        - "RR.NH"
+        - "RS.NH"
+        - "RU.NH"
+        - "SA.NH"
+        - "SC.NH"
+        - "SF.NH"
+        - "SH.NH"
+        - "SI.NH"
+        - "SM.NH"
+        - "SN.NH"
+        - "SP.NH"
+        - "SR.NH"
+        - "SS.NH"
+        - "T.NH"
+        - "TA.NH"
+        - "TC.NH"
+        - "TF.NH"
+        - "TL.NH"
+        - "TS.NH"
+        - "UR.NH"
+        - "V.NH"
+        - "WR.NH"
+        - "WS.NH"
+        - "Y.NH"
+        - "ZN.NH"
     alphavantage:
       fx_daily:
         - "CNH=X"
@@ -51,6 +151,8 @@ data:
 
   # 当前账户无权限或额度不足的接口。恢复权限后移除对应任务即可重新启用。
   disabled_endpoints:
+    tushare:
+      - us_stock_daily_bar
     lixinger: []
 
   # 默认回填策略与参数

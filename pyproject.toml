@@ -28,6 +28,12 @@ dependencies = [
     "yfinance>=1.5.2",
     "comtradeapicall>=1.3.2",
     "pypdf>=4.0.0",
+    "pymupdf>=1.24.0",
+    "litellm>=1.40.0",
+    "socksio>=1.0.0",
+    "tenacity>=8.3.0",
+    "jieba>=0.42.1",
+    "rapidfuzz>=3.13.0",
 ]
 
 [dependency-groups]

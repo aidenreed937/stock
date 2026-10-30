@@ -38,7 +38,7 @@ target/
 .codegraph/
 
 # Local data, caches, databases, and logs
-data/
+/data/
 *.db
 *.db-wal
 *.db-shm
@@ -55,6 +55,11 @@ scratch/
 output/
 reports/
 .dsh/
+
+# GACC 派生查询清单（hs_codes_catalog.csv 的派生物，make rebuild-customs-catalog 随时重建）
+/config/data/customs/gacc_code_catalog.csv
+/config/data/customs/gacc_hs_codes.csv
+/config/data/customs/gacc_hs_codes.txt
 
 # Environment variables and local secrets
 .env
@@ -73,3 +78,4 @@ reports/
 
 .mplconfig/
 .agents/archive
+.mplcache

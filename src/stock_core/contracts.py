@@ -293,6 +293,12 @@ def instrument_for_symbol(symbol: str, provider: str) -> InstrumentId | None:
     if symbol_upper.endswith((".TO", ".V")):
         return InstrumentId(symbol, "CA", "TSX", "CAD", provider)
 
+    # 4.1 中国场外基金 (.OF)：后缀是基金类型而非交易所，市场必须仍归 CN。
+    # 否则按基金代码逐只采集（per_symbol）会把基金数据集拆到 market=OF，
+    # 与既有 market=CN 的持仓/份额数据分裂成两个互不可见的数据集。
+    if symbol_upper.endswith(".OF"):
+        return InstrumentId(symbol, "CN", "OF", "CNY", provider)
+
     # 5. 通用泛化动态后缀处理 (针对任何未显式列出的国家/地区后缀，如 .KS 韩国、.SG 新加坡等)
     if "." in symbol_upper:
         ext = symbol_upper.rsplit(".", 1)[1]
@@ -318,7 +324,7 @@ def instrument_for_symbol(symbol: str, provider: str) -> InstrumentId | None:
     # 7. 6 位数字代码或 TuShare 数据源默认 (CN)
     if symbol.isdigit() and len(symbol) == 6:
         return InstrumentId(symbol, "CN", "CN_EXCHANGE", "CNY", provider)
-    if provider == "tushare":
+    if provider == "tushare" and symbol.isdigit() and len(symbol) == 6:
         return InstrumentId(symbol, "CN", "CN_EXCHANGE", "CNY", provider)
 
     # 8. 默认无后缀及美股标的 (US)

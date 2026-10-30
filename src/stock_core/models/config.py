@@ -143,11 +143,15 @@ class RateLimitsConfig(BaseModel):
     alpha_vantage_per_min: int = Field(
         default=5, gt=0, description="Alpha Vantage 每分钟最大请求数"
     )
+    alpha_vantage_per_day: int = Field(
+        default=25, gt=0, description="Alpha Vantage 每日最大请求数（标准免费额度）"
+    )
 
 
 class ConcurrencyConfig(BaseModel):
     """数据源并发数配置。"""
 
+    source_max_workers: int = Field(default=2, gt=0, description="跨数据源同步最大并发数")
     tushare_max_workers: int = Field(default=4, gt=0, description="TuShare 抓取最大并发线程数")
     lixinger_max_workers: int = Field(default=2, gt=0, description="理杏仁抓取最大并发线程数")
     yfinance_max_workers: int = Field(default=4, gt=0, description="YFinance 抓取最大并发线程数")
@@ -175,6 +179,9 @@ class DataConfig(BaseModel):
         default="000001", description="交易日历基准指数代码 (上证指数)"
     )
     default_source_mode: str = Field(default="tushare", description="默认主数据源")
+    yfinance_financial_probe_interval_days: int = Field(
+        default=7, gt=0, description="yfinance 财报无新报告后的再次探测间隔（自然日）"
+    )
     rate_limits: RateLimitsConfig = Field(default_factory=RateLimitsConfig)
     concurrency: ConcurrencyConfig = Field(default_factory=ConcurrencyConfig)
     watchlists: WatchlistsConfig = Field(default_factory=WatchlistsConfig)

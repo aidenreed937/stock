@@ -61,6 +61,9 @@
     "src/stock_cli/scan_watchlist.py": {
       "max_lines": 91
     },
+    "src/stock_cli/soda_ash.py": {
+      "max_lines": 130
+    },
     "src/stock_cli/stock_screen.py": {
       "max_lines": 101
     },
