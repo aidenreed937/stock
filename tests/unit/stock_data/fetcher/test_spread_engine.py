@@ -14,6 +14,7 @@ from stock_data.fetcher.industry.chemicals.collectors.spreads import (
     ChemicalSpreadCalculator,
     PriceInput,
     _coalesce_price_sources,
+    _load_raw_spread_frame,
     _merge_spread_frames,
 )
 
@@ -180,3 +181,19 @@ def test_merge_spread_frames_prefers_computed_and_retains_uncovered(tmp_path: Pa
     # 未覆盖的存量品种（醋酸）予以保留
     assert "醋酸" in set(merged["product_name"].unique().to_list())
     assert merged.height == computed.height + 1
+
+
+def test_load_raw_spread_frame_normalizes_process_alias(tmp_path: Path) -> None:
+    raw_file = tmp_path / "chemical_spreads.csv"
+    raw_file.write_text(
+        "trade_date,product_name,symbol,process_type,product_price_cny,byproduct_price_cny,"
+        "raw_material_cost_cny,spread_margin_cny,cash_breakeven_cost_cny,margin_regime,"
+        "source,release_date,collected_at,data_status\n"
+        "2026-01-05,钛白粉,TiO2,硫酸法金红石型,1,,1,1,1,profitable,raw,"
+        "2026-01-05,2026-01-05T00:00:00Z,actual\n",
+        encoding="utf-8",
+    )
+
+    loaded = _load_raw_spread_frame(raw_file)
+
+    assert loaded["process_type"].to_list() == ["硫酸法金红石"]

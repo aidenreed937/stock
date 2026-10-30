@@ -1360,7 +1360,7 @@ def _load_raw_spread_frame(path: Path) -> pl.DataFrame:
                     "trade_date": trade_date,
                     "product_name": str(row.get("product_name") or "").strip(),
                     "symbol": str(row.get("symbol") or "").strip(),
-                    "process_type": str(row.get("process_type") or "").strip(),
+                    "process_type": str(row.get("process_type") or "").strip().removesuffix("型"),
                     "product_price_cny_raw": str(row.get("product_price_cny") or ""),
                     "byproduct_price_cny_raw": str(row.get("byproduct_price_cny") or ""),
                     "raw_material_cost_cny_raw": str(row.get("raw_material_cost_cny") or ""),

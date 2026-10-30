@@ -169,11 +169,23 @@ def assert_industry_growth_rate_sanity(_gate: object, files: list[Path]) -> bool
             frame = pl.read_parquet(file)
             if frame.is_empty():
                 continue
+            try:
+                from stock_data.core.task_resolution import resolve_task
+
+                task_units = resolve_task("industry", file.stem).units
+            except Exception:
+                task_units = {}
+            percent_point_columns = {
+                column
+                for column, unit in task_units.items()
+                if unit in {"percent_points", "percentage_points"}
+            }
             rate_columns = [
                 col
                 for col, dtype in frame.schema.items()
                 if dtype in (pl.Float32, pl.Float64)
                 and any(k in col.lower() for k in ("growth", "yoy", "mom", "penetration"))
+                and col not in percent_point_columns
                 and not any(
                     k in col.lower()
                     for k in (
@@ -193,6 +205,14 @@ def assert_industry_growth_rate_sanity(_gate: object, files: list[Path]) -> bool
                     )
                 )
             ]
+            for col in sorted(percent_point_columns.intersection(frame.columns)):
+                series = frame[col].drop_nulls()
+                if not series.is_empty() and float(str(series.min())) < -100.0:
+                    logger.error(
+                        f"行业事实表 [{file.name}] 列 [{col}] 百分点评分低于 -100: "
+                        f"min={float(str(series.min())):.2f}"
+                    )
+                    return False
             for col in rate_columns:
                 series = frame[col].drop_nulls()
                 if series.is_empty():

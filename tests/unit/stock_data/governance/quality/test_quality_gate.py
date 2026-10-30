@@ -43,6 +43,24 @@ def test_quality_gate_on_valid_data(tmp_path: Path) -> None:
     assert run_quality_gate(tmp_path)
 
 
+def test_quality_gate_allows_percent_point_growth_rates(tmp_path: Path) -> None:
+    target = tmp_path / "industry" / "chemical_monthly_survey.parquet"
+    target.parent.mkdir(parents=True)
+    pl.DataFrame(
+        {
+            "report_month": ["2026-07", "2026-08"],
+            "product_name": ["钛白粉", "钛白粉"],
+            "symbol": ["TiO2", "TiO2"],
+            "inventory_mom_pct": [23.26, 0.34],
+            "inventory_yoy_pct": [-22.01, None],
+        }
+    ).write_parquet(target)
+
+    gate = QualityGate(tmp_path)
+
+    assert gate.assert_industry_growth_rate_sanity(gate._active_parquet_files())
+
+
 def test_quality_gate_fails_on_unit_mismatch(tmp_path: Path) -> None:
     now_utc = datetime.now(UTC)
     target_dir = tmp_path / "tushare" / "market=CN" / "stock_daily_bar" / "year=2026" / "month=08"

@@ -122,8 +122,8 @@ INDUSTRY_ENERGY_TASK_SPECS: tuple[dict[str, object], ...] = (
             "production_w_tons": "ten_thousand_tons",
             "operating_rate_pct": "percent",
             "factory_inventory_w_tons": "ten_thousand_tons",
-            "inventory_mom_pct": "percent",
-            "inventory_yoy_pct": "percent",
+            "inventory_mom_pct": "percent_points",
+            "inventory_yoy_pct": "percent_points",
         },
     },
     {
